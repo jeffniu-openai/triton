@@ -41,6 +41,11 @@
   `64x32` TMEM-linear memdesc currently have no TMEM-compatible register
   layout for plain `tmem_load/store`; they are a tracked unsupported frontier
   and must fail with a clean relayout diagnostic instead of asserting.
+- Higher-rank TMEM descriptor compositions that repartition a tile into
+  broadcasted subviews currently fail at `get_reg_layout(...)` with a clean
+  diagnostic (`TMEM layout '<atom>' unsupported ... reshape or permute so TMEM
+  columns stay contiguous ...`) rather than reaching a pass-time assert or
+  late lowering failure.
 - TMEM load-reduction on canonical linear layouts is only legal when the
   N dimension is not sharded across threads. Canonical identity TMEM-linear
   layouts satisfy this and execute correctly; the current mixed TMEM-linear
@@ -179,6 +184,10 @@
       tile`) rejected many candidates.
     - Mixed-basis shared-linear mutations (e.g. `[32, k]`) reached lowering but
       still failed descriptor legalization; still no executable `warpx2`.
+    - Runtime coverage now includes executable `cta_group::2.warpx4.32x128b`
+      in `python/test/gluon/test_tmem_runtime_matrix.py` via the scaled-MMA
+      copy path; direct standalone scales-copy kernels still have not produced
+      executable `warpx2`.
 
 ### `tcgen05.mma` fuzz plan
 - Separate sweeps by hardware family:
@@ -240,6 +249,13 @@
 - Convert the current higher-rank TMEM `ld/st` broadcasted-subview failure into
   a permanent clean-diagnostic regression, then expand positive higher-rank
   runtime coverage only on compositions with proven legal TMEM register layouts.
+- Status update (2026-03-25):
+  - positive higher-rank descriptor compositions are now covered for
+    `identity` (1-CTA) and `block_two_ctas` (2-CTA) over
+    `N in {64,128,256}` and variants
+    `{32x32b,16x64b,16x128b,16x256b}` with GPU execution and PTX/LLIR checks.
+  - MMAv5 two-CTA higher-rank compositions are now locked as clean negatives
+    (`failed to infer tensor memory encoding for memdesc_index`).
 - Ensure every currently emitted TMEM instruction family has:
   - at least one passing runtime test with exact PTX/LLIR opcode checks;
   - at least one lit lowering test that validates the generated LLVMIR; and
@@ -247,3 +263,27 @@
     frontiers.
 - Treat undocumented or ambiguous documented families, especially `cp.warpx2`,
   as direct-PTX probe targets until the backend/legalizer boundary is clear.
+
+## Current Higher-Rank TMEM Status
+- TMEM view inference is no longer on the crash path for
+  `reshape -> slice -> index` compositions.
+  - `memdesc_subslice`, `memdesc_index`, and TMEM reshape inference now rebuild
+    view-local TMEM-linear encodings rather than reusing the parent encoding.
+  - Builder-side TMEM `memdesc_subslice` inference mirrors the IR-side logic so
+    Gluon no longer needs to guess the result type for TMEM views.
+- Shared-memory descriptor semantics were preserved after the TMEM view work.
+  - The temporary regression from narrowing `alloc_shape` for all memdescs has
+    been fixed; only TMEM uses view-local `alloc_shape`.
+- One-CTA higher-rank TMEM positives remain semantically suspect.
+  - The currently executable compositions:
+    - `reshape((2, M, N/2)).slice(dim=0).index(0)`
+    - `reshape((2, M/2, N)).slice(dim=0).index(0)`
+    still update the entire tensor in runtime probes instead of a strict
+    subview.
+  - Treat these as active probe cases, not fully trusted semantic coverage,
+    until the offset/layout semantics are nailed down empirically.
+- Two-CTA MMAv5 higher-rank compositions are currently expected clean
+  negatives.
+  - They diagnose invalid layout / CTA-group mismatch during parsing.
+  - The diagnostic quality still needs improvement because the frontend wraps
+    it as a generic parse `RuntimeError`.

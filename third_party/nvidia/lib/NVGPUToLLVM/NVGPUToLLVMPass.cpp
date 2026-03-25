@@ -604,7 +604,8 @@ static Value initTensorMemory(LLVM::LLVMFuncOp func) {
   }
 
   bool useTwoCTAs = mlir::triton::nvidia_gpu::getModuleTwoCTAs(mod);
-  int sharedBytes = cast<IntegerAttr>(mod->getAttr("ttg.shared")).getInt();
+  auto sharedAttr = mod->getAttrOfType<IntegerAttr>("ttg.shared");
+  int sharedBytes = sharedAttr ? sharedAttr.getInt() : 0;
   int sharedOffset = std::max(0, sharedBytes - 4);
   // This code is only executed by the default warp group.
   Value threadId = NVVM::ThreadIdXOp::create(rewriter, loc, i32_ty);

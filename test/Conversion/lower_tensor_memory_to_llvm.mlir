@@ -4,11 +4,16 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.total-num-warps" = 8 : i32, t
   llvm.mlir.global external @global_smem() {addr_space = 3 : i32, alignment = 16 : i64} : !llvm.array<0 x i8>
 
   // CHECK-LABEL: @automatic_tmem_lifecycle
+  // CHECK: [[ALLOC_PRED:%.*]] = llvm.icmp "ult" {{.*}} : i32
   // CHECK: tcgen05.alloc.cta_group::2.sync.aligned.shared::cta.b32
+  // CHECK: [[TMEM_BASE_B32:%.*]] = llvm.load {{.*}} : !llvm.ptr<3> -> i32
+  // CHECK: [[TMEM_BASE_PTR:%.*]] = llvm.inttoptr [[TMEM_BASE_B32]] : i32 to !llvm.ptr<6>
   // CHECK: tcgen05.relinquish_alloc_permit.cta_group::2.sync.aligned
   // CHECK: nvvm.cluster.arrive
   // CHECK-NEXT: nvvm.cluster.wait
   // CHECK: tcgen05.dealloc.cta_group::2.sync.aligned.b32
+  // CHECK-SAME: "b,r" [[ALLOC_PRED]], [[TMEM_BASE_PTR]]
+  // CHECK-NOT: tcgen05.alloc.cta_group::2.sync.aligned.shared::cta.b32
   // CHECK-NOT: nvg.tensor_memory_base
   llvm.func @automatic_tmem_lifecycle() attributes {allocation.offset = 0 : i32, nvvm.kernel = 1 : ui1, nvvm.maxntid = array<i32: 256>} {
     ttg.warp_specialize() attributes {warpGroupStartIds = array<i32: 4>}

@@ -41,9 +41,21 @@ namespace triton {
 static bool canInvertAndComposeLayouts(const LinearLayout &a,
                                        const LinearLayout &b) {
   SmallVector<StringAttr> outDims = llvm::to_vector(a.getOutDimNames());
+  if (outDims.size() != llvm::range_size(b.getOutDimNames()))
+    return false;
+  for (auto dim : outDims) {
+    if (!b.hasOutDim(dim))
+      return false;
+  }
+  auto transposedB = b.transposeOuts(outDims);
+  for (auto dim : outDims) {
+    if (transposedB.getOutDimSize(dim) < a.getOutDimSize(dim))
+      return false;
+  }
   SmallVector<StringAttr> identityDims;
   for (auto dim : a.getInDimNames()) {
-    if (b.hasInDim(dim) && a.sublayout(dim, outDims) == b.sublayout(dim, outDims))
+    if (transposedB.hasInDim(dim) &&
+        a.sublayout(dim, outDims) == transposedB.sublayout(dim, outDims))
       identityDims.push_back(dim);
   }
 
@@ -53,7 +65,7 @@ static bool canInvertAndComposeLayouts(const LinearLayout &a,
     if (!llvm::is_contained(identityDims, dim))
       aNonIdentityInDims.push_back(dim);
   }
-  for (auto dim : b.getInDimNames()) {
+  for (auto dim : transposedB.getInDimNames()) {
     if (!llvm::is_contained(identityDims, dim))
       bNonIdentityInDims.push_back(dim);
   }

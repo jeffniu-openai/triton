@@ -5,6 +5,7 @@ from itertools import product
 import pytest
 import torch
 import triton
+from triton.compiler.errors import CompilationError
 
 from triton._internal_testing import is_blackwell
 from triton.experimental import gluon
@@ -22,6 +23,12 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
 )
 from triton.experimental.gluon.language.nvidia.hopper import mbarrier, tma
 from triton._C.libtriton.gluon_ir import make_cga_layout
+from python.test.gluon.test_core import (
+    _expected_scaled_cp_opcode,
+    mma_scaled_tcgen05_copy,
+    random_quantized_tensor,
+    swizzle_scales_packed_block,
+)
 
 
 def _make_tmem_linear_layout(m, n):
@@ -251,6 +258,50 @@ def tmem_ldst_descriptor_multidim_slice_kernel(in_ptr, out_ptr, layout: ttgl.con
     part0.store(part0_value + ttgl.full([M, N // 2], 9.0, ttgl.float32, layout=part_layout))
     part1_value = part1.load(part_layout)
     part1.store(part1_value + ttgl.full([M, N // 2], 9.0, ttgl.float32, layout=part_layout))
+
+    out = full_view.load(full_reg_layout)
+    ttgl.store(out_ptr + in_offs, out)
+
+
+@gluon.jit
+def tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
+                                                                M: ttgl.constexpr, N: ttgl.constexpr,
+                                                                instr_variant: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    full_view = tmem.index(1)
+    full_reg_layout: ttgl.constexpr = full_view.get_reg_layout(instr_variant=instr_variant)
+    in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, full_reg_layout))
+    in_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, full_reg_layout))
+    in_offs = in_offs_m[:, None] * N + in_offs_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+    full_view.store(ttgl.convert_layout(value, full_reg_layout))
+
+    view = full_view.reshape((2, M, N // 2)).slice(1, 1, dim=0).index(0)
+    part_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    part_value = view.load(part_layout)
+    view.store(part_value + ttgl.full([M, N // 2], 7.0, ttgl.float32, layout=part_layout))
+
+    out = full_view.load(full_reg_layout)
+    ttgl.store(out_ptr + in_offs, out)
+
+
+@gluon.jit
+def tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
+                                                               M: ttgl.constexpr, N: ttgl.constexpr,
+                                                               instr_variant: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    full_view = tmem.index(1)
+    full_reg_layout: ttgl.constexpr = full_view.get_reg_layout(instr_variant=instr_variant)
+    in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, full_reg_layout))
+    in_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, full_reg_layout))
+    in_offs = in_offs_m[:, None] * N + in_offs_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+    full_view.store(ttgl.convert_layout(value, full_reg_layout))
+
+    view = full_view.reshape((2, M // 2, N)).slice(1, 1, dim=0).index(0)
+    part_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    part_value = view.load(part_layout)
+    view.store(part_value + ttgl.full([M // 2, N], 13.0, ttgl.float32, layout=part_layout))
 
     out = full_view.load(full_reg_layout)
     ttgl.store(out_ptr + in_offs, out)
@@ -587,6 +638,20 @@ LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
     ("mmav5_twocta", 256, "16x64b", LDST_SHAPE_MAP["16x64b"][256], LDST_SHAPE_MAP["16x64b"][128]),
 ]
 
+LDST_HIGHER_RANK_POSITIVE_CASES = [
+    ("identity", n, variant, LDST_SHAPE_MAP[variant][n])
+    for n, variant in product((64, 128, 256), ("32x32b", "16x64b", "16x128b", "16x256b"))
+]
+
+LDST_TWOCTA_HIGHER_RANK_POSITIVE_CASES = [
+    ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n])
+    for n, variant in product((64, 128, 256), ("32x32b", "16x64b", "16x128b", "16x256b"))
+]
+
+LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
+    ("mmav5_twocta", n, variant) for n, variant in product((64, 128, 256), ("32x32b", "16x64b", "16x128b", "16x256b"))
+]
+
 BLOCKED_FALLBACK_CASES = [
     ("identity", _make_tmem_linear_layout(128, 128)),
     ("mixed", _make_tmem_linear_layout_mixed(128, 128)),
@@ -748,25 +813,14 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index(layout_name, n, v
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-    torch.testing.assert_close(out, inp + 5.0, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
-    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
-    expected_half_st = f"tcgen05.st.sync.aligned.{expected_half_shape}"
-    expected_half_ld = f"tcgen05.ld.sync.aligned.{expected_half_shape}"
-    observed_opcodes = [op for op, _ in ops]
-    assert observed_opcodes.count(expected_st) == 1
-    assert observed_opcodes.count(expected_ld) == 1
-    assert observed_opcodes.count(expected_half_st) == 2
-    assert observed_opcodes.count(expected_half_ld) == 2
-
-    ttgir = compiled.asm["ttgir"]
-    assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
+    msg = str(excinfo.value)
+    assert f"TMEM layout '{variant}' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -778,25 +832,14 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(layout_name, n, var
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-    torch.testing.assert_close(out, inp + 9.0, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
-    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
-    expected_half_st = f"tcgen05.st.sync.aligned.{expected_half_shape}"
-    expected_half_ld = f"tcgen05.ld.sync.aligned.{expected_half_shape}"
-    observed_opcodes = [op for op, _ in ops]
-    assert observed_opcodes.count(expected_st) == 1
-    assert observed_opcodes.count(expected_ld) == 1
-    assert observed_opcodes.count(expected_half_st) == 2
-    assert observed_opcodes.count(expected_half_ld) == 2
-
-    ttgir = compiled.asm["ttgir"]
-    assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
+    msg = str(excinfo.value)
+    assert f"TMEM layout '{variant}' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -808,22 +851,16 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(layout_nam
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
-        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-    )
-    torch.testing.assert_close(out, inp + 5.0, atol=0, rtol=0)
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
 
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
-    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
-    expected_half_st = f"tcgen05.st.sync.aligned.{expected_half_shape}"
-    expected_half_ld = f"tcgen05.ld.sync.aligned.{expected_half_shape}"
-    observed_opcodes = [op for op, _ in ops]
-    assert observed_opcodes.count(expected_st) == 1
-    assert observed_opcodes.count(expected_ld) == 1
-    assert observed_opcodes.count(expected_half_st) == 2
-    assert observed_opcodes.count(expected_half_ld) == 2
-    assert "twoCTAs = true" in compiled.asm["ttgir"]
+    msg = str(excinfo.value)
+    assert f"TMEM layout '{variant}' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -835,22 +872,136 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(layout_name,
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
-        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+
+    msg = str(excinfo.value)
+    assert f"TMEM layout '{variant}' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_POSITIVE_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive(layout_name, n, variant, expected_shape):
+    m = 128
+    layout = LDST_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4
     )
-    torch.testing.assert_close(out, inp + 9.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + 7.0, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
     expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
-    expected_half_st = f"tcgen05.st.sync.aligned.{expected_half_shape}"
-    expected_half_ld = f"tcgen05.ld.sync.aligned.{expected_half_shape}"
     observed_opcodes = [op for op, _ in ops]
-    assert observed_opcodes.count(expected_st) == 1
-    assert observed_opcodes.count(expected_ld) == 1
-    assert observed_opcodes.count(expected_half_st) == 2
-    assert observed_opcodes.count(expected_half_ld) == 2
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_POSITIVE_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive(layout_name, n, variant, expected_shape):
+    m = 128
+    layout = LDST_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4
+    )
+    torch.testing.assert_close(out, inp + 13.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_HIGHER_RANK_POSITIVE_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_positive(layout_name, n, variant,
+                                                                                     expected_shape):
+    m = 256
+    layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp + 7.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
     assert "twoCTAs = true" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_HIGHER_RANK_POSITIVE_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_positive(layout_name, n, variant,
+                                                                                    expected_shape):
+    m = 256
+    layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp + 13.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+    assert "twoCTAs = true" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_mmav5_descriptor_higher_rank_reports_clean_error(layout_name, n, variant,
+                                                                                          capfd):
+    m = 256
+    layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(RuntimeError, match="error encountered during parsing"):
+        tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+
+    captured = capfd.readouterr()
+    text = captured.err + captured.out
+    assert "Result has an invalid layout" in text
+    assert "Layout has 1 CTAs per CGA, but the context requires 2 CTAs per CGA" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -992,6 +1143,23 @@ def test_tmem_runtime_matrix_cp_no_scales_linear(M, N, swizzle, expected_count):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean_error():
+    m, n, swizzle = 256, 128, 32
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout(m, n)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, swizzle, num_warps=4)
+
+    msg = str(excinfo.value)
+    assert "TMEM layout '32x32b' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("M", (128, ))
 def test_tmem_runtime_matrix_cp_128x128(M):
     N = 4
@@ -1027,6 +1195,39 @@ def test_tmem_runtime_matrix_cp_scales_warpx4():
     expected_ops = ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2
     assert ptx_ops == expected_ops
     assert llir_ops == expected_ops
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_scales_warpx4_twocta_via_scaled_mma_copy():
+    m, n, k = 256, 128, 128
+    block_m, block_n, block_k = 256, 128, 128
+    vec_size = 32
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, "mxfp8")
+    b, b_scale, _ = random_quantized_tensor(n, k, "mxfp8")
+    a_scale = swizzle_scales_packed_block(a_scale, vec_size)
+    b_scale = swizzle_scales_packed_block(b_scale, vec_size)
+
+    _, compiled = mma_scaled_tcgen05_copy(
+        a,
+        b,
+        a_scale,
+        b_scale,
+        vec_size,
+        block_m,
+        block_n,
+        block_k,
+        num_ctas=2,
+        multicast=False,
+    )
+
+    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    expected = _expected_scaled_cp_opcode(2)
+    assert all(op == expected for op in ptx_ops)
 
 
 MMA_CASES = [

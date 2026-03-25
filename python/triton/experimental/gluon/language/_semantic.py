@@ -398,10 +398,11 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         offsets[dim] = start
         shape = list(mem_desc.shape)
         shape[dim] = length
-        layout = mem_desc.layout
-        ty = desc_ty(mem_desc.dtype, shape, layout, mem_desc.type.alloc_shape)
         builder = self.builder
-        handle = builder.create_memdesc_subslice(ty.to_ir(builder), mem_desc.handle, offsets)
+        handle = builder.create_memdesc_subslice(mem_desc.handle, shape, offsets)
+        layout = builder.get_gluon_layout_from_memdesc(handle)
+        alloc_shape = list(shape) if desc_ty.__name__ == "tensor_memory_descriptor_type" else mem_desc.type.alloc_shape
+        ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
         return desc_val(handle, **ty.__dict__)
 
     def memdesc_index(self, mem_desc, index):

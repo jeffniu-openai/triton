@@ -566,24 +566,10 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
   auto extraRank = memDescType.getRank() - layoutRank;
 
   SmallVector<std::pair<StringAttr, int32_t>> logicalOffsets;
-  if (extraRank == 0 && layoutRank > 2) {
-    int32_t linearizedOffset = 0;
-    for (auto [offset, dimSize] :
-         llvm::zip_equal(offsets, memDescType.getShape())) {
-      linearizedOffset = linearizedOffset * dimSize + offset;
-    }
-    SmallVector<StringAttr> rowMajorOutDims = llvm::to_vector(ll.getOutDimNames());
-    std::reverse(rowMajorOutDims.begin(), rowMajorOutDims.end());
-    auto flat = ll.transposeOuts(rowMajorOutDims).flattenOuts();
-    logicalOffsets.push_back(
-        {*flat.getOutDimNames().begin(), linearizedOffset});
-    ll = std::move(flat);
-  } else {
-    logicalOffsets.reserve(layoutRank);
-    for (auto [dim, offset] :
-         llvm::zip_equal(ll.getOutDimNames(), offsets.drop_front(extraRank))) {
-      logicalOffsets.push_back({dim, offset});
-    }
+  logicalOffsets.reserve(layoutRank);
+  for (auto [dim, offset] :
+       llvm::zip_equal(ll.getOutDimNames(), offsets.drop_front(extraRank))) {
+    logicalOffsets.push_back({dim, offset});
   }
 
   auto rowColBlock = ll.pseudoinvert().apply(logicalOffsets);
@@ -869,6 +855,17 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   return getDistributedLayoutForTmemLdSt(ll, atom, numWarps, bitwidth);
 }
 
+static bool isTMemCompatibleCandidate(Operation *op, RankedTensorType tensorType,
+                                      gpu::MemDescType memType,
+                                      const LinearLayout &layout) {
+  auto candidateEncoding =
+      LinearEncodingAttr::get(tensorType.getContext(), layout);
+  auto candidateType = tensorType.cloneWithEncoding(candidateEncoding);
+  auto maxnreg = getContextualMaxNReg(op);
+  return succeeded(
+      computeTMemLdStEncodingInfo(candidateType, memType, maxnreg));
+}
+
 DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
                                                      unsigned numWarps) {
   auto *ctx = memType.getContext();
@@ -939,14 +936,16 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
                     TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b}) {
     auto ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
-    if (ll) {
+    if (ll && isTMemCompatibleCandidate(op, tensorType, memType, *ll)) {
       layouts.push_back(LinearEncodingAttr::get(tensorType.getContext(),
                                                 std::move(ll.value())));
     }
   }
   // Small hack until we generalise isDistributedLayoutTMemCompatible
   auto ll = getTmemLoadLayoutSplitLongM(tensorType, memType, numWarps);
-  if (ll) {
+  if (ll && succeeded(computeTMemLdStEncodingInfo(
+                tensorType.cloneWithEncoding(ll.value()), memType,
+                getContextualMaxNReg(op)))) {
     layouts.push_back(ll.value());
   }
   return layouts;

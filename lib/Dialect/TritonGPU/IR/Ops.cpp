@@ -80,12 +80,65 @@ getCanonicalTMemLinearEncoding(MemDescType type, std::string *error = nullptr) {
   return cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*canonical);
 }
 
+std::optional<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
+tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs) {
+  if (auto enc =
+          triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs))
+    return enc;
+  if (!twoCTAs)
+    return std::nullopt;
+
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!ll.hasInDim(kBlock))
+    return std::nullopt;
+  auto blockBases = ll.getBases().lookup(kBlock);
+  bool blockInactive = !blockBases.empty() &&
+                       llvm::all_of(blockBases, [](ArrayRef<int32_t> basis) {
+                         return llvm::all_of(
+                             basis, [](int32_t value) { return value == 0; });
+                       });
+  if (!blockInactive)
+    return std::nullopt;
+
+  ll = ll.removeZeroBasesAlongDim(kBlock);
+  if (ll.hasInDim(kBlock) && ll.getInDimSize(kBlock) == 1)
+    ll = ll.squeezeIns(kBlock);
+  return triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(ctx, ll,
+                                                               /*twoCTAs=*/false);
+}
+
 FailureOr<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
-inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy) {
+inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy,
+                          ArrayRef<int64_t> offsets) {
   auto srcEnc = getCanonicalTMemLinearEncoding(srcTy);
   if (!srcEnc)
     return failure();
-  return *srcEnc;
+
+  auto ll = srcEnc->getLinearLayout();
+  auto layoutRank = srcEnc->getRank();
+  auto extraRank = srcTy.getRank() - layoutRank;
+  if (extraRank < 0)
+    return failure();
+
+  auto *ctx = srcTy.getContext();
+  auto outDims = standardOutDimNames(ctx, layoutRank);
+  for (int dim = extraRank; dim < srcTy.getRank(); ++dim) {
+    int64_t dstDim = dstTy.getDimSize(dim);
+    auto outDim = outDims[dim - extraRank];
+    int64_t currSize = ll.getOutDimSize(outDim);
+    if (dstDim > currSize)
+      return failure();
+    if (dstDim != currSize) {
+      if (offsets[dim] < 0 || offsets[dim] % dstDim != 0)
+        return failure();
+      ll = ll.resizeOutDim(outDim, dstDim);
+    }
+  }
+
+  auto result = tryMakeTMemViewEncoding(ctx, std::move(ll), srcEnc->getTwoCTAs());
+  if (!result)
+    return failure();
+  return *result;
 }
 
 FailureOr<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
@@ -107,6 +160,9 @@ inferTMemIndexEncoding(MemDescType srcTy, MemDescType dstTy) {
     outDims.erase(outDims.begin());
     ll = ll.sublayout(llvm::to_vector(ll.getInDimNames()), outDims);
     auto dstLayoutShape = dstTy.getAllocShape().take_back(layoutRank - 1);
+    if (static_cast<int64_t>(ll.getTotalOutDimSize()) !=
+        product<int64_t>(dstLayoutShape))
+      return failure();
     ll = ll.reshapeOuts(standardOutDimPairs(srcTy.getContext(),
                                             dstLayoutShape));
   } else {
@@ -114,8 +170,8 @@ inferTMemIndexEncoding(MemDescType srcTy, MemDescType dstTy) {
     // TMEM layout; the explicit alloc_shape on the result tracks the view.
   }
 
-  auto result = triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(
-      srcTy.getContext(), std::move(ll), srcEnc->getTwoCTAs());
+  auto result = tryMakeTMemViewEncoding(srcTy.getContext(), std::move(ll),
+                                        srcEnc->getTwoCTAs());
   if (!result)
     return failure();
   return *result;
@@ -617,7 +673,8 @@ LogicalResult MemDescReshapeOp::verify() {
     return emitError("result element type must match src element type");
   }
   auto srcShape = srcType.getShape();
-  if (srcType.getAllocShape().take_back(srcShape.size()) != srcShape) {
+  bool isSubview = srcType.getAllocShape().take_back(srcShape.size()) != srcShape;
+  if (isSubview && !getCanonicalTMemLinearEncoding(srcType)) {
     return emitError("NYI: memdesc_reshape of memdesc_subslice");
   }
 
@@ -633,10 +690,8 @@ static LogicalResult inferMemDescReshapeOpEncoding(MemDescType srcTy,
                                                    Attribute srcEnc,
                                                    ArrayRef<int64_t> dstShape,
                                                    Attribute &dstEnc) {
-  if (srcTy.getAllocShape().take_back(srcShape.size()) != srcShape)
-    return failure();
-  auto *ctx = srcEnc.getContext();
   if (auto tmemLinear = getCanonicalTMemLinearEncoding(srcTy)) {
+    auto *ctx = srcEnc.getContext();
     auto layoutSrcShape = srcShape;
     auto layoutDstShape = dstShape;
 
@@ -651,15 +706,21 @@ static LogicalResult inferMemDescReshapeOpEncoding(MemDescType srcTy,
 
     if (product(layoutSrcShape) != product(layoutDstShape))
       return failure();
+    if (static_cast<int64_t>(tmemLinear->getLinearLayout().getTotalOutDimSize()) !=
+        product<int64_t>(layoutSrcShape))
+      return failure();
     auto dstLL =
         reshapeLayout(ctx, tmemLinear->getLinearLayout(), layoutDstShape);
-    auto result = triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(
-        ctx, std::move(dstLL), tmemLinear->getTwoCTAs());
+    auto result =
+        tryMakeTMemViewEncoding(ctx, std::move(dstLL), tmemLinear->getTwoCTAs());
     if (!result)
       return failure();
     dstEnc = *result;
     return success();
   }
+  if (srcTy.getAllocShape().take_back(srcShape.size()) != srcShape)
+    return failure();
+  auto *ctx = srcEnc.getContext();
   // TODO Delete this once SharedLinearEncodingAttr is more widely supported.
   if (auto mmaEncoding = dyn_cast<NVMMASharedEncodingAttr>(srcEnc)) {
     if (getNumCTAs(mmaEncoding) == 1) {
@@ -712,7 +773,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
   if (product<int64_t>(dstShape) != product<int64_t>(srcTy.getShape()))
     return emitOptionalError(
         loc, "dst shape has different number of elements than src");
-  if (srcTy.getAllocShape().take_back(srcTy.getRank()) != srcTy.getShape())
+  bool isSubview = srcTy.getAllocShape().take_back(srcTy.getRank()) != srcTy.getShape();
+  if (isSubview && !getCanonicalTMemLinearEncoding(srcTy))
     return emitOptionalError(loc, "NYI: memdesc_reshape of memdesc_subslice");
 
   Attribute dstEncoding;
@@ -1089,7 +1151,7 @@ LogicalResult MemDescSubsliceOp::verify() {
     if (!(srcTMem && dstTMem)) {
       return emitError("src and result must both use tensor memory encodings");
     }
-    auto expected = inferTMemSubsliceEncoding(srcTy, dstTy);
+    auto expected = inferTMemSubsliceEncoding(srcTy, dstTy, offsets);
     if (failed(expected)) {
       return emitError("unsupported tensor memory memdesc_subslice view");
     }

@@ -4631,25 +4631,46 @@ def test_tmem_reduction(red_op, use_abs, propagate_nan, M, N, num_warps):
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("layout_name,layout_factory", [("linear_identity", lambda n: _make_tmem_linear_layout(128, n))])
+@pytest.mark.parametrize("layout_name,layout_factory", [("linear_identity", lambda m, n: _make_tmem_linear_layout(m, n))])
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs", [False, True])
 @pytest.mark.parametrize("propagate_nan", [tl.PropagateNan.NONE, tl.PropagateNan.ALL])
-@pytest.mark.parametrize("N", [64, 128, 256])
-def test_tmem_reduction_linear_layouts(layout_name, layout_factory, red_op, use_abs, propagate_nan, N):
-    compiled = _run_tmem_reduction_case(layout_factory(N), 128, N, red_op, use_abs, propagate_nan, num_warps=4)
+@pytest.mark.parametrize("M,N,num_warps", [(128, 32, 4), (128, 64, 4), (128, 128, 4), (128, 256, 4)])
+def test_tmem_reduction_linear_layouts(layout_name, layout_factory, red_op, use_abs, propagate_nan, M, N, num_warps):
+    compiled = _run_tmem_reduction_case(layout_factory(M, N), M, N, red_op, use_abs, propagate_nan, num_warps=num_warps)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("N", [64, 128, 256])
-def test_tmem_reduction_linear_mixed_reports_clean_error(N, capfd):
-    layout = _make_tmem_linear_layout_mixed(128, N)
-    with pytest.raises(RuntimeError):
-        _run_tmem_reduction_case(layout, 128, N, "min", False, tl.PropagateNan.NONE, num_warps=4)
+@pytest.mark.parametrize(
+    "layout, M, N, diag_substr",
+    [
+        (
+            _make_tmem_linear_layout_mixed(128, 64),
+            128,
+            64,
+            "tmem_load reduction with N dimension sharded across threads is not supported",
+        ),
+        (
+            _make_tmem_linear_layout_m64(64),
+            64,
+            64,
+            "tmem_load reduction with N dimension sharded across threads is not supported",
+        ),
+        (
+            _make_tmem_linear_layout_block(128, 64),
+            128,
+            64,
+            "TMEM layout '32x32b' unsupported",
+        ),
+    ],
+)
+def test_tmem_reduction_linear_reports_clean_error(layout, M, N, diag_substr, capfd):
+    with pytest.raises(Exception) as err:
+        _run_tmem_reduction_case(layout, M, N, "min", False, tl.PropagateNan.NONE, num_warps=4)
     captured = capfd.readouterr()
-    text = captured.err + captured.out
-    assert "tmem_load reduction with N dimension sharded across threads is not supported" in text
+    text = str(err.value) + captured.err + captured.out
+    assert diag_substr in text
 
 
 @pytest.mark.parametrize("num_ctas", [1, 2])

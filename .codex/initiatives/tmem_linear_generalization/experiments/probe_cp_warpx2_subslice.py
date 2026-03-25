@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import itertools
 import re
 
@@ -116,6 +118,7 @@ def main():
     parser.add_argument("--max-layouts", type=int, default=384)
     parser.add_argument("--start-rows", type=str, default="")
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--show-failure-snippets", action="store_true")
     args = parser.parse_args()
 
     if not is_blackwell():
@@ -139,21 +142,39 @@ def main():
     out = torch.empty((128, 32), dtype=torch.int8, device=args.device)
 
     success = 0
+    clean_unsupported = 0
+    bug_like = 0
+    unknown_failures = 0
+    failure_examples = []
     warpx2_hits = []
     opcode_hist = {}
     for idx, bases in enumerate(layouts):
         layout = ttgl.SharedLinearLayout(offset_bases=bases, alignment=16)
         for start_row in start_rows:
+            fail_log = io.StringIO()
             try:
-                compiled = probe_scales_copy_subslice_kernel[(1,)](
-                    inp,
-                    out,
-                    layout,
-                    parent_rows,
-                    start_row,
-                    num_warps=4,
-                )
-            except Exception:
+                with contextlib.redirect_stderr(fail_log), contextlib.redirect_stdout(fail_log):
+                    compiled = probe_scales_copy_subslice_kernel[(1,)](
+                        inp,
+                        out,
+                        layout,
+                        parent_rows,
+                        start_row,
+                        num_warps=4,
+                    )
+            except Exception as exc:
+                failure_text = f"{exc}\n{fail_log.getvalue()}"
+                if "failed to find valid tcgen05.copy layout" in failure_text:
+                    clean_unsupported += 1
+                elif any(
+                    token in failure_text.lower()
+                    for token in ("assert", "segmentation fault", "stack dump", "aborted")
+                ):
+                    bug_like += 1
+                else:
+                    unknown_failures += 1
+                if len(failure_examples) < 5:
+                    failure_examples.append((idx, start_row, bases, failure_text.splitlines()[:6]))
                 continue
             success += 1
             opcodes = tuple(extract_tcgen05_cp_opcodes(compiled.asm["ptx"]))
@@ -162,6 +183,10 @@ def main():
                 warpx2_hits.append((idx, start_row, bases, opcodes))
 
     print(f"successful_compiles={success}")
+    print(
+        "failures "
+        f"clean_unsupported={clean_unsupported} bug_like={bug_like} unknown={unknown_failures}"
+    )
     for ops, count in sorted(opcode_hist.items(), key=lambda kv: (-kv[1], kv[0])):
         print(f"{count} {ops}")
     if warpx2_hits:
@@ -170,6 +195,12 @@ def main():
             print(f"layout_idx={idx} start_row={start_row} ops={ops} bases={bases}")
     else:
         print("no warpx2 opcodes observed")
+    if args.show_failure_snippets and failure_examples:
+        print("failure snippets:")
+        for idx, start_row, bases, lines in failure_examples:
+            print(f"layout_idx={idx} start_row={start_row} bases={bases}")
+            for line in lines:
+                print(f"  {line}")
 
 
 if __name__ == "__main__":

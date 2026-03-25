@@ -594,8 +594,210 @@
 - Mixed-basis perturbations (e.g. replacing `[32,0]` by `[32,1|2|4|8]`) were accepted by
   frontend parsing but consistently failed in TMEM copy legalization with:
   `failed to find valid tcgen05.copy layout ...`.
-- Conclusion:
+ - Conclusion:
   - no documented `tcgen05.cp.warpx2::{02_13,01_23}` family was executable in current tree
     under these probe spaces.
   - observed blockers are legalization/descriptorizability constraints in
     `copySharedToTmem`/`DotOpMmaSmemLoader`, not PTX emission itself.
+
+## 2026-03-25 (cp runtime expansion + warpx2 probe refresh, GPU2)
+- Added executable two-CTA `tcgen05.cp` runtime coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py` by adding:
+  - `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_via_scaled_mma_copy`
+    (uses proven scaled-MMA copy path, checks exact PTX/LLIR cp opcode family).
+- Retained existing direct scales-copy runtime check:
+  - `test_tmem_runtime_matrix_cp_scales_warpx4` (`cta_group::1.warpx4.32x128b`).
+- Validation on `CUDA_VISIBLE_DEVICES=2` with private cache:
+  - `python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4 python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_twocta_via_scaled_mma_copy`
+    - `2 passed`
+  - `python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "cp_"`
+    - `43 passed, 5 skipped`
+- Re-ran a bounded warpx2 subslice search:
+  - command:
+    - `python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 128 --max-layouts 96 --start-rows 0`
+  - outcome:
+    - `successful_compiles=0`
+    - `no warpx2 opcodes observed`
+    - failures are consistent with TMEM copy legalization failure at
+      `ttng.tmem_copy` (`failed to find valid tcgen05.copy layout ...`).
+- BUG tracking:
+  - no parser/verifier/pass crash or hard assertion observed in this run.
+  - failures observed in this checkpoint are classified as `CLEAN_UNSUPPORTED`.
+
+## 2026-03-25 (BUG: NVGPU->LLVM TMEM lifecycle crash from lit)
+- Focused lit run:
+  - `lit -v build/cmake.linux-aarch64-cpython-3.12/test/Conversion/lower_tensor_memory_to_llvm.mlir`
+- Reproducer command:
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/lower_tensor_memory_to_llvm.mlir --convert-warp-specialize-to-llvm --convert-nv-gpu-to-llvm -allow-unregistered-dialect`
+- Observed behavior:
+  - compiler crashes (segfault) before producing output; `FileCheck` then reports
+    empty stdin.
+  - stack points to integer-attr cast in TMEM allocation lowering:
+    - `third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp:607` (`initTensorMemory`)
+    - `third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp:635` (`lowerTensorMemoryAlloc`)
+    - `ConvertNVGPUToLLVM::runOnOperation`
+- Classification:
+  - `BUG` (compiler crash in pass pipeline).
+- Notes:
+  - this crash is independent of FileCheck expectations and reproduces with
+    `triton-opt` alone.
+
+## 2026-03-25 (BUG fixes: higher-rank TMEM no-crash + NVGPU alloc lowering)
+- Fixed BUG: frontend/backend TMEM layout contract mismatch for higher-rank
+  broadcasted subviews.
+  - Reproducer before fix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index[identity-256-16x64b-16x64b.x64.b32-16x64b.x64.b32]'`
+  - Old behavior:
+    - frontend `get_reg_layout(...)` returned a layout that later failed in
+      `ConvertTritonGPUToLLVM` with `unsupported register broadcast pattern for
+      direct lowering`.
+  - Fix:
+    - `python/src/gluon_ir.cc` now validates `compute_tmem_reg_layout` against
+      `computeTMemLdStEncodingInfo(...)` before returning a TMEM register
+      layout to Python.
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` now filters
+      `getTmemCompatibleLayouts(...)` through the actual TMEM compatibility
+      check so relayout/fallback paths do not pick lowering-invalid layouts.
+  - New behavior:
+    - these cases fail early and cleanly at `get_reg_layout(...)` with the
+      actionable unsupported-layout diagnostic.
+- Fixed BUG: higher-rank TMEM scratch-size analysis crash in
+  `AllocateSharedMemoryNv`.
+  - Reproducer before fix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index[identity-128-32x32b-32x32b.x128.b32-32x32b.x64.b32]'`
+  - Old behavior:
+    - `LinearLayout::invertAndCompose` assertion in shared-memory scratch-size
+      analysis during `AllocateSharedMemoryNv`.
+  - Fix:
+    - tightened `canInvertAndComposeLayouts(...)` guards in
+      `lib/Analysis/Allocation.cpp` and
+      `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp` so they
+      match the real `invertAndCompose(...)` preconditions.
+  - New behavior:
+    - the higher-rank runtime matrix no longer crashes the pass pipeline.
+- Fixed BUG: NVGPU->LLVM TMEM lifecycle lowering crashed when `ttg.shared` was
+  absent.
+  - Reproducer before fix:
+    - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/lower_tensor_memory_to_llvm.mlir --convert-warp-specialize-to-llvm --convert-nv-gpu-to-llvm -allow-unregistered-dialect`
+  - Old behavior:
+    - segfault in `third_party/nvidia/lib/NVGPUToLLVM/NVGPUToLLVMPass.cpp`
+      from `cast<IntegerAttr>(mod->getAttr("ttg.shared"))`.
+  - Fix:
+    - default missing `ttg.shared` to zero in `initTensorMemory(...)`.
+  - New behavior:
+    - the reproducer runs successfully and emits the expected TMEM lifecycle
+      opcodes.
+- Validation after fixes:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+    - `189 passed, 5 skipped`
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_core.py::test_tmem_reduction_linear_layouts python/test/gluon/test_core.py::test_tmem_reduction_linear_reports_clean_error`
+    - `35 passed`
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/lower_tensor_memory_to_llvm.mlir --convert-warp-specialize-to-llvm --convert-nv-gpu-to-llvm -allow-unregistered-dialect`
+    - succeeds and emits `alloc`, `relinquish_alloc_permit`, and `dealloc`
+      instead of crashing.
+
+## 2026-03-25 (runtime sweep expansion: higher-rank positives + clean negatives)
+- Extended GPU-executed TMEM runtime matrix in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - added two executable higher-rank descriptor compositions that are
+    currently codegenable:
+    - `reshape((2, M, N/2)) -> slice(dim=0) -> index`
+    - `reshape((2, M/2, N)) -> slice(dim=0) -> index`
+  - added broad sweeps for these compositions over:
+    - 1-CTA identity TMEM-linear layouts (`N in {64,128,256}`)
+    - 2-CTA block-basis TMEM-linear layouts (`N in {64,128,256}`)
+    - ld/st variants `{32x32b,16x64b,16x128b,16x256b}`
+  - each case executes on GPU and checks:
+    - numerical result (`+7` or `+13`)
+    - PTX/LLIR opcode parity and expected atom family
+    - expected TMEM view ops in TTGIR.
+- Added clean-negative runtime coverage:
+  - MMAv5 2-CTA higher-rank descriptor composition now asserted as clean
+    compile failure (`failed to infer tensor memory encoding for memdesc_index`)
+    with no pass-manager/assert crash text.
+  - unsupported linear-copy shape (`M=256, N=128`) now asserted as clean
+    unsupported TMEM-layout diagnostic.
+- Validation on `CUDA_VISIBLE_DEVICES=2`:
+  - focused new cases:
+    - `python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "higher_rank_dim0_slice_positive or higher_rank_half_rows_positive or mmav5_descriptor_higher_rank_reports_clean_error or cp_no_scales_linear_unsupported_shape_reports_clean_error"`
+    - `61 passed, 194 deselected`
+  - full TMEM runtime matrix:
+    - `python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+    - `250 passed, 5 skipped`
+
+## 2026-03-25 (BUG: cp mixed-layout failure currently surfaces as parse RuntimeError)
+- Reproducer:
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 - <<'PY' ... tmem_copy_no_scales_linear_kernel(..., layout=_make_tmem_linear_layout_mixed(128,128), ...) ... PY`
+- Observed behavior:
+  - diagnostic is printed first:
+    - `'ttng.tmem_copy' op Incorrect tmem layout.`
+  - frontend then raises:
+    - `RuntimeError: error encountered during parsing`
+    - instead of a structured `CompilationError` carrying the same diagnostic.
+- Classification:
+  - `BUG` (error-reporting path quality regression; parser-path runtime error
+    for an unsupported layout).
+- Notes:
+  - this is cleanly non-crashing, but it violates the desired contract for
+    unsupported layouts to report a precise compile error.
+
+## 2026-03-25 (higher-rank TMEM views: crash fixed, semantics still under probe)
+- Fixed BUG: TMEM `memdesc_reshape(memdesc_subslice(...))` no longer crashes
+  the compiler in linear-layout reshape.
+  - Reproducer before fix:
+    - higher-rank TMEM descriptor compositions that reshape a TMEM memdesc,
+      slice a non-last logical dimension, then index.
+  - Old behavior:
+    - assertion in `LinearLayout::reshapeOuts` reached through TMEM view
+      encoding inference.
+  - Fix:
+    - TMEM view inference now rebuilds view-local encodings through the refined
+      TMEM helpers in:
+      - `lib/Dialect/TritonGPU/IR/Ops.cpp`
+      - `python/src/gluon_ir.cc`
+      - `python/triton/experimental/gluon/language/_semantic.py`
+  - New behavior:
+    - the prior reproducer no longer crashes; unsupported layouts now fail with
+      the standard actionable TMEM-layout diagnostic.
+- Fixed BUG: shared memdesc slicing regression introduced while plumbing TMEM
+  view-local `alloc_shape`.
+  - Old behavior:
+    - the builder started narrowing `alloc_shape` for all memdescs, which broke
+      shared-mem descriptor slicing semantics.
+  - Fix:
+    - view-local `alloc_shape` narrowing is now TMEM-only in
+      `python/src/gluon_ir.cc`.
+- BUG / open semantics question: one-CTA higher-rank TMEM view compositions
+  currently execute, but appear to alias the entire tensor instead of only the
+  selected subview.
+  - Reproducers in:
+    - `.codex/initiatives/tmem_linear_generalization/experiments/probe_highrank_ldst.py`
+  - Cases:
+    - `reshape((2, M, N/2)) -> slice(dim=0) -> index(0)` with `+7`
+    - `reshape((2, M/2, N)) -> slice(dim=0) -> index(0)` with `+13`
+  - Observed runtime behavior on GPU:
+    - `out - inp` is uniform over the full tensor
+    - `torch.unique(diff)` is `{7}` or `{13}`
+    - modified element count equals the full tensor size (`16384` for the
+      128x128 probe)
+  - Current status:
+    - this is cleanly codegening and executing, but the semantics are not yet
+      trusted as correct TMEM subview behavior.
+    - leave these cases under active empirical validation before treating them
+      as fully trusted positive coverage.
+- Clean-negative behavior confirmed after the view-inference changes:
+  - `reshape((M, N)).reshape((M, 2, N/2)).slice(dim=1)` style compositions that
+    need unsupported column splitting now fail with:
+    - `TMEM layout '16x128b' unsupported for shape [128, 64] and num_warps 4;
+      try a different instr_variant, reshape or permute so TMEM columns stay
+      contiguous, or use a supported TMEM register layout and insert
+      convert_layout explicitly`
+- Clean-negative behavior confirmed for the two-CTA MMAv5 higher-rank frontend
+  repro:
+  - emitted diagnostic contains:
+    - `Result has an invalid layout`
+    - `Layout has 1 CTAs per CGA, but the context requires 2 CTAs per CGA`
+  - frontend still wraps this as:
+    - `RuntimeError: error encountered during parsing`
+  - Classification:
+    - non-crashing, but still below the desired structured diagnostic quality.
