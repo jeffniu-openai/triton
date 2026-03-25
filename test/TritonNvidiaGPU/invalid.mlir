@@ -22,6 +22,138 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
 
 // -----
 
+// expected-error @+2 {{Expected basis of 'col' not found}}
+#tmem_linear_missing_col = #ttng.tensor_memory_linear<{row = [[1, 0]]}>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @dummy_linear_missing_col() {
+    tt.return
+  }
+}
+
+// -----
+
+// expected-error @+2 {{Expected basis of 'row' not found}}
+#tmem_linear_missing_row = #ttng.tensor_memory_linear<{col = [[0, 1]]}>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @dummy_linear_missing_row() {
+    tt.return
+  }
+}
+
+// -----
+
+// expected-error @+1 {{twoCTAs requires a non-empty 'block' basis sequence}}
+#tmem_linear_twoctas_missing_block = #ttng.tensor_memory_linear<{row = [[1, 0]], col = [[0, 1]]}, twoCTAs = true>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @dummy_linear_twoctas_missing_block() {
+    tt.return
+  }
+}
+
+// -----
+
+// expected-error @+1 {{twoCTAs requires at least one non-zero 'block' basis}}
+#tmem_linear_twoctas_bad_block_basis = #ttng.tensor_memory_linear<{row = [[1, 0]], col = [[0, 1]], block = [[0, 0]]}, twoCTAs = true>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @dummy_linear_twoctas_bad_block_basis() {
+    tt.return
+  }
+}
+
+// -----
+
+#tmem_linear_twoctas = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[1, 0]]}, twoCTAs = true>
+#blocked = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func @tmem_load_twoctas_result_layout_mismatch(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear_twoctas, #ttng.tensor_memory, mutable>) {
+    // expected-error @+1 {{Result has an invalid layout}}
+    %0 = ttng.tmem_load %arg0 : !ttg.memdesc<128x128xf32, #tmem_linear_twoctas, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked>
+    tt.return
+  }
+}
+
+// -----
+
+// expected-error @+1 {{After removing zero bases the layout must be bijective}}
+#tmem_linear_not_bijective = #ttng.tensor_memory_linear<{row = [[1, 0]], col = [[1, 0]]}>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @dummy_linear_not_bijective() {
+    tt.return
+  }
+}
+
+// -----
+
+#tmem_bad_shape = #ttng.tensor_memory_encoding<blockM = 128, blockN = 64, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  // expected-error @+1 {{cannot be canonicalized for shape [64, 64]: shape per CTA 64x64 is smaller than the legacy TMEM tile 128x64}}
+  tt.func @bad_legacy_tmem_arg(%arg0: !ttg.memdesc<64x64xf32, #tmem_bad_shape, #ttng.tensor_memory, mutable>) {
+    tt.return
+  }
+}
+
+// -----
+
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
+#shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>
+#tmem_f32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#tmem_linear_mma_bad_cga = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[1, 0]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_linear_ret_layout_bad_cga(%a: !ttg.memdesc<128x128xf16, #shared, #ttg.shared_memory>,
+                                            %b: !ttg.memdesc<128x128xf16, #shared1, #ttg.shared_memory>,
+                                            %c: !ttg.memdesc<128x128xf32, #tmem_linear_mma_bad_cga, #ttng.tensor_memory, mutable>,
+                                            %useAcc: i1,
+                                            %pred: i1) {
+    // expected-error @+1 {{Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA}}
+    ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
+       !ttg.memdesc<128x128xf16, #shared, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf16, #shared1, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf32, #tmem_linear_mma_bad_cga, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+
+  tt.func @tcgen5_linear_lhs_layout_bad_cga(%a: !ttg.memdesc<128x128xf16, #tmem_linear_mma_bad_cga, #ttng.tensor_memory, mutable>,
+                                            %b: !ttg.memdesc<128x128xf16, #shared1, #ttg.shared_memory>,
+                                            %c: !ttg.memdesc<128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable>,
+                                            %useAcc: i1,
+                                            %pred: i1) {
+    // expected-error @+1 {{Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA}}
+    ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
+       !ttg.memdesc<128x128xf16, #tmem_linear_mma_bad_cga, #ttng.tensor_memory, mutable>,
+       !ttg.memdesc<128x128xf16, #shared1, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf32, #tmem_f32, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}
+
+// -----
+
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 8}>
+#sharedT = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 8}>
+#shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 0, transposed = false, elementBitWidth = 8}>
+#tmem_linear_mma_bad_cga_64 = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]], block = [[1, 0]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_scaled_linear_layout_bad_cga(
+      %a: !ttg.memdesc<128x256xi8, #shared, #ttg.shared_memory>,
+      %b: !ttg.memdesc<256x64xi8, #sharedT, #ttg.shared_memory>,
+      %c: !ttg.memdesc<128x64xf32, #tmem_linear_mma_bad_cga_64, #ttng.tensor_memory, mutable>,
+      %scale_a: !ttg.memdesc<128x8xf8E4M3FN, #shared1, #ttg.shared_memory>,
+      %scale_b: !ttg.memdesc<64x8xf8E4M3FN, #shared1, #ttg.shared_memory>,
+      %useAcc: i1,
+      %pred: i1) {
+    // expected-error @+1 {{Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA}}
+    ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e2m1 rhs = e2m1 :
+      !ttg.memdesc<128x256xi8, #shared, #ttg.shared_memory>,
+      !ttg.memdesc<256x64xi8, #sharedT, #ttg.shared_memory>,
+      !ttg.memdesc<128x64xf32, #tmem_linear_mma_bad_cga_64, #ttng.tensor_memory, mutable>,
+      !ttg.memdesc<128x8xf8E4M3FN, #shared1, #ttg.shared_memory>,
+      !ttg.memdesc<64x8xf8E4M3FN, #shared1, #ttg.shared_memory>
+    tt.return
+  }
+}
+
+// -----
+
 #blocked = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
 
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
@@ -703,22 +835,23 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
 
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
-  tt.func public @tmem_subslice_offset_alignment_invalid() {
-    %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>
-    // expected-error @+1 {{The split offset may not touch the tile}}
-    %sub = ttng.tmem_subslice %md {N = 32 : i32} : !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x256>
+  tt.func public @tmem_subslice_offset_exceed() {
+    %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+    // expected-error @+1 {{The split offset may not exceed the source shape}}
+    %sub = ttng.tmem_subslice %md {N = 128 : i32} : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
     tt.return
   }
 }
 
 // -----
 
-#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_linear_t = #ttng.tensor_memory_linear<{row = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], col = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
-  tt.func public @tmem_subslice_offset_exceed() {
-    %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
-    // expected-error @+1 {{The split offset may not exceed the source shape}}
-    %sub = ttng.tmem_subslice %md {N = 128 : i32} : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+  tt.func public @tmem_subslice_layout_mismatch_linear() {
+    %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
+    // expected-error @+1 {{The destination must preserve the canonical TMEM physical encoding}}
+    %sub = ttng.tmem_subslice %md {N = 64 : i32} : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_t, #ttng.tensor_memory, mutable, 128x128>
     tt.return
   }
 }

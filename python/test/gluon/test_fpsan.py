@@ -1,16 +1,19 @@
 # ruff: noqa: F821
 import itertools
+import math
 import numpy as np
 import pytest
 import torch
 
 import triton
+from triton.backends.compiler import GPUTarget
 from triton.experimental import gluon
 from triton.experimental.gluon import language as gl
 from triton import language as tl
 from triton._internal_testing import is_blackwell, is_cuda, is_hip, is_hip_cdna3, is_hip_cdna4, is_hip_gfx1250, is_interpreter
 from triton.experimental.gluon.language.nvidia.blackwell import (
     TensorMemoryLayout,
+    TensorMemoryLinearLayout,
     TensorMemoryScalesLayout,
     allocate_tensor_memory,
     mbarrier,
@@ -18,8 +21,100 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
     tcgen05_mma,
     tcgen05_mma_scaled,
 )
+from triton._filecheck import run_parser
 
 THREADS_PER_WARP = triton.runtime.driver.active.get_current_target().warp_size
+BLACKWELL_PARSER_TARGET = GPUTarget("cuda", 100, 32)
+
+
+def _make_tmem_linear_layout(m, n):
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(m.bit_length() - 1)],
+        cols=[[0, 1 << i] for i in range(n.bit_length() - 1)],
+        shape=[m, n],
+    )
+
+
+def _make_tmem_linear_layout_mixed_128x128():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 1], [0, 2]],
+        cols=[[32, 0], [64, 0], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]],
+        shape=[128, 128],
+    )
+
+
+def _make_tmem_linear_layout_block(m, n, two_ctas=False):
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(1, int(math.log2(m)))],
+        cols=[[0, 1 << i] for i in range(int(math.log2(n)))],
+        block_bases=[[1, 0]],
+        shape=[m, n],
+        two_ctas=two_ctas,
+    )
+
+
+def _make_tmem_linear_layout_64x32_block(two_ctas=False):
+    return TensorMemoryLinearLayout(
+        rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0]],
+        cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]],
+        block_bases=[[1, 0]],
+        shape=[64, 32],
+        two_ctas=two_ctas,
+    )
+
+
+def _default_cga_layout(num_ctas, rank, dim=0):
+    if num_ctas == 1:
+        return []
+    return [[0] * dim + [1 << i] + [0] * (rank - dim - 1) for i in range(num_ctas.bit_length() - 1)]
+
+
+def _make_tmem_register_layout(num_ctas):
+    return gl.BlockedLayout(
+        [1, 32],
+        [32, 1],
+        [2, 1],
+        [0, 1],
+        cga_layout=_default_cga_layout(num_ctas, 2),
+    )
+
+
+TMEM_FPSAN_VIEW_VARIANTS = [
+    ("identity", _make_tmem_linear_layout(128, 128), _make_tmem_linear_layout(64, 32), 1),
+    ("mixed", _make_tmem_linear_layout_mixed_128x128(), _make_tmem_linear_layout(64, 32), 1),
+    ("block-acc", _make_tmem_linear_layout_block(128, 128), _make_tmem_linear_layout_64x32_block(), 2),
+    ("block-two-ctas", _make_tmem_linear_layout_block(128, 128, two_ctas=True),
+        _make_tmem_linear_layout_64x32_block(two_ctas=True), 2),
+]
+
+
+@gluon.jit
+def tmem_linear_view_ops_compile_kernel(layout: gl.constexpr, linear_layout: gl.constexpr,
+                                        reinterpret_layout: gl.constexpr):
+    tmem = allocate_tensor_memory(gl.float32, [2, 128, 128], layout=linear_layout)
+    view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
+    view = view.permute([0, 2, 1]).reshape((64, 32, 8))
+    view = view.slice(16, 32, dim=0).slice(8, 16, dim=1).slice(2, 4, dim=2)
+    view = view._reinterpret(gl.float32, [64, 32], reinterpret_layout)
+    _ = view.load(layout)
+
+
+@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_FPSAN_VIEW_VARIANTS)
+def test_tmem_linear_view_ops_compile_ir(name, linear_layout, reinterpret_layout, num_ctas):
+    layout = _make_tmem_register_layout(num_ctas)
+    mod = run_parser(
+        tmem_linear_view_ops_compile_kernel,
+        args=(layout, linear_layout, reinterpret_layout),
+        kwargs={"num_warps": 2, "num_ctas": num_ctas},
+        target=BLACKWELL_PARSER_TARGET,
+    )
+    ir = mod.str_nodebug()
+    assert "tensor_memory_linear" in ir
+    assert ir.count("ttg.memdesc_subslice") >= 4
+    assert "ttg.memdesc_index" in ir
+    assert ir.count("ttg.memdesc_trans") >= 2
+    assert ir.count("ttg.memdesc_reshape") >= 2
+    assert "ttg.memdesc_reinterpret" in ir
 
 
 def _hip_device_supports_fpsan():

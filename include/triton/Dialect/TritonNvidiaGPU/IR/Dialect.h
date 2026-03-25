@@ -32,6 +32,8 @@
 #include "mlir/IR/Dialect.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include <string>
+
 // TritonNvidiaGPU depends on Triton
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -118,6 +120,49 @@ LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
 TMemAllocation getTmemAllocSizes(gpu::MemDescType memDescType);
 
 uint32_t getTMemSubSliceOffset(gpu::MemDescType memDescType, int32_t nOffset);
+
+uint32_t getTMemViewOffset(gpu::MemDescType memDescType,
+                           ArrayRef<int32_t> offsets);
+
+bool isTensorMemoryEncoding(Attribute layout);
+
+std::optional<Attribute>
+tryGetCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape, Attribute layout,
+                                    std::string *error = nullptr);
+
+std::optional<Attribute>
+tryGetCanonicalTensorMemoryEncoding(gpu::MemDescType memDescType,
+                                    std::string *error = nullptr);
+
+Attribute getCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape,
+                                           Attribute layout);
+
+Attribute getCanonicalTensorMemoryEncoding(gpu::MemDescType memDescType);
+
+std::optional<LinearLayout>
+tryGetCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
+                                        Attribute layout,
+                                        std::string *error = nullptr);
+
+std::optional<LinearLayout>
+tryGetCanonicalTensorMemoryLinearLayout(gpu::MemDescType memDescType,
+                                        std::string *error = nullptr);
+
+LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
+                                                  Attribute layout);
+
+LinearLayout getCanonicalTensorMemoryLinearLayout(gpu::MemDescType memDescType);
+
+std::optional<TensorMemoryLinearEncodingAttr>
+tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
+                                  bool twoCTAs,
+                                  std::string *error = nullptr);
+
+std::optional<TensorMemoryEncodingAttr>
+matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout);
+
+std::optional<TensorMemoryEncodingAttr>
+matchTensorMemoryLegacyEncoding(gpu::MemDescType memDescType);
 
 SmallVector<gpu::DistributedEncodingTrait>
 getTmemCompatibleLayouts(gpu::MemDescType memType, unsigned numWarps,

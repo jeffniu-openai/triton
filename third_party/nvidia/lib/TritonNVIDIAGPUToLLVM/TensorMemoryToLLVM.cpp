@@ -480,8 +480,9 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
   return {outVals, redvalVals};
 }
 
-// Returns {resultVals, redvalVals} where redvalVals is empty if no reduction
-static std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdStFromTypes(
+// Returns {resultVals, redvalVals} where redvalVals is empty if no reduction.
+static FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>>
+lowerTMemLdStFromTypes(
     Location loc, ConversionPatternRewriter &rewriter, RankedTensorType regTy,
     MemDescType memTy, Value tmemBase, int maxnreg, Value pred, Type llvmElemTy,
     ArrayRef<Value> vals,
@@ -490,8 +491,8 @@ static std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdStFromTypes(
   auto diag = [loc]() { return emitError(loc); };
   auto encodingInfoOr =
       computeTMemLdStEncodingInfo(regTy, memTy, maxnreg, diag);
-  assert(succeeded(encodingInfoOr) &&
-         "TMEM layout verification should catch invalid layouts");
+  if (failed(encodingInfoOr))
+    return failure();
   return lowerTMemLdStFromInfo(loc, rewriter, *encodingInfoOr, pred, llvmElemTy,
                                vals, tmemBase, redOp, useAbs, useNaN);
 }
@@ -551,9 +552,12 @@ struct TensorMemoryLoadOpConversion
 
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto maxnreg = getContextualMaxNReg(op);
-    auto [resultVals, redvalVals] = lowerTMemLdStFromTypes(
+    auto lowered = lowerTMemLdStFromTypes(
         loc, rewriter, regTy, memTy, tmemBase, maxnreg, b.i1_val(true),
         llvmElemTy, {}, redOp, useAbs, useNaN);
+    if (failed(lowered))
+      return failure();
+    auto [resultVals, redvalVals] = *lowered;
 
     Type structTy = getTypeConverter()->convertType(op.getType());
     Value resultStruct =
@@ -601,8 +605,9 @@ struct TensorMemoryStoreOpConversion
     SmallVector<Value> srcValues =
         unpackLLElements(loc, adaptor.getSrc(), rewriter);
     auto maxnreg = getContextualMaxNReg(op);
-    lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy, tmemBase, maxnreg, pred,
-                           llvmElemTy, srcValues);
+    if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy, tmemBase,
+                                      maxnreg, pred, llvmElemTy, srcValues)))
+      return failure();
     NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::STORE);
 
     // Emit a barrier to ensure all threads have finished writing to tensor
@@ -648,8 +653,10 @@ struct TensorMemoryAllocOpConversion
       SmallVector<Value> srcValues =
           unpackLLElements(loc, adaptor.getSrc(), rewriter);
       Value ptr = b.inttoptr(base.getType(), allocAddress);
-      lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy, ptr, maxnreg,
-                             b.i1_val(true), llvmElemTy, srcValues);
+      if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy, ptr,
+                                        maxnreg, b.i1_val(true), llvmElemTy,
+                                        srcValues)))
+        return failure();
       NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::STORE);
       // Emit a barrier to ensure all threads have finished writing to tensor
       // memory before any use of the tensor memory.
@@ -813,12 +820,19 @@ struct MemDescIndexOpConversion
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = op.getSrc().getType();
     auto dstTy = op.getResult().getType();
-    auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());
-
-    if (!isa<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
-            srcTy.getEncoding())) {
+    if (!isTensorMemoryEncoding(srcTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()) ||
+        !isTensorMemoryEncoding(dstTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(dstTy.getEncoding())) {
       return failure();
     }
+    auto canonicalSrcEncoding = getCanonicalTensorMemoryEncoding(srcTy);
+    int layoutRank = cast<LayoutEncodingTrait>(canonicalSrcEncoding).getRank();
+    // The direct pointer arithmetic in this pattern only supports indexing an
+    // extra unencoded leading dimension. Let the generic view lowering handle
+    // encoded-dimension indexing.
+    if (srcTy.getRank() != layoutRank + 1 || dstTy.getRank() != layoutRank)
+      return failure();
 
     // newBase = base + offset
     auto tmemBase = adaptor.getSrc();

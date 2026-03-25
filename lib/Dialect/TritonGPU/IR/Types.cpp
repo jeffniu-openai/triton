@@ -115,39 +115,37 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
                        << "shape = " << shape
                        << ", allocShape = " << allocShape;
   auto ctx = encoding.getContext();
-  if (auto enc = dyn_cast<nvidia_gpu::TensorMemoryEncodingAttr>(encoding)) {
+  if (nvidia_gpu::isTensorMemoryEncoding(encoding) &&
+      !isa<nvidia_gpu::TensorMemoryScalesEncodingAttr>(encoding)) {
     if (memorySpace != nvidia_gpu::TensorMemorySpaceAttr::get(ctx)) {
       return emitError() << "memorySpace must be TensorMemorySpace";
     }
-    if (shape.size() != 2 && shape.size() != 3) {
-      return emitError() << "rank must be 2 or 3";
-    }
-    unsigned bitwidth = elementType.getIntOrFloatBitWidth();
-    if (bitwidth * enc.getColStride() > 32) {
+    auto rank = cast<LayoutEncodingTrait>(encoding).getRank();
+    if (!(rank == shape.size() || rank + 1 == shape.size())) {
       return emitError()
-             << "bitwidth * colStride must be less than or equal to 32. Got "
-             << bitwidth << " and " << enc.getColStride();
+             << "rank must match the TMEM layout rank or be exactly one "
+                "greater for multibuffering";
     }
-    // Takes subslices into account and figures out whether we can construct
-    // the linear layout at all
-    allocShape = allocShape.take_back(2);
-    auto ctaSplit = enc.getCGALayout().getCTASplitNum();
-    auto blockN = std::min<int32_t>(enc.getBlockN(), shape.back());
-    if (allocShape[0] < enc.getBlockM() * ctaSplit[0] ||
-        allocShape[1] < blockN * ctaSplit[1]) {
-      return emitError() << "the allocation shape must be at least "
-                         << enc.getBlockM() * ctaSplit[0] << "x"
-                         << blockN * ctaSplit[1] << ". Got " << allocShape;
+    if (allocShape.size() < static_cast<size_t>(rank)) {
+      return emitError() << "alloc shape must have at least " << rank
+                         << " dimensions for the TMEM layout";
     }
-    // Checks the layout of the allocation
-    auto ll = toLinearLayout(allocShape, enc);
-    // Sanity check that the layout is of the right shape
-    auto dims = standardOutDimNames(ctx, 2);
-    if (ll.getOutDimSize(dims[0]) != allocShape[0] ||
-        ll.getOutDimSize(dims[1]) != allocShape[1]) {
-      return emitError() << "allocation shape must be equal to "
-                         << ll.getOutDimSize(dims[0]) << "x"
-                         << ll.getOutDimSize(dims[1]);
+    auto layoutShape = allocShape.take_back(rank);
+    std::string canonicalizationError;
+    auto maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
+        layoutShape, encoding, &canonicalizationError);
+    if (!maybeLL) {
+      return emitError() << canonicalizationError;
+    }
+    auto ll = *maybeLL;
+    auto dims = standardOutDimNames(ctx, rank);
+    for (auto [dim, size] : llvm::zip_equal(dims, layoutShape)) {
+      if (ll.getOutDimSize(dim) != size) {
+        return emitError() << "allocation shape must match the TMEM linear "
+                              "layout. Expected "
+                           << ll.getOutDimSize(dim) << " for " << dim
+                           << " but got " << size;
+      }
     }
   } else if (auto enc = dyn_cast<SharedEncodingTrait>(encoding)) {
     if (memorySpace != SharedMemorySpaceAttr::get(ctx)) {

@@ -792,12 +792,19 @@ public:
   bool equalIgnoringOutDimSizes(const LinearLayout &other) const;
   friend size_t hash_value(const LinearLayout &layout);
 
-private:
+  // Factory function that gracefully fails rather than asserts if the layout is
+  // not well-formed.
+  static std::optional<LinearLayout>
+  tryCreate(BasesT bases, ArrayRef<StringAttr> outDimNames,
+            bool requireSurjective, std::string *error = nullptr);
+
   // Factory function that gracefully fails rather than asserts if the layout is
   // not well-formed.
   static std::optional<LinearLayout>
   tryCreate(BasesT bases, ArrayRef<std::pair<StringAttr, int32_t>> outDims,
-            bool requireSurjective);
+            bool requireSurjective, std::string *error = nullptr);
+
+private:
 
   // Constructor that does not check invariants.  Used by tryCreate.
   struct NoCheckInvariants {};

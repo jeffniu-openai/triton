@@ -6,6 +6,7 @@ include "mlir/IR/EnumAttr.td"
 include "triton/Dialect/TritonNvidiaGPU/IR/TritonNvidiaGPUDialect.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
 include "triton/Dialect/TritonGPU/IR/TritonGPUAttrInterfaces.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUAttrBase.td"
 include "mlir/IR/EnumAttr.td"
 
 def TTG_TensorMemorySpace : AttrDef<TritonNvidiaGPU_Dialect, "TensorMemorySpace"> {
@@ -86,6 +87,30 @@ def TTG_TensorMemoryEncodingAttr
   );
   let genVerifyDecl = 1;
   let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TTG_TensorMemoryLinearEncodingAttr
+    : AttrDef<TritonNvidiaGPU_Dialect, "TensorMemoryLinearEncoding",
+              [LayoutEncodingTrait]> {
+  let mnemonic = "tensor_memory_linear";
+  let attrName = "triton.gpu.tensor_memory_linear";
+  let description = [{
+    Canonical tensor memory layout expressed as a linear mapping from TMEM
+    physical coordinates (`row`, `col`, and optionally `block`) to logical
+    tensor dimensions (`dim0`, `dim1`, ...). `twoCTAs` indicates that the
+    layout is intended for `cta_group::2`.
+  }];
+  let parameters = (
+    ins
+    LinearLayoutParam:$linearLayout,
+    DefaultValuedParameter<"bool", "false">:$twoCTAs
+  );
+  let extraClassDeclaration = [{
+    gpu::CGAEncodingAttr getCGALayout() const;
+    unsigned getRank() const { return getLinearLayout().getNumOutDims(); }
+  }];
+  let genVerifyDecl = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TTG_TensorMemoryScalesEncodingAttr

@@ -305,7 +305,8 @@ allocateTMem(Operation *parentOp,
       allocs.push_back(alloc);
     }
     if (auto mmaOp = dyn_cast<MMAv5OpInterface>(op)) {
-      if (isa<TensorMemoryEncodingAttr>(mmaOp.getA().getType().getEncoding())) {
+      auto aLegacy = matchTensorMemoryLegacyEncoding(mmaOp.getA().getType());
+      if (aLegacy) {
         TMemAllocation allocSize = getTmemAllocSizes(mmaOp.getA().getType());
         if (allocSize.numRows == 64) {
           // HW restriction, the A alloc and accumulator needs to be in the same
@@ -318,12 +319,10 @@ allocateTMem(Operation *parentOp,
         } else {
           // TODO: we need to handle cases where the format is blockM and we
           // have multiple blocks.
-          assert((cast<TensorMemoryEncodingAttr>(
-                      mmaOp.getA().getType().getEncoding())
-                          .getBlockM() != 64 &&
-                  cast<TensorMemoryEncodingAttr>(
-                      mmaOp.getAccumulator().getType().getEncoding())
-                          .getBlockM() != 64) &&
+          auto accLegacy =
+              matchTensorMemoryLegacyEncoding(mmaOp.getAccumulator().getType());
+          assert((aLegacy->getBlockM() != 64 &&
+                  (!accLegacy || accLegacy->getBlockM() != 64)) &&
                  "interleaved layout with TMEM operand is not supported yet.");
         }
       }

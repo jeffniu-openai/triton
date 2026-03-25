@@ -12,6 +12,18 @@ using namespace mlir::triton::gpu;
 using ::mlir::LLVM::getSharedMemoryObjectFromStruct;
 namespace {
 
+bool isTensorMemoryMemDesc(MemDescType type) {
+  return isa<triton::nvidia_gpu::TensorMemorySpaceAttr>(type.getMemorySpace()) &&
+         triton::nvidia_gpu::isTensorMemoryEncoding(type.getEncoding());
+}
+
+Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                              Value base, uint32_t offset) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value newBase = b.add(b.ptrtoint(i32_ty, base), b.i32_val(offset));
+  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
+}
+
 Value bitOrPtrCast(Value val, Type type, TritonLLVMOpBuilder &b) {
   if (isa<LLVM::LLVMPointerType>(val.getType()) &&
       !isa<LLVM::LLVMPointerType>(type)) {
@@ -364,6 +376,11 @@ struct MemDescTransOpConversion
   LogicalResult
   matchAndRewrite(MemDescTransOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    auto srcTy = cast<MemDescType>(op.getSrc().getType());
+    if (isTensorMemoryMemDesc(srcTy)) {
+      rewriter.replaceOp(op, adaptor.getSrc());
+      return success();
+    }
     Location loc = op->getLoc();
     auto resultTy = cast<TensorOrMemDesc>(op.getType());
     auto llvmElemTy =
@@ -385,6 +402,11 @@ struct MemDescReshapeOpConversion
   LogicalResult
   matchAndRewrite(MemDescReshapeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    auto srcTy = cast<MemDescType>(op.getSrc().getType());
+    if (isTensorMemoryMemDesc(srcTy)) {
+      rewriter.replaceOp(op, adaptor.getSrc());
+      return success();
+    }
     Location loc = op->getLoc();
     auto resultTy = cast<TensorOrMemDesc>(op.getType());
     auto llvmElemTy =
@@ -491,6 +513,36 @@ struct MemDescIndexOpConversion
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = op.getSrc().getType();
     auto dstTy = op.getResult().getType();
+    if (isTensorMemoryMemDesc(srcTy)) {
+      auto ll = triton::nvidia_gpu::getCanonicalTensorMemoryLinearLayout(srcTy);
+      auto layoutRank = ll.getNumOutDims();
+      Value tmemBase = adaptor.getSrc();
+      uint32_t bitwidth = srcTy.getElementTypeBitWidth();
+      if (srcTy.getRank() > layoutRank) {
+        auto kCol = StringAttr::get(ctx, "col");
+        int singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
+        Value offset = b.mul(op.getIndex(), b.i32_val(singleBufferCols));
+        Value newBase = b.add(b.ptrtoint(i32_ty, tmemBase), offset);
+        rewriter.replaceOp(op, b.inttoptr(ptr_ty(ctx, 3), newBase));
+        return success();
+      }
+
+      APInt index;
+      if (!matchPattern(op.getIndex(), m_ConstantInt(&index))) {
+        return rewriter.notifyMatchFailure(
+            op, "dynamic tensor memory indexing is only supported for the "
+                "unencoded leading buffer dimension");
+      }
+
+      SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+      offsets.front() = index.getSExtValue();
+      rewriter.replaceOp(
+          op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
+                                      triton::nvidia_gpu::getTMemViewOffset(
+                                          srcTy, offsets)));
+      return success();
+    }
+
     auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());
 
     // Stride is computed from dstTy (the result after dropping the leading
@@ -552,6 +604,14 @@ struct MemDescSubsliceOpConversion
     Location loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = op.getSrc().getType();
+    if (isTensorMemoryMemDesc(srcTy)) {
+      SmallVector<int32_t> offsets(op.getOffsets().begin(), op.getOffsets().end());
+      rewriter.replaceOp(
+          op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(),
+                                      triton::nvidia_gpu::getTMemViewOffset(
+                                          srcTy, offsets)));
+      return success();
+    }
     auto llvmElemTy = getTypeConverter()->convertType(srcTy.getElementType());
 
     // PartitionedSharedEncoding is not yet supported for memdesc_subslice
@@ -588,6 +648,10 @@ struct MemDescReinterpretOpConversion
                                 ConversionPatternRewriter &b) const override {
     Location loc = op.getLoc();
     MemDescType srcTy = op.getSrc().getType();
+    if (isTensorMemoryMemDesc(srcTy)) {
+      b.replaceOp(op, adaptor.getSrc());
+      return success();
+    }
     MemDescType dstTy = op.getType();
     Type srcElemTy = getTypeConverter()->convertType(srcTy.getElementType());
     Type dstElemTy = getTypeConverter()->convertType(dstTy.getElementType());

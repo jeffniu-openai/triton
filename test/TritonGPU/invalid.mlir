@@ -1,5 +1,73 @@
 // RUN: triton-opt --split-input-file %s --verify-diagnostics
 
+#too_large_linear = #ttg.linear<{
+  register = [[0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0],
+              [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0],
+              [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0],
+              [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0], [0],
+              [0]],
+  lane = [],
+  warp = [],
+  block = []
+}>
+// expected-error @+1 {{must each be <= 64 bits}}
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @too_large_linear_attr() {
+    tt.return
+  }
+}
+
+// -----
+
+// expected-error @+2 {{Expected basis of 'col' not found}}
+#tmem_linear_missing_col = #ttng.tensor_memory_linear<{row = [[1, 0]]}>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @bad_tmem_linear_attr() {
+    tt.return
+  }
+}
+
+// -----
+
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#ttm = #ttng.tensor_memory
+module attributes {"ttg.num-warps" = 4 : i32} {
+  tt.func @result_rank_too_large_tmem(%arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm>) {
+    %zero = arith.constant 0 : i32
+    // expected-error @+1 {{result rank}}
+    %a = ttg.memdesc_index %arg0[%zero] : !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm> -> !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm>
+    tt.return
+  }
+}
+
+// -----
+
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_linear_t = #ttng.tensor_memory_linear<{row = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], col = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}>
+#ttm = #ttng.tensor_memory
+module attributes {"ttg.num-warps" = 4 : i32} {
+  tt.func @memdesc_subslice_layout_mismatch_tmem(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear, #ttm>) {
+    // expected-error @+1 {{result tensor memory encoding must be}}
+    %a = ttg.memdesc_subslice %arg0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttm> -> !ttg.memdesc<128x64xf32, #tmem_linear_t, #ttm, 128x128>
+    tt.return
+  }
+
+  tt.func @memdesc_reshape_numel_mismatch_tmem(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear, #ttm>) {
+    // expected-error @+1 {{number of src and dst elements of reshape must be the same}}
+    %a = ttg.memdesc_reshape %arg0 : !ttg.memdesc<128x128xf32, #tmem_linear, #ttm> -> !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm>
+    tt.return
+  }
+
+  tt.func @memdesc_trans_bad_result_layout_tmem(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear, #ttm>) {
+    // expected-error @+2 {{inferred type(s)}}
+    // expected-error @+1 {{failed to infer returned types}}
+    %a = ttg.memdesc_trans %arg0 {order = array<i32: 1, 0>} : !ttg.memdesc<128x128xf32, #tmem_linear, #ttm> -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttm>
+    tt.return
+  }
+}
+
+// -----
+
 #shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [1, 0], CGALayout = [[0, 1]]}>
 #smem = #ttg.shared_memory
 module attributes {"ttg.num-ctas" = 2 : i32} {

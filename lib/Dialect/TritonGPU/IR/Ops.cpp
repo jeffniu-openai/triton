@@ -67,6 +67,59 @@ bool isConvertTrivial(ConvertLayoutOp op) {
       .succeeded();
 }
 
+std::optional<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(MemDescType type, std::string *error = nullptr) {
+  Attribute enc = type.getEncoding();
+  if (!triton::nvidia_gpu::isTensorMemoryEncoding(enc) ||
+      isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(enc))
+    return std::nullopt;
+  auto canonical =
+      triton::nvidia_gpu::tryGetCanonicalTensorMemoryEncoding(type, error);
+  if (!canonical)
+    return std::nullopt;
+  return cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*canonical);
+}
+
+FailureOr<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
+inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy) {
+  auto srcEnc = getCanonicalTMemLinearEncoding(srcTy);
+  if (!srcEnc)
+    return failure();
+  return *srcEnc;
+}
+
+FailureOr<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
+inferTMemIndexEncoding(MemDescType srcTy, MemDescType dstTy) {
+  auto srcEnc = getCanonicalTMemLinearEncoding(srcTy);
+  if (!srcEnc)
+    return failure();
+
+  auto ll = srcEnc->getLinearLayout();
+  auto layoutRank = srcEnc->getRank();
+  auto extraRank = srcTy.getRank() - layoutRank;
+  if (extraRank > 1)
+    return failure();
+
+  if (extraRank == 0) {
+    if (layoutRank == 0)
+      return failure();
+    SmallVector<StringAttr> outDims = llvm::to_vector(ll.getOutDimNames());
+    outDims.erase(outDims.begin());
+    ll = ll.sublayout(llvm::to_vector(ll.getInDimNames()), outDims);
+    ll = ll.reshapeOuts(standardOutDimPairs(srcTy.getContext(),
+                                            dstTy.getShape()));
+  } else {
+    // Indexing over the extra multibuffering dimension preserves the physical
+    // TMEM layout; the explicit alloc_shape on the result tracks the view.
+  }
+
+  auto result = triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(
+      srcTy.getContext(), std::move(ll), srcEnc->getTwoCTAs());
+  if (!result)
+    return failure();
+  return *result;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -574,11 +627,23 @@ LogicalResult MemDescReshapeOp::verify() {
   return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
 }
 
-static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+static LogicalResult inferMemDescReshapeOpEncoding(MemDescType srcTy,
+                                                   ArrayRef<int64_t> srcShape,
                                                    Attribute srcEnc,
                                                    ArrayRef<int64_t> dstShape,
                                                    Attribute &dstEnc) {
   auto *ctx = srcEnc.getContext();
+  if (auto tmemLinear = getCanonicalTMemLinearEncoding(srcTy)) {
+    if (product(srcShape) != product(dstShape))
+      return failure();
+    auto dstLL = reshapeLayout(ctx, tmemLinear->getLinearLayout(), dstShape);
+    auto result = triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(
+        ctx, std::move(dstLL), tmemLinear->getTwoCTAs());
+    if (!result)
+      return failure();
+    dstEnc = *result;
+    return success();
+  }
   // TODO Delete this once SharedLinearEncodingAttr is more widely supported.
   if (auto mmaEncoding = dyn_cast<NVMMASharedEncodingAttr>(srcEnc)) {
     if (getNumCTAs(mmaEncoding) == 1) {
@@ -634,8 +699,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
 
   Attribute dstEncoding;
   if (Attribute srcEnc = srcTy.getEncoding()) {
-    if (failed(inferMemDescReshapeOpEncoding(srcTy.getShape(), srcEnc, dstShape,
-                                             dstEncoding)))
+    if (failed(inferMemDescReshapeOpEncoding(srcTy, srcTy.getShape(), srcEnc,
+                                             dstShape, dstEncoding)))
       return failure();
   }
 
@@ -881,16 +946,10 @@ LogicalResult MemDescIndexOp::verify() {
   if (srcTy.getElementType() != dstTy.getElementType()) {
     return emitError("result element type must match desc element type");
   }
-  if (srcTy.getEncoding() != dstTy.getEncoding()) {
-    return emitError("src and result must have the same encoding");
-  }
   // memdesc_index reduces rank by 1 and preserves the trailing shape.
   bool correctRank = srcTy.getRank() == dstTy.getRank() + 1;
   if (!correctRank) {
     return emitError("result rank must be input rank - 1");
-  }
-  if (srcTy.getAllocShape().size() != srcTy.getRank()) {
-    return emitError("We don't allow taking memdesc_index of a memdesc_index");
   }
 
   if (ArrayRef(srcTy.getShape()).take_back(dstTy.getRank()) !=
@@ -898,15 +957,45 @@ LogicalResult MemDescIndexOp::verify() {
     return emitError("result shape must equal to srcShape[1:]");
   }
 
-  bool isSubview = srcTy.getAllocShape() != srcTy.getShape();
-  if (isSubview) {
-    return emitError("We don't support memdesc_index of a subview");
-  }
-
   auto srcEnc = srcTy.getEncoding();
   auto dstEnc = dstTy.getEncoding();
   if (bool(srcEnc) != bool(dstEnc)) {
     return emitError("src and result must both have or not have an encoding");
+  }
+
+  std::string srcTMemError;
+  auto srcTMem = getCanonicalTMemLinearEncoding(srcTy, &srcTMemError);
+  if (!srcTMemError.empty())
+    return emitError() << srcTMemError;
+  std::string dstTMemError;
+  auto dstTMem = getCanonicalTMemLinearEncoding(dstTy, &dstTMemError);
+  if (!dstTMemError.empty())
+    return emitError() << dstTMemError;
+  if (srcTMem || dstTMem) {
+    if (!(srcTMem && dstTMem)) {
+      return emitError("src and result must both use tensor memory encodings");
+    }
+    auto expected = inferTMemIndexEncoding(srcTy, dstTy);
+    if (failed(expected)) {
+      return emitError("unsupported tensor memory memdesc_index view");
+    }
+    if (*dstTMem != *expected) {
+      return emitError("result tensor memory encoding must be ")
+             << *expected << " but got " << dstTy.getEncoding();
+    }
+    return success();
+  }
+
+  if (srcTy.getEncoding() != dstTy.getEncoding()) {
+    return emitError("src and result must have the same encoding");
+  }
+  if (srcTy.getAllocShape().size() != srcTy.getRank()) {
+    return emitError("We don't allow taking memdesc_index of a memdesc_index");
+  }
+
+  bool isSubview = srcTy.getAllocShape() != srcTy.getShape();
+  if (isSubview) {
+    return emitError("We don't support memdesc_index of a subview");
   }
 
   if (isa<SharedEncodingTrait>(srcEnc) != isa<SharedEncodingTrait>(dstEnc)) {
@@ -916,15 +1005,6 @@ LogicalResult MemDescIndexOp::verify() {
   if (dstTy.getAllocShape() != dstTy.getShape() ||
       srcTy.getAllocShape() != srcTy.getShape()) {
     return emitError("alloc shape must match shape for both result and src");
-  }
-
-  if (isa<triton::nvidia_gpu::TensorMemoryEncodingAttr>(srcEnc)) {
-    // We support only 3D -> 2D subviews with only first offset being non-zero.
-    if (srcTy.getRank() != 3 || dstTy.getRank() != 2) {
-      return emitError("only 3D -> 2D subviews are supported for "
-                       "TensorMemoryEncodingAttr");
-    }
-    return success();
   }
   return success();
 }
@@ -958,9 +1038,6 @@ LogicalResult MemDescSubsliceOp::verify() {
   if (srcTy.getElementType() != dstTy.getElementType()) {
     return emitError("result element type must match desc element type");
   }
-  if (srcTy.getEncoding() != dstTy.getEncoding()) {
-    return emitError("src and result must have the same encoding");
-  }
   if (getOffsets().size() != srcTy.getRank()) {
     return emitError("offsets must have the same rank as input");
   }
@@ -973,9 +1050,6 @@ LogicalResult MemDescSubsliceOp::verify() {
   if (bool(srcEnc) != bool(dstEnc)) {
     return emitError("src and result must both have or not have an encoding");
   }
-  if (!isa<SharedEncodingTrait>(srcEnc) || !isa<SharedEncodingTrait>(dstEnc)) {
-    return emitError("src and dst must both be of shared memory encoding");
-  }
 
   SetVector<int> splitDims{};
   for (int i = 0; i < srcTy.getRank(); i++) {
@@ -984,6 +1058,46 @@ LogicalResult MemDescSubsliceOp::verify() {
     }
   }
   SmallVector<int64_t> offsets(getOffsets().begin(), getOffsets().end());
+
+  std::string srcTMemError;
+  auto srcTMem = getCanonicalTMemLinearEncoding(srcTy, &srcTMemError);
+  if (!srcTMemError.empty())
+    return emitError() << srcTMemError;
+  std::string dstTMemError;
+  auto dstTMem = getCanonicalTMemLinearEncoding(dstTy, &dstTMemError);
+  if (!dstTMemError.empty())
+    return emitError() << dstTMemError;
+  if (srcTMem || dstTMem) {
+    if (!(srcTMem && dstTMem)) {
+      return emitError("src and result must both use tensor memory encodings");
+    }
+    auto expected = inferTMemSubsliceEncoding(srcTy, dstTy);
+    if (failed(expected)) {
+      return emitError("unsupported tensor memory memdesc_subslice view");
+    }
+    if (*dstTMem != *expected) {
+      return emitError("result tensor memory encoding must be ")
+             << *expected << " but got " << dstTy.getEncoding();
+    }
+    for (auto [dim, offset] : llvm::enumerate(offsets)) {
+      if (offset < 0) {
+        return emitError("tensor memory subslice offsets must be non-negative");
+      }
+      if (offset + dstTy.getDimSize(dim) > srcTy.getDimSize(dim)) {
+        return emitError("tensor memory subslice must stay within the source "
+                         "shape");
+      }
+    }
+    return success();
+  }
+
+  if (srcTy.getEncoding() != dstTy.getEncoding()) {
+    return emitError("src and result must have the same encoding");
+  }
+  if (!isa<SharedEncodingTrait>(srcEnc) || !isa<SharedEncodingTrait>(dstEnc)) {
+    return emitError("src and dst must both be of shared memory encoding");
+  }
+
   // Identity subview
   if (splitDims.empty()) {
     return success();

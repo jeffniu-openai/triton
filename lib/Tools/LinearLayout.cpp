@@ -109,12 +109,38 @@ void assertDimsSubsetIgnoringOrder(T &&small, U &&big) {
 } // anonymous namespace
 
 /*static*/ std::optional<LinearLayout>
+LinearLayout::tryCreate(BasesT bases, ArrayRef<StringAttr> outDimNames,
+                        bool requireSurjective, std::string *error) {
+  SmallVector<std::pair<StringAttr, int32_t>> outDims;
+  outDims.reserve(outDimNames.size());
+  for (StringAttr outDimName : outDimNames)
+    outDims.emplace_back(outDimName, 1);
+
+  for (const auto &[inDim, inDimBases] : bases) {
+    (void)inDim;
+    for (const auto &basis : inDimBases) {
+      for (int i = 0; i < basis.size() && i < outDims.size(); ++i) {
+        if (basis[i] > 0) {
+          outDims[i].second =
+              std::max<int32_t>(outDims[i].second, llvm::NextPowerOf2(basis[i]));
+        }
+      }
+    }
+  }
+
+  return tryCreate(std::move(bases), outDims, requireSurjective, error);
+}
+
+/*static*/ std::optional<LinearLayout>
 LinearLayout::tryCreate(BasesT bases,
                         ArrayRef<std::pair<StringAttr, int32_t>> outDims,
-                        bool requireSurjective) {
+                        bool requireSurjective, std::string *error) {
   LinearLayout ll(std::move(bases), std::move(outDims), NoCheckInvariants{});
-  std::optional<std::string> error = ll.checkInvariants(requireSurjective);
-  if (error) {
+  std::optional<std::string> invariantError =
+      ll.checkInvariants(requireSurjective);
+  if (invariantError.has_value()) {
+    if (error != nullptr)
+      *error = *invariantError;
     return std::nullopt;
   }
   return ll;
@@ -220,6 +246,12 @@ LinearLayout::checkInvariants(bool requireSurjective) {
   // the rank of our matrix using Gaussian elimination, which runs in O(n^3)
   // for an n x n matrix.  Our matrix size is sum(inDimSizeLog2) x
   // sum(outDimSizeLog2), so this should be plenty fast.
+  if (getTotalInDimSizeLog2() > 64 || getTotalOutDimSizeLog2() > 64) {
+    return "LinearLayout is too large to validate non-fatally. The total "
+           "input and output basis widths must each be <= 64 bits, but got " +
+           std::to_string(getTotalInDimSizeLog2()) + " input bits and " +
+           std::to_string(getTotalOutDimSizeLog2()) + " output bits.\n";
+  }
   this->rank =
       getMatrixRank(getMatrix(*this), /*numRows=*/getTotalOutDimSizeLog2(),
                     /*numCols=*/getTotalInDimSizeLog2());

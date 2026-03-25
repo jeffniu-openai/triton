@@ -8,7 +8,14 @@ from triton.experimental.gluon import language as ttgl
 from triton.experimental.gluon.language.nvidia import blackwell
 from triton.experimental.gluon.language.nvidia import hopper
 from triton.experimental.gluon.language.nvidia.hopper import cluster
-from triton.experimental.gluon.language.nvidia.blackwell import mbarrier, tma, TensorMemoryLayout, TensorMemoryScalesLayout, async_copy
+from triton.experimental.gluon.language.nvidia.blackwell import (
+    mbarrier,
+    tma,
+    TensorMemoryLayout,
+    TensorMemoryScalesLayout,
+    TensorMemoryLinearLayout,
+    async_copy,
+)
 from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton.experimental.gluon.language.amd import _layouts as amd_layouts
 from triton.experimental.gluon.language.amd.cdna4 import async_copy as cdna4_async_copy
@@ -48,6 +55,21 @@ def anonymize_ir(ir):
 
 def make_args(*args, **kwargs):
     return args, kwargs
+
+
+def _default_cga_layout(num_ctas, rank, dim=0):
+    if num_ctas == 1:
+        return []
+    assert 0 <= dim < rank
+    return [[0] * dim + [1 << i] + [0] * (rank - dim - 1) for i in range(num_ctas.bit_length() - 1)]
+
+
+def _tcgen05_cga_layout(num_ctas, operand):
+    if num_ctas == 1:
+        return []
+    if num_ctas == 2:
+        return [[1, 0]] if operand != 1 else [[0, 0]]
+    raise AssertionError(f"Unsupported num_ctas={num_ctas}")
 
 
 @gluon.jit
@@ -265,11 +287,327 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
       %result_4 = ttng.tmem_load %6 : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked>
     }
     tt.return
-  }
+    }
 }
 """)
 
 
+@gluon.jit
+def tensor_memory_linear_view_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
+                                    reinterpret_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(
+        ttgl.float32, [2, 128, 128], linear_layout
+    )
+    sliced_buffers = mem.slice(1, 1, dim=0)
+    indexed = sliced_buffers.index(0)
+    permuted = indexed.permute([1, 0])
+    reshaped0 = permuted.reshape((64, 2, 128))
+    permuted1 = reshaped0.permute([0, 2, 1])
+    reshaped1 = permuted1.reshape((64, 32, 8))
+    slice0 = reshaped1.slice(16, 32, dim=0)
+    slice1 = slice0.slice(8, 16, dim=1)
+    slice2 = slice1.slice(2, 4, dim=2)
+    reinterpreted = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
+    value = reinterpreted.load(layout)
+    reinterpreted.store(value)
+
+
+def _make_tmem_linear_layout(m, n):
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(m.bit_length() - 1)],
+        cols=[[0, 1 << i] for i in range(n.bit_length() - 1)],
+        shape=[m, n],
+    )
+
+
+def _make_tmem_linear_layout_identity(m, n):
+    return _make_tmem_linear_layout(m, n)
+
+
+def _make_tmem_linear_layout_128_identity():
+    return _make_tmem_linear_layout_identity(128, 128)
+
+
+def _make_tmem_linear_layout_128_mixed():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 1], [0, 2]],
+        cols=[[32, 0], [64, 0], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]],
+        shape=[128, 128],
+    )
+
+
+def _make_tmem_linear_layout_64x32_identity():
+    return _make_tmem_linear_layout_identity(64, 32)
+
+
+def _make_tmem_linear_layout_64x32_block(two_ctas=False):
+    return TensorMemoryLinearLayout(
+        rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0]],
+        cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]],
+        block_bases=[[1, 0]],
+        shape=[64, 32],
+        two_ctas=two_ctas,
+    )
+
+
+def _make_tmem_linear_layout_64_interleaved_block():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [0, 1], [2, 0], [0, 2], [1, 1], [0, 4]],
+        cols=[[0, 1], [1, 0], [0, 2], [1, 1], [0, 4], [0, 8]],
+        block_bases=[[1, 0]],
+        shape=[64, 64],
+    )
+
+
+def _make_tmem_linear_layout_128_block(two_ctas=False):
+    return TensorMemoryLinearLayout(
+        rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]],
+        block_bases=[[1, 0]],
+        shape=[128, 128],
+        two_ctas=two_ctas,
+    )
+
+
+def _make_tmem_linear_layout_64x32_twoctas():
+    return TensorMemoryLinearLayout(
+        rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0]],
+        cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]],
+        block_bases=[[1, 0]],
+        shape=[64, 32],
+        two_ctas=True,
+    )
+
+
+def _make_tmem_linear_layout_128_twoctas():
+    return TensorMemoryLinearLayout(
+        rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]],
+        block_bases=[[1, 0]],
+        shape=[128, 128],
+        two_ctas=True,
+    )
+
+
+def _make_tmem_register_layout(num_ctas):
+    return ttgl.BlockedLayout(
+        size_per_thread=[1, 32],
+        threads_per_warp=[32, 1],
+        warps_per_cta=[2, 1],
+        order=[0, 1],
+        cga_layout=_default_cga_layout(num_ctas, 2),
+    )
+
+
+def _make_tmem_target_layout(num_ctas):
+    return ttgl.BlockedLayout(
+        size_per_thread=[1, 1],
+        threads_per_warp=[1, 32],
+        warps_per_cta=[2, 1],
+        order=[1, 0],
+        cga_layout=_default_cga_layout(num_ctas, 2),
+    )
+
+
+def _make_tcgen05_shared_layout(num_ctas, operand):
+    return ttgl.NVMMASharedLayout(
+        swizzle_byte_width=128,
+        element_bitwidth=16,
+        rank=2,
+        cga_layout=_tcgen05_cga_layout(num_ctas, operand),
+    )
+
+
+TMEM_VIEW_VARIANTS = [
+    ("identity", _make_tmem_linear_layout_128_identity(), _make_tmem_linear_layout_64x32_identity(), 1),
+    ("mixed", _make_tmem_linear_layout_128_mixed(), _make_tmem_linear_layout_64x32_identity(), 1),
+]
+
+TMEM_DESCRIPTOR_VARIANTS = [
+    ("identity", _make_tmem_linear_layout_128_identity(), _make_tmem_linear_layout_64x32_identity(), 1),
+    ("mixed", _make_tmem_linear_layout_128_mixed(), _make_tmem_linear_layout_64x32_identity(), 1),
+]
+
+
+def _parse_tensor_memory_linear_view(linear_layout, reinterpret_layout, num_ctas=1):
+    layout = _make_tmem_register_layout(num_ctas)
+    mod = run_parser(
+        tensor_memory_linear_view_kernel,
+        *make_args(layout, linear_layout, reinterpret_layout, num_warps=2, num_ctas=num_ctas),
+        target=BLACKWELL_TARGET,
+    )
+    return anonymize_ir(mod.str_nodebug())
+
+
+@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_VIEW_VARIANTS)
+def test_tensor_memory_linear_views_layout_matrix(name, linear_layout, reinterpret_layout, num_ctas):
+    ir = _parse_tensor_memory_linear_view(linear_layout, reinterpret_layout, num_ctas=num_ctas)
+    assert "tensor_memory_linear" in ir
+    assert "tensor_memory_encoding<" not in ir
+    assert ir.count("ttg.memdesc_subslice") >= 4
+    assert "ttg.memdesc_index" in ir
+    assert ir.count("ttg.memdesc_trans") >= 2
+    assert ir.count("ttg.memdesc_reshape") >= 2
+    assert "ttg.memdesc_reinterpret" in ir
+    assert "ttng.tmem_subslice" not in ir
+
+
+def test_tensor_memory_linear_views_block_layout_reports_two_ctas(capfd):
+    with pytest.raises(RuntimeError):
+        _parse_tensor_memory_linear_view(
+            _make_tmem_linear_layout_128_block(True),
+            _make_tmem_linear_layout_64x32_block(True),
+            num_ctas=2,
+        )
+    captured = capfd.readouterr()
+    assert "Layout has 2 CTAs per CGA" in (captured.err + captured.out)
+
+
+@gluon.jit
+def tensor_memory_descriptor_chain_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
+                                          reinterpret_layout: ttgl.constexpr, target_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.float32, [3, 128, 128], linear_layout)
+    view = mem.index(2)
+    permuted = view.permute([1, 0])
+    reshaped0 = permuted.reshape((64, 2, 128))
+    reshaped1 = reshaped0.permute([0, 2, 1]).reshape((64, 32, 8))
+    slice0 = reshaped1.slice(16, 32, dim=0)
+    slice1 = slice0.slice(8, 16, dim=1)
+    slice2 = slice1.slice(2, 4, dim=2)
+    reinterpreted = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
+    value = reinterpreted.load(target_layout)
+    reinterpreted.store(value)
+
+
+def test_tensor_memory_descriptor_chain_ir():
+    layout = _make_tmem_register_layout(1)
+    linear_layout = _make_tmem_linear_layout_128_identity()
+    reinterpret_layout = _make_tmem_linear_layout_64x32_identity()
+    target_layout = _make_tmem_target_layout(1)
+    mod = run_parser(
+        tensor_memory_descriptor_chain_kernel,
+        *make_args(layout, linear_layout, reinterpret_layout, target_layout, num_warps=2),
+        target=BLACKWELL_TARGET,
+    )
+    ir = anonymize_ir(mod.str_nodebug())
+    assert "ttg.memdesc_index" in ir
+    assert "ttg.memdesc_subslice" in ir
+    assert "ttg.memdesc_trans" in ir
+    assert "ttg.memdesc_reshape" in ir
+    assert "ttg.memdesc_reinterpret" in ir
+    assert "tensor_memory_linear" in ir
+    assert "ttng.tmem_load" in ir
+    assert "ttng.tmem_store" in ir
+
+
+@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_DESCRIPTOR_VARIANTS)
+def test_tensor_memory_descriptor_chain_variants(name, linear_layout, reinterpret_layout, num_ctas):
+    layout = _make_tmem_register_layout(num_ctas)
+    target_layout = _make_tmem_target_layout(num_ctas)
+    mod = run_parser(
+        tensor_memory_descriptor_chain_kernel,
+        *make_args(layout, linear_layout, reinterpret_layout, target_layout, num_warps=2, num_ctas=num_ctas),
+        target=BLACKWELL_TARGET,
+    )
+    ir = anonymize_ir(mod.str_nodebug())
+    assert "tensor_memory_linear" in ir
+    assert ir.count("ttg.memdesc_subslice") >= 3
+    assert ir.count("ttg.memdesc_reshape") >= 1
+    assert "ttg.memdesc_reinterpret" in ir
+
+
+def test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch(capfd):
+    layout = _make_tmem_register_layout(1)
+    target_layout = _make_tmem_target_layout(1)
+    with pytest.raises(RuntimeError):
+        run_parser(
+            tensor_memory_descriptor_chain_kernel,
+            *make_args(
+                layout,
+                _make_tmem_linear_layout_128_twoctas(),
+                _make_tmem_linear_layout_64x32_twoctas(),
+                target_layout,
+                num_warps=2,
+            ),
+            target=BLACKWELL_TARGET,
+        )
+    captured = capfd.readouterr()
+    assert "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA." in (captured.err + captured.out)
+
+
+def test_tensor_memory_linear_layout_invalid_shape():
+    with pytest.raises(ValueError, match="Invalid basis rank"):
+        TensorMemoryLinearLayout(
+            rows=[[1]],
+            cols=[[0, 1]],
+            shape=[64, 64],
+        )
+
+
+def test_tensor_memory_linear_layout_invalid_block_basis_rank():
+    with pytest.raises(ValueError, match="Invalid basis rank 1 for in-dim 'block'"):
+        TensorMemoryLinearLayout(
+            rows=[[1, 0]],
+            cols=[[0, 1]],
+            block_bases=[[1]],
+            shape=[64, 64],
+        )
+
+
+@gluon.jit
+def tcgen05_mma_linear_acc_kernel(a_shared_layout: ttgl.constexpr, b_shared_layout: ttgl.constexpr,
+                                  acc_layout: ttgl.constexpr):
+    a = ttgl.allocate_shared_memory(ttgl.float16, [128, 256], a_shared_layout)
+    b = ttgl.allocate_shared_memory(ttgl.float16, [256, 128], b_shared_layout)
+    acc = blackwell.allocate_tensor_memory(ttgl.float32, [128, 128], acc_layout)
+    blackwell.tcgen05_mma(a, b, acc)
+
+
+def test_tensor_memory_linear_mma_compile():
+    a_shared_layout = _make_tcgen05_shared_layout(1, 0)
+    b_shared_layout = _make_tcgen05_shared_layout(1, 1)
+    acc_layout = _make_tmem_linear_layout_128_identity()
+    mod = run_parser(
+        tcgen05_mma_linear_acc_kernel,
+        *make_args(a_shared_layout, b_shared_layout, acc_layout, num_warps=4),
+        target=BLACKWELL_TARGET,
+    )
+    ir = anonymize_ir(mod.str_nodebug())
+    assert "tensor_memory_linear" in ir
+    assert "ttng.tc_gen5_mma" in ir
+    assert "ttng.tmem_alloc" in ir
+
+
+def test_tensor_memory_linear_mma_compile_reports_two_ctas_mismatch(capfd):
+    a_shared_layout = _make_tcgen05_shared_layout(1, 0)
+    b_shared_layout = _make_tcgen05_shared_layout(1, 1)
+    acc_layout = _make_tmem_linear_layout_128_twoctas()
+    with pytest.raises(RuntimeError):
+        run_parser(
+            tcgen05_mma_linear_acc_kernel,
+            *make_args(a_shared_layout, b_shared_layout, acc_layout, num_warps=4),
+            target=BLACKWELL_TARGET,
+        )
+    captured = capfd.readouterr()
+    assert "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA." in (captured.err + captured.out)
+
+
+@pytest.mark.parametrize("acc_layout, num_ctas", [
+    (_make_tmem_linear_layout_128_mixed(), 1),
+    (_make_tmem_linear_layout_128_block(), 2),
+    (_make_tmem_linear_layout_128_twoctas(), 2),
+])
+def test_tensor_memory_linear_mma_compile_reports_unsupported_layout(acc_layout, num_ctas, capfd):
+    a_shared_layout = _make_tcgen05_shared_layout(num_ctas, 0)
+    b_shared_layout = _make_tcgen05_shared_layout(num_ctas, 1)
+    with pytest.raises(RuntimeError):
+        run_parser(
+            tcgen05_mma_linear_acc_kernel,
+            *make_args(a_shared_layout, b_shared_layout, acc_layout, num_warps=4, num_ctas=num_ctas),
+            target=BLACKWELL_TARGET,
+        )
+    captured = capfd.readouterr()
+    assert "MMAv5-compatible tensor memory layout" in (captured.err + captured.out)
 @gluon.jit
 def shared_memory_subview_kernel(XBLOCK: ttgl.constexpr, layout: ttgl.constexpr, smem_layout: ttgl.constexpr):
     XHALF: ttgl.constexpr = XBLOCK // 2
@@ -600,15 +938,15 @@ def test_tcgen05_mma():
         anonymize_ir(mod.str_nodebug()), """\
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
-#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 2>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 0], [0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tcgen05_mma_kernel() attributes {noinline = false} {
     %0 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
-    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_0 = arith.constant true
-    %2 = ttng.tc_gen5_mma %0, %1, %result[], %true, %true_0 : !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
+    %2 = ttng.tc_gen5_mma %0, %1, %result[], %true, %true_0 : !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>
     tt.return
   }
 }
@@ -636,7 +974,7 @@ def test_tcgen05_mma_scaled():
         anonymize_ir(mod.str_nodebug()), """\
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
-#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 2>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 0], [0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 #tmem_scales = #ttng.tensor_memory_scales_encoding<>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tcgen05_mma_scaled_kernel() attributes {noinline = false} {
@@ -644,10 +982,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>
     %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     %result_0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
-    %result_1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
+    %result_1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_2 = arith.constant true
-    %2 = ttng.tc_gen5_mma_scaled %0, %1, %result_1[], %result, %result_0, %true, %true_2 lhs = e5m2 rhs = e5m2 : !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
+    %2 = ttng.tc_gen5_mma_scaled %0, %1, %result_1[], %result, %result_0, %true, %true_2 lhs = e5m2 rhs = e5m2 : !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     tt.return
   }
 }

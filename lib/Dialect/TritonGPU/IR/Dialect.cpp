@@ -758,8 +758,14 @@ std::optional<LinearLayout> parseLinearLayout(const DictionaryAttr &dict,
         StringAttr::get(parser.getContext(), "dim" + llvm::Twine(i)));
   }
 
-  // Create LinearLayout
-  return LinearLayout(std::move(bases), std::move(outDimNames));
+  std::string error;
+  auto layout = LinearLayout::tryCreate(std::move(bases), outDimNames,
+                                        /*requireSurjective=*/true, &error);
+  if (!layout) {
+    parser.emitError(parser.getCurrentLocation()) << error;
+    return {};
+  }
+  return layout;
 }
 
 // We don't use the default implementation as it's a bit too verbose
@@ -1075,27 +1081,17 @@ LinearEncodingAttr::basesPerDim(StringAttr dimName, bool skipBroadcast) const {
 
 CGAEncodingAttr linearToCGAEncodingAttr(const LinearLayout &ll,
                                         ArrayRef<unsigned> cgaLogicalShape) {
-  // Compute the shapePerCTA
-  auto shape = ll.getOutDims();
-  for (int i = 0; i < shape.size(); ++i) {
-    shape[i].second /= cgaLogicalShape[i];
-  }
   auto inDims = to_vector(ll.getInDimNames());
   auto *ctx = inDims[0].getContext();
   auto kBlock = StringAttr::get(ctx, "block");
   assert(llvm::is_contained(inDims, kBlock) &&
          "layout must have a 'block' dim");
-  llvm::erase(inDims, kBlock);
   auto outDims = to_vector(ll.getOutDimNames());
-  auto subLl = ll.sublayout(inDims, outDims);
-  // sublayout returns the same output size. We trim it to the
-  // real size
-  subLl = LinearLayout(subLl.getBases(), shape, false);
-  // The cgaLayout is what we get after dividing on the left by
-  // the layout in a single CTA.
-  auto maybeCgaLayout = divideLeft(ll, subLl);
-  assert(maybeCgaLayout.has_value());
-  auto cgaLayout = maybeCgaLayout->sublayout({kBlock}, outDims);
+  auto cgaLayout = ll.sublayout({kBlock}, outDims);
+  assert(cgaLogicalShape.size() == outDims.size() &&
+         "layout rank and CGA rank must match");
+  for (auto [idx, outDim] : llvm::enumerate(outDims))
+    cgaLayout = cgaLayout.resizeOutDim(outDim, cgaLogicalShape[idx]);
   return CGAEncodingAttr::get(ctx, std::move(cgaLayout));
 }
 
@@ -1496,13 +1492,19 @@ Attribute AMDWmmaEncodingAttr::parse(AsmParser &parser, Type type) {
   auto kReg = StringAttr::get(ctx, "register");
   Attribute value = dictWarpLay.get(kReg);
   if (!value) {
-    ctaLL = parseLinearLayout(dictWarpLay, parser, {"warp"}, rank).value();
+    auto maybeCtaLL = parseLinearLayout(dictWarpLay, parser, {"warp"}, rank);
+    if (!maybeCtaLL)
+      return {};
+    ctaLL = *maybeCtaLL;
     auto outDims = standardOutDimNames(ctx, rank);
     auto regsLL = LinearLayout::identity1D(1, kReg, outDims[rank - 1]);
     ctaLL = regsLL * ctaLL;
   } else {
-    ctaLL = parseLinearLayout(dictWarpLay, parser, {"register", "warp"}, rank)
-                .value();
+    auto maybeCtaLL =
+        parseLinearLayout(dictWarpLay, parser, {"register", "warp"}, rank);
+    if (!maybeCtaLL)
+      return {};
+    ctaLL = *maybeCtaLL;
   }
 
   std::optional<CGAEncodingAttr> CGALayout =

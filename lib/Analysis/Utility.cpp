@@ -1321,9 +1321,17 @@ bool isCvtDimSync(const triton::LinearLayout &srcLayout,
   auto *ctx = srcLayout.getInDimNames().begin()->getContext();
   auto kWarp = StringAttr::get(ctx, "warp");
   auto kBlock = StringAttr::get(ctx, "block");
-  assert(srcLayout.hasInDim(dim) && dstLayout.hasInDim(dim) &&
-         "expected dim to be present in both layouts");
+  auto isUnitOrMissing = [&](const triton::LinearLayout &layout) {
+    bool trivialIn = !layout.hasInDim(dim) || layout.getInDimSize(dim) == 1;
+    bool trivialOut = !layout.hasOutDim(dim) || layout.getOutDimSize(dim) == 1;
+    return trivialIn && trivialOut;
+  };
+  if (!srcLayout.hasInDim(dim) || !dstLayout.hasInDim(dim)) {
+    return isUnitOrMissing(srcLayout) && isUnitOrMissing(dstLayout);
+  }
   auto comp = dstLayout.invertAndCompose(srcLayout);
+  if (!comp.hasInDim(dim) || !comp.hasOutDim(dim))
+    return isUnitOrMissing(srcLayout) && isUnitOrMissing(dstLayout);
   if (dim == kWarp) {
     // We check that it's trivial over block and warps and that
     // there is no broadcasting over warp, as if there is, we'll

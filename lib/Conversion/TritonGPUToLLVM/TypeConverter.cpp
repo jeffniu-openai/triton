@@ -61,6 +61,7 @@ Type TritonGPUToLLVMTypeConverter::convertMemDescType(
       ctx, targetInfo.getAddressSpace(type.getMemorySpace()));
 
   if (isa<triton::nvidia_gpu::TensorMemoryEncodingAttr,
+          triton::nvidia_gpu::TensorMemoryLinearEncodingAttr,
           triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(
           type.getEncoding())) {
     return ptrType;

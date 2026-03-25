@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
-from triton.experimental.gluon.language._semantic import _check, _compute_tmem_reg_layout
+from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout
 
 from . import tma
 from . import clc
@@ -28,9 +28,9 @@ __all__ = [
     "tensor_memory_descriptor",
     "tensor_memory_descriptor_type",
     "TensorMemoryLayout",
+    "TensorMemoryLinearLayout",
     "TensorMemoryScalesLayout",
     "tma",
-    "_TensorMemoryLinearLayout",
 ]
 
 
@@ -106,23 +106,72 @@ class TensorMemoryScalesLayout:
         return hash(tuple(tuple(b) for b in self.cga_layout))
 
 
-@dataclass(frozen=True)
-class _TensorMemoryLinearLayout:
+@dataclass(frozen=True, eq=True)
+class TensorMemoryLinearLayout:
     """
-    Print-only linear layout for TMEM (row/col -> dim0/dim1).
+    Canonical tensor-memory layout expressed as a linear mapping from TMEM
+    coordinates to logical tensor dimensions.
+
+    Args:
+        rows (List[List[int]]): Bases for the TMEM row input dimension.
+        cols (List[List[int]]): Bases for the TMEM col input dimension.
+        shape (List[int]): Logical tensor shape (`dim0`, `dim1`, ...).
+        block_bases (Optional[List[List[int]]]): Bases for optional TMEM block
+            input dimension. Defaults to [].
+        two_ctas (bool): Whether layout is intended for two-CTA mode.
     """
     rows: List[List[int]]
     cols: List[List[int]]
     shape: List[int]
+    block_bases: List[List[int]] = field(default_factory=list)
+    two_ctas: bool = False
+
+    def __post_init__(self):
+        super().__setattr__("rows", _unwrap_if_constexpr(self.rows))
+        super().__setattr__("cols", _unwrap_if_constexpr(self.cols))
+        super().__setattr__("shape", _unwrap_if_constexpr(self.shape))
+        super().__setattr__("block_bases", _unwrap_if_constexpr(self.block_bases))
+        super().__setattr__("two_ctas", _unwrap_if_constexpr(self.two_ctas))
+        rank = len(self.shape)
+        for in_dim, bases in [("row", self.rows), ("col", self.cols), ("block", self.block_bases)]:
+            for basis in bases:
+                if len(basis) != rank:
+                    raise ValueError(
+                        f"Invalid basis rank {len(basis)} for in-dim '{in_dim}'. "
+                        f"Expected {rank} entries to match the tensor rank."
+                    )
+                for idx, value in enumerate(basis):
+                    if value < 0 or value >= self.shape[idx]:
+                        raise ValueError(
+                            f"Invalid basis {value} for in-dim '{in_dim}' and "
+                            f"out-dim 'dim{idx}'. Basis must be non-negative and "
+                            f"less than the out-dim size."
+                        )
 
     def _to_ir(self, builder):
-        raise RuntimeError("TensorMemoryLinearLayout is print-only; IR materialization is unsupported")
+        return builder.get_tensor_memory_linear_layout(
+            self.rows,
+            self.cols,
+            self.block_bases,
+            self.shape,
+            self.two_ctas,
+        )
 
     def mangle(self):
-        return f"TMLL_{self.shape}_TMLL"
+        return f"TMLL_{self.rows}_{self.cols}_{self.block_bases}_{self.shape}_{self.two_ctas}_TMLL"
 
     def __hash__(self):
-        return hash((tuple(map(tuple, self.rows)), tuple(map(tuple, self.cols)), tuple(self.shape)))
+        return hash((
+            tuple(map(tuple, self.rows)),
+            tuple(map(tuple, self.cols)),
+            tuple(map(tuple, self.block_bases)),
+            tuple(self.shape),
+            self.two_ctas,
+        ))
+
+
+# Backward-compatibility alias for previous private name.
+_TensorMemoryLinearLayout = TensorMemoryLinearLayout
 
 
 def _unwrap_tmem_layout_arg(x):
@@ -142,7 +191,7 @@ class tensor_memory_descriptor_type(base_type):
         self.shape = _unwrap_if_constexpr(shape)
         self.layout = _unwrap_if_constexpr(layout)
         self.alloc_shape = _unwrap_if_constexpr(alloc_shape)
-        assert isinstance(self.layout, (TensorMemoryLayout, TensorMemoryScalesLayout))
+        assert isinstance(self.layout, (TensorMemoryLayout, TensorMemoryLinearLayout, TensorMemoryScalesLayout))
 
     def to_ir(self, builder: GluonOpBuilder) -> None:
         return builder.get_tensor_mem_desc_ty(
@@ -353,27 +402,22 @@ class tensor_memory_descriptor(base_value):
         _semantic.builder.create_tmem_store(self.handle, value.handle, pred.handle)
 
     @builtin
-    def slice(self, start, length, _semantic: GluonSemantic = None) -> None:
+    def slice(self, start, length, dim=0, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
         """
-        Create a slice of the tensor memory descriptor along the last dimension.
+        Create a subview of tensor memory by slicing along a given dimension.
 
         Args:
-            start (int): The starting index for subslice.
-            length (int): The length of the subslice.
+            start (int): The starting index of the slice.
+            length (int): The length of the slice.
+            dim (int): The dimension to slice (default: 0).
 
         Returns:
-            tensor_memory_descriptor: Descriptor for the subslice.
+            tensor_memory_descriptor: Descriptor for the sliced subview.
         """
         start = _unwrap_if_constexpr(start)
         length = _unwrap_if_constexpr(length)
-        _check(isinstance(start, int), lambda: "start must be a constant int")
-        _check(isinstance(length, int), lambda: "length must be a constant int")
-        shape = self.shape[:-1] + [length]
-        layout = self.type.layout
-        ret = tensor_memory_descriptor(None, self.dtype, shape, layout, self.type.alloc_shape)
-        builder = _semantic.builder
-        ret.handle = builder.create_tmem_subslice(ret.type.to_ir(builder), self.handle, start)
-        return ret
+        dim = _unwrap_if_constexpr(dim)
+        return _semantic.memdesc_slice(self, start, length, dim)
 
     @builtin
     def index(self, index, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
@@ -386,13 +430,36 @@ class tensor_memory_descriptor(base_value):
         Returns:
             tensor_memory_descriptor: Descriptor for the indexed subview.
         """
-        index = _semantic.to_tensor(index)
-        builder = _semantic.builder
-        shape = self.shape[1:]
-        layout = self.layout
-        ret = tensor_memory_descriptor(None, self.dtype, shape, layout, shape)
-        ret.handle = builder.create_memdesc_index(ret.type.to_ir(builder), self.handle, index.handle)
-        return ret
+        index = _unwrap_if_constexpr(index)
+        return _semantic.memdesc_index(self, index)
+
+    @builtin
+    def permute(self, order, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
+        """
+        Permute the dimensions of the tensor memory descriptor.
+
+        Args:
+            order (List[int]): The new ordering of dimensions.
+
+        Returns:
+            tensor_memory_descriptor: Descriptor with permuted dimensions.
+        """
+        order = [_unwrap_if_constexpr(o) for o in order]
+        return _semantic.memdesc_trans(self, order)
+
+    @builtin
+    def reshape(self, shape, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
+        """
+        Reshape the tensor memory descriptor to a new shape and layout.
+
+        Args:
+            shape (List[int]): The target shape.
+
+        Returns:
+            tensor_memory_descriptor: Descriptor with the new shape and layout.
+        """
+        shape = [_unwrap_if_constexpr(s) for s in shape]
+        return _semantic.memdesc_reshape(self, shape)
 
     @builtin
     def _reinterpret(self, dtype, shape, layout, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
@@ -410,10 +477,7 @@ class tensor_memory_descriptor(base_value):
         dtype = _unwrap_if_constexpr(dtype)
         shape = [_unwrap_if_constexpr(s) for s in shape]
         layout = _unwrap_if_constexpr(layout)
-
-        ty = tensor_memory_descriptor_type(dtype, shape, layout, shape)
-        handle = _semantic.builder.create_memdesc_reinterpret(ty.to_ir(_semantic.builder), self.handle)
-        return tensor_memory_descriptor(handle, **ty.__dict__)
+        return _semantic.memdesc_reinterpret(self, dtype, shape, layout)
 
 
 @builtin

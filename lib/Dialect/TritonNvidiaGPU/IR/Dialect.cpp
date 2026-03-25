@@ -26,8 +26,10 @@
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
 
+#include <functional>
 #include <numeric>
 
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "triton/Analysis/Utility.h"
@@ -36,6 +38,8 @@
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
+#include "triton/Tools/LayoutUtils.h"
+#include "triton/Tools/StrUtil.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 
@@ -47,9 +51,255 @@ using namespace mlir::triton::nvidia_gpu;
 
 namespace mlir {
 namespace triton {
+
+namespace gpu {
+std::optional<LinearLayout>
+tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
+                           nvidia_gpu::TensorMemoryEncodingAttr,
+                           std::string *error = nullptr);
+}
+
 namespace nvidia_gpu {
 
 static constexpr int numTmemRows = 128;
+
+static SmallVector<unsigned>
+basesPerDimImpl(const LinearLayout::BasesT &namedBases, StringAttr dimName,
+                size_t rank, bool skipBroadcast = true) {
+  auto it = namedBases.find(dimName);
+  if (it == namedBases.end() || it->second.empty())
+    return SmallVector<unsigned>(rank, 1);
+
+  SmallVector<unsigned> ret(rank, 1);
+  auto nonZero = [](auto val) { return val != 0; };
+  int nonZeroIdx = 0;
+  for (const auto &basis : it->second) {
+    auto nz = std::find_if(basis.begin(), basis.end(), nonZero);
+    if (nz != basis.end()) {
+      nonZeroIdx = nz - basis.begin();
+      ret[nonZeroIdx] *= 2;
+    } else if (!skipBroadcast) {
+      ret[nonZeroIdx] *= 2;
+    }
+  }
+  return ret;
+}
+
+static std::optional<LinearLayout>
+parseLinearLayout(const DictionaryAttr &dict, AsmParser &parser,
+                  ArrayRef<std::string> inDimNames, int serializedRank = 0) {
+  LinearLayout::BasesT bases;
+  for (const auto &inDimNameStr : inDimNames) {
+    auto inDimName = StringAttr::get(parser.getContext(), inDimNameStr);
+    Attribute value = dict.get(inDimName);
+    if (!value) {
+      parser.emitError(parser.getCurrentLocation(), "Expected basis of '")
+          << inDimName.getValue() << "' not found";
+      return {};
+    }
+    auto arrayOfArraysAttr = dyn_cast<ArrayAttr>(value);
+    if (!arrayOfArraysAttr) {
+      parser.emitError(parser.getCurrentLocation(),
+                       "Expected array of arrays for basis of '")
+          << inDimName.getValue() << "'";
+      return {};
+    }
+
+    std::vector<std::vector<int32_t>> inDimBases;
+    for (Attribute arrayAttr : arrayOfArraysAttr) {
+      auto intArrayAttr = dyn_cast<ArrayAttr>(arrayAttr);
+      if (!intArrayAttr) {
+        parser.emitError(parser.getCurrentLocation(),
+                         "Expected array of integers in basis for '")
+            << inDimName.getValue() << "'";
+        return {};
+      }
+      std::vector<int32_t> basis;
+      for (Attribute intAttr : intArrayAttr) {
+        auto intValueAttr = dyn_cast<IntegerAttr>(intAttr);
+        if (!intValueAttr) {
+          parser.emitError(parser.getCurrentLocation(),
+                           "Expected integer in basis for '")
+              << inDimName.getValue() << "'";
+          return {};
+        }
+        basis.push_back(intValueAttr.getInt());
+      }
+      inDimBases.push_back(std::move(basis));
+    }
+    bases[inDimName] = std::move(inDimBases);
+  }
+
+  size_t rank = 0;
+  for (const auto &basesDim : llvm::make_second_range(bases)) {
+    if (!basesDim.empty()) {
+      rank = basesDim[0].size();
+      break;
+    }
+  }
+  if (rank == 0 && serializedRank == 0) {
+    parser.emitError(parser.getCurrentLocation(), "Empty Layout not supported");
+    return {};
+  }
+  if (rank == 0)
+    rank = serializedRank;
+  else if (serializedRank != 0 && serializedRank != rank) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "Serialized rank and rank deduced from LL need to match");
+    return {};
+  }
+
+  SmallVector<StringAttr> outDimNames;
+  for (int i = 0; i < rank; ++i)
+    outDimNames.push_back(
+        StringAttr::get(parser.getContext(), "dim" + llvm::Twine(i)));
+  std::string error;
+  auto layout = LinearLayout::tryCreate(std::move(bases), outDimNames,
+                                        /*requireSurjective=*/true, &error);
+  if (!layout) {
+    parser.emitError(parser.getCurrentLocation()) << error;
+    return {};
+  }
+  return layout;
+}
+
+static void printLinearLayout(AsmPrinter &printer, const LinearLayout &ll,
+                              bool skipEmptyBases = false) {
+  auto bases = ll.getBases();
+  if (skipEmptyBases) {
+    decltype(bases) filtered;
+    for (auto &kv : bases)
+      if (!kv.second.empty())
+        filtered.insert(kv);
+    bases = std::move(filtered);
+  }
+  printer << join(bases, ", ", [](const auto &base) {
+    return base.first.str() + " = " + "[" +
+           join(base.second, ", ",
+                [](const std::vector<int32_t> &vec) {
+                  return "[" + join(vec, ", ") + "]";
+                }) +
+           "]";
+  });
+}
+
+static SmallVector<std::pair<StringAttr, int32_t>>
+getStandardOutDimPairs(MLIRContext *ctx, ArrayRef<int64_t> shape,
+                       unsigned startIdx = 0) {
+  SmallVector<std::pair<StringAttr, int32_t>> outDims;
+  outDims.reserve(shape.size());
+  for (auto [idx, size] : llvm::enumerate(shape)) {
+    outDims.emplace_back(
+        StringAttr::get(ctx, "dim" + llvm::Twine(idx + startIdx)),
+        static_cast<int32_t>(size));
+  }
+  return outDims;
+}
+
+static std::optional<LinearLayout>
+tryLinearToCGAEncodingLayout(const LinearLayout &ll, ArrayRef<unsigned> cgaShape,
+                             std::string *error = nullptr) {
+  auto inDims = to_vector(ll.getInDimNames());
+  if (inDims.empty()) {
+    if (error != nullptr)
+      *error = "layout must have at least one input dimension";
+    return std::nullopt;
+  }
+  auto *ctx = inDims[0].getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!llvm::is_contained(inDims, kBlock)) {
+    if (error != nullptr)
+      *error = "layout must contain a 'block' input dimension";
+    return std::nullopt;
+  }
+  auto outDims = to_vector(ll.getOutDimNames());
+  if (cgaShape.size() != outDims.size()) {
+    if (error != nullptr)
+      *error = "layout rank and CGA rank must match";
+    return std::nullopt;
+  }
+  auto cgaLayout = ll.sublayout({kBlock}, outDims);
+  for (auto [idx, outDim] : llvm::enumerate(outDims))
+    cgaLayout = cgaLayout.resizeOutDim(outDim, cgaShape[idx]);
+  return cgaLayout;
+}
+
+static LinearLayout linearToCGAEncodingLayout(const LinearLayout &ll,
+                                              ArrayRef<unsigned> cgaShape) {
+  std::string error;
+  auto cgaLayout = tryLinearToCGAEncodingLayout(ll, cgaShape, &error);
+  assert(cgaLayout && "layout must have a valid CGA factorization");
+  return *cgaLayout;
+}
+
+static std::string stringifyAttribute(Attribute attr) {
+  std::string str;
+  llvm::raw_string_ostream os(str);
+  os << attr;
+  return str;
+}
+
+static void printDiagStr(llvm::raw_ostream &os, const Diagnostic &diag) {
+  for (const DiagnosticArgument &arg : diag.getArguments())
+    arg.print(os);
+  os << "\n";
+  for (const Diagnostic &note : diag.getNotes())
+    printDiagStr(os, note);
+}
+
+static std::string stringifyShape(ArrayRef<int64_t> shape) {
+  return "[" + triton::join(shape, ", ") + "]";
+}
+
+static int64_t getShapeProduct(ArrayRef<int64_t> shape) {
+  return std::accumulate(shape.begin(), shape.end(), int64_t{1},
+                         std::multiplies<int64_t>());
+}
+
+static std::optional<LinearLayout>
+canonicalizeLegacyTensorMemoryLayout(ArrayRef<int64_t> shape, Attribute encoding,
+                                     std::string *error = nullptr) {
+  auto legacy = cast<TensorMemoryEncodingAttr>(encoding);
+  if (shape.size() < 2) {
+    if (error != nullptr) {
+      *error = "legacy tensor memory layout " + stringifyAttribute(encoding) +
+               " requires at least 2 trailing dimensions, but got shape " +
+               stringifyShape(shape);
+    }
+    return std::nullopt;
+  }
+  auto trailingShape = shape.take_back(2);
+  std::string baseError;
+  auto base =
+      triton::gpu::tensorMemoryToLinearLayout(trailingShape, legacy, &baseError);
+  if (!base) {
+    if (error != nullptr) {
+      *error = "legacy tensor memory layout " + stringifyAttribute(encoding) +
+               " cannot be canonicalized for shape " +
+               stringifyShape(trailingShape) + ": " + baseError +
+               ". Use #ttng.tensor_memory_linear for arbitrary TMEM views, or "
+               "choose a legacy tensor_memory_encoding whose tile matches the "
+               "allocation shape.";
+    }
+    return std::nullopt;
+  }
+  if (static_cast<int64_t>(base->getTotalOutDimSize()) !=
+      getShapeProduct(trailingShape)) {
+    if (error != nullptr) {
+      SmallVector<int64_t> baseShape;
+      for (const auto &[outDim, size] : base->getOutDims())
+        baseShape.push_back(size);
+      *error = "legacy tensor memory layout " + stringifyAttribute(encoding) +
+               " produced logical shape " + stringifyShape(baseShape) +
+               " for requested shape " + stringifyShape(trailingShape) +
+               "; the total number of elements does not match";
+    }
+    return std::nullopt;
+  }
+  return base->reshapeOuts(getStandardOutDimPairs(legacy.getContext(),
+                                                  trailingShape,
+                                                  shape.size() - 2));
+}
 
 FailureOr<gpu::CGAEncodingAttr> parseCGALayoutRankTwo(AsmParser &parser) {
   Attribute attr;
@@ -64,14 +314,198 @@ void printCGALayoutRankTwo(AsmPrinter &printer, gpu::CGAEncodingAttr cgaAttr) {
   gpu::printCGAAttr(printer, cgaAttr);
 }
 
+bool isTensorMemoryEncoding(Attribute layout) {
+  return isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr,
+             TensorMemoryScalesEncodingAttr>(layout);
+}
+
+std::optional<Attribute>
+tryGetCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape, Attribute layout,
+                                    std::string *error) {
+  if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout))
+    return linear;
+  if (auto legacy = dyn_cast<TensorMemoryEncodingAttr>(layout)) {
+    auto canonicalLayout =
+        canonicalizeLegacyTensorMemoryLayout(shape, legacy, error);
+    if (!canonicalLayout)
+      return std::nullopt;
+    return tryMakeTensorMemoryLinearEncoding(layout.getContext(),
+                                             std::move(*canonicalLayout),
+                                             legacy.getTwoCTAs(), error);
+  }
+  return layout;
+}
+
+std::optional<Attribute>
+tryGetCanonicalTensorMemoryEncoding(MemDescType memDescType,
+                                    std::string *error) {
+  auto layout = memDescType.getEncoding();
+  if (!isTensorMemoryEncoding(layout))
+    return layout;
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getAllocShape().take_back(rank);
+  return tryGetCanonicalTensorMemoryEncoding(shape, layout, error);
+}
+
+Attribute getCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape,
+                                           Attribute layout) {
+  std::string error;
+  auto canonical = tryGetCanonicalTensorMemoryEncoding(shape, layout, &error);
+  assert(canonical && "expected canonical tensor memory encoding to exist");
+  return *canonical;
+}
+
+Attribute getCanonicalTensorMemoryEncoding(MemDescType memDescType) {
+  std::string error;
+  auto canonical = tryGetCanonicalTensorMemoryEncoding(memDescType, &error);
+  assert(canonical && "expected canonical tensor memory encoding to exist");
+  return *canonical;
+}
+
+std::optional<LinearLayout>
+tryGetCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
+                                        Attribute layout,
+                                        std::string *error) {
+  if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout))
+    return linear.getLinearLayout();
+  if (isa<TensorMemoryEncodingAttr>(layout))
+    return canonicalizeLegacyTensorMemoryLayout(shape, layout, error);
+  return triton::gpu::toLinearLayout(shape, layout);
+}
+
+std::optional<LinearLayout>
+tryGetCanonicalTensorMemoryLinearLayout(MemDescType memDescType,
+                                        std::string *error) {
+  auto layout = memDescType.getEncoding();
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getAllocShape().take_back(rank);
+  return tryGetCanonicalTensorMemoryLinearLayout(shape, layout, error);
+}
+
+LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
+                                                  Attribute layout) {
+  std::string error;
+  auto canonical = tryGetCanonicalTensorMemoryLinearLayout(shape, layout, &error);
+  assert(canonical && "expected canonical tensor memory linear layout to exist");
+  return *canonical;
+}
+
+LinearLayout getCanonicalTensorMemoryLinearLayout(MemDescType memDescType) {
+  std::string error;
+  auto canonical = tryGetCanonicalTensorMemoryLinearLayout(memDescType, &error);
+  assert(canonical && "expected canonical tensor memory linear layout to exist");
+  return *canonical;
+}
+
+std::optional<TensorMemoryLinearEncodingAttr>
+tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
+                                  bool twoCTAs, std::string *error) {
+  std::string diagStr;
+  llvm::raw_string_ostream diagOs(diagStr);
+  ScopedDiagnosticHandler handler(
+      ctx, [&](Diagnostic &diag) { printDiagStr(diagOs, diag); });
+  if (failed(TensorMemoryLinearEncodingAttr::verifyInvariants(
+          [&] { return mlir::emitError(UnknownLoc::get(ctx)); }, linearLayout,
+          twoCTAs))) {
+    if (error)
+      *error = diagOs.str();
+    return std::nullopt;
+  }
+  return TensorMemoryLinearEncodingAttr::get(ctx, std::move(linearLayout),
+                                             twoCTAs);
+}
+
+static LinearLayout
+normalizeTensorMemoryLinearLayoutForComparison(LinearLayout layout) {
+  if (layout.getNumInDims() == 0)
+    return layout;
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+
+  if (layout.hasInDim(kBlock)) {
+    layout = layout.removeZeroBasesAlongDim(kBlock);
+    if (layout.getInDimSize(kBlock) == 1)
+      layout = layout.squeezeIns(kBlock);
+  }
+
+  SmallVector<StringAttr> canonicalInDims;
+  for (StringAttr dim : {kRow, kCol, kBlock}) {
+    if (layout.hasInDim(dim))
+      canonicalInDims.push_back(dim);
+  }
+  if (!canonicalInDims.empty())
+    layout = layout.transposeIns(canonicalInDims);
+  return layout.transposeOuts(standardOutDimNames(ctx, layout.getNumOutDims()));
+}
+
+std::optional<TensorMemoryEncodingAttr>
+matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout) {
+  if (auto legacy = dyn_cast<TensorMemoryEncodingAttr>(layout))
+    return legacy;
+  auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout);
+  if (!linear || shape.size() != 2)
+    return std::nullopt;
+  auto normalizedLinear =
+      normalizeTensorMemoryLinearLayoutForComparison(linear.getLinearLayout());
+  auto cga = linear.getCGALayout();
+  std::optional<TensorMemoryEncodingAttr> bestMatch;
+  bool isM64TwoCTA = linear.getTwoCTAs() &&
+                     llvm::any_of(cga.getCTAsPerCGA(),
+                                  [](unsigned count) { return count > 1; });
+  auto isBetterMatch = [&](TensorMemoryEncodingAttr candidate) {
+    if (!bestMatch)
+      return true;
+    auto candidateArea =
+        static_cast<uint64_t>(candidate.getBlockM()) * candidate.getBlockN();
+    auto bestArea =
+        static_cast<uint64_t>(bestMatch->getBlockM()) * bestMatch->getBlockN();
+    if (candidateArea != bestArea)
+      return candidateArea > bestArea;
+    if (candidate.getBlockM() != bestMatch->getBlockM())
+      return candidate.getBlockM() > bestMatch->getBlockM();
+    if (candidate.getBlockN() != bestMatch->getBlockN())
+      return candidate.getBlockN() > bestMatch->getBlockN();
+    return candidate.getColStride() > bestMatch->getColStride();
+  };
+  for (unsigned blockM : {64u, 128u}) {
+    for (unsigned blockN = 1; blockN <= 512; blockN <<= 1) {
+      if (isM64TwoCTA && blockM == 64 && blockN == 1)
+        continue;
+      for (unsigned colStride : {1u, 2u, 4u}) {
+        auto candidate = TensorMemoryEncodingAttr::get(
+            layout.getContext(), blockM, blockN, colStride, cga,
+            linear.getTwoCTAs());
+        std::string candidateError;
+        auto maybeCandidate = tryGetCanonicalTensorMemoryLinearLayout(
+            shape, candidate, &candidateError);
+        if (!maybeCandidate)
+          continue;
+        auto normalizedCandidate = normalizeTensorMemoryLinearLayoutForComparison(
+            *maybeCandidate);
+        if (normalizedCandidate == normalizedLinear && isBetterMatch(candidate))
+          bestMatch = candidate;
+      }
+    }
+  }
+  return bestMatch;
+}
+
+std::optional<TensorMemoryEncodingAttr>
+matchTensorMemoryLegacyEncoding(MemDescType memDescType) {
+  auto layout = memDescType.getEncoding();
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getShape().take_back(rank);
+  return matchTensorMemoryLegacyEncoding(shape, layout);
+}
+
 TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   auto *ctx = memDescType.getContext();
   auto S = [&](StringRef str) { return StringAttr::get(ctx, str); };
   auto kRow = S("row");
   auto kCol = S("col");
-  // Remove multibuffering if present
-  auto shape = memDescType.getShape().take_back(2);
-  auto ll = toLinearLayout(shape, memDescType.getEncoding());
+  auto ll = triton::gpu::toLinearLayout(memDescType);
   auto bitwidth = memDescType.getElementTypeBitWidth();
   int nRow = ll.getInDimSize(kRow);
   int nCol = ll.getInDimSize(kCol) / (32 / bitwidth);
@@ -79,7 +513,9 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   // we use 64 rows instead.
   // We could generalise this to when we have more zeros in the layout, but
   // the allocator does not support this yet
-  if (ll.getBasis(kRow, llvm::Log2_32(16)) == ArrayRef{0, 0}) {
+  if (ll.getInDimSize(kRow) > 16 &&
+      llvm::all_of(ll.getBasis(kRow, llvm::Log2_32(16)),
+                   [](int32_t value) { return value == 0; })) {
     nRow /= 2;
   }
   // If multibuffering is present, we need to allocate more cols
@@ -91,18 +527,43 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
 }
 
 uint32_t getTMemSubSliceOffset(MemDescType memDescType, int32_t nOffset) {
-  auto llInv = toLinearLayout(memDescType).pseudoinvert();
-  auto dimNames = llvm::to_vector(llInv.getInDimNames());
-  SmallVector<std::pair<StringAttr, int32_t>> logicalOffsets;
-  logicalOffsets.reserve(dimNames.size());
-  for (auto dim : dimNames)
-    logicalOffsets.push_back({dim, 0});
-  logicalOffsets.back().second = nOffset;
+  SmallVector<int32_t> offsets(memDescType.getRank(), 0);
+  offsets.back() = nOffset;
+  return getTMemViewOffset(memDescType, offsets);
+}
 
-  auto rowCol = llInv.apply(logicalOffsets);
+uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
+  assert(offsets.size() == memDescType.getRank());
+  auto *ctx = memDescType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto ll = triton::gpu::toLinearLayout(memDescType);
+  auto llInv = ll.pseudoinvert();
+  auto layoutRank = ll.getNumOutDims();
+  auto extraRank = memDescType.getRank() - layoutRank;
+
+  SmallVector<std::pair<StringAttr, int32_t>> logicalOffsets;
+  logicalOffsets.reserve(layoutRank);
+  for (auto [dim, offset] :
+       llvm::zip_equal(ll.getOutDimNames(), offsets.drop_front(extraRank))) {
+    logicalOffsets.push_back({dim, offset});
+  }
+
+  auto rowColBlock = llInv.apply(logicalOffsets);
   uint32_t bitwidth = memDescType.getElementTypeBitWidth();
-  uint32_t offsetRow = rowCol[0].second;
-  uint32_t offsetCol = rowCol[1].second * bitwidth / 32;
+  uint32_t offsetRow = 0;
+  uint32_t offsetCol = 0;
+  for (auto [dim, value] : rowColBlock) {
+    if (dim == kRow) {
+      offsetRow = value;
+    } else if (dim == kCol) {
+      offsetCol = value * bitwidth / 32;
+    }
+  }
+  if (extraRank == 1) {
+    auto singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
+    offsetCol += offsets.front() * singleBufferCols;
+  }
   return offsetCol | offsetRow << 16;
 }
 
@@ -158,6 +619,16 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   assert(dims.size() == 2);
   auto rowColDims = to_vector(ll.getInDimNames());
   auto *ctx = dims[0].getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  bool hasBlockDim = llvm::is_contained(rowColDims, kBlock);
+  auto canCompose = [](const LinearLayout &inner,
+                       const LinearLayout &outer) -> bool {
+    for (StringAttr outDim : inner.getOutDimNames()) {
+      if (inner.getOutDimSize(outDim) > outer.getInDimSize(outDim))
+        return false;
+    }
+    return true;
+  };
   // This code is dual to the one in lowerTMemLdSt
   if (bitwidth != 32) {
     // TODO move this to a helper function
@@ -204,7 +675,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
       // Software padding with just one column
       return getDistributedLayoutForTmemLdSt(ll, atom, numWarps, 32);
     } else {
-      assert(false && "Should not happen");
+      return std::nullopt;
     }
   }
   // getTileLayout returns the layout for a bitwidth of 32
@@ -226,7 +697,6 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   auto kReg = StringAttr::get(ctx, "register");
   auto kLane = StringAttr::get(ctx, "lane");
   auto kWarp = StringAttr::get(ctx, "warp");
-  auto kBlock = StringAttr::get(ctx, "block");
   bool instr32Rows = atom == TMemAccessAtom::I32x32b;
   bool layout16Rows =
       ll.getBasis(rowColDims[0], llvm::Log2_32(16)) == ArrayRef{0, 0};
@@ -238,10 +708,13 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   // In less fancy words, we look for the `comp` layout not to have any zero
   // basis as that would disallow the resulting layout to be left-divisible by
   // the tile
-  auto trivialBlock = LinearLayout::identity1D(1, kBlock, kBlock);
-  auto comp = (tile * trivialBlock)
-                  .compose(ll)
-                  .sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
+  auto compInput = tile;
+  if (hasBlockDim)
+    compInput *= LinearLayout::identity1D(1, kBlock, kBlock);
+  if (!canCompose(compInput, ll))
+    return std::nullopt;
+  auto comp =
+      compInput.compose(ll).sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
   if (instr32Rows) {
     // We will use 16x32bx2 instruction for lane=16 so we remove the last lane
     // basis
@@ -300,9 +773,13 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   tile *= LinearLayout::identity1D(warpsToTile, kWarp, rowColDims[1]);
   tile *= LinearLayout::zeros1D(warpBroadcast, kWarp, rowColDims[1]);
   // Add CTAs as a trivial map
-  auto nCTAs = ll.getInDimSize(kBlock);
-  tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
+  if (hasBlockDim) {
+    auto nCTAs = ll.getInDimSize(kBlock);
+    tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
+  }
   assert(tile.getOutDimSize(rowColDims[1]) == ll.getInDimSize(rowColDims[1]));
+  if (!canCompose(tile, ll))
+    return std::nullopt;
 
   auto ret = tile.compose(ll);
   return ret;
@@ -447,6 +924,137 @@ TensorMemoryEncodingAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+LogicalResult TensorMemoryLinearEncodingAttr::verify(
+    function_ref<InFlightDiagnostic()> emitError, LinearLayout linearLayout,
+    bool twoCTAs) {
+  static const auto expectedInDims =
+      SmallVector<std::string>({"row", "col", "block"});
+  SmallVector<StringAttr> inDims = llvm::to_vector(linearLayout.getInDimNames());
+  if (inDims.size() < 2 || inDims.size() > 3) {
+    return emitError() << "Expected input dimensions [row, col] with optional "
+                          "'block'. Got "
+                       << inDims.size() << " inputs.";
+  }
+  for (auto [idx, dim] : llvm::enumerate(inDims)) {
+    if (dim.str() != expectedInDims[idx]) {
+      return emitError() << "Expected input dimension " << idx << " to be '"
+                         << expectedInDims[idx] << "'. Got " << dim;
+    }
+  }
+  if (inDims.size() == 2 && twoCTAs) {
+    return emitError()
+           << "twoCTAs requires a linear layout with a 'block' input";
+  }
+  for (auto [i, dim] : llvm::enumerate(linearLayout.getOutDimNames())) {
+    if (dim.str() != ("dim" + llvm::Twine(i)).str()) {
+      return emitError()
+             << "Expected output dimensions to be ['dim0', 'dim1', ...]. Got "
+             << dim << " at position " << i;
+    }
+  }
+  if (linearLayout.getNumOutDims() == 0)
+    return emitError() << "Expected at least one output dimension";
+  if (!linearLayout.isSurjective())
+    return emitError() << "The layout must be surjective";
+
+  auto *ctx = linearLayout.getOutDimNames().begin()->getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto stripped = linearLayout.removeZeroBasesAlongDim(kRow)
+                      .removeZeroBasesAlongDim(kCol);
+  if (llvm::is_contained(linearLayout.getInDimNames(), kBlock))
+    stripped = stripped.removeZeroBasesAlongDim(kBlock);
+  if (!stripped.isInvertible()) {
+    return emitError()
+           << "After removing zero bases the layout must be bijective";
+  }
+  if (twoCTAs) {
+    auto bases = linearLayout.getBases().lookup(kBlock);
+    if (bases.empty()) {
+      return emitError()
+             << "twoCTAs requires a non-empty 'block' basis sequence";
+    }
+    if (llvm::all_of(bases, [](ArrayRef<int32_t> basis) {
+          return llvm::all_of(basis, [](int32_t value) { return value == 0; });
+        })) {
+      return emitError()
+             << "twoCTAs requires at least one non-zero 'block' basis";
+    }
+  }
+  return success();
+}
+
+void TensorMemoryLinearEncodingAttr::print(AsmPrinter &printer) const {
+  printer << "<{";
+  auto layout = getLinearLayout();
+  auto kBlock = StringAttr::get(getContext(), "block");
+  if (layout.getBases().lookup(kBlock).empty())
+    layout = layout.sublayout({StringAttr::get(getContext(), "row"),
+                               StringAttr::get(getContext(), "col")},
+                              llvm::to_vector(layout.getOutDimNames()));
+  printLinearLayout(printer, layout);
+  if (getTwoCTAs())
+    printer << "}, twoCTAs = true>";
+  else
+    printer << "}>";
+}
+
+Attribute TensorMemoryLinearEncodingAttr::parse(AsmParser &parser, Type type) {
+  if (parser.parseLess().failed())
+    return {};
+
+  DictionaryAttr layoutDictRaw;
+  if (parser.parseAttribute(layoutDictRaw).failed())
+    return {};
+
+  NamedAttrList layoutAttrList(layoutDictRaw.getValue());
+  auto *ctx = parser.getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!layoutAttrList.get(kBlock))
+    layoutAttrList.push_back({kBlock, ArrayAttr::get(ctx, {})});
+  DictionaryAttr layoutDict = layoutAttrList.getDictionary(ctx);
+
+  bool twoCTAs = false;
+  if (succeeded(parser.parseOptionalComma())) {
+    if (parser.parseKeyword("twoCTAs").failed() || parser.parseEqual().failed())
+      return {};
+    Attribute twoCTAsAttr;
+    if (parser.parseAttribute(twoCTAsAttr).failed())
+      return {};
+    auto boolAttr = dyn_cast<BoolAttr>(twoCTAsAttr);
+    if (!boolAttr) {
+      parser.emitError(parser.getCurrentLocation(),
+                       "expected a boolean value for twoCTAs");
+      return {};
+    }
+    twoCTAs = boolAttr.getValue();
+  }
+
+  if (parser.parseGreater().failed())
+    return {};
+
+  auto maybeLL =
+      parseLinearLayout(layoutDict, parser, {"row", "col", "block"});
+  if (!maybeLL.has_value())
+    return {};
+  return parser.getChecked<TensorMemoryLinearEncodingAttr>(
+      ctx, std::move(*maybeLL), twoCTAs);
+}
+
+gpu::CGAEncodingAttr TensorMemoryLinearEncodingAttr::getCGALayout() const {
+  auto ctx = getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!llvm::is_contained(getLinearLayout().getInDimNames(), kBlock))
+    return CGAEncodingAttr::get1CTALayout(ctx, getRank());
+  auto splitNum =
+      basesPerDimImpl(getLinearLayout().getBases(), kBlock, getRank(),
+                      /*skipBroadcast=*/false);
+  return CGAEncodingAttr::get(ctx,
+                              linearToCGAEncodingLayout(getLinearLayout(),
+                                                        splitNum));
+}
+
 LogicalResult TensorMemoryScalesEncodingAttr::verify(
     function_ref<InFlightDiagnostic()> emitError,
     gpu::CGAEncodingAttr cgaLayout) {
@@ -505,6 +1113,203 @@ TensorDescIm2ColType::verify(function_ref<InFlightDiagnostic()> emitError,
 }
 
 namespace {
+class TritonNvidiaGPUInferLayoutInterface
+    : public triton::DialectInferLayoutInterface {
+public:
+  using DialectInferLayoutInterface::DialectInferLayoutInterface;
+
+  LogicalResult
+  inferReduceOpEncoding(Attribute operandEncoding, unsigned axis,
+                        Attribute &resultEncoding,
+                        std::optional<Location> loc) const override {
+    return getDelegate()->inferReduceOpEncoding(operandEncoding, axis,
+                                                resultEncoding, loc);
+  }
+
+  LogicalResult
+  inferTransOpEncoding(Attribute operandEncoding, ArrayRef<int64_t> shape,
+                       ArrayRef<int32_t> order, Attribute &resultEncoding,
+                       std::optional<Location> loc) const override {
+    if (isTensorMemoryEncoding(operandEncoding) &&
+        !isa<TensorMemoryScalesEncodingAttr>(operandEncoding)) {
+      if (triton::isIota(order)) {
+        resultEncoding = operandEncoding;
+        return success();
+      }
+      std::string error;
+      auto canonicalAttr =
+          tryGetCanonicalTensorMemoryEncoding(shape, operandEncoding, &error);
+      if (!canonicalAttr) {
+        return emitOptionalError(loc, error);
+      }
+      auto canonical =
+          cast<TensorMemoryLinearEncodingAttr>(*canonicalAttr);
+      if (canonical.getRank() != order.size()) {
+        return emitOptionalError(
+            loc, "TMEM transpose rank does not match the TMEM layout rank");
+      }
+      std::string transposeError;
+      auto result =
+          tryMakeTensorMemoryLinearEncoding(getDialect()->getContext(),
+                                            transposeLinearLayout(
+                                                canonical.getLinearLayout(),
+                                                order),
+                                            canonical.getTwoCTAs(),
+                                            &transposeError);
+      if (!result) {
+        return emitOptionalError(
+            loc, "TMEM transpose produced an invalid tensor memory layout: ",
+            transposeError);
+      }
+      resultEncoding = *result;
+      return success();
+    }
+    return getDelegate()->inferTransOpEncoding(operandEncoding, shape, order,
+                                               resultEncoding, loc);
+  }
+
+  LogicalResult
+  inferExpandDimsOpEncoding(Attribute operandEncoding, unsigned axis,
+                            Attribute &resultEncoding,
+                            std::optional<Location> loc) const override {
+    return getDelegate()->inferExpandDimsOpEncoding(operandEncoding, axis,
+                                                    resultEncoding, loc);
+  }
+
+  LogicalResult
+  inferDotOpEncoding(Attribute operandEncoding, unsigned opIdx,
+                     Attribute retEncoding,
+                     std::optional<Location> loc) const override {
+    return getDelegate()->inferDotOpEncoding(operandEncoding, opIdx,
+                                             retEncoding, loc);
+  }
+
+  LogicalResult
+  inferReshapeOpEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
+                         ArrayRef<int64_t> dstShape, Attribute &dstEnc,
+                         std::optional<Location> loc) const override {
+    if (isTensorMemoryEncoding(srcEnc) &&
+        !isa<TensorMemoryScalesEncodingAttr>(srcEnc)) {
+      if (product(srcShape) != product(dstShape)) {
+        return emitOptionalError(loc, "numel of dst shape does not match "
+                                      "numel of src shape");
+      }
+      std::string error;
+      auto canonicalAttr =
+          tryGetCanonicalTensorMemoryEncoding(srcShape, srcEnc, &error);
+      if (!canonicalAttr) {
+        return emitOptionalError(loc, error);
+      }
+      auto canonical =
+          cast<TensorMemoryLinearEncodingAttr>(*canonicalAttr);
+      if (canonical.getRank() != srcShape.size() ||
+          canonical.getRank() != dstShape.size()) {
+        return emitOptionalError(
+            loc, "TMEM reshape requires the descriptor rank to match the TMEM "
+                 "layout rank");
+      }
+      std::string reshapeError;
+      auto result = tryMakeTensorMemoryLinearEncoding(
+          getDialect()->getContext(),
+          reshapeLayout(getDialect()->getContext(), canonical.getLinearLayout(),
+                        dstShape),
+          canonical.getTwoCTAs(), &reshapeError);
+      if (!result) {
+        return emitOptionalError(
+            loc, "TMEM reshape produced an invalid tensor memory layout: ",
+            reshapeError);
+      }
+      dstEnc = *result;
+      return success();
+    }
+    return getDelegate()->inferReshapeOpEncoding(srcShape, srcEnc, dstShape,
+                                                 dstEnc, loc);
+  }
+
+  LogicalResult
+  verifyLayoutsAreEqual(ArrayRef<int64_t> shape, Attribute expected,
+                        Attribute got,
+                        std::optional<Location> loc) const override {
+    if (expected == got)
+      return success();
+    if (!expected || !got)
+      return failure();
+
+    bool expectedTMem = isTensorMemoryEncoding(expected);
+    bool gotTMem = isTensorMemoryEncoding(got);
+    if (expectedTMem || gotTMem) {
+      if (!(expectedTMem && gotTMem)) {
+        return emitOptionalError(loc, "Expected result encoding ", expected,
+                                 " but was ", got);
+      }
+      if (isa<TensorMemoryScalesEncodingAttr>(expected) ||
+          isa<TensorMemoryScalesEncodingAttr>(got)) {
+        return emitOptionalError(loc, "Expected result encoding ", expected,
+                                 " but was ", got);
+      }
+      std::string expectedError;
+      auto expectedCanonical =
+          tryGetCanonicalTensorMemoryEncoding(shape, expected, &expectedError);
+      if (!expectedCanonical)
+        return emitOptionalError(loc, expectedError);
+      std::string gotError;
+      auto gotCanonical =
+          tryGetCanonicalTensorMemoryEncoding(shape, got, &gotError);
+      if (!gotCanonical)
+        return emitOptionalError(loc, gotError);
+      if (*expectedCanonical == *gotCanonical) {
+        return success();
+      }
+      return emitOptionalError(loc, "Expected result encoding ", expected,
+                               " but was ", got);
+    }
+
+    return getDelegate()->verifyLayoutsAreEqual(shape, expected, got, loc);
+  }
+
+  LogicalResult
+  inferDefaultJoinOpEncoding(Attribute srcEnc, Attribute &dstEnc,
+                             ArrayRef<int64_t> shape,
+                             std::optional<Location> loc) const override {
+    return getDelegate()->inferDefaultJoinOpEncoding(srcEnc, dstEnc, shape,
+                                                     loc);
+  }
+
+  LogicalResult
+  inferSplitOpEncoding(Attribute srcEnc, Attribute &dstEnc,
+                       ArrayRef<int64_t> shape,
+                       std::optional<Location> loc) const override {
+    return getDelegate()->inferSplitOpEncoding(srcEnc, dstEnc, shape, loc);
+  }
+
+  LogicalResult
+  verifyDotOpEncodingCompatibility(Operation *op, Attribute operandEncodingA,
+                                   Attribute operandEncodingB) const override {
+    return getDelegate()->verifyDotOpEncodingCompatibility(op,
+                                                           operandEncodingA,
+                                                           operandEncodingB);
+  }
+
+  LogicalResult
+  inferFp4ToFpOpEncoding(ArrayRef<int64_t> shape, int axis, Attribute inEnc,
+                         Attribute &outEnc, bool fwdInference,
+                         std::optional<Location> loc) const override {
+    return getDelegate()->inferFp4ToFpOpEncoding(shape, axis, inEnc, outEnc,
+                                                 fwdInference, loc);
+  }
+
+private:
+  const triton::DialectInferLayoutInterface *getDelegate() const {
+    Dialect *dialect =
+        getDialect()->getContext()->getOrLoadDialect<triton::gpu::TritonGPUDialect>();
+    auto *inferLayoutInterface =
+        dyn_cast<triton::DialectInferLayoutInterface>(dialect);
+    assert(inferLayoutInterface &&
+           "Could not access TritonGPU layout inference interface.");
+    return inferLayoutInterface;
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Verify Tensor/MemDesc Layout Interface
 //===----------------------------------------------------------------------===//
@@ -552,6 +1357,10 @@ public:
       os << "tmem";
       return AliasResult::FinalAlias;
     }
+    if (mlir::isa<TensorMemoryLinearEncodingAttr>(attr)) {
+      os << "tmem_linear";
+      return AliasResult::FinalAlias;
+    }
     if (mlir::isa<TensorMemoryScalesEncodingAttr>(attr)) {
       os << "tmem_scales";
       return AliasResult::FinalAlias;
@@ -576,7 +1385,8 @@ void TritonNvidiaGPUDialect::initialize() {
 #define GET_TYPEDEF_LIST
 #include "triton/Dialect/TritonNvidiaGPU/IR/Types.cpp.inc"
       >();
-  addInterfaces<TritonNvidiaGPUVerifyTensorLayoutInterface>();
+  addInterfaces<TritonNvidiaGPUInferLayoutInterface,
+                TritonNvidiaGPUVerifyTensorLayoutInterface>();
   addInterfaces<TritonGPUOpAsmInterface>();
   addInterfaces<TritonInlinerInterface>();
 }

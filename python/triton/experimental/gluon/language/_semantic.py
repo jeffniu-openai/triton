@@ -46,7 +46,9 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
         atom_variant,
     )
     _check(layout_obj is not None,
-           lambda: f"TMEM layout '{atom_variant}' unsupported for shape {shape} and num_warps {num_warps}")
+           lambda: f"TMEM layout '{atom_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
+           "try a different instr_variant, reshape or permute so TMEM columns stay contiguous, "
+           "or use a supported TMEM register layout and insert convert_layout explicitly")
 
     if splitn:
         N = shape[1]
@@ -336,15 +338,18 @@ class GluonSemantic(TritonSemantic[TensorTy]):
 
     def to_linear_layout(self, layout, shape):
         from triton.experimental.gluon.language.nvidia.blackwell import (
+            TensorMemoryLinearLayout,
             TensorMemoryLayout,
             TensorMemoryScalesLayout,
         )
         _check(
-            isinstance(layout, (DistributedLayout, SharedLayout, TensorMemoryLayout, TensorMemoryScalesLayout)), lambda:
-            f"Expected a DistributedLayout, SharedLayout, or TensorMemoryLayout or TensorMemoryScalesLayout, got {type(layout)}"
+            isinstance(layout,
+                       (DistributedLayout, SharedLayout, TensorMemoryLayout, TensorMemoryLinearLayout,
+                        TensorMemoryScalesLayout)), lambda:
+            f"Expected a DistributedLayout, SharedLayout, TensorMemoryLayout, TensorMemoryLinearLayout, or TensorMemoryScalesLayout, got {type(layout)}"
         )
 
-        if isinstance(layout, (AutoLayout, DistributedLinearLayout, SharedLinearLayout)):
+        if isinstance(layout, (AutoLayout, DistributedLinearLayout, SharedLinearLayout, TensorMemoryLinearLayout)):
             return ttgl.constexpr(layout)
 
         return ttgl.constexpr(self.builder.to_linear_layout(layout._to_ir(self.builder), shape))
@@ -362,32 +367,57 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         res_ty = ttgl.distributed_type(src_ty.element_ty, src_ty.shape, layout)
         return self.tensor(handle, res_ty)
 
+    @staticmethod
+    def _memdesc_constructors(mem_desc):
+        if isinstance(mem_desc, ttgl.shared_memory_descriptor):
+            return ttgl.shared_memory_descriptor_type, ttgl.shared_memory_descriptor, (SharedLayout, ), "SharedLayout"
+
+        from triton.experimental.gluon.language.nvidia.blackwell import (
+            TensorMemoryLayout,
+            TensorMemoryLinearLayout,
+            TensorMemoryScalesLayout,
+            tensor_memory_descriptor,
+            tensor_memory_descriptor_type,
+        )
+        if isinstance(mem_desc, tensor_memory_descriptor):
+            return (
+                tensor_memory_descriptor_type,
+                tensor_memory_descriptor,
+                (TensorMemoryLayout, TensorMemoryLinearLayout, TensorMemoryScalesLayout),
+                "TensorMemoryLayout, TensorMemoryLinearLayout, or TensorMemoryScalesLayout",
+            )
+        raise TypeError(f"expected a shared or tensor memory descriptor but got {type(mem_desc)}")
+
     def memdesc_slice(self, mem_desc, start, length, dim):
         _check(isinstance(start, int), lambda: f"expected 'start' to be an int but got {start}")
         _check(isinstance(length, int), lambda: f"expected 'length' to be an int but got {length}")
         _check(isinstance(dim, int), lambda: f"expected 'dim' to be an int but got {dim}")
+        desc_ty, desc_val, _, _ = self._memdesc_constructors(mem_desc)
         offsets = [0] * mem_desc.rank
         offsets[dim] = start
         shape = list(mem_desc.shape)
         shape[dim] = length
         layout = mem_desc.layout
-        ty = ttgl.shared_memory_descriptor_type(mem_desc.dtype, shape, layout, mem_desc.type.alloc_shape)
+        ty = desc_ty(mem_desc.dtype, shape, layout, mem_desc.type.alloc_shape)
         builder = self.builder
         handle = builder.create_memdesc_subslice(ty.to_ir(builder), mem_desc.handle, offsets)
-        return ttgl.shared_memory_descriptor(handle, **ty.__dict__)
+        return desc_val(handle, **ty.__dict__)
 
     def memdesc_index(self, mem_desc, index):
+        desc_ty, desc_val, _, _ = self._memdesc_constructors(mem_desc)
         index = self.to_tensor(index)
         _check(index.type == ttgl.int32, lambda: f"expected 'index' to be int32 but got {index.type}")
         shape = mem_desc.shape[1:]
-        index = self.to_tensor(index).handle
+        index = index.handle
         layout = mem_desc.layout
-        ty = ttgl.shared_memory_descriptor_type(mem_desc.dtype, shape, layout, shape)
+        alloc_shape = list(mem_desc.type.alloc_shape[1:])
+        ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
         builder = self.builder
         handle = builder.create_memdesc_index(ty.to_ir(builder), mem_desc.handle, index)
-        return ttgl.shared_memory_descriptor(handle, **ty.__dict__)
+        return desc_val(handle, **ty.__dict__)
 
     def memdesc_trans(self, mem_desc, order):
+        _, desc_val, _, _ = self._memdesc_constructors(mem_desc)
         _check(_is_int_list(order), lambda: f"all elements of 'order' must be integers but got {order}")
         _check(
             len(order) == len(mem_desc.shape),
@@ -400,10 +430,10 @@ class GluonSemantic(TritonSemantic[TensorTy]):
 
         handle = self.builder.create_memdesc_trans(mem_desc.handle, order)
         layout = self.builder.get_gluon_layout_from_memdesc(handle)
-        return ttgl.shared_memory_descriptor(handle, element_ty=mem_desc.dtype, shape=shape,
-                                             alloc_shape=new_alloc_shape, layout=layout)
+        return desc_val(handle, element_ty=mem_desc.dtype, shape=shape, alloc_shape=new_alloc_shape, layout=layout)
 
     def memdesc_reshape(self, mem_desc, shape):
+        _, desc_val, _, _ = self._memdesc_constructors(mem_desc)
         _check(_is_int_list(shape), lambda: f"all elements of 'shape' must be integers but got {shape}")
         _check(
             math.prod(shape) == math.prod(mem_desc.shape),
@@ -417,7 +447,7 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         prefix_len = len(alloc_shape) - mem_desc.rank
         new_alloc_shape = alloc_shape[:prefix_len] + list(shape)
 
-        return ttgl.shared_memory_descriptor(
+        return desc_val(
             handle,
             element_ty=mem_desc.dtype,
             shape=shape,
@@ -426,13 +456,13 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         )
 
     def memdesc_reinterpret(self, mem_desc, dtype, shape, layout):
+        desc_ty, desc_val, allowed_layouts, allowed_layout_names = self._memdesc_constructors(mem_desc)
         _check(isinstance(dtype, ttgl.dtype), lambda: f"expected 'dtype' to be a dtype but got {dtype}")
         _check(_is_int_list(shape), lambda: f"all elements of 'shape' must be integers but got {shape}")
-        _check(isinstance(layout, ttgl.SharedLayout),
-               lambda: f"expected 'layout' to be a SharedLayout but got {layout}")
-        ty = ttgl.shared_memory_descriptor_type(dtype, shape, layout, shape)
+        _check(isinstance(layout, allowed_layouts), lambda: f"expected 'layout' to be {allowed_layout_names} but got {layout}")
+        ty = desc_ty(dtype, shape, layout, shape)
         handle = self.builder.create_memdesc_reinterpret(ty.to_ir(self.builder), mem_desc.handle)
-        return ttgl.shared_memory_descriptor(handle, **ty.__dict__)
+        return desc_val(handle, **ty.__dict__)
 
     def wrap_tensor(self, x, scalar_ty, ret_shape, layout):
         if ret_shape:

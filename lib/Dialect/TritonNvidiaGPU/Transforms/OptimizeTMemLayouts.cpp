@@ -265,9 +265,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMStoreOp tmemStoreOp,
                                 PatternRewriter &rewriter) const override {
-    auto tmemEnc = dyn_cast<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
-        tmemStoreOp.getDst().getType().getEncoding());
-    if (!tmemEnc)
+    auto tmemEnc = tmemStoreOp.getDst().getType().getEncoding();
+    if (!triton::nvidia_gpu::isTensorMemoryEncoding(tmemEnc) ||
+        isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(tmemEnc))
       return failure();
     int numWarps = ttg::lookupNumWarps(tmemStoreOp);
     // Compute the alternative layout.
@@ -330,9 +330,9 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp tmemLoadOp,
                                 PatternRewriter &rewriter) const override {
-    auto tmemEnc = dyn_cast<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
-        tmemLoadOp.getSrc().getType().getEncoding());
-    if (!tmemEnc)
+    auto tmemEnc = tmemLoadOp.getSrc().getType().getEncoding();
+    if (!triton::nvidia_gpu::isTensorMemoryEncoding(tmemEnc) ||
+        isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(tmemEnc))
       return failure();
     int numWarps = ttg::lookupNumWarps(tmemLoadOp);
     auto oldType = tmemLoadOp.getType();

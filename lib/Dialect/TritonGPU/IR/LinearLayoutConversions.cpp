@@ -1,3 +1,5 @@
+#include <functional>
+#include <numeric>
 #include <vector>
 
 #include "triton/Dialect/Triton/IR/Utility.h"
@@ -16,6 +18,7 @@
 #include "llvm/Support/MathExtras.h"
 
 using mlir::triton::nvidia_gpu::TensorMemoryEncodingAttr;
+using mlir::triton::nvidia_gpu::TensorMemoryLinearEncodingAttr;
 using mlir::triton::nvidia_gpu::TensorMemoryScalesEncodingAttr;
 
 namespace mlir::triton::gpu {
@@ -1019,8 +1022,10 @@ LinearLayout SliceEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
                       llvm::to_vector(sliceLL.getOutDimNames()));
 }
 
-LinearLayout tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
-                                        TensorMemoryEncodingAttr encoding) {
+std::optional<LinearLayout>
+tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
+                           TensorMemoryEncodingAttr encoding,
+                           std::string *error) {
   // [Zeros in TMEM LinearLayouts]
   // If there is a zero in bases rows=32,64 this means that there is
   // broadcasting, i.e. the same tensor element is duplicated in different
@@ -1030,7 +1035,15 @@ LinearLayout tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
   // We model packed layouts as having the rows/cols dimensions of bitWidth=16
   // This means that a layout with unpacked=True is the same as one with
   // unpacked=False
-  assert(shape.size() == 2);
+  auto setError = [&](const Twine &msg) {
+    if (error != nullptr)
+      *error = msg.str();
+    return std::nullopt;
+  };
+  if (shape.size() != 2) {
+    return setError("expected a 2D tensor memory shape but got " +
+                    Twine(shape.size()) + " dimensions");
+  }
   auto *ctx = encoding.getContext();
   auto kRow = S("row");
   auto kCol = S("col");
@@ -1040,11 +1053,17 @@ LinearLayout tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
   bool isM64TwoCTA = encoding.getBlockM() == 64 && encoding.getTwoCTAs();
 
   auto shapePerCTA = getShapePerCTA(cgaLayout.getCTASplitNum(), shape);
-  assert(shapePerCTA.size() == 2);
+  if (shapePerCTA.size() != 2) {
+    return setError("expected a rank-2 per-CTA tensor memory shape but got " +
+                    Twine(shapePerCTA.size()) + " dimensions");
+  }
 
   auto blockM = encoding.getBlockM();
   auto blockN = std::min<int32_t>(encoding.getBlockN(), shapePerCTA[1]);
-  assert(blockM == 64 || blockM == 128);
+  if (blockM != 64 && blockM != 128) {
+    return setError("unsupported legacy tensor memory blockM=" + Twine(blockM) +
+                    "; expected 64 or 128");
+  }
   LinearLayout tile =
       LinearLayout::zeros1D(encoding.getColStride(), kCol, dims[1]);
   if (blockM == 64 && !encoding.getTwoCTAs()) {
@@ -1061,25 +1080,73 @@ LinearLayout tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
     }
     bases[kRow].push_back({16, 0});
     bases[kRow].push_back({32, 0});
-    tile = LinearLayout(std::move(bases), dims);
+    std::string layoutError;
+    auto maybeTile = LinearLayout::tryCreate(std::move(bases), dims,
+                                             /*requireSurjective=*/true,
+                                             &layoutError);
+    if (!maybeTile)
+      return setError(layoutError);
+    tile = *maybeTile;
   } else {
     tile *= LinearLayout::identity1D(blockM, kRow, dims[0]) *
             LinearLayout::identity1D(blockN, kCol, dims[1]);
     if (isM64TwoCTA) {
       auto bases = tile.getBases();
-      bases[kRow].push_back(bases[kCol].back());
-      bases[kCol].pop_back();
-      tile = LinearLayout(std::move(bases), tile.getOutDims(),
-                          tile.isSurjective());
+      auto colIt = bases.find(kCol);
+      if (colIt == bases.end() || colIt->second.empty()) {
+        return setError("legacy twoCTA blockM=64 TMEM layout requires at "
+                        "least one column basis");
+      }
+      bases[kRow].push_back(colIt->second.back());
+      colIt->second.pop_back();
+      std::string layoutError;
+      auto maybeTile = LinearLayout::tryCreate(
+          std::move(bases), tile.getOutDims(),
+          /*requireSurjective=*/tile.isSurjective(), &layoutError);
+      if (!maybeTile)
+        return setError(layoutError);
+      tile = *maybeTile;
     }
   }
-  auto repsM = shapePerCTA[0] / tile.getOutDimSize(dims[0]);
-  auto repsN = shapePerCTA[1] / tile.getOutDimSize(dims[1]);
-  assert(repsM >= 1 && repsN >= 1);
+  auto tileM = tile.getOutDimSize(dims[0]);
+  auto tileN = tile.getOutDimSize(dims[1]);
+  if (shapePerCTA[0] < tileM || shapePerCTA[1] < tileN) {
+    return setError("shape per CTA " + Twine(shapePerCTA[0]) + "x" +
+                    Twine(shapePerCTA[1]) +
+                    " is smaller than the legacy TMEM tile " + Twine(tileM) +
+                    "x" + Twine(tileN));
+  }
+  if (shapePerCTA[0] % tileM != 0 || shapePerCTA[1] % tileN != 0) {
+    return setError("shape per CTA " + Twine(shapePerCTA[0]) + "x" +
+                    Twine(shapePerCTA[1]) +
+                    " is not an integer multiple of the legacy TMEM tile " +
+                    Twine(tileM) + "x" + Twine(tileN));
+  }
+  auto repsM = shapePerCTA[0] / tileM;
+  auto repsN = shapePerCTA[1] / tileN;
+  if (!llvm::isPowerOf2_32(repsM) || !llvm::isPowerOf2_32(repsN)) {
+    return setError("shape per CTA " + Twine(shapePerCTA[0]) + "x" +
+                    Twine(shapePerCTA[1]) +
+                    " expands the legacy TMEM tile by non-power-of-two "
+                    "factors " + Twine(repsM) + "x" + Twine(repsN) +
+                    "; choose #ttng.tensor_memory_linear for this layout or "
+                    "adjust the TMEM tile/CGA factors");
+  }
   // Broadcast the remaining dimensions in order [0, 1]
   tile = tile * LinearLayout::identity1D(repsM, kCol, dims[0]) *
          LinearLayout::identity1D(repsN, kCol, dims[1]);
   tile *= cgaLL;
+  auto expectedElems = std::accumulate(shape.begin(), shape.end(), int64_t{1},
+                                       std::multiplies<int64_t>());
+  auto actualElems = static_cast<int64_t>(tile.getTotalOutDimSize());
+  if (actualElems != expectedElems) {
+    return setError("legacy tensor memory layout expands to " +
+                    Twine(actualElems) + " logical elements for requested "
+                    "shape " + Twine(shape[0]) + "x" + Twine(shape[1]) +
+                    " (" + Twine(expectedElems) +
+                    " elements); choose #ttng.tensor_memory_linear for this "
+                    "layout or adjust the TMEM tile/CGA factors");
+  }
   return tile;
 }
 
@@ -1203,9 +1270,13 @@ LinearLayout TritonGPUDialect::toLinearLayout(ArrayRef<int64_t> shape,
              "toLinearLayout does not support partitioned layouts wrapping "
              "padded layouts; use paddedLinearLayout instead");
       result = partitionedSharedToLinearLayout(shape, partitioned);
+    } else if (auto tensorMemoryLinear =
+                   dyn_cast<TensorMemoryLinearEncodingAttr>(layout)) {
+      result = tensorMemoryLinear.getLinearLayout();
     } else if (auto tensorMemoryEncoding =
                    dyn_cast<TensorMemoryEncodingAttr>(layout)) {
-      result = tensorMemoryToLinearLayout(shape, tensorMemoryEncoding);
+      result = nvidia_gpu::getCanonicalTensorMemoryLinearLayout(shape,
+                                                                tensorMemoryEncoding);
     } else if (auto tensorMemoryScalesEncoding =
                    dyn_cast<TensorMemoryScalesEncodingAttr>(layout)) {
       result =
@@ -1224,6 +1295,10 @@ LinearLayout toLinearLayout(RankedTensorType type) {
 }
 
 LinearLayout toLinearLayout(MemDescType type) {
+  if (isa<nvidia_gpu::TensorMemoryEncodingAttr,
+          nvidia_gpu::TensorMemoryLinearEncodingAttr>(type.getEncoding())) {
+    return nvidia_gpu::getCanonicalTensorMemoryLinearLayout(type);
+  }
   // Pass in the allocation shape. Then when using invertAndCompose it will
   // trim the allocationShape to the shape if they are different.
   // We also remove the first dimension of the allocationShape if there was a

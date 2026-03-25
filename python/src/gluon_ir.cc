@@ -131,6 +131,7 @@ struct GluonLayouts {
   py::handle NVMMADistributedLayout;
   py::handle TensorMemoryScalesLayout;
   py::handle TensorMemoryLayout;
+  py::handle TensorMemoryLinearLayout;
   py::handle NVMMASharedLayout;
   py::handle SwizzledSharedLayout;
   py::handle SharedLinearLayout;
@@ -159,6 +160,9 @@ struct GluonLayouts {
         py::object(blackwellLayouts.attr("TensorMemoryScalesLayout")).release();
     TensorMemoryLayout =
         py::object(blackwellLayouts.attr("TensorMemoryLayout")).release();
+    TensorMemoryLinearLayout =
+        py::object(blackwellLayouts.attr("TensorMemoryLinearLayout"))
+            .release();
     NVMMASharedLayout = py::object(layouts.attr("NVMMASharedLayout")).release();
     SwizzledSharedLayout =
         py::object(layouts.attr("SwizzledSharedLayout")).release();
@@ -297,6 +301,22 @@ py::object layoutToGluon(Attribute layout) {
                  dyn_cast<ttng::TensorMemoryScalesEncodingAttr>(layout)) {
     return layouts.TensorMemoryScalesLayout(
         getCgaLayoutBases(tmemScales.getCGALayout()));
+  } else if (auto tmemLinear =
+                 dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(layout)) {
+    auto ll = tmemLinear.getLinearLayout();
+    auto ctx = layout.getContext();
+    auto bases = ll.getBases();
+    auto rowBases = bases[mlir::StringAttr::get(ctx, "row")];
+    auto colBases = bases[mlir::StringAttr::get(ctx, "col")];
+    auto blockBases = bases[mlir::StringAttr::get(ctx, "block")];
+    auto outDims = ll.getOutDims();
+    std::vector<int64_t> shape;
+    shape.reserve(outDims.size());
+    for (auto &od : outDims)
+      shape.push_back(od.second);
+    return layouts.TensorMemoryLinearLayout(rowBases, colBases, shape,
+                                            blockBases,
+                                            tmemLinear.getTwoCTAs());
   } else if (auto tmem = dyn_cast<ttng::TensorMemoryEncodingAttr>(layout)) {
     return layouts.TensorMemoryLayout(
         std::vector<unsigned>{tmem.getBlockM(), tmem.getBlockN()},
@@ -347,6 +367,20 @@ void init_gluon_ir(py::module &&m) {
               std::vector<int64_t> &shape, Attribute layout,
               std::vector<int64_t> &allocShape) -> Type {
              auto ctx = self.getContext();
+             if (ttng::isTensorMemoryEncoding(layout)) {
+               auto rank = cast<ttg::LayoutEncodingTrait>(layout).getRank();
+               std::vector<int64_t> canonicalShape;
+               auto *shapeSrc = &shape;
+               if (allocShape.size() >= static_cast<size_t>(rank))
+                 shapeSrc = &allocShape;
+               canonicalShape.assign(shapeSrc->end() - rank, shapeSrc->end());
+               std::string error;
+               auto canonicalLayout = ttng::tryGetCanonicalTensorMemoryEncoding(
+                   canonicalShape, layout, &error);
+               if (!canonicalLayout)
+                 throw std::runtime_error(error);
+               layout = *canonicalLayout;
+             }
              return self.getChecked<ttg::MemDescType>(
                  shape, elementType, layout,
                  ttng::TensorMemorySpaceAttr::get(ctx),
@@ -396,6 +430,26 @@ void init_gluon_ir(py::module &&m) {
            [](GluonOpBuilder &self, Attribute layout,
               std::vector<int64_t> &shape) -> py::object {
              auto ctx = self.getContext();
+
+             if (ttng::isTensorMemoryEncoding(layout)) {
+               std::string error;
+               auto maybeLinear =
+                   ttng::tryGetCanonicalTensorMemoryLinearLayout(shape, layout,
+                                                                 &error);
+               if (!maybeLinear)
+                 throw std::runtime_error(error);
+               bool twoCTAs = false;
+               if (auto linear =
+                       dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(layout))
+                 twoCTAs = linear.getTwoCTAs();
+               if (auto legacy = dyn_cast<ttng::TensorMemoryEncodingAttr>(
+                       layout))
+                 twoCTAs = legacy.getTwoCTAs();
+               auto attr = self.getChecked<ttng::TensorMemoryLinearEncodingAttr>(
+                   ctx, std::move(*maybeLinear), twoCTAs);
+               return layoutToGluon(attr);
+             }
+
              auto linearLayout = ttg::toLinearLayout(shape, layout);
 
              if (isa<ttg::DistributedEncodingTrait>(layout)) {
@@ -410,36 +464,7 @@ void init_gluon_ir(py::module &&m) {
                    ctx, std::move(linearLayout), alignment);
                return layoutToGluon(attr);
              }
-
-             // TensorMemory encodings: keep the LinearLayout but wrap as
-             // print-only Python object carrying row/col bases -> dim0/dim1.
-             auto inNamesRange = linearLayout.getInDimNames();
-             auto inNames = llvm::to_vector(inNamesRange);
-             bool isTmemLayout =
-                 ((inNames.size() == 2 || inNames.size() == 3) &&
-                  inNames[0].str() == "row" && inNames[1].str() == "col" &&
-                  (inNames.size() == 2 || inNames[2].str() == "block"));
-             if (!isTmemLayout)
-               throw std::invalid_argument(
-                   "Unsupported layout in to_linear_layout");
-
-             // Build Py _TensorMemoryLinearLayout(row_bases, col_bases, shape,
-             // repr)
-             py::object tmemCls =
-                 py::module::import(
-                     "triton.experimental.gluon.language.nvidia.blackwell")
-                     .attr("_TensorMemoryLinearLayout");
-             auto bases = linearLayout.getBases();
-             auto rowBases = bases[mlir::StringAttr::get(ctx, "row")];
-             auto colBases = bases[mlir::StringAttr::get(ctx, "col")];
-             auto outDims = linearLayout.getOutDims();
-             std::vector<int> shapeVec;
-             for (auto &od : outDims)
-               shapeVec.push_back(od.second);
-
-             py::object pyObj = tmemCls(py::cast(rowBases), py::cast(colBases),
-                                        py::cast(shapeVec));
-             return pyObj;
+             throw std::invalid_argument("Unsupported layout in to_linear_layout");
            })
       .def("get_dot_operand_layout",
            [](GluonOpBuilder &self, unsigned opIdx, Attribute parent,
@@ -566,6 +591,47 @@ void init_gluon_ir(py::module &&m) {
              auto cgaLayout = buildCgaLayoutAttr(ctx, cgaBases, /*rank=*/2);
              return self.getChecked<ttng::TensorMemoryEncodingAttr>(
                  ctx, block[0], block[1], colStride, cgaLayout, twoCTAs);
+           })
+      .def("get_tensor_memory_linear_layout",
+           [](GluonOpBuilder &self, std::vector<std::vector<int32_t>> &rowBases,
+              std::vector<std::vector<int32_t>> &colBases,
+              std::vector<std::vector<int32_t>> &blockBases,
+              std::vector<int64_t> &shape, bool twoCTAs) -> Attribute {
+             auto ctx = self.getContext();
+             auto validateBases = [&](llvm::StringRef inDimName,
+                                      const std::vector<std::vector<int32_t>> &bases) {
+               for (const auto &basis : bases) {
+                 check(basis.size() == shape.size(),
+                       "basis rank must match the tensor-memory layout rank");
+                 for (const auto &[idx, value] : llvm::enumerate(basis)) {
+                   if (value < 0 || static_cast<int64_t>(value) >= shape[idx]) {
+                     throw py::value_error(
+                         ("Invalid basis " + std::to_string(value) +
+                          " for in-dim '" + inDimName.str() +
+                          "' and out-dim 'dim" + std::to_string(idx) +
+                          "'. Basis must be non-negative and less than the "
+                          "out-dim size.")
+                             .c_str());
+                   }
+                 }
+               }
+             };
+             validateBases("row", rowBases);
+             validateBases("col", colBases);
+             validateBases("block", blockBases);
+             auto kRow = mlir::StringAttr::get(ctx, "row");
+             auto kCol = mlir::StringAttr::get(ctx, "col");
+             auto kBlock = mlir::StringAttr::get(ctx, "block");
+             auto outDims = tt::standardOutDimPairs(ctx, shape);
+             tt::LinearLayout::BasesT bases;
+             bases[kRow] = rowBases;
+             bases[kCol] = colBases;
+             if (!blockBases.empty())
+               bases[kBlock] = blockBases;
+             auto ll = tt::LinearLayout(std::move(bases), outDims,
+                                        /*requiresSurjective=*/false);
+             return self.getChecked<ttng::TensorMemoryLinearEncodingAttr>(
+                 ctx, std::move(ll), twoCTAs);
            })
       .def("get_tensor_memory_scales_layout",
            [](GluonOpBuilder &self,
@@ -739,7 +805,15 @@ void init_gluon_ir(py::module &&m) {
       .def("create_memdesc_reshape",
            [](GluonOpBuilder &self, Value src,
               std::vector<int64_t> &shape) -> Value {
-             return self.create<ttg::MemDescReshapeOp>(src, shape);
+             auto srcTy = cast<ttg::MemDescType>(src.getType());
+             ttg::MemDescType resultTy;
+             if (failed(ttg::MemDescReshapeOp::inferReturnTypes(
+                     self.getContext(), self.getLastLoc(), srcTy, shape,
+                     resultTy))) {
+               throw py::value_error(
+                   "failed to infer TMEM memdesc reshape result type");
+             }
+             return self.create<ttg::MemDescReshapeOp>(resultTy, src);
            })
       .def("create_memdesc_reinterpret",
            [](GluonOpBuilder &self, Type resultType, Value src) -> Value {

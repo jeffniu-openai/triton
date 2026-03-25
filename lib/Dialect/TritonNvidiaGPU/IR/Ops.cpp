@@ -593,30 +593,48 @@ LogicalResult TCGen5MMAOp::verify() {
 
   auto aEnc = getA().getType().getEncoding();
   if (!isa<NVMMASharedEncodingAttr, SharedLinearEncodingAttr,
-           TensorMemoryEncodingAttr>(aEnc))
+           TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc))
     return emitOpError(
         "LHS operand must have a NVMMAShared or TensorMemory encoding");
   auto bEnc = getB().getType().getEncoding();
   if (!isa<NVMMASharedEncodingAttr, SharedLinearEncodingAttr>(bEnc))
     return emitOpError("RHS operand must have a NVMMAShared encoding");
   auto retType = getD().getType();
-  auto retEnc = dyn_cast<TensorMemoryEncodingAttr>(retType.getEncoding());
+  auto emitUnsupportedTMemLayout = [&](StringRef operand, Attribute layout) {
+    return emitOpError() << operand
+                         << " operand must have a MMAv5-compatible tensor "
+                            "memory layout, but got "
+                         << layout
+                         << ". Use a canonical #ttng.tensor_memory_linear "
+                            "equivalent to a supported "
+                            "#ttng.tensor_memory_encoding, or reshape/permute "
+                            "the descriptor to a supported MMAv5 tile.";
+  };
+  auto aTmemEnc = isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(
+                      aEnc)
+                      ? matchTensorMemoryLegacyEncoding(getA().getType().getShape(),
+                                                        aEnc)
+                      : std::optional<TensorMemoryEncodingAttr>{};
+  if (isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc) &&
+      !aTmemEnc)
+    return emitUnsupportedTMemLayout("LHS", aEnc);
+  auto retEnc = matchTensorMemoryLegacyEncoding(getD().getType());
   if (!retEnc)
-    return emitOpError("Return operand must have a TensorMemory encoding");
+    return emitUnsupportedTMemLayout("return", retType.getEncoding());
 
   // Check colStride of TMEM operands
-  if (auto tmem = dyn_cast<TensorMemoryEncodingAttr>(aEnc)) {
-    if (tmem.getColStride() != 1)
+  if (aTmemEnc) {
+    if (aTmemEnc->getColStride() != 1)
       return emitOpError("The col stride of the LHS operand must be 1");
   }
-  if (retEnc.getColStride() != 32 / retType.getElementTypeBitWidth())
+  if (retEnc->getColStride() != 32 / retType.getElementTypeBitWidth())
     return emitOpError("The col stride of the return operand must be 32 / ")
            << retType.getElementTypeBitWidth() << " but got "
-           << retEnc.getColStride();
+           << retEnc->getColStride();
   // The maximum size of a MMA instruction is 128x256
-  auto ctaShape = getShapePerCTA(retEnc.getCGALayout().getCTASplitNum(),
+  auto ctaShape = getShapePerCTA(retEnc->getCGALayout().getCTASplitNum(),
                                  retType.getShape());
-  auto instrSizeN = std::min<unsigned>(retEnc.getBlockN(), ctaShape[1]);
+  auto instrSizeN = std::min<unsigned>(retEnc->getBlockN(), ctaShape[1]);
   if (instrSizeN > 256)
     return emitOpError("The block size of the return operand must be less than "
                        "or equal to 256");
@@ -669,20 +687,20 @@ LogicalResult TCGen5MMAOp::verify() {
     // right.
     // We could allow with a bit of effort SharedLinearLayouts that did not
     // divide on the right by a CGALayout, but for now we throw a lovely error.
-    auto dCGA = getCGALayout(retEnc).getLinearLayout();
+    auto dCGA = getCGALayout(getD().getType().getEncoding()).getLinearLayout();
     auto nPerCTA = retType.getDimSize(1) / dCGA.getOutDimSize(outDims[1]);
     if (nPerCTA > 256)
       return emitOpError(
           "We don't allow to emit more than one mma instruction along N. "
           "Reduce the block or increase the number of warps or CTAs along N");
   }
-  if (retEnc.getTwoCTAs() != getTwoCtas()) {
+  if (retEnc->getTwoCTAs() != getTwoCtas()) {
     return emitOpError("The returned value's encoding must have twoCTA=")
            << getTwoCtas() << " to be used in a "
            << (getTwoCtas() ? "twoCTA" : "non-twoCTA") << " kernel";
   }
-  if (auto tmemEnc = dyn_cast<TensorMemoryEncodingAttr>(aEnc)) {
-    if (tmemEnc.getTwoCTAs() != getTwoCtas()) {
+  if (aTmemEnc) {
+    if (aTmemEnc->getTwoCTAs() != getTwoCtas()) {
       return emitOpError("The LHS operand's encoding must have twoCTA=")
              << getTwoCtas() << " to be used in a "
              << (getTwoCtas() ? "twoCTA" : "non-twoCTA") << " kernel";
@@ -692,10 +710,17 @@ LogicalResult TCGen5MMAOp::verify() {
   auto aLayout = toLinearLayout(getA().getType());
   auto bLayout = toLinearLayout(getB().getType());
   auto dLayout = toLinearLayout(getD().getType());
-  auto log2nCTAs = dLayout.getInDimSizeLog2(kBlock);
+  auto log2nCTAs = dLayout.hasInDim(kBlock) ? dLayout.getInDimSizeLog2(kBlock)
+                                            : 0;
+  auto getBasisOrZero = [&](const LinearLayout &layout, int idx,
+                            StringAttr outDim) -> int32_t {
+    if (!layout.hasInDim(kBlock))
+      return 0;
+    return layout.getBasis(kBlock, idx, outDim);
+  };
   for (int i = 0; i < log2nCTAs; i++) {
-    std::vector<int32_t> basis = {aLayout.getBasis(kBlock, i, outDims[0]),
-                                  bLayout.getBasis(kBlock, i, outDims[1])};
+    std::vector<int32_t> basis = {getBasisOrZero(aLayout, i, outDims[0]),
+                                  getBasisOrZero(bLayout, i, outDims[1])};
     if (getTwoCtas() && i == 0) {
       basis[1] = 0;
     }
@@ -840,12 +865,16 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   Type dtype = getD().getType().getElementType();
   if (failed(verifyMMADType(*this, atype, btype, dtype)))
     return failure();
-  auto enc = dyn_cast<TensorMemoryEncodingAttr>(getD().getType().getEncoding());
+  auto enc = matchTensorMemoryLegacyEncoding(getD().getType());
   if (!enc) {
-    return emitOpError(
-        "expected accumulator layout to be a TensorMemoryLayout");
+    return emitOpError()
+           << "expected accumulator layout to be MMAv5-compatible tensor "
+              "memory, but got "
+           << getD().getType().getEncoding()
+           << ". Use a canonical #ttng.tensor_memory_linear equivalent to a "
+              "supported #ttng.tensor_memory_encoding.";
   }
-  if (enc.getBlockM() != 128)
+  if (enc->getBlockM() != 128)
     return emitOpError("only supports instruction shape blockM=128");
   return success();
 }
@@ -1023,13 +1052,15 @@ bool TCGen5MMAScaledOp::isAsync() { return getIsAsync(); }
 
 // -- TMEMStoreOp --
 static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
-                                       MemDescType memdesc, StringRef regName) {
+                                       MemDescType memdesc, StringRef regName,
+                                       bool deferLayoutFeasibility = false) {
   if (type.getRank() != 2)
     return op->emitOpError(regName) << " must be a 2D tensor";
   if (!type.getEncoding())
     return success();
+  if (deferLayoutFeasibility)
+    return success();
 
-  auto maxnreg = getContextualMaxNReg(op);
   if (isDistributedLayoutTMemCompatible(op, type, memdesc))
     return success();
 
@@ -1045,14 +1076,15 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
 }
 
 LogicalResult TMEMStoreOp::verify() {
-  if (!isa<triton::nvidia_gpu::TensorMemoryEncodingAttr,
-           TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding()))
+  if (!triton::nvidia_gpu::isTensorMemoryEncoding(
+          getDst().getType().getEncoding()))
     return emitOpError("should use tensor memory encoding.");
   if (!getDst().getType().getMutableMemory()) {
     return emitOpError("Cannot store into an immutable alloc");
   }
   if (failed(verifyTMEMOperand(*this, getSrc().getType(), getDst().getType(),
-                               "source")))
+                               "source",
+                               /*deferLayoutFeasibility=*/true)))
     return failure();
   return triton::gpu::verifyMemoryOpTypes(*this, getSrc().getType(),
                                           getDst().getType());
@@ -1063,10 +1095,12 @@ LogicalResult TMEMLoadOp::verify() {
   if (!isa<triton::nvidia_gpu::TensorMemorySpaceAttr>(
           getSrc().getType().getMemorySpace()))
     return emitOpError("source must be a tensor memory buffer.");
-  if (!isa<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
+  if (!isa<triton::nvidia_gpu::TensorMemoryEncodingAttr,
+           TensorMemoryLinearEncodingAttr>(
           getSrc().getType().getEncoding()))
     return emitOpError("should use tensor memory encoding.");
-  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(), "result")))
+  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(), "result",
+                               /*deferLayoutFeasibility=*/true)))
     return failure();
 
   // Validate reduction-related attributes
@@ -1125,11 +1159,11 @@ LogicalResult TMEMLoadOp::verify() {
 
 // -- TMEMAllocOp --
 LogicalResult TMEMAllocOp::verify() {
-  if (!isa<TensorMemoryEncodingAttr, TensorMemoryScalesEncodingAttr>(
-          getType().getEncoding()))
+  if (!isTensorMemoryEncoding(getType().getEncoding()))
     return emitOpError("should use tensor memory encoding");
   if (getSrc() &&
-      failed(verifyTMEMOperand(*this, getSrc().getType(), getType(), "source")))
+      failed(verifyTMEMOperand(*this, getSrc().getType(), getType(), "source",
+                               /*deferLayoutFeasibility=*/true)))
     return failure();
   return triton::gpu::verifyAllocOp(*this, getSrc(), getType());
 }
@@ -1203,12 +1237,11 @@ LogicalResult TMEMCopyOp::verify() {
       return emitOpError(
           "The source and destination must have the same shape.");
     }
-    auto tmemEnc = dyn_cast<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
-        getDst().getType().getEncoding());
+    auto tmemEnc = matchTensorMemoryLegacyEncoding(dstTy);
     if (!tmemEnc) {
       return emitOpError("Incorrect tmem layout.");
     }
-    if (tmemEnc.getBlockM() != 128) {
+    if (tmemEnc->getBlockM() != 128) {
       return emitOpError("Tmem layout must have blockM=128.");
     }
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() == 0) {
@@ -1229,24 +1262,25 @@ LogicalResult TMEMCopyOp::verify() {
 LogicalResult TMEMSubSliceOp::verify() {
   auto srcTy = cast<triton::gpu::MemDescType>(getSrc().getType());
   auto dstTy = cast<triton::gpu::MemDescType>(getResult().getType());
-  auto encoding = dyn_cast<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
-      srcTy.getEncoding());
-  if (!encoding)
+  std::string srcError;
+  auto srcCanonical = tryGetCanonicalTensorMemoryEncoding(srcTy, &srcError);
+  if (!srcCanonical)
+    return emitOpError() << srcError;
+  auto srcEnc =
+      dyn_cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*srcCanonical);
+  if (!srcEnc)
     return emitOpError("The source must be a tensor memory buffer.");
-  auto dstEncoding = dyn_cast<triton::nvidia_gpu::TensorMemoryEncodingAttr>(
-      dstTy.getEncoding());
-  if (!dstEncoding)
+  std::string dstError;
+  auto dstCanonical = tryGetCanonicalTensorMemoryEncoding(dstTy, &dstError);
+  if (!dstCanonical)
+    return emitOpError() << dstError;
+  auto dstEnc =
+      dyn_cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*dstCanonical);
+  if (!dstEnc)
     return emitOpError("The destination must be a tensor memory buffer.");
-  if (dstEncoding.getBlockM() != encoding.getBlockM() ||
-      dstEncoding.getCGALayout() != encoding.getCGALayout() ||
-      dstEncoding.getColStride() != encoding.getColStride())
-    return emitOpError("The destination must have the same block size and "
-                       "CTASplit size as the source.");
   if (srcTy.getElementType() != dstTy.getElementType())
     return emitOpError(
         "The source and result must have the same element type.");
-  if (srcTy.getEncoding() != dstTy.getEncoding())
-    return emitOpError("The source and result must have the same encoding.");
   if (srcTy.getAllocShape() != dstTy.getAllocShape())
     return emitOpError("The source and result must have the same alloc shape.");
   if (srcTy.getRank() != 2)
@@ -1257,11 +1291,14 @@ LogicalResult TMEMSubSliceOp::verify() {
     return emitOpError("The result must have the same number of rows as the "
                        "source.");
   auto offset = getN();
-  if (offset & (dstTy.getDimSize(1) - 1)) {
-    return emitError("The split offset may not touch the tile");
-  }
-  if (offset >= srcTy.getDimSize(1)) {
+  if (offset < 0 || offset + dstTy.getDimSize(1) > srcTy.getDimSize(1)) {
     return emitError("The split offset may not exceed the source shape");
+  }
+
+  if (srcEnc != dstEnc) {
+    return emitOpError("The destination must preserve the canonical TMEM "
+                       "physical encoding ")
+           << srcEnc << " but got " << dstTy.getEncoding();
   }
 
   return success();
@@ -1272,7 +1309,10 @@ void TMEMSubSliceOp::build(OpBuilder &builder, OperationState &state,
   auto allocTy = cast<triton::gpu::MemDescType>(alloc.getType());
   SmallVector<int64_t> shape(allocTy.getShape());
   shape.back() = size;
-  auto subsliceType = allocTy.cloneWith(shape, allocTy.getElementType());
+  Attribute encoding = getCanonicalTensorMemoryEncoding(allocTy);
+  auto subsliceType = triton::gpu::MemDescType::get(
+      shape, allocTy.getElementType(), encoding, allocTy.getMemorySpace(),
+      allocTy.getMutableMemory(), allocTy.getAllocShape());
   build(builder, state, subsliceType, alloc, offset);
 }
 
