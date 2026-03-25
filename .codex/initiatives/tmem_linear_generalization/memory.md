@@ -263,27 +263,38 @@
     frontiers.
 - Treat undocumented or ambiguous documented families, especially `cp.warpx2`,
   as direct-PTX probe targets until the backend/legalizer boundary is clear.
+- Latest coverage refresh (2026-03-25):
+  - canonical TMEM-linear `ld.red` now has direct GPU coverage in the runtime
+    matrix for `min/max x {abs,no-abs} x {NaN,non-NaN}`;
+  - TMEM LLVMIR lit coverage is green after tightening lifecycle, `cp`,
+    `mma_scaled`, and pointer-math checks;
+  - `cp.warpx2` still has no executable compiler path in the current tree from
+    the bounded subslice search, so it remains a live probe target rather than
+    a passing family.
 
 ## Current Higher-Rank TMEM Status
-- TMEM view inference is no longer on the crash path for
-  `reshape -> slice -> index` compositions.
-  - `memdesc_subslice`, `memdesc_index`, and TMEM reshape inference now rebuild
-    view-local TMEM-linear encodings rather than reusing the parent encoding.
-  - Builder-side TMEM `memdesc_subslice` inference mirrors the IR-side logic so
-    Gluon no longer needs to guess the result type for TMEM views.
-- Shared-memory descriptor semantics were preserved after the TMEM view work.
-  - The temporary regression from narrowing `alloc_shape` for all memdescs has
-    been fixed; only TMEM uses view-local `alloc_shape`.
-- One-CTA higher-rank TMEM positives remain semantically suspect.
-  - The currently executable compositions:
-    - `reshape((2, M, N/2)).slice(dim=0).index(0)`
-    - `reshape((2, M/2, N)).slice(dim=0).index(0)`
-    still update the entire tensor in runtime probes instead of a strict
-    subview.
-  - Treat these as active probe cases, not fully trusted semantic coverage,
-    until the offset/layout semantics are nailed down empirically.
-- Two-CTA MMAv5 higher-rank compositions are currently expected clean
-  negatives.
-  - They diagnose invalid layout / CTA-group mismatch during parsing.
-  - The diagnostic quality still needs improvement because the frontend wraps
-    it as a generic parse `RuntimeError`.
+- Chosen semantic direction is now explicit:
+  - higher-rank TMEM descriptors should use a full-rank
+    `TensorMemoryLinearLayout` that embeds descriptor prefix dims into TMEM
+    `col` high bits;
+  - generic TMEM `slice/index/permute/reshape/reinterpret` then operate on the
+    full-rank encoding;
+  - actual TMEM access ops (`load/store/mma/cp`) remain 2D-only for now, so
+    higher-rank descriptors must be sliced/indexed/reshaped down to a final 2D
+    TMEM view before access.
+- Runtime status after the latest GPU validation:
+  - full-rank rank-3 TMEM descriptors are working end-to-end for
+    `index -> 2D load/store`;
+  - full-rank rank-4 TMEM descriptors are working end-to-end for
+    `slice -> index -> slice -> index -> 2D load/store`;
+  - the same rank-4 path is working for 2-CTA `block_two_ctas` and
+    `mmav5_twocta` layouts as well.
+- The key implementation boundary is now cleaner:
+  - row/col zero-basis stripping is only valid for TMEM view-local encodings;
+    doing it globally breaks semantically meaningful M64 / split-N / legacy
+    MMAv5 families.
+- Current remaining sharp edge:
+  - intermediate higher-rank TMEM views still fail cleanly at
+    `get_reg_layout()/load()/store()` with an actionable 2D-only diagnostic.
+  - This is acceptable for the current landing, but direct higher-rank TMEM
+    access remains future work.

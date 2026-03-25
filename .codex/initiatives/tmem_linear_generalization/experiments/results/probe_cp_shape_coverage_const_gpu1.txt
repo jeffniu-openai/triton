@@ -1,0 +1,3 @@
+cp_128x128b: count=1 opcodes=['tcgen05.cp.cta_group::1.128x128b']
+cp_128x256b: count=1 opcodes=['tcgen05.cp.cta_group::1.128x256b']
+cp_warpx4_32x128b: count=2 opcodes=['tcgen05.cp.cta_group::1.warpx4.32x128b', 'tcgen05.cp.cta_group::1.warpx4.32x128b']

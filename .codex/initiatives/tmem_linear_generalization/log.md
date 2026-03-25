@@ -801,3 +801,190 @@
     - `RuntimeError: error encountered during parsing`
   - Classification:
     - non-crashing, but still below the desired structured diagnostic quality.
+
+## 2026-03-25 (BUG: cp shape coverage probe crashes in GluonResolveAutoEncodingsPass)
+- Reproducer:
+  - `CUDA_VISIBLE_DEVICES=1 python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_shape_coverage.py`
+- Observed behavior:
+  - building the grid tensor via `ttgl.arange` triggers `tt.make_range`
+    failure during `GluonResolveAutoEncodingsPass`.
+  - the pass manager aborts with `PassManager::run failed`, and the probe
+    cannot record any `tcgen05.cp` opcode families for the 128xN shapes.
+- Classification:
+  - `BUG` (pass pipeline cannot handle the aggregated `tt.make_range` usage).
+  - Follow-up: revisit once the auto-encoding resolver can handle these
+    tensors or the probe is refactored to avoid the failing pattern.
+
+## 2026-03-25 (runtime / lowering validation refresh)
+- Added direct GPU coverage for canonical TMEM-linear `ld.red` in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - `test_tmem_runtime_matrix_ld_red_identity_linear_layout`
+  - matrix:
+    - `red_op in {min, max}`
+    - `abs in {false, true}`
+    - `propagate_nan in {none, all}`
+  - validation:
+    - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_identity_linear_layout or ldst_descriptor_compositions or splitn_immediates or cp_no_scales_linear or higher_rank'`
+    - `106 passed, 153 deselected`
+- Refined fpsan MMA coverage to keep only proven-positive layouts in the
+  positive runtime matrix and move unsupported linear 64x64 layouts into the
+  clean-negative path.
+  - validation:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_fpsan.py -k 'tcgen05_mma and not unsupported or tcgen05_mma_scaled and not unsupported'`
+    - `9 passed, 63 deselected`
+- Strengthened LLVMIR lit coverage and refreshed the brittle copy checks:
+  - `test/Conversion/lower_tensor_memory_to_llvm.mlir`
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  - validation:
+    - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/lower_tensor_memory_to_llvm.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - both tests pass.
+
+## 2026-03-25 (GPU1 empirical TMEM/PTX probe sweep: cp families + ld/st gaps)
+- Build baseline:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `ninja: no work to do.`
+- Environment note:
+  - probe scripts that import `python/test/gluon/test_tmem_runtime_matrix.py`
+    must run with `PYTHONPATH=python:.`; otherwise Python can pick the
+    site-packages Triton and fail to import `TensorMemoryLinearLayout`.
+- Ran baseline instruction probe:
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/tmem_instruction_probes.py`
+  - confirmed emitted families:
+    - `ld/st`: `32x32b`, `16x64b`, `16x128b`, `16x256b`, `16x32bx2`
+    - split-N immediates:
+      - `n=2` -> immediate `0`
+      - `n=64` -> immediate `16`
+    - `cp`: `128x256b`, `128x128b`, `warpx4.32x128b`
+    - `mma`: `tcgen05.mma.cta_group::1.kind::f16`
+
+- Added development probe:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/probe_ldst_atom_gap_matrix.py`
+  - purpose: broad runtime+codegen matrix for ld/st atom coverage with
+    PASS/CLEAN_UNSUPPORTED/BUG classification.
+  - run command:
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_ldst_atom_gap_matrix.py`
+  - result summary:
+    - `PASS=15`, `CLEAN_UNSUPPORTED=8`, `BUG=0`, `UNKNOWN_FAIL=0`
+    - PASS includes all expected atom families and split-N forms:
+      - `32x32b`, `16x64b`, `16x128b`, `16x256b`, `16x32bx2`
+    - unsupported frontier in this matrix:
+      - `M=64,N=64` across tested variants
+      - `M=256,N=128` across tested variants
+      - these fail cleanly with:
+        `TMEM layout '<variant>' unsupported for shape [...]`
+  - artifact:
+    - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_ldst_atom_gap_matrix_gpu1.json`
+
+- Added development probe:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_shape_coverage_const.py`
+  - purpose: confirm cp family emission without the known
+    `ttgl.arange`/`tt.make_range` path.
+  - run command:
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_shape_coverage_const.py`
+  - result summary:
+    - `cp_128x128b`: emitted `tcgen05.cp.cta_group::1.128x128b`
+    - `cp_128x256b`: emitted `tcgen05.cp.cta_group::1.128x256b`
+    - `cp_warpx4_32x128b`: emitted two
+      `tcgen05.cp.cta_group::1.warpx4.32x128b`
+  - artifact:
+    - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_shape_coverage_const_gpu1.txt`
+
+## 2026-03-25 (BUG refresh: cp shape probe still crashes in auto-encoding)
+- Reproducer:
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_shape_coverage.py`
+- Observed behavior:
+  - fails in `GluonResolveAutoEncodingsPass` with:
+    - `'tt.make_range' op Failed to infer return type`
+    - `RuntimeError: PassManager::run failed`
+  - same failure class as previously logged, now with a fresh GPU1 artifact.
+- Classification:
+  - `BUG` (compiler pass failure on legal-looking probe construction).
+- Artifact:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_shape_coverage_gpu1.log`
+
+## 2026-03-25 (cp.warpx2 reachability refresh on GPU1)
+- Re-ran bounded subslice search with saved logs:
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 64 --start-rows 0 --max-layouts 128 --device cuda`
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 128 --start-rows 0 --max-layouts 128 --device cuda`
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 256 --start-rows 0 --max-layouts 128 --device cuda`
+- Observed results:
+  - `parent_rows=64`: `successful_compiles=2`, both emitted
+    `tcgen05.cp.cta_group::1.warpx4.32x128b`; no `warpx2`.
+  - `parent_rows=128`: `successful_compiles=0`; no `warpx2`.
+  - `parent_rows=256`: `successful_compiles=0`; no `warpx2`.
+  - failure text in logs is dominated by clean legalization rejects:
+    - `'ttng.tmem_copy' op failed to find valid tcgen05.copy layout ...`
+    - `failed to legalize operation 'ttng.tmem_copy' ...`
+  - no segfault/assert/internal-compiler-error observed.
+- Classification:
+  - `CLEAN_UNSUPPORTED` for the probed `warpx2` search space in current tree.
+  - interpretation: currently looks like frontend/legalization limitation, not
+    ISA impossibility proven.
+- Artifacts:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_warpx2_subslice_64_gpu1.log`
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_warpx2_subslice_128_gpu1.log`
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_warpx2_subslice_256_gpu1.log`
+
+## 2026-03-25 (higher-rank TMEM descriptor runtime path fixed on GPU3)
+- Added development probe:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/probe_fullrank_tmem_views.py`
+  - purpose:
+    - validate that higher-rank TMEM descriptors work when the descriptor rank
+      is encoded directly in `TensorMemoryLinearLayout`, instead of relying on
+      the legacy “rank+1 multibuffer” interpretation.
+- Main fixes landed:
+  - TMEM view-local encodings now strip dead physical `row`/`col` bits only in
+    the view builders:
+    - `lib/Dialect/TritonGPU/IR/Ops.cpp`
+    - `python/src/gluon_ir.cc`
+  - Builder-side TMEM `memdesc_subslice` now uses the view shape as
+    `alloc_shape`:
+    - `python/src/gluon_ir.cc`
+  - `get_reg_layout()` now emits an actionable clean error for non-2D TMEM
+    descriptor views:
+    - `python/triton/experimental/gluon/language/_semantic.py`
+- Probe results:
+  - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_fullrank_tmem_views.py --kind rank3 --m 128 --n 32`
+    - PASS
+    - emitted:
+      - `tcgen05.st.sync.aligned.32x32b.x32.b32`
+      - `tcgen05.ld.sync.aligned.32x32b.x32.b32`
+  - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_fullrank_tmem_views.py --kind rank4 --m 128 --n 32`
+    - PASS
+    - emitted:
+      - `tcgen05.st.sync.aligned.32x32b.x32.b32`
+      - `tcgen05.ld.sync.aligned.32x32b.x32.b32`
+  - intermediate higher-rank TMEM views still fail cleanly when asked for a
+    load/store register layout before being indexed down to 2D:
+    - `TMEM load/store currently requires a 2D descriptor view ...`
+- Two-CTA higher-rank full-rank layouts were also validated ad hoc on GPU3:
+  - lifted `block_two_ctas` and `mmav5_twocta` layouts with prefix shape
+    `[2, 2]` both executed correctly through the rank-4
+    `slice -> index -> slice -> index` path.
+
+## 2026-03-25 (regression fixed: split-N + legacy 64x64 MMAv5)
+- Regression observed after the higher-rank TMEM view fix:
+  - `python/test/gluon/test_tmem_runtime_matrix.py -k splitn_immediates`
+    failed for all `N in {2,4,8,16,32,64,128}`
+  - `python/test/gluon/test_fpsan.py -k 'test_tcgen05_mma and not unsupported or tcgen05_mma_scaled or twocta_asymmetric'`
+    failed on the legacy `64x64` MMAv5 accumulator case
+- Root cause:
+  - global canonicalization of every `#ttng.tensor_memory_linear` was stripping
+    zero `row`/`col` bases in:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+  - that erased semantically meaningful TMEM “row-hole” structure used by:
+    - split-N / `16x32bx2`-style `M=64` lowering
+    - `matchTensorMemoryLegacyEncoding(...)` for legacy-compatible MMAv5
+      layouts such as `64x64`
+- Fix:
+  - row/col zero-basis stripping is now limited to TMEM view builders only;
+    generic TMEM-linear canonicalization no longer rewrites all layouts.
+- Validation after the fix:
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'splitn_immediates'`
+    - `7 passed`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_fpsan.py -k 'test_tcgen05_mma and not unsupported or tcgen05_mma_scaled or twocta_asymmetric'`
+    - `12 passed`
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'descriptor_roundtrip_sweeps or ldst_descriptor_compositions or ld_red_identity_linear_layout or splitn_immediates or cp_no_scales_linear'`
+    - `138 passed, 48 skipped`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/lower_tensor_memory_to_llvm.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `PASS: 2/2`

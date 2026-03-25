@@ -521,7 +521,11 @@ struct MemDescIndexOpConversion
       if (srcTy.getRank() > layoutRank) {
         auto kCol = StringAttr::get(ctx, "col");
         int singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
-        Value offset = b.mul(op.getIndex(), b.i32_val(singleBufferCols));
+        int64_t prefixStride =
+            product<int64_t>(srcTy.getShape().drop_front().take_front(
+                srcTy.getRank() - layoutRank - 1));
+        Value offset =
+            b.mul(op.getIndex(), b.i32_val(singleBufferCols * prefixStride));
         Value newBase = b.add(b.ptrtoint(i32_ty, tmemBase), offset);
         rewriter.replaceOp(op, b.inttoptr(ptr_ty(ctx, 3), newBase));
         return success();

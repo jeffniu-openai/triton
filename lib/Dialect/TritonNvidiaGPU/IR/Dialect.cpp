@@ -524,12 +524,27 @@ matchTensorMemoryLegacyEncoding(MemDescType memDescType) {
       memDescType.getAllocShape().take_back(rank), layout);
 }
 
+static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
+                                      ArrayRef<int32_t> offsets) {
+  assert(shape.size() == offsets.size());
+  int64_t linearized = 0;
+  int64_t stride = 1;
+  for (auto [size, offset] :
+       llvm::reverse(llvm::zip_equal(shape, offsets))) {
+    linearized += static_cast<int64_t>(offset) * stride;
+    stride *= size;
+  }
+  return linearized;
+}
+
 TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   auto *ctx = memDescType.getContext();
   auto S = [&](StringRef str) { return StringAttr::get(ctx, str); };
   auto kRow = S("row");
   auto kCol = S("col");
   auto ll = triton::gpu::toLinearLayout(memDescType);
+  auto layoutRank = ll.getNumOutDims();
+  auto extraRank = memDescType.getRank() - layoutRank;
   auto bitwidth = memDescType.getElementTypeBitWidth();
   int nRow = ll.getInDimSize(kRow);
   int nCol = ll.getInDimSize(kCol) / (32 / bitwidth);
@@ -543,9 +558,9 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
     nRow /= 2;
   }
   // If multibuffering is present, we need to allocate more cols
-  if (memDescType.getRank() > 2) {
-    assert(memDescType.getRank() == 3);
-    nCol *= memDescType.getDimSize(0);
+  if (extraRank > 0) {
+    nCol *= product<int64_t>(
+        memDescType.getAllocShape().take_front(extraRank));
   }
   return {nRow, nCol};
 }
@@ -583,9 +598,12 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
       offsetCol = value * bitwidth / 32;
     }
   }
-  if (extraRank == 1) {
+  if (extraRank > 0) {
     auto singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
-    offsetCol += offsets.front() * singleBufferCols;
+    offsetCol += linearizePrefixOffsets(
+                     memDescType.getShape().take_front(extraRank),
+                     offsets.take_front(extraRank)) *
+                 singleBufferCols;
   }
   return offsetCol | offsetRow << 16;
 }

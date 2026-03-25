@@ -1,0 +1,223 @@
+{
+  "counts": {
+    "PASS": 15,
+    "CLEAN_UNSUPPORTED": 8,
+    "BUG": 0,
+    "UNKNOWN_FAIL": 0
+  },
+  "distinct_pass_opcodes": [
+    "tcgen05.st.sync.aligned.16x128b.x16.b32",
+    "tcgen05.st.sync.aligned.16x128b.x32.b32",
+    "tcgen05.st.sync.aligned.16x256b.x16.b32",
+    "tcgen05.st.sync.aligned.16x256b.x8.b32",
+    "tcgen05.st.sync.aligned.16x32bx2.x16.b32",
+    "tcgen05.st.sync.aligned.16x32bx2.x2.b32",
+    "tcgen05.st.sync.aligned.16x32bx2.x32.b32",
+    "tcgen05.st.sync.aligned.16x64b.x32.b32",
+    "tcgen05.st.sync.aligned.16x64b.x64.b32",
+    "tcgen05.st.sync.aligned.32x32b.x128.b32",
+    "tcgen05.st.sync.aligned.32x32b.x64.b32"
+  ],
+  "case_count": 23,
+  "cases": [
+    {
+      "family": "identity",
+      "m": 64,
+      "n": 64,
+      "variant": "32x32b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 64,
+      "n": 64,
+      "variant": "16x64b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 64,
+      "n": 64,
+      "variant": "16x128b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 64,
+      "n": 64,
+      "variant": "16x256b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 64,
+      "variant": "32x32b",
+      "status": "PASS",
+      "opcode_count": 2,
+      "opcode": "tcgen05.st.sync.aligned.32x32b.x64.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 64,
+      "variant": "16x64b",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x64b.x32.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 64,
+      "variant": "16x128b",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x128b.x16.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 64,
+      "variant": "16x256b",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x256b.x8.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 128,
+      "variant": "32x32b",
+      "status": "PASS",
+      "opcode_count": 2,
+      "opcode": "tcgen05.st.sync.aligned.32x32b.x128.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 128,
+      "variant": "16x64b",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x64b.x64.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 128,
+      "variant": "16x128b",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x128b.x32.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 128,
+      "variant": "16x256b",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x256b.x16.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 256,
+      "variant": "32x32b",
+      "status": "PASS",
+      "opcode_count": 8,
+      "opcode": "tcgen05.st.sync.aligned.32x32b.x64.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 256,
+      "variant": "16x64b",
+      "status": "PASS",
+      "opcode_count": 8,
+      "opcode": "tcgen05.st.sync.aligned.16x64b.x64.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 256,
+      "variant": "16x128b",
+      "status": "PASS",
+      "opcode_count": 8,
+      "opcode": "tcgen05.st.sync.aligned.16x128b.x32.b32"
+    },
+    {
+      "family": "identity",
+      "m": 128,
+      "n": 256,
+      "variant": "16x256b",
+      "status": "PASS",
+      "opcode_count": 8,
+      "opcode": "tcgen05.st.sync.aligned.16x256b.x16.b32"
+    },
+    {
+      "family": "identity",
+      "m": 256,
+      "n": 128,
+      "variant": "32x32b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 256,
+      "n": 128,
+      "variant": "16x64b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 256,
+      "n": 128,
+      "variant": "16x128b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "identity",
+      "m": 256,
+      "n": 128,
+      "variant": "16x256b",
+      "status": "CLEAN_UNSUPPORTED",
+      "error": "at 5:33:"
+    },
+    {
+      "family": "splitn",
+      "m": 64,
+      "n": 2,
+      "variant": "32x32b_splitn",
+      "status": "PASS",
+      "opcode_count": 2,
+      "opcode": "tcgen05.st.sync.aligned.16x32bx2.x2.b32"
+    },
+    {
+      "family": "splitn",
+      "m": 64,
+      "n": 64,
+      "variant": "32x32b_splitn",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x32bx2.x16.b32"
+    },
+    {
+      "family": "splitn",
+      "m": 64,
+      "n": 128,
+      "variant": "32x32b_splitn",
+      "status": "PASS",
+      "opcode_count": 4,
+      "opcode": "tcgen05.st.sync.aligned.16x32bx2.x32.b32"
+    }
+  ]
+}

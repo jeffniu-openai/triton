@@ -80,6 +80,12 @@ static void printDiagStr(llvm::raw_ostream &os, const Diagnostic &diag) {
 static std::optional<ttng::TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, tt::LinearLayout ll, bool twoCTAs,
                         std::string *error = nullptr) {
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  ll = ll.removeZeroBasesAlongDim(kRow).removeZeroBasesAlongDim(kCol);
+  if (ll.hasInDim(kBlock))
+    ll = ll.removeZeroBasesAlongDim(kBlock);
   if (auto enc =
           ttng::tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs, error)) {
     return enc;
@@ -87,7 +93,6 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, tt::LinearLayout ll, bool twoCTAs,
   if (!twoCTAs)
     return std::nullopt;
 
-  auto kBlock = StringAttr::get(ctx, "block");
   if (!ll.hasInDim(kBlock))
     return std::nullopt;
   auto blockBases = ll.getBases().lookup(kBlock);

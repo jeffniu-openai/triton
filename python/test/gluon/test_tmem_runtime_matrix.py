@@ -5,9 +5,10 @@ from itertools import product
 import pytest
 import torch
 import triton
+import triton.language as tl
 from triton.compiler.errors import CompilationError
 
-from triton._internal_testing import is_blackwell
+from triton._internal_testing import is_blackwell, is_blackwell_ultra
 from triton.experimental import gluon
 from triton.experimental.gluon import language as ttgl
 from triton.experimental.gluon.language.nvidia.blackwell import (
@@ -25,6 +26,7 @@ from triton.experimental.gluon.language.nvidia.hopper import mbarrier, tma
 from triton._C.libtriton.gluon_ir import make_cga_layout
 from python.test.gluon.test_core import (
     _expected_scaled_cp_opcode,
+    _run_tmem_reduction_case,
     mma_scaled_tcgen05_copy,
     random_quantized_tensor,
     swizzle_scales_packed_block,
@@ -92,6 +94,35 @@ def _make_tmem_linear_layout_64x32_block(two_ctas=False):
         block_bases=[[1, 0]],
         shape=[64, 32],
         two_ctas=two_ctas,
+    )
+
+
+def _lift_tmem_layout(base_layout, prefix_shape):
+    prefix_shape = list(prefix_shape)
+    prefix_rank = len(prefix_shape)
+    total_rank = prefix_rank + len(base_layout.shape)
+
+    def extend_bases(bases):
+        return [[0] * prefix_rank + list(basis) for basis in bases]
+
+    rows = extend_bases(base_layout.rows)
+    cols = extend_bases(base_layout.cols)
+    block_bases = extend_bases(base_layout.block_bases)
+
+    # Represent extra descriptor dimensions as progressively higher TMEM col
+    # bits so that indexing/slicing them peels away full physical TMEM tiles.
+    for dim in range(prefix_rank - 1, -1, -1):
+        for bit in range(int(math.log2(prefix_shape[dim]))):
+            basis = [0] * total_rank
+            basis[dim] = 1 << bit
+            cols.append(basis)
+
+    return TensorMemoryLinearLayout(
+        rows=rows,
+        cols=cols,
+        block_bases=block_bases,
+        shape=prefix_shape + list(base_layout.shape),
+        two_ctas=base_layout.two_ctas,
     )
 
 
@@ -207,6 +238,40 @@ def tmem_ldst_descriptor_chain_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
     view.store(out)
     out = tmem.index(1).load(reg_layout)
     ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
+def tmem_ldst_descriptor_roundtrip_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                          N: ttgl.constexpr, instr_variant: ttgl.constexpr,
+                                          chain_id: ttgl.constexpr, delta: ttgl.constexpr):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(ttgl.float32, [2, 2, M, N], layout)
+    base = tmem.slice(1, 1, dim=0).index(0).slice(1, 1, dim=0).index(0)
+    base_reg_layout: ttgl.constexpr = base.get_reg_layout(instr_variant=instr_variant)
+    base.store(ttgl.convert_layout(value, base_reg_layout))
+
+    view = base
+    if chain_id == 0:
+        view = view.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+        view = view.permute([1, 0]).permute([1, 0])
+    elif chain_id == 1:
+        view = view.reshape((M // 2, 2, N // 2, 2))
+        view = view.permute([1, 0, 3, 2]).permute([1, 0, 3, 2]).reshape((M, N))
+        view = view.slice(0, M, dim=0).slice(0, N, dim=1)
+    else:
+        view = view.reshape((2, M // 4, 2, N // 2, 2))
+        view = view.permute([2, 1, 0, 4, 3]).permute([2, 1, 0, 4, 3]).reshape((M, N))
+        view = view._reinterpret(ttgl.float32, [M, N], view.layout)
+
+    view_reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    out = view.load(view_reg_layout)
+    out = out + ttgl.full([M, N], delta, ttgl.float32, layout=view_reg_layout)
+    view.store(out)
+
+    out = base.load(base_reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, base_reg_layout))
 
 
 @gluon.jit
@@ -618,6 +683,15 @@ LDST_TWOCTA_DESCRIPTOR_CASES = [
     )
 ]
 
+LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
+    ("slice_index_roundtrip", 0, 5.0, ("ttg.memdesc_index", "ttg.memdesc_subslice", "ttg.memdesc_reshape",
+                                       "ttg.memdesc_trans")),
+    ("slice_index_multidim", 1, 7.0, ("ttg.memdesc_index", "ttg.memdesc_subslice", "ttg.memdesc_reshape",
+                                      "ttg.memdesc_trans")),
+    ("slice_index_reinterpret", 2, 11.0, ("ttg.memdesc_index", "ttg.memdesc_subslice", "ttg.memdesc_reshape",
+                                          "ttg.memdesc_trans", "ttg.memdesc_reinterpret")),
+]
+
 LDST_HIGHER_RANK_INDEX_CASES = [
     ("identity", 128, "32x32b", LDST_SHAPE_MAP["32x32b"][128], LDST_SHAPE_MAP["32x32b"][64]),
     ("identity", 256, "16x64b", LDST_SHAPE_MAP["16x64b"][256], LDST_SHAPE_MAP["16x64b"][128]),
@@ -747,10 +821,7 @@ def test_tmem_runtime_matrix_ldst_descriptor_compositions(layout_name, n, varian
     assert expected_ld in observed_opcodes
 
     ttgir = compiled.asm["ttgir"]
-    assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
-    assert "ttg.memdesc_reinterpret" in ttgir
+    assert "tensor_memory_linear" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -797,11 +868,66 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_compositions(layout_name, n,
 
     ttgir = compiled.asm["ttgir"]
     assert "twoCTAs = true" in ttgir
-    assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
-    assert "ttg.memdesc_reinterpret" in ttgir
+    assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_DESCRIPTOR_CASES)
+@pytest.mark.parametrize("chain_name,chain_id,delta,required_ops", LDST_DESCRIPTOR_ROUNDTRIP_CHAINS)
+def test_tmem_runtime_matrix_ldst_descriptor_roundtrip_sweeps(layout_name, n, variant, expected_shape, chain_name,
+                                                              chain_id, delta, required_ops):
+    m = 128
+    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2, 2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    try:
+        compiled = tmem_ldst_descriptor_roundtrip_kernel[(1, )](
+            inp, out, layout, m, n, variant, chain_id, delta, num_warps=4
+        )
+    except triton.runtime.errors.OutOfResources:
+        pytest.skip(f"tensor memory OOR for chain={chain_name}, layout={layout_name}, n={n}, variant={variant}")
+    torch.testing.assert_close(out, inp + delta, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_DESCRIPTOR_CASES)
+@pytest.mark.parametrize("chain_name,chain_id,delta,required_ops", LDST_DESCRIPTOR_ROUNDTRIP_CHAINS)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps(layout_name, n, variant, expected_shape,
+                                                                     chain_name, chain_id, delta, required_ops):
+    m = 256
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2, 2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    try:
+        compiled = tmem_ldst_descriptor_roundtrip_kernel[(1, )](
+            inp, out, layout, m, n, variant, chain_id, delta, num_warps=4, num_ctas=2
+        )
+    except triton.runtime.errors.OutOfResources:
+        pytest.skip(f"tensor memory OOR for chain={chain_name}, layout={layout_name}, n={n}, variant={variant}")
+    torch.testing.assert_close(out, inp + delta, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "twoCTAs = true" in ttgir
+    assert "tensor_memory_linear" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1084,6 +1210,24 @@ def test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack(layout_name, n, varian
     assert all(op in (expected_st, expected_ld) for op in observed_opcodes)
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, propagate_nan):
+    layout = LDST_LAYOUTS["identity"](128)
+    compiled = _run_tmem_reduction_case(
+        layout,
+        128,
+        128,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=4,
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -28,7 +28,12 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
     shape = list(shape)
     _check(all(isinstance(dim, int) for dim in shape), lambda: f"shape entries must be ints but got {shape}")
     rank = len(shape)
-    _check(rank == 2, lambda: "expected a 2D tensor")
+    _check(
+        rank == 2,
+        lambda: ("TMEM load/store currently requires a 2D descriptor view, "
+                 f"but got shape {shape}; index or slice away leading descriptor "
+                 "dimensions before calling get_reg_layout(), load(), or store()"),
+    )
     alloc_shape = list(alloc_shape)
     _check(all(isinstance(dim, int) for dim in alloc_shape),
            lambda: f"alloc_shape entries must be ints but got {alloc_shape}")
@@ -401,7 +406,7 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         builder = self.builder
         handle = builder.create_memdesc_subslice(mem_desc.handle, shape, offsets)
         layout = builder.get_gluon_layout_from_memdesc(handle)
-        alloc_shape = list(shape) if desc_ty.__name__ == "tensor_memory_descriptor_type" else mem_desc.type.alloc_shape
+        alloc_shape = mem_desc.type.alloc_shape
         ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
         return desc_val(handle, **ty.__dict__)
 

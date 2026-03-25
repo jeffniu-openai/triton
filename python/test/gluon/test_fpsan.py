@@ -113,16 +113,33 @@ def _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, two_cta_dim):
 
 
 def _extract_tcgen05_mma_opcodes(asm: str):
-    pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
+    pattern = re.compile(r"(tcgen05\.mma[^\s;\"]*)")
     return pattern.findall(asm)
 
 
-def _assert_mma_ptx_llir_match(compiled):
-    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+def _assert_mma_codegen_opcodes(compiled):
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_ops, "No tcgen05 mma opcodes in PTX"
-    assert ptx_ops == llir_ops
-    return ptx_ops
+    assert llir_ops, "No tcgen05 mma opcodes in LLIR"
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    if ptx_ops:
+        assert ptx_ops == llir_ops
+    return llir_ops
+
+
+def _assert_tmem_allocator_lifetime(compiled, cta_group: int):
+    alloc_opcode = f"tcgen05.alloc.cta_group::{cta_group}.sync.aligned.shared::cta.b32"
+    relinquish_opcode = f"tcgen05.relinquish_alloc_permit.cta_group::{cta_group}.sync.aligned"
+
+    llir = compiled.asm["llir"]
+    assert alloc_opcode in llir, f"Missing {alloc_opcode} in llir"
+    assert relinquish_opcode in llir, f"Missing {relinquish_opcode} in llir"
+    assert llir.count(alloc_opcode) == llir.count(relinquish_opcode)
+
+    ptx = compiled.asm["ptx"]
+    if alloc_opcode in ptx or relinquish_opcode in ptx:
+        assert alloc_opcode in ptx, f"Missing {alloc_opcode} in ptx"
+        assert relinquish_opcode in ptx, f"Missing {relinquish_opcode} in ptx"
+        assert ptx.count(alloc_opcode) == ptx.count(relinquish_opcode)
 
 
 TMEM_FPSAN_VIEW_VARIANTS = [
@@ -1150,6 +1167,8 @@ MMA_ACC_LAYOUT_CASES = [
 ]
 
 MMA_UNSUPPORTED_LAYOUT_CASES = [
+    ("linear_identity_64", _make_tmem_linear_layout(64, 64), 1),
+    ("linear_block_64", _make_tmem_linear_layout_block(64, 64), 1),
     ("mixed", _make_tmem_linear_layout_mixed_128x128(), 1),
     ("block", _make_tmem_linear_layout_block(128, 128), 1),
     ("block_two_ctas", _make_tmem_linear_layout_block(128, 128, two_ctas=True), 2),
@@ -1157,6 +1176,7 @@ MMA_UNSUPPORTED_LAYOUT_CASES = [
 
 MMA_SCALED_ACC_LAYOUT_CASES = [
     ("legacy", TensorMemoryLayout((128, 128), col_stride=1)),
+    ("linear_identity", _make_tmem_linear_layout(128, 128)),
 ]
 
 
@@ -1278,11 +1298,59 @@ def test_tcgen05_mma_twocta_linear(device):
     )
     torch.testing.assert_close(out, torch.matmul(a.to(torch.float32), b.to(torch.float32)), atol=1e-1, rtol=8e-2)
 
-    mma_ops = _assert_mma_ptx_llir_match(compiled)
-    assert all(op == "tcgen05.mma.cta_group::2.kind::f16" for op in mma_ops)
+    mma_ops = _assert_mma_codegen_opcodes(compiled)
+    assert all("tcgen05.mma.cta_group::2.kind::f16" in op for op in mma_ops)
     assert "tcgen05.commit.cta_group::2" in compiled.asm["ptx"]
     assert "tcgen05.commit.cta_group::2" in compiled.asm["llir"]
     assert ".multicast::cluster" in compiled.asm["ptx"]
+    _assert_tmem_allocator_lifetime(compiled, cta_group=2)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tcgen05_mma_twocta_asymmetric_shape_reports_clean_error(device, fresh_knobs, capfd):
+    _require_cuda_backend(device)
+    fresh_knobs.compilation.instrumentation_mode = "fpsan"
+
+    ctas_per_cga = [1, 2]
+    ctas_per_cga_b = [2, 1]
+    block_m = 128 * ctas_per_cga[0]
+    block_n = 64 * ctas_per_cga_b[1]
+    block_k = 32
+
+    cta_order = [1, 0]
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, [1, 2], cta_order, 1)
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga_b, [2, 1], cta_order, 0)
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 1)
+
+    shared_layout_a = gl.NVMMASharedLayout.get_default_for([block_m, block_k], gl.float16, cga_layout=cga_layout_a)
+    shared_layout_b = gl.NVMMASharedLayout.get_default_for([block_k, block_n], gl.float16, cga_layout=cga_layout_b)
+
+    a = torch.randn((block_m, block_k), dtype=torch.float16, device="cuda")
+    b = torch.randn((block_k, block_n), dtype=torch.float16, device="cuda")
+    out = torch.empty((block_m, block_n), dtype=torch.float32, device="cuda")
+    a_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(a, [block_m, block_k], shared_layout_a)
+    b_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(b, [block_k, block_n], shared_layout_b)
+    acc_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+    blocked_c = gl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
+                                 cga_layout=cga_layout_c)
+
+    with pytest.raises((CompilationError, RuntimeError, ValueError)) as excinfo:
+        _tcgen05_mma_twocta_linear_kernel[(1, )](
+            a_desc,
+            b_desc,
+            out,
+            block_m,
+            block_n,
+            acc_layout,
+            blocked_c,
+            num_warps=4,
+            num_ctas=2,
+        )
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout '32x32b' unsupported for shape [128, 64]" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1334,7 +1402,11 @@ def test_tcgen05_mma_unsupported_linear_layout_reports_clean_error(device, name,
         kernel[(1, )](aw, bw, outw, ACC_LAYOUT=acc_layout, num_warps=4, num_ctas=num_ctas)
     captured = capfd.readouterr()
     msg = str(excinfo.value) + captured.err + captured.out
-    assert ("MMAv5-compatible tensor memory" in msg or "TMEM layout '32x32b' unsupported" in msg)
+    assert (
+        "MMAv5-compatible tensor memory" in msg
+        or "TMEM layout '32x32b' unsupported" in msg
+        or "allocation shape must match the TMEM linear layout" in msg
+    )
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 

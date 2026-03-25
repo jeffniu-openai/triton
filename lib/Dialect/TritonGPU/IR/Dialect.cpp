@@ -3521,12 +3521,20 @@ struct TritonGPUVerifyTensorLayoutInterface
 
     int64_t layoutRank = layoutTrait.getRank();
     int64_t memDescRank = memDescTy.getRank();
-    if (!(layoutRank == memDescRank || layoutRank + 1 == memDescRank)) {
+    bool isTMemLayout =
+        triton::nvidia_gpu::isTensorMemoryEncoding(layout) &&
+        !isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(layout);
+    if (isTMemLayout ? (layoutRank > memDescRank)
+                     : !(layoutRank == memDescRank ||
+                         layoutRank + 1 == memDescRank)) {
       return makeErr()
              << "Layout has rank " << layoutRank
              << ", but the memdesc it's attached to has rank " << memDescRank
-             << ". Memdesc rank must equal the layout rank or be exactly one "
-                "greater for multibuffering.";
+             << (isTMemLayout
+                     ? ". Tensor-memory memdesc rank must be greater than or "
+                       "equal to the layout rank."
+                     : ". Memdesc rank must equal the layout rank or be "
+                       "exactly one greater for multibuffering.");
     }
     return success();
   }

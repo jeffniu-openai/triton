@@ -75,3 +75,50 @@
   - mode: explorer
   - scope: `tcgen05.mma`/`mma_scaled`/allocator-lifetime instruction inventory
   - status: in_progress
+- `/root/tmem_ldst_fuzz_worker_v4`
+  - mode: worker
+  - scope: `python/test/gluon/test_tmem_runtime_matrix.py`,
+    `.codex/initiatives/tmem_linear_generalization/experiments/`
+  - status: completed
+  - gpu: `CUDA_VISIBLE_DEVICES=0`
+- `/root/tmem_cp_probe_worker_v4`
+  - mode: worker
+  - scope: `.codex/initiatives/tmem_linear_generalization/experiments/`,
+    `.codex/initiatives/tmem_linear_generalization/log.md`
+  - status: completed
+  - gpu: `CUDA_VISIBLE_DEVICES=1`
+- `/root/tmem_mma_runtime_worker_v4`
+  - mode: worker
+  - scope: `python/test/gluon/test_fpsan.py`,
+    `.codex/initiatives/tmem_linear_generalization/experiments/`
+  - status: in_progress
+  - gpu: `CUDA_VISIBLE_DEVICES=2`
+- `tmem_llvm_lit_worker_v3`
+  - mode: worker
+  - scope: `test/Conversion/lower_tensor_memory_to_llvm.mlir`,
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  - status: completed
+- `/root/tmem_runtime_sweep_worker_v5`
+  - mode: worker
+  - scope: `python/test/gluon/test_fpsan.py`
+  - status: completed
+  - gpu: `CUDA_VISIBLE_DEVICES=0`
+- `/root/tmem_llvm_family_worker_v4`
+  - mode: worker
+  - scope: `test/Conversion/lower_tensor_memory_to_llvm.mlir`,
+    `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+  - status: completed
+- `/root/tmem_ptx_probe_worker_v5`
+  - mode: worker
+  - scope: `.codex/initiatives/tmem_linear_generalization/experiments/`,
+    `.codex/initiatives/tmem_linear_generalization/log.md`
+  - status: completed
+  - gpu: `CUDA_VISIBLE_DEVICES=1`
+- `/root/tmem_splitn_regression_audit`
+  - mode: explorer
+  - scope: split-N TMEM reg-layout selection and lowering
+  - status: completed
+- `/root/tmem_mma_expectation_audit`
+  - mode: explorer
+  - scope: MMAv5 acceptance vs test expectations in `python/test/gluon/test_fpsan.py`
+  - status: completed

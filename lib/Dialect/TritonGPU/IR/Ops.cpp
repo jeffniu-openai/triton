@@ -82,13 +82,18 @@ getCanonicalTMemLinearEncoding(MemDescType type, std::string *error = nullptr) {
 
 std::optional<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs) {
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  ll = ll.removeZeroBasesAlongDim(kRow).removeZeroBasesAlongDim(kCol);
+  if (ll.hasInDim(kBlock))
+    ll = ll.removeZeroBasesAlongDim(kBlock);
   if (auto enc =
           triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs))
     return enc;
   if (!twoCTAs)
     return std::nullopt;
 
-  auto kBlock = StringAttr::get(ctx, "block");
   if (!ll.hasInDim(kBlock))
     return std::nullopt;
   auto blockBases = ll.getBases().lookup(kBlock);
@@ -150,10 +155,13 @@ inferTMemIndexEncoding(MemDescType srcTy, MemDescType dstTy) {
   auto ll = srcEnc->getLinearLayout();
   auto layoutRank = srcEnc->getRank();
   auto extraRank = srcTy.getRank() - layoutRank;
-  if (extraRank > 1)
+  if (extraRank < 0)
     return failure();
 
-  if (extraRank == 0) {
+  if (extraRank > 0) {
+    // Indexing over any unencoded leading dimensions preserves the physical
+    // TMEM layout; the explicit alloc_shape on the result tracks the view.
+  } else {
     if (layoutRank == 0)
       return failure();
     SmallVector<StringAttr> outDims = llvm::to_vector(ll.getOutDimNames());
@@ -165,9 +173,6 @@ inferTMemIndexEncoding(MemDescType srcTy, MemDescType dstTy) {
       return failure();
     ll = ll.reshapeOuts(standardOutDimPairs(srcTy.getContext(),
                                             dstLayoutShape));
-  } else {
-    // Indexing over the extra multibuffering dimension preserves the physical
-    // TMEM layout; the explicit alloc_shape on the result tracks the view.
   }
 
   auto result = tryMakeTMemViewEncoding(srcTy.getContext(), std::move(ll),

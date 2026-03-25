@@ -121,10 +121,9 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
       return emitError() << "memorySpace must be TensorMemorySpace";
     }
     auto rank = cast<LayoutEncodingTrait>(encoding).getRank();
-    if (!(rank == shape.size() || rank + 1 == shape.size())) {
-      return emitError()
-             << "rank must match the TMEM layout rank or be exactly one "
-                "greater for multibuffering";
+    if (rank > shape.size()) {
+      return emitError() << "rank must be less than or equal to the memdesc "
+                            "rank for tensor memory";
     }
     if (allocShape.size() < static_cast<size_t>(rank)) {
       return emitError() << "alloc shape must have at least " << rank
@@ -144,7 +143,9 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
         return emitError() << "allocation shape must match the TMEM linear "
                               "layout. Expected "
                            << ll.getOutDimSize(dim) << " for " << dim
-                           << " but got " << size;
+                           << " but got " << size << ". allocShape = "
+                           << allocShape << ", layoutRank = " << rank
+                           << ", encoding = " << encoding;
       }
     }
   } else if (auto enc = dyn_cast<SharedEncodingTrait>(encoding)) {
