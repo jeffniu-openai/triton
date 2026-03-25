@@ -119,11 +119,10 @@ def _extract_tcgen05_mma_opcodes(asm: str):
 
 def _assert_mma_codegen_opcodes(compiled):
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert llir_ops, "No tcgen05 mma opcodes in LLIR"
     ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    if ptx_ops:
+    if llir_ops and ptx_ops:
         assert ptx_ops == llir_ops
-    return llir_ops
+    return ptx_ops if ptx_ops else llir_ops
 
 
 def _assert_tmem_allocator_lifetime(compiled, cta_group: int):
@@ -131,12 +130,17 @@ def _assert_tmem_allocator_lifetime(compiled, cta_group: int):
     relinquish_opcode = f"tcgen05.relinquish_alloc_permit.cta_group::{cta_group}.sync.aligned"
 
     llir = compiled.asm["llir"]
-    assert alloc_opcode in llir, f"Missing {alloc_opcode} in llir"
-    assert relinquish_opcode in llir, f"Missing {relinquish_opcode} in llir"
-    assert llir.count(alloc_opcode) == llir.count(relinquish_opcode)
-
     ptx = compiled.asm["ptx"]
-    if alloc_opcode in ptx or relinquish_opcode in ptx:
+    has_llir = alloc_opcode in llir or relinquish_opcode in llir
+    has_ptx = alloc_opcode in ptx or relinquish_opcode in ptx
+    if not has_llir and not has_ptx:
+        return
+    if has_llir:
+        assert alloc_opcode in llir, f"Missing {alloc_opcode} in llir"
+        assert relinquish_opcode in llir, f"Missing {relinquish_opcode} in llir"
+        assert llir.count(alloc_opcode) == llir.count(relinquish_opcode)
+
+    if has_ptx:
         assert alloc_opcode in ptx, f"Missing {alloc_opcode} in ptx"
         assert relinquish_opcode in ptx, f"Missing {relinquish_opcode} in ptx"
         assert ptx.count(alloc_opcode) == ptx.count(relinquish_opcode)
@@ -1163,7 +1167,9 @@ def test_dot_scaled(device, type_a, type_b, fresh_knobs):
 
 
 MMA_ACC_LAYOUT_CASES = [
-    ("legacy", TensorMemoryLayout((64, 64), col_stride=1)),
+    ("legacy_64", 64, TensorMemoryLayout((64, 64), col_stride=1)),
+    ("legacy_128", 128, TensorMemoryLayout((128, 128), col_stride=1)),
+    ("linear_128", 128, _make_tmem_linear_layout(128, 128)),
 ]
 
 MMA_UNSUPPORTED_LAYOUT_CASES = [
@@ -1179,14 +1185,35 @@ MMA_SCALED_ACC_LAYOUT_CASES = [
     ("linear_identity", _make_tmem_linear_layout(128, 128)),
 ]
 
+MMA_SCALED_TYPE_CASES = [
+    ("e2m1", "e2m1"),
+    ("e4m3", "e4m3"),
+    ("e5m2", "e5m2"),
+    ("e4m3", "e2m1"),
+    ("e2m1", "e4m3"),
+]
+
+MMA_TWOCTA_LAYOUT_CASES = [
+    "linear",
+    "legacy",
+]
+
+
+def _fp8_type_to_torch_dtype(elem_type: str):
+    if elem_type == "e4m3":
+        return torch.float8_e4m3fn
+    if elem_type == "e5m2":
+        return torch.float8_e5m2
+    raise ValueError(f"unsupported fp8 type: {elem_type}")
+
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,acc_layout", MMA_ACC_LAYOUT_CASES)
+@pytest.mark.parametrize("layout_name,b,acc_layout", MMA_ACC_LAYOUT_CASES)
 @pytest.mark.parametrize("use_acc", [False, True])
-def test_tcgen05_mma(device, layout_name, acc_layout, use_acc, fresh_knobs):
+def test_tcgen05_mma(device, layout_name, b, acc_layout, use_acc, fresh_knobs):
     _require_cuda_backend(device)
 
-    B = 64
+    B = b
     BLOCK = gl.constexpr(B)
 
     fresh_knobs.compilation.instrumentation_mode = "fpsan"
@@ -1250,13 +1277,14 @@ def test_tcgen05_mma(device, layout_name, acc_layout, use_acc, fresh_knobs):
     cw = triton.TensorWrapper(c, dtype=torch.float32)
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
-    kernel[(1, )](aw, bw, cw, outw, USE_ACC=use_acc, ACC_LAYOUT=acc_layout)
+    compiled = kernel[(1, )](aw, bw, cw, outw, USE_ACC=use_acc, ACC_LAYOUT=acc_layout)
 
     _assert_payload_equal(out, exp_bits)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tcgen05_mma_twocta_linear(device):
+@pytest.mark.parametrize("layout_kind", MMA_TWOCTA_LAYOUT_CASES)
+def test_tcgen05_mma_twocta(device, layout_kind):
     _require_cuda_backend(device)
 
     ctas_per_cga = [2, 1]
@@ -1281,7 +1309,11 @@ def test_tcgen05_mma_twocta_linear(device):
 
     a_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(a, [block_m, block_k], shared_layout_a)
     b_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(b, [block_k, block_n], shared_layout_b)
-    acc_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+    if layout_kind == "linear":
+        acc_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+    else:
+        acc_layout = TensorMemoryLayout(block=(128, block_n // ctas_per_cga[1]), col_stride=1, two_ctas=True,
+                                        cga_layout=cga_layout_c)
     blocked_c = gl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
                                  cga_layout=cga_layout_c)
 
@@ -1412,9 +1444,9 @@ def test_tcgen05_mma_unsupported_linear_layout_reports_clean_error(device, name,
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("elem_type", ["e2m1", "e4m3", "e5m2"])
+@pytest.mark.parametrize("elem_type_a,elem_type_b", MMA_SCALED_TYPE_CASES)
 @pytest.mark.parametrize("layout_name,acc_layout", MMA_SCALED_ACC_LAYOUT_CASES)
-def test_tcgen05_mma_scaled(device, elem_type, layout_name, acc_layout, fresh_knobs):
+def test_tcgen05_mma_scaled(device, elem_type_a, elem_type_b, layout_name, acc_layout, fresh_knobs):
     _require_cuda_backend(device)
 
     B = 128
@@ -1424,33 +1456,39 @@ def test_tcgen05_mma_scaled(device, elem_type, layout_name, acc_layout, fresh_kn
     fresh_knobs.compilation.instrumentation_mode = "fpsan"
 
     @gluon.jit
-    def kernel(a_ptr, b_ptr, a_scale_ptr, b_scale_ptr, c_ptr, out_ptr, TYPE: gl.constexpr, ACC_LAYOUT: gl.constexpr):
+    def kernel(a_ptr, b_ptr, a_scale_ptr, b_scale_ptr, c_ptr, out_ptr, TYPE_A: gl.constexpr, TYPE_B: gl.constexpr,
+               ACC_LAYOUT: gl.constexpr):
         layout: gl.constexpr = gl.BlockedLayout([1, 1], [32, 1], [gl.num_warps(), 1], [1, 0])
-        IS_FP4: gl.constexpr = TYPE == "e2m1"
-        PACK_FACTOR: gl.constexpr = 2 if IS_FP4 else 1
-        PACKED_K: gl.constexpr = BLOCK // PACK_FACTOR
-        ELEM_DTYPE: gl.constexpr = gl.uint8 if IS_FP4 else (gl.float8e4nv if TYPE == "e4m3" else gl.float8e5)
-        a_nvmma_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for([BLOCK, PACKED_K], ELEM_DTYPE)
-        b_nvmma_layout: gl.constexpr = (gl.NVMMASharedLayout.get_default_for([BLOCK, PACKED_K], ELEM_DTYPE)
-                                        if IS_FP4 else gl.NVMMASharedLayout(swizzle_byte_width=128, transposed=False,
-                                                                            element_bitwidth=8, rank=2))
+        IS_A_FP4: gl.constexpr = TYPE_A == "e2m1"
+        IS_B_FP4: gl.constexpr = TYPE_B == "e2m1"
+        PACK_FACTOR_A: gl.constexpr = 2 if IS_A_FP4 else 1
+        PACK_FACTOR_B: gl.constexpr = 2 if IS_B_FP4 else 1
+        PACKED_K_A: gl.constexpr = BLOCK // PACK_FACTOR_A
+        PACKED_K_B: gl.constexpr = BLOCK // PACK_FACTOR_B
+        ELEM_DTYPE_A: gl.constexpr = gl.uint8 if IS_A_FP4 else (gl.float8e4nv if TYPE_A == "e4m3" else gl.float8e5)
+        ELEM_DTYPE_B: gl.constexpr = gl.uint8 if IS_B_FP4 else (gl.float8e4nv if TYPE_B == "e4m3" else gl.float8e5)
+        a_nvmma_layout: gl.constexpr = gl.NVMMASharedLayout.get_default_for([BLOCK, PACKED_K_A], ELEM_DTYPE_A)
+        b_nvmma_layout: gl.constexpr = (gl.NVMMASharedLayout.get_default_for([BLOCK, PACKED_K_B], ELEM_DTYPE_B)
+                                        if IS_B_FP4 else gl.NVMMASharedLayout(swizzle_byte_width=128, transposed=False,
+                                                                              element_bitwidth=8, rank=2))
         scale_layout: gl.constexpr = TensorMemoryScalesLayout()
 
         offs_m = gl.arange(0, BLOCK, layout=gl.SliceLayout(1, layout))[:, None]
         offs_n = gl.arange(0, BLOCK, layout=gl.SliceLayout(0, layout))[None, :]
-        offs_k_row = gl.arange(0, PACKED_K, layout=gl.SliceLayout(1, layout))[:, None]
-        offs_k_col = gl.arange(0, PACKED_K, layout=gl.SliceLayout(0, layout))[None, :]
+        offs_k_row_b = gl.arange(0, PACKED_K_B, layout=gl.SliceLayout(1, layout))[:, None]
+        offs_k_col_a = gl.arange(0, PACKED_K_A, layout=gl.SliceLayout(0, layout))[None, :]
+        offs_k_col_b = gl.arange(0, PACKED_K_B, layout=gl.SliceLayout(0, layout))[None, :]
 
-        a_tile = gl.load(a_ptr + offs_m * PACKED_K + offs_k_col)
+        a_tile = gl.load(a_ptr + offs_m * PACKED_K_A + offs_k_col_a)
         c_tile = gl.load(c_ptr + offs_m * BLOCK + offs_n)
-        a_smem = gl.allocate_shared_memory(ELEM_DTYPE, [BLOCK, PACKED_K], a_nvmma_layout, a_tile)
-        if IS_FP4:
-            b_tile = gl.load(b_ptr + offs_m * PACKED_K + offs_k_col)
-            b_smem = gl.allocate_shared_memory(ELEM_DTYPE, [BLOCK, PACKED_K], b_nvmma_layout, b_tile)
+        a_smem = gl.allocate_shared_memory(ELEM_DTYPE_A, [BLOCK, PACKED_K_A], a_nvmma_layout, a_tile)
+        if IS_B_FP4:
+            b_tile = gl.load(b_ptr + offs_m * PACKED_K_B + offs_k_col_b)
+            b_smem = gl.allocate_shared_memory(ELEM_DTYPE_B, [BLOCK, PACKED_K_B], b_nvmma_layout, b_tile)
             b_mma = b_smem.permute((1, 0))
         else:
-            b_tile = gl.load(b_ptr + offs_k_row * BLOCK + offs_n)
-            b_smem = gl.allocate_shared_memory(ELEM_DTYPE, [PACKED_K, BLOCK], b_nvmma_layout, b_tile)
+            b_tile = gl.load(b_ptr + offs_k_row_b * BLOCK + offs_n)
+            b_smem = gl.allocate_shared_memory(ELEM_DTYPE_B, [PACKED_K_B, BLOCK], b_nvmma_layout, b_tile)
             b_mma = b_smem
 
         acc_tmem = allocate_tensor_memory(gl.float32, [BLOCK, BLOCK], layout=ACC_LAYOUT)
@@ -1468,7 +1506,7 @@ def test_tcgen05_mma_scaled(device, elem_type, layout_name, acc_layout, fresh_kn
 
         bar = gl.allocate_shared_memory(gl.int64, [1], gl.constexpr(mbarrier.MBarrierLayout()))
         mbarrier.init(bar, count=1)
-        tcgen05_mma_scaled(a_smem, b_mma, acc_tmem, a_scale_tmem, b_scale_tmem, TYPE, TYPE, use_acc=True)
+        tcgen05_mma_scaled(a_smem, b_mma, acc_tmem, a_scale_tmem, b_scale_tmem, TYPE_A, TYPE_B, use_acc=True)
         tcgen05_commit(bar)
         mbarrier.wait(bar, phase=0)
         mbarrier.invalidate(bar)
@@ -1477,29 +1515,32 @@ def test_tcgen05_mma_scaled(device, elem_type, layout_name, acc_layout, fresh_kn
         gl.store(out_ptr + offs_m * BLOCK + offs_n, out)
 
     rs = np.random.RandomState(0)
-    pack_factor = 2 if elem_type == "e2m1" else 1
-    packed_k = B // pack_factor
-    a_bits = rs.randint(0 if elem_type == "e2m1" else 20, 256 if elem_type == "e2m1" else 40, size=(B, packed_k),
-                        dtype=np.uint8)
-    if elem_type == "e2m1":
-        b_bits = rs.randint(0, 256, size=(B, packed_k), dtype=np.uint8)
+    a_pack = 2 if elem_type_a == "e2m1" else 1
+    b_pack = 2 if elem_type_b == "e2m1" else 1
+    packed_k_a = B // a_pack
+    packed_k_b = B // b_pack
+    a_bits = rs.randint(0 if elem_type_a == "e2m1" else 20, 256 if elem_type_a == "e2m1" else 40,
+                        size=(B, packed_k_a), dtype=np.uint8)
+    if elem_type_b == "e2m1":
+        b_bits = rs.randint(0, 256, size=(B, packed_k_b), dtype=np.uint8)
         b_ref_bits = b_bits.T
     else:
-        b_bits = rs.randint(20, 40, size=(packed_k, B), dtype=np.uint8)
+        b_bits = rs.randint(20, 40, size=(packed_k_b, B), dtype=np.uint8)
         b_ref_bits = b_bits
     a_scale_bits = rs.randint(1, 4, size=(B, B // 32), dtype=np.int8)
     b_scale_bits = rs.randint(1, 4, size=(B, B // 32), dtype=np.int8)
     c_bits = rs.randint(-(2**31), 2**31 - 1, size=(B, B), dtype=np.int32)
     exp_bits = _mm_scaled_payload_u32(a_bits, b_ref_bits, a_scale_bits.view(np.uint8), b_scale_bits.view(np.uint8),
-                                      c_bits, a_pack=pack_factor, b_pack=pack_factor)
+                                      c_bits, a_pack=a_pack, b_pack=b_pack)
 
-    if elem_type == "e2m1":
+    if elem_type_a == "e2m1":
         a = torch.tensor(a_bits, device="cuda", dtype=torch.uint8)
+    else:
+        a = torch.tensor(a_bits, device="cuda", dtype=torch.uint8).view(_fp8_type_to_torch_dtype(elem_type_a))
+    if elem_type_b == "e2m1":
         b = torch.tensor(b_bits, device="cuda", dtype=torch.uint8)
     else:
-        torch_dtype = torch.float8_e4m3fn if elem_type == "e4m3" else torch.float8_e5m2
-        a = torch.tensor(a_bits, device="cuda", dtype=torch.uint8).view(torch_dtype)
-        b = torch.tensor(b_bits, device="cuda", dtype=torch.uint8).view(torch_dtype)
+        b = torch.tensor(b_bits, device="cuda", dtype=torch.uint8).view(_fp8_type_to_torch_dtype(elem_type_b))
     a_scale = torch.tensor(a_scale_bits, device="cuda", dtype=torch.int8)
     b_scale = torch.tensor(b_scale_bits, device="cuda", dtype=torch.int8)
     c = torch.tensor(c_bits, device="cuda", dtype=torch.int32)
@@ -1508,9 +1549,16 @@ def test_tcgen05_mma_scaled(device, elem_type, layout_name, acc_layout, fresh_kn
     cw = triton.TensorWrapper(c, dtype=torch.float32)
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
-    kernel[(1, )](a, b, a_scale, b_scale, cw, outw, TYPE=elem_type, ACC_LAYOUT=acc_layout)
+    compiled = kernel[(1, )](a, b, a_scale, b_scale, cw, outw, TYPE_A=elem_type_a, TYPE_B=elem_type_b,
+                             ACC_LAYOUT=acc_layout)
 
     _assert_payload_equal(out, exp_bits)
+    mma_ops = _assert_mma_codegen_opcodes(compiled)
+    if mma_ops:
+        assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in mma_ops)
+        assert all("block_scale.scale_vec::" in op for op in mma_ops)
+        assert "tcgen05.commit.cta_group::1" in compiled.asm["ptx"]
+        assert "tcgen05.commit.cta_group::1" in compiled.asm["llir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

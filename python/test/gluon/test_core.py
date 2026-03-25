@@ -1412,6 +1412,118 @@ def test_mma_shared_inputs(bitwidth, transpose_a, transpose_b, acc_dtype, warps,
     torch.testing.assert_close(out, ref, atol=atol, rtol=rtol)
 
 
+def _round_to_tf32(x: torch.Tensor) -> torch.Tensor:
+    x = x.view(torch.int32)
+    x = x & ~((1 << 13) - 1)
+    return x.view(torch.float32)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind", ["tf32", "f8e5m2"])
+def test_tcgen05_mma_plain_kind_runtime(kind):
+    M = N = 128
+    K = 32
+    num_warps = 4
+
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, THREADS_PER_WARP], warps_per_cta=[4, 1], order=[0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, THREADS_PER_WARP], warps_per_cta=[4, 1], order=[1, 0])
+
+    if kind == "tf32":
+        a = _round_to_tf32(torch.randn((M, K), device="cuda", dtype=torch.float32))
+        b = _round_to_tf32(torch.randn((K, N), device="cuda", dtype=torch.float32))
+        out = torch.empty((M, N), device="cuda", dtype=torch.float32)
+        shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=128, transposed=False, element_bitwidth=32, rank=2)
+        shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=128, transposed=True, element_bitwidth=32, rank=2)
+        acc_layout = TensorMemoryLayout((M, N), col_stride=1)
+        gl_acc_dtype = ttgl.float32
+        expected_kind = "tcgen05.mma.cta_group::1.kind::tf32"
+        ref = torch.matmul(a, b)
+        atol, rtol = 5e-4, 5e-3
+    else:
+        a = torch.randint(20, 40, (M, K), device="cuda", dtype=torch.uint8).view(torch.float8_e5m2)
+        b = torch.randint(20, 40, (K, N), device="cuda", dtype=torch.uint8).view(torch.float8_e5m2)
+        out = torch.empty((M, N), device="cuda", dtype=torch.float32)
+        shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
+        shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
+        acc_layout = TensorMemoryLayout((M, N), col_stride=1)
+        gl_acc_dtype = ttgl.float32
+        expected_kind = "tcgen05.mma.cta_group::1.kind::f8f6f4"
+        ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+        atol, rtol = 1e-1, 1e-1
+
+    compiled = mma_kernel[(1, )](
+        a,
+        b,
+        out,
+        M,
+        N,
+        K,
+        block_layout_a,
+        block_layout_b,
+        (),
+        acc_layout,
+        shared_layout_a,
+        shared_layout_b,
+        gl_acc_dtype,
+        False,
+        True,
+        num_warps=num_warps,
+    )
+
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    assert all(op == expected_kind for op in ptx_ops)
+    assert "tcgen05.commit.cta_group::1" in compiled.asm["ptx"]
+    assert "tcgen05.commit.cta_group::1" in compiled.asm["llir"]
+
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tcgen05_mma_plain_kind_i8_reports_clean_error():
+    M = N = 128
+    K = 32
+    num_warps = 4
+
+    a = torch.randint(-8, 8, (M, K), device="cuda", dtype=torch.int8)
+    b = torch.randint(-8, 8, (K, N), device="cuda", dtype=torch.int8)
+    out = torch.empty((M, N), device="cuda", dtype=torch.int32)
+
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, THREADS_PER_WARP], warps_per_cta=[4, 1], order=[0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, THREADS_PER_WARP], warps_per_cta=[4, 1], order=[1, 0])
+    shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
+    shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
+    acc_layout = TensorMemoryLayout((M, N), col_stride=1)
+
+    with pytest.raises(triton.runtime.errors.PTXASError) as excinfo:
+        mma_kernel[(1, )](
+            a,
+            b,
+            out,
+            M,
+            N,
+            K,
+            block_layout_a,
+            block_layout_b,
+            (),
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            ttgl.int32,
+            False,
+            True,
+            num_warps=num_warps,
+        )
+
+    msg = str(excinfo.value)
+    assert "kind::i8" in msg
+    assert "not supported on .target" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
 @pytest.mark.skipif(not is_hip_cdna4(), reason="Requires CDNA4")
 @pytest.mark.parametrize("use_buffer_load", [True, False])
 def test_amd_direct_load_to_shared(use_buffer_load):
@@ -2028,6 +2140,8 @@ def test_block_m_64_mma(layout_kind):
     assert ttgir.count("ttng.tmem_alloc") == 3
     assert ttgir.count("ttng.tmem_alloc : () -> !ttg.memdesc<64x128xf32") == 1
     assert ttgir.count("ttng.tmem_alloc : () -> !ttg.memdesc<64x128xf16") == 2
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_subslice" not in ttgir
 
     llir = compiled.asm["llir"]
     assert llir.count("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [$1], 128")

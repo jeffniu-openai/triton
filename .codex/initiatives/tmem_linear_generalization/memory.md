@@ -250,12 +250,14 @@
   a permanent clean-diagnostic regression, then expand positive higher-rank
   runtime coverage only on compositions with proven legal TMEM register layouts.
 - Status update (2026-03-25):
-  - positive higher-rank descriptor compositions are now covered for
-    `identity` (1-CTA) and `block_two_ctas` (2-CTA) over
-    `N in {64,128,256}` and variants
+  - positive higher-rank descriptor `index -> 2D load/store` compositions are
+    now covered for `identity`, `mixed`, `block_two_ctas`, and
+    `mmav5_twocta` over `N in {64,128,256}` and variants
     `{32x32b,16x64b,16x128b,16x256b}` with GPU execution and PTX/LLIR checks.
-  - MMAv5 two-CTA higher-rank compositions are now locked as clean negatives
-    (`failed to infer tensor memory encoding for memdesc_index`).
+  - non-representable higher-rank multidimensional TMEM slices are now locked
+    as clean negatives with `unsupported tensor memory memdesc_subslice view`.
+  - MMAv5 two-CTA context-mismatch higher-rank compositions remain clean
+    negatives with the intended invalid-layout / CGA-mismatch diagnostic.
 - Ensure every currently emitted TMEM instruction family has:
   - at least one passing runtime test with exact PTX/LLIR opcode checks;
   - at least one lit lowering test that validates the generated LLVMIR; and
@@ -289,6 +291,9 @@
     `slice -> index -> slice -> index -> 2D load/store`;
   - the same rank-4 path is working for 2-CTA `block_two_ctas` and
     `mmav5_twocta` layouts as well.
+  - 2D last-dimension TMEM slices that need to preserve split-N / M64 physical
+    layout now route through the `ttng.tmem_subslice` compatibility path from
+    the frontend, restoring valid `block_m_64` MMAv5 compositions.
 - The key implementation boundary is now cleaner:
   - row/col zero-basis stripping is only valid for TMEM view-local encodings;
     doing it globally breaks semantically meaningful M64 / split-N / legacy

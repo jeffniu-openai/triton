@@ -988,3 +988,84 @@
     - `138 passed, 48 skipped`
   - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/lower_tensor_memory_to_llvm.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
     - `PASS: 2/2`
+
+## 2026-03-25 (higher-rank TMEM matrix revalidated on GPU2/GPU3)
+- Rechecked the worker-reported higher-rank `memdesc_index` abort in fresh
+  standalone Python processes after the TMEM subview representability fix:
+  - the abort no longer reproduces;
+  - lifted full-rank TMEM `index -> 2D load/store` paths execute correctly.
+- Swept the higher-rank index matrix directly on GPU 2:
+  - layouts:
+    - 1-CTA: `identity`, `mixed`
+    - 2-CTA: `block_two_ctas`, `mmav5_twocta`
+  - `N in {64,128,256}`
+  - variants `{32x32b,16x64b,16x128b,16x256b}`
+  - result:
+    - all 48 cases passed numerically (`out == inp + 5`) and produced matching
+      PTX/LLIR TMEM opcode streams.
+- Swept the higher-rank multidimensional slice matrix directly on GPU 2:
+  - same layout / `N` / variant space as above
+  - result:
+    - all 48 cases now fail cleanly at compile time with
+      `unsupported tensor memory memdesc_subslice view`
+    - no `PassManager::run failed`, assertion, or hard abort observed.
+- Updated `python/test/gluon/test_tmem_runtime_matrix.py` to match the real
+  semantics:
+  - removed stale `xfail` coverage for higher-rank index;
+  - expanded higher-rank index runtime coverage to the full 48-case matrix with
+    PTX/LLIR checks and TTGIR op presence checks;
+  - converted multidimensional higher-rank slice cases into explicit clean
+    negative tests;
+  - tightened the MMAv5 2-CTA context-mismatch negative back to the intended
+    invalid-layout / CGA-mismatch diagnostic;
+  - updated blocked-descriptor negatives to assert the earlier
+    `unsupported tensor memory memdesc_subslice view` failure mode.
+- Validation after the test rewrite:
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'higher_rank or splitn_auto_selects_16x32bx2 or ldst_descriptor_rank5_roundtrip or ldst_twocta_descriptor_rank5_roundtrip or ld_red_identity_linear_layout'`
+    - `143 passed, 379 deselected`
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+    - `469 passed, 53 skipped`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_fpsan.py -k 'tcgen05_mma'`
+    - `26 passed, 56 deselected`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/lower_tensor_memory_to_llvm.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `PASS: 2/2`
+
+## 2026-03-25 (regression fixed: `block_m_64` MMA after generic TMEM slice hardening)
+- New regression found while widening `python/test/gluon/test_core.py` runtime
+  coverage:
+  - `test_block_m_64_mma[legacy]`
+  - `test_block_m_64_mma[linear]`
+  - both started failing with
+    `unsupported tensor memory memdesc_subslice view`
+    at the 2D `acc_tmem.slice(..., dim=1)` step.
+- Root cause:
+  - the new generic TMEM `memdesc_subslice` representability guard correctly
+    rejects non-representable higher-rank views, but it also blocked a valid
+    2D last-dimension split-N / M64 slice that needs to preserve the full
+    physical TMEM encoding and allocation shape.
+  - this is exactly the legacy `ttng.tmem_subslice` compatibility case.
+- Fix:
+  - `python/triton/experimental/gluon/language/_semantic.py`
+    now routes 2D last-dimension TMEM slices (excluding scale layouts) through
+    `builder.create_tmem_subslice(...)` instead of the generic
+    `create_memdesc_subslice(...)` path.
+  - this preserves the source physical TMEM encoding / `alloc_shape` and
+    restores valid split-N / M64 MMAv5 compositions without reopening the
+    higher-rank multidimensional slice cases.
+- Validation after the fix:
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_core.py -k 'test_block_m_64_mma or test_tcgen05_mma_plain_kind_runtime or test_tcgen05_mma_plain_kind_i8_reports_clean_error'`
+    - `5 passed, 17944 deselected`
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'higher_rank or block_descriptor_reports_clean_error'`
+    - `110 passed, 412 deselected`
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+    - `469 passed, 53 skipped`
+- Additional runtime coverage now present in `python/test/gluon/test_core.py`:
+  - plain MMA runtime checks for:
+    - `kind::tf32`
+    - plain non-scaled `kind::f8f6f4` via `float8_e5m2`
+  - clean-negative coverage for the current `kind::i8` PTXAS rejection on the
+    in-tree Blackwell target:
+    - `ptxas-blackwell ... error: Feature '.kind::i8' not supported on .target 'sm_103a'`
+  - classification:
+    - `CLEAN_UNSUPPORTED` for current `sm_103a` / PTXAS assumptions;
+      no compiler crash or MLIR assertion observed.
