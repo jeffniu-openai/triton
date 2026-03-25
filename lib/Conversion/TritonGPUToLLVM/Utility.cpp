@@ -689,7 +689,11 @@ lowerLdSt(Location loc, MLIRContext *ctx, LinearLayout cvt,
   auto quot = divideLeft(cvt, tile);
   assert(quot.has_value() && "cvt must be divisible by tile");
   LinearLayout reps = zerosLike(tile) * *quot;
-  assert(reps.hasInDim(kBlock));
+  if (!reps.hasInDim(kBlock)) {
+    auto outDim =
+        reps.hasOutDim(kOffset) ? kOffset : *reps.getOutDimNames().begin();
+    reps *= LinearLayout::zeros1D(1, kBlock, outDim, reps.getOutDimSize(outDim));
+  }
   LinearLayout addrLayout =
       LinearLayout({{kLane, reps.getBases().lookup(kLane)},
                     {kWarp, reps.getBases().lookup(kWarp)},

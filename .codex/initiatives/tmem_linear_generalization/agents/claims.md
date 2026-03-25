@@ -51,3 +51,27 @@
   - scope: `lib/Conversion/TritonToTritonGPU/RelayoutTritonGPU.cpp`,
     `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
   - status: completed
+- `/root/scaled_mma_match_diag`
+  - mode: explorer
+  - scope: lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp, lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp, linear-layout helpers
+  - status: in_progress
+- `/root/cp_warpx2_runtime_worker`
+  - mode: worker
+  - scope: python/test/gluon/test_tmem_runtime_matrix.py, initiative notes
+  - status: completed
+- `/root/tmem_llvm_lit_gap_audit`
+  - mode: explorer
+  - scope: test/Conversion/tritongpu_to_llvm_blackwell.mlir, TensorMemoryToLLVM/MMAv5 lowering
+  - status: completed
+- `/root/tmem_ldst_red_inventory`
+  - mode: explorer
+  - scope: TMEM `ld/st/ld.red` family inventory, legality axes, crash-risk scan
+  - status: in_progress
+- `/root/tmem_cp_inventory`
+  - mode: explorer
+  - scope: `tcgen05.cp` family inventory, documented-vs-reachable atom coverage
+  - status: in_progress
+- `/root/tmem_mma_inventory`
+  - mode: explorer
+  - scope: `tcgen05.mma`/`mma_scaled`/allocator-lifetime instruction inventory
+  - status: in_progress

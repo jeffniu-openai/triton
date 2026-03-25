@@ -62,6 +62,16 @@ module attributes {"ttg.num-warps" = 1 : i32} {
 
 // -----
 
+// expected-error @+1 {{expected a boolean value for twoCTAs}}
+#tmem_linear_twoctas_non_bool = #ttng.tensor_memory_linear<{row = [[1, 0]], col = [[0, 1]], block = [[1, 0]]}, twoCTAs = 1>
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @dummy_linear_twoctas_non_bool() {
+    tt.return
+  }
+}
+
+// -----
+
 #tmem_linear_twoctas = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[1, 0]]}, twoCTAs = true>
 #blocked = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
 module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
@@ -179,6 +189,45 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
     %0 = ttng.tmem_alloc %cst : (tensor<128x4xi8, #scales>) -> !ttg.memdesc<128x4xi8, #tmem, #ttng.tensor_memory>
     // expected-error @+1 {{Cannot copy into an immutable alloc}}
     ttng.tmem_copy %arg, %0 : !ttg.memdesc<128x4xi8, #shared1, #ttg.shared_memory, mutable>, !ttg.memdesc<128x4xi8, #tmem, #ttng.tensor_memory>
+    tt.return
+  }
+
+  tt.func public @tmem_load_scales_memdesc_invalid(%arg: !ttg.memdesc<128x4xi8, #tmem, #ttng.tensor_memory, mutable>) {
+    // expected-error @+1 {{'ttng.tmem_load' op should use tensor memory encoding.}}
+    %0 = ttng.tmem_load %arg : !ttg.memdesc<128x4xi8, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x4xi8, #scales>
+    tt.return
+  }
+}
+
+// -----
+
+#shared_f32 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32}>
+#tmem_linear_m64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func @tmem_copy_linear_blockm64_not_supported(%src: !ttg.memdesc<64x128xf32, #shared_f32, #ttg.shared_memory>,
+                                                    %dst: !ttg.memdesc<64x128xf32, #tmem_linear_m64, #ttng.tensor_memory, mutable>) {
+    // expected-error @+1 {{Incorrect tmem layout.}}
+    ttng.tmem_copy %src, %dst : !ttg.memdesc<64x128xf32, #shared_f32, #ttg.shared_memory>, !ttg.memdesc<64x128xf32, #tmem_linear_m64, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}
+
+// -----
+
+#shared_f16 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
+#shared_f16_t = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>
+#tmem_linear_mixed = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 1], [0, 2]], col = [[32, 0], [64, 0], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_linear_layout_not_mmav5_compatible(%a: !ttg.memdesc<128x128xf16, #shared_f16, #ttg.shared_memory>,
+                                                      %b: !ttg.memdesc<128x128xf16, #shared_f16_t, #ttg.shared_memory>,
+                                                      %c: !ttg.memdesc<128x128xf32, #tmem_linear_mixed, #ttng.tensor_memory, mutable>,
+                                                      %useAcc: i1,
+                                                      %pred: i1) {
+    // expected-error @+1 {{return operand must have a MMAv5-compatible tensor memory layout}}
+    ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
+       !ttg.memdesc<128x128xf16, #shared_f16, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf16, #shared_f16_t, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf32, #tmem_linear_mixed, #ttng.tensor_memory, mutable>
     tt.return
   }
 }

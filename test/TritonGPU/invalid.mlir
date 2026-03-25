@@ -29,6 +29,16 @@ module attributes {"ttg.num-warps" = 1 : i32} {
 
 // -----
 
+// expected-error @+1 {{expected a boolean value for twoCTAs}}
+#tmem_linear_bad_twoctas_bool = #ttng.tensor_memory_linear<{row = [[1, 0]], col = [[0, 1]], block = [[1, 0]]}, twoCTAs = "true">
+module attributes {"ttg.num-warps" = 1 : i32} {
+  tt.func @bad_tmem_linear_twoctas_type() {
+    tt.return
+  }
+}
+
+// -----
+
 #tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 #ttm = #ttng.tensor_memory
 module attributes {"ttg.num-warps" = 4 : i32} {

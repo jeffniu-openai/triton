@@ -53,8 +53,9 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
     if splitn:
         N = shape[1]
         if not layout_obj.reg_bases:
-            # We cannot use this layout in a load or a store ATM due to a PTX bug!
-            # You can work around this by loading to 32x32b and follow by a convert_layout to this layout.
+            # Small split-N shapes can place the second half entirely on a lane
+            # basis. Materialize the equivalent register basis explicitly so the
+            # frontend exposes the same splitn layout shape that lowering uses.
             _check(layout_obj.lane_bases[-1] == [0, N // 2],
                    lambda: f"splitn with 1 register requires the last lane basis to be [0, N / 2]. Got {layout_obj}")
             layout_obj.reg_bases.append([0, N // 2])
@@ -409,11 +410,11 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         _check(index.type == ttgl.int32, lambda: f"expected 'index' to be int32 but got {index.type}")
         shape = mem_desc.shape[1:]
         index = index.handle
-        layout = mem_desc.layout
         alloc_shape = list(mem_desc.type.alloc_shape[1:])
-        ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
         builder = self.builder
-        handle = builder.create_memdesc_index(ty.to_ir(builder), mem_desc.handle, index)
+        handle = builder.create_memdesc_index(mem_desc.handle, index)
+        layout = builder.get_gluon_layout_from_memdesc(handle)
+        ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
         return desc_val(handle, **ty.__dict__)
 
     def memdesc_trans(self, mem_desc, order):

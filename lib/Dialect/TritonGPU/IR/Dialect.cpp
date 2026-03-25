@@ -1046,7 +1046,11 @@ Attribute LinearEncodingAttr::parse(AsmParser &parser, Type type) {
 static SmallVector<unsigned>
 basesPerDimImpl(const LinearLayout::BasesT &namedBases, StringAttr dimName,
                 size_t rank, bool skipBroadcast) {
-  const auto &bases = namedBases.find(dimName)->second;
+  auto dimIt = namedBases.find(dimName);
+  if (dimIt == namedBases.end()) {
+    return SmallVector<unsigned>(rank, 1);
+  }
+  const auto &bases = dimIt->second;
 
   if (bases.empty()) {
     return SmallVector<unsigned>(rank, 1);
@@ -1084,9 +1088,13 @@ CGAEncodingAttr linearToCGAEncodingAttr(const LinearLayout &ll,
   auto inDims = to_vector(ll.getInDimNames());
   auto *ctx = inDims[0].getContext();
   auto kBlock = StringAttr::get(ctx, "block");
-  assert(llvm::is_contained(inDims, kBlock) &&
-         "layout must have a 'block' dim");
   auto outDims = to_vector(ll.getOutDimNames());
+  if (!llvm::is_contained(inDims, kBlock)) {
+    SmallVector<unsigned> ones(outDims.size(), 1);
+    SmallVector<unsigned> order(outDims.size());
+    std::iota(order.begin(), order.end(), 0);
+    return CGAEncodingAttr::fromSplitParams(ctx, ones, ones, order);
+  }
   auto cgaLayout = ll.sublayout({kBlock}, outDims);
   assert(cgaLogicalShape.size() == outDims.size() &&
          "layout rank and CGA rank must match");

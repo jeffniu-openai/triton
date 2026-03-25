@@ -106,8 +106,9 @@ inferTMemIndexEncoding(MemDescType srcTy, MemDescType dstTy) {
     SmallVector<StringAttr> outDims = llvm::to_vector(ll.getOutDimNames());
     outDims.erase(outDims.begin());
     ll = ll.sublayout(llvm::to_vector(ll.getInDimNames()), outDims);
+    auto dstLayoutShape = dstTy.getAllocShape().take_back(layoutRank - 1);
     ll = ll.reshapeOuts(standardOutDimPairs(srcTy.getContext(),
-                                            dstTy.getShape()));
+                                            dstLayoutShape));
   } else {
     // Indexing over the extra multibuffering dimension preserves the physical
     // TMEM layout; the explicit alloc_shape on the result tracks the view.
@@ -632,11 +633,26 @@ static LogicalResult inferMemDescReshapeOpEncoding(MemDescType srcTy,
                                                    Attribute srcEnc,
                                                    ArrayRef<int64_t> dstShape,
                                                    Attribute &dstEnc) {
+  if (srcTy.getAllocShape().take_back(srcShape.size()) != srcShape)
+    return failure();
   auto *ctx = srcEnc.getContext();
   if (auto tmemLinear = getCanonicalTMemLinearEncoding(srcTy)) {
-    if (product(srcShape) != product(dstShape))
+    auto layoutSrcShape = srcShape;
+    auto layoutDstShape = dstShape;
+
+    // TMEM encodings can represent an extra leading multibuffer dimension that
+    // is not part of the physical TMEM linear layout.
+    if (srcShape.size() == static_cast<size_t>(tmemLinear->getRank()) + 1) {
+      if (dstShape.empty() || dstShape.front() != srcShape.front())
+        return failure();
+      layoutSrcShape = srcShape.drop_front();
+      layoutDstShape = dstShape.drop_front();
+    }
+
+    if (product(layoutSrcShape) != product(layoutDstShape))
       return failure();
-    auto dstLL = reshapeLayout(ctx, tmemLinear->getLinearLayout(), dstShape);
+    auto dstLL =
+        reshapeLayout(ctx, tmemLinear->getLinearLayout(), layoutDstShape);
     auto result = triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(
         ctx, std::move(dstLL), tmemLinear->getTwoCTAs());
     if (!result)
@@ -696,6 +712,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
   if (product<int64_t>(dstShape) != product<int64_t>(srcTy.getShape()))
     return emitOptionalError(
         loc, "dst shape has different number of elements than src");
+  if (srcTy.getAllocShape().take_back(srcTy.getRank()) != srcTy.getShape())
+    return emitOptionalError(loc, "NYI: memdesc_reshape of memdesc_subslice");
 
   Attribute dstEncoding;
   if (Attribute srcEnc = srcTy.getEncoding()) {

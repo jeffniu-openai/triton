@@ -321,7 +321,8 @@ int32_t LinearLayout::getOutDimIndex(StringAttr outDim) const {
 
 int32_t LinearLayout::getInDimSizeLog2(StringAttr inDim) const {
   auto it = bases.find(inDim);
-  assert(it != bases.end() && "inDim not found in layout");
+  if (it == bases.end())
+    return 0;
   return it->second.size();
 }
 
@@ -796,17 +797,18 @@ LinearLayout operator*(LinearLayout inner, LinearLayout outer) {
 }
 
 bool LinearLayout::isTrivialOver(ArrayRef<StringAttr> dimNames) const {
+  SmallVector<StringAttr> presentDimNames;
   for (StringAttr dim : dimNames) {
-    if (!hasInDim(dim) || !hasOutDim(dim)) {
-      llvm::report_fatal_error(
-          ("dim " + dim.str() + " must be present in the layout").c_str());
-    }
+    if (hasInDim(dim) && hasOutDim(dim))
+      presentDimNames.push_back(dim);
   }
+  if (presentDimNames.empty())
+    return true;
 
   auto getRemainingDimNames = [&](auto allDimNames) {
     SmallVector<StringAttr> remainingDimNames;
     for (StringAttr dim : allDimNames) {
-      if (!llvm::is_contained(dimNames, dim)) {
+      if (!llvm::is_contained(presentDimNames, dim)) {
         remainingDimNames.push_back(dim);
       }
     }
@@ -824,9 +826,9 @@ bool LinearLayout::isTrivialOver(ArrayRef<StringAttr> dimNames) const {
   // We can quotient out dimNames iff they don't affect the remainingInDimNames
   // in the result. In other words, we want to check that B is zero, and C is
   // zero, and D is the identity
-  return squareSublayoutIsIdentity(*this, dimNames) &&
-         sublayoutIsZero(remainingInDimNames, dimNames) &&
-         sublayoutIsZero(dimNames, remainingOutDimNames);
+  return squareSublayoutIsIdentity(*this, presentDimNames) &&
+         sublayoutIsZero(remainingInDimNames, presentDimNames) &&
+         sublayoutIsZero(presentDimNames, remainingOutDimNames);
 }
 
 std::optional<LinearLayout>

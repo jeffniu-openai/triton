@@ -4,6 +4,7 @@
 #shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = true, elementBitWidth = 8}>
 #shared16 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #shared16t = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>
+#shared32 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32}>
 #shared2 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
 #tmem_f16 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 2>
 #tmem_int32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1>
@@ -136,6 +137,16 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
     %true = arith.constant true
     ttng.tmem_store %arg0, %arg1, %true : tensor<128x128xf32, #blocked1> -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
     %0 = ttng.tmem_load %arg1 : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked1>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tmem_copy_linear_f32
+  // CHECK: ttng.tmem_copy {{.*}} : !ttg.memdesc<128x128xf32, #{{shared[0-9]*}}, #smem>, !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>, !ttg.memdesc<1xi64, #shared2, #smem>
+  tt.func @tmem_copy_linear_f32(
+      %src: !ttg.memdesc<128x128xf32, #shared32, #ttg.shared_memory>,
+      %dst: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %barrier: !ttg.memdesc<1xi64, #shared2, #ttg.shared_memory>) {
+    ttng.tmem_copy %src, %dst, %barrier : !ttg.memdesc<128x128xf32, #shared32, #ttg.shared_memory>, !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>, !ttg.memdesc<1xi64, #shared2, #ttg.shared_memory>
     tt.return
   }
 

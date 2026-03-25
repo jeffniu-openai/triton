@@ -55,6 +55,7 @@ void init_triton_passes_ttir(py::module &&m) {
 
 void init_triton_passes_ttgpuir(py::module &&m) {
   using namespace mlir;
+  using namespace mlir::triton;
   using namespace mlir::triton::gpu;
   using namespace mlir::triton::instrument;
   ADD_PASS_WRAPPER_0("add_coalesce", createTritonGPUCoalesce);
@@ -84,6 +85,7 @@ void init_triton_passes_ttgpuir(py::module &&m) {
   ADD_PASS_WRAPPER_0("add_allocate_shared_memory", createAllocateSharedMemory);
   ADD_PASS_WRAPPER_0("add_allocate_global_scratch_memory",
                      createTritonGPUGlobalScratchAllocationPass);
+  ADD_PASS_WRAPPER_0("add_relayout_tritongpu", createRelayoutTritonGPU);
   ADD_PASS_WRAPPER_0("add_combine_tensor_select_and_if",
                      createTritonGPUCombineTensorSelectAndIf);
   ADD_PASS_WRAPPER_0("add_optimize_accumulator_init",

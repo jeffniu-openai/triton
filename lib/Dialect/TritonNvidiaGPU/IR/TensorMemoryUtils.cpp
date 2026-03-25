@@ -63,6 +63,34 @@ getVec(const LinearLayout &cvt, const LinearLayout &tile, int maxnreg) {
   return std::make_tuple(std::move(reps), std::move(perm),
                          (i / 2) * tile.getInDimSize(kReg));
 }
+
+FailureOr<unsigned> getExpectedTMemLoadValueCount(const TMemLdStEncodingInfo &info,
+                                                  unsigned bitwidth) {
+  auto kReg = *info.reps.getInDimNames().begin();
+
+  if (bitwidth < 32) {
+    // The current sanity check is only used to avoid false-positive direct
+    // lowering claims on 32-bit TMEM load/store paths. Packed/unpacked
+    // subword cases are validated by the existing lowering logic.
+    return failure();
+  }
+
+  if (info.broadcast) {
+    TMemLdStEncodingInfo nested = info;
+    nested.broadcast = std::nullopt;
+    auto nestedCount = getExpectedTMemLoadValueCount(nested, bitwidth);
+    if (failed(nestedCount))
+      return failure();
+
+    uint32_t broadcastMask = info.reps.getFreeVariableMasks().lookup(kReg);
+    unsigned expectedInputCount =
+        info.reps.getInDimSize(kReg) / (1u << llvm::popcount(broadcastMask));
+    if (*nestedCount != expectedInputCount)
+      return failure();
+  }
+
+  return info.reps.getInDimSize(kReg);
+}
 } // namespace
 
 // Get the maximum number of registers per thread based on the context. This is
@@ -321,7 +349,26 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
                      /*isSurjective=*/cvt.isSurjective());
 
   int bitwidth = memTy.getElementTypeBitWidth();
-  return lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError);
+  auto info = lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError);
+  if (failed(info))
+    return failure();
+
+  auto kReg = *regLayout.getInDimNames().begin();
+  if (bitwidth == 32) {
+    auto expectedValueCount = getExpectedTMemLoadValueCount(*info, bitwidth);
+    if (failed(expectedValueCount) ||
+        *expectedValueCount != regLayout.getInDimSize(kReg)) {
+      if (emitError) {
+        emitError() << "Failed to lower TMEM load/store: unsupported register "
+                       "broadcast pattern for direct lowering.\n"
+                    << regLayout.toString() << "\n"
+                    << memLayout.toString();
+      }
+      return failure();
+    }
+  }
+
+  return info;
 }
 
 } // namespace mlir::triton::nvidia_gpu

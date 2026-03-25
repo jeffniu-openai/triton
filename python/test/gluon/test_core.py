@@ -6,7 +6,6 @@ from itertools import product
 
 import triton
 import triton.language as tl
-from triton.backends.compiler import GPUTarget
 
 from triton._internal_testing import (
     is_ampere_or_newer,
@@ -45,15 +44,9 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
 )
 from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 from triton._C.libtriton.gluon_ir import make_cga_layout
-from triton._filecheck import run_parser
-from triton._filecheck import run_parser
+
 
 THREADS_PER_WARP = triton.runtime.driver.active.get_current_target().warp_size
-BLACKWELL_PARSER_TARGET = GPUTarget("cuda", 100, 32)
-
-
-def make_args(*args, **kwargs):
-    return args, kwargs
 
 
 def _make_tmem_linear_layout(m, n):
@@ -64,11 +57,17 @@ def _make_tmem_linear_layout(m, n):
     )
 
 
-def _make_tmem_linear_layout_mixed_128x128():
+def _make_tmem_linear_layout_mixed(m, n):
+    assert m == 128 and n >= 64 and (n & (n - 1)) == 0
+    col_bases = [[32, 0], [64, 0]]
+    col = 4
+    while col < n:
+        col_bases.append([0, col])
+        col <<= 1
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 1], [0, 2]],
-        cols=[[32, 0], [64, 0], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]],
-        shape=[128, 128],
+        cols=col_bases,
+        shape=[m, n],
     )
 
 
@@ -82,6 +81,20 @@ def _make_tmem_linear_layout_block(m, n, two_ctas=False):
     )
 
 
+def _make_tmem_linear_layout_mmav5_twocta(m, n):
+    assert m >= 128 and (m & (m - 1)) == 0
+    assert n >= 1 and (n & (n - 1)) == 0
+    tile_m = m // 2
+    assert tile_m in (64, 128)
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(int(math.log2(tile_m)))],
+        cols=[[0, 1 << i] for i in range(int(math.log2(n)))],
+        block_bases=[[tile_m, 0]],
+        shape=[m, n],
+        two_ctas=True,
+    )
+
+
 def _make_tmem_linear_layout_64x32_block(two_ctas=False):
     return TensorMemoryLinearLayout(
         rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0]],
@@ -92,57 +105,319 @@ def _make_tmem_linear_layout_64x32_block(two_ctas=False):
     )
 
 
-def _default_cga_layout(num_ctas, rank, dim=0):
-    if num_ctas == 1:
-        return []
-    return [[0] * dim + [1 << i] + [0] * (rank - dim - 1) for i in range(num_ctas.bit_length() - 1)]
-
-
-def _make_tmem_register_layout(num_ctas):
-    return ttgl.BlockedLayout(
-        size_per_thread=[1, 32],
-        threads_per_warp=[32, 1],
-        warps_per_cta=[2, 1],
-        order=[0, 1],
-        cga_layout=_default_cga_layout(num_ctas, 2),
+def _make_tmem_linear_layout_m64(n):
+    assert n > 0 and (n & (n - 1)) == 0
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [0, 0], [16, 0], [32, 0]],
+        cols=[[0, 1 << i] for i in range(int(math.log2(n)))],
+        shape=[64, n],
     )
-
-
-TMEM_CORE_VIEW_VARIANTS = [
-    ("identity", _make_tmem_linear_layout(128, 128), _make_tmem_linear_layout(64, 32), 1),
-    ("mixed", _make_tmem_linear_layout_mixed_128x128(), _make_tmem_linear_layout(64, 32), 1),
-    ("block-acc", _make_tmem_linear_layout_block(128, 128), _make_tmem_linear_layout_64x32_block(), 2),
-    ("block-two-ctas", _make_tmem_linear_layout_block(128, 128, two_ctas=True), \
-        _make_tmem_linear_layout_64x32_block(two_ctas=True), 2),
-]
 
 
 @gluon.jit
-def tmem_linear_view_ops_compile_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
-                                        reinterpret_layout: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.float32, [2, 128, 128], layout=linear_layout)
-    view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
+def tmem_linear_runtime_view_kernel_a(input_ptr, output_ptr, layout: ttgl.constexpr, reinterpret_layout: ttgl.constexpr,
+                                      instr_variant: ttgl.constexpr):
+    OUT_M: ttgl.constexpr = 128
+    OUT_N: ttgl.constexpr = 64
+    out_elems: ttgl.constexpr = OUT_M * OUT_N
+    ptr = ttgl.arange(0, out_elems)
+    input_tensor = ttgl.load(input_ptr + ptr).reshape([OUT_M, OUT_N])
+
+    M: ttgl.constexpr = layout.shape[0]
+    N: ttgl.constexpr = layout.shape[1]
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    view = tmem.slice(1, 1).index(0).permute([1, 0]).reshape((64, 2, 128))
     view = view.permute([0, 2, 1]).reshape((64, 32, 8))
-    view = view.slice(16, 32, dim=0).slice(8, 16, dim=1).slice(2, 4, dim=2)
-    view = view._reinterpret(ttgl.float32, [64, 32], reinterpret_layout)
-    _ = view.load(layout)
+    view = view.slice(0, 64, dim=0).slice(8, 16, dim=1).slice(0, 8, dim=2)
+    view = view._reinterpret(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    view.store(ttgl.convert_layout(input_tensor, reg_layout))
+    output_value = view.load(reg_layout)
+    output_value = output_value + ttgl.full([OUT_M, OUT_N], 1.0, ttgl.float32, layout=reg_layout)
+    view.store(output_value)
+    output_value = view.load(reg_layout)
+    ttgl.store(output_ptr + ptr, output_value.reshape([out_elems]))
 
 
-@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_CORE_VIEW_VARIANTS)
-def test_tmem_linear_view_ops_compile_ir(name, linear_layout, reinterpret_layout, num_ctas):
-    layout = _make_tmem_register_layout(num_ctas)
-    mod = run_parser(
-        tmem_linear_view_ops_compile_kernel,
-        *make_args(layout, linear_layout, reinterpret_layout, num_warps=2, num_ctas=num_ctas),
-        target=BLACKWELL_PARSER_TARGET,
+@gluon.jit
+def tmem_linear_runtime_view_kernel_b(input_ptr, output_ptr, layout: ttgl.constexpr, reinterpret_layout: ttgl.constexpr,
+                                      instr_variant: ttgl.constexpr):
+    OUT_M: ttgl.constexpr = reinterpret_layout.shape[0]
+    OUT_N: ttgl.constexpr = reinterpret_layout.shape[1]
+    out_elems: ttgl.constexpr = OUT_M * OUT_N
+    ptr = ttgl.arange(0, out_elems)
+    input_tensor = ttgl.load(input_ptr + ptr).reshape([OUT_M, OUT_N])
+
+    M: ttgl.constexpr = layout.shape[0]
+    N: ttgl.constexpr = layout.shape[1]
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    view = tmem.index(1).reshape((64, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view = view.slice(0, OUT_M, dim=0).slice(0, OUT_N, dim=1)
+    view = view._reinterpret(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    view.store(ttgl.convert_layout(input_tensor, reg_layout))
+    output_value = view.load(reg_layout)
+    output_value = output_value + ttgl.full([OUT_M, OUT_N], 1.0, ttgl.float32, layout=reg_layout)
+    view.store(output_value)
+    output_value = view.load(reg_layout)
+    ttgl.store(output_ptr + ptr, output_value.reshape([out_elems]))
+
+
+TMEM_RUNTIME_VIEW_CASES = [
+    (
+        "slice_reinterpret_64_identity_32x32b",
+        tmem_linear_runtime_view_kernel_a,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "32x32b",
+        4,
+    ),
+    (
+        "slice_reinterpret_64_identity_16x64b",
+        tmem_linear_runtime_view_kernel_a,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "16x64b",
+        4,
+    ),
+    (
+        "slice_reinterpret_64_mixed_32x32b",
+        tmem_linear_runtime_view_kernel_a,
+        _make_tmem_linear_layout_mixed(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "32x32b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_128_identity_32x32b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 128),
+        "32x32b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_128_identity_16x128b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 128),
+        "16x128b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_64_identity_32x32b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "32x32b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_64_identity_16x64b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "16x64b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_64_identity_16x128b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "16x128b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_128_mixed_32x32b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout_mixed(128, 128),
+        _make_tmem_linear_layout(128, 128),
+        "32x32b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_64_mixed_32x32b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout_mixed(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "32x32b",
+        4,
+    ),
+    (
+        "index_reshape_reinterpret_256_to_128_16x128b",
+        tmem_linear_runtime_view_kernel_b,
+        _make_tmem_linear_layout(128, 256),
+        _make_tmem_linear_layout(128, 128),
+        "16x128b",
+        4,
+    ),
+]
+
+
+def _make_tmem_linear_roundtrip_kernel(dtype):
+    @gluon.jit
+    def kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr):
+        offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+        tmem = allocate_tensor_memory(dtype, [M, N], layout)
+        reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+        value = ttgl.load(in_ptr + offs)
+        tmem.store(ttgl.convert_layout(value, reg_layout))
+        value = tmem.load(reg_layout)
+        ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+    return kernel
+
+
+def _make_tmem_linear_roundtrip_variant_kernel(dtype):
+    @gluon.jit
+    def kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
+               instr_variant: ttgl.constexpr):
+        offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+        tmem = allocate_tensor_memory(dtype, [M, N], layout)
+        reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
+        value = ttgl.load(in_ptr + offs)
+        tmem.store(ttgl.convert_layout(value, reg_layout))
+        value = tmem.load(reg_layout)
+        ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+    return kernel
+
+
+@gluon.jit
+def tmem_descriptor_chain_matrix_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
+                                        instr_variant: ttgl.constexpr):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    view = tmem.slice(1, 1).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view = view.permute([1, 0]).permute([1, 0])
+    view = view.slice(0, M, dim=0).slice(0, N, dim=1)
+    view = view._reinterpret(ttgl.float32, [M, N], layout)
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    view.store(ttgl.convert_layout(value, reg_layout))
+    out = view.load(reg_layout)
+    out = out + ttgl.full([M, N], 7.0, ttgl.float32, layout=reg_layout)
+    view.store(out)
+    out = tmem.index(1).load(reg_layout)
+    ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
+def tmem_copy_no_scales_matrix_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
+                                      swizzle: ttgl.constexpr):
+    tmem_layout: ttgl.constexpr = TensorMemoryLayout(
+        block=(128, BLOCK_N),
+        col_stride=32 // in_ptr.dtype.element_ty.primitive_bitwidth,
     )
-    ir = mod.str_nodebug()
-    assert "tensor_memory_linear" in ir
-    assert ir.count("ttg.memdesc_subslice") >= 4
-    assert "ttg.memdesc_index" in ir
-    assert ir.count("ttg.memdesc_trans") >= 2
-    assert ir.count("ttg.memdesc_reshape") >= 2
-    assert "ttg.memdesc_reinterpret" in ir
+    tmem = allocate_tensor_memory(
+        element_ty=in_ptr.dtype.element_ty,
+        shape=[M, N],
+        layout=tmem_layout,
+    )
+    tmem_reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, tmem_reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, tmem_reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+
+    input_value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=swizzle, element_bitwidth=32, rank=2)
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+
+    smem.store(input_value)
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    output_value = tmem.load()
+    ttgl.store(out_ptr + offs, output_value)
+
+
+@gluon.jit
+def tmem_packed_f16_roundtrip_kernel(in_ptr, out_ptr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    tmem_layout: ttgl.constexpr = TensorMemoryLayout((M, N), col_stride=2)
+    tmem = allocate_tensor_memory(ttgl.float16, [M, N], tmem_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+    value = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+
+def _make_shared_linear_layout(m, n, *, block_bases=None, alignment=16):
+    offset_bases = [[0, 1 << i] for i in range(int(math.log2(n)))]
+    offset_bases.extend([[1 << i, 0] for i in range(int(math.log2(m)))])
+    return ttgl.SharedLinearLayout(offset_bases=offset_bases, block_bases=block_bases or [], alignment=alignment)
+
+
+def _assert_tcgen05_atoms(asm: str, atoms):
+    missing = [atom for atom in atoms if atom not in asm]
+    assert not missing, f"Missing {missing}. asm tcgen05 lines: {re.findall(r'tcgen05\\.[^\\n;]*', asm)}"
+
+
+def _extract_tcgen05_opcode_offsets(asm: str, opcodes=("ld", "st")):
+    pattern = re.compile(
+        rf"(tcgen05\.(?:{'|'.join(opcodes)})(?:\.red)?\.sync\.aligned\.[^\s;\"]+)"
+        r"[^\n\[]*?\[\s*[^\]\n]*?\+\s*(\d+)\s*\]"
+    )
+    return [(opcode, int(offset)) for opcode, offset in pattern.findall(asm)]
+
+
+def _extract_tcgen05_cp_opcodes(asm: str):
+    pattern = re.compile(
+        r"(tcgen05\.cp(?:\.cta_group::\d+)?(?:\.warpx[24](?:::[^\s.;]+)*)?\.\d+x\d+b)"
+    )
+    return pattern.findall(asm)
+
+
+def _extract_tcgen05_mma_opcodes(asm: str):
+    pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
+    return pattern.findall(asm)
+
+
+def _assert_exact_tcgen05_opcode_offsets(asm: str, expected, opcodes=("ld", "st")):
+    actual = _extract_tcgen05_opcode_offsets(asm, opcodes=opcodes)
+    assert actual == list(expected), f"Expected {expected}, got {actual}"
+
+
+def _extract_tcgen05_opcode_offset_immediates(asm: str, opcodes=("ld", "st")):
+    pattern = re.compile(
+        rf"(tcgen05\.(?:{'|'.join(opcodes)})(?:\.red)?\.sync\.aligned\.[^\s;\"]+)"
+        r"[^\n\[]*?\[\s*[^\]\n]*?\+\s*(\d+)\s*\]\s*,\s*(\d+)"
+    )
+    return [(opcode, int(offset), int(imm)) for opcode, offset, imm in pattern.findall(asm)]
+
+
+def _assert_exact_tcgen05_opcode_offset_immediates(asm: str, expected, opcodes=("ld", "st")):
+    actual = _extract_tcgen05_opcode_offset_immediates(asm, opcodes=opcodes)
+    assert actual == list(expected), f"Expected {expected}, got {actual}"
+
+
+TMEM_LINEAR_F32_ROUNDTRIP_AUTO_KERNEL = _make_tmem_linear_roundtrip_kernel(ttgl.float32)
+TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL = _make_tmem_linear_roundtrip_variant_kernel(ttgl.float32)
+TMEM_LINEAR_F16_ROUNDTRIP_AUTO_KERNEL = _make_tmem_linear_roundtrip_kernel(ttgl.float16)
+
+
+def _expected_scaled_mma_opcode(a_format, b_format, num_ctas):
+    prefix = f"tcgen05.mma.cta_group::{2 if num_ctas == 2 else 1}.kind::"
+    if a_format == "nvfp4" and b_format == "nvfp4":
+        return prefix + "mxf4nvf4.block_scale.scale_vec::4X"
+    if a_format == "mxfp4" and b_format == "mxfp4":
+        return prefix + "mxf4.block_scale.scale_vec::2X"
+    return prefix + "mxf8f6f4.block_scale.scale_vec::1X"
+
+
+def _expected_scaled_cp_opcode(num_ctas):
+    return f"tcgen05.cp.cta_group::{2 if num_ctas == 2 else 1}.warpx4.32x128b"
 
 
 @gluon.jit
@@ -474,6 +749,64 @@ def test_tcgen05_mma_multicast_commit(ctas_per_cga, two_ctas):
     # but we do a commit.multicast::cluster so let's grep that one instead
     assert ("multicast::cluster" in compiled.asm["ptx"])
     torch.testing.assert_close(out, torch.matmul(a.to(out.dtype), b.to(out.dtype)))
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
+def test_tcgen05_mma_multicast_commit_twocta_linear_acc(layout_kind):
+    ctas_per_cga = [2, 1]
+    two_ctas = True
+    ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
+    BLOCK_M = 128 * ctas_per_cga[0]
+    BLOCK_N = 64 * ctas_per_cga_b[1]
+    BLOCK_K = 32
+
+    cta_split_a = [ctas_per_cga[0], 1]
+    cta_split_b = [1, ctas_per_cga_b[1]]
+    cta_order = [1, 0]
+    cga_layout_a = make_2cta_cga_layout(ctas_per_cga, cta_split_a, cta_order, 0)
+    cga_layout_b = make_2cta_cga_layout(ctas_per_cga_b, cta_split_b, cta_order, 1)
+    cga_layout_c = make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
+
+    shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([BLOCK_M, BLOCK_K], ttgl.float16, cga_layout=cga_layout_a)
+    shared_layout_b = ttgl.NVMMASharedLayout.get_default_for([BLOCK_K, BLOCK_N], ttgl.float16, cga_layout=cga_layout_b)
+
+    a = torch.randn((BLOCK_M, BLOCK_K), dtype=torch.float16, device="cuda")
+    b = torch.randn((BLOCK_K, BLOCK_N), dtype=torch.float16, device="cuda")
+    out = torch.empty((BLOCK_M, BLOCK_N), dtype=torch.float32, device="cuda")
+
+    a_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(a, [BLOCK_M, BLOCK_K], shared_layout_a)
+    b_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(b, [BLOCK_K, BLOCK_N], shared_layout_b)
+
+    if layout_kind == "legacy":
+        acc_tmem_layout = TensorMemoryLayout(
+            block=(128, BLOCK_N // ctas_per_cga[1]),
+            col_stride=1,
+            two_ctas=two_ctas,
+            cga_layout=cga_layout_c,
+        )
+    else:
+        acc_tmem_layout = _make_tmem_linear_layout_mmav5_twocta(BLOCK_M, BLOCK_N)
+
+    blocked_c = ttgl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
+                                   cga_layout=cga_layout_c)
+    compiled = tcgen05_mma_multicast_commit_kernel[(1, )](
+        a_desc,
+        b_desc,
+        out,
+        BLOCK_M,
+        BLOCK_N,
+        acc_tmem_layout,
+        blocked_c,
+        num_warps=4,
+        num_ctas=ctas_per_cga[0] * ctas_per_cga[1],
+    )
+
+    torch.testing.assert_close(out, torch.matmul(a.to(out.dtype), b.to(out.dtype)))
+    assert "tcgen05.mma.cta_group::2.kind::f16" in compiled.asm["ptx"]
+    assert "tcgen05.mma.cta_group::2.kind::f16" in compiled.asm["llir"]
+    assert "tcgen05.commit.cta_group::2" in compiled.asm["ptx"]
+    assert "tcgen05.commit.cta_group::2" in compiled.asm["llir"]
 
 
 @gluon.jit
@@ -1435,7 +1768,7 @@ def test_tmem_copy_2d():
     x = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8).to(device)
     #x = torch.arange(smem_h * smem_w, dtype=torch.int8, device=device).reshape(smem_h, smem_w)
     z_tri = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8).to(device)
-    kernel[(1, )](x, z_tri, smem_h, smem_w, num_rows, num_cols)
+    compiled = kernel[(1, )](x, z_tri, smem_h, smem_w, num_rows, num_cols)
 
     # offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]],
     # Split into contiguous shmem chunks
@@ -1449,9 +1782,90 @@ def test_tmem_copy_2d():
     for warp in warps:
         torch.testing.assert_close(x_res, warp)
 
+    expected = ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2
+    assert _extract_tcgen05_cp_opcodes(compiled.asm["ptx"]) == expected
+    assert _extract_tcgen05_cp_opcodes(compiled.asm["llir"]) == expected
+
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_subslice_block_m_64():
+def test_tmem_copy_no_scales_shared_linear_128x128b():
+
+    @gluon.jit
+    def kernel(in_ptr, out_ptr):
+        M: ttgl.constexpr = 128
+        N: ttgl.constexpr = 4
+
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
+        offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+        offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+        offs = offs_m[:, None] * N + offs_n[None, :]
+
+        value = ttgl.load(in_ptr + offs)
+        smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+            offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+            alignment=16,
+        )
+        smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], layout=smem_layout)
+        tmem_layout: ttgl.constexpr = TensorMemoryLayout((M, N), col_stride=1)
+        tmem = allocate_tensor_memory(ttgl.int32, [M, N], layout=tmem_layout)
+
+        barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], ttgl.constexpr(mbarrier.MBarrierLayout()))
+        mbarrier.init(barrier, count=1)
+
+        smem.store(value)
+        tcgen05_copy(smem, tmem)
+        tcgen05_commit(barrier)
+        mbarrier.wait(barrier, phase=0)
+        output = tmem.load(blocked)
+        ttgl.store(out_ptr + offs, output)
+
+    inp = torch.arange(128 * 4, device="cuda", dtype=torch.int32).reshape(128, 4)
+    out = torch.empty_like(inp)
+
+    compiled = kernel[(1, )](inp, out, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    assert _extract_tcgen05_cp_opcodes(compiled.asm["ptx"]) == ["tcgen05.cp.cta_group::1.128x128b"]
+    assert _extract_tcgen05_cp_opcodes(compiled.asm["llir"]) == ["tcgen05.cp.cta_group::1.128x128b"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("N", [64, 128, 256])
+def test_tmem_linear_f16_roundtrip(N):
+    M = 128
+    layout = _make_tmem_linear_layout(128, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float16).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = TMEM_LINEAR_F16_ROUNDTRIP_AUTO_KERNEL[(1, )](inp, out, layout, M, N, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ptx_ops = _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_opcode_offsets(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    expected = {
+        64: [
+            ("tcgen05.st.sync.aligned.32x32b.x32.b32", 0),
+            ("tcgen05.ld.sync.aligned.32x32b.x32.b32", 0),
+        ],
+        128: [
+            ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
+            ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 0),
+        ],
+        256: [
+            ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+            ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
+        ],
+    }
+    assert ptx_ops == expected[N]
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
+def test_tmem_subslice_block_m_64(layout_kind):
+
+    full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
+    n2_layout = TensorMemoryLayout((64, 2), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(2)
 
     @gluon.jit
     def kernel(s_ptr, out_ptr):
@@ -1459,7 +1873,7 @@ def test_tmem_subslice_block_m_64():
         N: ttgl.constexpr = 128
         BLOCK_N: ttgl.constexpr = 64
 
-        tmem_layout: ttgl.constexpr = TensorMemoryLayout((BLOCK_M, BLOCK_N), col_stride=1)
+        tmem_layout: ttgl.constexpr = full_layout
         s_tmem = allocate_tensor_memory(ttgl.float32, (BLOCK_M, N), layout=tmem_layout)
         o_tmem = allocate_tensor_memory(ttgl.float32, (BLOCK_M, N), layout=tmem_layout)
 
@@ -1472,17 +1886,17 @@ def test_tmem_subslice_block_m_64():
         s_tmem.store(s)
         o_tmem.store(s)
 
-        p_tmem = s_tmem.slice(0, N // 2)._reinterpret(ttgl.float16, [BLOCK_M, N], tmem_layout)
+        p_tmem = s_tmem.slice(0, N // 2, dim=1)._reinterpret(ttgl.float16, [BLOCK_M, N], tmem_layout)
         p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=layout))
 
-        d1_tmem_layout: ttgl.constexpr = TensorMemoryLayout((BLOCK_M, 2), col_stride=1)
+        d1_tmem_layout: ttgl.constexpr = n2_layout
 
-        m_tmem = s_tmem.slice(N // 4, 2)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
+        m_tmem = s_tmem.slice(N // 4, 2, dim=1)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
         d1_layout: ttgl.constexpr = m_tmem.get_reg_layout()
         m_tmem.store(ttgl.full((BLOCK_M, 2), 2.0, dtype=ttgl.float32, layout=d1_layout))
-        l_tmem = s_tmem.slice(N // 4 + 2, 2)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
+        l_tmem = s_tmem.slice(N // 4 + 2, 2, dim=1)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
         l_tmem.store(ttgl.full((BLOCK_M, 2), 3.0, dtype=ttgl.float32, layout=d1_layout))
-        a_tmem = s_tmem.slice(N // 4 + 4, 2)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
+        a_tmem = s_tmem.slice(N // 4 + 4, 2, dim=1)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
         a_tmem.store(ttgl.full((BLOCK_M, 2), 4.0, dtype=ttgl.float32, layout=d1_layout))
 
         s = s_tmem.load()
@@ -1530,7 +1944,10 @@ def test_tmem_subslice_block_m_64():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_block_m_64_mma():
+@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
+def test_block_m_64_mma(layout_kind):
+
+    full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
 
     @gluon.jit
     def kernel(a_ptr, b_ptr, c_ptr, d_ptr):
@@ -1541,8 +1958,8 @@ def test_block_m_64_mma():
         a_offsets = ttgl.arange(0, BLOCK_M)[:, None] * N + ttgl.arange(0, N)[None, :]
         b_offsets = ttgl.arange(0, N)[:, None] * N + ttgl.arange(0, N)[None, :]
 
-        a_tmem_layout: ttgl.constexpr = TensorMemoryLayout((BLOCK_M, BLOCK_N), col_stride=1)
-        acc_tmem_layout: ttgl.constexpr = TensorMemoryLayout((BLOCK_M, BLOCK_N), col_stride=1)
+        a_tmem_layout: ttgl.constexpr = full_layout
+        acc_tmem_layout: ttgl.constexpr = full_layout
         al_tmem = allocate_tensor_memory(ttgl.float16, (BLOCK_M, N), layout=a_tmem_layout)
         ar_tmem = allocate_tensor_memory(ttgl.float16, (BLOCK_M, N), layout=a_tmem_layout)
         acc_tmem = allocate_tensor_memory(ttgl.float32, (BLOCK_M, N), layout=acc_tmem_layout)
@@ -1584,13 +2001,13 @@ def test_block_m_64_mma():
         # d1 = a0 @ b10 + a1 @ b11 + c1
 
         N2: ttgl.constexpr = N // 2
-        c0 = acc_tmem.slice(0, N2)
-        c1 = acc_tmem.slice(N2, N2)
+        c0 = acc_tmem.slice(0, N2, dim=1)
+        c1 = acc_tmem.slice(N2, N2, dim=1)
 
-        tcgen05_mma(al_tmem.slice(0, N2), b_shared.slice(0, N2, dim=0).slice(0, N2, dim=1), c0)
-        tcgen05_mma(ar_tmem.slice(0, N2), b_shared.slice(N2, N2, dim=0).slice(0, N2, dim=1), c0)
-        tcgen05_mma(ar_tmem.slice(N2, N2), b_shared.slice(0, N2, dim=0).slice(N2, N2, dim=1), c1)
-        tcgen05_mma(al_tmem.slice(N2, N2), b_shared.slice(N2, N2, dim=0).slice(N2, N2, dim=1), c1)
+        tcgen05_mma(al_tmem.slice(0, N2, dim=1), b_shared.slice(0, N2, dim=0).slice(0, N2, dim=1), c0)
+        tcgen05_mma(ar_tmem.slice(0, N2, dim=1), b_shared.slice(N2, N2, dim=0).slice(0, N2, dim=1), c0)
+        tcgen05_mma(ar_tmem.slice(N2, N2, dim=1), b_shared.slice(0, N2, dim=0).slice(N2, N2, dim=1), c1)
+        tcgen05_mma(al_tmem.slice(N2, N2, dim=1), b_shared.slice(N2, N2, dim=0).slice(N2, N2, dim=1), c1)
 
         tcgen05_commit(bar)
         mbarrier.wait(bar, 0)
@@ -1614,6 +2031,24 @@ def test_block_m_64_mma():
 
     llir = compiled.asm["llir"]
     assert llir.count("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [$1], 128")
+    ptx = compiled.asm["ptx"]
+    assert ptx.count("tcgen05.st.sync.aligned.16x32bx2.x16.b32") == 4
+    assert ptx.count("tcgen05.st.sync.aligned.16x32bx2.x32.b32") == 2
+    assert ptx.count("tcgen05.ld.sync.aligned.16x32bx2.x32.b32") == 2
+    assert ptx.count("tcgen05.mma.cta_group::1.kind::f16") == 16
+    assert "tcgen05.commit.cta_group::1" in ptx
+    assert llir.count("tcgen05.st.sync.aligned.16x32bx2.x16.b32") == 4
+    assert llir.count("tcgen05.st.sync.aligned.16x32bx2.x32.b32") == 2
+    assert llir.count("tcgen05.ld.sync.aligned.16x32bx2.x32.b32") == 2
+    assert llir.count("tcgen05.mma.cta_group::1.kind::f16") == 16
+    assert "tcgen05.commit.cta_group::1" in llir
+
+    ptx_immediates = [imm for op, _, imm in _extract_tcgen05_opcode_offset_immediates(ptx) if "16x32bx2" in op]
+    llir_immediates = [imm for op, _, imm in _extract_tcgen05_opcode_offset_immediates(llir) if "16x32bx2" in op]
+    assert ptx_immediates.count(16) == 4
+    assert ptx_immediates.count(32) == 4
+    assert llir_immediates.count(16) == 4
+    assert llir_immediates.count(32) == 4
 
     d_ref = a @ b + c
     torch.testing.assert_close(d_ref, d_tri, rtol=0.08, atol=0)
@@ -1724,8 +2159,662 @@ def test_tmem_copy_no_scales(M, N, BLOCK_N, num_warps, swizzle):
     input = torch.arange(M * N, device="cuda").reshape(M, N).to(torch.int32)
     output = torch.empty_like(input)
 
-    tmem_copy_no_scales[(1, )](input, output, M, N, BLOCK_N, swizzle, num_warps=num_warps)
+    compiled = tmem_copy_no_scales[(1, )](input, output, M, N, BLOCK_N, swizzle, num_warps=num_warps)
     assert (output == input).all()
+    assert _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+    assert all(op.endswith(".128x256b") for op in _extract_tcgen05_cp_opcodes(compiled.asm["ptx"]))
+    assert all(op.endswith(".128x256b") for op in _extract_tcgen05_cp_opcodes(compiled.asm["llir"]))
+
+
+TMEM_COPY_NO_SCALES_MATRIX_CASES = []
+for m in (128, 256):
+    for n in (16, 32, 64, 128, 256):
+        for block_n in (16, 32, 64, 128, 256):
+            if n % block_n != 0:
+                continue
+            TMEM_COPY_NO_SCALES_MATRIX_CASES.append((m, n, block_n, 32))
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("M, N, BLOCK_N, swizzle", TMEM_COPY_NO_SCALES_MATRIX_CASES)
+def test_tmem_copy_no_scales_matrix(M, N, BLOCK_N, swizzle):
+    input_value = torch.arange(M * N, device="cuda").reshape(M, N).to(torch.int32)
+    output_value = torch.empty_like(input_value)
+
+    try:
+        compiled = tmem_copy_no_scales_matrix_kernel[(1, )](
+            input_value,
+            output_value,
+            M,
+            N,
+            BLOCK_N,
+            swizzle,
+            num_warps=4,
+        )
+    except triton.runtime.errors.OutOfResources:
+        pytest.skip(f"Skipping OOR TMEM copy matrix case M={M}, N={N}, BLOCK_N={BLOCK_N}, swizzle={swizzle}")
+    torch.testing.assert_close(output_value, input_value, atol=0, rtol=0)
+
+    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    assert all(op.endswith(".128x256b") for op in ptx_ops)
+    expected_count = (M * N) // 1024
+    assert len(ptx_ops) == expected_count
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, kernel, layout, reinterpret_layout, instr_variant, num_warps", TMEM_RUNTIME_VIEW_CASES)
+def test_tmem_linear_runtime_views(name, kernel, layout, reinterpret_layout, instr_variant, num_warps):
+    OUT_M, OUT_N = reinterpret_layout.shape
+    out_elems = OUT_M * OUT_N
+
+    input_tensor = torch.arange(out_elems, dtype=torch.float32, device="cuda").reshape(OUT_M, OUT_N)
+    output_tensor = torch.empty(out_elems, dtype=torch.float32, device="cuda")
+
+    compiled = kernel[(1, )](input_tensor, output_tensor, layout, reinterpret_layout, instr_variant, num_warps=num_warps)
+
+    expected = input_tensor.reshape(-1) + 1.0
+    torch.testing.assert_close(output_tensor.reshape(-1), expected)
+
+    ttgir = compiled.asm["ttgir"]
+    assert ttgir.count("ttg.memdesc_subslice") >= 1
+    assert ttgir.count("ttg.memdesc_trans") >= 1
+    assert ttgir.count("ttg.memdesc_reshape") >= 1
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_reinterpret" in ttgir
+
+    st_opcode = f"tcgen05.st.sync.aligned.{instr_variant}"
+    ld_opcode = f"tcgen05.ld.sync.aligned.{instr_variant}"
+    assert st_opcode in compiled.asm["ptx"]
+    assert ld_opcode in compiled.asm["ptx"]
+    assert st_opcode in compiled.asm["llir"]
+    assert ld_opcode in compiled.asm["llir"]
+
+
+TMEM_DESCRIPTOR_CHAIN_LAYOUTS = [
+    ("linear_m64", _make_tmem_linear_layout_m64(128), 64, 128, (4, 8), ("32x32b", "16x64b", "16x128b", "16x256b", "32x32b_splitn")),
+    ("linear_identity", _make_tmem_linear_layout(128, 128), 128, 128, (4, 8), ("32x32b", "16x64b", "16x128b", "16x256b")),
+    ("linear_mixed", _make_tmem_linear_layout_mixed(128, 128), 128, 128, (4, 8), ("32x32b", "16x64b", "16x128b", "16x256b")),
+]
+
+TMEM_DESCRIPTOR_CHAIN_CASES = []
+for layout_name, layout, m, n, warps, variants in TMEM_DESCRIPTOR_CHAIN_LAYOUTS:
+    for num_warps in warps:
+        for instr_variant in variants:
+            expected_opcode = instr_variant
+            if layout_name == "linear_m64" and instr_variant in ("32x32b", "32x32b_splitn"):
+                expected_opcode = "16x32bx2"
+            TMEM_DESCRIPTOR_CHAIN_CASES.append(
+                (f"{layout_name}_{instr_variant}_{num_warps}w", layout, m, n, instr_variant, num_warps, expected_opcode)
+            )
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, layout, M, N, instr_variant, num_warps, expected_opcode", TMEM_DESCRIPTOR_CHAIN_CASES)
+def test_tmem_descriptor_chain_matrix(name, layout, M, N, instr_variant, num_warps, expected_opcode):
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_descriptor_chain_matrix_kernel[(1, )](
+        inp, out, layout, M, N, instr_variant, num_warps=num_warps
+    )
+    torch.testing.assert_close(out, inp + 7.0, atol=0, rtol=0)
+
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_reinterpret" in ttgir
+
+    expected_st = f"tcgen05.st.sync.aligned.{expected_opcode}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_opcode}"
+    assert expected_st in compiled.asm["ptx"]
+    assert expected_ld in compiled.asm["ptx"]
+    assert expected_st in compiled.asm["llir"]
+    assert expected_ld in compiled.asm["llir"]
+
+
+TMEM_LINEAR_ATOM_CASES = [
+    (
+        "f32_auto_x128_identity",
+        TMEM_LINEAR_F32_ROUNDTRIP_AUTO_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout(128, 128),
+        128,
+        128,
+        4,
+        None,
+        (
+            ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+            ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
+        ),
+    ),
+    (
+        "f32_auto_x128_mixed",
+        TMEM_LINEAR_F32_ROUNDTRIP_AUTO_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout_mixed(128, 128),
+        128,
+        128,
+        4,
+        None,
+        (
+            ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+            ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
+        ),
+    ),
+    (
+        "f32_auto_x64_identity",
+        TMEM_LINEAR_F32_ROUNDTRIP_AUTO_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout(128, 64),
+        128,
+        64,
+        4,
+        None,
+        (
+            ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
+            ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 0),
+        ),
+    ),
+    (
+        "f32_16x64_identity",
+        TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout(128, 64),
+        128,
+        64,
+        4,
+        "16x64b",
+        (
+            ("tcgen05.st.sync.aligned.16x64b.x32.b32", 0),
+            ("tcgen05.st.sync.aligned.16x64b.x32.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x64b.x32.b32", 0),
+            ("tcgen05.ld.sync.aligned.16x64b.x32.b32", 1048576),
+        ),
+    ),
+    (
+        "f32_16x128_identity",
+        TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout(128, 128),
+        128,
+        128,
+        4,
+        "16x128b",
+        (
+            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
+            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
+            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+        ),
+    ),
+    (
+        "f32_16x128_mixed",
+        TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout_mixed(128, 128),
+        128,
+        128,
+        4,
+        "16x128b",
+        (
+            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
+            ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
+            ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+        ),
+    ),
+    (
+        "f32_16x256_identity",
+        TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL,
+        torch.float32,
+        _make_tmem_linear_layout(128, 256),
+        128,
+        256,
+        4,
+        "16x256b",
+        (
+            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 0),
+            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 128),
+            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048576),
+            ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048704),
+            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 0),
+            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 128),
+            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048576),
+            ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048704),
+        ),
+    ),
+]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, kernel, torch_dtype, layout, M, N, num_warps, instr_variant, expected_offsets", TMEM_LINEAR_ATOM_CASES)
+def test_tmem_linear_roundtrip_atom_shapes(name, kernel, torch_dtype, layout, M, N, num_warps, instr_variant,
+                                           expected_offsets):
+    inp = torch.arange(M * N, dtype=torch_dtype, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    if instr_variant is None:
+        compiled = kernel[(1, )](inp, out, layout, M, N, num_warps=num_warps)
+    else:
+        compiled = kernel[(1, )](inp, out, layout, M, N, instr_variant, num_warps=num_warps)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["ptx"], expected_offsets)
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["llir"], expected_offsets)
+
+
+TMEM_LINEAR_VARIANT_SWEEP_LAYOUTS = [
+    ("identity_64", _make_tmem_linear_layout(128, 64)),
+    ("identity_128", _make_tmem_linear_layout(128, 128)),
+    ("identity_256", _make_tmem_linear_layout(128, 256)),
+    ("mixed_64", _make_tmem_linear_layout_mixed(128, 64)),
+    ("mixed_128", _make_tmem_linear_layout_mixed(128, 128)),
+    ("mixed_256", _make_tmem_linear_layout_mixed(128, 256)),
+]
+
+TMEM_LINEAR_VARIANT_SWEEP_SHAPES = {
+    "auto": {
+        (64, 4): "32x32b.x64.b32",
+        (64, 8): "32x32b.x32.b32",
+        (128, 4): "32x32b.x128.b32",
+        (128, 8): "32x32b.x64.b32",
+        (256, 4): "32x32b.x64.b32",
+        (256, 8): "32x32b.x128.b32",
+    },
+    "32x32b": {
+        (64, 4): "32x32b.x64.b32",
+        (64, 8): "32x32b.x32.b32",
+        (128, 4): "32x32b.x128.b32",
+        (128, 8): "32x32b.x64.b32",
+        (256, 4): "32x32b.x64.b32",
+        (256, 8): "32x32b.x128.b32",
+    },
+    "16x64b": {
+        (64, 4): "16x64b.x32.b32",
+        (64, 8): "16x64b.x32.b32",
+        (128, 4): "16x64b.x64.b32",
+        (128, 8): "16x64b.x64.b32",
+        (256, 4): "16x64b.x64.b32",
+        (256, 8): "16x64b.x128.b32",
+    },
+    "16x128b": {
+        (64, 4): "16x128b.x16.b32",
+        (64, 8): "16x128b.x16.b32",
+        (128, 4): "16x128b.x32.b32",
+        (128, 8): "16x128b.x32.b32",
+        (256, 4): "16x128b.x32.b32",
+        (256, 8): "16x128b.x64.b32",
+    },
+    "16x256b": {
+        (64, 4): "16x256b.x8.b32",
+        (64, 8): "16x256b.x8.b32",
+        (128, 4): "16x256b.x16.b32",
+        (128, 8): "16x256b.x16.b32",
+        (256, 4): "16x256b.x16.b32",
+        (256, 8): "16x256b.x32.b32",
+    },
+}
+
+TMEM_LINEAR_VARIANT_SWEEP_CASES = []
+for layout_name, layout in TMEM_LINEAR_VARIANT_SWEEP_LAYOUTS:
+    M, N = layout.shape
+    for instr_variant in ("auto", "32x32b", "16x64b", "16x128b", "16x256b"):
+        for num_warps in (4, 8):
+            TMEM_LINEAR_VARIANT_SWEEP_CASES.append(
+                (
+                    f"{layout_name}_{instr_variant}_{num_warps}w",
+                    layout,
+                    M,
+                    N,
+                    None if instr_variant == "auto" else instr_variant,
+                    num_warps,
+                    TMEM_LINEAR_VARIANT_SWEEP_SHAPES[instr_variant][(N, num_warps)],
+                )
+            )
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, layout, M, N, instr_variant, num_warps, expected_shape", TMEM_LINEAR_VARIANT_SWEEP_CASES)
+def test_tmem_linear_roundtrip_variant_sweep(name, layout, M, N, instr_variant, num_warps, expected_shape):
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    if instr_variant is None:
+        compiled = TMEM_LINEAR_F32_ROUNDTRIP_AUTO_KERNEL[(1, )](inp, out, layout, M, N, num_warps=num_warps)
+    else:
+        compiled = TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL[(1, )](
+            inp, out, layout, M, N, instr_variant, num_warps=num_warps
+        )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    ptx_ops = _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_opcode_offsets(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    seen = [op for op, _ in ptx_ops]
+    assert all(op in (expected_st, expected_ld) for op in seen)
+    assert expected_st in seen
+    assert expected_ld in seen
+
+
+TMEM_LINEAR_SPLITN_CASES = [
+    (
+        "splitn_64x2",
+        TensorMemoryLayout((64, 2), col_stride=1),
+        64,
+        2,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 0),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 0),
+        ),
+    ),
+    (
+        "splitn_64x4",
+        TensorMemoryLayout((64, 4), col_stride=1),
+        64,
+        4,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x1.b32", 0, 1),
+            ("tcgen05.st.sync.aligned.16x32bx2.x1.b32", 2, 1),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x1.b32", 0, 1),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x1.b32", 2, 1),
+        ),
+    ),
+    (
+        "splitn_64x8",
+        TensorMemoryLayout((64, 8), col_stride=1),
+        64,
+        8,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 2),
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 4, 2),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 2),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 4, 2),
+        ),
+    ),
+    (
+        "splitn_64x16",
+        TensorMemoryLayout((64, 16), col_stride=1),
+        64,
+        16,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x4.b32", 0, 4),
+            ("tcgen05.st.sync.aligned.16x32bx2.x4.b32", 8, 4),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x4.b32", 0, 4),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x4.b32", 8, 4),
+        ),
+    ),
+    (
+        "splitn_64x32",
+        TensorMemoryLayout((64, 32), col_stride=1),
+        64,
+        32,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x8.b32", 0, 8),
+            ("tcgen05.st.sync.aligned.16x32bx2.x8.b32", 16, 8),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x8.b32", 0, 8),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x8.b32", 16, 8),
+        ),
+    ),
+    (
+        "splitn_64x64",
+        TensorMemoryLayout((64, 64), col_stride=1),
+        64,
+        64,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 32, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 32, 16),
+        ),
+    ),
+    (
+        "splitn_64x128",
+        TensorMemoryLayout((64, 64), col_stride=1),
+        64,
+        128,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x2",
+        _make_tmem_linear_layout_m64(2),
+        64,
+        2,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 0),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 0),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x4",
+        _make_tmem_linear_layout_m64(4),
+        64,
+        4,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x1.b32", 0, 1),
+            ("tcgen05.st.sync.aligned.16x32bx2.x1.b32", 2, 1),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x1.b32", 0, 1),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x1.b32", 2, 1),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x8",
+        _make_tmem_linear_layout_m64(8),
+        64,
+        8,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 2),
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 4, 2),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 2),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 4, 2),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x16",
+        _make_tmem_linear_layout_m64(16),
+        64,
+        16,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x4.b32", 0, 4),
+            ("tcgen05.st.sync.aligned.16x32bx2.x4.b32", 8, 4),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x4.b32", 0, 4),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x4.b32", 8, 4),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x32",
+        _make_tmem_linear_layout_m64(32),
+        64,
+        32,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x8.b32", 0, 8),
+            ("tcgen05.st.sync.aligned.16x32bx2.x8.b32", 16, 8),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x8.b32", 0, 8),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x8.b32", 16, 8),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x64",
+        _make_tmem_linear_layout_m64(64),
+        64,
+        64,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 32, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 32, 16),
+        ),
+    ),
+    (
+        "linear_m64_splitn_64x128",
+        _make_tmem_linear_layout_m64(128),
+        64,
+        128,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 64, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 64, 32),
+        ),
+    ),
+]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, layout, M, N, expected_offset_imms", TMEM_LINEAR_SPLITN_CASES)
+def test_tmem_linear_roundtrip_splitn_shapes(name, layout, M, N, expected_offset_imms):
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+    compiled = TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL[(1, )](
+        inp,
+        out,
+        layout,
+        M,
+        N,
+        "32x32b_splitn",
+        num_warps=4,
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_offsets = tuple((opcode, offset) for opcode, offset, _ in expected_offset_imms)
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["ptx"], expected_offsets)
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["llir"], expected_offsets)
+    _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["ptx"], expected_offset_imms)
+    _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["llir"], expected_offset_imms)
+
+
+TMEM_LINEAR_M64_DIRECT_CASES = [
+    ("linear_m64_16x64b_64x2", _make_tmem_linear_layout_m64(2), 64, 2, "16x64b", "16x64b.x1.b32"),
+    ("linear_m64_16x64b_64x4", _make_tmem_linear_layout_m64(4), 64, 4, "16x64b", "16x64b.x2.b32"),
+    ("linear_m64_16x64b_64x8", _make_tmem_linear_layout_m64(8), 64, 8, "16x64b", "16x64b.x4.b32"),
+    ("linear_m64_16x64b_64x16", _make_tmem_linear_layout_m64(16), 64, 16, "16x64b", "16x64b.x8.b32"),
+    ("linear_m64_16x64b_64x32", _make_tmem_linear_layout_m64(32), 64, 32, "16x64b", "16x64b.x16.b32"),
+    ("linear_m64_16x64b_64x64", _make_tmem_linear_layout_m64(64), 64, 64, "16x64b", "16x64b.x32.b32"),
+    ("linear_m64_16x64b_64x128", _make_tmem_linear_layout_m64(128), 64, 128, "16x64b", "16x64b.x64.b32"),
+    ("linear_m64_16x128b_64x4", _make_tmem_linear_layout_m64(4), 64, 4, "16x128b", "16x128b.x1.b32"),
+    ("linear_m64_16x128b_64x8", _make_tmem_linear_layout_m64(8), 64, 8, "16x128b", "16x128b.x2.b32"),
+    ("linear_m64_16x128b_64x16", _make_tmem_linear_layout_m64(16), 64, 16, "16x128b", "16x128b.x4.b32"),
+    ("linear_m64_16x128b_64x32", _make_tmem_linear_layout_m64(32), 64, 32, "16x128b", "16x128b.x8.b32"),
+    ("linear_m64_16x128b_64x64", _make_tmem_linear_layout_m64(64), 64, 64, "16x128b", "16x128b.x16.b32"),
+    ("linear_m64_16x128b_64x128", _make_tmem_linear_layout_m64(128), 64, 128, "16x128b", "16x128b.x32.b32"),
+    ("linear_m64_16x256b_64x8", _make_tmem_linear_layout_m64(8), 64, 8, "16x256b", "16x256b.x1.b32"),
+    ("linear_m64_16x256b_64x16", _make_tmem_linear_layout_m64(16), 64, 16, "16x256b", "16x256b.x2.b32"),
+    ("linear_m64_16x256b_64x32", _make_tmem_linear_layout_m64(32), 64, 32, "16x256b", "16x256b.x4.b32"),
+    ("linear_m64_16x256b_64x64", _make_tmem_linear_layout_m64(64), 64, 64, "16x256b", "16x256b.x8.b32"),
+    ("linear_m64_16x256b_64x128", _make_tmem_linear_layout_m64(128), 64, 128, "16x256b", "16x256b.x16.b32"),
+]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, layout, M, N, instr_variant, expected_shape", TMEM_LINEAR_M64_DIRECT_CASES)
+def test_tmem_linear_m64_roundtrip_direct_shapes(name, layout, M, N, instr_variant, expected_shape):
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL[(1, )](
+        inp, out, layout, M, N, instr_variant, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    for asm in (compiled.asm["ptx"], compiled.asm["llir"]):
+        ops = _extract_tcgen05_opcode_offsets(asm)
+        assert ops == [(expected_st, 0), (expected_ld, 0)]
+
+
+TMEM_LINEAR_M64_FALLBACK_CASES = [
+    ("linear_m64_fallback_64x2", _make_tmem_linear_layout_m64(2), 64, 2, 1),
+    ("linear_m64_fallback_64x64", _make_tmem_linear_layout_m64(64), 64, 64, 32),
+    ("linear_m64_fallback_64x128", _make_tmem_linear_layout_m64(128), 64, 128, 64),
+]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name, layout, M, N, immediate", TMEM_LINEAR_M64_FALLBACK_CASES)
+def test_tmem_linear_m64_roundtrip_32x32b_fallback(name, layout, M, N, immediate):
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = TMEM_LINEAR_F32_ROUNDTRIP_VARIANT_KERNEL[(1, )](
+        inp, out, layout, M, N, "32x32b", num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected = (
+        (f"tcgen05.st.sync.aligned.16x32bx2.x{immediate}.b32", 0, immediate),
+        (f"tcgen05.ld.sync.aligned.16x32bx2.x{immediate}.b32", 0, immediate),
+    )
+    _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["ptx"], expected)
+    _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["llir"], expected)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_linear_roundtrip_blocked_fallback():
+    layout = _make_tmem_linear_layout(128, 128)
+
+    @gluon.jit
+    def kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
+        M: ttgl.constexpr = 128
+        N: ttgl.constexpr = 128
+        blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+        offs = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))[:, None] * N + ttgl.arange(
+            0, N, ttgl.SliceLayout(0, blocked)
+        )[None, :]
+        value = ttgl.load(in_ptr + offs)
+        tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+        tmem.store(value)
+        value = tmem.load(blocked)
+        ttgl.store(out_ptr + offs, value)
+
+    inp = torch.arange(128 * 128, dtype=torch.float32, device="cuda").reshape(128, 128)
+    out = torch.empty_like(inp)
+    compiled = kernel[(1, )](inp, out, layout, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    llir = compiled.asm["llir"]
+    ptx = compiled.asm["ptx"]
+    assert "st.shared.v4.b32" in ptx
+    assert "ld.shared.v4.b32" in ptx
+    assert "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32" in llir
+    assert "i32 16384" in llir
+    assert "stmatrix.sync.aligned" in llir
+    assert "ldmatrix.sync.aligned" in llir
+    expected_offsets = (
+        ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
+    )
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["ptx"], expected_offsets)
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["llir"], expected_offsets)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_packed_f16_roundtrip_atom_shapes():
+    M = N = 128
+    inp = torch.arange(M * N, dtype=torch.float16, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_packed_f16_roundtrip_kernel[(1, )](inp, out, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_offsets = (
+        ("tcgen05.st.sync.aligned.32x32b.x64.unpack::16b.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.pack::16b.b32", 0),
+    )
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["ptx"], expected_offsets)
+    _assert_exact_tcgen05_opcode_offsets(compiled.asm["llir"], expected_offsets)
 
 
 @gluon.jit
@@ -3421,6 +4510,7 @@ def tmem_reduction_kernel(
     in_ptr,
     out_ptr,
     red_ptr,
+    layout: ttgl.constexpr,
     M: ttgl.constexpr,
     N: ttgl.constexpr,
     RED_OP: ttgl.constexpr,
@@ -3440,15 +4530,11 @@ def tmem_reduction_kernel(
     # Load input from global memory
     input_data = ttgl.load(in_ptr + offs_2d)
 
-    # Setup TMEM layout - blockN must match N for single reduction value per row
-    tmem_layout: ttgl.constexpr = TensorMemoryLayout(block=(128, N), col_stride=1,  # packed for f32
-                                                     )
-
     # Allocate TMEM
     tmem = allocate_tensor_memory(
         element_ty=in_ptr.dtype.element_ty,
         shape=[M, N],
-        layout=tmem_layout,
+        layout=layout,
     )
 
     # Get register layout for TMEM access
@@ -3474,6 +4560,56 @@ def tmem_reduction_kernel(
     ttgl.store(red_ptr + offs_1d, reduced)
 
 
+def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_warps):
+    input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
+
+    use_nan = propagate_nan == tl.PropagateNan.ALL
+    if use_nan:
+        input_tensor[10, 5] = float("nan")
+        input_tensor[50, 15] = float("nan")
+
+    output = torch.empty_like(input_tensor)
+    red_output = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_reduction_kernel[(1, )](
+        input_tensor,
+        output,
+        red_output,
+        layout,
+        M,
+        N,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=num_warps,
+    )
+
+    torch.testing.assert_close(input_tensor, output, atol=0, rtol=0, equal_nan=use_nan)
+
+    ref_input = torch.abs(input_tensor) if use_abs else input_tensor
+    torch_red = torch.min if red_op == "min" else torch.max
+    expected_red = torch_red(ref_input, dim=1).values
+    torch.testing.assert_close(expected_red, red_output, atol=1e-5, rtol=1e-5, equal_nan=use_nan)
+
+    ptx_red_ops = [
+        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
+    ]
+    llir_red_ops = [
+        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
+    ]
+    assert ptx_red_ops == llir_red_ops
+    assert ptx_red_ops
+    expected_modifier = f".{red_op}"
+    if use_abs:
+        expected_modifier += ".abs"
+    if propagate_nan == tl.PropagateNan.ALL:
+        expected_modifier += ".NaN"
+    expected_modifier += ".f32"
+    assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x") for op in ptx_red_ops)
+    assert all(expected_modifier in op for op in ptx_red_ops)
+    return compiled
+
+
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs", [False, True])
@@ -3490,45 +4626,30 @@ def test_tmem_reduction(red_op, use_abs, propagate_nan, M, N, num_warps):
     M=256 (8*32=256). The N=256 case tests partial reduction combining where
     4 hardware reductions are combined via llvm.minnum/maxnum.
     """
+    layout = TensorMemoryLayout(block=(128, N), col_stride=1)
+    _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_warps)
 
-    # Create test input with some negative values
-    input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
 
-    # Inject NaN for testing if needed
-    use_nan = False if propagate_nan == tl.PropagateNan.NONE else True
-    if use_nan:
-        input_tensor[10, 5] = float("nan")
-        input_tensor[50, 15] = float("nan")
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("layout_name,layout_factory", [("linear_identity", lambda n: _make_tmem_linear_layout(128, n))])
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs", [False, True])
+@pytest.mark.parametrize("propagate_nan", [tl.PropagateNan.NONE, tl.PropagateNan.ALL])
+@pytest.mark.parametrize("N", [64, 128, 256])
+def test_tmem_reduction_linear_layouts(layout_name, layout_factory, red_op, use_abs, propagate_nan, N):
+    compiled = _run_tmem_reduction_case(layout_factory(N), 128, N, red_op, use_abs, propagate_nan, num_warps=4)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
-    # Output tensors
-    output = torch.empty_like(input_tensor)
-    red_output = torch.empty(M, dtype=torch.float32, device="cuda")
 
-    # Run kernel
-    tmem_reduction_kernel[(1, )](
-        input_tensor,
-        output,
-        red_output,
-        M,
-        N,
-        red_op,
-        use_abs,
-        propagate_nan,
-        num_warps=num_warps,
-    )
-
-    # Verify full output matches input (tmem store/load roundtrip)
-    # Use equal_nan=True when we have NaN values in the input
-    torch.testing.assert_close(input_tensor, output, atol=0, rtol=0, equal_nan=use_nan)
-
-    # Compute expected reduction
-    ref_input = torch.abs(input_tensor) if use_abs else input_tensor
-    torch_red = torch.min if red_op == "min" else torch.max
-    expected_red = torch_red(ref_input, dim=1).values
-
-    # Verify reduction output
-    # Use equal_nan=True when testing NaN propagation
-    torch.testing.assert_close(expected_red, red_output, atol=1e-5, rtol=1e-5, equal_nan=use_nan)
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("N", [64, 128, 256])
+def test_tmem_reduction_linear_mixed_reports_clean_error(N, capfd):
+    layout = _make_tmem_linear_layout_mixed(128, N)
+    with pytest.raises(RuntimeError):
+        _run_tmem_reduction_case(layout, 128, N, "min", False, tl.PropagateNan.NONE, num_warps=4)
+    captured = capfd.readouterr()
+    text = captured.err + captured.out
+    assert "tmem_load reduction with N dimension sharded across threads is not supported" in text
 
 
 @pytest.mark.parametrize("num_ctas", [1, 2])
@@ -3656,7 +4777,8 @@ def unswizzle_scales_shared_memory(smem, BLOCK_MN: ttgl.constexpr, BLOCK_K: ttgl
 
 @gluon.jit
 def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale_desc, VEC_SIZE: ttgl.constexpr,
-                                   block_layout_c: ttgl.constexpr, multicast: ttgl.constexpr):
+                                   block_layout_c: ttgl.constexpr, acc_tmem_layout: ttgl.constexpr,
+                                   multicast: ttgl.constexpr):
     A_IS_FP4: ttgl.constexpr = a_desc.dtype == ttgl.uint8
     B_IS_FP4: ttgl.constexpr = b_desc.dtype == ttgl.uint8
     A_ELEM_PER_BYTE: ttgl.constexpr = 2 if A_IS_FP4 else 1
@@ -3675,13 +4797,7 @@ def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale
     scale_layout_b: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[0, 0]] if two_ctas else [])
     a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [BLOCK_M, BLOCK_K // VEC_SIZE], scale_layout_a)
     b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [BLOCK_N, BLOCK_K // VEC_SIZE], scale_layout_b)
-    tmem_layout: ttgl.constexpr = TensorMemoryLayout(
-        [BLOCK_M // num_ctas, BLOCK_N],
-        col_stride=1,
-        cga_layout=[[1, 0]] if two_ctas else [],
-        two_ctas=two_ctas,
-    )
-    acc_tmem = allocate_tensor_memory(ttgl.float32, [BLOCK_M, BLOCK_N], tmem_layout)
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [BLOCK_M, BLOCK_N], acc_tmem_layout)
 
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=two_ctas)
     mma_bar = mbarrier.allocate_mbarrier()
@@ -3747,7 +4863,7 @@ def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale
 
 
 def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, BLOCK_K, num_ctas, multicast,
-                            out_dtype=torch.float16):
+                            out_dtype=torch.float16, acc_layout_kind="legacy"):
     from dataclasses import replace
     M, N = A.shape[0], B.shape[0]
     MIXED_PREC = A.dtype != B.dtype
@@ -3784,11 +4900,34 @@ def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, 
 
     block_layout_c = ttgl.BlockedLayout([1, 8], [1, 32], warps_per_cta=warps, order=[1, 0],
                                         cga_layout=cga_layout_c) if two_ctas else None
+    if acc_layout_kind == "legacy":
+        acc_tmem_layout = TensorMemoryLayout(
+            [BLOCK_M // num_ctas, BLOCK_N],
+            col_stride=1,
+            cga_layout=[[1, 0]] if two_ctas else [],
+            two_ctas=two_ctas,
+        )
+    elif acc_layout_kind == "linear":
+        acc_tmem_layout = (_make_tmem_linear_layout_mmav5_twocta(BLOCK_M, BLOCK_N)
+                           if two_ctas else _make_tmem_linear_layout(BLOCK_M, BLOCK_N))
+    else:
+        raise ValueError(f"unsupported acc_layout_kind: {acc_layout_kind}")
 
     grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))
-    mma_scaled_tcgen05_copy_kernel[grid](A_desc, B_desc, C_desc, A_scale_desc, B_scale_desc, VEC_SIZE, block_layout_c,
-                                         num_warps=num_warps, num_ctas=num_ctas, multicast=multicast)
-    return C_desc.base
+    compiled = mma_scaled_tcgen05_copy_kernel[grid](
+        A_desc,
+        B_desc,
+        C_desc,
+        A_scale_desc,
+        B_scale_desc,
+        VEC_SIZE,
+        block_layout_c,
+        acc_tmem_layout,
+        num_warps=num_warps,
+        num_ctas=num_ctas,
+        multicast=multicast,
+    )
+    return C_desc.base, compiled
 
 
 @pytest.mark.parametrize("M, N, K", [(2048, 2048, 4096)])
@@ -3796,6 +4935,7 @@ def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, 
 @pytest.mark.parametrize("BLOCK_K", [128, 256])
 @pytest.mark.parametrize("a_format, b_format", [
     ("mxfp8", "mxfp8"),
+    ("mxfp4", "mxfp4"),
     ("nvfp4", "nvfp4"),
     ("mxfp8", "mxfp4"),
 ])
@@ -3811,5 +4951,84 @@ def test_mma_scaled_tcgen05_copy(M, N, K, BLOCK_N, BLOCK_K, a_format, b_format, 
     A_scale = swizzle_scales_packed_block(A_scale, VEC_SIZE)
     B_scale = swizzle_scales_packed_block(B_scale, VEC_SIZE)
     C_ref = A_ref @ B_ref.T
-    C = mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, BLOCK_K, num_ctas, multicast)
+    C, compiled = mma_scaled_tcgen05_copy(
+        A,
+        B,
+        A_scale,
+        B_scale,
+        VEC_SIZE,
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        num_ctas,
+        multicast,
+    )
     torch.testing.assert_close(C_ref, C.to(torch.float32), atol=1e-3, rtol=1e-3)
+
+    ptx_cp_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+    llir_cp_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+    assert ptx_cp_ops == llir_cp_ops
+    assert ptx_cp_ops
+    expected_cp_opcode = _expected_scaled_cp_opcode(num_ctas)
+    assert all(op == expected_cp_opcode for op in ptx_cp_ops)
+
+    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_mma_ops == llir_mma_ops
+    assert ptx_mma_ops
+    expected_mma_opcode = _expected_scaled_mma_opcode(a_format, b_format, num_ctas)
+    assert all(op == expected_mma_opcode for op in ptx_mma_ops)
+
+
+@pytest.mark.parametrize("a_format, b_format", [
+    ("mxfp8", "mxfp8"),
+    ("mxfp4", "mxfp4"),
+    ("nvfp4", "nvfp4"),
+    ("mxfp8", "mxfp4"),
+])
+@pytest.mark.parametrize("num_ctas", [1, 2])
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_mma_scaled_tcgen05_copy_linear_acc(a_format, b_format, num_ctas):
+    BLOCK_M = 256 if num_ctas == 2 else 128
+    BLOCK_N = 128
+    BLOCK_K = 128
+    M = BLOCK_M
+    N = BLOCK_N
+    K = BLOCK_K
+
+    torch.manual_seed(0)
+    A, A_scale, A_ref = random_quantized_tensor(M, K, a_format)
+    B, B_scale, B_ref = random_quantized_tensor(N, K, b_format)
+    VEC_SIZE = 16 if a_format == "nvfp4" else 32
+    A_scale = swizzle_scales_packed_block(A_scale, VEC_SIZE)
+    B_scale = swizzle_scales_packed_block(B_scale, VEC_SIZE)
+    C_ref = A_ref @ B_ref.T
+    C, compiled = mma_scaled_tcgen05_copy(
+        A,
+        B,
+        A_scale,
+        B_scale,
+        VEC_SIZE,
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        num_ctas,
+        False,
+        acc_layout_kind="linear",
+    )
+    torch.testing.assert_close(C_ref, C.to(torch.float32), atol=1e-3, rtol=1e-3)
+
+    ptx_cp_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+    llir_cp_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+    assert ptx_cp_ops == llir_cp_ops
+    assert ptx_cp_ops
+    expected_cp_opcode = _expected_scaled_cp_opcode(num_ctas)
+    assert all(op == expected_cp_opcode for op in ptx_cp_ops)
+
+    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_mma_ops == llir_mma_ops
+    assert ptx_mma_ops
+    expected_mma_opcode = _expected_scaled_mma_opcode(a_format, b_format, num_ctas)
+    assert all(op == expected_mma_opcode for op in ptx_mma_ops)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]

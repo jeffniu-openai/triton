@@ -612,8 +612,7 @@ LogicalResult TCGen5MMAOp::verify() {
   };
   auto aTmemEnc = isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(
                       aEnc)
-                      ? matchTensorMemoryLegacyEncoding(getA().getType().getShape(),
-                                                        aEnc)
+                      ? matchTensorMemoryLegacyEncoding(getA().getType())
                       : std::optional<TensorMemoryEncodingAttr>{};
   if (isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc) &&
       !aTmemEnc)

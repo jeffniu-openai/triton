@@ -416,7 +416,7 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
 }
 
 // Returns {resultVals, redvalVals} where redvalVals is empty if no reduction
-static std::pair<SmallVector<Value>, SmallVector<Value>>
+static FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>>
 lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
                       TMemLdStEncodingInfo &info, Value pred, Type llvmElemTy,
                       ArrayRef<Value> vals, Value tmemBase,
@@ -431,13 +431,27 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     if (isStore) {
       inVals = removeBroadcast.apply(inVals);
     }
-    auto [outVals, redvalVals] =
-        lowerTMemLdStFromInfo(loc, rewriter, info, pred, llvmElemTy, inVals,
-                              tmemBase, redOp, useAbs, useNaN);
+    auto outOr = lowerTMemLdStFromInfo(loc, rewriter, info, pred, llvmElemTy,
+                                       inVals, tmemBase, redOp, useAbs,
+                                       useNaN);
+    if (failed(outOr))
+      return failure();
+    auto [outVals, redvalVals] = *outOr;
     if (!isStore) {
+      auto kReg = *info.reps.getInDimNames().begin();
+      uint32_t broadcastMask = info.reps.getFreeVariableMasks().lookup(kReg);
+      size_t expectedSize =
+          info.reps.getInDimSize(kReg) / (1 << llvm::popcount(broadcastMask));
+      if (expectedSize != outVals.size()) {
+        emitError(loc)
+            << "unsupported broadcasted TMEM lowering for this view; "
+               "reshape or permute so TMEM columns stay contiguous, or use a "
+               "different TMEM register layout";
+        return failure();
+      }
       outVals = broadcastAs(outVals, info.reps);
     }
-    return {outVals, redvalVals};
+    return std::make_pair(std::move(outVals), std::move(redvalVals));
   }
   if (llvmElemTy.getIntOrFloatBitWidth() < 32) {
     unsigned bitwidth = llvmElemTy.getIntOrFloatBitWidth();
@@ -457,13 +471,16 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
     if (isStore) {
       inVals = pack(inVals, packedElemTy, loc, rewriter, padding);
     }
-    auto [outVals, redvalVals] =
-        lowerTMemLdStFromInfo(loc, rewriter, info, pred, packedElemTy, inVals,
-                              tmemBase, redOp, useAbs, useNaN);
+    auto outOr = lowerTMemLdStFromInfo(loc, rewriter, info, pred, packedElemTy,
+                                       inVals, tmemBase, redOp, useAbs,
+                                       useNaN);
+    if (failed(outOr))
+      return failure();
+    auto [outVals, redvalVals] = *outOr;
     if (!isStore) {
       outVals = unpack(outVals, llvmElemTy, loc, rewriter, padding);
     }
-    return {outVals, redvalVals};
+    return std::make_pair(std::move(outVals), std::move(redvalVals));
   }
 
   SmallVector<Value> inVals = to_vector(vals);
@@ -477,7 +494,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
   if (!isStore) {
     outVals = info.perm.inverse().apply(outVals);
   }
-  return {outVals, redvalVals};
+  return std::make_pair(std::move(outVals), std::move(redvalVals));
 }
 
 // Returns {resultVals, redvalVals} where redvalVals is empty if no reduction.

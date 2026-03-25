@@ -78,7 +78,7 @@ class TensorMemoryLayout:
         return f"TL{block_str}{stride_str}{cga_layout_str}{two_ctas_str}TL"
 
     def __hash__(self):
-        return hash((self.block, self.col_stride, tuple(tuple(b) for b in self.cga_layout), self.two_ctas))
+        return hash((tuple(self.block), self.col_stride, tuple(tuple(b) for b in self.cga_layout), self.two_ctas))
 
 
 @dataclass(frozen=True, eq=True)
@@ -578,7 +578,8 @@ def tcgen05_mma_scaled(a, b, acc, a_scale, b_scale, a_type, b_type, *, use_acc=T
     """
     use_acc = _semantic.to_tensor(use_acc)
     pred = _semantic.to_tensor(pred)
-    assert acc.type.layout.block[0] != 64, "tcgen05_mma_scaled does not support blockM=64"
+    if isinstance(acc.type.layout, TensorMemoryLayout):
+        assert acc.type.layout.block[0] != 64, "tcgen05_mma_scaled does not support blockM=64"
 
     if mbarriers is None:
         assert mbarrier_preds is None

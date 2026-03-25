@@ -791,6 +791,64 @@ void init_gluon_ir(py::module &&m) {
               Value index) -> Value {
              return self.create<ttg::MemDescIndexOp>(resultType, src, index);
            })
+      .def("create_memdesc_index",
+           [](GluonOpBuilder &self, Value src, Value index) -> Value {
+             auto srcTy = cast<ttg::MemDescType>(src.getType());
+             auto dstShape = llvm::to_vector(srcTy.getShape().drop_front());
+             auto dstAllocShape =
+                 llvm::to_vector(srcTy.getAllocShape().drop_front());
+             Attribute dstEncoding = srcTy.getEncoding();
+
+             if (ttng::isTensorMemoryEncoding(dstEncoding) &&
+                 !isa<ttng::TensorMemoryScalesEncodingAttr>(dstEncoding)) {
+               std::string canonicalizationError;
+               auto canonical = ttng::tryGetCanonicalTensorMemoryEncoding(
+                   srcTy, &canonicalizationError);
+               if (!canonical)
+                 throw py::value_error(canonicalizationError);
+               auto srcEnc =
+                   dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(*canonical);
+               if (!srcEnc)
+                 throw py::value_error(
+                     "expected canonical tensor memory linear encoding");
+
+               auto ll = srcEnc.getLinearLayout();
+               auto layoutRank = srcEnc.getRank();
+               auto extraRank = srcTy.getRank() - layoutRank;
+               if (extraRank < 0)
+                 throw py::value_error(
+                     "invalid tensor memory rank/layout combination");
+
+               if (extraRank == 0) {
+                 if (layoutRank == 0)
+                   throw py::value_error(
+                       "tensor memory layout rank must be greater than zero");
+                 SmallVector<StringAttr> outDims =
+                     llvm::to_vector(ll.getOutDimNames());
+                 outDims.erase(outDims.begin());
+                 ll = ll.sublayout(llvm::to_vector(ll.getInDimNames()),
+                                   outDims);
+                 auto dstLayoutShape =
+                     ArrayRef<int64_t>(dstAllocShape).take_back(layoutRank - 1);
+                 ll = ll.reshapeOuts(
+                     tt::standardOutDimPairs(srcTy.getContext(),
+                                             dstLayoutShape));
+               }
+
+               auto maybeDstEnc = ttng::tryMakeTensorMemoryLinearEncoding(
+                   srcTy.getContext(), std::move(ll), srcEnc.getTwoCTAs());
+               if (!maybeDstEnc)
+                 throw py::value_error(
+                     "failed to infer tensor memory encoding for memdesc_index");
+               dstEncoding = *maybeDstEnc;
+             }
+
+             auto resultTy = self.getChecked<ttg::MemDescType>(
+                 dstShape, srcTy.getElementType(), dstEncoding,
+                 srcTy.getMemorySpace(), srcTy.getMutableMemory(),
+                 dstAllocShape);
+             return self.create<ttg::MemDescIndexOp>(resultTy, src, index);
+           })
       .def("create_memdesc_subslice",
            [](GluonOpBuilder &self, Type resultType, Value src,
               std::vector<int32_t> &offsets) -> Value {
@@ -1219,7 +1277,8 @@ void init_gluon_ir(py::module &&m) {
         if (!layout)
           return py::none();
 
-        auto attr = ttg::LinearEncodingAttr::get(ctx, std::move(*layout));
+        auto attr =
+            builder.getChecked<ttg::LinearEncodingAttr>(ctx, std::move(*layout));
         return layoutToGluon(attr);
       });
 

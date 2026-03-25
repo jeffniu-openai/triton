@@ -307,23 +307,20 @@ allocateTMem(Operation *parentOp,
     if (auto mmaOp = dyn_cast<MMAv5OpInterface>(op)) {
       auto aLegacy = matchTensorMemoryLegacyEncoding(mmaOp.getA().getType());
       if (aLegacy) {
+        auto accLegacy =
+            matchTensorMemoryLegacyEncoding(mmaOp.getAccumulator().getType());
         TMemAllocation allocSize = getTmemAllocSizes(mmaOp.getA().getType());
-        if (allocSize.numRows == 64) {
+        if (allocSize.numRows == 64 || aLegacy->getBlockM() == 64 ||
+            (accLegacy && accLegacy->getBlockM() == 64)) {
           // HW restriction, the A alloc and accumulator needs to be in the same
-          // rows.
+          // rows. This also applies to interleaved blockM=64 layouts that span
+          // 128 physical rows: they still need a consistent row anchor between
+          // the LHS and accumulator allocations.
           SmallVector<Operation *> lhsAllocs = getAlloc(mmaOp.getA());
           SmallVector<Operation *> accAllocs = getAlloc(mmaOp.getAccumulator());
           for (Operation *lhsAlloc : lhsAllocs)
             for (Operation *accAlloc : accAllocs)
               rowIdConstraints.joinOps(lhsAlloc, accAlloc);
-        } else {
-          // TODO: we need to handle cases where the format is blockM and we
-          // have multiple blocks.
-          auto accLegacy =
-              matchTensorMemoryLegacyEncoding(mmaOp.getAccumulator().getType());
-          assert((aLegacy->getBlockM() != 64 &&
-                  (!accLegacy || accLegacy->getBlockM() != 64)) &&
-                 "interleaved layout with TMEM operand is not supported yet.");
         }
       }
     }

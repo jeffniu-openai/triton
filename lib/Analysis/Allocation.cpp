@@ -38,6 +38,28 @@ namespace mlir {
 //===----------------------------------------------------------------------===//
 namespace triton {
 
+static bool canInvertAndComposeLayouts(const LinearLayout &a,
+                                       const LinearLayout &b) {
+  SmallVector<StringAttr> outDims = llvm::to_vector(a.getOutDimNames());
+  SmallVector<StringAttr> identityDims;
+  for (auto dim : a.getInDimNames()) {
+    if (b.hasInDim(dim) && a.sublayout(dim, outDims) == b.sublayout(dim, outDims))
+      identityDims.push_back(dim);
+  }
+
+  SmallVector<StringAttr> aNonIdentityInDims;
+  SmallVector<StringAttr> bNonIdentityInDims;
+  for (auto dim : a.getInDimNames()) {
+    if (!llvm::is_contained(identityDims, dim))
+      aNonIdentityInDims.push_back(dim);
+  }
+  for (auto dim : b.getInDimNames()) {
+    if (!llvm::is_contained(identityDims, dim))
+      bNonIdentityInDims.push_back(dim);
+  }
+  return aNonIdentityInDims.empty() == bNonIdentityInDims.empty();
+}
+
 unsigned getNumScratchElemsSwizzledCvt(const LinearLayout &srcLayout,
                                        const LinearLayout &dstLayout,
                                        int bitwidth) {
@@ -46,6 +68,11 @@ unsigned getNumScratchElemsSwizzledCvt(const LinearLayout &srcLayout,
       actionRemoveBroadcastedRegs(srcLayout).apply(srcLayout);
   auto dstLayoutNoBroadcast =
       actionRemoveBroadcastedRegs(dstLayout).apply(dstLayout);
+  if (!canInvertAndComposeLayouts(srcLayoutNoBroadcast, dstLayoutNoBroadcast)) {
+    auto nBlocks = product(triton::gpu::getCTASplitNum(
+        gpu::LinearEncodingAttr::get(ctx, srcLayoutNoBroadcast)));
+    return srcLayoutNoBroadcast.getTotalOutDimSize() / nBlocks;
+  }
   auto smem = gpu::optimalSwizzlingLdSt(srcLayoutNoBroadcast,
                                         dstLayoutNoBroadcast, bitwidth);
   auto reps = smem.getInDimSize(StringAttr::get(ctx, "reps"));

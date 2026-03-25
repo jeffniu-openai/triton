@@ -7,6 +7,7 @@
 #include "triton/Conversion/TritonGPUToLLVM/AllocateSharedMemoryUtility.h"
 #include "triton/Conversion/TritonGPUToLLVM/Utility.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Tools/GenericSwizzling.h"
 #include "triton/Tools/LayoutUtils.h"
 
@@ -21,6 +22,16 @@ namespace triton {
 } // namespace mlir
 
 namespace {
+constexpr int kTensorMemoryAllocSharedBytes = 4;
+
+static bool hasTensorMemoryAlloc(ModuleOp mod) {
+  bool found = false;
+  mod.walk([&](mlir::triton::nvidia_gpu::TMEMAllocOp) {
+    found = true;
+  });
+  return found;
+}
+
 struct AllocateSharedMemoryNv
     : public mlir::triton::impl::AllocateSharedMemoryNvBase<
           AllocateSharedMemoryNv> {
@@ -36,11 +47,41 @@ struct AllocateSharedMemoryNv
         mod, mlir::triton::nvidia_gpu::getNvidiaAllocationAnalysisScratchSizeFn(
                  targetInfo));
     mlir::triton::gpu::attachAllocationSizeAndOffsetAttr(mod, allocation);
+    if (hasTensorMemoryAlloc(mod)) {
+      auto *ctx = mod.getContext();
+      auto i32Ty = IntegerType::get(ctx, 32);
+      auto shared =
+          cast<IntegerAttr>(mod->getAttr("ttg.shared")).getInt() +
+          kTensorMemoryAllocSharedBytes;
+      mod->setAttr("ttg.shared", IntegerAttr::get(i32Ty, shared));
+    }
   }
 };
 } // namespace
 
 namespace mlir::triton::nvidia_gpu {
+
+static bool canInvertAndComposeLayouts(const LinearLayout &a,
+                                       const LinearLayout &b) {
+  SmallVector<StringAttr> outDims = llvm::to_vector(a.getOutDimNames());
+  SmallVector<StringAttr> identityDims;
+  for (auto dim : a.getInDimNames()) {
+    if (b.hasInDim(dim) && a.sublayout(dim, outDims) == b.sublayout(dim, outDims))
+      identityDims.push_back(dim);
+  }
+
+  SmallVector<StringAttr> aNonIdentityInDims;
+  SmallVector<StringAttr> bNonIdentityInDims;
+  for (auto dim : a.getInDimNames()) {
+    if (!llvm::is_contained(identityDims, dim))
+      aNonIdentityInDims.push_back(dim);
+  }
+  for (auto dim : b.getInDimNames()) {
+    if (!llvm::is_contained(identityDims, dim))
+      bNonIdentityInDims.push_back(dim);
+  }
+  return aNonIdentityInDims.empty() == bNonIdentityInDims.empty();
+}
 
 static unsigned getNumScratchElemsSwizzledCvt(RankedTensorType srcTy,
                                               RankedTensorType dstTy,
@@ -52,6 +93,10 @@ static unsigned getNumScratchElemsSwizzledCvt(RankedTensorType srcTy,
   dstLayout = actionRemoveBroadcastedRegs(dstLayout).apply(dstLayout);
   auto bitwidth = getBitwidth(srcTy);
   auto kBlock = StringAttr::get(ctx, "block");
+  if (!canInvertAndComposeLayouts(dstLayout, srcLayout)) {
+    auto nBlocks = product(triton::gpu::getCTASplitNum(srcTy.getEncoding()));
+    return srcLayout.getTotalOutDimSize() / nBlocks;
+  }
   bool crossCTA =
       !dstLayout.invertAndCompose(srcLayout).isTrivialOver({kBlock});
   auto [srcTiles, dstTiles] =

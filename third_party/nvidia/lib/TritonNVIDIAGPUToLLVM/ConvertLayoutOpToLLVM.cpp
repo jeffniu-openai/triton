@@ -39,8 +39,6 @@ struct ConvertLayoutOpSwizzlingConversion
     LinearLayout srcLayout = toLinearLayout(srcTy);
     LinearLayout dstLayout = toLinearLayout(dstTy);
 
-    assert(to_vector(conversion.getInDimNames()) ==
-           to_vector(conversion.getOutDimNames()));
     if (!cvtAlwaysUseWarpShuffle(op) && cvtNeedsSharedMemory(srcTy, dstTy)) {
       auto loc = op.getLoc();
 

@@ -85,6 +85,25 @@ basesPerDimImpl(const LinearLayout::BasesT &namedBases, StringAttr dimName,
   return ret;
 }
 
+static SmallVector<unsigned>
+orderPerDimImpl(const LinearLayout &ll, StringAttr dimName,
+                ArrayRef<unsigned> defaultOrder) {
+  auto it = ll.getBases().find(dimName);
+  if (it == ll.getBases().end())
+    return SmallVector<unsigned>(defaultOrder.begin(), defaultOrder.end());
+
+  llvm::SetVector<unsigned> order;
+  auto nonZero = [](auto val) { return val != 0; };
+  for (const auto &basis : it->second) {
+    auto nz = std::find_if(basis.begin(), basis.end(), nonZero);
+    if (nz != basis.end())
+      order.insert(nz - basis.begin());
+  }
+  for (unsigned dim : defaultOrder)
+    order.insert(dim);
+  return order.takeVector();
+}
+
 static std::optional<LinearLayout>
 parseLinearLayout(const DictionaryAttr &dict, AsmParser &parser,
                   ArrayRef<std::string> inDimNames, int serializedRank = 0) {
@@ -450,6 +469,11 @@ matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout) {
   auto normalizedLinear =
       normalizeTensorMemoryLinearLayoutForComparison(linear.getLinearLayout());
   auto cga = linear.getCGALayout();
+  if (linear.getTwoCTAs()) {
+    auto kBlock = StringAttr::get(layout.getContext(), "block");
+    if (cga.getLinearLayout().getBasis(kBlock, 0) != ArrayRef<int32_t>{1, 0})
+      return std::nullopt;
+  }
   std::optional<TensorMemoryEncodingAttr> bestMatch;
   bool isM64TwoCTA = linear.getTwoCTAs() &&
                      llvm::any_of(cga.getCTAsPerCGA(),
@@ -496,8 +520,8 @@ std::optional<TensorMemoryEncodingAttr>
 matchTensorMemoryLegacyEncoding(MemDescType memDescType) {
   auto layout = memDescType.getEncoding();
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
-  auto shape = memDescType.getShape().take_back(rank);
-  return matchTensorMemoryLegacyEncoding(shape, layout);
+  return matchTensorMemoryLegacyEncoding(
+      memDescType.getAllocShape().take_back(rank), layout);
 }
 
 TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
@@ -538,18 +562,31 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   auto ll = triton::gpu::toLinearLayout(memDescType);
-  auto llInv = ll.pseudoinvert();
   auto layoutRank = ll.getNumOutDims();
   auto extraRank = memDescType.getRank() - layoutRank;
 
   SmallVector<std::pair<StringAttr, int32_t>> logicalOffsets;
-  logicalOffsets.reserve(layoutRank);
-  for (auto [dim, offset] :
-       llvm::zip_equal(ll.getOutDimNames(), offsets.drop_front(extraRank))) {
-    logicalOffsets.push_back({dim, offset});
+  if (extraRank == 0 && layoutRank > 2) {
+    int32_t linearizedOffset = 0;
+    for (auto [offset, dimSize] :
+         llvm::zip_equal(offsets, memDescType.getShape())) {
+      linearizedOffset = linearizedOffset * dimSize + offset;
+    }
+    SmallVector<StringAttr> rowMajorOutDims = llvm::to_vector(ll.getOutDimNames());
+    std::reverse(rowMajorOutDims.begin(), rowMajorOutDims.end());
+    auto flat = ll.transposeOuts(rowMajorOutDims).flattenOuts();
+    logicalOffsets.push_back(
+        {*flat.getOutDimNames().begin(), linearizedOffset});
+    ll = std::move(flat);
+  } else {
+    logicalOffsets.reserve(layoutRank);
+    for (auto [dim, offset] :
+         llvm::zip_equal(ll.getOutDimNames(), offsets.drop_front(extraRank))) {
+      logicalOffsets.push_back({dim, offset});
+    }
   }
 
-  auto rowColBlock = llInv.apply(logicalOffsets);
+  auto rowColBlock = ll.pseudoinvert().apply(logicalOffsets);
   uint32_t bitwidth = memDescType.getElementTypeBitWidth();
   uint32_t offsetRow = 0;
   uint32_t offsetCol = 0;
@@ -621,6 +658,26 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   auto *ctx = dims[0].getContext();
   auto kBlock = StringAttr::get(ctx, "block");
   bool hasBlockDim = llvm::is_contained(rowColDims, kBlock);
+  if (hasBlockDim && ll.getInDimSize(kBlock) > 1) {
+    auto ctasPerCGA =
+        basesPerDimImpl(ll.getBases(), kBlock, dims.size(),
+                        /*skipBroadcast=*/false);
+    auto ctaSplitNum = basesPerDimImpl(ll.getBases(), kBlock, dims.size(),
+                                       /*skipBroadcast=*/true);
+    SmallVector<unsigned> defaultOrder(dims.size());
+    std::iota(defaultOrder.begin(), defaultOrder.end(), 0);
+    auto ctaOrder = orderPerDimImpl(ll, kBlock, defaultOrder);
+    auto blockOnly =
+        gpu::CGAEncodingAttr::fromSplitParams(ctx, ctasPerCGA, ctaSplitNum,
+                                              ctaOrder)
+            .getLinearLayout();
+    if (auto maybePerCTA = divideRight(ll, blockOnly)) {
+      if (auto perCTA = getDistributedLayoutForTmemLdSt(*maybePerCTA, atom,
+                                                        numWarps, bitwidth)) {
+        return *perCTA * blockOnly;
+      }
+    }
+  }
   auto canCompose = [](const LinearLayout &inner,
                        const LinearLayout &outer) -> bool {
     for (StringAttr outDim : inner.getOutDimNames()) {
@@ -782,6 +839,19 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     return std::nullopt;
 
   auto ret = tile.compose(ll);
+  auto nonZero = [](auto val) { return val != 0; };
+  for (const auto &dimBases : llvm::make_second_range(ret.getBases())) {
+    if (!llvm::all_of(dimBases, [&](const auto &basis) {
+          return std::count_if(basis.begin(), basis.end(), nonZero) <= 1;
+        })) {
+      return std::nullopt;
+    }
+  }
+  auto withoutBroadcast = ret;
+  for (auto inDim : ret.getInDimNames())
+    withoutBroadcast = withoutBroadcast.removeZeroBasesAlongDim(inDim);
+  if (!withoutBroadcast.isInvertible())
+    return std::nullopt;
   return ret;
 }
 
@@ -1045,14 +1115,21 @@ Attribute TensorMemoryLinearEncodingAttr::parse(AsmParser &parser, Type type) {
 gpu::CGAEncodingAttr TensorMemoryLinearEncodingAttr::getCGALayout() const {
   auto ctx = getContext();
   auto kBlock = StringAttr::get(ctx, "block");
-  if (!llvm::is_contained(getLinearLayout().getInDimNames(), kBlock))
+  auto ll = getLinearLayout();
+  if (!llvm::is_contained(ll.getInDimNames(), kBlock))
     return CGAEncodingAttr::get1CTALayout(ctx, getRank());
-  auto splitNum =
-      basesPerDimImpl(getLinearLayout().getBases(), kBlock, getRank(),
+
+  auto ctasPerCGA =
+      basesPerDimImpl(ll.getBases(), kBlock, getRank(),
                       /*skipBroadcast=*/false);
-  return CGAEncodingAttr::get(ctx,
-                              linearToCGAEncodingLayout(getLinearLayout(),
-                                                        splitNum));
+  auto ctaSplitNum =
+      basesPerDimImpl(ll.getBases(), kBlock, getRank(),
+                      /*skipBroadcast=*/true);
+  SmallVector<unsigned> defaultOrder(getRank());
+  std::iota(defaultOrder.begin(), defaultOrder.end(), 0);
+  auto ctaOrder = orderPerDimImpl(ll, kBlock, defaultOrder);
+  return CGAEncodingAttr::fromSplitParams(ctx, ctasPerCGA, ctaSplitNum,
+                                          ctaOrder);
 }
 
 LogicalResult TensorMemoryScalesEncodingAttr::verify(
