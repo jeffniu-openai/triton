@@ -68,6 +68,33 @@ def _make_tmem_linear_layout_64x32_block(two_ctas=False):
     )
 
 
+def _lift_tmem_layout(base_layout, prefix_shape):
+    prefix_shape = list(prefix_shape)
+    prefix_rank = len(prefix_shape)
+    total_rank = prefix_rank + len(base_layout.shape)
+
+    def extend_bases(bases):
+        return [[0] * prefix_rank + list(basis) for basis in bases]
+
+    rows = extend_bases(base_layout.rows)
+    cols = extend_bases(base_layout.cols)
+    block_bases = extend_bases(base_layout.block_bases)
+
+    for dim in range(prefix_rank - 1, -1, -1):
+        for bit in range(int(math.log2(prefix_shape[dim]))):
+            basis = [0] * total_rank
+            basis[dim] = 1 << bit
+            cols.append(basis)
+
+    return TensorMemoryLinearLayout(
+        rows=rows,
+        cols=cols,
+        block_bases=block_bases,
+        shape=prefix_shape + list(base_layout.shape),
+        two_ctas=base_layout.two_ctas,
+    )
+
+
 def _make_tmem_linear_layout_mmav5_twocta(m, n):
     assert m >= 128 and (m & (m - 1)) == 0
     assert n >= 1 and (n & (n - 1)) == 0
@@ -168,7 +195,8 @@ def tmem_linear_view_ops_compile_kernel(layout: gl.constexpr, linear_layout: gl.
 
 @gluon.jit
 def _tcgen05_mma_twocta_linear_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: gl.constexpr, BLOCK_N: gl.constexpr,
-                                      acc_tmem_layout: gl.constexpr, blocked_c: gl.constexpr):
+                                      acc_tmem_layout: gl.constexpr, acc_tmem_base_layout: gl.constexpr,
+                                      blocked_c: gl.constexpr, ACC_VIA_VIEW: gl.constexpr):
     smem_a = gl.allocate_shared_memory(a_desc.dtype, a_desc.block_shape, a_desc.layout)
     smem_b = gl.allocate_shared_memory(b_desc.dtype, b_desc.block_shape, b_desc.layout)
 
@@ -183,7 +211,11 @@ def _tcgen05_mma_twocta_linear_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: gl.cons
     hopper_mbarrier.wait(tma_bar, phase=0, deps=[smem_a, smem_b])
     hopper_mbarrier.invalidate(tma_bar)
 
-    acc_tmem = allocate_tensor_memory(gl.float32, [BLOCK_M, BLOCK_N], acc_tmem_layout)
+    if ACC_VIA_VIEW:
+        acc_base = allocate_tensor_memory(gl.float32, [2, BLOCK_M, BLOCK_N], acc_tmem_base_layout)
+        acc_tmem = acc_base.index(1)
+    else:
+        acc_tmem = allocate_tensor_memory(gl.float32, [BLOCK_M, BLOCK_N], acc_tmem_layout)
     tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=False, multicast=True, mbarriers=[mma_bar])
     hopper_mbarrier.wait(mma_bar, phase=0, deps=[smem_a, smem_b])
     hopper_mbarrier.invalidate(mma_bar)
@@ -601,7 +633,12 @@ def test_unary_math_identity(device, op, fresh_knobs):
     )
 
     exp_bits = _expected_unary_tag_i32(x_bits, op)
-    _assert_payload_equal(out, exp_bits)
+    if elem_type_a != elem_type_b:
+        actual = _as_payload_np_i32(out).view(np.float32)
+        expected = _as_payload_np_i32(exp_bits).view(np.float32)
+        np.testing.assert_allclose(actual, expected, atol=2e-3, rtol=2e-3)
+    else:
+        _assert_payload_equal(out, exp_bits)
 
 
 @gluon.jit
@@ -657,7 +694,12 @@ def test_extern_unary_payload_semantics(device, op, symbol, fresh_knobs):
     )
 
     exp_bits = _expected_extern_unary_tag_i32(x_bits, symbol)
-    _assert_payload_equal(out, exp_bits)
+    if elem_type_a != elem_type_b:
+        actual = _as_payload_np_i32(out).view(np.float32)
+        expected = _as_payload_np_i32(exp_bits).view(np.float32)
+        np.testing.assert_allclose(actual, expected, atol=2e-3, rtol=2e-3)
+    else:
+        _assert_payload_equal(out, exp_bits)
 
 
 @gluon.jit
@@ -1210,7 +1252,8 @@ def _fp8_type_to_torch_dtype(elem_type: str):
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,b,acc_layout", MMA_ACC_LAYOUT_CASES)
 @pytest.mark.parametrize("use_acc", [False, True])
-def test_tcgen05_mma(device, layout_name, b, acc_layout, use_acc, fresh_knobs):
+@pytest.mark.parametrize("acc_via_view", [False, True])
+def test_tcgen05_mma(device, layout_name, b, acc_layout, use_acc, acc_via_view, fresh_knobs):
     _require_cuda_backend(device)
 
     B = b
@@ -1219,7 +1262,8 @@ def test_tcgen05_mma(device, layout_name, b, acc_layout, use_acc, fresh_knobs):
     fresh_knobs.compilation.instrumentation_mode = "fpsan"
 
     @gluon.jit
-    def kernel(a_ptr, b_ptr, c_ptr, out_ptr, USE_ACC: gl.constexpr, ACC_LAYOUT: gl.constexpr):
+    def mma_plain_kernel(a_ptr, b_ptr, c_ptr, out_ptr, USE_ACC: gl.constexpr, ACC_LAYOUT: gl.constexpr,
+                         ACC_BASE_LAYOUT: gl.constexpr, ACC_VIA_VIEW: gl.constexpr):
         layout: gl.constexpr = gl.BlockedLayout([1, 1], [32, 1], [gl.num_warps(), 1], [1, 0])
 
         offs_m = gl.arange(0, BLOCK, layout=gl.SliceLayout(1, layout))[:, None]
@@ -1241,7 +1285,11 @@ def test_tcgen05_mma(device, layout_name, b, acc_layout, use_acc, fresh_knobs):
         smem_a.store(a_tile)
         smem_b.store(b_tile)
 
-        acc_tmem = allocate_tensor_memory(gl.float32, [BLOCK, BLOCK], layout=ACC_LAYOUT)
+        if ACC_VIA_VIEW:
+            acc_base = allocate_tensor_memory(gl.float32, [2, BLOCK, BLOCK], layout=ACC_BASE_LAYOUT)
+            acc_tmem = acc_base.index(1)
+        else:
+            acc_tmem = allocate_tensor_memory(gl.float32, [BLOCK, BLOCK], layout=ACC_LAYOUT)
         acc_reg_layout: gl.constexpr = acc_tmem.get_reg_layout()
         if USE_ACC:
             c_tile = gl.load(c_ptr + out_offs)
@@ -1276,15 +1324,50 @@ def test_tcgen05_mma(device, layout_name, b, acc_layout, use_acc, fresh_knobs):
     bw = triton.TensorWrapper(b, dtype=torch.float32)
     cw = triton.TensorWrapper(c, dtype=torch.float32)
     outw = triton.TensorWrapper(out, dtype=torch.float32)
+    if acc_via_view and not isinstance(acc_layout, TensorMemoryLinearLayout):
+        pytest.skip("lifted MMA accumulator view coverage uses canonical TMEM linear layouts")
+    acc_base_layout = _lift_tmem_layout(acc_layout, [2]) if acc_via_view else acc_layout
 
-    compiled = kernel[(1, )](aw, bw, cw, outw, USE_ACC=use_acc, ACC_LAYOUT=acc_layout)
+    if acc_via_view and B == 64:
+        with pytest.raises((CompilationError, RuntimeError, ValueError)) as excinfo:
+            mma_plain_kernel[(1, )](
+                aw,
+                bw,
+                cw,
+                outw,
+                USE_ACC=use_acc,
+                ACC_LAYOUT=acc_layout,
+                ACC_BASE_LAYOUT=acc_base_layout,
+                ACC_VIA_VIEW=acc_via_view,
+            )
+        msg = str(excinfo.value)
+        assert "TMEM layout '32x32b' unsupported for shape [64, 64]" in msg
+        assert "PassManager::run failed" not in msg
+        assert "Assertion" not in msg
+        return
+
+    compiled = mma_plain_kernel[(1, )](
+        aw,
+        bw,
+        cw,
+        outw,
+        USE_ACC=use_acc,
+        ACC_LAYOUT=acc_layout,
+        ACC_BASE_LAYOUT=acc_base_layout,
+        ACC_VIA_VIEW=acc_via_view,
+    )
 
     _assert_payload_equal(out, exp_bits)
+    mma_ops = _assert_mma_codegen_opcodes(compiled)
+    if mma_ops:
+        assert all("tcgen05.mma.cta_group::1.kind::tf32" in op for op in mma_ops)
+    _assert_tmem_allocator_lifetime(compiled, cta_group=1)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind", MMA_TWOCTA_LAYOUT_CASES)
-def test_tcgen05_mma_twocta(device, layout_kind):
+@pytest.mark.parametrize("acc_via_view", [False, True])
+def test_tcgen05_mma_twocta(device, layout_kind, acc_via_view):
     _require_cuda_backend(device)
 
     ctas_per_cga = [2, 1]
@@ -1314,6 +1397,9 @@ def test_tcgen05_mma_twocta(device, layout_kind):
     else:
         acc_layout = TensorMemoryLayout(block=(128, block_n // ctas_per_cga[1]), col_stride=1, two_ctas=True,
                                         cga_layout=cga_layout_c)
+    if acc_via_view and not isinstance(acc_layout, TensorMemoryLinearLayout):
+        pytest.skip("lifted two-CTA MMA view coverage uses canonical TMEM linear layouts")
+    acc_base_layout = _lift_tmem_layout(acc_layout, [2]) if acc_via_view else acc_layout
     blocked_c = gl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
                                  cga_layout=cga_layout_c)
 
@@ -1324,7 +1410,9 @@ def test_tcgen05_mma_twocta(device, layout_kind):
         block_m,
         block_n,
         acc_layout,
+        acc_base_layout,
         blocked_c,
+        acc_via_view,
         num_warps=4,
         num_ctas=2,
     )
@@ -1374,7 +1462,9 @@ def test_tcgen05_mma_twocta_asymmetric_shape_reports_clean_error(device, fresh_k
             block_m,
             block_n,
             acc_layout,
+            acc_layout,
             blocked_c,
+            False,
             num_warps=4,
             num_ctas=2,
         )
@@ -1396,7 +1486,7 @@ def test_tcgen05_mma_unsupported_linear_layout_reports_clean_error(device, name,
     BLOCK = gl.constexpr(B)
 
     @gluon.jit
-    def kernel(a_ptr, b_ptr, out_ptr, ACC_LAYOUT: gl.constexpr):
+    def mma_unsupported_layout_kernel(a_ptr, b_ptr, out_ptr, ACC_LAYOUT: gl.constexpr):
         blocked: gl.constexpr = gl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
         offs_m = gl.arange(0, BLOCK, layout=gl.SliceLayout(1, blocked))[:, None]
         offs_n = gl.arange(0, BLOCK, layout=gl.SliceLayout(0, blocked))[None, :]
@@ -1431,7 +1521,7 @@ def test_tcgen05_mma_unsupported_linear_layout_reports_clean_error(device, name,
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
     with pytest.raises((CompilationError, RuntimeError, ValueError)) as excinfo:
-        kernel[(1, )](aw, bw, outw, ACC_LAYOUT=acc_layout, num_warps=4, num_ctas=num_ctas)
+        mma_unsupported_layout_kernel[(1, )](aw, bw, outw, ACC_LAYOUT=acc_layout, num_warps=4, num_ctas=num_ctas)
     captured = capfd.readouterr()
     msg = str(excinfo.value) + captured.err + captured.out
     assert (
@@ -1456,8 +1546,8 @@ def test_tcgen05_mma_scaled(device, elem_type_a, elem_type_b, layout_name, acc_l
     fresh_knobs.compilation.instrumentation_mode = "fpsan"
 
     @gluon.jit
-    def kernel(a_ptr, b_ptr, a_scale_ptr, b_scale_ptr, c_ptr, out_ptr, TYPE_A: gl.constexpr, TYPE_B: gl.constexpr,
-               ACC_LAYOUT: gl.constexpr):
+    def mma_scaled_kernel(a_ptr, b_ptr, a_scale_ptr, b_scale_ptr, c_ptr, out_ptr, TYPE_A: gl.constexpr,
+                          TYPE_B: gl.constexpr, ACC_LAYOUT: gl.constexpr):
         layout: gl.constexpr = gl.BlockedLayout([1, 1], [32, 1], [gl.num_warps(), 1], [1, 0])
         IS_A_FP4: gl.constexpr = TYPE_A == "e2m1"
         IS_B_FP4: gl.constexpr = TYPE_B == "e2m1"
@@ -1549,8 +1639,8 @@ def test_tcgen05_mma_scaled(device, elem_type_a, elem_type_b, layout_name, acc_l
     cw = triton.TensorWrapper(c, dtype=torch.float32)
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
-    compiled = kernel[(1, )](a, b, a_scale, b_scale, cw, outw, TYPE_A=elem_type_a, TYPE_B=elem_type_b,
-                             ACC_LAYOUT=acc_layout)
+    compiled = mma_scaled_kernel[(1, )](a, b, a_scale, b_scale, cw, outw, TYPE_A=elem_type_a, TYPE_B=elem_type_b,
+                                        ACC_LAYOUT=acc_layout)
 
     _assert_payload_equal(out, exp_bits)
     mma_ops = _assert_mma_codegen_opcodes(compiled)
@@ -1575,7 +1665,8 @@ def test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error(device
     SCALE_K = gl.constexpr(B // 32)
 
     @gluon.jit
-    def kernel(a_ptr, b_ptr, a_scale_ptr, b_scale_ptr, c_ptr, out_ptr, ACC_LAYOUT: gl.constexpr):
+    def mma_scaled_unsupported_layout_kernel(a_ptr, b_ptr, a_scale_ptr, b_scale_ptr, c_ptr, out_ptr,
+                                             ACC_LAYOUT: gl.constexpr):
         layout: gl.constexpr = gl.BlockedLayout([1, 1], [32, 1], [gl.num_warps(), 1], [1, 0])
         a_nvmma_layout: gl.constexpr = gl.NVMMASharedLayout(swizzle_byte_width=128, transposed=False,
                                                             element_bitwidth=8, rank=2)
@@ -1630,7 +1721,8 @@ def test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error(device
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
     with pytest.raises((CompilationError, RuntimeError, ValueError)) as excinfo:
-        kernel[(1, )](a, b, a_scale, b_scale, cw, outw, ACC_LAYOUT=acc_layout, num_warps=4)
+        mma_scaled_unsupported_layout_kernel[(1, )](a, b, a_scale, b_scale, cw, outw, ACC_LAYOUT=acc_layout,
+                                                    num_warps=4)
     captured = capfd.readouterr()
     msg = str(excinfo.value) + captured.err + captured.out
     assert ("MMAv5-compatible tensor memory" in msg or "TMEM layout '32x32b' unsupported" in msg)

@@ -1069,3 +1069,19 @@
   - classification:
     - `CLEAN_UNSUPPORTED` for current `sm_103a` / PTXAS assumptions;
       no compiler crash or MLIR assertion observed.
+
+## 2026-03-25 (BUG classification from cp.warpx2 scales candidate sweep)
+- Added a scales-copy layout probe in
+  `python/test/gluon/test_tmem_runtime_matrix.py` with two explicit classes:
+  - `PASS`: canonical `warpx4` shared layout
+  - `BUG`: current `warpx2` candidate shared layout
+- Repro result for the `warpx2` candidate:
+  - compiler emits a specific legalization diagnostic
+    (`failed to find valid tcgen05.copy layout`) but then still fails with
+    `PassManager::run failed` / illegal-op legalization pipeline failure.
+  - This is not a crash, but it is not a clean unsupported diagnostic path.
+- Classification:
+  - `BUG` (diagnostic quality / legalization error reporting gap).
+- Kept this as an explicit runtime test expectation (`expected_status="BUG"`)
+  so we can flip it to `CLEAN_UNSUPPORTED` or `PASS` once backend/legalization
+  is fixed.

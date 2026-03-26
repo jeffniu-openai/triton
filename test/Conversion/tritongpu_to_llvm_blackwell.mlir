@@ -593,6 +593,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32, "ttng.tw
 #shared = #ttg.shared_linear<{offset = [[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}, alignment = 16>
 #shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
 #tmem_linear_128x4 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2]]}>
+#tmem_legacy_128x4 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 4, colStride = 1>
 
 module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   // CHECK-LABEL: @tmem_copy_linear_128x128b
@@ -630,6 +631,25 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.targ
       %src: !ttg.memdesc<128x4xi32, #shared, #ttg.shared_memory>,
       %dst: !ttg.memdesc<128x4xi32, #tmem_linear_128x4, #ttng.tensor_memory, mutable>) {
     ttng.tmem_copy %src, %dst : !ttg.memdesc<128x4xi32, #shared, #ttg.shared_memory>, !ttg.memdesc<128x4xi32, #tmem_linear_128x4, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tmem_copy_indexed_view_128x128b
+  // CHECK: [[BASE:%.*]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
+  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(4 : i32) : i32
+  // CHECK: [[INDEXOFF:%.*]] = llvm.mul %arg2, [[STRIDE]] : i32
+  // CHECK: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
+  // CHECK: tcgen05.cp.cta_group::1.128x128b [ $0 + 0 ], $1;", "r,l,b"
+  // CHECK-NOT: tcgen05.cp.cta_group::1.128x256b
+  // CHECK-NOT: tcgen05.cp.cta_group::1.warpx4.32x128b
+  // CHECK: tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64
+  tt.func public @tmem_copy_indexed_view_128x128b(
+      %src: !ttg.memdesc<128x4xi32, #shared, #ttg.shared_memory>,
+      %dst: !ttg.memdesc<2x128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable>,
+      %idx: i32,
+      %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory>) {
+    %view = ttg.memdesc_index %dst[%idx] : !ttg.memdesc<2x128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable>
+    ttng.tmem_copy %src, %view, %barrier : !ttg.memdesc<128x4xi32, #shared, #ttg.shared_memory>, !ttg.memdesc<128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable>, !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory>
     tt.return
   }
 }
@@ -1332,6 +1352,31 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
     %2 = ttng.tmem_load %1 : !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64> -> tensor<128x64xf32, #blocked_128x64>
     tt.return %2 : tensor<128x64xf32, #blocked_128x64>
   }
+
+  // CHECK-LABEL: @index_subslice_tmem_linear_store_load
+  // CHECK: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
+  // CHECK-NEXT: [[STRIDE:%.*]] = llvm.mlir.constant(128 : i32) : i32
+  // CHECK-NEXT: [[INDEXOFF:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
+  // CHECK-NEXT: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
+  // CHECK-NEXT: [[INDEXPTR:%.*]] = llvm.inttoptr [[INDEXBASE]] : i32 to !llvm.ptr<3>
+  // CHECK-NEXT: [[INDEXPTRINT:%.*]] = llvm.ptrtoint [[INDEXPTR]] : !llvm.ptr<3> to i32
+  // CHECK-NEXT: [[SLICEOFF:%.*]] = llvm.mlir.constant(64 : i32) : i32
+  // CHECK-NEXT: [[VIEWBASE:%.*]] = llvm.add [[INDEXPTRINT]], [[SLICEOFF]] : i32
+  // CHECK: tcgen05.st.sync.aligned.32x32b.x64.b32
+  // CHECK: nvvm.tcgen05.wait <store>
+  // CHECK: tcgen05.ld.sync.aligned.32x32b.x64.b32
+  // CHECK: nvvm.tcgen05.wait <load>
+  tt.func private @index_subslice_tmem_linear_store_load(
+      %arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>,
+      %arg1: i32,
+      %arg2: tensor<128x64xf32, #blocked_128x64>,
+      %arg3: i1) -> tensor<128x64xf32, #blocked_128x64> {
+    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
+    %1 = ttg.memdesc_subslice %0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64>
+    ttng.tmem_store %arg2, %1, %arg3 : tensor<128x64xf32, #blocked_128x64> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64>
+    %2 = ttng.tmem_load %1 : !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64> -> tensor<128x64xf32, #blocked_128x64>
+    tt.return %2 : tensor<128x64xf32, #blocked_128x64>
+  }
 }
 
 // -----
@@ -1631,6 +1676,16 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x32xf32, #blocked_32>
     %0 = ttng.tmem_alloc %cst_0 {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32} : (tensor<128x32xf32, #blocked_32>) -> !ttg.memdesc<128x32xf32, #tmem_linear_128x32, #ttng.tensor_memory, mutable>
     %result, %red = ttng.tmem_load %0 {redOp = #ttng.redOp<max>, abs = true} : !ttg.memdesc<128x32xf32, #tmem_linear_128x32, #ttng.tensor_memory, mutable> -> tensor<128x32xf32, #blocked_32>, tensor<128xf32, #blocked_red_32>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tensor_memory_ld_red_linear_max_abs_nan_128x32
+  // CHECK: tcgen05.ld.red.sync.aligned.32x32b.x32.max.abs.NaN.f32
+  // CHECK: tcgen05.wait <load>
+  tt.func public @tensor_memory_ld_red_linear_max_abs_nan_128x32() {
+    %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x32xf32, #blocked_32>
+    %0 = ttng.tmem_alloc %cst_0 {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32} : (tensor<128x32xf32, #blocked_32>) -> !ttg.memdesc<128x32xf32, #tmem_linear_128x32, #ttng.tensor_memory, mutable>
+    %result, %red = ttng.tmem_load %0 {redOp = #ttng.redOp<max>, abs = true, NaN = true} : !ttg.memdesc<128x32xf32, #tmem_linear_128x32, #ttng.tensor_memory, mutable> -> tensor<128x32xf32, #blocked_32>, tensor<128xf32, #blocked_red_32>
     tt.return
   }
 }

@@ -1419,7 +1419,7 @@ def _round_to_tf32(x: torch.Tensor) -> torch.Tensor:
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind", ["tf32", "f8e5m2"])
+@pytest.mark.parametrize("kind", ["tf32", "f8e5m2", "f8e4m3"])
 def test_tcgen05_mma_plain_kind_runtime(kind):
     M = N = 128
     K = 32
@@ -1440,8 +1440,9 @@ def test_tcgen05_mma_plain_kind_runtime(kind):
         ref = torch.matmul(a, b)
         atol, rtol = 5e-4, 5e-3
     else:
-        a = torch.randint(20, 40, (M, K), device="cuda", dtype=torch.uint8).view(torch.float8_e5m2)
-        b = torch.randint(20, 40, (K, N), device="cuda", dtype=torch.uint8).view(torch.float8_e5m2)
+        fp8_dtype = torch.float8_e5m2 if kind == "f8e5m2" else torch.float8_e4m3fn
+        a = torch.randint(20, 40, (M, K), device="cuda", dtype=torch.uint8).view(fp8_dtype)
+        b = torch.randint(20, 40, (K, N), device="cuda", dtype=torch.uint8).view(fp8_dtype)
         out = torch.empty((M, N), device="cuda", dtype=torch.float32)
         shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
         shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)

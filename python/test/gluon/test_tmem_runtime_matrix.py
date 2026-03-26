@@ -41,6 +41,26 @@ def _make_tmem_linear_layout(m, n):
     )
 
 
+def _permute_pow2_bases(bits):
+    even = list(range(0, len(bits), 2))
+    odd = list(range(1, len(bits), 2))
+    return [bits[i] for i in even + odd]
+
+
+def _make_tmem_linear_layout_scrambled(m, n, scramble_rows=True, scramble_cols=True):
+    row_bits = [1 << i for i in range(int(math.log2(m)))]
+    col_bits = [1 << i for i in range(int(math.log2(n)))]
+    if scramble_rows:
+        row_bits = _permute_pow2_bases(row_bits)
+    if scramble_cols:
+        col_bits = _permute_pow2_bases(col_bits)
+    return TensorMemoryLinearLayout(
+        rows=[[b, 0] for b in row_bits],
+        cols=[[0, b] for b in col_bits],
+        shape=[m, n],
+    )
+
+
 def _make_tmem_linear_layout_mixed(m, n):
     assert m == 128 and n >= 64 and (n & (n - 1)) == 0
     col_bases = [[32, 0], [64, 0]]
@@ -154,6 +174,19 @@ def _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, two_cta_dim):
     for b in aux_cga_layout:
         b[two_cta_dim] *= 2
     return [basis] + aux_cga_layout
+
+
+def _make_scales_shared_layout_warpx4():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]
+    )
+
+
+def _make_scales_shared_layout_warpx2_candidate():
+    # Candidate family from PTX probes; currently expected to fail cleanly.
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[32, 0], [0, 1], [1, 0], [0, 2], [0, 4], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]
+    )
 
 
 def _extract_tcgen05_opcode_offsets(asm: str, opcodes=("ld", "st")):
@@ -553,6 +586,35 @@ def tmem_copy_scales_warpx4_kernel(in_ptr, out_ptr):
 
 
 @gluon.jit
+def tmem_copy_scales_layout_probe_kernel(in_ptr, out_ptr, smem_layout: ttgl.constexpr):
+    SMEM_H: ttgl.constexpr = 64
+    SMEM_W: ttgl.constexpr = 16
+    NUM_ROWS: ttgl.constexpr = 128
+    NUM_COLS: ttgl.constexpr = (SMEM_H * SMEM_W) // 32
+
+    in_ptrs = in_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
+    out_ptrs = out_ptr + ttgl.arange(0, NUM_ROWS)[:, None] * NUM_COLS + ttgl.arange(0, NUM_COLS)[None, :]
+
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
+    value = ttgl.load(ttgl.set_auto_layout(in_ptrs, blocked))
+
+    tmem = allocate_tensor_memory(ttgl.int8, (SMEM_H, SMEM_W), layout=TensorMemoryScalesLayout())
+    smem = ttgl.allocate_shared_memory(ttgl.int8, (SMEM_H, SMEM_W), layout=smem_layout)
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+
+    smem.store(value)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    tmem_alias: ttgl.constexpr = TensorMemoryLayout((NUM_ROWS, NUM_COLS), col_stride=1)
+    alias_view = tmem._reinterpret(ttgl.int8, (NUM_ROWS, NUM_COLS), tmem_alias)
+    value = alias_view.load(blocked)
+    ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked), value)
+
+
+@gluon.jit
 def tmem_mma_twocta_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
                            acc_tmem_layout: ttgl.constexpr, blocked_c: ttgl.constexpr):
     smem_a = ttgl.allocate_shared_memory(a_desc.dtype, a_desc.block_shape, a_desc.layout)
@@ -685,6 +747,16 @@ LDST_LAYOUTS = {
     "mixed": lambda n: _make_tmem_linear_layout_mixed(128, n),
 }
 
+LDST_EXOTIC_LAYOUTS = {
+    "scrambled_cols": lambda n: _make_tmem_linear_layout_scrambled(128, n, scramble_rows=False, scramble_cols=True),
+    "scrambled_rows_cols": lambda n: _make_tmem_linear_layout_scrambled(128, n, scramble_rows=True,
+                                                                         scramble_cols=True),
+}
+
+LDST_EXOTIC_UNSUPPORTED_LAYOUTS = {
+    "block_single_cta": lambda n: _make_tmem_linear_layout_block(128, n, two_ctas=False),
+}
+
 LDST_TWOCTA_LAYOUTS = {
     "block_two_ctas": lambda n: _make_tmem_linear_layout_block(256, n, two_ctas=True),
     "mmav5_twocta": lambda n: _make_tmem_linear_layout_mmav5_twocta(256, n),
@@ -711,6 +783,23 @@ LDST_TWOCTA_CASES = [
 LDST_TWOCTA_DESCRIPTOR_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_EXOTIC_CASES = [
+    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
+    for layout_name, n, variant in product(LDST_EXOTIC_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_EXOTIC_DESCRIPTOR_CASES = [
+    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
+    for layout_name, n, variant in product(("scrambled_cols", "scrambled_rows_cols"), (64, 128, 256),
+                                           LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_EXOTIC_UNSUPPORTED_CASES = [
+    (layout_name, n, variant)
+    for layout_name, n, variant in product(LDST_EXOTIC_UNSUPPORTED_LAYOUTS.keys(), (64, 128, 256),
+                                           LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
@@ -829,13 +918,67 @@ F16_LDST_CASES = [
 ]
 
 LD_RED_LINEAR_CASES = [
-    (128, 32, 4, "32x32b.x32"),
-    (128, 64, 4, "32x32b.x64"),
-    (128, 128, 4, "32x32b.x128"),
-    (128, 256, 4, "32x32b.x64"),
+    ("identity", 128, 32, 4, "32x32b.x32"),
+    ("identity", 128, 64, 4, "32x32b.x64"),
+    ("identity", 128, 128, 4, "32x32b.x128"),
+    ("identity", 128, 256, 4, "32x32b.x64"),
 ]
 
 LD_RED_EXPECTED_OP_COUNT = {32: 1, 64: 1, 128: 1, 256: 4}
+
+LD_RED_MIXED_UNSUPPORTED_CASES = [
+    ("mixed", 128, 64, 4),
+    ("mixed", 128, 128, 4),
+    ("mixed", 128, 256, 4),
+]
+
+LDST_EXPECTED_OFFSETS_128x256 = {
+    "32x32b": [
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 64),
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 128),
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 192),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 64),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 128),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 192),
+    ],
+    "16x64b": [
+        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 0),
+        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 128),
+        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 1048576),
+        ("tcgen05.st.sync.aligned.16x64b.x64.b32", 1048704),
+        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 128),
+        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 1048576),
+        ("tcgen05.ld.sync.aligned.16x64b.x64.b32", 1048704),
+    ],
+    "16x128b": [
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 128),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048704),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 128),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048704),
+    ],
+    "16x256b": [
+        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 0),
+        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 128),
+        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048576),
+        ("tcgen05.st.sync.aligned.16x256b.x16.b32", 1048704),
+        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 128),
+        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048576),
+        ("tcgen05.ld.sync.aligned.16x256b.x16.b32", 1048704),
+    ],
+}
+
+CP_SCALES_LAYOUT_PROBE_CASES = [
+    ("warpx4", _make_scales_shared_layout_warpx4(), "PASS"),
+    ("warpx2_candidate", _make_scales_shared_layout_warpx2_candidate(), "BUG"),
+]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -862,10 +1005,70 @@ def test_tmem_runtime_matrix_ldst(layout_name, n, variant, expected_shape):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_EXOTIC_CASES)
+def test_tmem_runtime_matrix_ldst_exotic_linear_layouts(layout_name, n, variant, expected_shape):
+    m = 128
+    layout = LDST_EXOTIC_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant", LDST_EXOTIC_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported(layout_name, n, variant):
+    m = 128
+    layout = LDST_EXOTIC_UNSUPPORTED_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+
+    msg = str(excinfo.value)
+    assert f"TMEM layout '{variant}' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_DESCRIPTOR_CASES)
 def test_tmem_runtime_matrix_ldst_descriptor_compositions(layout_name, n, variant, expected_shape):
     m = 128
     layout = LDST_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_EXOTIC_DESCRIPTOR_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_compositions_exotic_layouts(layout_name, n, variant, expected_shape):
+    m = 128
+    layout = LDST_EXOTIC_LAYOUTS[layout_name](n)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
@@ -1291,6 +1494,23 @@ def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(n, splitn_x, expected_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("variant", ("32x32b", "16x64b", "16x128b", "16x256b"))
+def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
+    m, n = 128, 256
+    layout = _make_tmem_linear_layout(m, n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ptx_offsets = _extract_tcgen05_opcode_offsets(compiled.asm["ptx"])
+    llir_offsets = _extract_tcgen05_opcode_offsets(compiled.asm["llir"])
+    assert ptx_offsets == llir_offsets
+    assert ptx_offsets == LDST_EXPECTED_OFFSETS_128x256[variant]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", F16_LDST_CASES)
 def test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack(layout_name, n, variant, expected_shape):
     m = 128
@@ -1376,10 +1596,13 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip(layout_name,
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
-@pytest.mark.parametrize("M,N,num_warps,expected_shape", LD_RED_LINEAR_CASES)
-def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, propagate_nan, M, N, num_warps,
+@pytest.mark.parametrize("layout_name,M,N,num_warps,expected_shape", LD_RED_LINEAR_CASES)
+def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, propagate_nan, layout_name, M, N, num_warps,
                                                            expected_shape):
-    layout = _make_tmem_linear_layout(M, N)
+    if layout_name == "identity":
+        layout = _make_tmem_linear_layout(M, N)
+    else:
+        layout = _make_tmem_linear_layout_mixed(M, N)
     compiled = _run_tmem_reduction_case(
         layout,
         M,
@@ -1411,6 +1634,66 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
         assert all(".NaN." in op for op in ptx_red_ops)
     else:
         assert all(".NaN." not in op for op in ptx_red_ops)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+@pytest.mark.parametrize("layout_name,M,N,num_warps", LD_RED_MIXED_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_ld_red_mixed_layout_reports_clean_unsupported(
+    red_op, use_abs, propagate_nan, layout_name, M, N, num_warps, capfd
+):
+    layout = _make_tmem_linear_layout_mixed(M, N)
+    with pytest.raises(Exception) as excinfo:
+        _run_tmem_reduction_case(
+            layout,
+            M,
+            N,
+            red_op,
+            use_abs,
+            propagate_nan,
+            num_warps=num_warps,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "tmem_load reduction with N dimension sharded across threads is not supported" in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name,smem_layout,expected_status", CP_SCALES_LAYOUT_PROBE_CASES)
+def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_status, capfd):
+    smem_h, smem_w = 64, 16
+    num_rows = 128
+    num_cols = smem_h * smem_w // 32
+    inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")
+    out = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8, device="cuda")
+
+    if expected_status == "PASS":
+        compiled = tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
+        expected = inp.reshape(2, 32, 2, 2, 4).permute(1, 2, 3, 0, 4).reshape(num_rows // 4, num_cols)
+        for warp in torch.chunk(out, chunks=4, dim=0):
+            torch.testing.assert_close(expected, warp, atol=0, rtol=0)
+        ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+        llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+        assert ptx_ops == llir_ops
+        assert ptx_ops == ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2
+        return
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "failed to find valid tcgen05.copy layout" in text
+
+    if expected_status == "CLEAN_UNSUPPORTED":
+        assert "PassManager::run failed" not in text
+        assert "Assertion" not in text
+        return
+
+    assert expected_status == "BUG"
+    assert "PassManager::run failed" in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
