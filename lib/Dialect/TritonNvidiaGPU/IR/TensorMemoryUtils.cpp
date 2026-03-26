@@ -213,8 +213,9 @@ static bool canUseTMemViewEncoding(MLIRContext *ctx, ArrayRef<int64_t> shape,
 }
 
 static LogicalResult preserveTMemViewEncodingIfValid(
-    MLIRContext *ctx, ArrayRef<int64_t> dstShape, ArrayRef<int64_t> dstAllocShape,
-    Attribute srcEncoding, Attribute &dstEncoding, std::optional<Location> loc,
+    MLIRContext *ctx, ArrayRef<int64_t> dstShape,
+    ArrayRef<int64_t> dstAllocShape, Attribute srcEncoding,
+    Attribute &dstEncoding, std::optional<Location> loc,
     std::string *error) {
   std::string preservedError;
   if (tryCreateMemDescType(ctx, dstShape, IntegerType::get(ctx, 8),
@@ -226,9 +227,33 @@ static LogicalResult preserveTMemViewEncodingIfValid(
   }
   if (error && error->empty())
     *error = preservedError;
-  if (error && !error->empty() && !preservedError.empty() && *error != preservedError)
-    return emitOptionalError(loc, *error, "; preserved tensor memory view encoding also failed: ", preservedError);
-  return emitOptionalError(loc, error && !error->empty() ? *error : preservedError);
+  if (error && !error->empty() && !preservedError.empty() &&
+      *error != preservedError)
+    return emitOptionalError(
+        loc, *error,
+        "; preserved tensor memory view encoding also failed: ",
+        preservedError);
+  return emitOptionalError(loc,
+                           error && !error->empty() ? *error : preservedError);
+}
+
+struct TMemViewAnalysisLayout {
+  LinearLayout layout;
+  bool twoCTAs;
+};
+
+static std::optional<TMemViewAnalysisLayout>
+getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
+                          std::string *error) {
+  if (!isTensorMemoryEncoding(encoding) ||
+      isa<TensorMemoryScalesEncodingAttr>(encoding))
+    return std::nullopt;
+  auto maybeLayout =
+      tryGetCanonicalTensorMemoryLinearLayout(shape, encoding, error);
+  if (!maybeLayout)
+    return std::nullopt;
+  return TMemViewAnalysisLayout{
+      std::move(*maybeLayout), getTensorMemoryTwoCTAs(encoding).value_or(false)};
 }
 } // namespace
 
@@ -265,11 +290,17 @@ getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
                         std::string *error) {
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
   auto kBlock = StringAttr::get(ctx, "block");
   bool hadBlock = ll.hasInDim(kBlock);
   decltype(ll.getBases().lookup(kBlock)) originalBlockBases;
   if (hadBlock)
     originalBlockBases = ll.getBases().lookup(kBlock);
+  if (ll.hasInDim(kRow))
+    ll = ll.removeZeroBasesAlongDim(kRow);
+  if (ll.hasInDim(kCol))
+    ll = ll.removeZeroBasesAlongDim(kCol);
   if (ll.hasInDim(kBlock))
     ll = ll.removeZeroBasesAlongDim(kBlock);
   SmallVector<std::pair<StringAttr, int32_t>> canonicalOutDims;
@@ -410,16 +441,16 @@ FailureOr<TensorMemoryLinearEncodingAttr>
 inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
                           ArrayRef<int64_t> dstShape,
                           ArrayRef<int32_t> offsets, std::string *error) {
-  auto srcEnc = getCanonicalTMemLinearEncoding(srcShape, srcEncoding, error);
-  if (!srcEnc) {
+  auto maybeSrcLayout = getTMemViewAnalysisLayout(srcShape, srcEncoding, error);
+  if (!maybeSrcLayout) {
     if (error && error->empty())
       *error = "expected canonical tensor memory linear encoding";
     return failure();
   }
 
-  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(
-      srcEnc->getLinearLayout());
-  auto layoutRank = srcEnc->getRank();
+  auto ll =
+      normalizeTensorMemoryLinearLayoutForAnalysis(maybeSrcLayout->layout);
+  auto layoutRank = ll.getNumOutDims();
   auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
   if (extraRank < 0 || dstShape.size() != srcShape.size() ||
       offsets.size() != srcShape.size()) {
@@ -431,7 +462,12 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
   if (srcShape.drop_front(extraRank) == dstShape.drop_front(extraRank) &&
       llvm::all_of(offsets.drop_front(extraRank),
                    [](int32_t offset) { return offset == 0; })) {
-    return *srcEnc;
+    auto *ctx = srcEncoding.getContext();
+    auto result =
+        tryMakeTMemViewEncoding(ctx, ll, maybeSrcLayout->twoCTAs, error);
+    if (!result)
+      return failure();
+    return *result;
   }
 
   auto *ctx = srcEncoding.getContext();
@@ -517,8 +553,8 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
       *error = "unsupported tensor memory memdesc_subslice view";
     return failure();
   }
-  auto result = tryMakeTMemViewEncoding(ctx, *dstLayout, srcEnc->getTwoCTAs(),
-                                        error);
+  auto result = tryMakeTMemViewEncoding(ctx, *dstLayout,
+                                        maybeSrcLayout->twoCTAs, error);
   if (!result)
     return failure();
   if (!tensorMemoryLinearLayoutMatchesShape(result->getLinearLayout(),
@@ -545,15 +581,15 @@ FailureOr<TensorMemoryLinearEncodingAttr>
 inferTMemIndexEncoding(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
                        ArrayRef<int64_t> dstAllocShape, Attribute srcEncoding,
                        std::string *error) {
-  auto srcEnc = getCanonicalTMemLinearEncoding(srcShape, srcEncoding, error);
-  if (!srcEnc) {
+  auto maybeSrcLayout = getTMemViewAnalysisLayout(srcShape, srcEncoding, error);
+  if (!maybeSrcLayout) {
     if (error && error->empty())
       *error = "expected canonical tensor memory linear encoding";
     return failure();
   }
 
-  auto ll = srcEnc->getLinearLayout();
-  auto layoutRank = srcEnc->getRank();
+  auto ll = maybeSrcLayout->layout;
+  auto layoutRank = ll.getNumOutDims();
   auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
   if (extraRank < 0) {
     if (error)
@@ -561,8 +597,16 @@ inferTMemIndexEncoding(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
     return failure();
   }
 
-  if (extraRank > 0)
-    return *srcEnc;
+  if (extraRank > 0) {
+    if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(srcEncoding))
+      return linear;
+    auto *ctx = srcEncoding.getContext();
+    auto result =
+        tryMakeTMemViewEncoding(ctx, ll, maybeSrcLayout->twoCTAs, error);
+    if (!result)
+      return failure();
+    return *result;
+  }
 
   auto *ctx = srcEncoding.getContext();
   if (layoutRank == 0) {
@@ -582,8 +626,8 @@ inferTMemIndexEncoding(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
   }
   ll = ll.reshapeOuts(standardOutDimPairs(ctx, resultLayoutShape));
 
-  auto result =
-      tryMakeTMemViewEncoding(ctx, std::move(ll), srcEnc->getTwoCTAs(), error);
+  auto result = tryMakeTMemViewEncoding(ctx, std::move(ll),
+                                        maybeSrcLayout->twoCTAs, error);
   if (!result)
     return failure();
   return *result;
@@ -665,8 +709,9 @@ inferTMemSubsliceOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
 FailureOr<gpu::MemDescType>
 inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
                        std::string *error) {
-  auto srcEnc = getCanonicalTMemLinearEncoding(srcTy, error);
-  if (!srcEnc)
+  auto maybeSrcLayout =
+      getTMemViewAnalysisLayout(srcTy.getShape(), srcTy.getEncoding(), error);
+  if (!maybeSrcLayout)
     return failure();
 
   auto *ctx = srcTy.getContext();
@@ -674,7 +719,7 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   auto layoutSrcShape = srcShape;
   auto layoutDstShape = dstShape;
   int64_t layoutElems =
-      static_cast<int64_t>(srcEnc->getLinearLayout().getTotalOutDimSize());
+      static_cast<int64_t>(maybeSrcLayout->layout.getTotalOutDimSize());
 
   auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape) {
     while (!shape.empty() && shape.front() == 1 &&
@@ -686,7 +731,8 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   layoutDstShape = stripLeadingUnitDims(layoutDstShape);
 
   if (product<int64_t>(layoutSrcShape) > layoutElems) {
-    if (layoutSrcShape.size() != static_cast<size_t>(srcEnc->getRank()) + 1) {
+    if (layoutSrcShape.size() !=
+        static_cast<size_t>(maybeSrcLayout->layout.getNumOutDims()) + 1) {
       if (error)
         *error = "TMEM reshape requires the descriptor rank to match the TMEM "
                  "layout rank or have one leading multibuffer dimension";
@@ -712,9 +758,9 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
     return failure();
   }
 
-  auto dstLL = reshapeLayout(ctx, srcEnc->getLinearLayout(), layoutDstShape);
+  auto dstLL = reshapeLayout(ctx, maybeSrcLayout->layout, layoutDstShape);
   auto result =
-      tryMakeTMemViewEncoding(ctx, std::move(dstLL), srcEnc->getTwoCTAs(),
+      tryMakeTMemViewEncoding(ctx, std::move(dstLL), maybeSrcLayout->twoCTAs,
                               error);
   if (!result)
     return failure();

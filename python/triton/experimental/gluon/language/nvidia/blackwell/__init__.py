@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-def _check_tensor_memory_linear_layout_ctas(builder, two_ctas):
+def _check_tensor_memory_layout_ctas(builder, two_ctas):
     options = getattr(builder, "options", None)
     if options is None:
         return
@@ -77,6 +77,7 @@ class TensorMemoryLayout:
                                          (self.col_stride - 1)) == 0, "tensor memory col_stride must be a power of two"
 
     def _to_ir(self, builder):
+        _check_tensor_memory_layout_ctas(builder, self.two_ctas)
         return builder.get_tensor_memory_layout(
             self.block,
             self.col_stride,
@@ -163,7 +164,7 @@ class TensorMemoryLinearLayout:
                         )
 
     def _to_ir(self, builder):
-        _check_tensor_memory_linear_layout_ctas(builder, self.two_ctas)
+        _check_tensor_memory_layout_ctas(builder, self.two_ctas)
         return builder.get_tensor_memory_linear_layout(
             self.rows,
             self.cols,

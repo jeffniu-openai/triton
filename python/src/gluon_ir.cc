@@ -1199,15 +1199,6 @@ void init_gluon_ir(py::module &&m) {
         auto elementType = elementTyObj.attr("to_ir")(builderObj).cast<Type>();
         auto layoutAttr =
             layoutObj.attr("_to_ir")(builderObj).cast<Attribute>();
-        if (ttng::isTensorMemoryEncoding(layoutAttr) &&
-            !isa<ttng::TensorMemoryScalesEncodingAttr>(layoutAttr)) {
-          std::string error;
-          auto maybeCanonical =
-              ttng::getCanonicalTMemLinearEncoding(shape, layoutAttr, &error);
-          if (!maybeCanonical)
-            return py::none();
-          layoutAttr = *maybeCanonical;
-        }
         auto ctx = builder.getContext();
         auto memDescTy = builder.getChecked<ttg::MemDescType>(
             shape, elementType, layoutAttr,
