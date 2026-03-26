@@ -1443,8 +1443,11 @@ LogicalResult TMEMSubSliceOp::verify() {
   std::string expectedError;
   auto expectedCanonical = inferTMemSubsliceEncoding(
       srcTy.getShape(), srcLayout, dstTy.getShape(), offsets, &expectedError);
-  if (failed(expectedCanonical))
+  if (failed(expectedCanonical)) {
+    if (dstLayout == srcLayout)
+      return success();
     return emitOpError() << expectedError;
+  }
 
   if (auto dstLinear = dyn_cast<TensorMemoryLinearEncodingAttr>(dstLayout)) {
     std::string dstError;
@@ -1472,9 +1475,8 @@ void TMEMSubSliceOp::build(OpBuilder &builder, OperationState &state,
   offsets.back() = offset;
   auto maybeEncoding = inferTMemSubsliceEncoding(
       allocTy.getShape(), allocTy.getEncoding(), shape, offsets);
-  assert(succeeded(maybeEncoding) &&
-         "failed to infer TMEM subslice encoding");
-  Attribute encoding = *maybeEncoding;
+  Attribute encoding =
+      succeeded(maybeEncoding) ? Attribute(*maybeEncoding) : allocTy.getEncoding();
   auto subsliceType = triton::gpu::MemDescType::get(
       shape, allocTy.getElementType(), encoding, allocTy.getMemorySpace(),
       allocTy.getMutableMemory(), allocTy.getAllocShape());

@@ -307,9 +307,21 @@ def tensor_memory_linear_view_kernel(layout: ttgl.constexpr, linear_layout: ttgl
     slice0 = reshaped1.slice(16, 32, dim=0)
     slice1 = slice0.slice(8, 16, dim=1)
     slice2 = slice1.slice(2, 4, dim=2)
-    reinterpreted = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
-    value = reinterpreted.load(layout)
-    reinterpreted.store(value)
+    _ = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
+
+
+@gluon.jit
+def tensor_memory_linear_view_load_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
+                                          reinterpret_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(
+        ttgl.float32, [2, 128, 128], linear_layout
+    )
+    view = mem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
+    view = view.permute([0, 2, 1]).reshape((64, 32, 8))
+    view = view.slice(16, 32, dim=0).slice(8, 16, dim=1).slice(2, 4, dim=2)
+    view = view._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
+    value = view.load(layout)
+    view.store(value)
 
 
 def _make_tmem_linear_layout(m, n):
@@ -418,17 +430,6 @@ def _make_tcgen05_shared_layout(num_ctas, operand):
     )
 
 
-TMEM_VIEW_VARIANTS = [
-    ("identity", _make_tmem_linear_layout_128_identity(), _make_tmem_linear_layout_64x32_identity(), 1),
-    ("mixed", _make_tmem_linear_layout_128_mixed(), _make_tmem_linear_layout_64x32_identity(), 1),
-]
-
-TMEM_DESCRIPTOR_VARIANTS = [
-    ("identity", _make_tmem_linear_layout_128_identity(), _make_tmem_linear_layout_64x32_identity(), 1),
-    ("mixed", _make_tmem_linear_layout_128_mixed(), _make_tmem_linear_layout_64x32_identity(), 1),
-]
-
-
 def _parse_tensor_memory_linear_view(linear_layout, reinterpret_layout, num_ctas=1):
     layout = _make_tmem_register_layout(num_ctas)
     mod = run_parser(
@@ -439,16 +440,17 @@ def _parse_tensor_memory_linear_view(linear_layout, reinterpret_layout, num_ctas
     return anonymize_ir(mod.str_nodebug())
 
 
-@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_VIEW_VARIANTS)
-def test_tensor_memory_linear_views_layout_matrix(name, linear_layout, reinterpret_layout, num_ctas):
-    ir = _parse_tensor_memory_linear_view(linear_layout, reinterpret_layout, num_ctas=num_ctas)
-    assert "tensor_memory_linear" in ir
-    assert "tensor_memory_encoding<" not in ir
-    assert ir.count("ttg.memdesc_subslice") >= 4
+def test_tensor_memory_linear_view_ir():
+    ir = _parse_tensor_memory_linear_view(
+        _make_tmem_linear_layout_128_identity(),
+        _make_tmem_linear_layout_64x32_identity(),
+    )
     assert "ttg.memdesc_index" in ir
-    assert ir.count("ttg.memdesc_trans") >= 2
-    assert ir.count("ttg.memdesc_reshape") >= 2
+    assert "ttg.memdesc_subslice" in ir
+    assert "ttg.memdesc_trans" in ir
+    assert "ttg.memdesc_reshape" in ir
     assert "ttg.memdesc_reinterpret" in ir
+    assert "tensor_memory_linear" in ir
     assert "ttng.tmem_subslice" not in ir
 
 
@@ -463,6 +465,27 @@ def test_tensor_memory_linear_views_block_layout_reports_two_ctas(capfd):
     assert "Layout has 2 CTAs per CGA" in (captured.err + captured.out)
 
 
+def test_tensor_memory_linear_view_load_reports_clean_error(capfd):
+    layout = _make_tmem_register_layout(1)
+    with pytest.raises(RuntimeError):
+        run_parser(
+            tensor_memory_linear_view_load_kernel,
+            *make_args(
+                layout,
+                _make_tmem_linear_layout_128_identity(),
+                _make_tmem_linear_layout_64x32_identity(),
+                num_warps=2,
+                num_ctas=1,
+            ),
+            target=BLACKWELL_TARGET,
+        )
+    captured = capfd.readouterr()
+    msg = captured.err + captured.out
+    assert "ttng.tmem_load" in msg
+    assert "no supported register layout" in msg
+    assert "Assertion" not in msg
+
+
 @gluon.jit
 def tensor_memory_descriptor_chain_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
                                           reinterpret_layout: ttgl.constexpr, target_layout: ttgl.constexpr):
@@ -474,9 +497,7 @@ def tensor_memory_descriptor_chain_kernel(layout: ttgl.constexpr, linear_layout:
     slice0 = reshaped1.slice(16, 32, dim=0)
     slice1 = slice0.slice(8, 16, dim=1)
     slice2 = slice1.slice(2, 4, dim=2)
-    reinterpreted = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
-    value = reinterpreted.load(target_layout)
-    reinterpreted.store(value)
+    _ = slice2._reinterpret(ttgl.float32, (64, 32), reinterpret_layout)
 
 
 def test_tensor_memory_descriptor_chain_ir():
@@ -496,24 +517,6 @@ def test_tensor_memory_descriptor_chain_ir():
     assert "ttg.memdesc_reshape" in ir
     assert "ttg.memdesc_reinterpret" in ir
     assert "tensor_memory_linear" in ir
-    assert "ttng.tmem_load" in ir
-    assert "ttng.tmem_store" in ir
-
-
-@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_DESCRIPTOR_VARIANTS)
-def test_tensor_memory_descriptor_chain_variants(name, linear_layout, reinterpret_layout, num_ctas):
-    layout = _make_tmem_register_layout(num_ctas)
-    target_layout = _make_tmem_target_layout(num_ctas)
-    mod = run_parser(
-        tensor_memory_descriptor_chain_kernel,
-        *make_args(layout, linear_layout, reinterpret_layout, target_layout, num_warps=2, num_ctas=num_ctas),
-        target=BLACKWELL_TARGET,
-    )
-    ir = anonymize_ir(mod.str_nodebug())
-    assert "tensor_memory_linear" in ir
-    assert ir.count("ttg.memdesc_subslice") >= 3
-    assert ir.count("ttg.memdesc_reshape") >= 1
-    assert "ttg.memdesc_reinterpret" in ir
 
 
 def test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch(capfd):

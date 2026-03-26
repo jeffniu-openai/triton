@@ -238,7 +238,9 @@ tryGetCanonicalTensorMemoryEncoding(MemDescType memDescType,
   if (!isTensorMemoryEncoding(layout))
     return layout;
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
-  auto shape = memDescType.getShape().take_back(rank);
+  auto shape = isa<TensorMemoryEncodingAttr>(layout)
+                   ? memDescType.getAllocShape().take_back(rank)
+                   : memDescType.getShape().take_back(rank);
   return tryGetCanonicalTensorMemoryEncoding(shape, layout, error);
 }
 
@@ -274,7 +276,27 @@ tryGetCanonicalTensorMemoryLinearLayout(MemDescType memDescType,
   auto layout = memDescType.getEncoding();
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
   auto shape = memDescType.getShape().take_back(rank);
-  return tryGetCanonicalTensorMemoryLinearLayout(shape, layout, error);
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(shape, layout, error);
+  if (maybeCanonical &&
+      tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, shape)) {
+    return maybeCanonical;
+  }
+  auto allocShape = memDescType.getAllocShape().take_back(rank);
+  return tryGetCanonicalTensorMemoryLinearLayout(allocShape, layout, error);
+}
+
+bool tensorMemoryLinearLayoutMatchesShape(const LinearLayout &layout,
+                                          ArrayRef<int64_t> shape) {
+  if (shape.size() != static_cast<size_t>(layout.getNumOutDims()))
+    return false;
+  auto *ctx = (*layout.getOutDimNames().begin()).getContext();
+  auto dims = standardOutDimNames(ctx, shape.size());
+  for (auto [dim, size] : llvm::zip_equal(dims, shape)) {
+    if (layout.getOutDimSize(dim) != size)
+      return false;
+  }
+  return true;
 }
 
 LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
@@ -310,8 +332,7 @@ tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
                                              twoCTAs);
 }
 
-static LinearLayout
-normalizeTensorMemoryLinearLayoutForComparison(LinearLayout layout) {
+LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout) {
   if (layout.getNumInDims() == 0)
     return layout;
   auto *ctx = (*layout.getInDimNames().begin()).getContext();
@@ -345,7 +366,7 @@ matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout) {
   if (!linear || shape.size() != 2)
     return std::nullopt;
   auto normalizedLinear =
-      normalizeTensorMemoryLinearLayoutForComparison(linear.getLinearLayout());
+      normalizeTensorMemoryLinearLayoutForAnalysis(linear.getLinearLayout());
   auto cga = linear.getCGALayout();
   if (linear.getTwoCTAs()) {
     auto kBlock = StringAttr::get(layout.getContext(), "block");
@@ -386,7 +407,7 @@ matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout) {
             shape, candidate, &candidateError);
         if (!maybeCandidate)
           continue;
-        auto normalizedCandidate = normalizeTensorMemoryLinearLayoutForComparison(
+        auto normalizedCandidate = normalizeTensorMemoryLinearLayoutForAnalysis(
             *maybeCandidate);
         if (normalizedCandidate == normalizedLinear && isBetterMatch(candidate))
           bestMatch = candidate;
@@ -456,7 +477,8 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
   auto *ctx = memDescType.getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
-  auto ll = triton::gpu::toLinearLayout(memDescType);
+  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(
+      triton::gpu::toLinearLayout(memDescType));
   auto layoutRank = ll.getNumOutDims();
   auto extraRank = memDescType.getRank() - layoutRank;
 
@@ -748,7 +770,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
          "numWarps must be a power of 2 and >= 4");
   assert(atom != TMemAccessAtom::I16x32bx2 &&
          "This layout is inferred sometimes for the 32x32b atom");
-  auto ll = toLinearLayout(memType.getShape(), memType.getEncoding());
+  auto ll = toLinearLayout(memType);
   auto bitwidth = memType.getElementTypeBitWidth();
   return getDistributedLayoutForTmemLdSt(ll, atom, numWarps, bitwidth);
 }
@@ -829,9 +851,20 @@ SmallVector<DistributedEncodingTrait>
 getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
                          MemDescType memType) {
   int numWarps = lookupNumWarps(op);
-  assert(numWarps % 4 == 0);
   SmallVector<DistributedEncodingTrait> layouts;
-  auto memLL = toLinearLayout(memType.getShape(), memType.getEncoding());
+  if (numWarps % 4 != 0)
+    return layouts;
+  LinearLayout memLL = [&]() -> LinearLayout {
+    if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
+      return toLinearLayout(memType.getShape(), memType.getEncoding());
+    std::string error;
+    auto maybeCanonical = getCanonicalTMemLinearEncoding(memType, &error);
+    if (!maybeCanonical)
+      return LinearLayout();
+    return maybeCanonical->getLinearLayout();
+  }();
+  if (memLL.getNumOutDims() == 0)
+    return layouts;
   int bitwidth = memType.getElementTypeBitWidth();
   for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
                     TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
@@ -1171,10 +1204,6 @@ public:
         return emitOptionalError(loc, "numel of dst shape does not match "
                                       "numel of src shape");
       }
-      if (isa<TensorMemoryEncodingAttr>(srcEnc)) {
-        dstEnc = srcEnc;
-        return success();
-      }
       std::string error;
       auto elemTy = IntegerType::get(getDialect()->getContext(), 8);
       auto memTy = triton::gpu::MemDescType::get(
@@ -1182,9 +1211,15 @@ public:
           TensorMemorySpaceAttr::get(getDialect()->getContext()),
           /*mutableMemory=*/false, srcShape);
       auto resultTy = inferTMemReshapeOpType(memTy, dstShape, &error);
-      if (failed(resultTy))
-        return emitOptionalError(loc, error);
-      dstEnc = resultTy->getEncoding();
+      if (succeeded(resultTy)) {
+        dstEnc = resultTy->getEncoding();
+      } else {
+        // Some TMEM descriptor views are valid pointer transformations but are
+        // not representable as standalone TMEM-linear layouts. Preserve the
+        // source encoding and let later TMEM consumers decide whether direct
+        // codegen is possible.
+        dstEnc = srcEnc;
+      }
       return success();
     }
     return getDelegate()->inferReshapeOpEncoding(srcShape, srcEnc, dstShape,
@@ -1201,20 +1236,26 @@ public:
                               std::optional<Location> loc) const override {
     if (isTensorMemoryEncoding(srcEncoding) &&
         !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
-      if (isa<TensorMemoryEncodingAttr>(srcEncoding)) {
+      auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
+      auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
+      if (extraRank > 0) {
         dstEncoding = srcEncoding;
         return success();
       }
+      bool legacyEncoding = isa<TensorMemoryEncodingAttr>(srcEncoding);
       std::string error;
       auto result = inferTMemIndexEncoding(srcShape, dstShape, dstAllocShape,
                                            srcEncoding, &error);
-      if (failed(result)) {
+      if (succeeded(result)) {
+        dstEncoding = *result;
+      } else if (legacyEncoding) {
+        dstEncoding = srcEncoding;
+      } else {
         return emitOptionalError(
             loc, error.empty() ? "failed to infer tensor memory encoding for "
                                  "memdesc_index"
                                : error);
       }
-      dstEncoding = *result;
       return success();
     }
     return getDelegate()->inferMemDescIndexOpEncoding(
@@ -1232,21 +1273,30 @@ public:
                                  std::optional<Location> loc) const override {
     if (isTensorMemoryEncoding(srcEncoding) &&
         !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
-      if (isa<TensorMemoryEncodingAttr>(srcEncoding)) {
+      auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
+      auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
+      if (extraRank > 0 &&
+          srcShape.drop_front(extraRank) == dstShape.drop_front(extraRank) &&
+          llvm::all_of(offsets.drop_front(extraRank),
+                       [](int32_t offset) { return offset == 0; })) {
         dstEncoding = srcEncoding;
         return success();
       }
+      bool legacyEncoding = isa<TensorMemoryEncodingAttr>(srcEncoding);
       std::string error;
       auto result =
           inferTMemSubsliceEncoding(srcShape, srcEncoding, dstShape, offsets,
                                     &error);
-      if (failed(result)) {
+      if (succeeded(result)) {
+        dstEncoding = *result;
+      } else if (legacyEncoding) {
+        dstEncoding = srcEncoding;
+      } else {
         return emitOptionalError(
             loc, error.empty() ? "failed to infer tensor memory encoding for "
                                  "memdesc_subslice"
                                : error);
       }
-      dstEncoding = *result;
       return success();
     }
     return getDelegate()->inferMemDescSubsliceOpEncoding(

@@ -130,24 +130,28 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
                          << " dimensions for the TMEM layout";
     }
     if (isa<nvidia_gpu::TensorMemoryLinearEncodingAttr>(encoding)) {
-      auto layoutShape = shape.take_back(rank);
+      auto viewShape = shape.take_back(rank);
+      auto allocLayoutShape = allocShape.take_back(rank);
       std::string canonicalizationError;
       auto maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
-          layoutShape, encoding, &canonicalizationError);
+          viewShape, encoding, &canonicalizationError);
+      if (!maybeLL ||
+          !nvidia_gpu::tensorMemoryLinearLayoutMatchesShape(*maybeLL,
+                                                            viewShape)) {
+        maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
+            allocLayoutShape, encoding, &canonicalizationError);
+      }
       if (!maybeLL) {
         return emitError() << canonicalizationError;
       }
-      auto ll = *maybeLL;
-      auto dims = standardOutDimNames(ctx, rank);
-      for (auto [dim, size] : llvm::zip_equal(dims, layoutShape)) {
-        if (ll.getOutDimSize(dim) != size) {
-          return emitError() << "shape must match the TMEM linear layout. "
-                             << "Expected " << ll.getOutDimSize(dim) << " for "
-                             << dim << " but got " << size << ". shape = "
-                             << shape << ", allocShape = " << allocShape
-                             << ", layoutRank = " << rank << ", encoding = "
-                             << encoding;
-        }
+      if (!nvidia_gpu::tensorMemoryLinearLayoutMatchesShape(*maybeLL, viewShape) &&
+          !nvidia_gpu::tensorMemoryLinearLayoutMatchesShape(*maybeLL,
+                                                            allocLayoutShape)) {
+        return emitError() << "shape or allocShape must match the TMEM linear "
+                              "layout. shape = "
+                           << shape << ", allocShape = " << allocShape
+                           << ", layoutRank = " << rank
+                           << ", encoding = " << encoding;
       }
     } else {
       auto allocLayoutShape = allocShape.take_back(rank);

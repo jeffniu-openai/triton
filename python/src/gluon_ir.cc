@@ -1225,37 +1225,14 @@ void init_gluon_ir(py::module &&m) {
         auto elementType = elementTyObj.attr("to_ir")(builderObj).cast<Type>();
         auto layoutAttr =
             layoutObj.attr("_to_ir")(builderObj).cast<Attribute>();
-        if (auto tmemLinear =
-                dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(layoutAttr)) {
-          auto ll = tmemLinear.getLinearLayout();
-          auto bases = ll.getBases();
-          auto trimTrailingZeros = [&](StringAttr dim) {
-            auto it = bases.find(dim);
-            if (it == bases.end())
-              return;
-            while (!it->second.empty() &&
-                   llvm::all_of(it->second.back(), [](int32_t value) {
-                     return value == 0;
-                   })) {
-              it->second.pop_back();
-            }
-          };
-          auto kRow = StringAttr::get(builder.getContext(), "row");
-          auto kCol = StringAttr::get(builder.getContext(), "col");
-          auto kBlock = StringAttr::get(builder.getContext(), "block");
-          trimTrailingZeros(kRow);
-          trimTrailingZeros(kCol);
-          trimTrailingZeros(kBlock);
-
-          auto trimmed =
-              tt::LinearLayout(std::move(bases), ll.getOutDims(),
-                               /*requireSurjective=*/false);
+        if (ttng::isTensorMemoryEncoding(layoutAttr) &&
+            !isa<ttng::TensorMemoryScalesEncodingAttr>(layoutAttr)) {
           std::string error;
-          auto maybeCanonical = ttng::tryMakeTensorMemoryLinearEncoding(
-              builder.getContext(), std::move(trimmed),
-              tmemLinear.getTwoCTAs(), &error);
-          if (maybeCanonical)
-            layoutAttr = *maybeCanonical;
+          auto maybeCanonical =
+              ttng::getCanonicalTMemLinearEncoding(shape, layoutAttr, &error);
+          if (!maybeCanonical)
+            return py::none();
+          layoutAttr = *maybeCanonical;
         }
         auto ctx = builder.getContext();
         auto memDescTy = builder.getChecked<ttg::MemDescType>(

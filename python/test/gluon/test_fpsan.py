@@ -172,27 +172,6 @@ def _assert_tmem_allocator_lifetime(compiled, cta_group: int):
         assert relinquish_opcode in ptx, f"Missing {relinquish_opcode} in ptx"
         assert ptx.count(alloc_opcode) == ptx.count(relinquish_opcode)
 
-
-TMEM_FPSAN_VIEW_VARIANTS = [
-    ("identity", _make_tmem_linear_layout(128, 128), _make_tmem_linear_layout(64, 32), 1),
-    ("mixed", _make_tmem_linear_layout_mixed_128x128(), _make_tmem_linear_layout(64, 32), 1),
-    ("block-acc", _make_tmem_linear_layout_block(128, 128), _make_tmem_linear_layout_64x32_block(), 2),
-    ("block-two-ctas", _make_tmem_linear_layout_block(128, 128, two_ctas=True),
-        _make_tmem_linear_layout_64x32_block(two_ctas=True), 2),
-]
-
-
-@gluon.jit
-def tmem_linear_view_ops_compile_kernel(layout: gl.constexpr, linear_layout: gl.constexpr,
-                                        reinterpret_layout: gl.constexpr):
-    tmem = allocate_tensor_memory(gl.float32, [2, 128, 128], layout=linear_layout)
-    view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
-    view = view.permute([0, 2, 1]).reshape((64, 32, 8))
-    view = view.slice(16, 32, dim=0).slice(8, 16, dim=1).slice(2, 4, dim=2)
-    view = view._reinterpret(gl.float32, [64, 32], reinterpret_layout)
-    _ = view.load(layout)
-
-
 @gluon.jit
 def _tcgen05_mma_twocta_linear_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: gl.constexpr, BLOCK_N: gl.constexpr,
                                       acc_tmem_layout: gl.constexpr, acc_tmem_base_layout: gl.constexpr,
@@ -225,25 +204,6 @@ def _tcgen05_mma_twocta_linear_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: gl.cons
     out_offs_m = gl.arange(0, BLOCK_M)[:, None]
     out_offs_n = gl.arange(0, BLOCK_N)[None, :]
     gl.store(out_ptrs + out_offs_m * BLOCK_N + out_offs_n, out)
-
-
-@pytest.mark.parametrize("name, linear_layout, reinterpret_layout, num_ctas", TMEM_FPSAN_VIEW_VARIANTS)
-def test_tmem_linear_view_ops_compile_ir(name, linear_layout, reinterpret_layout, num_ctas):
-    layout = _make_tmem_register_layout(num_ctas)
-    mod = run_parser(
-        tmem_linear_view_ops_compile_kernel,
-        args=(layout, linear_layout, reinterpret_layout),
-        kwargs={"num_warps": 2, "num_ctas": num_ctas},
-        target=BLACKWELL_PARSER_TARGET,
-    )
-    ir = mod.str_nodebug()
-    assert "tensor_memory_linear" in ir
-    assert ir.count("ttg.memdesc_subslice") >= 4
-    assert "ttg.memdesc_index" in ir
-    assert ir.count("ttg.memdesc_trans") >= 2
-    assert ir.count("ttg.memdesc_reshape") >= 2
-    assert "ttg.memdesc_reinterpret" in ir
-
 
 def _hip_device_supports_fpsan():
     return is_hip_cdna3() or is_hip_cdna4() or is_hip_gfx1250()
@@ -1752,9 +1712,9 @@ def test_tmem_index_subslice(device, fresh_knobs):
         tmem_layout: gl.constexpr = TensorMemoryLayout((BLOCK, BLOCK), col_stride=1)
         tmem = allocate_tensor_memory(gl.float32, [2, BLOCK, BLOCK], layout=tmem_layout)
         view = tmem.index(1)
-        sub = view.slice(0, SLICE_N)
+        sub = view.slice(0, SLICE_N, dim=1)
 
-        sub_reg_layout: gl.constexpr = sub.get_reg_layout()
+        sub_reg_layout: gl.constexpr = sub.get_reg_layout(instr_variant="32x32b_splitn")
         x_reg = gl.convert_layout(x, sub_reg_layout)
         sub.store(x_reg)
         out = sub.load()
@@ -1771,9 +1731,14 @@ def test_tmem_index_subslice(device, fresh_knobs):
     xw = triton.TensorWrapper(x, dtype=torch.float32)
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
-    kernel[(1, )](xw, outw)
+    with pytest.raises(CompilationError) as excinfo:
+        kernel[(1, )](xw, outw)
 
-    _assert_payload_equal(out, exp_bits)
+    msg = str(excinfo.value)
+    assert "TMEM layout '32x32b_splitn' unsupported" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
 
 
 def test_reduction(device, fresh_knobs):

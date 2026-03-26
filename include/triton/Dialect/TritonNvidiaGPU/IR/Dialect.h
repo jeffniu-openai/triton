@@ -152,6 +152,11 @@ std::optional<LinearLayout>
 tryGetCanonicalTensorMemoryLinearLayout(gpu::MemDescType memDescType,
                                         std::string *error = nullptr);
 
+bool tensorMemoryLinearLayoutMatchesShape(const LinearLayout &layout,
+                                          ArrayRef<int64_t> shape);
+
+LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout);
+
 LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
                                                   Attribute layout);
 
