@@ -83,6 +83,18 @@ public:
                                  Attribute &dstEncoding,
                                  std::optional<Location> loc) const = 0;
 
+  virtual LogicalResult
+  inferMemDescReinterpretOpEncoding(ArrayRef<int64_t> srcShape,
+                                    ArrayRef<int64_t> srcAllocShape,
+                                    Type srcElementType,
+                                    Attribute srcEncoding,
+                                    ArrayRef<int64_t> dstShape,
+                                    ArrayRef<int64_t> dstAllocShape,
+                                    Type dstElementType,
+                                    Attribute requestedDstEncoding,
+                                    Attribute &dstEncoding,
+                                    std::optional<Location> loc) const = 0;
+
   // Check if two layouts are structurally the same, even if their names are
   // different
   virtual LogicalResult

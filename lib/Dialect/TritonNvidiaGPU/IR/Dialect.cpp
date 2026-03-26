@@ -291,6 +291,36 @@ bool tensorMemoryLinearLayoutMatchesShape(const LinearLayout &layout,
   return true;
 }
 
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(MemDescType type, std::string *error) {
+  Attribute enc = type.getEncoding();
+  if (!isTensorMemoryEncoding(enc) || isa<TensorMemoryScalesEncodingAttr>(enc))
+    return std::nullopt;
+  auto rank = cast<LayoutEncodingTrait>(enc).getRank();
+  auto shape = type.getShape().take_back(rank);
+  return getCanonicalTMemLinearEncoding(shape, enc, error);
+}
+
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
+                               std::string *error) {
+  if (!isTensorMemoryEncoding(encoding) ||
+      isa<TensorMemoryScalesEncodingAttr>(encoding))
+    return std::nullopt;
+  auto canonical = tryGetCanonicalTensorMemoryEncoding(shape, encoding, error);
+  if (!canonical)
+    return std::nullopt;
+  auto linear = cast<TensorMemoryLinearEncodingAttr>(*canonical);
+  if (!tensorMemoryLinearLayoutMatchesShape(linear.getLinearLayout(), shape)) {
+    if (error)
+      *error =
+          "tensor memory view is not representable as a standalone TMEM "
+          "linear layout";
+    return std::nullopt;
+  }
+  return linear;
+}
+
 LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
                                                   Attribute layout) {
   std::string error;
@@ -1235,6 +1265,47 @@ public:
     return getDelegate()->inferMemDescSubsliceOpEncoding(
         srcShape, srcAllocShape, srcEncoding, dstShape, offsets, dstEncoding,
         loc);
+  }
+
+  LogicalResult
+  inferMemDescReinterpretOpEncoding(ArrayRef<int64_t> srcShape,
+                                    ArrayRef<int64_t> srcAllocShape,
+                                    Type srcElementType,
+                                    Attribute srcEncoding,
+                                    ArrayRef<int64_t> dstShape,
+                                    ArrayRef<int64_t> dstAllocShape,
+                                    Type dstElementType,
+                                    Attribute requestedDstEncoding,
+                                    Attribute &dstEncoding,
+                                    std::optional<Location> loc) const override {
+    (void)srcShape;
+    (void)srcAllocShape;
+    (void)srcElementType;
+    (void)dstAllocShape;
+    (void)dstElementType;
+
+    bool srcTMem = srcEncoding && isTensorMemoryEncoding(srcEncoding);
+    bool dstTMem =
+        requestedDstEncoding && isTensorMemoryEncoding(requestedDstEncoding);
+    if (srcTMem || dstTMem) {
+      if (!(srcTMem && dstTMem))
+        return emitOptionalError(
+            loc, "memdesc_reinterpret must stay in tensor memory when either "
+                 "side uses a tensor memory encoding");
+      if (!requestedDstEncoding)
+        return emitOptionalError(
+            loc, "TMEM memdesc_reinterpret requires an explicit result layout");
+      std::string error;
+      if (!tryGetCanonicalTensorMemoryEncoding(dstShape, requestedDstEncoding,
+                                               &error)) {
+        return emitOptionalError(loc, error);
+      }
+      dstEncoding = requestedDstEncoding;
+      return success();
+    }
+    return getDelegate()->inferMemDescReinterpretOpEncoding(
+        srcShape, srcAllocShape, srcElementType, srcEncoding, dstShape,
+        dstAllocShape, dstElementType, requestedDstEncoding, dstEncoding, loc);
   }
 
   LogicalResult

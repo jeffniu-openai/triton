@@ -205,6 +205,19 @@ tryCreateMemDescType(MLIRContext *ctx, ArrayRef<int64_t> shape, Type elementType
 static bool canUseTMemViewEncoding(MLIRContext *ctx, ArrayRef<int64_t> shape,
                                    ArrayRef<int64_t> allocShape,
                                    Attribute encoding) {
+  if (isTensorMemoryEncoding(encoding) &&
+      !isa<TensorMemoryScalesEncodingAttr>(encoding)) {
+    auto layoutTrait = dyn_cast<LayoutEncodingTrait>(encoding);
+    if (!layoutTrait)
+      return false;
+    auto layoutRank = static_cast<size_t>(layoutTrait.getRank());
+    if (shape.size() < layoutRank)
+      return false;
+    if (!getCanonicalTMemLinearEncoding(shape.take_back(layoutRank), encoding,
+                                        /*error=*/nullptr)) {
+      return false;
+    }
+  }
   return tryCreateMemDescType(ctx, shape, IntegerType::get(ctx, 8), encoding,
                               TensorMemorySpaceAttr::get(ctx),
                               /*mutableMemory=*/false, allocShape,
@@ -245,47 +258,27 @@ struct TMemViewAnalysisLayout {
 static std::optional<TMemViewAnalysisLayout>
 getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
                           std::string *error) {
-  if (!isTensorMemoryEncoding(encoding) ||
-      isa<TensorMemoryScalesEncodingAttr>(encoding))
-    return std::nullopt;
-  auto maybeLayout =
-      tryGetCanonicalTensorMemoryLinearLayout(shape, encoding, error);
-  if (!maybeLayout)
-    return std::nullopt;
-  return TMemViewAnalysisLayout{
-      std::move(*maybeLayout), getTensorMemoryTwoCTAs(encoding).value_or(false)};
-}
-} // namespace
-
-std::optional<TensorMemoryLinearEncodingAttr>
-getCanonicalTMemLinearEncoding(gpu::MemDescType type, std::string *error) {
-  Attribute enc = type.getEncoding();
-  if (!isTensorMemoryEncoding(enc) || isa<TensorMemoryScalesEncodingAttr>(enc))
-    return std::nullopt;
-  auto rank = cast<gpu::LayoutEncodingTrait>(enc).getRank();
-  auto shape = type.getShape().take_back(rank);
-  return getCanonicalTMemLinearEncoding(shape, enc, error);
-}
-
-std::optional<TensorMemoryLinearEncodingAttr>
-getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
-                               std::string *error) {
-  if (!isTensorMemoryEncoding(encoding) ||
-      isa<TensorMemoryScalesEncodingAttr>(encoding))
-    return std::nullopt;
-  auto canonical = tryGetCanonicalTensorMemoryEncoding(shape, encoding, error);
-  if (!canonical)
-    return std::nullopt;
-  auto linear = cast<TensorMemoryLinearEncodingAttr>(*canonical);
-  if (!tensorMemoryLinearLayoutMatchesShape(linear.getLinearLayout(), shape)) {
+  auto layoutTrait = dyn_cast<LayoutEncodingTrait>(encoding);
+  if (!layoutTrait) {
     if (error)
-      *error =
-          "tensor memory view is not representable as a standalone TMEM "
-          "linear layout";
+      *error = "expected tensor memory layout encoding";
     return std::nullopt;
   }
-  return linear;
+  auto layoutRank = static_cast<size_t>(layoutTrait.getRank());
+  if (shape.size() < layoutRank) {
+    if (error)
+      *error = "invalid tensor memory rank/layout combination";
+    return std::nullopt;
+  }
+  auto maybeCanonical =
+      getCanonicalTMemLinearEncoding(shape.take_back(layoutRank), encoding,
+                                     error);
+  if (!maybeCanonical)
+    return std::nullopt;
+  return TMemViewAnalysisLayout{maybeCanonical->getLinearLayout(),
+                                maybeCanonical->getTwoCTAs()};
 }
+} // namespace
 
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,

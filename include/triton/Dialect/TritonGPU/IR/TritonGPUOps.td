@@ -251,7 +251,8 @@ def TTG_MemDescIndexOp : TTG_Op<"memdesc_index", [Pure,
 }
 
 def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure,
-                                                        MemDescViewTrait]> {
+                                                        MemDescViewTrait,
+                                                        InferMemDescTypeOpWithLayoutEquivalence]> {
   let summary = "take a subview of the descriptor.";
 
   let description = [{
@@ -267,19 +268,16 @@ def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure,
 
     The offsets must be larger or equal to the tile of the tensor (or zero).
   }];
-  let arguments = (ins TTG_MemDescType:$src, DenseI32ArrayAttr:$offsets);
+  let arguments = (ins TTG_MemDescType:$src, DenseI64ArrayAttr:$resultShape,
+                       DenseI32ArrayAttr:$offsets);
   let builders = [
-    OpBuilder<(ins "Value":$src,
-                   "ArrayRef<int64_t>":$shape,
+    OpBuilder<(ins "Type":$result, "Value":$src,
                    "ArrayRef<int32_t>":$offsets),
               [{
-                MemDescType dstTy;
-                auto srcTy = cast<MemDescType>(src.getType());
-                auto result = inferReturnType($_builder.getContext(),
-                                              $_builder.getUnknownLoc(),
-                                              srcTy, shape, offsets, dstTy);
-                assert(succeeded(result) && "failed to infer return type");
-                build($_builder, $_state, dstTy, src, offsets);
+                auto resultTy = cast<MemDescType>(result);
+                build($_builder, $_state, result, src,
+                      $_builder.getDenseI64ArrayAttr(resultTy.getShape()),
+                      $_builder.getDenseI32ArrayAttr(offsets));
               }]>
   ];
   let extraClassDeclaration = [{
@@ -294,16 +292,9 @@ def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure,
                                            ArrayRef<int32_t> offsets,
                                            MemDescType &inferredReturnType);
   }];
-  // Use qualified() otherwise "!ttg.memdesc<X>" is printed as "<X>".
-  // Render offsets inline as %src[0, 0] via a custom directive, but keep
-  // the overall parse/print generated from this assemblyFormat.
-  let assemblyFormat = [{
-    $src `[` custom<Offsets>($offsets) `]` attr-dict `:` qualified(type($src))
-    `->` qualified(type($result))
-  }];
-
   let results = (outs TTG_MemDescType:$result);
 
+  let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
   let hasVerifier = 1;
 }
@@ -340,7 +331,8 @@ def TTG_MemDescTransOp : TTG_Op<"memdesc_trans", [Pure,
 
 def TTG_MemDescReshapeOp : TTG_Op<"memdesc_reshape", [Pure,
                                                       MemDescViewTrait,
-                                                      SameOperandsAndResultElementType]> {
+                                                      SameOperandsAndResultElementType,
+                                                      InferMemDescTypeOpWithLayoutEquivalence]> {
   let summary = "creates a descriptor for the new shape";
 
   let description = [{
@@ -348,18 +340,15 @@ def TTG_MemDescReshapeOp : TTG_Op<"memdesc_reshape", [Pure,
     This doesn't affect the memory.
   }];
 
-  let arguments = (ins TTG_MemDescType:$src);
+  let arguments = (ins TTG_MemDescType:$src,
+                       DenseI64ArrayAttr:$resultShape);
 
   let builders = [
-    OpBuilder<(ins "Value":$src, "ArrayRef<int64_t>":$shape),
+    OpBuilder<(ins "Type":$result, "Value":$src),
               [{
-                MemDescType dstTy;
-                auto srcTy = cast<MemDescType>(src.getType());
-                auto result = inferReturnType($_builder.getContext(),
-                                              $_builder.getUnknownLoc(),
-                                              srcTy, shape, dstTy);
-                assert(succeeded(result) && "failed to infer return type");
-                build($_builder, $_state, dstTy, src);
+                auto resultTy = cast<MemDescType>(result);
+                build($_builder, $_state, result, src,
+                      $_builder.getDenseI64ArrayAttr(resultTy.getShape()));
               }]>
   ];
   let extraClassDeclaration = [{
@@ -376,12 +365,13 @@ def TTG_MemDescReshapeOp : TTG_Op<"memdesc_reshape", [Pure,
 
   let results = (outs TTG_MemDescType:$result);
 
-  let assemblyFormat = "$src attr-dict `:` qualified(type($src)) `->` qualified(type($result))";
-
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 
-def TTG_MemDescReinterpretOp : TTG_Op<"memdesc_reinterpret", [Pure, MemDescViewTrait]> {
+def TTG_MemDescReinterpretOp : TTG_Op<"memdesc_reinterpret", [Pure,
+                                                              MemDescViewTrait,
+                                                              InferMemDescTypeOpWithLayoutEquivalence]> {
   let summary = "reinterpret a memory descriptor as a different type and shape";
 
   let description = [{
@@ -391,14 +381,43 @@ def TTG_MemDescReinterpretOp : TTG_Op<"memdesc_reinterpret", [Pure, MemDescViewT
     is contiguous.
   }];
 
-  let arguments = (ins TTG_MemDescType:$src);
+  let arguments = (ins TTG_MemDescType:$src,
+                       DenseI64ArrayAttr:$resultShape,
+                       DenseI64ArrayAttr:$resultAllocShape,
+                       TypeAttr:$resultElementType,
+                       OptionalAttr<AnyAttr>:$resultEncoding);
   let results = (outs TTG_MemDescType:$result);
 
-  let assemblyFormat = [{
-    $src attr-dict `:` qualified(type($src)) `->` qualified(type($result))
+  let builders = [
+    OpBuilder<(ins "Type":$result, "Value":$src),
+              [{
+                auto resultTy = cast<MemDescType>(result);
+                build($_builder, $_state, result, src,
+                      $_builder.getDenseI64ArrayAttr(resultTy.getShape()),
+                      $_builder.getDenseI64ArrayAttr(resultTy.getAllocShape()),
+                      TypeAttr::get(resultTy.getElementType()),
+                      resultTy.getEncoding());
+              }]>
+  ];
+
+  let extraClassDeclaration = [{
+      static FailureOr<MemDescReinterpretOp>
+      createChecked(OpBuilder &builder, Location loc, Value src,
+                    MemDescType dstTy);
+
+      static LogicalResult inferReturnType(MLIRContext *context,
+                                           std::optional<Location> loc,
+                                           MemDescType srcTy,
+                                           ArrayRef<int64_t> dstShape,
+                                           ArrayRef<int64_t> dstAllocShape,
+                                           Type dstElementType,
+                                           Attribute dstEncoding,
+                                           MemDescType &inferredReturnType);
   }];
 
+  let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def TTG_LocalLoadOp : TTG_Op<"local_load", [LocalLoadTrait]> {

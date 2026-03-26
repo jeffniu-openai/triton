@@ -138,6 +138,14 @@ std::optional<Attribute>
 tryGetCanonicalTensorMemoryEncoding(gpu::MemDescType memDescType,
                                     std::string *error = nullptr);
 
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(gpu::MemDescType type,
+                               std::string *error = nullptr);
+
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
+                               std::string *error = nullptr);
+
 Attribute getCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape,
                                            Attribute layout);
 

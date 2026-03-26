@@ -34,14 +34,21 @@ __all__ = [
 ]
 
 
-def _check_tensor_memory_layout_ctas(builder, two_ctas):
+def _count_cta_splits(cga_layout):
+    return 2**sum(any(x != 0 for x in basis) for basis in cga_layout)
+
+
+def _check_tensor_memory_layout_ctas(builder, two_ctas, cga_layout=None):
     options = getattr(builder, "options", None)
     if options is None:
         return
     context_ctas = getattr(options, "num_ctas", None)
     if context_ctas is None:
         return
-    layout_ctas = 2 if two_ctas else 1
+    if two_ctas:
+        layout_ctas = 2
+    else:
+        layout_ctas = _count_cta_splits(cga_layout or [])
     if layout_ctas != context_ctas:
         raise ValueError(
             f"Layout has {layout_ctas} CTAs per CGA, but the context requires {context_ctas} CTAs per CGA."
@@ -77,7 +84,7 @@ class TensorMemoryLayout:
                                          (self.col_stride - 1)) == 0, "tensor memory col_stride must be a power of two"
 
     def _to_ir(self, builder):
-        _check_tensor_memory_layout_ctas(builder, self.two_ctas)
+        _check_tensor_memory_layout_ctas(builder, self.two_ctas, self.cga_layout)
         return builder.get_tensor_memory_layout(
             self.block,
             self.col_stride,

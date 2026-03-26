@@ -42,14 +42,6 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             std::function<InFlightDiagnostic()> emitError = {});
 
 std::optional<TensorMemoryLinearEncodingAttr>
-getCanonicalTMemLinearEncoding(gpu::MemDescType type,
-                               std::string *error = nullptr);
-
-std::optional<TensorMemoryLinearEncodingAttr>
-getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
-                               std::string *error = nullptr);
-
-std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
                         std::string *error = nullptr);
 

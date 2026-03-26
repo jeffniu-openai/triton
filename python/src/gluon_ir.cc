@@ -444,15 +444,10 @@ void init_gluon_ir(py::module &&m) {
              if (ttng::isTensorMemoryEncoding(layout)) {
                std::string error;
                auto maybeLinear =
-                   ttng::tryGetCanonicalTensorMemoryLinearLayout(shape, layout,
-                                                                 &error);
+                   ttng::getCanonicalTMemLinearEncoding(shape, layout, &error);
                if (!maybeLinear)
                  throw std::runtime_error(error);
-               bool twoCTAs =
-                   ttng::getTensorMemoryTwoCTAs(layout).value_or(false);
-               auto attr = self.getChecked<ttng::TensorMemoryLinearEncodingAttr>(
-                   ctx, std::move(*maybeLinear), twoCTAs);
-               return layoutToGluon(attr);
+               return layoutToGluon(*maybeLinear);
              }
 
              auto linearLayout = ttg::toLinearLayout(shape, layout);
@@ -827,7 +822,14 @@ void init_gluon_ir(py::module &&m) {
            })
       .def("create_memdesc_reinterpret",
            [](GluonOpBuilder &self, Type resultType, Value src) -> Value {
-             return self.create<ttg::MemDescReinterpretOp>(resultType, src);
+             auto op = createCheckedOrThrow(
+                 self, "failed to infer memdesc_reinterpret result type",
+                 [&] {
+                   return ttg::MemDescReinterpretOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src,
+                       cast<ttg::MemDescType>(resultType));
+                 });
+             return op.getResult();
            })
       .def("create_set_auto_layout",
            [](GluonOpBuilder &self, Attribute layout, Value value) -> Value {

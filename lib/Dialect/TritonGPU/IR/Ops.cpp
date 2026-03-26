@@ -36,6 +36,27 @@ static void printOffsets(mlir::OpAsmPrinter &p, mlir::Operation *op,
   llvm::interleaveComma(vals, p, [&](int32_t v) { p << v; });
 }
 
+static void addDenseI64ArrayAttrIfAbsent(mlir::OperationState &state,
+                                         llvm::StringRef name,
+                                         llvm::ArrayRef<int64_t> values,
+                                         mlir::Builder &builder) {
+  if (!state.attributes.get(name))
+    state.addAttribute(name, builder.getDenseI64ArrayAttr(values));
+}
+
+static void addTypeAttrIfAbsent(mlir::OperationState &state,
+                                llvm::StringRef name, mlir::Type type,
+                                mlir::Builder &builder) {
+  if (!state.attributes.get(name))
+    state.addAttribute(name, mlir::TypeAttr::get(type));
+}
+
+static void addAttrIfAbsent(mlir::OperationState &state, llvm::StringRef name,
+                            mlir::Attribute attr) {
+  if (attr && !state.attributes.get(name))
+    state.addAttribute(name, attr);
+}
+
 #define GET_OP_CLASSES
 #include "triton/Dialect/TritonGPU/IR/Ops.cpp.inc"
 #include "triton/Dialect/TritonGPU/IR/OpsEnums.cpp.inc"
@@ -587,6 +608,39 @@ MemDescTransOp::createChecked(OpBuilder &builder, Location loc, Value src,
 }
 
 // MemDescReshapeOp
+void MemDescReshapeOp::print(OpAsmPrinter &p) {
+  p << ' ' << getSrc();
+  p.printOptionalAttrDict((*this)->getAttrs(), {"resultShape"});
+  p << " : ";
+  p.printType(getSrc().getType());
+  p << " -> ";
+  p.printType(getType());
+}
+
+ParseResult MemDescReshapeOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
+  OpAsmParser::UnresolvedOperand src;
+  Type srcType;
+  SmallVector<Type> resultTypes;
+  if (parser.parseOperand(src) || parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) || parser.parseArrowTypeList(resultTypes))
+    return failure();
+  if (resultTypes.size() != 1)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected exactly one result type");
+  auto resultTy = dyn_cast<MemDescType>(resultTypes.front());
+  if (!resultTy)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected memdesc result type");
+  auto &builder = parser.getBuilder();
+  addDenseI64ArrayAttrIfAbsent(result, "resultShape", resultTy.getShape(),
+                               builder);
+  if (parser.resolveOperand(src, srcType, result.operands))
+    return failure();
+  result.addTypes(resultTy);
+  return success();
+}
+
 LogicalResult MemDescReshapeOp::verify() {
   MemDescType dstType = getResult().getType();
   MemDescType srcType = getSrc().getType();
@@ -664,6 +718,155 @@ MemDescReshapeOp::createChecked(OpBuilder &builder, Location loc, Value src,
     return failure();
   }
   return MemDescReshapeOp::create(builder, loc, inferredReturnType, src);
+}
+
+LogicalResult
+MemDescReshapeOp::inferReturnTypes(MLIRContext *context,
+                                   std::optional<Location> loc,
+                                   MemDescReshapeOp::Adaptor adaptor,
+                                   SmallVectorImpl<Type> &inferredReturnTypes) {
+  MemDescType inferredReturnType;
+  if (failed(inferReturnType(context, loc,
+                             cast<MemDescType>(adaptor.getSrc().getType()),
+                             adaptor.getResultShape(), inferredReturnType))) {
+    return failure();
+  }
+  inferredReturnTypes.push_back(inferredReturnType);
+  return success();
+}
+
+void MemDescReinterpretOp::print(OpAsmPrinter &p) {
+  p << ' ' << getSrc();
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {"resultShape", "resultAllocShape",
+                           "resultElementType", "resultEncoding"});
+  p << " : ";
+  p.printType(getSrc().getType());
+  p << " -> ";
+  p.printType(getType());
+}
+
+ParseResult MemDescReinterpretOp::parse(OpAsmParser &parser,
+                                        OperationState &result) {
+  OpAsmParser::UnresolvedOperand src;
+  Type srcType;
+  SmallVector<Type> resultTypes;
+  if (parser.parseOperand(src) || parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) || parser.parseArrowTypeList(resultTypes))
+    return failure();
+  if (resultTypes.size() != 1)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected exactly one result type");
+  auto resultTy = dyn_cast<MemDescType>(resultTypes.front());
+  if (!resultTy)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected memdesc result type");
+  auto &builder = parser.getBuilder();
+  addDenseI64ArrayAttrIfAbsent(result, "resultShape", resultTy.getShape(),
+                               builder);
+  addDenseI64ArrayAttrIfAbsent(result, "resultAllocShape",
+                               resultTy.getAllocShape(), builder);
+  addTypeAttrIfAbsent(result, "resultElementType", resultTy.getElementType(),
+                      builder);
+  addAttrIfAbsent(result, "resultEncoding", resultTy.getEncoding());
+  if (parser.resolveOperand(src, srcType, result.operands))
+    return failure();
+  result.addTypes(resultTy);
+  return success();
+}
+
+LogicalResult MemDescReinterpretOp::inferReturnType(
+    MLIRContext *context, std::optional<Location> loc, MemDescType srcTy,
+    ArrayRef<int64_t> dstShape, ArrayRef<int64_t> dstAllocShape,
+    Type dstElementType, Attribute dstEncoding,
+    MemDescType &inferredReturnType) {
+  Attribute inferredEncoding = dstEncoding;
+  Attribute srcEncoding = srcTy.getEncoding();
+  bool involvesTMem =
+      (srcEncoding && triton::nvidia_gpu::isTensorMemoryEncoding(srcEncoding)) ||
+      (dstEncoding && triton::nvidia_gpu::isTensorMemoryEncoding(dstEncoding));
+  if (!involvesTMem) {
+    int64_t srcBits =
+        product<int64_t>(srcTy.getAllocShape()) * srcTy.getElementTypeBitWidth();
+    int64_t dstBits = product<int64_t>(dstAllocShape) *
+                      getElementTypeOrSelf(dstElementType)
+                          .getIntOrFloatBitWidth();
+    if (srcBits != dstBits) {
+      return emitOptionalError(
+          loc, "reinterpret must preserve the total number of bits");
+    }
+  }
+
+  Attribute layoutForInference = dstEncoding ? dstEncoding : srcEncoding;
+  if (srcEncoding && dstEncoding &&
+      &srcEncoding.getDialect() != &dstEncoding.getDialect()) {
+    return emitOptionalError(
+        loc,
+        "memdesc_reinterpret requires source and result encodings from the "
+        "same dialect");
+  }
+  if (layoutForInference) {
+    auto *inferLayoutInterface =
+        cast<DialectInferLayoutInterface>(&layoutForInference.getDialect());
+    if (failed(inferLayoutInterface->inferMemDescReinterpretOpEncoding(
+            srcTy.getShape(), srcTy.getAllocShape(), srcTy.getElementType(),
+            srcEncoding, dstShape, dstAllocShape, dstElementType, dstEncoding,
+            inferredEncoding, loc))) {
+      return failure();
+    }
+  }
+
+  auto checkedType = getCheckedMemDescType(
+      context, loc, dstShape, dstElementType, inferredEncoding,
+      srcTy.getMemorySpace(),
+      srcTy.getMutableMemory(), dstAllocShape);
+  if (failed(checkedType))
+    return failure();
+  inferredReturnType = *checkedType;
+  return success();
+}
+
+FailureOr<MemDescReinterpretOp>
+MemDescReinterpretOp::createChecked(OpBuilder &builder, Location loc, Value src,
+                                    MemDescType dstTy) {
+  MemDescType inferredReturnType;
+  if (failed(inferReturnType(builder.getContext(), loc,
+                             cast<MemDescType>(src.getType()), dstTy.getShape(),
+                             dstTy.getAllocShape(), dstTy.getElementType(),
+                             dstTy.getEncoding(), inferredReturnType))) {
+    return failure();
+  }
+  return MemDescReinterpretOp::create(builder, loc, inferredReturnType, src);
+}
+
+LogicalResult
+MemDescReinterpretOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> loc,
+    MemDescReinterpretOp::Adaptor adaptor,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  MemDescType inferredReturnType;
+  Attribute resultEncoding = adaptor.getResultEncoding().value_or(Attribute{});
+  if (failed(inferReturnType(
+          context, loc, cast<MemDescType>(adaptor.getSrc().getType()),
+          adaptor.getResultShape(), adaptor.getResultAllocShape(),
+          adaptor.getResultElementType(), resultEncoding,
+          inferredReturnType))) {
+    return failure();
+  }
+  inferredReturnTypes.push_back(inferredReturnType);
+  return success();
+}
+
+LogicalResult MemDescReinterpretOp::verify() {
+  auto srcTy = getSrc().getType();
+  auto dstTy = getType();
+  MemDescType expectedTy;
+  Attribute resultEncoding = getResultEncoding().value_or(Attribute{});
+  if (failed(inferReturnType(getContext(), getLoc(), srcTy, getResultShape(),
+                             getResultAllocShape(), getResultElementType(),
+                             resultEncoding, expectedTy)))
+    return failure();
+  return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy);
 }
 
 OpFoldResult MemDescReinterpretOp::fold(FoldAdaptor adaptor) {
@@ -973,6 +1176,45 @@ LogicalResult MemDescIndexOp::verify() {
   return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy);
 }
 
+void MemDescSubsliceOp::print(OpAsmPrinter &p) {
+  p << ' ' << getSrc() << '[';
+  printOffsets(p, getOperation(), getOffsetsAttr());
+  p << ']';
+  p.printOptionalAttrDict((*this)->getAttrs(), {"resultShape", "offsets"});
+  p << " : ";
+  p.printType(getSrc().getType());
+  p << " -> ";
+  p.printType(getType());
+}
+
+ParseResult MemDescSubsliceOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  OpAsmParser::UnresolvedOperand src;
+  DenseI32ArrayAttr offsetsAttr;
+  Type srcType;
+  SmallVector<Type> resultTypes;
+  if (parser.parseOperand(src) || parser.parseLSquare() ||
+      parseOffsets(parser, offsetsAttr) || parser.parseRSquare() ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) || parser.parseArrowTypeList(resultTypes))
+    return failure();
+  if (resultTypes.size() != 1)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected exactly one result type");
+  auto resultTy = dyn_cast<MemDescType>(resultTypes.front());
+  if (!resultTy)
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected memdesc result type");
+  auto &builder = parser.getBuilder();
+  addDenseI64ArrayAttrIfAbsent(result, "resultShape", resultTy.getShape(),
+                               builder);
+  addAttrIfAbsent(result, "offsets", offsetsAttr);
+  if (parser.resolveOperand(src, srcType, result.operands))
+    return failure();
+  result.addTypes(resultTy);
+  return success();
+}
+
 OpFoldResult MemDescSubsliceOp::fold(FoldAdaptor adaptor) {
   // Fold subslice(subslice(x, off1), off2) -> subslice(x, off1 + off2)
   if (auto srcSubslice = getSrc().getDefiningOp<MemDescSubsliceOp>()) {
@@ -1050,6 +1292,22 @@ MemDescSubsliceOp::createChecked(OpBuilder &builder, Location loc, Value src,
   }
   return MemDescSubsliceOp::create(builder, loc, inferredReturnType, src,
                                    offsets);
+}
+
+LogicalResult
+MemDescSubsliceOp::inferReturnTypes(MLIRContext *context,
+                                    std::optional<Location> loc,
+                                    MemDescSubsliceOp::Adaptor adaptor,
+                                    SmallVectorImpl<Type> &inferredReturnTypes) {
+  MemDescType inferredReturnType;
+  if (failed(inferReturnType(context, loc,
+                             cast<MemDescType>(adaptor.getSrc().getType()),
+                             adaptor.getResultShape(), adaptor.getOffsets(),
+                             inferredReturnType))) {
+    return failure();
+  }
+  inferredReturnTypes.push_back(inferredReturnType);
+  return success();
 }
 
 LogicalResult MemDescSubsliceOp::verify() {

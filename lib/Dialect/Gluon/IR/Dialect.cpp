@@ -112,6 +112,31 @@ struct GluonInferLayoutInterface : public triton::DialectInferLayoutInterface {
   }
 
   LogicalResult
+  inferMemDescReinterpretOpEncoding(ArrayRef<int64_t> srcShape,
+                                    ArrayRef<int64_t> srcAllocShape,
+                                    Type srcElementType,
+                                    Attribute srcEncoding,
+                                    ArrayRef<int64_t> dstShape,
+                                    ArrayRef<int64_t> dstAllocShape,
+                                    Type dstElementType,
+                                    Attribute requestedDstEncoding,
+                                    Attribute &dstEncoding,
+                                    std::optional<Location> loc) const override {
+    (void)srcShape;
+    (void)srcAllocShape;
+    (void)srcElementType;
+    (void)srcEncoding;
+    (void)dstShape;
+    (void)dstAllocShape;
+    (void)dstElementType;
+    (void)loc;
+    if (succeeded(inferAutoEncoding(requestedDstEncoding, dstEncoding)))
+      return success();
+    dstEncoding = requestedDstEncoding;
+    return success();
+  }
+
+  LogicalResult
   inferDefaultJoinOpEncoding(Attribute srcEnc, Attribute &dstEnc,
                              ArrayRef<int64_t> shape,
                              std::optional<Location> loc) const override {
