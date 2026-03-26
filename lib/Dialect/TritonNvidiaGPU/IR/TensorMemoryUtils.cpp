@@ -356,15 +356,27 @@ LogicalResult inferTMemReshapeOpEncoding(ArrayRef<int64_t> srcShape,
 
   auto *ctx = srcEncoding.getContext();
   auto elemTy = IntegerType::get(ctx, 8);
-  auto memTy = gpu::MemDescType::get(srcShape, elemTy, srcEncoding,
-                                     TensorMemorySpaceAttr::get(ctx),
-                                     /*mutableMemory=*/false, srcShape);
 
   std::string error;
-  auto resultTy = inferTMemReshapeOpType(memTy, dstShape, &error);
+  auto memTy = tryCreateMemDescType(ctx, srcShape, elemTy, srcEncoding,
+                                    TensorMemorySpaceAttr::get(ctx),
+                                    /*mutableMemory=*/false, srcShape, &error);
+  FailureOr<gpu::MemDescType> resultTy = failure();
+  if (memTy)
+    resultTy = inferTMemReshapeOpType(*memTy, dstShape, &error);
   if (succeeded(resultTy)) {
     dstEncoding = resultTy->getEncoding();
   } else {
+    auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
+    if (srcShape.size() == static_cast<size_t>(layoutRank)) {
+      std::string preservedError;
+      auto preservedTy = tryCreateMemDescType(
+          ctx, dstShape, elemTy, srcEncoding, TensorMemorySpaceAttr::get(ctx),
+          /*mutableMemory=*/false, dstShape, &preservedError);
+      if (!preservedTy)
+        return emitOptionalError(loc, error.empty() ? preservedError : error);
+    }
+
     // Some TMEM descriptor views are valid pointer transformations but are not
     // representable as standalone TMEM-linear layouts. Preserve the source
     // encoding sugar and let later TMEM consumers decide whether direct

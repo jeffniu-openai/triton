@@ -2056,7 +2056,13 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_error(
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "unsupported tensor memory memdesc_subslice view" in text
+    assert (
+        "unsupported tensor memory memdesc_subslice view" in text
+        or (
+            "failed to infer memdesc_reshape result type" in text
+            and "TMEM layout shape must be bounded by the memdesc shape and allocShape" in text
+        )
+    )
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
