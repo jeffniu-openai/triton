@@ -272,6 +272,20 @@ struct CanonicalizeConvertFromSplit
   }
 };
 
+static FailureOr<MemDescType>
+getCheckedMemDescType(MLIRContext *context, std::optional<Location> loc,
+                      ArrayRef<int64_t> shape, Type elementType,
+                      Attribute encoding, Attribute memorySpace,
+                      bool mutableMemory, ArrayRef<int64_t> allocShape) {
+  auto typeLoc = loc.value_or(UnknownLoc::get(context));
+  auto ty = MemDescType::getChecked(typeLoc, context, shape, elementType,
+                                    encoding, memorySpace, mutableMemory,
+                                    allocShape);
+  if (!ty)
+    return failure();
+  return ty;
+}
+
 struct CanonicalizeConvertFromConvert
     : public OpRewritePattern<ConvertLayoutOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -545,9 +559,13 @@ MemDescTransOp::inferReturnTypes(MLIRContext *context,
   allocShape.insert(allocShape.begin(), argTy.getAllocShape().begin(),
                     argTy.getAllocShape().end() - order.size());
 
-  inferredReturnTypes.push_back(
-      MemDescType::get(retShape, retEltTy, retEncoding, argTy.getMemorySpace(),
-                       argTy.getMutableMemory(), allocShape));
+  auto inferredReturnType =
+      getCheckedMemDescType(context, loc, retShape, retEltTy, retEncoding,
+                            argTy.getMemorySpace(), argTy.getMutableMemory(),
+                            allocShape);
+  if (failed(inferredReturnType))
+    return failure();
+  inferredReturnTypes.push_back(*inferredReturnType);
   return success();
 }
 
@@ -627,9 +645,12 @@ LogicalResult MemDescReshapeOp::inferReturnType(
                                                  srcTy.getShape().size()));
   dstAllocShape.append(dstShape.begin(), dstShape.end());
 
-  inferredReturnType = MemDescType::get(
-      dstShape, srcTy.getElementType(), dstEncoding, srcTy.getMemorySpace(),
-      srcTy.getMutableMemory(), dstAllocShape);
+  auto checkedType = getCheckedMemDescType(
+      context, loc, dstShape, srcTy.getElementType(), dstEncoding,
+      srcTy.getMemorySpace(), srcTy.getMutableMemory(), dstAllocShape);
+  if (failed(checkedType))
+    return failure();
+  inferredReturnType = *checkedType;
   return success();
 }
 
@@ -907,9 +928,12 @@ LogicalResult MemDescIndexOp::inferReturnType(
     }
   }
 
-  inferredReturnType = MemDescType::get(
-      dstShape, srcTy.getElementType(), dstEncoding, srcTy.getMemorySpace(),
-      srcTy.getMutableMemory(), dstAllocShape);
+  auto checkedType = getCheckedMemDescType(
+      context, loc, dstShape, srcTy.getElementType(), dstEncoding,
+      srcTy.getMemorySpace(), srcTy.getMutableMemory(), dstAllocShape);
+  if (failed(checkedType))
+    return failure();
+  inferredReturnType = *checkedType;
   return success();
 }
 
@@ -1005,9 +1029,12 @@ LogicalResult MemDescSubsliceOp::inferReturnType(
     }
   }
 
-  inferredReturnType = MemDescType::get(
-      dstShape, srcTy.getElementType(), dstEncoding, srcTy.getMemorySpace(),
-      srcTy.getMutableMemory(), srcTy.getAllocShape());
+  auto checkedType = getCheckedMemDescType(
+      context, loc, dstShape, srcTy.getElementType(), dstEncoding,
+      srcTy.getMemorySpace(), srcTy.getMutableMemory(), srcTy.getAllocShape());
+  if (failed(checkedType))
+    return failure();
+  inferredReturnType = *checkedType;
   return success();
 }
 

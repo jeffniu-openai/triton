@@ -1229,8 +1229,8 @@ public:
                                  std::optional<Location> loc) const override {
     if (isTensorMemoryEncoding(srcEncoding) &&
         !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
-      return inferTMemSubsliceOpEncoding(srcShape, srcEncoding, dstShape,
-                                         offsets, dstEncoding, loc);
+      return inferTMemSubsliceOpEncoding(srcShape, srcAllocShape, srcEncoding,
+                                         dstShape, offsets, dstEncoding, loc);
     }
     return getDelegate()->inferMemDescSubsliceOpEncoding(
         srcShape, srcAllocShape, srcEncoding, dstShape, offsets, dstEncoding,

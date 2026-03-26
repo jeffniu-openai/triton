@@ -201,6 +201,35 @@ tryCreateMemDescType(MLIRContext *ctx, ArrayRef<int64_t> shape, Type elementType
   }
   return ty;
 }
+
+static bool canUseTMemViewEncoding(MLIRContext *ctx, ArrayRef<int64_t> shape,
+                                   ArrayRef<int64_t> allocShape,
+                                   Attribute encoding) {
+  return tryCreateMemDescType(ctx, shape, IntegerType::get(ctx, 8), encoding,
+                              TensorMemorySpaceAttr::get(ctx),
+                              /*mutableMemory=*/false, allocShape,
+                              /*error=*/nullptr)
+             .has_value();
+}
+
+static LogicalResult preserveTMemViewEncodingIfValid(
+    MLIRContext *ctx, ArrayRef<int64_t> dstShape, ArrayRef<int64_t> dstAllocShape,
+    Attribute srcEncoding, Attribute &dstEncoding, std::optional<Location> loc,
+    std::string *error) {
+  std::string preservedError;
+  if (tryCreateMemDescType(ctx, dstShape, IntegerType::get(ctx, 8),
+                           srcEncoding, TensorMemorySpaceAttr::get(ctx),
+                           /*mutableMemory=*/false, dstAllocShape,
+                           &preservedError)) {
+    dstEncoding = srcEncoding;
+    return success();
+  }
+  if (error && error->empty())
+    *error = preservedError;
+  if (error && !error->empty() && !preservedError.empty() && *error != preservedError)
+    return emitOptionalError(loc, *error, "; preserved tensor memory view encoding also failed: ", preservedError);
+  return emitOptionalError(loc, error && !error->empty() ? *error : preservedError);
+}
 } // namespace
 
 std::optional<TensorMemoryLinearEncodingAttr>
@@ -253,11 +282,21 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
   ll = LinearLayout(ll.getBases(), canonicalOutDims, ll.isSurjective());
   if (auto enc = tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs, error))
     return enc;
-  if (!twoCTAs)
-    return std::nullopt;
-
   if (!hadBlock)
     return std::nullopt;
+
+  SmallVector<StringAttr> noBlockInDims;
+  noBlockInDims.reserve(ll.getNumInDims());
+  for (auto dim : ll.getInDimNames()) {
+    if (dim != kBlock)
+      noBlockInDims.push_back(dim);
+  }
+  auto noBlockOutDims = llvm::to_vector(ll.getOutDimNames());
+  auto collapsedBlock = ll.sublayout(noBlockInDims, noBlockOutDims);
+  if (auto enc = tryMakeTensorMemoryLinearEncoding(ctx, collapsedBlock,
+                                                   /*twoCTAs=*/false, error))
+    return enc;
+
   bool blockInactive = !originalBlockBases.empty() &&
                        llvm::all_of(originalBlockBases,
                                     [](ArrayRef<int32_t> basis) {
@@ -310,9 +349,8 @@ LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
                                        Attribute srcEncoding,
                                        Attribute &dstEncoding,
                                        std::optional<Location> loc) {
-  auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
-  auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
-  if (extraRank > 0) {
+  auto *ctx = srcEncoding.getContext();
+  if (canUseTMemViewEncoding(ctx, dstShape, dstAllocShape, srcEncoding)) {
     dstEncoding = srcEncoding;
     return success();
   }
@@ -321,26 +359,25 @@ LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
   auto result =
       inferTMemIndexEncoding(srcShape, dstShape, dstAllocShape, srcEncoding,
                              &error);
-  if (succeeded(result)) {
+  if (succeeded(result) &&
+      canUseTMemViewEncoding(ctx, dstShape, dstAllocShape, *result)) {
     dstEncoding = *result;
     return success();
   }
-  dstEncoding = srcEncoding;
-  return success();
+  return preserveTMemViewEncodingIfValid(ctx, dstShape, dstAllocShape,
+                                         srcEncoding, dstEncoding, loc,
+                                         &error);
 }
 
 LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                          ArrayRef<int64_t> srcAllocShape,
                                           Attribute srcEncoding,
                                           ArrayRef<int64_t> dstShape,
                                           ArrayRef<int32_t> offsets,
                                           Attribute &dstEncoding,
                                           std::optional<Location> loc) {
-  auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
-  auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
-  if (extraRank > 0 &&
-      srcShape.drop_front(extraRank) == dstShape.drop_front(extraRank) &&
-      llvm::all_of(offsets.drop_front(extraRank),
-                   [](int32_t offset) { return offset == 0; })) {
+  auto *ctx = srcEncoding.getContext();
+  if (canUseTMemViewEncoding(ctx, dstShape, srcAllocShape, srcEncoding)) {
     dstEncoding = srcEncoding;
     return success();
   }
@@ -349,12 +386,14 @@ LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
   auto result =
       inferTMemSubsliceEncoding(srcShape, srcEncoding, dstShape, offsets,
                                 &error);
-  if (succeeded(result)) {
+  if (succeeded(result) &&
+      canUseTMemViewEncoding(ctx, dstShape, srcAllocShape, *result)) {
     dstEncoding = *result;
     return success();
   }
-  dstEncoding = srcEncoding;
-  return success();
+  return preserveTMemViewEncodingIfValid(ctx, dstShape, srcAllocShape,
+                                         srcEncoding, dstEncoding, loc,
+                                         &error);
 }
 
 FailureOr<TensorMemoryLinearEncodingAttr>
@@ -568,9 +607,16 @@ inferTMemIndexOpType(gpu::MemDescType srcTy, std::string *error) {
                                     error);
   if (!dstTy)
     return failure();
-  auto maybeDstEnc = inferTMemIndexEncoding(srcTy, *dstTy);
+  SmallVector<int64_t> srcShape(srcTy.getShape().begin(), srcTy.getShape().end());
+  SmallVector<int64_t> dstShapeCopy(dstTy->getShape().begin(),
+                                    dstTy->getShape().end());
+  SmallVector<int64_t> dstAllocShapeCopy(dstTy->getAllocShape().begin(),
+                                         dstTy->getAllocShape().end());
+  auto maybeDstEnc =
+      inferTMemIndexEncoding(srcShape, dstShapeCopy, dstAllocShapeCopy,
+                             srcTy.getEncoding(), error);
   if (failed(maybeDstEnc)) {
-    if (error)
+    if (error && error->empty())
       *error = "unsupported tensor memory memdesc_index view";
     return failure();
   }
@@ -596,10 +642,13 @@ inferTMemSubsliceOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
                                     error);
   if (!dstTy)
     return failure();
-  SmallVector<int64_t> offsets64(offsets.begin(), offsets.end());
-  auto maybeDstEnc = inferTMemSubsliceEncoding(srcTy, *dstTy, offsets64);
+  SmallVector<int64_t> srcShape(srcTy.getShape().begin(), srcTy.getShape().end());
+  SmallVector<int64_t> dstShapeCopy(dstTy->getShape().begin(),
+                                    dstTy->getShape().end());
+  auto maybeDstEnc = inferTMemSubsliceEncoding(srcShape, srcTy.getEncoding(),
+                                               dstShapeCopy, offsets, error);
   if (failed(maybeDstEnc)) {
-    if (error)
+    if (error && error->empty())
       *error = "unsupported tensor memory memdesc_subslice view";
     return failure();
   }

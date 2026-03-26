@@ -279,6 +279,13 @@ public:
     Attribute newEncoding =
         gpu::LinearEncodingAttr::get(tmemStoreOp.getContext(), std::move(*ll));
     auto oldType = tmemStoreOp.getSrc().getType();
+    if (isa_and_nonnull<ttg::ConvertLayoutOp>(
+            tmemStoreOp.getSrc().getDefiningOp()))
+      return failure();
+    auto memType = cast<gpu::MemDescType>(tmemStoreOp.getDst().getType());
+    if (!nvidia_gpu::isDistributedLayoutTMemCompatible(tmemStoreOp, oldType,
+                                                       memType))
+      return failure();
     auto newType = oldType.cloneWithEncoding(newEncoding);
     if (newType == oldType)
       return failure();
@@ -337,6 +344,9 @@ public:
     int numWarps = ttg::lookupNumWarps(tmemLoadOp);
     auto oldType = tmemLoadOp.getType();
     auto memType = cast<gpu::MemDescType>(tmemLoadOp.getSrc().getType());
+    if (!nvidia_gpu::isDistributedLayoutTMemCompatible(tmemLoadOp, oldType,
+                                                       memType))
+      return failure();
     // Compute the alternative layout.
     auto ll = nvidia_gpu::getDistributedLayoutForTmemLdSt(
         memType, TMemAccessAtom::I16x256b, numWarps);

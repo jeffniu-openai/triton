@@ -272,8 +272,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %result_1 = ttng.tmem_load %result_0 : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xi32, #blocked>
     %true = arith.constant true
     ttng.tmem_store %cst, %result_0, %true : tensor<128x128xi32, #blocked> -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
-    %0 = ttng.tmem_subslice %result_0 {N = 0 : i32} : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
-    %1 = ttng.tmem_subslice %result_0 {N = 64 : i32} : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+    %0 = ttg.memdesc_subslice %result_0[0, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+    %1 = ttg.memdesc_subslice %result_0[64, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
     %result_2 = ttng.tmem_alloc : () -> !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32_3 = arith.constant 0 : i32
     %c2_i32 = arith.constant 2 : i32
@@ -287,7 +287,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
       %result_4 = ttng.tmem_load %6 : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked>
     }
     tt.return
-    }
+  }
 }
 """)
 
@@ -454,15 +454,15 @@ def test_tensor_memory_linear_view_ir():
     assert "ttng.tmem_subslice" not in ir
 
 
-def test_tensor_memory_linear_views_block_layout_reports_two_ctas(capfd):
-    with pytest.raises(RuntimeError):
-        _parse_tensor_memory_linear_view(
-            _make_tmem_linear_layout_128_block(True),
-            _make_tmem_linear_layout_64x32_block(True),
-            num_ctas=2,
-        )
-    captured = capfd.readouterr()
-    assert "Layout has 2 CTAs per CGA" in (captured.err + captured.out)
+def test_tensor_memory_linear_views_block_layout_ir():
+    ir = _parse_tensor_memory_linear_view(
+        _make_tmem_linear_layout_128_block(True),
+        _make_tmem_linear_layout_64x32_block(True),
+        num_ctas=2,
+    )
+    assert "twoCTAs = true" in ir
+    assert "ttg.memdesc_subslice %7[0, 0, 2]" in ir
+    assert "-> !ttg.memdesc<32x16x4xf32, #tmem_linear4" in ir
 
 
 def test_tensor_memory_linear_view_load_reports_clean_error(capfd):
@@ -519,10 +519,10 @@ def test_tensor_memory_descriptor_chain_ir():
     assert "tensor_memory_linear" in ir
 
 
-def test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch(capfd):
+def test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch():
     layout = _make_tmem_register_layout(1)
     target_layout = _make_tmem_target_layout(1)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CompilationError, match=r"Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA\."):
         run_parser(
             tensor_memory_descriptor_chain_kernel,
             *make_args(
@@ -534,8 +534,6 @@ def test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch(capfd):
             ),
             target=BLACKWELL_TARGET,
         )
-    captured = capfd.readouterr()
-    assert "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA." in (captured.err + captured.out)
 
 
 def test_tensor_memory_linear_layout_invalid_shape():
@@ -585,14 +583,16 @@ def test_tensor_memory_linear_mma_compile_reports_two_ctas_mismatch(capfd):
     a_shared_layout = _make_tcgen05_shared_layout(1, 0)
     b_shared_layout = _make_tcgen05_shared_layout(1, 1)
     acc_layout = _make_tmem_linear_layout_128_twoctas()
-    with pytest.raises(RuntimeError):
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
         run_parser(
             tcgen05_mma_linear_acc_kernel,
             *make_args(a_shared_layout, b_shared_layout, acc_layout, num_warps=4),
             target=BLACKWELL_TARGET,
         )
     captured = capfd.readouterr()
-    assert "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA." in (captured.err + captured.out)
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA." in msg
+    assert "Assertion" not in msg
 
 
 @pytest.mark.parametrize("acc_layout, num_ctas", [
@@ -603,14 +603,20 @@ def test_tensor_memory_linear_mma_compile_reports_two_ctas_mismatch(capfd):
 def test_tensor_memory_linear_mma_compile_reports_unsupported_layout(acc_layout, num_ctas, capfd):
     a_shared_layout = _make_tcgen05_shared_layout(num_ctas, 0)
     b_shared_layout = _make_tcgen05_shared_layout(num_ctas, 1)
-    with pytest.raises(RuntimeError):
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
         run_parser(
             tcgen05_mma_linear_acc_kernel,
             *make_args(a_shared_layout, b_shared_layout, acc_layout, num_warps=4, num_ctas=num_ctas),
             target=BLACKWELL_TARGET,
         )
     captured = capfd.readouterr()
-    assert "MMAv5-compatible tensor memory layout" in (captured.err + captured.out)
+    msg = str(excinfo.value) + captured.err + captured.out
+    expected_ctas = 2 if acc_layout.two_ctas else 1
+    if expected_ctas != num_ctas:
+        assert f"Layout has {expected_ctas} CTAs per CGA, but the context requires {num_ctas} CTAs per CGA." in msg
+    else:
+        assert "MMAv5-compatible tensor memory layout" in msg
+    assert "Assertion" not in msg
 @gluon.jit
 def shared_memory_subview_kernel(XBLOCK: ttgl.constexpr, layout: ttgl.constexpr, smem_layout: ttgl.constexpr):
     XHALF: ttgl.constexpr = XBLOCK // 2

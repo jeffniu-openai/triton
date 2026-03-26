@@ -34,6 +34,20 @@ __all__ = [
 ]
 
 
+def _check_tensor_memory_linear_layout_ctas(builder, two_ctas):
+    options = getattr(builder, "options", None)
+    if options is None:
+        return
+    context_ctas = getattr(options, "num_ctas", None)
+    if context_ctas is None:
+        return
+    layout_ctas = 2 if two_ctas else 1
+    if layout_ctas != context_ctas:
+        raise ValueError(
+            f"Layout has {layout_ctas} CTAs per CGA, but the context requires {context_ctas} CTAs per CGA."
+        )
+
+
 @dataclass(frozen=True, eq=True)
 class TensorMemoryLayout:
     """
@@ -149,6 +163,7 @@ class TensorMemoryLinearLayout:
                         )
 
     def _to_ir(self, builder):
+        _check_tensor_memory_linear_layout_ctas(builder, self.two_ctas)
         return builder.get_tensor_memory_linear_layout(
             self.rows,
             self.cols,

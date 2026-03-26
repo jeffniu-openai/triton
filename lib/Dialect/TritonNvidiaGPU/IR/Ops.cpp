@@ -1430,10 +1430,11 @@ LogicalResult TMEMSubSliceOp::verify() {
     return emitError("The split offset may not exceed the source shape");
   }
 
+  if (dstLayout == srcLayout)
+    return success();
+
   if (isa<TensorMemoryEncodingAttr>(srcLayout) &&
       isa<TensorMemoryEncodingAttr>(dstLayout)) {
-    if (dstLayout == srcLayout)
-      return success();
     return emitOpError("Legacy TMEM subviews must preserve the source TMEM "
                        "encoding sugar. Expected ")
            << srcLayout << " but got " << dstLayout;

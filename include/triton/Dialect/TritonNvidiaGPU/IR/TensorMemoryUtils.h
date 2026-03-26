@@ -67,6 +67,7 @@ LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
                                        std::optional<Location> loc = {});
 
 LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                          ArrayRef<int64_t> srcAllocShape,
                                           Attribute srcEncoding,
                                           ArrayRef<int64_t> dstShape,
                                           ArrayRef<int32_t> offsets,

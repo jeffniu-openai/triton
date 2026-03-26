@@ -1731,14 +1731,10 @@ def test_tmem_index_subslice(device, fresh_knobs):
     xw = triton.TensorWrapper(x, dtype=torch.float32)
     outw = triton.TensorWrapper(out, dtype=torch.float32)
 
-    with pytest.raises(CompilationError) as excinfo:
-        kernel[(1, )](xw, outw)
+    kernel[(1, )](xw, outw)
 
-    msg = str(excinfo.value)
-    assert "TMEM layout '32x32b_splitn' unsupported" in msg
-    assert "reshape or permute so TMEM columns stay contiguous" in msg
-    assert "PassManager::run failed" not in msg
-    assert "Assertion" not in msg
+    torch.testing.assert_close(out, x)
+    np.testing.assert_array_equal(out.cpu().numpy().view(np.int32), exp_bits)
 
 
 def test_reduction(device, fresh_knobs):
