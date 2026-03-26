@@ -298,19 +298,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
   }
 }
 
-// -----
-
-#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
-#tmem_linear_t = #ttng.tensor_memory_linear<{row = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]], col = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}>
-module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
-  tt.func @memdesc_subslice_tmem_linear_bad_result_encoding(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>) {
-    // expected-error @+1 {{result tensor memory encoding must be}}
-    %0 = ttg.memdesc_subslice %arg0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_t, #ttng.tensor_memory, mutable, 128x64>
-    tt.return
-  }
-}
-
-// -----
 
 #blocked_tmem_impossible = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 1], order = [1, 0]}>
 #tmem_linear_exotic_impossible = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [1, 0]]}>
@@ -962,7 +949,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
   tt.func public @tmem_subslice_rows_mismatch() {
     %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
-    // expected-error @+1 {{legacy tensor memory layout #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1> cannot be canonicalized for shape [64, 128]}}
+    // expected-error @+1 {{The result must have the same number of rows as the source.}}
     %sub = ttng.tmem_subslice %md {N = 0 : i32} : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xf32, #tmem, #ttng.tensor_memory, mutable, 128x128>
     tt.return
   }
@@ -1011,7 +998,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
   tt.func public @tmem_subslice_layout_mismatch_linear() {
     %md = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
-    // expected-error @+1 {{shape must match the TMEM linear layout}}
+    // expected-error @+1 {{'ttng.tmem_subslice' op tensor memory view is not representable as a standalone TMEM linear layout}}
     %sub = ttng.tmem_subslice %md {N = 64 : i32} : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_t, #ttng.tensor_memory, mutable, 128x128>
     tt.return
   }

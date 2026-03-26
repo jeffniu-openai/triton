@@ -3142,6 +3142,11 @@ struct TritonGPUInferLayoutInterface
           }
         }
       }
+      auto srcLL = toLinearLayout(srcShape, srcEnc);
+      auto dstLL = reshapeLayout(ctx, srcLL, dstShape);
+      dstEnc = SharedLinearEncodingAttr::get(ctx, std::move(dstLL),
+                                             mmaEncoding.getAlignment());
+      return success();
     } else if (auto padded = dyn_cast<PaddedSharedEncodingAttr>(srcEnc)) {
       LinearLayout ll = padded.getLinearComponent();
       LinearLayout dst = reshapeLayout(ctx, ll, dstShape);

@@ -2073,3 +2073,49 @@
   - full matrix rerun with xdist:
     - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
       -> `1598 passed, 117 skipped, 1 xfailed in 60.41s`
+
+## 2026-03-26 (checkpoint cleanup before TMEM inference refactor)
+- Goal for this checkpoint:
+  - make the dirty post-`cfd703808` tree coherent before starting the next
+    TMEM inference/canonicalization refactor pass;
+  - keep only validated changes and drop the failed higher-rank TMEM view
+    experiment.
+- Code changes kept:
+  - `lib/Dialect/TritonGPU/IR/Dialect.cpp`
+    - kept the shared-memory reshape fallback that rematerializes
+      `SharedLinearEncodingAttr` from `reshapeLayout(...)`;
+    - this fixed the `cp_scales_warpx4_via_scaled_mma_geometry_sweep`
+      regression.
+- Failed experiment dropped:
+  - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+    - reverted the local attempt to stop stripping zero row/col bases in
+      `tryMakeTMemViewEncoding(...)`;
+    - that experiment correctly blocked one bad multidim-slice case, but it
+      also over-rejected legitimate higher-rank indexed TMEM views.
+- Test cleanups:
+  - `test/TritonNvidiaGPU/ops.mlir`
+    - converted unsupported positive TMEM ld/st-on-view examples into pure
+      memdesc-view IR checks;
+    - kept positive TMEM access coverage only for layouts the strict verifier
+      actually accepts.
+  - `test/TritonNvidiaGPU/invalid.mlir`
+    - kept updated diagnostics for the new strict explicit-layout policy.
+  - `test/Analysis/test-buffer-region.mlir`
+    - synced expected TMEM region remarks to the current descriptor semantics.
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - updated stale `tc_gen5_mma_subslice_acc` checks to the current immediates;
+    - removed dead TMEM conversion chunks that no longer emit LLVM in the
+      current pipeline;
+    - updated surviving `ttng.tmem_subslice` LLVM checks to the current
+      lowering, which returns the base pointer unchanged for descriptor-only
+      view helpers and carries the slice in the descriptor semantics.
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - relaxed a couple of TTGIR assertions so legacy TMEM sugar still checks
+      for `tensor_memory_encoding` while linear layouts check for
+      `tensor_memory_linear`.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v -j 32 test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Analysis/test-buffer-region.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    -> `4 passed`
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 -m pytest -n 4 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_warpx4_via_scaled_mma_geometry_sweep or ldst_x1_f32_roundtrip'`
+    -> `35 passed in 7.60s`

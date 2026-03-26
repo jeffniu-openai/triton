@@ -527,3 +527,18 @@
     - if a test wants a blocked or other non-direct TMEM layout, it must use
       `convert_layout` explicitly around the TMEM access rather than relying on
       hidden compiler repair.
+
+- TMEM lit / LLVM cleanup status (2026-03-26 23:40 UTC):
+  - keep the shared-memory reshape fallback in
+    `lib/Dialect/TritonGPU/IR/Dialect.cpp`; it is required for the
+    `cp_scales_warpx4_via_scaled_mma_geometry_sweep` path.
+  - do not keep the local `tryMakeTMemViewEncoding(...)` experiment that stops
+    stripping zero row/col bases; it over-restricts legitimate higher-rank TMEM
+    indexed views and is not the right fix for the multidim-slice miscompile.
+  - some older TMEM conversion lit chunks no longer emit LLVM in the current
+    pipeline at all; keep only chunks that survive lowering and check them
+    meaningfully.
+  - current surviving `ttng.tmem_subslice` descriptor-only LLVM lowering often
+    returns the base pointer unchanged and relies on descriptor semantics rather
+    than a materialized pointer delta. Tests should check the current emitted
+    LLVM, not the pre-linearization offset assumptions.

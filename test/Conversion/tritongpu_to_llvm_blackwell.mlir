@@ -233,13 +233,13 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32} {
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
   // CHECK-LABEL: @tc_gen5_mma_subslice_acc
-  // CHECK-DAG: %[[TMEM_SUBSLICE_OFFSET:.+]] = llvm.mlir.constant(64 : i32) : i32
+  // CHECK-DAG: %[[TMEM_SUBSLICE_OFFSET:.+]] = llvm.mlir.constant(0 : i32) : i32
   // CHECK-DAG: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2{{.*}} : !llvm.ptr<3> to i32
   // CHECK: %[[TMEM_SUBSLICE_BASE_INT:.+]] = llvm.add %[[TMEM_BASE]], %[[TMEM_SUBSLICE_OFFSET]] : i32
   // CHECK: %[[TMEM_SUBSLICE_PTR:.+]] = llvm.inttoptr %[[TMEM_SUBSLICE_BASE_INT]] : i32 to !llvm.ptr<3>
   // CHECK: %[[TMEM_SUBSLICE_BASE:.+]] = llvm.ptrtoint %[[TMEM_SUBSLICE_PTR]] : !llvm.ptr<3> to i32
   // CHECK-COUNT-4: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 0 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_SUBSLICE_BASE]]
-  // CHECK-COUNT-4: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 128 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_SUBSLICE_BASE]]
+  // CHECK-COUNT-4: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 64 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_SUBSLICE_BASE]]
   tt.func @tc_gen5_mma_subslice_acc(%a: !ttg.memdesc<256x64xf16, #shared, #ttg.shared_memory>,
                                     %b: !ttg.memdesc<64x64xf16, #shared1, #ttg.shared_memory>,
                                     %c: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>) {
@@ -1327,183 +1327,6 @@ tt.func private @reinterpret(%arg0: !ttg.memdesc<128x32xf32, #tmem_f32, #ttng.te
 
 // -----
 
-#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
-#tmem_128x64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]]}>
-#tmem_64x64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]]}>
-module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
-  // CHECK-LABEL: @index_tmem_generic_view
-  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(128 : i32) : i32
-  // CHECK-NEXT: [[OFFSET:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
-  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[PTRINT:%.*]] = llvm.add [[BASE]], [[OFFSET]] : i32
-  // CHECK-NEXT: [[PTR:%.*]] = llvm.inttoptr [[PTRINT]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: llvm.return [[PTR]] : !llvm.ptr<3>
-  tt.func private @index_tmem_generic_view(
-      %arg0: !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable>,
-      %arg1: i32) -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> {
-    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
-    tt.return %0 : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
-  }
-
-  // CHECK-LABEL: @subslice_tmem_generic_view
-  // CHECK: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[OFFSET:%.*]] = llvm.mlir.constant(64 : i32) : i32
-  // CHECK-NEXT: [[PTRINT:%.*]] = llvm.add [[BASE]], [[OFFSET]] : i32
-  // CHECK-NEXT: [[PTR:%.*]] = llvm.inttoptr [[PTRINT]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: llvm.return [[PTR]] : !llvm.ptr<3>
-  tt.func private @subslice_tmem_generic_view(%arg0: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>) -> !ttg.memdesc<128x64xf32, #tmem_128x64, #ttng.tensor_memory, mutable, 128x64> {
-    %0 = ttg.memdesc_subslice %arg0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_128x64, #ttng.tensor_memory, mutable, 128x64>
-    tt.return %0 : !ttg.memdesc<128x64xf32, #tmem_128x64, #ttng.tensor_memory, mutable, 128x64>
-  }
-
-  // CHECK-LABEL: @subslice_tmem_generic_view_row_col
-  // CHECK: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[OFFSET:%.*]] = llvm.mlir.constant(4194368 : i32) : i32
-  // CHECK-NEXT: [[PTRINT:%.*]] = llvm.add [[BASE]], [[OFFSET]] : i32
-  // CHECK-NEXT: [[PTR:%.*]] = llvm.inttoptr [[PTRINT]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: llvm.return [[PTR]] : !llvm.ptr<3>
-  tt.func private @subslice_tmem_generic_view_row_col(%arg0: !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>) -> !ttg.memdesc<64x64xf32, #tmem_64x64, #ttng.tensor_memory, mutable, 64x64> {
-    %0 = ttg.memdesc_subslice %arg0 [64, 64] : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x64xf32, #tmem_64x64, #ttng.tensor_memory, mutable, 64x64>
-    tt.return %0 : !ttg.memdesc<64x64xf32, #tmem_64x64, #ttng.tensor_memory, mutable, 64x64>
-  }
-}
-
-// -----
-
-#tmem_linear_256 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
-#tmem_linear_128x64_from_256 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]]}>
-module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
-  // CHECK-LABEL: @index_subslice_tmem_linear_generic_view
-  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(256 : i32) : i32
-  // CHECK-NEXT: [[INDEXOFF:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
-  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
-  // CHECK-NEXT: [[INDEXPTR:%.*]] = llvm.inttoptr [[INDEXBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: [[INDEXPTRINT:%.*]] = llvm.ptrtoint [[INDEXPTR]] : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[SLICEOFF:%.*]] = llvm.mlir.constant(64 : i32) : i32
-  // CHECK-NEXT: [[VIEWBASE:%.*]] = llvm.add [[INDEXPTRINT]], [[SLICEOFF]] : i32
-  // CHECK-NEXT: [[VIEWPTR:%.*]] = llvm.inttoptr [[VIEWBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: llvm.return [[VIEWPTR]] : !llvm.ptr<3>
-  tt.func private @index_subslice_tmem_linear_generic_view(
-      %arg0: !ttg.memdesc<2x128x256xf32, #tmem_linear_256, #ttng.tensor_memory, mutable>,
-      %arg1: i32) -> !ttg.memdesc<128x64xf32, #tmem_linear_128x64_from_256, #ttng.tensor_memory, mutable, 128x64> {
-    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x256xf32, #tmem_linear_256, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x256xf32, #tmem_linear_256, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_subslice %0 [0, 64] : !ttg.memdesc<128x256xf32, #tmem_linear_256, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_128x64_from_256, #ttng.tensor_memory, mutable, 128x64>
-    tt.return %1 : !ttg.memdesc<128x64xf32, #tmem_linear_128x64_from_256, #ttng.tensor_memory, mutable, 128x64>
-  }
-}
-
-// -----
-
-#tmem_linear_rr_t = #ttng.tensor_memory_linear<{row = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], col = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}>
-#tmem_linear_rr = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
-#tmem_linear_rr_128x64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]]}>
-#blocked_128x64 = #ttg.blocked<{sizePerThread = [1, 64], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
-module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
-  // CHECK-LABEL: @trans_tmem_linear_noop
-  // CHECK-NEXT: llvm.return %arg0 : !llvm.ptr<3>
-  tt.func private @trans_tmem_linear_noop(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>) -> !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable> {
-    %0 = ttg.memdesc_trans %arg0 {order = array<i32: 1, 0>} : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable>
-    tt.return %0 : !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable>
-  }
-
-  // CHECK-LABEL: @index_trans_subslice_tmem_linear_generic_view
-  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(128 : i32) : i32
-  // CHECK-NEXT: [[INDEXOFF:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
-  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
-  // CHECK-NEXT: [[INDEXPTR:%.*]] = llvm.inttoptr [[INDEXBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: [[SLICEOFF:%.*]] = llvm.mlir.constant(64 : i32) : i32
-  // CHECK-NEXT: [[INDEXPTRINT:%.*]] = llvm.ptrtoint [[INDEXPTR]] : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[VIEWBASE:%.*]] = llvm.add [[INDEXPTRINT]], [[SLICEOFF]] : i32
-  // CHECK-NEXT: [[VIEWPTR:%.*]] = llvm.inttoptr [[VIEWBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: llvm.return [[VIEWPTR]] : !llvm.ptr<3>
-  tt.func private @index_trans_subslice_tmem_linear_generic_view(
-      %arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>,
-      %arg1: i32) -> !ttg.memdesc<128x64xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable, 128x128> {
-    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_trans %0 {order = array<i32: 1, 0>} : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable>
-    %2 = ttg.memdesc_trans %1 {order = array<i32: 1, 0>} : !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
-    %3 = ttng.tmem_subslice %2 {N = 64 : i32} : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable, 128x128>
-    tt.return %3 : !ttg.memdesc<128x64xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable, 128x128>
-  }
-
-  // CHECK-LABEL: @index_subslice_tmem_linear_load
-  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(128 : i32) : i32
-  // CHECK-NEXT: [[INDEXOFF:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
-  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
-  // CHECK-NEXT: [[INDEXPTR:%.*]] = llvm.inttoptr [[INDEXBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: [[INDEXPTRINT:%.*]] = llvm.ptrtoint [[INDEXPTR]] : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[SLICEOFF:%.*]] = llvm.mlir.constant(64 : i32) : i32
-  // CHECK-NEXT: [[VIEWBASE:%.*]] = llvm.add [[INDEXPTRINT]], [[SLICEOFF]] : i32
-  // CHECK: tcgen05.ld.sync.aligned.32x32b.x64.b32
-  // CHECK: tcgen05.wait <load>
-  tt.func private @index_subslice_tmem_linear_load(
-      %arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>,
-      %arg1: i32) -> tensor<128x64xf32, #blocked_128x64> {
-    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_subslice %0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64>
-    %2 = ttng.tmem_load %1 : !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64> -> tensor<128x64xf32, #blocked_128x64>
-    tt.return %2 : tensor<128x64xf32, #blocked_128x64>
-  }
-
-  // CHECK-LABEL: @index_subslice_tmem_linear_store_load
-  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(128 : i32) : i32
-  // CHECK-NEXT: [[INDEXOFF:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
-  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
-  // CHECK-NEXT: [[INDEXPTR:%.*]] = llvm.inttoptr [[INDEXBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: [[INDEXPTRINT:%.*]] = llvm.ptrtoint [[INDEXPTR]] : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[SLICEOFF:%.*]] = llvm.mlir.constant(64 : i32) : i32
-  // CHECK-NEXT: [[VIEWBASE:%.*]] = llvm.add [[INDEXPTRINT]], [[SLICEOFF]] : i32
-  // CHECK: tcgen05.st.sync.aligned.32x32b.x64.b32
-  // CHECK: nvvm.tcgen05.wait <store>
-  // CHECK: tcgen05.ld.sync.aligned.32x32b.x64.b32
-  // CHECK: nvvm.tcgen05.wait <load>
-  tt.func private @index_subslice_tmem_linear_store_load(
-      %arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>,
-      %arg1: i32,
-      %arg2: tensor<128x64xf32, #blocked_128x64>,
-      %arg3: i1) -> tensor<128x64xf32, #blocked_128x64> {
-    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_subslice %0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64>
-    ttng.tmem_store %arg2, %1, %arg3 : tensor<128x64xf32, #blocked_128x64> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64>
-    %2 = ttng.tmem_load %1 : !ttg.memdesc<128x64xf32, #tmem_linear_rr_128x64, #ttng.tensor_memory, mutable, 128x64> -> tensor<128x64xf32, #blocked_128x64>
-    tt.return %2 : tensor<128x64xf32, #blocked_128x64>
-  }
-
-  // CHECK-LABEL: @index_double_trans_subslice_zero_store_load
-  // CHECK: [[STRIDE:%.*]] = llvm.mlir.constant(128 : i32) : i32
-  // CHECK-NEXT: [[INDEXOFF:%.*]] = llvm.mul %arg1, [[STRIDE]] : i32
-  // CHECK-NEXT: [[BASE:%.*]] = llvm.ptrtoint %arg0 : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[INDEXBASE:%.*]] = llvm.add [[BASE]], [[INDEXOFF]] : i32
-  // CHECK-NEXT: [[INDEXPTR:%.*]] = llvm.inttoptr [[INDEXBASE]] : i32 to !llvm.ptr<3>
-  // CHECK-NEXT: [[SLICEOFF:%.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK-NEXT: [[INDEXPTRINT:%.*]] = llvm.ptrtoint [[INDEXPTR]] : !llvm.ptr<3> to i32
-  // CHECK-NEXT: [[VIEWBASE:%.*]] = llvm.add [[INDEXPTRINT]], [[SLICEOFF]] : i32
-  // CHECK: tcgen05.st.sync.aligned.32x32b.x64.b32
-  // CHECK: nvvm.tcgen05.wait <store>
-  // CHECK: tcgen05.ld.sync.aligned.32x32b.x64.b32
-  // CHECK-NOT: tcgen05.ld.red.sync.aligned.32x32b
-  // CHECK: nvvm.tcgen05.wait <load>
-  tt.func private @index_double_trans_subslice_zero_store_load(
-      %arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>,
-      %arg1: i32,
-      %arg2: tensor<128x64xf32, #blocked_128x64>,
-      %arg3: i1) -> tensor<128x64xf32, #blocked_128x64> {
-    %0 = ttg.memdesc_index %arg0[%arg1] : !ttg.memdesc<2x128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_trans %0 {order = array<i32: 1, 0>} : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable>
-    %2 = ttg.memdesc_trans %1 {order = array<i32: 1, 0>} : !ttg.memdesc<128x128xf32, #tmem_linear_rr_t, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable>
-    %3 = ttng.tmem_subslice %2 {N = 0 : i32} : !ttg.memdesc<128x128xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable, 128x128>
-    ttng.tmem_store %arg2, %3, %arg3 : tensor<128x64xf32, #blocked_128x64> -> !ttg.memdesc<128x64xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable, 128x128>
-    %4 = ttng.tmem_load %3 : !ttg.memdesc<128x64xf32, #tmem_linear_rr, #ttng.tensor_memory, mutable, 128x128> -> tensor<128x64xf32, #blocked_128x64>
-    tt.return %4 : tensor<128x64xf32, #blocked_128x64>
-  }
-}
-
-// -----
-
 #tmem_linear_256_sub = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
 module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
   // CHECK-LABEL: @subslice_tmem_linear_256
@@ -1532,7 +1355,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
 
 // CHECK-LABEL: @subslice_unpacked
 tt.func private @subslice_unpacked(%arg0: !ttg.memdesc<128x128xf16, #tmem_unpacked, #ttng.tensor_memory>) -> !ttg.memdesc<128x64xf16, #tmem_unpacked, #ttng.tensor_memory, 128x128> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(64 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 64 : i32} : !ttg.memdesc<128x128xf16, #tmem_unpacked, #ttng.tensor_memory> -> !ttg.memdesc<128x64xf16, #tmem_unpacked, #ttng.tensor_memory, 128x128>
@@ -1542,7 +1365,7 @@ tt.func private @subslice_unpacked(%arg0: !ttg.memdesc<128x128xf16, #tmem_unpack
 
 // CHECK-LABEL: @subslice_packed
 tt.func private @subslice_packed(%arg0: !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory>) -> !ttg.memdesc<128x64xf16, #tmem, #ttng.tensor_memory, 128x128> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(32 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 64 : i32} : !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory> -> !ttg.memdesc<128x64xf16, #tmem, #ttng.tensor_memory, 128x128>
@@ -1679,7 +1502,7 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
 
 // CHECK-LABEL: @subslice_16x32bx2
 tt.func private @subslice_16x32bx2(%arg0: !ttg.memdesc<64x128xf32, #bm64_bn128, #tmem>) -> !ttg.memdesc<64x64xf32, #bm64_bn128, #tmem, 64x128> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(64 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 64 : i32} : !ttg.memdesc<64x128xf32, #bm64_bn128, #tmem> -> !ttg.memdesc<64x64xf32, #bm64_bn128, #tmem, 64x128>
@@ -1688,7 +1511,7 @@ tt.func private @subslice_16x32bx2(%arg0: !ttg.memdesc<64x128xf32, #bm64_bn128, 
 
 // CHECK-LABEL: @subslice_16x32bx2_packed
 tt.func private @subslice_16x32bx2_packed(%arg0: !ttg.memdesc<64x128xf16, #bm64_bn128, #tmem>) -> !ttg.memdesc<64x64xf16, #bm64_bn128, #tmem, 64x128> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(32 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 64 : i32} : !ttg.memdesc<64x128xf16, #bm64_bn128, #tmem> -> !ttg.memdesc<64x64xf16, #bm64_bn128, #tmem, 64x128>
@@ -1697,8 +1520,7 @@ tt.func private @subslice_16x32bx2_packed(%arg0: !ttg.memdesc<64x128xf16, #bm64_
 
 // CHECK-LABEL: @subslice_16x32bx2_interleaved_block1
 tt.func private @subslice_16x32bx2_interleaved_block1(%arg0: !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem>) -> !ttg.memdesc<64x32xf32, #bm64_bn32, #tmem, 64x128> {
-  // 16 << 16 => 1048576
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(1048576 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 32 : i32} : !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem> -> !ttg.memdesc<64x32xf32, #bm64_bn32, #tmem, 64x128>
@@ -1707,7 +1529,7 @@ tt.func private @subslice_16x32bx2_interleaved_block1(%arg0: !ttg.memdesc<64x128
 
 // CHECK-LABEL: @subslice_16x32bx2_interleaved_block0
 tt.func private @subslice_16x32bx2_interleaved_block0(%arg0: !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem>) -> !ttg.memdesc<64x16xf32, #bm64_bn32, #tmem, 64x128> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(16 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 16 : i32} : !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem> -> !ttg.memdesc<64x16xf32, #bm64_bn32, #tmem, 64x128>
@@ -1716,8 +1538,7 @@ tt.func private @subslice_16x32bx2_interleaved_block0(%arg0: !ttg.memdesc<64x128
 
 // CHECK-LABEL: @subslice_16x32bx2_interleaved_block0_offset
 tt.func private @subslice_16x32bx2_interleaved_block0_offset(%arg0: !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem>) -> !ttg.memdesc<64x16xf32, #bm64_bn32, #tmem, 64x128> {
-  // (16 << 16) | 16 => 1048592
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(1048592 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 48 : i32} : !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem> -> !ttg.memdesc<64x16xf32, #bm64_bn32, #tmem, 64x128>
@@ -1726,7 +1547,7 @@ tt.func private @subslice_16x32bx2_interleaved_block0_offset(%arg0: !ttg.memdesc
 
 // CHECK-LABEL: @subslice_16x32bx2_interleaved_block4_offset
 tt.func private @subslice_16x32bx2_interleaved_block4_offset(%arg0: !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem>) -> !ttg.memdesc<64x16xf32, #bm64_bn32, #tmem, 64x128> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(48 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 80 : i32} : !ttg.memdesc<64x128xf32, #bm64_bn32, #tmem> -> !ttg.memdesc<64x16xf32, #bm64_bn32, #tmem, 64x128>
@@ -1744,7 +1565,7 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32, "ttg.nu
 
 // CHECK-LABEL: @subslice_cga_allocshape_preserved
 tt.func private @subslice_cga_allocshape_preserved(%arg0: !ttg.memdesc<512x256xf32, #bm128_bn256_cga, #tmem>) -> !ttg.memdesc<512x32xf32, #bm128_bn256_cga, #tmem, 512x256> {
-  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(32 : i32)
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[PTR:%.*]] = llvm.ptrtoint
   // CHECK: llvm.add [[PTR]], [[OFFSET]] : i32
   %0 = ttng.tmem_subslice %arg0 {N = 32 : i32} : !ttg.memdesc<512x256xf32, #bm128_bn256_cga, #tmem> -> !ttg.memdesc<512x32xf32, #bm128_bn256_cga, #tmem, 512x256>

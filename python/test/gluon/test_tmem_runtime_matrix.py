@@ -2335,8 +2335,11 @@ def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, 
     assert ops == [(f"tcgen05.st.sync.aligned.{expected_st}", 0), (f"tcgen05.ld.sync.aligned.{expected_ld}", 0)]
 
     ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "tensor_memory_encoding" not in ttgir
+    if layout_kind.startswith("linear"):
+        assert "tensor_memory_linear" in ttgir
+        assert "tensor_memory_encoding" not in ttgir
+    else:
+        assert "tensor_memory_encoding" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2356,7 +2359,10 @@ def test_tmem_runtime_matrix_ldst_x1_f32_roundtrip(layout_kind, m, num_ctas, lay
         ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
     ]
     ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
+    if layout_kind.startswith("linear"):
+        assert "tensor_memory_linear" in ttgir
+    else:
+        assert "tensor_memory_encoding" in ttgir
     if num_ctas == 2:
         assert "twoCTAs = true" in ttgir
 
