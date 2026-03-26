@@ -542,3 +542,34 @@
     returns the base pointer unchanged and relies on descriptor semantics rather
     than a materialized pointer delta. Tests should check the current emitted
     LLVM, not the pre-linearization offset assumptions.
+
+- Current TMEM runtime-matrix state (2026-03-27 01:10 UTC):
+  - parser/frontend:
+    - TMEM slice semantics in Gluon now follow shared descriptors by default;
+      basic parser coverage should use explicit `dim=1` when it wants the old
+      N-slice behavior.
+    - the corresponding IR now uses generic `ttg.memdesc_subslice` in the
+      frontend test, which is expected.
+  - positive runtime coverage newly added:
+    - TMEM linear subslice-view `tcgen05.copy` now has real runtime coverage
+      for `f32`/`i32` across swizzles `32/64/128`;
+    - MMA now has a positive runtime case where the accumulator is obtained via
+      `memdesc_index` from a larger TMEM descriptor, for both legacy TMEM sugar
+      and lifted `tensor_memory_linear`.
+  - BUG bucket kept explicit in tests:
+    - there is still a coherent cluster of multidimensional TMEM descriptor
+      slice/view cases that compile but produce wrong values at runtime.
+    - these cases are intentionally tracked as `pytest.xfail` with `BUG`
+      reasons, not promoted to positive coverage and not hidden.
+    - representative bug symptoms:
+      - higher-rank TMEM slice/view chains write the wrong physical columns;
+      - direct multidimensional slice views on `mixed` TMEM layouts update the
+        wrong region;
+      - two-CTA MMAv5 higher-rank view chains still fail at inference time with
+        a CGA mismatch, which is now the expected clean diagnostic.
+  - supported boundary remains:
+    - plain ld/st, copy, MMA, scaled MMA, and many higher-rank TMEM
+      `index`/`reshape`/`transpose` compositions are runtime-covered and pass;
+    - `warpx2` copy remains clean unsupported;
+    - multidimensional TMEM slice semantics are partially implemented, but not
+      yet trustworthy enough to remove the BUG xfails.

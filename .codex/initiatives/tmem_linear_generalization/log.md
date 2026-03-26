@@ -2119,3 +2119,47 @@
     -> `4 passed`
   - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 -m pytest -n 4 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_warpx4_via_scaled_mma_geometry_sweep or ldst_x1_f32_roundtrip'`
     -> `35 passed in 7.60s`
+
+- TMEM frontend/runtime sweep refresh (2026-03-27 01:10 UTC):
+  - frontend parser alignment:
+    - updated the TMEM subslice frontend parser coverage to use explicit
+      `dim=1` for the legacy N-slice intent;
+    - current IR now prints generic `ttg.memdesc_subslice` for that case, not
+      legacy `ttng.tmem_subslice`.
+  - runtime matrix updates:
+    - fixed stale `cp` indexed-view expectations:
+      - legacy indexed view stays in `tensor_memory_encoding` sugar and lowers
+        to `tcgen05.cp.cta_group::1.128x128b`;
+      - linear lifted indexed views now expect the narrower message/counts that
+        current lowering actually emits (`128x128b` for the small case,
+        `16 * 128x256b` for the 128x128 linear case).
+    - fixed the broken linear-subslice-view copy kernel, which had been
+      xfail-ing only because `smem_layout` was undefined; expanded it into a
+      real dtype/swizzle sweep.
+    - added a positive MMA runtime case where the accumulator is a TMEM
+      `memdesc_index` view from a larger descriptor, covering both legacy TMEM
+      sugar and lifted `tensor_memory_linear`.
+  - BUG status recorded from the full GPU matrix:
+    - multidimensional TMEM slice/view cases that use generic descriptor views
+      are now often accepted by the compiler, but a large subset still writes
+      incorrect values at runtime instead of failing cleanly;
+    - these are now kept as explicit `pytest.xfail` BUG markers in
+      `python/test/gluon/test_tmem_runtime_matrix.py`, not silent failures.
+    - representative bug classes:
+      - higher-rank `memdesc_subslice` / `memdesc_index` compositions on TMEM
+        descriptors compile but update the wrong physical columns;
+      - direct multidimensional slice views on `mixed` TMEM layouts compile but
+        update the wrong region;
+      - two-CTA MMAv5 higher-rank view cases still fail, but the current clean
+        diagnostic is a CGA mismatch (`Layout has 1 CTAs per CGA, but the
+        context requires 2 CTAs per CGA.`), not the older block-basis error.
+  - Validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `PYTHONPATH=python:. python3 -m pytest -q -s --tb=short python/test/gluon/test_frontend.py::test_tmem_subslice_reg_layout_constexpr`
+      -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'block_descriptor_reports_clean_error or cp_no_scales_linear_indexed_view or cp_no_scales_indexed_view_canonicalized or cp_no_scales_linear_subslice_view or mma_indexed_acc_view'`
+      -> `13 passed in 9.25s`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'descriptor_multidim_slices_reports_clean_error or descriptor_multidim_slice_reports_clean_error or twocta_mmav5_descriptor_higher_rank_reports_clean_error'`
+      -> `13 passed, 49 xfailed in 13.14s`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+      -> `1557 passed, 117 skipped, 49 xfailed in 31.56s`
