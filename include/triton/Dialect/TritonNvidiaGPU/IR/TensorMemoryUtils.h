@@ -53,6 +53,26 @@ std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
                         std::string *error = nullptr);
 
+LogicalResult inferTMemReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+                                         Attribute srcEncoding,
+                                         ArrayRef<int64_t> dstShape,
+                                         Attribute &dstEncoding,
+                                         std::optional<Location> loc = {});
+
+LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
+                                       ArrayRef<int64_t> dstShape,
+                                       ArrayRef<int64_t> dstAllocShape,
+                                       Attribute srcEncoding,
+                                       Attribute &dstEncoding,
+                                       std::optional<Location> loc = {});
+
+LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                          Attribute srcEncoding,
+                                          ArrayRef<int64_t> dstShape,
+                                          ArrayRef<int32_t> offsets,
+                                          Attribute &dstEncoding,
+                                          std::optional<Location> loc = {});
+
 FailureOr<TensorMemoryLinearEncodingAttr>
 inferTMemIndexEncoding(gpu::MemDescType srcTy, gpu::MemDescType dstTy);
 

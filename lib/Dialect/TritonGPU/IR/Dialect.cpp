@@ -13,6 +13,7 @@
 #include "triton/Dialect/Triton/IR/Interfaces.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
+#include "triton/Dialect/TritonGPU/IR/LinearLayoutAsm.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
@@ -377,30 +378,6 @@ unsigned getNumCTAs(Attribute layout) {
   return product<unsigned>(getCTAsPerCGA(layout));
 }
 
-SmallVector<unsigned> orderPerDimImpl(const LinearLayout &ll,
-                                      StringAttr dimName,
-                                      ArrayRef<unsigned> defaultOrder) {
-  assert(ll.getBases().contains(dimName));
-  const auto &bases = ll.getBases().find(dimName)->second;
-  llvm::SetVector<unsigned> order;
-  auto nonZero = [](auto val) { return val != 0; };
-  for (const auto &basis : bases) {
-    // Bases can have one or zero non-zero elements
-    // Skip a basis if it's broadcasting (all zeros)
-    // e.g. warps for DotOperandEncodingAttr (see ampereDotToLinearLayout)
-    auto it = std::find_if(basis.begin(), basis.end(), nonZero);
-    if (it != basis.end()) {
-      auto i = it - basis.begin();
-      order.insert(i);
-    }
-  }
-  // If any dim is missing, we add them in the defaultOrder
-  for (auto i : defaultOrder) {
-    order.insert(i);
-  }
-  return order.takeVector();
-}
-
 bool isExpensiveCat(CatOp cat, Attribute targetEncoding) {
   // If the new elements per thread is less than the old one, we will need to
   // do convert encoding that goes through shared memory anyway. So we
@@ -493,14 +470,15 @@ SmallVector<unsigned> CGAEncodingAttr::getCTAsPerCGA() const {
   const auto &ll = getLinearLayout();
   auto rank = ll.getNumOutDims();
   auto kBlock = StringAttr::get(getContext(), "block");
-  return basesPerDimImpl(ll.getBases(), kBlock, rank, /*skipBroadcast=*/false);
+  return ::mlir::triton::basesPerDimImpl(ll.getBases(), kBlock, rank,
+                                         /*skipBroadcast=*/false);
 }
 
 SmallVector<unsigned> CGAEncodingAttr::getCTASplitNum() const {
   const auto &ll = getLinearLayout();
   auto rank = ll.getNumOutDims();
   auto kBlock = StringAttr::get(getContext(), "block");
-  return basesPerDimImpl(ll.getBases(), kBlock, rank);
+  return ::mlir::triton::basesPerDimImpl(ll.getBases(), kBlock, rank);
 }
 
 SmallVector<unsigned> CGAEncodingAttr::getCTAOrder() const {
@@ -508,7 +486,8 @@ SmallVector<unsigned> CGAEncodingAttr::getCTAOrder() const {
   SmallVector<unsigned> defaultOrder(rank);
   std::iota(defaultOrder.begin(), defaultOrder.end(), 0);
   auto kBlock = StringAttr::get(getContext(), "block");
-  return orderPerDimImpl(getLinearLayout(), kBlock, defaultOrder);
+  return ::mlir::triton::orderPerDimImpl(getLinearLayout(), kBlock,
+                                         defaultOrder);
 }
 
 LogicalResult BlockedEncodingAttr::verify(
@@ -677,122 +656,6 @@ static LogicalResult parseBool(AsmParser &parser, const NamedAttribute &attr,
                                bool &value, StringRef desc) {
   return parseBoolAttrValue(parser, attr.getValue(), value, desc);
 };
-
-std::optional<LinearLayout> mlir::triton::gpu::parseLinearLayout(
-    const DictionaryAttr &dict, AsmParser &parser,
-    ArrayRef<std::string> inDimNames, int serializedRank) {
-  LinearLayout::BasesT bases;
-
-  // Parse the basis names in order (the order is relevant)
-  for (const auto &inDimNameStr : inDimNames) {
-    auto inDimName = StringAttr::get(parser.getContext(), inDimNameStr);
-    Attribute value = dict.get(inDimName);
-    if (!value) {
-      parser.emitError(parser.getCurrentLocation(), "Expected basis of '")
-          << inDimName.getValue() << "' not found";
-      return {};
-    }
-    // Expecting an array of arrays
-    auto arrayOfArraysAttr = mlir::dyn_cast<ArrayAttr>(value);
-    if (!arrayOfArraysAttr) {
-      parser.emitError(parser.getCurrentLocation(),
-                       "Expected array of arrays for basis of '")
-          << inDimName.getValue() << "'";
-      return {};
-    }
-
-    std::vector<std::vector<int32_t>> inDimBases;
-    for (Attribute arrayAttr : arrayOfArraysAttr) {
-      auto intArrayAttr = mlir::dyn_cast<ArrayAttr>(arrayAttr);
-      if (!intArrayAttr) {
-        parser.emitError(parser.getCurrentLocation(),
-                         "Expected array of integers in basis for '")
-            << inDimName.getValue() << "'";
-        return {};
-      }
-      std::vector<int32_t> basis;
-      for (Attribute intAttr : intArrayAttr) {
-        auto intValueAttr = mlir::dyn_cast<IntegerAttr>(intAttr);
-        if (!intValueAttr) {
-          parser.emitError(parser.getCurrentLocation(),
-                           "Expected integer in basis for '")
-              << inDimName.getValue() << "'";
-          return {};
-        }
-        basis.push_back(intValueAttr.getInt());
-      }
-      inDimBases.push_back(std::move(basis));
-    }
-    bases[inDimName] = std::move(inDimBases);
-  }
-  size_t rank = 0;
-  for (const auto &basesDim : llvm::make_second_range(bases)) {
-    if (!basesDim.empty()) {
-      rank = basesDim[0].size();
-      break;
-    }
-  }
-
-  if (rank == 0 && serializedRank == 0) {
-    parser.emitError(parser.getCurrentLocation(), "Empty Layout not supported");
-    return {};
-  }
-
-  if (rank == 0) {
-    rank = serializedRank;
-  } else if (serializedRank != 0 && serializedRank != rank) {
-    parser.emitError(parser.getCurrentLocation(),
-                     "Serialized rank and rank deduced from LL need to match");
-    return {};
-  }
-
-  // Generate standared outDimNames (dim0, dim1, ...)
-  SmallVector<StringAttr> outDimNames;
-  for (int i = 0; i < rank; ++i) {
-    outDimNames.push_back(
-        StringAttr::get(parser.getContext(), "dim" + llvm::Twine(i)));
-  }
-
-  std::string error;
-  auto layout = LinearLayout::tryCreate(std::move(bases), outDimNames,
-                                        /*requireSurjective=*/true, &error);
-  if (!layout) {
-    parser.emitError(parser.getCurrentLocation()) << error;
-    return {};
-  }
-  return layout;
-}
-
-// We don't use the default implementation as it's a bit too verbose
-// This prints in the following format that is shape agnostic, in the sense
-// that we don't print explicitly the outShape of the LL
-// We always assume LLs to be surjective
-// <{register = [[0, 1], [8, 0], [0, 8], [64, 0]],
-//   lane = [[0, 2], [0, 4], [1, 0], [2, 0], [4, 0]],
-//   warp = [[16, 0], [32, 0]],
-//   block = []}>
-void mlir::triton::gpu::printLinearLayout(AsmPrinter &printer,
-                                          const LinearLayout &ll,
-                                          bool skipEmptyBases) {
-  auto bases = ll.getBases();
-  if (skipEmptyBases) {
-    decltype(bases) filtered;
-    for (auto &kv : bases)
-      if (!kv.second.empty())
-        filtered.insert(kv);
-    bases = std::move(filtered);
-  }
-
-  // Printing code unchanged (just prints `bases` instead of `ll.getBases()`).
-  printer << join(bases, ", ", [](const auto &base) {
-    return base.first.str() + " = " + "[" +
-           join(base.second, ", ",
-                [](const std::vector<int32_t> &vec) {
-                  return "[" + join(vec, ", ") + "]";
-                }) +
-           "]";
-  });
-}
 
 void mlir::triton::gpu::printCGAAttr(mlir::AsmPrinter &printer,
                                      CGAEncodingAttr layout) {
@@ -1029,7 +892,7 @@ Attribute LinearEncodingAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseGreater().failed())
     return {};
 
-  std::vector<std::string> inDimNames = {"register", "lane", "warp", "block"};
+  SmallVector<StringRef> inDimNames = {"register", "lane", "warp", "block"};
   auto maybeLL = parseLinearLayout(dict, parser, inDimNames);
   if (!maybeLL.has_value())
     return {};
@@ -1039,44 +902,12 @@ Attribute LinearEncodingAttr::parse(AsmParser &parser, Type type) {
                                                std::move(*maybeLL));
 }
 
-SmallVector<unsigned> mlir::triton::gpu::basesPerDimImpl(
-    const LinearLayout::BasesT &namedBases, StringAttr dimName, size_t rank,
-    bool skipBroadcast) {
-  auto dimIt = namedBases.find(dimName);
-  if (dimIt == namedBases.end()) {
-    return SmallVector<unsigned>(rank, 1);
-  }
-  const auto &bases = dimIt->second;
-
-  if (bases.empty()) {
-    return SmallVector<unsigned>(rank, 1);
-  }
-
-  SmallVector<unsigned> ret(rank, 1);
-  auto nonZero = [](auto val) { return val != 0; };
-  int nonZeroIdx = 0;
-  for (const auto &basis : bases) {
-    auto it = std::find_if(basis.begin(), basis.end(), nonZero);
-    // Bases can have one or zero non-zero elements
-    // Skip a basis if it's broadcasting (all zeros)
-    // e.g. warps for DotOperandEncodingAttr (see ampereDotToLinearLayout)
-    if (it != basis.end()) {
-      nonZeroIdx = it - basis.begin();
-      ret[nonZeroIdx] *= 2;
-    } else if (!skipBroadcast) {
-      // If we've seen a non-zero basis, we double the size of the previous dim
-      // This is just needed to count the CTAsPerCGA
-      ret[nonZeroIdx] *= 2;
-    }
-  }
-  return ret;
-}
-
 SmallVector<unsigned>
 LinearEncodingAttr::basesPerDim(StringAttr dimName, bool skipBroadcast) const {
   const auto &ll = getLinearLayout();
   auto rank = ll.getNumOutDims();
-  return basesPerDimImpl(ll.getBases(), dimName, rank, skipBroadcast);
+  return ::mlir::triton::basesPerDimImpl(ll.getBases(), dimName, rank,
+                                         skipBroadcast);
 }
 
 CGAEncodingAttr linearToCGAEncodingAttr(const LinearLayout &ll,
@@ -1102,7 +933,8 @@ CGAEncodingAttr linearToCGAEncodingAttr(const LinearLayout &ll,
 SmallVector<unsigned>
 LinearEncodingAttr::orderPerDim(StringAttr dimName,
                                 ArrayRef<unsigned> defaultOrder) const {
-  return orderPerDimImpl(getLinearLayout(), dimName, defaultOrder);
+  return ::mlir::triton::orderPerDimImpl(getLinearLayout(), dimName,
+                                         defaultOrder);
 }
 
 // [Note. Divergence of methods wrt. legacy layouts]
@@ -1172,7 +1004,7 @@ SmallVector<unsigned> LinearEncodingAttr::getSizePerThread() const {
     ctaShape[dim] /= 2;
     registers.pop_back();
   }
-  return basesPerDimImpl(bases, kRegister, rank);
+  return ::mlir::triton::basesPerDimImpl(bases, kRegister, rank);
 }
 
 SmallVector<unsigned> LinearEncodingAttr::getOrder() const {
@@ -1818,7 +1650,7 @@ Attribute SharedLinearEncodingAttr::parse(AsmParser &parser, Type type) {
   if (parser.parseGreater().failed())
     return {};
 
-  std::vector<std::string> inDimNames = {"offset", "block"};
+  SmallVector<StringRef> inDimNames = {"offset", "block"};
   auto maybeLL = parseLinearLayout(layoutDict, parser, inDimNames);
   if (!maybeLL.has_value())
     return {};
@@ -1846,13 +1678,15 @@ SharedLinearEncodingAttr::basesPerDim(StringAttr dimName,
                                       bool skipBroadcast) const {
   const auto &ll = getLinearLayout();
   auto rank = ll.getNumOutDims();
-  return basesPerDimImpl(ll.getBases(), dimName, rank, skipBroadcast);
+  return ::mlir::triton::basesPerDimImpl(ll.getBases(), dimName, rank,
+                                         skipBroadcast);
 }
 
 SmallVector<unsigned>
 SharedLinearEncodingAttr::orderPerDim(StringAttr dimName,
                                       ArrayRef<unsigned> defaultOrder) const {
-  return orderPerDimImpl(getLinearLayout(), dimName, defaultOrder);
+  return ::mlir::triton::orderPerDimImpl(getLinearLayout(), dimName,
+                                         defaultOrder);
 }
 
 SmallVector<unsigned> SharedLinearEncodingAttr::getOrder() const {
@@ -2006,10 +1840,10 @@ Attribute PaddedSharedEncodingAttr::parse(AsmParser &parser, Type type) {
   std::optional<LinearLayout> maybeLL;
   // Assume it's the first variant if offset or block is defined
   if (attrList.contains("offset") || attrList.contains("block")) {
-    std::vector<std::string> inDimNames = {"offset", "block"};
+    SmallVector<StringRef> inDimNames = {"offset", "block"};
     // Error out on additional attribute names
     for (const NamedAttribute &attr : attrList) {
-      if (!llvm::is_contained(inDimNames, attr.getName())) {
+      if (!llvm::is_contained(inDimNames, attr.getName().getValue())) {
         parser.emitError(parser.getCurrentLocation(), "Unexpected attribute ")
             << attr.getName() << " found";
       }
@@ -2209,7 +2043,8 @@ PaddedSharedEncodingAttr::basesPerDim(StringAttr dimName,
                                       bool skipBroadcast) const {
   const auto &ll = getLinearComponent();
   auto rank = ll.getNumOutDims();
-  return basesPerDimImpl(ll.getBases(), dimName, rank, skipBroadcast);
+  return ::mlir::triton::basesPerDimImpl(ll.getBases(), dimName, rank,
+                                         skipBroadcast);
 }
 
 int64_t PaddedSharedEncodingAttr::getPaddedSize(ArrayRef<int64_t> shape) const {
@@ -2229,7 +2064,8 @@ int64_t PaddedSharedEncodingAttr::getPaddedSize(ArrayRef<int64_t> shape) const {
 SmallVector<unsigned>
 PaddedSharedEncodingAttr::orderPerDim(StringAttr dimName,
                                       ArrayRef<unsigned> defaultOrder) const {
-  return orderPerDimImpl(getLinearComponent(), dimName, defaultOrder);
+  return ::mlir::triton::orderPerDimImpl(getLinearComponent(), dimName,
+                                         defaultOrder);
 }
 
 SmallVector<unsigned> PaddedSharedEncodingAttr::getOrder() const {

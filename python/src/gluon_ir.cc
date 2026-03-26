@@ -2,10 +2,7 @@
 #include "pybind11/pybind11.h"
 #include <pybind11/stl.h>
 
-#include <functional>
-#include <numeric>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -37,25 +34,6 @@ namespace ttg = triton::gpu;
 namespace ttng = triton::nvidia_gpu;
 namespace gluon = mlir::triton::gluon;
 namespace ttag = mlir::triton::amdgpu;
-
-static std::string stringifyType(Type ty) {
-  std::string result;
-  llvm::raw_string_ostream os(result);
-  os << ty;
-  return result;
-}
-
-template <typename T> static std::string stringifySequence(ArrayRef<T> values) {
-  std::ostringstream os;
-  os << "[";
-  for (size_t i = 0; i < values.size(); ++i) {
-    if (i)
-      os << ", ";
-    os << values[i];
-  }
-  os << "]";
-  return os.str();
-}
 
 static ttg::CGAEncodingAttr
 buildCgaLayoutAttr(MLIRContext *ctx,
@@ -144,6 +122,28 @@ struct GluonOpBuilder : public TritonOpBuilder {
     return AttrOrType::get(std::forward<ArgTs>(args)...);
   }
 };
+
+template <typename CreateFn>
+static auto createCheckedOrThrow(GluonOpBuilder &builder,
+                                 llvm::StringRef message,
+                                 CreateFn &&createFn) {
+  std::string diagStr;
+  llvm::raw_string_ostream diagOs(diagStr);
+  ScopedDiagnosticHandler handler(
+      builder.getContext(),
+      [&](Diagnostic &diag) { printDiagStr(diagOs, diag); });
+
+  auto result = createFn();
+  if (failed(result)) {
+    if (diagStr.empty())
+      throw py::value_error(message.str().c_str());
+    std::string error = message.str();
+    error += "\n";
+    error += diagOs.str();
+    throw py::value_error(error.c_str());
+  }
+  return *result;
+}
 
 struct GluonLayouts {
   py::handle AutoLayout;
@@ -592,7 +592,6 @@ void init_gluon_ir(py::module &&m) {
               unsigned colStride, std::vector<std::vector<int32_t>> &cgaBases,
               bool twoCTAs) -> Attribute {
              auto ctx = self.getContext();
-             check(block.size() == 2, "expected a 2D block");
              auto cgaLayout = buildCgaLayoutAttr(ctx, cgaBases, /*rank=*/2);
              return self.getChecked<ttng::TensorMemoryEncodingAttr>(
                  ctx, block[0], block[1], colStride, cgaLayout, twoCTAs);
@@ -603,27 +602,6 @@ void init_gluon_ir(py::module &&m) {
               std::vector<std::vector<int32_t>> &blockBases,
               std::vector<int64_t> &shape, bool twoCTAs) -> Attribute {
              auto ctx = self.getContext();
-             auto validateBases = [&](llvm::StringRef inDimName,
-                                      const std::vector<std::vector<int32_t>> &bases) {
-               for (const auto &basis : bases) {
-                 check(basis.size() == shape.size(),
-                       "basis rank must match the tensor-memory layout rank");
-                 for (const auto &[idx, value] : llvm::enumerate(basis)) {
-                   if (value < 0 || static_cast<int64_t>(value) >= shape[idx]) {
-                     throw py::value_error(
-                         ("Invalid basis " + std::to_string(value) +
-                          " for in-dim '" + inDimName.str() +
-                          "' and out-dim 'dim" + std::to_string(idx) +
-                          "'. Basis must be non-negative and less than the "
-                          "out-dim size.")
-                             .c_str());
-                   }
-                 }
-               }
-             };
-             validateBases("row", rowBases);
-             validateBases("col", colBases);
-             validateBases("block", blockBases);
              auto kRow = mlir::StringAttr::get(ctx, "row");
              auto kCol = mlir::StringAttr::get(ctx, "col");
              auto kBlock = mlir::StringAttr::get(ctx, "block");
@@ -798,15 +776,13 @@ void init_gluon_ir(py::module &&m) {
            })
       .def("create_memdesc_index",
            [](GluonOpBuilder &self, Value src, Value index) -> Value {
-             auto srcTy = cast<ttg::MemDescType>(src.getType());
-             ttg::MemDescType resultTy;
-             if (failed(ttg::MemDescIndexOp::inferReturnType(
-                     self.getContext(), self.getLastLoc(), srcTy, resultTy))) {
-               throw py::value_error(
-                   "failed to infer memdesc_index result type\nsource type: " +
-                   stringifyType(srcTy));
-             }
-             return self.create<ttg::MemDescIndexOp>(resultTy, src, index);
+             auto op = createCheckedOrThrow(
+                 self, "failed to infer memdesc_index result type",
+                 [&] {
+                   return ttg::MemDescIndexOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src, index);
+                 });
+             return op.getResult();
            })
       .def("create_memdesc_subslice",
            [](GluonOpBuilder &self, Type resultType, Value src,
@@ -817,39 +793,37 @@ void init_gluon_ir(py::module &&m) {
       .def("create_memdesc_subslice",
            [](GluonOpBuilder &self, Value src, std::vector<int64_t> &shape,
               std::vector<int32_t> &offsets) -> Value {
-             auto srcTy = cast<ttg::MemDescType>(src.getType());
-             ttg::MemDescType resultTy;
-             if (failed(ttg::MemDescSubsliceOp::inferReturnType(
-                     self.getContext(), self.getLastLoc(), srcTy, shape,
-                     offsets, resultTy))) {
-               throw py::value_error(
-                   "failed to infer memdesc_subslice result type\nsource type: " +
-                   stringifyType(srcTy) + "\nresult shape: " +
-                   stringifySequence<int64_t>(shape) + "\noffsets: " +
-                   stringifySequence<int32_t>(offsets));
-             }
-             return self.create<ttg::MemDescSubsliceOp>(resultTy, src, offsets);
+             auto op = createCheckedOrThrow(
+                 self, "failed to infer memdesc_subslice result type",
+                 [&] {
+                   return ttg::MemDescSubsliceOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src, shape,
+                       offsets);
+                 });
+             return op.getResult();
            })
       .def("create_memdesc_trans",
            [](GluonOpBuilder &self, Value src,
               std::vector<int> &order) -> Value {
-             return self.create<ttg::MemDescTransOp>(src, order);
+             SmallVector<int32_t> orderAttr(order.begin(), order.end());
+             auto op = createCheckedOrThrow(
+                 self, "failed to infer memdesc_trans result type",
+                 [&] {
+                   return ttg::MemDescTransOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src, orderAttr);
+                 });
+             return op.getResult();
            })
       .def("create_memdesc_reshape",
            [](GluonOpBuilder &self, Value src,
               std::vector<int64_t> &shape) -> Value {
-             auto srcTy = cast<ttg::MemDescType>(src.getType());
-             ttg::MemDescType resultTy;
-             if (failed(ttg::MemDescReshapeOp::inferReturnType(
-                     self.getContext(), self.getLastLoc(), srcTy, shape,
-                     resultTy))) {
-               throw py::value_error(
-                   "failed to infer TMEM memdesc reshape result type\nsource "
-                   "type: " +
-                   stringifyType(srcTy) + "\nresult shape: " +
-                   stringifySequence<int64_t>(shape));
-             }
-             return self.create<ttg::MemDescReshapeOp>(resultTy, src);
+             auto op = createCheckedOrThrow(
+                 self, "failed to infer memdesc_reshape result type",
+                 [&] {
+                   return ttg::MemDescReshapeOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src, shape);
+                 });
+             return op.getResult();
            })
       .def("create_memdesc_reinterpret",
            [](GluonOpBuilder &self, Type resultType, Value src) -> Value {

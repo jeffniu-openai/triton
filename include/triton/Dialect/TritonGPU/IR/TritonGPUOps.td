@@ -234,6 +234,9 @@ def TTG_MemDescIndexOp : TTG_Op<"memdesc_index", [Pure,
   let arguments = (ins TTG_MemDescType:$src, I32:$index);
 
   let extraClassDeclaration = [{
+      static FailureOr<MemDescIndexOp>
+      createChecked(OpBuilder &builder, Location loc, Value src, Value index);
+
       static LogicalResult inferReturnType(MLIRContext *context,
                                            std::optional<Location> loc,
                                            MemDescType srcTy,
@@ -280,6 +283,10 @@ def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure,
               }]>
   ];
   let extraClassDeclaration = [{
+      static FailureOr<MemDescSubsliceOp>
+      createChecked(OpBuilder &builder, Location loc, Value src,
+                    ArrayRef<int64_t> shape, ArrayRef<int32_t> offsets);
+
       static LogicalResult inferReturnType(MLIRContext *context,
                                            std::optional<Location> loc,
                                            MemDescType srcTy,
@@ -320,6 +327,12 @@ def TTG_MemDescTransOp : TTG_Op<"memdesc_trans", [Pure,
 
   let results = (outs TTG_MemDescType:$result);
 
+  let extraClassDeclaration = [{
+      static FailureOr<MemDescTransOp>
+      createChecked(OpBuilder &builder, Location loc, Value src,
+                    ArrayRef<int32_t> order);
+  }];
+
   let assemblyFormat = "$src attr-dict `:` qualified(type($src)) `->` qualified(type($result))";
 
   let hasFolder = 1;
@@ -350,6 +363,10 @@ def TTG_MemDescReshapeOp : TTG_Op<"memdesc_reshape", [Pure,
               }]>
   ];
   let extraClassDeclaration = [{
+      static FailureOr<MemDescReshapeOp>
+      createChecked(OpBuilder &builder, Location loc, Value src,
+                    ArrayRef<int64_t> shape);
+
       static LogicalResult inferReturnType(MLIRContext *context,
                                            std::optional<Location> loc,
                                            MemDescType srcTy,

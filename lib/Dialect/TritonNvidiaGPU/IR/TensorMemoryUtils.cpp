@@ -274,6 +274,89 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
   return tryMakeTensorMemoryLinearEncoding(ctx, ll, /*twoCTAs=*/false, error);
 }
 
+LogicalResult inferTMemReshapeOpEncoding(ArrayRef<int64_t> srcShape,
+                                         Attribute srcEncoding,
+                                         ArrayRef<int64_t> dstShape,
+                                         Attribute &dstEncoding,
+                                         std::optional<Location> loc) {
+  if (product(srcShape) != product(dstShape)) {
+    return emitOptionalError(loc, "numel of dst shape does not match numel of "
+                                  "src shape");
+  }
+
+  auto *ctx = srcEncoding.getContext();
+  auto elemTy = IntegerType::get(ctx, 8);
+  auto memTy = gpu::MemDescType::get(srcShape, elemTy, srcEncoding,
+                                     TensorMemorySpaceAttr::get(ctx),
+                                     /*mutableMemory=*/false, srcShape);
+
+  std::string error;
+  auto resultTy = inferTMemReshapeOpType(memTy, dstShape, &error);
+  if (succeeded(resultTy)) {
+    dstEncoding = resultTy->getEncoding();
+  } else {
+    // Some TMEM descriptor views are valid pointer transformations but are not
+    // representable as standalone TMEM-linear layouts. Preserve the source
+    // encoding sugar and let later TMEM consumers decide whether direct
+    // codegen is possible.
+    dstEncoding = srcEncoding;
+  }
+  return success();
+}
+
+LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
+                                       ArrayRef<int64_t> dstShape,
+                                       ArrayRef<int64_t> dstAllocShape,
+                                       Attribute srcEncoding,
+                                       Attribute &dstEncoding,
+                                       std::optional<Location> loc) {
+  auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
+  auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
+  if (extraRank > 0) {
+    dstEncoding = srcEncoding;
+    return success();
+  }
+
+  std::string error;
+  auto result =
+      inferTMemIndexEncoding(srcShape, dstShape, dstAllocShape, srcEncoding,
+                             &error);
+  if (succeeded(result)) {
+    dstEncoding = *result;
+    return success();
+  }
+  dstEncoding = srcEncoding;
+  return success();
+}
+
+LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                          Attribute srcEncoding,
+                                          ArrayRef<int64_t> dstShape,
+                                          ArrayRef<int32_t> offsets,
+                                          Attribute &dstEncoding,
+                                          std::optional<Location> loc) {
+  auto layoutRank = cast<LayoutEncodingTrait>(srcEncoding).getRank();
+  auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
+  if (extraRank > 0 &&
+      srcShape.drop_front(extraRank) == dstShape.drop_front(extraRank) &&
+      llvm::all_of(offsets.drop_front(extraRank),
+                   [](int32_t offset) { return offset == 0; })) {
+    dstEncoding = srcEncoding;
+    return success();
+  }
+
+  std::string error;
+  auto result =
+      inferTMemSubsliceEncoding(srcShape, srcEncoding, dstShape, offsets,
+                                &error);
+  if (succeeded(result)) {
+    dstEncoding = *result;
+    return success();
+  }
+  dstEncoding = srcEncoding;
+  return success();
+}
+
 FailureOr<TensorMemoryLinearEncodingAttr>
 inferTMemSubsliceEncoding(gpu::MemDescType srcTy, gpu::MemDescType dstTy,
                           ArrayRef<int64_t> offsets) {

@@ -93,13 +93,22 @@ SmallVector<StringAttr> standardOutDimNames(MLIRContext *ctx, int rank);
 // Return a vector of the standard out dimension name/value pairs, i.e.
 // ("dim0", dstShape[0]), ("dim1", dstShape[1]), etc.
 SmallVector<std::pair<StringAttr, int32_t>>
-standardOutDimPairs(MLIRContext *ctx, ArrayRef<int64_t> dstShape);
+standardOutDimPairs(MLIRContext *ctx, ArrayRef<int64_t> dstShape,
+                    unsigned startIdx = 0);
 
 // Return an identity mapping from `inDimName` to the standard out dimensions,
 // with the dimensions sized according to the shape. The bases are sorted
 // according to `order`, with the most minor dimension first.
 LinearLayout identityStandardND(StringAttr inDimName, ArrayRef<unsigned> shape,
                                 ArrayRef<unsigned> order);
+
+SmallVector<unsigned> basesPerDimImpl(const LinearLayout::BasesT &namedBases,
+                                      StringAttr dimName, size_t rank,
+                                      bool skipBroadcast = true);
+
+SmallVector<unsigned> orderPerDimImpl(const LinearLayout &ll,
+                                      StringAttr dimName,
+                                      ArrayRef<unsigned> defaultOrder);
 
 // Return a layout with the same in/out dimensions as `layout` but with all
 // bases set to 0.

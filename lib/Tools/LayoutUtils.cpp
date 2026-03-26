@@ -1,6 +1,10 @@
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/GenericSwizzling.h"
 
+#include "llvm/ADT/SetVector.h"
+
+#include <algorithm>
+
 namespace mlir::triton {
 
 static bool checkSquareSublayout(const LinearLayout &ll,
@@ -134,12 +138,14 @@ SmallVector<StringAttr> standardOutDimNames(MLIRContext *ctx, int rank) {
 // Returns [("dim0", dstShape[0]), ("dim1", dstShape[1]), ...,
 // ("dim<rank-1>", dstShape[rank-1])].
 SmallVector<std::pair<StringAttr, int32_t>>
-standardOutDimPairs(MLIRContext *ctx, ArrayRef<int64_t> dstShape) {
-  auto newRank = dstShape.size();
+standardOutDimPairs(MLIRContext *ctx, ArrayRef<int64_t> dstShape,
+                    unsigned startIdx) {
   SmallVector<std::pair<StringAttr, int32_t>> newOutDims;
-  for (auto [dim, size] :
-       llvm::zip(standardOutDimNames(ctx, newRank), dstShape)) {
-    newOutDims.emplace_back(dim, size);
+  newOutDims.reserve(dstShape.size());
+  for (auto [idx, size] : llvm::enumerate(dstShape)) {
+    newOutDims.emplace_back(
+        StringAttr::get(ctx, "dim" + llvm::Twine(idx + startIdx)),
+        static_cast<int32_t>(size));
   }
   return newOutDims;
 }
@@ -561,6 +567,63 @@ LinearLayout removeStandardDim(const LinearLayout &layout, int dim) {
     dimSizes[i].first = newDim;
   }
   return LinearLayout(newLayout.getBases(), dimSizes, /*isSurjective*/ false);
+}
+
+SmallVector<unsigned> basesPerDimImpl(const LinearLayout::BasesT &namedBases,
+                                      StringAttr dimName, size_t rank,
+                                      bool skipBroadcast) {
+  auto dimIt = namedBases.find(dimName);
+  if (dimIt == namedBases.end()) {
+    return SmallVector<unsigned>(rank, 1);
+  }
+  const auto &bases = dimIt->second;
+
+  if (bases.empty()) {
+    return SmallVector<unsigned>(rank, 1);
+  }
+
+  SmallVector<unsigned> ret(rank, 1);
+  auto nonZero = [](auto val) { return val != 0; };
+  int nonZeroIdx = 0;
+  for (const auto &basis : bases) {
+    auto it = std::find_if(basis.begin(), basis.end(), nonZero);
+    // Bases can have one or zero non-zero elements
+    // Skip a basis if it's broadcasting (all zeros)
+    // e.g. warps for DotOperandEncodingAttr (see ampereDotToLinearLayout)
+    if (it != basis.end()) {
+      nonZeroIdx = it - basis.begin();
+      ret[nonZeroIdx] *= 2;
+    } else if (!skipBroadcast) {
+      // If we've seen a non-zero basis, we double the size of the previous dim
+      // This is just needed to count the CTAsPerCGA
+      ret[nonZeroIdx] *= 2;
+    }
+  }
+  return ret;
+}
+
+SmallVector<unsigned> orderPerDimImpl(const LinearLayout &ll,
+                                      StringAttr dimName,
+                                      ArrayRef<unsigned> defaultOrder) {
+  assert(ll.getBases().contains(dimName));
+  const auto &bases = ll.getBases().find(dimName)->second;
+  llvm::SetVector<unsigned> order;
+  auto nonZero = [](auto val) { return val != 0; };
+  for (const auto &basis : bases) {
+    // Bases can have one or zero non-zero elements
+    // Skip a basis if it's broadcasting (all zeros)
+    // e.g. warps for DotOperandEncodingAttr (see ampereDotToLinearLayout)
+    auto it = std::find_if(basis.begin(), basis.end(), nonZero);
+    if (it != basis.end()) {
+      auto i = it - basis.begin();
+      order.insert(i);
+    }
+  }
+  // If any dim is missing, we add them in the defaultOrder
+  for (auto i : defaultOrder) {
+    order.insert(i);
+  }
+  return order.takeVector();
 }
 
 } // namespace mlir::triton

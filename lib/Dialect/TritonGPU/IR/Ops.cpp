@@ -551,6 +551,23 @@ MemDescTransOp::inferReturnTypes(MLIRContext *context,
   return success();
 }
 
+FailureOr<MemDescTransOp>
+MemDescTransOp::createChecked(OpBuilder &builder, Location loc, Value src,
+                              ArrayRef<int32_t> order) {
+  Properties properties;
+  properties.order = DenseI32ArrayAttr::get(builder.getContext(), order);
+  OpaqueProperties opaqueProperties = &properties;
+  SmallVector<Type> inferredReturnTypes;
+  if (failed(MemDescTransOp::inferReturnTypes(
+          builder.getContext(), loc, ValueRange{src}, DictionaryAttr(),
+          opaqueProperties, RegionRange{}, inferredReturnTypes))) {
+    return failure();
+  }
+  assert(inferredReturnTypes.size() == 1 && "expected one result type");
+  return MemDescTransOp::create(builder, loc, inferredReturnTypes.front(), src,
+                                properties.order);
+}
+
 // MemDescReshapeOp
 LogicalResult MemDescReshapeOp::verify() {
   MemDescType dstType = getResult().getType();
@@ -614,6 +631,18 @@ LogicalResult MemDescReshapeOp::inferReturnType(
       dstShape, srcTy.getElementType(), dstEncoding, srcTy.getMemorySpace(),
       srcTy.getMutableMemory(), dstAllocShape);
   return success();
+}
+
+FailureOr<MemDescReshapeOp>
+MemDescReshapeOp::createChecked(OpBuilder &builder, Location loc, Value src,
+                                ArrayRef<int64_t> shape) {
+  MemDescType inferredReturnType;
+  if (failed(inferReturnType(builder.getContext(), loc,
+                             cast<MemDescType>(src.getType()), shape,
+                             inferredReturnType))) {
+    return failure();
+  }
+  return MemDescReshapeOp::create(builder, loc, inferredReturnType, src);
 }
 
 OpFoldResult MemDescReinterpretOp::fold(FoldAdaptor adaptor) {
@@ -884,6 +913,18 @@ LogicalResult MemDescIndexOp::inferReturnType(
   return success();
 }
 
+FailureOr<MemDescIndexOp>
+MemDescIndexOp::createChecked(OpBuilder &builder, Location loc, Value src,
+                              Value index) {
+  MemDescType inferredReturnType;
+  if (failed(inferReturnType(builder.getContext(), loc,
+                             cast<MemDescType>(src.getType()),
+                             inferredReturnType))) {
+    return failure();
+  }
+  return MemDescIndexOp::create(builder, loc, inferredReturnType, src, index);
+}
+
 LogicalResult
 MemDescIndexOp::inferReturnTypes(MLIRContext *context,
                                  std::optional<Location> loc,
@@ -968,6 +1009,20 @@ LogicalResult MemDescSubsliceOp::inferReturnType(
       dstShape, srcTy.getElementType(), dstEncoding, srcTy.getMemorySpace(),
       srcTy.getMutableMemory(), srcTy.getAllocShape());
   return success();
+}
+
+FailureOr<MemDescSubsliceOp>
+MemDescSubsliceOp::createChecked(OpBuilder &builder, Location loc, Value src,
+                                 ArrayRef<int64_t> shape,
+                                 ArrayRef<int32_t> offsets) {
+  MemDescType inferredReturnType;
+  if (failed(inferReturnType(builder.getContext(), loc,
+                             cast<MemDescType>(src.getType()), shape, offsets,
+                             inferredReturnType))) {
+    return failure();
+  }
+  return MemDescSubsliceOp::create(builder, loc, inferredReturnType, src,
+                                   offsets);
 }
 
 LogicalResult MemDescSubsliceOp::verify() {
