@@ -1070,6 +1070,20 @@
     - `CLEAN_UNSUPPORTED` for current `sm_103a` / PTXAS assumptions;
       no compiler crash or MLIR assertion observed.
 
+## 2026-03-26 (BUG: unsupported scales copy layouts still raise generic RuntimeError path)
+- Expanded TMEM runtime coverage for permuted/exotic linear layouts and widened
+  scaled-mma copy format/layout sweeps in
+  `python/test/gluon/test_tmem_runtime_matrix.py`.
+- BUG classification added:
+  - unsupported scales-copy shared layout candidates currently report the
+    intended diagnostic notes to stderr, but the raised Python exception is a
+    generic `RuntimeError("error encountered during parsing")` rather than a
+    structured `CompilationError`.
+  - Regression test:
+    `test_tmem_runtime_matrix_bug_cp_scales_unsupported_layout_raises_runtimeerror_parse`.
+  - This is a clean-negative diagnostics-surface bug (no crash, no
+    `PassManager::run failed`, no assertion).
+
 ## 2026-03-25 (BUG classification from cp.warpx2 scales candidate sweep)
 - Added a scales-copy layout probe in
   `python/test/gluon/test_tmem_runtime_matrix.py` with two explicit classes:
@@ -1200,3 +1214,214 @@
       `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
       (`instrShape`, `reshapeIns`, and descriptor stepping logic) so row-4
       semantics are represented instead of the current row-32-centric path.
+
+## 2026-03-26 (PTX/TMEM opcode catalog sweep, GPU2)
+- Build pre-step:
+  - `make`
+    - `ninja: no work to do.`
+
+- Main catalog command:
+  - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_tmem_opcode_catalog.py > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_tmem_opcode_catalog_gpu2.json 2> .codex/initiatives/tmem_linear_generalization/experiments/results/probe_tmem_opcode_catalog_gpu2.stderr`
+
+- `PASS` families empirically compiled/executed:
+  - `tcgen05.st/ld` atom families:
+    - `tcgen05.{st,ld}.sync.aligned.32x32b.x128.b32` (`M=128,N=128`)
+    - `tcgen05.{st,ld}.sync.aligned.16x64b.x64.b32` (`M=128,N=128`)
+    - `tcgen05.{st,ld}.sync.aligned.16x128b.x32.b32` (`M=128,N=128`)
+    - `tcgen05.{st,ld}.sync.aligned.16x256b.x16.b32` (`M=128,N=256`)
+    - `tcgen05.{st,ld}.sync.aligned.16x32bx2.x16.b32` via both
+      `instr_variant="32x32b_splitn"` and explicit `instr_variant="16x32bx2"`
+      (`M=64,N=64`).
+  - `tcgen05.ld.red` variants:
+    - `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32`
+    - `tcgen05.ld.red.sync.aligned.32x32b.x128.min.abs.NaN.f32`
+    - `tcgen05.ld.red.sync.aligned.32x32b.x64.max.f32`
+    - `tcgen05.ld.red.sync.aligned.32x32b.x128.max.abs.NaN.f32`
+  - `tcgen05.cp` families from compiler-lowered Gluon paths:
+    - `tcgen05.cp.cta_group::1.128x256b`
+    - `tcgen05.cp.cta_group::1.128x128b`
+    - `tcgen05.cp.cta_group::1.warpx4.32x128b`
+  - `tcgen05.cp` families from direct-PTX patch/assemble/run witness:
+    - `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b`
+    - `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`
+    - `tcgen05.cp.cta_group::1.4x256b`
+  - `tcgen05.mma` families:
+    - plain:
+      - `tcgen05.mma.cta_group::1.kind::tf32`
+      - `tcgen05.mma.cta_group::1.kind::f8f6f4` (from both `f8e5m2` and
+        `f8e4m3` frontend inputs)
+    - scaled:
+      - `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`
+        (`acc_layout_kind=legacy`, CTA1), with scales-copy side opcode
+        `tcgen05.cp.cta_group::1.warpx4.32x128b`
+      - `tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X`
+        (`acc_layout_kind=linear`, CTA2), with scales-copy side opcode
+        `tcgen05.cp.cta_group::2.warpx4.32x128b`
+
+- `CLEAN_UNSUPPORTED` findings:
+  - `ld.red` on mixed TMEM-linear layout:
+    - diagnostic class: `tmem_load reduction with N dimension sharded across
+      threads is not supported`.
+  - scales copy with warpx2 candidate shared layout:
+    - diagnostic class: source shared layout does not lower to currently
+      supported scales `tcgen05.copy.warpx4.32x128b` family.
+  - plain MMA `kind::i8` on current target:
+    - PTXAS reports `.kind::i8` is not supported on `.target sm_103a`.
+  - MMA with mixed TMEM-linear accumulator layout:
+    - verifier/parser rejects non-MMAv5-compatible accumulator layout.
+
+- `BUG` findings in this sweep:
+  - none observed in the catalog run (`probe_tmem_opcode_catalog_gpu2.json`).
+
+- Recommended compiler follow-ups:
+  - `cp` lowering:
+    - add backend legalization/lowering path for scales-copy `warpx2`
+      families (`02_13`, `01_23`) now that direct PTX witnesses execute;
+    - add classifier + lowering support for `.4x256b` in
+      `getTMemCopyAtom(...)` and NVGPU->LLVM descriptor synthesis.
+  - MMA frontend/backend contract:
+    - keep `kind::i8` explicitly gated as target-dependent
+      `CLEAN_UNSUPPORTED` (no generic internal-error framing);
+    - if mixed TMEM-linear MMAv5 accumulators are intended long-term, add a
+      canonicalization/relayout path to supported MMAv5 accumulator tiles
+      before `tc_gen5_mma`.
+
+## 2026-03-26 (cp scales candidate hardened from BUG to clean unsupported)
+- Former runtime `BUG` status for the probed scales-copy `warpx2_candidate`
+  layout has been retired.
+  - current behavior: early descriptive verifier failure, not
+    `PassManager::run failed`.
+  - exact runtime regression remains in
+    `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe`.
+- Added compile-only no-crash coverage in
+  `test/TritonNvidiaGPU/invalid.mlir` for the candidate shared layout:
+  - shared bases:
+    `[[32, 0], [0, 1], [1, 0], [0, 2], [0, 4], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]`
+  - expected diagnostic:
+    `The source shared layout does not lower to Triton's currently supported tcgen05.copy.warpx4.32x128b descriptor family for tensor memory scales.`
+- Important distinction preserved:
+  - direct PTX still proves `tcgen05.cp.warpx2::{02_13,01_23}.64x128b`
+    opcodes are executable on this machine;
+  - current Triton gap is descriptor synthesis / legalization for this family,
+    not ISA unavailability.
+
+## 2026-03-26 (expanded permanent runtime/lit coverage validated)
+- Rebuilt before validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `ninja: no work to do.`
+- Focused compiler/lit validation after widening invalid + LLVM checks:
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && ninja triton-opt && lit -v test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - result: both tests pass.
+- Focused runtime subset after widening TMEM matrices:
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_descriptor_roundtrip_sweeps or ldst_descriptor_rank5_roundtrip or cp_scales_layout_probe or mma_twocta or explicit_16x32bx2'`
+    - result: `67 passed, 24 skipped, 519 deselected in 19.53s`.
+- Full permanent TMEM runtime matrix after the new sweeps:
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=$(mktemp -d) PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+    - result: `674 passed, 53 skipped in 189.96s`.
+- Permanent test surface expanded in this pass:
+  - positive GPU sweeps for permuted TMEM-linear row/col basis orders
+    (`identity`, `rotate1`, `even_odd`, `reverse`) across ld/st and
+    descriptor-composition paths;
+  - wider scaled-MMA copy matrix over format pairs
+    `{mxfp8,mxfp4,nvfp4}` x CTA count x accumulator layout kind;
+  - clean-negative GPU regressions for exotic non-canonical plain-copy and MMA
+    layouts;
+  - no-crash invalid IR coverage for malformed `tensor_memory_linear` syntax,
+    mixed linear `tmem_copy`, and wrong-result-encoding TMEM subslices;
+  - LLVM/lit coverage for non-zero TMEM alloc offsets plus explicit wait usage.
+
+## 2026-03-26 (direct PTX semantics follow-up: warpx2 still needs descriptor work)
+- Reused the direct-PTX semantics probe:
+  - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_semantics.py > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_semantics_gpu2.log 2> .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_semantics_gpu2.stderr`
+  - result file:
+    `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_semantics_gpu2.json`
+- Key semantic findings from the patched baseline scales-copy kernel:
+  - `tcgen05.cp.warpx2::02_13.64x128b` is deterministic and populates the
+    expected warp-pair structure `(0,2)` / `(1,3)` with the current descriptor,
+    but not the full warpx4 result.
+  - `tcgen05.cp.warpx2::01_23.64x128b` is deterministic and populates the
+    complementary warp-pair structure `(0,1)` / `(2,3)` with the current
+    descriptor, but not the full warpx4 result.
+  - `tcgen05.cp.4x256b` assembles and launches, but with the current descriptor
+    mapping it is nondeterministic and does not correspond to the expected
+    scales copy semantics.
+- Additional hybrid check on GPU2:
+  - direct one-off PTX patching that mixed `02_13` and `01_23` across the two
+    existing copy sites in the baseline kernel also failed to recover the full
+    expected warpx4 output.
+- Engineering conclusion:
+  - `warpx2` is a real, deterministic instruction family on this hardware, but
+    supporting it in Triton requires descriptor/address synthesis work; simple
+    opcode substitution is insufficient.
+  - `.4x256b` should remain blocked until we have a descriptor model that makes
+    its semantics reproducible.
+
+## 2026-03-26 (exotic TMEM subview blocked-fallback BUG downgraded to clean unsupported)
+- Repro:
+  - development-only `/tmp/probe_tmem_blocked_view.py` on `CUDA_VISIBLE_DEVICES=0`
+    built a rank-3 TMEM descriptor, reshaped/sliced it down to an exotic
+    `128x32` view with layout
+    `#ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [1, 0]]}>`,
+    then attempted `view.load(#blocked)` / `view.store(#blocked)`.
+- Previous behavior:
+  - `BUG`: `ttng.tmem_load` survived frontend parsing, then
+    `RelayoutTritonGPU` failed with `PassManager::run failed`.
+- Fix:
+  - tightened `verifyTMEMOperand(...)` in
+    `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` so TMEM load/store/alloc still
+    defer feasible one-convert fallback cases, but now reject impossible cases
+    early when `getTmemCompatibleLayouts(...)` is empty.
+- New behavior:
+  - early descriptive diagnostic at parse/verification time:
+    - error: `result has no supported register layout`
+    - note: `No TMEM-compatible register layout exists for this operand, so relayout cannot insert a fallback convert_layout.`
+  - no backend pass crash, no `PassManager::run failed`.
+- Regression coverage:
+  - added compile-only invalid test in `test/TritonNvidiaGPU/invalid.mlir`
+    for this exact exotic `ttng.tmem_load` case.
+
+## 2026-03-26 (direct-PTX cp semantics characterization, GPU2)
+- Goal: test semantic correctness (not just assembly) for
+  `tcgen05.cp.cta_group::1.warpx2::{02_13,01_23}.64x128b` and
+  `tcgen05.cp.cta_group::1.4x256b` using patched PTX.
+- Command:
+  - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_semantics.py > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_semantics_gpu2.log 2> .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_semantics_gpu2.stderr`
+- Probe method:
+  - compiled known-good baseline PTX from
+    `tmem_copy_scales_warpx4_kernel`;
+  - replaced cp opcode family and swept 6 patch modes over descriptor
+    base/offset usage:
+    `both_orig`, `first_only`, `second_only`,
+    `both_first_map`, `both_second_map`, `swap_maps`;
+  - checked output against the known scales-copy expected layout used in
+    `test_tmem_runtime_matrix` and recorded deterministic behavior and warp-pair
+    invariants.
+- Results (semantic witness search):
+  - `warpx4_control`: multiple modes remained exact (`mismatch=0`);
+    validates the harness.
+  - `warpx2::01_23`:
+    - best mode `both_orig`: deterministic, but not exact
+      (`num_mismatch_expected=2040`);
+    - observed pair invariant matches family (`chunk01==chunk23`), but only one
+      pair matches the control tile map (`['B','B','other','other']`).
+  - `warpx2::02_13`:
+    - best mode `both_orig`: deterministic, but not exact
+      (`num_mismatch_expected=2040`);
+    - observed pair invariant matches family (`chunk02==chunk13`), but only one
+      pair matches the control tile map (`['B','other','B','other']`).
+  - `cp.4x256b`:
+    - all tested modes launch but remain non-exact
+      (`best mismatch=2074`);
+    - outputs were non-deterministic across repeated launches (`deterministic=false`)
+      and never matched control tiles, so this patched path is not semantically
+      usable.
+- Conclusion:
+  - no semantically-correct direct PTX witness was found for either
+    `warpx2` family or `4x256b` under the tested descriptor base/offset patch
+    space;
+  - `warpx2` shows structured but incomplete/incorrect data mapping for this
+    kernel shape;
+  - `4x256b` is unstable with these descriptor patterns.
+- Follow-up implication for compiler work:
+  - enabling these families in Triton needs dedicated descriptor synthesis and
+    per-family pointer/offset stepping logic, not opcode substitution alone.

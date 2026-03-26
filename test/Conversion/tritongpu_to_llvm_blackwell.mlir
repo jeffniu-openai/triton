@@ -312,6 +312,30 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
 
 // -----
 
+#blocked_alloc_nonzero = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+#tmem_alloc_nonzero = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:100", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @tensor_memory_alloc_nonzero_ldst_wait
+  // CHECK: [[TMEM_BASE:%.*]] = nvg.tensor_memory_base
+  // CHECK: [[TMEM_PTRINT:%.*]] = llvm.ptrtoint [[TMEM_BASE]] : !llvm.ptr<{{[0-9]+}}> to i32
+  // CHECK: [[OFFSET:%.*]] = llvm.mlir.constant(4194312 : i32) : i32
+  // CHECK: [[TMEM_OFFS:%.*]] = llvm.add [[TMEM_PTRINT]], [[OFFSET]] : i32
+  // CHECK: tcgen05.st.sync.aligned.32x32b.x128.b32 [{{.*}} + 0]
+  // CHECK: nvvm.tcgen05.wait <store>
+  // CHECK: tcgen05.ld.sync.aligned.32x32b.x128.b32 {{.*}} [{{.*}} + 0]
+  // CHECK: nvvm.tcgen05.wait <load>
+  tt.func public @tensor_memory_alloc_nonzero_ldst_wait() {
+    %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked_alloc_nonzero>
+    %true = arith.constant true
+    %0 = ttng.tmem_alloc {tensor_memory_col_offset = 8 : i32, tensor_memory_row_offset = 64 : i32} : () -> !ttg.memdesc<128x128xf32, #tmem_alloc_nonzero, #ttng.tensor_memory, mutable>
+    ttng.tmem_store %cst_0, %0, %true : tensor<128x128xf32, #blocked_alloc_nonzero> -> !ttg.memdesc<128x128xf32, #tmem_alloc_nonzero, #ttng.tensor_memory, mutable>
+    %1 = ttng.tmem_load %0 : !ttg.memdesc<128x128xf32, #tmem_alloc_nonzero, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked_alloc_nonzero>
+    tt.return
+  }
+}
+
+// -----
+
 #linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [64, 0]], warp = [[16, 0], [32, 0]], block = []}>
 #tmem = #ttng.tensor_memory_encoding<blockM = 64, blockN = 128, colStride = 1>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:100", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {

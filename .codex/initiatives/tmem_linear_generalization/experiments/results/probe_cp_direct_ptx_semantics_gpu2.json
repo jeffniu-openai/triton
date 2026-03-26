@@ -1,0 +1,781 @@
+{
+  "families": {
+    "cp_4x256b": [
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_ten2xf66/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "both_orig",
+        "num_mismatch_expected": 2074,
+        "opcode": "tcgen05.cp.cta_group::1.4x256b",
+        "status": "PASS",
+        "sum": -11433,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_ymy_rlp5/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "first_only",
+        "num_mismatch_expected": 2090,
+        "opcode": "tcgen05.cp.cta_group::1.4x256b",
+        "status": "PASS",
+        "sum": -11098,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_23esmhy4/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "second_only",
+        "num_mismatch_expected": 2074,
+        "opcode": "tcgen05.cp.cta_group::1.4x256b",
+        "status": "PASS",
+        "sum": -11433,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_108mywsb/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "both_first_map",
+        "num_mismatch_expected": 2090,
+        "opcode": "tcgen05.cp.cta_group::1.4x256b",
+        "status": "PASS",
+        "sum": -11098,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics__h6fxeqq/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "both_second_map",
+        "num_mismatch_expected": 2090,
+        "opcode": "tcgen05.cp.cta_group::1.4x256b",
+        "status": "PASS",
+        "sum": -11381,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_83awfnuy/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "swap_maps",
+        "num_mismatch_expected": 2090,
+        "opcode": "tcgen05.cp.cta_group::1.4x256b",
+        "status": "PASS",
+        "sum": -11098,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      }
+    ],
+    "warpx2_01_23": [
+      {
+        "chunk_equals_expected": [
+          true,
+          true,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_tkb98t90/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": false,
+        "mode": "both_orig",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "B",
+          "B",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_yvvmq0bn/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "first_only",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "B",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_fit2crgy/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "second_only",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "B",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_i_3wau8u/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "both_first_map",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "B",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_jh4wd2es/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": false,
+        "mode": "both_second_map",
+        "num_mismatch_expected": 3058,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "status": "PASS",
+        "sum": -756,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": false
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": false,
+          "03": false,
+          "12": false,
+          "13": false,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_8n8t8sux/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "swap_maps",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "B",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": false
+      }
+    ],
+    "warpx2_02_13": [
+      {
+        "chunk_equals_expected": [
+          true,
+          false,
+          true,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": true,
+          "03": false,
+          "12": false,
+          "13": true,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_0o9qh9dj/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": false,
+        "mode": "both_orig",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "B",
+          "other",
+          "B",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": true,
+          "03": false,
+          "12": false,
+          "13": true,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_i77annen/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "first_only",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": true,
+          "03": false,
+          "12": false,
+          "13": true,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_3r_uihsz/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "second_only",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": true,
+          "03": false,
+          "12": false,
+          "13": true,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_qe2p3ptx/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "both_first_map",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": true,
+          "03": false,
+          "12": false,
+          "13": true,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_cgrbinac/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": false,
+        "mode": "both_second_map",
+        "num_mismatch_expected": 3058,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "status": "PASS",
+        "sum": -756,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": false,
+          "02": true,
+          "03": false,
+          "12": false,
+          "13": true,
+          "23": false
+        },
+        "cubin": "/tmp/cp_direct_semantics_z33gwavr/kernel.cubin",
+        "deterministic": false,
+        "exact_expected": false,
+        "mode": "swap_maps",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "status": "PASS",
+        "sum": -9548,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": false,
+        "warpx2_02_13_pattern": true
+      }
+    ],
+    "warpx4_control": [
+      {
+        "chunk_equals_expected": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": true,
+          "03": true,
+          "12": true,
+          "13": true,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_5hg1g8x6/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": true,
+        "mode": "both_orig",
+        "num_mismatch_expected": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx4.32x128b",
+        "status": "PASS",
+        "sum": -12752,
+        "tile_map_vs_controls": [
+          "B",
+          "B",
+          "B",
+          "B"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": true,
+          "03": true,
+          "12": true,
+          "13": true,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_bcyttu_o/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": true,
+        "mode": "first_only",
+        "num_mismatch_expected": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx4.32x128b",
+        "status": "PASS",
+        "sum": -12752,
+        "tile_map_vs_controls": [
+          "B",
+          "B",
+          "B",
+          "B"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": true,
+          "03": true,
+          "12": true,
+          "13": true,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_m82ch6qo/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": true,
+        "mode": "second_only",
+        "num_mismatch_expected": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx4.32x128b",
+        "status": "PASS",
+        "sum": -12752,
+        "tile_map_vs_controls": [
+          "B",
+          "B",
+          "B",
+          "B"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": true,
+          "03": true,
+          "12": true,
+          "13": true,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_eb6x8w6s/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": true,
+        "mode": "both_first_map",
+        "num_mismatch_expected": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx4.32x128b",
+        "status": "PASS",
+        "sum": -12752,
+        "tile_map_vs_controls": [
+          "B",
+          "B",
+          "B",
+          "B"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": true,
+          "03": true,
+          "12": true,
+          "13": true,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_15op433u/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": false,
+        "mode": "both_second_map",
+        "num_mismatch_expected": 2040,
+        "opcode": "tcgen05.cp.cta_group::1.warpx4.32x128b",
+        "status": "PASS",
+        "sum": -4000,
+        "tile_map_vs_controls": [
+          "other",
+          "other",
+          "other",
+          "other"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": true
+      },
+      {
+        "chunk_equals_expected": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "chunk_pair_equal": {
+          "01": true,
+          "02": true,
+          "03": true,
+          "12": true,
+          "13": true,
+          "23": true
+        },
+        "cubin": "/tmp/cp_direct_semantics_t2lksn5g/kernel.cubin",
+        "deterministic": true,
+        "exact_expected": true,
+        "mode": "swap_maps",
+        "num_mismatch_expected": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx4.32x128b",
+        "status": "PASS",
+        "sum": -12752,
+        "tile_map_vs_controls": [
+          "B",
+          "B",
+          "B",
+          "B"
+        ],
+        "warpx2_01_23_pattern": true,
+        "warpx2_02_13_pattern": true
+      }
+    ]
+  },
+  "input_seed": 123
+}

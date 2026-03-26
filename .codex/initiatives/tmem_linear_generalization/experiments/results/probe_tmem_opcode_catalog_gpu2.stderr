@@ -1,0 +1,10 @@
+/root/code/triton/python/test/gluon/test_core.py:4664:27: error: 'ttng.tmem_load' op tmem_load reduction with N dimension sharded across threads is not supported.
+        output, reduced = tmem.load_min(abs=USE_ABS, propagate_nan=PROPAGATE_NAN)
+                          ^
+/root/code/triton/python/test/gluon/test_tmem_runtime_matrix.py:616:5: error: 'ttng.tmem_copy' op The source shared layout does not lower to Triton's currently supported tcgen05.copy.warpx4.32x128b descriptor family for tensor memory scales.
+    tcgen05_copy(smem, tmem)
+    ^
+/root/code/triton/python/test/gluon/test_tmem_runtime_matrix.py:616:5: note: Use the canonical scales warpx4 shared layout, or reshape / permute the shared tile until it lowers to tcgen05.copy.warpx4.32x128b.
+/root/code/triton/python/test/gluon/test_tmem_runtime_matrix.py:684:5: error: 'ttng.tc_gen5_mma' op return operand must have a MMAv5-compatible tensor memory layout, but got #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 1], [0, 2]], col = [[32, 0], [64, 0], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>. Use a canonical #ttng.tensor_memory_linear equivalent to a supported #ttng.tensor_memory_encoding, or reshape/permute the descriptor to a supported MMAv5 tile.
+    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, mbarriers=[bar])
+    ^

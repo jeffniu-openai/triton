@@ -1057,20 +1057,25 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     return op->emitOpError(regName) << " must be a 2D tensor";
   if (!type.getEncoding())
     return success();
-  if (deferLayoutFeasibility)
-    return success();
 
   if (isDistributedLayoutTMemCompatible(op, type, memdesc))
     return success();
 
-  // If it failed, give the user a hint
   SmallVector<DistributedEncodingTrait> layouts =
       getTmemCompatibleLayouts(op, type, memdesc);
+  if (deferLayoutFeasibility && !layouts.empty())
+    return success();
 
-  InFlightDiagnostic diag = op->emitOpError(regName);
+  InFlightDiagnostic diag =
+      op->emitOpError(regName) << " has no supported register layout";
   diag.attachNote() << "Got: " << type.getEncoding();
   for (Attribute layout : layouts)
     diag.attachNote() << "potential TMEM layout: " << layout;
+  if (deferLayoutFeasibility && layouts.empty()) {
+    diag.attachNote()
+        << "No TMEM-compatible register layout exists for this operand, so "
+           "relayout cannot insert a fallback convert_layout.";
+  }
   return diag;
 }
 

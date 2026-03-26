@@ -1,0 +1,256 @@
+{
+  "cp_direct_ptx": [
+    {
+      "case": "warpx2_02_13_64x128b",
+      "cubin": "/tmp/cp_direct_cpkgd1kv/kernel.cubin",
+      "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+      "status": "PASS",
+      "sum": -10462
+    },
+    {
+      "case": "warpx2_01_23_64x128b",
+      "cubin": "/tmp/cp_direct_qej80qcu/kernel.cubin",
+      "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+      "status": "PASS",
+      "sum": -10426
+    },
+    {
+      "case": "cp_4x256b",
+      "cubin": "/tmp/cp_direct_laysmuag/kernel.cubin",
+      "opcode": "tcgen05.cp.cta_group::1.4x256b",
+      "status": "PASS",
+      "sum": -10771
+    }
+  ],
+  "cp_gluon": [
+    {
+      "case": "cp_128x256b",
+      "opcodes": [
+        "tcgen05.cp.cta_group::1.128x256b"
+      ],
+      "status": "PASS"
+    },
+    {
+      "case": "cp_128x128b",
+      "opcodes": [
+        "tcgen05.cp.cta_group::1.128x128b"
+      ],
+      "status": "PASS"
+    },
+    {
+      "case": "cp_warpx4_32x128b_scales",
+      "opcodes": [
+        "tcgen05.cp.cta_group::1.warpx4.32x128b"
+      ],
+      "status": "PASS"
+    },
+    {
+      "case": "cp_warpx2_scales_candidate",
+      "error": "error encountered during parsing",
+      "status": "CLEAN_UNSUPPORTED"
+    }
+  ],
+  "ld_red": [
+    {
+      "opcodes": [
+        "tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32"
+      ],
+      "propagate_nan": "NONE",
+      "red_op": "min",
+      "shape": [
+        128,
+        64
+      ],
+      "status": "PASS",
+      "use_abs": false
+    },
+    {
+      "opcodes": [
+        "tcgen05.ld.red.sync.aligned.32x32b.x128.min.abs.NaN.f32"
+      ],
+      "propagate_nan": "ALL",
+      "red_op": "min",
+      "shape": [
+        128,
+        128
+      ],
+      "status": "PASS",
+      "use_abs": true
+    },
+    {
+      "opcodes": [
+        "tcgen05.ld.red.sync.aligned.32x32b.x64.max.f32"
+      ],
+      "propagate_nan": "NONE",
+      "red_op": "max",
+      "shape": [
+        128,
+        256
+      ],
+      "status": "PASS",
+      "use_abs": false
+    },
+    {
+      "opcodes": [
+        "tcgen05.ld.red.sync.aligned.32x32b.x128.max.abs.NaN.f32"
+      ],
+      "propagate_nan": "ALL",
+      "red_op": "max",
+      "shape": [
+        128,
+        128
+      ],
+      "status": "PASS",
+      "use_abs": true
+    },
+    {
+      "case": "mixed_layout_negative",
+      "error": "error encountered during parsing",
+      "propagate_nan": "NONE",
+      "red_op": "min",
+      "shape": [
+        128,
+        128
+      ],
+      "status": "CLEAN_UNSUPPORTED",
+      "use_abs": false
+    }
+  ],
+  "ldst": [
+    {
+      "case": "32x32b",
+      "opcodes": [
+        "tcgen05.ld.sync.aligned.32x32b.x128.b32",
+        "tcgen05.st.sync.aligned.32x32b.x128.b32"
+      ],
+      "shape": [
+        128,
+        128
+      ],
+      "status": "PASS",
+      "variant": "32x32b"
+    },
+    {
+      "case": "16x64b",
+      "opcodes": [
+        "tcgen05.ld.sync.aligned.16x64b.x64.b32",
+        "tcgen05.st.sync.aligned.16x64b.x64.b32"
+      ],
+      "shape": [
+        128,
+        128
+      ],
+      "status": "PASS",
+      "variant": "16x64b"
+    },
+    {
+      "case": "16x128b",
+      "opcodes": [
+        "tcgen05.ld.sync.aligned.16x128b.x32.b32",
+        "tcgen05.st.sync.aligned.16x128b.x32.b32"
+      ],
+      "shape": [
+        128,
+        128
+      ],
+      "status": "PASS",
+      "variant": "16x128b"
+    },
+    {
+      "case": "16x256b",
+      "opcodes": [
+        "tcgen05.ld.sync.aligned.16x256b.x16.b32",
+        "tcgen05.st.sync.aligned.16x256b.x16.b32"
+      ],
+      "shape": [
+        128,
+        256
+      ],
+      "status": "PASS",
+      "variant": "16x256b"
+    },
+    {
+      "case": "16x32bx2_via_splitn",
+      "opcodes": [
+        "tcgen05.ld.sync.aligned.16x32bx2.x16.b32",
+        "tcgen05.st.sync.aligned.16x32bx2.x16.b32"
+      ],
+      "shape": [
+        64,
+        64
+      ],
+      "status": "PASS",
+      "variant": "32x32b_splitn"
+    },
+    {
+      "case": "16x32bx2_explicit",
+      "opcodes": [
+        "tcgen05.ld.sync.aligned.16x32bx2.x16.b32",
+        "tcgen05.st.sync.aligned.16x32bx2.x16.b32"
+      ],
+      "shape": [
+        64,
+        64
+      ],
+      "status": "PASS",
+      "variant": "16x32bx2"
+    }
+  ],
+  "mma": [
+    {
+      "case": "mma_plain_tf32",
+      "opcodes": [
+        "tcgen05.mma.cta_group::1.kind::tf32"
+      ],
+      "status": "PASS"
+    },
+    {
+      "case": "mma_plain_f8e5m2",
+      "opcodes": [
+        "tcgen05.mma.cta_group::1.kind::f8f6f4"
+      ],
+      "status": "PASS"
+    },
+    {
+      "case": "mma_plain_f8e4m3",
+      "opcodes": [
+        "tcgen05.mma.cta_group::1.kind::f8f6f4"
+      ],
+      "status": "PASS"
+    },
+    {
+      "case": "mma_plain_i8",
+      "error": "PTXAS error: Internal Triton PTX codegen error",
+      "status": "CLEAN_UNSUPPORTED"
+    },
+    {
+      "acc_layout_kind": "legacy",
+      "case": "mma_scaled_mxfp8_mxfp8_cta1_legacy",
+      "cp_opcodes": [
+        "tcgen05.cp.cta_group::1.warpx4.32x128b"
+      ],
+      "mma_opcodes": [
+        "tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X"
+      ],
+      "num_ctas": 1,
+      "status": "PASS"
+    },
+    {
+      "acc_layout_kind": "linear",
+      "case": "mma_scaled_nvfp4_nvfp4_cta2_linear",
+      "cp_opcodes": [
+        "tcgen05.cp.cta_group::2.warpx4.32x128b"
+      ],
+      "mma_opcodes": [
+        "tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X"
+      ],
+      "num_ctas": 2,
+      "status": "PASS"
+    },
+    {
+      "case": "mma_f16_mixed_linear_acc_layout",
+      "error": "error encountered during parsing",
+      "status": "CLEAN_UNSUPPORTED"
+    }
+  ]
+}
