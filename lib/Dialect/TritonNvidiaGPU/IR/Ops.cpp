@@ -1051,8 +1051,8 @@ bool TCGen5MMAScaledOp::isAsync() { return getIsAsync(); }
 
 // -- TMEMStoreOp --
 static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
-                                       MemDescType memdesc, StringRef regName,
-                                       bool deferLayoutFeasibility = false) {
+                                       MemDescType memdesc,
+                                       StringRef regName) {
   if (type.getRank() != 2)
     return op->emitOpError(regName) << " must be a 2D tensor";
   if (!type.getEncoding())
@@ -1063,18 +1063,20 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
 
   SmallVector<DistributedEncodingTrait> layouts =
       getTmemCompatibleLayouts(op, type, memdesc);
-  if (deferLayoutFeasibility && !layouts.empty())
-    return success();
 
   InFlightDiagnostic diag =
       op->emitOpError(regName) << " has no supported register layout";
   diag.attachNote() << "Got: " << type.getEncoding();
   for (Attribute layout : layouts)
     diag.attachNote() << "potential TMEM layout: " << layout;
-  if (deferLayoutFeasibility && layouts.empty()) {
+  if (layouts.empty()) {
     diag.attachNote()
-        << "No TMEM-compatible register layout exists for this operand, so "
-           "relayout cannot insert a fallback convert_layout.";
+        << "No TMEM-compatible register layout exists for this operand. "
+           "reshape or permute so TMEM columns stay contiguous.";
+  } else {
+    diag.attachNote()
+        << "Use one of the potential TMEM layouts above, or insert "
+           "convert_layout explicitly.";
   }
   return diag;
 }
@@ -1086,9 +1088,9 @@ LogicalResult TMEMStoreOp::verify() {
   if (!getDst().getType().getMutableMemory()) {
     return emitOpError("Cannot store into an immutable alloc");
   }
-  if (failed(verifyTMEMOperand(*this, getSrc().getType(), getDst().getType(),
-                               "source",
-                               /*deferLayoutFeasibility=*/true)))
+  if (failed(
+          verifyTMEMOperand(*this, getSrc().getType(), getDst().getType(),
+                            "source")))
     return failure();
   return triton::gpu::verifyMemoryOpTypes(*this, getSrc().getType(),
                                           getDst().getType());
@@ -1099,13 +1101,21 @@ LogicalResult TMEMLoadOp::verify() {
   if (!isa<triton::nvidia_gpu::TensorMemorySpaceAttr>(
           getSrc().getType().getMemorySpace()))
     return emitOpError("source must be a tensor memory buffer.");
-  if (!isa<triton::nvidia_gpu::TensorMemoryEncodingAttr,
-           TensorMemoryLinearEncodingAttr>(
-          getSrc().getType().getEncoding()))
+  if (!isTensorMemoryEncoding(getSrc().getType().getEncoding()))
     return emitOpError("should use tensor memory encoding.");
-  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(), "result",
-                               /*deferLayoutFeasibility=*/true)))
+  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(),
+                               "result")))
     return failure();
+  if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()) &&
+      getSrc().getType().getElementTypeBitWidth() < 32) {
+    auto kReg = StringAttr::get(getContext(), "register");
+    if (toLinearLayout(getType()).getFreeVariableMasks().lookup(kReg) != 0) {
+      return emitOpError("tmem_load on tensor-memory scales does not support "
+                         "register-broadcasted layouts; use "
+                         "instr_variant=\"16x32bx2\" for narrow scales tiles, "
+                         "or reshape/permute so TMEM columns stay contiguous");
+    }
+  }
 
   // Validate reduction-related attributes
   auto redOp = getRedOp();
@@ -1134,6 +1144,9 @@ LogicalResult TMEMLoadOp::verify() {
 
   // Validate reduction conditions
   if (redOp) {
+    if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()))
+      return emitOpError(
+          "tmem_load reduction is not supported for tensor memory scales.");
     auto regTy = getType();
     auto memTy = getSrc().getType();
     auto maxnreg = getContextualMaxNReg(*this);
@@ -1166,8 +1179,8 @@ LogicalResult TMEMAllocOp::verify() {
   if (!isTensorMemoryEncoding(getType().getEncoding()))
     return emitOpError("should use tensor memory encoding");
   if (getSrc() &&
-      failed(verifyTMEMOperand(*this, getSrc().getType(), getType(), "source",
-                               /*deferLayoutFeasibility=*/true)))
+      failed(
+          verifyTMEMOperand(*this, getSrc().getType(), getType(), "source")))
     return failure();
   return triton::gpu::verifyAllocOp(*this, getSrc(), getType());
 }
@@ -1191,6 +1204,18 @@ void TMEMAllocOp::getEffects(
 }
 
 // -- TMEMCopyOp --
+void TMEMCopyOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.emplace_back(MemoryEffects::Read::get(), &getSrcMutable(),
+                       SharedMemory::get());
+  effects.emplace_back(MemoryEffects::Write::get(), &getDstMutable(),
+                       TensorMemory::get());
+  for (auto &barrierMutable : getBarrierMutable())
+    effects.emplace_back(MemoryEffects::Write::get(), &barrierMutable,
+                         SharedMemory::get());
+}
+
 LogicalResult TMEMCopyOp::verify() {
   if (!isa<triton::gpu::SharedMemorySpaceAttr>(
           getSrc().getType().getMemorySpace()))
@@ -1206,6 +1231,13 @@ LogicalResult TMEMCopyOp::verify() {
   if (getBarrier() && !isa<triton::gpu::SharedMemorySpaceAttr>(
                           getBarrier().getType().getMemorySpace())) {
     return emitOpError("The optional barrier should be a shared memory buffer");
+  }
+  if (getBarrier()) {
+    auto barrierTy = getBarrier().getType();
+    if (failed(verifyBarrierType(*this, barrierTy)))
+      return failure();
+    if (failed(verifyCompletionBarrierLayout(getOperation(), getBarrier())))
+      return failure();
   }
   if (!getDst().getType().getMutableMemory()) {
     return emitOpError("Cannot copy into an immutable alloc");
@@ -1233,6 +1265,15 @@ LogicalResult TMEMCopyOp::verify() {
       dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(srcTy.getEncoding());
   int bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
   auto copyAtom = getTMemCopyAtom(cvt, bitwidth);
+  auto copyFamily = [&](const TMemCopyAtom &atom) -> std::string {
+    if (atom.multicast == 1)
+      return "warpx2::02_13.64x128b";
+    if (atom.multicast == 2)
+      return "warpx2::01_23.64x128b";
+    if (atom.multicast == 3)
+      return "warpx4.32x128b";
+    return atom.bCol == 256 ? "128x256b" : "128x128b";
+  };
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
@@ -1247,14 +1288,7 @@ LogicalResult TMEMCopyOp::verify() {
       return failure();
     }
     if (copyAtom->multicast != 3) {
-      std::string family;
-      if (copyAtom->multicast == 1) {
-        family = "warpx2::02_13.64x128b";
-      } else if (copyAtom->multicast == 2) {
-        family = "warpx2::01_23.64x128b";
-      } else {
-        family = copyAtom->bCol == 256 ? "128x256b" : "128x128b";
-      }
+      std::string family = copyFamily(*copyAtom);
       auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
                   << family
                   << ", but Triton currently only lowers tensor memory scales "
@@ -1309,6 +1343,56 @@ LogicalResult TMEMCopyOp::verify() {
     // When we lift this, we should make sure we handle unpacked cleanly
     if (srcTy.getElementType().getIntOrFloatBitWidth() != 32) {
       return emitOpError("Source element type should be 32-bit.");
+    }
+    if (!copyAtom) {
+      auto diag = emitOpError(
+          "The source shared layout does not match any recognized "
+          "tcgen05.copy family for non-scales tensor memory copies.");
+      diag.attachNote()
+          << "Recognized tcgen05.copy families are 128x128b, 128x256b, "
+             "warpx2::02_13.64x128b, warpx2::01_23.64x128b, and "
+             "warpx4.32x128b.";
+      diag.attachNote()
+          << "Use the canonical shared layout for your intended family, or "
+             "reshape / permute the shared tile until it lowers to one of "
+             "those families.";
+      return failure();
+    }
+    auto kWarp = StringAttr::get(srcTy.getContext(), "warp");
+    auto cvtWarp =
+        cvt.reshapeIns({{kRow, 32},
+                        {kWarp, 4},
+                        {kCol, cvt.getInDimSize(kCol)},
+                        {kBlock, cvt.getInDimSize(kBlock)}})
+            .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
+    SmallVector<unsigned> instrShape = {
+        32u, static_cast<unsigned>(copyAtom->bCol / bitwidth)};
+    if (!canRepresentAsMMASmemDescriptor(cvtWarp, instrShape, bitwidth, 0, 5)) {
+      std::string family = copyFamily(*copyAtom);
+      auto diag =
+          emitOpError("The source shared layout maps to tcgen05.copy.")
+          << family
+          << ", but Triton could not synthesize a compatible shared-memory "
+             "descriptor for it.";
+      diag.attachNote()
+          << "Use the canonical shared layout for tcgen05.copy." << family
+          << ", or reshape / permute the shared tile until it lowers to the "
+             "same descriptor family.";
+      if (copyAtom->multicast == 1 || copyAtom->multicast == 2) {
+        diag.attachNote()
+            << "Direct PTX probes show tcgen05.copy." << family
+            << " is not a drop-in opcode swap for warpx4: the inherited "
+               "two-message warpx4 descriptor/address schedule only fills "
+               "selected alias chunk pairs, and experimental intermediate "
+               "TMEM destination deltas (+1/+2) fault with misaligned "
+               "addresses. Triton still needs family-specific shared-"
+               "descriptor/address synthesis to make this warp-pair copy "
+               "semantically correct.";
+      }
+      diag.attachNote()
+          << "This is reported as cleanly unsupported instead of falling "
+             "through to late LLVM lowering.";
+      return failure();
     }
   }
   // Given that we want to support flexible input SMEM shapes, kinds of shape

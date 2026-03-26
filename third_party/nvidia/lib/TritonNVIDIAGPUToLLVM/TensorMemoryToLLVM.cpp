@@ -30,6 +30,13 @@ static constexpr int maxRegisters = 256;
 
 namespace {
 
+Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
+                              Value base, uint32_t offset) {
+  auto b = TritonLLVMOpBuilder(loc, rewriter);
+  Value newBase = b.add(b.ptrtoint(i32_ty, base), b.i32_val(offset));
+  return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
+}
+
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -782,6 +789,7 @@ struct MemDescIndexOpConversion
   matchAndRewrite(triton::gpu::MemDescIndexOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
+    auto *ctx = op->getContext();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = op.getSrc().getType();
     auto dstTy = op.getResult().getType();
@@ -791,26 +799,36 @@ struct MemDescIndexOpConversion
         isa<TensorMemoryScalesEncodingAttr>(dstTy.getEncoding())) {
       return failure();
     }
-    auto canonicalSrcEncoding = getCanonicalTensorMemoryEncoding(srcTy);
-    int layoutRank = cast<LayoutEncodingTrait>(canonicalSrcEncoding).getRank();
-    // The direct pointer arithmetic in this pattern only supports indexing an
-    // extra unencoded leading dimension. Let the generic view lowering handle
-    // encoded-dimension indexing.
-    if (srcTy.getRank() != layoutRank + 1 || dstTy.getRank() != layoutRank)
-      return failure();
 
-    // newBase = base + offset
-    auto tmemBase = adaptor.getSrc();
-    auto idx = op.getIndex();
-    triton::nvidia_gpu::TMemAllocation tmemAlloc =
-        triton::nvidia_gpu::getTmemAllocSizes(cast<MemDescType>(dstTy));
-    int numColOffset = tmemAlloc.numCols;
-    Value newBase = b.ptrtoint(rewriter.getI32Type(), tmemBase);
-    newBase = LLVM::AddOp::create(
-        rewriter, loc, newBase,
-        LLVM::MulOp::create(rewriter, loc, idx, b.i32_val(numColOffset)));
-    auto elemPtrTy = ptr_ty(rewriter.getContext(), 3);
-    rewriter.replaceOp(op, b.inttoptr(elemPtrTy, newBase));
+    auto ll = triton::nvidia_gpu::getCanonicalTensorMemoryLinearLayout(srcTy);
+    int layoutRank = ll.getNumOutDims();
+    Value tmemBase = adaptor.getSrc();
+    uint32_t bitwidth = srcTy.getElementTypeBitWidth();
+    if (srcTy.getRank() > layoutRank) {
+      auto kCol = StringAttr::get(ctx, "col");
+      int singleBufferCols = ll.getInDimSize(kCol) / (32 / bitwidth);
+      int64_t prefixStride = product<int64_t>(srcTy.getShape().drop_front().take_front(
+          srcTy.getRank() - layoutRank - 1));
+      Value offset =
+          b.mul(op.getIndex(), b.i32_val(singleBufferCols * prefixStride));
+      Value newBase = b.add(b.ptrtoint(i32_ty, tmemBase), offset);
+      rewriter.replaceOp(op, b.inttoptr(ptr_ty(ctx, 3), newBase));
+      return success();
+    }
+
+    APInt index;
+    if (!matchPattern(op.getIndex(), m_ConstantInt(&index))) {
+      return rewriter.notifyMatchFailure(
+          op, "dynamic tensor memory indexing is only supported for the "
+              "unencoded leading buffer dimension");
+    }
+
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = index.getSExtValue();
+    rewriter.replaceOp(
+        op, advanceTensorMemoryBase(loc, rewriter, tmemBase,
+                                    triton::nvidia_gpu::getTMemViewOffset(
+                                        srcTy, offsets)));
     return success();
   }
 };

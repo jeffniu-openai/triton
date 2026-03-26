@@ -1425,3 +1425,651 @@
 - Follow-up implication for compiler work:
   - enabling these families in Triton needs dedicated descriptor synthesis and
     per-family pointer/offset stepping logic, not opcode substitution alone.
+
+## 2026-03-26 (TMEM higher-rank subview active-footprint fix, lit + GPU)
+- BUG:
+  - rank-4 TMEM descriptor roundtrips with
+    `slice(dim=0) -> index -> slice(dim=0) -> index -> 2D load/store`
+    regressed after broadening TMEM generic views.
+  - Symptoms:
+    - verifier/parser crash was already downgraded earlier, but valid view
+      chains still failed either with
+      `unsupported tensor memory memdesc_subslice view` or with a stale
+      `result tensor memory encoding must be ... but got ...` mismatch between
+      frontend-inferred and verifier-inferred TMEM-linear encodings.
+- Root cause:
+  - both the MLIR verifier path in
+    `lib/Dialect/TritonGPU/IR/Ops.cpp` and the frontend builder helper in
+    `python/src/gluon_ir.cc` were inferring subslice pseudoinverses against the
+    wrong physical footprint.
+  - They needed to infer the active TMEM physical subspace touched by the
+    sliced view, not reuse or heuristically re-infer the full source
+    row/col footprint.
+- Fix:
+  - track active physical TMEM basis masks per output dim for the sliced view;
+  - build `dstInv` with explicit active physical out sizes;
+  - use `LinearLayout::tryCreate(...)` so malformed views fail cleanly;
+  - keep the surjectivity gate before `pseudoinvert()` so invalid views remain
+    verifier-clean rather than crashing.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `lit -v test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonGPU/invalid.mlir`
+    -> `3 passed`
+  - targeted GPU row/col + descriptor view sweep on `CUDA_VISIBLE_DEVICES=0`:
+    - `python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_rowcol_permuted_layout_sweep or ldst_descriptor_compositions_rowcol_permuted_layout_sweep or ldst_descriptor_roundtrip_rowcol_permuted_sweeps or splitn_rowcol_permuted_layout_sweep'`
+    - result: `736 passed, 64 skipped`
+  - targeted GPU copy/MMA sweep on `CUDA_VISIBLE_DEVICES=1`:
+    - `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_linear or cp_scales_warpx4_via_scaled_mma_geometry_sweep or mma_plain_kinds_with_linear_acc or mma_i8_reports_clean_error or mma_rowcol_permuted_layout_reports_clean_unsupported'`
+    - result: `96 passed`
+- Outcome:
+  - higher-rank TMEM descriptor roundtrips with arbitrary row/col-permuted
+    TMEM-linear layouts are back to functional GPU execution;
+  - the verifier now stays no-crash and agrees with frontend-inferred TMEM
+    layouts on the exercised view chains.
+
+## 2026-03-26 (BF16 plain MMAv5 confirmed, promoted to permanent coverage)
+- Gap identified:
+  - BF16 plain MMAv5 lowered as `kind::f16` in code, but did not yet have
+    direct runtime coverage in the TMEM runtime matrix.
+- Direct probe:
+  - `CUDA_VISIBLE_DEVICES=2` temporary Python harness using
+    `python.test.gluon.test_core.mma_kernel`
+  - both legacy and canonical `TensorMemoryLinearLayout` accumulators passed
+    numerically for BF16 inputs and emitted
+    `tcgen05.mma.cta_group::1.kind::f16`.
+- Permanent coverage added:
+  - extended `python/test/gluon/test_tmem_runtime_matrix.py`
+    `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc` to cover
+    `kind == "bf16"` for both legacy and linear accumulators.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96` -> no-op rebuild
+  - `CUDA_VISIBLE_DEVICES=2 ... pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_plain_kinds_with_linear_acc and bf16'`
+    -> `2 passed`
+
+## 2026-03-26 (BUG: 2-CTA TF32 MMAv5 still fails lowering)
+- Probe:
+  - temporary `CUDA_VISIBLE_DEVICES=3` Python harness adapted from
+    `tmem_mma_twocta_kernel` using TF32-rounded float32 inputs, both legacy and
+    canonical TMEM-linear 2-CTA accumulators.
+- Result:
+  - clean lowering failure during `ConvertTritonGPUToLLVM` with diagnostic:
+    - `tcgen05.mma does not support transposed float32 operands in shared memory`
+  - no crash, but no executable path.
+- Reproducer shape:
+  - `block_m = 256`, `block_n = 128`, `block_k = 32`,
+    `cta_group::2`, TMA-fed shared operands, multicast enabled.
+- Current status:
+  - classify as `BUG` / uncovered theoretically-plausible case pending further
+    lowering work;
+  - do not add as a permanent expected-failure test yet, because this should be
+    revisited rather than locked in as unsupported ISA.
+
+## 2026-03-26 (Descriptor multi-dim TMEM slice GPU coverage)
+- Gap identified:
+  - generic `tensor_memory_descriptor.slice(..., dim=...)` over TMEM views only
+    had GPs / negative coverage; no positive run showed that slice along every
+    dimension stays valid while still generating `ttg.memdesc_slice`.
+- Work:
+  - introduced `tmem_ldst_descriptor_multidim_slice_positive_kernel` that reshapes
+    the TMEM to `[2, M/2, 2, N/2]`, slices dims `0..3`, and adds `11.0` to the
+    extracted sub-block before materializing the result with a register layout.
+  - added `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive`
+    covering `identity`, `mixed`, and `scrambled_cols` `TensorMemoryLinearLayout`
+    inputs, asserting the block update, verifying PTX/LLIR `16x128b` opcodes, and
+    checking `tensor_memory_linear` plus `ttg.memdesc_slice` in TTIR.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_BUILD_WITH_CCACHE=true python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k descriptor_multidim_slice_positive` -> 3 tests passed
+
+## 2026-03-26 (No-crash shared-layout validation + broader 2-CTA MMA coverage)
+- Fixed a frontend no-crash bug in shared-layout validation:
+  - `python/triton/experimental/gluon/language/_layouts.py`
+    `SwizzledSharedLayout.__post_init__` now validates that every
+    `cga_layout` basis rank matches `len(order)`.
+  - Motivation:
+    - a direct 2-CTA `tcgen05.copy` probe initially passed a rank-2 CGA basis
+      into `mbarrier.MBarrierLayout` (a rank-1 swizzled shared layout), which
+      previously fell through to a C++ `ArrayRef` assert in
+      `buildCgaLayoutAttr(...)` during IR materialization.
+  - Permanent regression:
+    - `python/test/gluon/test_frontend.py`
+      `test_mbarrier_invalid_cga_rank_reports_clean_error`
+    - parser now raises a wrapped `CompilationError` with
+      `all cga_layout bases must have rank 1` instead of crashing.
+- Added permanent plain 2-CTA MMAv5 runtime coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - new `test_tmem_runtime_matrix_mma_twocta_plain_kinds`
+  - matrix:
+    - `kind in {tf32, bf16, f8e5m2, f8e4m3}`
+    - `acc_layout_kind in {legacy, linear}`
+  - all 8 cases execute correctly on GPU and assert exact PTX/LLIR opcode
+    families:
+    - `tf32 -> tcgen05.mma.cta_group::2.kind::tf32`
+    - `bf16 -> tcgen05.mma.cta_group::2.kind::f16`
+    - `f8e5m2/f8e4m3 -> tcgen05.mma.cta_group::2.kind::f8f6f4`
+  - commit path is also checked:
+    - `tcgen05.commit.cta_group::2...`
+- Added LLVM lowering lit coverage for the newly-proven 2-CTA plain MMA kinds:
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `@tc_gen5_mma_2ctas_tf32`
+    - `@tc_gen5_mma_2ctas_f8f6f4`
+  - both check `nvg.cluster_id`, `nvvm.elect.sync`,
+    `tcgen05.mma.cta_group::2.kind::*`, and
+    `tcgen05.commit.cta_group::2...multicast::cluster...`.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96` -> no-op rebuild
+  - `python3 -m py_compile python/triton/experimental/gluon/language/_layouts.py python/test/gluon/test_frontend.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - `PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_frontend.py -k 'mbarrier or invalid_cga_rank'`
+    -> `6 passed`
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_twocta_plain_kinds'`
+    -> `8 passed`
+  - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    -> `1 passed`
+
+## 2026-03-26 (BUG: direct no-scales 2-CTA tcgen05.copy still does not reach cta_group::2)
+- Probe setup:
+  - temporary `CUDA_VISIBLE_DEVICES=0` Gluon harness using
+    `tcgen05_copy(smem, tmem)` with:
+    - canonical 2-CTA MMAv5-equivalent TMEM-linear destination
+      (`block = [[128, 0]], two_ctas=True`);
+    - CGA-aware 2-CTA NVMMA shared source layout;
+    - `num_ctas=2`.
+- Observed behavior:
+  - numerics are correct for `256x{64,128,256}` `f32`;
+  - PTX/LLIR emit only `tcgen05.cp.cta_group::1.128x256b`;
+  - no `tcgen05.commit.cta_group::2` is emitted.
+- Interpretation:
+  - this is not an ISA impossibility; it is a compiler/lowering gap.
+  - `TensorMemoryToLLVM.cpp` chooses `cta_group::{1,2}` from
+    `getModuleTwoCTAs(op)`, but the generic copy path is not propagating
+    `ttng.two-ctas` from the two-CTA TMEM layout/module context the way MMAv5
+    does today.
+- BUG:
+  - direct no-scales 2-CTA `tcgen05.copy` is still missing executable
+    `cta_group::2.{128x128b,128x256b}` coverage/support in-tree.
+- Related clean diagnostic:
+  - using the generic `block_two_ctas` TMEM-linear destination with a 2-CTA
+    NVMMA shared source fails cleanly in the verifier with
+    `The source and destination must have the same cga layout`, which is the
+    expected current matcher boundary rather than a crash.
+
+## 2026-03-26 (follow-up: 2-CTA no-scales tcgen05.copy runtime bug resolved as async-proxy test contract issue)
+- Reproduced the previously xfailed cold-start failure deterministically with
+  repeated fresh-process runs of the existing `tmem_copy_no_scales_twocta`
+  Gluon kernel.
+  - failure signature:
+    - wrong rows consistently came from the follower CTA half
+      (`128:160`, sometimes `224:256`);
+    - PTX/LLIR were already correct:
+      `tcgen05.cp.cta_group::2.128x256b`,
+      `tcgen05.commit.cta_group::2...multicast::cluster.b64`.
+- Probed the same kernel with explicit pre-copy ordering in
+  `.codex/initiatives/tmem_linear_generalization/experiments/probe_twocta_copy.py`.
+  - `PRE_COPY_CLUSTER_FENCE=1`:
+    - inserts `fence_async_shared(cluster=True)` before `tcgen05_copy`;
+    - passed `20/20` fresh-process runs.
+  - `PRE_COPY_CLUSTER_BARRIER=1`:
+    - inserts `cluster.barrier()` before `tcgen05_copy`;
+    - also passed `20/20` fresh-process runs.
+- Interpretation:
+  - the old xfail was not proving a legal TMEM codegen bug;
+  - it was exercising an invalid async-proxy sequence that omitted the
+    required pre-copy ordering from generic shared-memory writes to the async
+    proxy reader.
+- Landed follow-up changes:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - added explicit `fence_async_shared()` before every `tcgen05_copy`;
+    - upgraded 2-CTA no-scales copy from xfail to passing execution coverage;
+    - added exact fence/commit PTX+LLIR assertions for the 2-CTA path.
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/BarrierOpToLLVM.cpp`
+    - fixed unpredicated cross-CTA `wait_barrier` lowering to handle
+      leader-predicate synthesis without dereferencing a null predicate.
+  - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+    - `ttng.tmem_copy` now verifies its optional barrier with
+      `verifyBarrierType(...)` and `verifyCompletionBarrierLayout(...)`.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_frontend.py -k 'test_fence_async_shared or test_tcgen05_commit'`
+    -> `3 passed`
+  - `PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_twocta_codegen or cp_no_scales_twocta_execution'`
+    -> `8 passed`
+  - `PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales and not twocta and not unsupported'`
+    -> `56 passed, 5 skipped`
+  - `cd $(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())') && ninja triton-opt && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonNvidiaGPU/invalid.mlir`
+    -> `2 passed`
+
+## 2026-03-26 06:00 UTC: x1 ld/st and direct scales ld/st expansion
+
+- Added executable GPU coverage in `python/test/gluon/test_tmem_runtime_matrix.py`
+  for:
+  - `128x2xf16` x1 TMEM load/store on:
+    - canonical `TensorMemoryLinearLayout`,
+    - legacy packed `TensorMemoryLayout(block=(128, 2), col_stride=1)`,
+    - legacy unpacked `TensorMemoryLayout(block=(128, 2), col_stride=2)`;
+  - direct `TensorMemoryScalesLayout` load/store on:
+    - default path: `16x8xi8`, `num_warps=8`,
+    - explicit variant sweep:
+      - `16x4xi8`, `num_warps=4`, `instr_variant="16x32bx2"`,
+      - `32x4xi8`, `num_warps=8`, `instr_variant="32x32b"`,
+      - `64x8xi8`, `num_warps=4`, `instr_variant="32x32b"`,
+      - `128x32xi8`, `num_warps=4`, `instr_variant="32x32b"`.
+- Exact PASS boundaries observed:
+  - x1 f16:
+    - packed paths emit
+      `tcgen05.st.sync.aligned.32x32b.x1.b32` +
+      `tcgen05.ld.sync.aligned.32x32b.x1.b32`;
+    - unpacked path emits
+      `tcgen05.st.sync.aligned.32x32b.x1.unpack::16b.b32` +
+      `tcgen05.ld.sync.aligned.32x32b.x1.pack::16b.b32`;
+    - runtime outputs matched exactly.
+  - direct scales:
+    - `16x8`, default `get_reg_layout()`, `num_warps=8` emits
+      `16x32bx2.x1.b32` store/load at offset `0`;
+    - `16x4`, explicit `16x32bx2`, `num_warps=4` emits
+      `16x32bx2.x1.b32` store/load at offset `0`;
+    - `32x4`, `64x8`, `128x32` with explicit `32x32b` emit
+      `32x32b.x1/x4/x32.b32` store/load respectively at offset `0`;
+    - runtime outputs matched exactly.
+- Added/strengthened LLVMIR checks:
+  - canonical TMEM-linear x1 lowering now has an isolated conversion check;
+  - direct scales x1 load/store check now asserts the load immediate is `0`
+    and not `1`.
+- Validation:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_x1_f16_roundtrip or ldst_scales_direct_roundtrip or ldst_scales_variant_sweep'`
+    -> `8 passed`
+  - `triton-opt /tmp/scales_load.mlir`
+    -> `PASS` (direct `ttng.tmem_load` on `tensor_memory_scales_encoding`)
+  - isolated LLVM check:
+    - `triton-opt /tmp/tmem_x1_scales_checks.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck /tmp/tmem_x1_scales_checks.mlir`
+    -> `PASS`
+- BUG notes:
+  - `BUG`: direct scales ld/st with `shape=[16, 8]`, `num_warps=4`,
+    `instr_variant="16x32bx2"` is currently rejected by
+    `_compute_tmem_reg_layout(...)` even though adjacent narrow-tile scales
+    cases pass. Need to determine whether this is a real ISA-impossible case or
+    a reg-layout selection bug.
+  - `BUG`: repo-wide `test/Conversion/tritongpu_to_llvm_blackwell.mlir` still
+    has unrelated TMEM failures on this branch (MMAv5 col-stride expectation
+    drift and indexed-view `tmem_copy` lowering/state drift), so the new x1 and
+    scales LLVM checks were validated in isolation for now.
+  - `BUG`: repo-wide `test/TritonNvidiaGPU/invalid.mlir` still has unrelated
+    stale expectations on this branch (e.g. an M64 `tmem_copy` diagnostic text
+    change from generic `Incorrect tmem layout.` to the more specific
+    `blockM=128` failure).
+
+## 2026-03-26 07:15 UTC: narrow scales split-layout fallback fix
+
+- Fixed a real frontend/runtime gap in
+  `python/triton/experimental/gluon/language/_semantic.py`:
+  - explicit `instr_variant="16x32bx2"` on
+    `TensorMemoryScalesLayout(shape=[16, 8], num_warps=8)` was failing during
+    split-layout postprocessing even though the default `32x32b` path already
+    lowered and executed as `tcgen05.{ld,st}.sync.aligned.16x32bx2.x1.b32`;
+  - `_compute_tmem_reg_layout(...)` now falls back to the broadcasted
+    `32x32b` register layout for this narrow scales corner instead of rejecting
+    a codegenable case.
+- Expanded permanent coverage:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - added the explicit `16x32bx2` runtime regression for
+      `shape=[16, 8], num_warps=8`, asserting exact PTX/LLIR opcode equality
+      (`16x32bx2.x1.b32` at offset `0`);
+    - added direct scales ld/st execution coverage for nontrivial CGA bases in
+      2-CTA mode:
+      - `shape=[128, 64]`, `num_ctas=2`, `CGALayout=[[1, 0]]`
+      - `shape=[256, 32]`, `num_ctas=2`, `CGALayout=[[1, 0]]`
+      - `shape=[256, 64]`, `num_ctas=2`, `CGALayout=[[1, 0]]`
+      with exact PTX/LLIR checks for the resulting `32x32b.x32/x64.b32`
+      message families and TTGIR assertions on the printed `CGALayout`;
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - added an LLVM regression for a wider scales case
+      (`64x8`, 8 warps) where explicit `16x32bx2` register selection lowers to
+      repeated `32x32b.x1.b32` messages at offsets `0` and `2`;
+  - `test/TritonNvidiaGPU/invalid.mlir`
+    - aligned the stale M64 `tmem_copy` negative expectation with the current
+      more specific verifier diagnostic (`blockM=128`).
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `python3 -m py_compile python/triton/experimental/gluon/language/_semantic.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_scales_direct_roundtrip or ldst_scales_variant_sweep or ldst_scales_variant_reports_clean_unsupported'`
+    -> `38 passed, 1663 deselected`
+  - `cd $(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())') && ninja triton-opt && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonNvidiaGPU/invalid.mlir`
+    -> `2 passed`
+- Updated PASS/CLEAN_UNSUPPORTED boundary:
+  - `PASS`: direct scales ld/st with `shape=[16, 8]`, `num_warps=8`,
+    `instr_variant="16x32bx2"` now compiles, runs, and emits the expected
+    `16x32bx2.x1.b32` store/load pair.
+  - `CLEAN_UNSUPPORTED`: the scales `warpx2` shared-layout candidate remains a
+    deliberate verifier rejection, even though direct PTX probes continue to
+    show `tcgen05.cp.warpx2::{02_13,01_23}.64x128b` exists at the ISA level.
+
+## 2026-03-26 08:35 UTC: runtime matrix expansion for x1/scales/two-CTA copy
+
+- Expanded executable TMEM coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - added `x1` `f32` positive runtime cases for:
+    - canonical TMEM-linear one-CTA `128x1`
+    - legacy-equivalent one-CTA `128x1`
+    - canonical TMEM-linear two-CTA `256x1`
+  - added `x1` `f32` descriptor-chain positives over those same shapes,
+    checking exact two-round-trip `32x32b.x1.b32` opcode sequences;
+  - added clean-negative `x1` `f32` coverage for impossible
+    `16x64b` / `16x128b` / `16x256b` variants on `[M, 1]`;
+  - widened the direct scales ld/st runtime matrix to cover exact PTX/LLIR
+    opcode matches across:
+    - `16x32bx2.x1`
+    - `32x32b.x{1,2,4,8,16,32}`
+    - both offset-bearing narrow cases and wider single-message cases;
+  - locked representative clean-negative scales cases:
+    - register-broadcasted `16x16`
+    - unsupported `[32, 8]` / `[32, 16]` shapes for explicit
+      `32x32b` / `16x32bx2`.
+- Expanded runtime coverage for no-scales two-CTA `tcgen05.copy`:
+  - now validates both legacy and canonical TMEM-linear destinations for:
+    - `N=16` / `swizzle=32`
+    - `N=32` / `swizzle in {32,64,128}`
+    - `N=64,128,256` / `swizzle=128`
+  - each case executes on GPU and asserts exact
+    `tcgen05.cp.cta_group::2.128x256b` opcode counts plus cluster fence/barrier
+    LLIR/PTX side effects.
+- Expanded LLVM/lit checks:
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - added a wide direct-scales lowering regression for `128x32` ->
+      `tcgen05.{ld,st}.sync.aligned.32x32b.x32.b32`;
+  - `test/TritonNvidiaGPU/invalid.mlir`
+    - aligned the stale M64 `tmem_copy` diagnostic expectation with the current
+      specific verifier error (`Tmem layout must have blockM=128.`);
+  - `test/TritonNvidiaGPU/membar-cluster.mlir`
+    - kept green alongside the widened two-CTA copy/runtime surface.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_scales_direct_roundtrip or ldst_scales_variant_sweep or ldst_scales_variant_reports_clean_unsupported'`
+    -> `35 passed, 1660 deselected`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_x1_f16_roundtrip or ldst_scales_direct_roundtrip or ldst_scales_variant_sweep or ldst_scales_variant_reports_clean_unsupported or cp_no_scales_twocta_codegen or cp_scales_warpx4 or cp_scales_warpx4_via_scaled_mma_copy_matrix or cp_scales_warpx4_via_scaled_mma_geometry_sweep or mma_twocta_plain_kinds'`
+    -> `113 passed, 1582 deselected`
+  - `cd $(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())') && ninja triton-opt && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/membar-cluster.mlir`
+    -> `3 passed`
+- PASS/CLEAN_UNSUPPORTED boundary updates:
+  - `PASS`:
+    - direct scales ld/st exact lowering across `16x32bx2.x1` and
+      `32x32b.x{1,2,4,8,16,32}`;
+    - `x1` `f32` one-CTA and two-CTA ld/st plus descriptor chains;
+    - widened no-scales two-CTA `tcgen05.copy` swizzle/shape matrix.
+  - `CLEAN_UNSUPPORTED`:
+    - `x1` `f32` with `16x64b` / `16x128b` / `16x256b`;
+    - scales `16x16` register-broadcasted cases and explicit unsupported
+      `[32, 8]` / `[32, 16]` layouts;
+    - no new parser/verifier/pass crash was observed in this pass.
+
+
+## 2026-03-26 10:05 UTC: 2-CTA no-scales tcgen05.copy cold-start bug fixed and pinned
+
+- Root-caused the earlier cold-start corruption on 2-CTA non-scales
+  `tcgen05.copy` to missing cross-CTA synchronization between a distributed
+  shared-memory producer and `ttng.tmem_copy`.
+- Compiler changes already in tree from this pass now matter materially:
+  - `ttng.tmem_copy` participates in memory-effect analysis;
+  - `ClusterBarrierInsertion` treats 2-CTA `ttng.tmem_copy` as a cross-CTA
+    consumer;
+  - explicit-buffer alias filtering no longer hides distributed-shared hazards.
+- Added a permanent membar regression in
+  `test/TritonNvidiaGPU/membar-cluster.mlir` proving that a
+  `ttg.local_store` into distributed shared memory is followed by
+  `ttng.cluster_barrier` before `ttng.tmem_copy`.
+- Updated the executable runtime matrix in
+  `python/test/gluon/test_tmem_runtime_matrix.py` to assert the actual post-fix
+  PTX/LLIR shape for 2-CTA no-scales copy:
+  - exact `tcgen05.cp.cta_group::2.128x256b` counts;
+  - exactly one `tcgen05.commit.cta_group::2`;
+  - no `cta_group::1` copy/commit opcodes;
+  - exactly one PTX `fence.proxy.async.shared::cluster`;
+  - exactly two PTX `barrier.cluster.arrive.aligned` / `wait.aligned` pairs;
+  - exact LLIR cluster intrinsic counts (`fence.proxy.async.shared_cluster=2`,
+    `barrier.cluster.arrive.aligned=3`, `barrier.cluster.wait.aligned=3`), and
+    no relaxed-cluster barrier path.
+- Empirical validation:
+  - 10 fresh-process runs for the former bad tuples both passed:
+    - `(linear, N=256, swizzle=32)`
+    - `(legacy, N=256, swizzle=64)`
+  - full executable two-CTA no-scales copy matrix passed numerically with the
+    new structural assertions.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+  - `cd $(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())') && ninja triton-opt && lit -v test/TritonNvidiaGPU/membar-cluster.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    -> `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_twocta_codegen'`
+    -> `28 passed, 1688 deselected`
+- BUG status update:
+  - the earlier `BUG` classification for 2-CTA no-scales `tcgen05.copy`
+    miscompiles is closed on the current tree;
+  - current frontier remains `warpx2` descriptor synthesis and other still-clean
+    unsupported copy families, not this 2-CTA `128x256b` path.
+
+## 2026-03-26 18:25 UTC: stabilize 2-CTA no-scales copy synchronization coverage
+
+- Root-cause/fix trail:
+  - the earlier cold-start 2-CTA no-scales `tcgen05.copy` corruption was caused
+    by missing cross-CTA dependency tracking between distributed shared writes
+    and `ttng.tmem_copy`.
+  - landed compiler-side fixes:
+    - `ttng.tmem_copy` now exposes explicit memory effects for analysis;
+    - `ClusterBarrierInsertion` now treats `ttng.tmem_copy` as a tracked
+      cross-CTA consumer;
+    - the explicit-buffer alias filter no longer suppresses hazards when either
+      side is a distributed shared memdesc slice.
+- Permanent tests updated:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - 2-CTA no-scales copy runtime assertions now pin the actual post-fix
+      PTX/LLIR shape:
+      - `fence.proxy.async.shared::cluster` before copy,
+      - `barrier.cluster.arrive.aligned` / `wait.aligned` before the first
+        `tcgen05.cp.cta_group::2.128x256b`,
+      - no relaxed-arrive barrier on this path.
+  - `test/TritonNvidiaGPU/membar-cluster.mlir`
+    - added a dedicated regression proving `ttg.local_store` feeding 2-CTA
+      `ttng.tmem_copy` gets a pre-copy `ttng.cluster_barrier`;
+    - refreshed adjacent multi-CTA MMA/TMA expectations to the current pass
+      behavior.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `cd $(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())') && ninja triton-opt && lit -v test/TritonNvidiaGPU/membar-cluster.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    -> `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_twocta_codegen'`
+    -> `28 passed, 1688 deselected`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_x1_f16_roundtrip or ldst_scales_direct_roundtrip or ldst_scales_variant_sweep or ldst_scales_variant_reports_clean_unsupported or cp_no_scales_twocta_codegen or cp_scales_warpx4 or cp_scales_warpx4_via_scaled_mma_copy_matrix or cp_scales_warpx4_via_scaled_mma_geometry_sweep or mma_twocta_plain_kinds'`
+    -> `130 passed, 1586 deselected`
+- BUG status:
+  - close `BUG`: 2-CTA no-scales `tcgen05.copy` cold-start corruption on the
+    `cta_group::2.128x256b` path.
+  - open frontier remains `warpx2` descriptor synthesis / lowering, not this
+    synchronized `128x256b` family.
+
+## 2026-03-26 18:27 UTC: broaden post-fix runtime sweep and repair copy-test harness
+
+- Broadened executable validation after the 2-CTA copy barrier fix with a fresh
+  runtime slice over plain copies, scales copies, and 2-CTA MMA:
+  - selector:
+    `cp_no_scales_twocta_codegen or cp_scales_warpx4 or cp_scales_warpx4_via_scaled_mma_copy_matrix or cp_scales_warpx4_via_scaled_mma_geometry_sweep or cp_no_scales_linear_32bit_dtypes or mma_twocta or mma_twocta_plain_kinds`
+  - result:
+    `103 passed, 1613 deselected`
+- During that sweep, hit a transient TEST BUG in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - `tmem_copy_no_scales_kernel` and `tmem_copy_no_scales_linear_kernel` had
+    lost their local `smem_layout = ttgl.NVMMASharedLayout(...)` definitions
+    during the earlier `fence_async_shared` refactor.
+  - failure mode was clean Python/AST compile failure, not a compiler backend
+    bug:
+    `NameError('smem_layout is not defined')`.
+  - restored the missing `smem_layout` locals and reran the slice cleanly.
+- Validation added on top of the earlier focused copy check:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_twocta_codegen or cp_scales_warpx4 or cp_scales_warpx4_via_scaled_mma_copy_matrix or cp_scales_warpx4_via_scaled_mma_geometry_sweep or cp_no_scales_linear_32bit_dtypes or mma_twocta or mma_twocta_plain_kinds'`
+    -> `103 passed, 1613 deselected`
+- BUG ledger:
+  - no new compiler BUG found in this slice after the barrier fix;
+  - the only new failure was the repaired runtime-test harness bug above.
+
+## 2026-03-26 18:32 UTC: current warpx2 compiler blocker audit
+
+- Code-path audit of the current tree:
+  - family classification already exists in
+    `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp::getTMemCopyAtom(...)`
+    for `warpx2::02_13.64x128b` and `warpx2::01_23.64x128b`.
+  - PTX emission already exists in
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp::createTcgen05Cp(...)`.
+  - the real blocker is shared-descriptor synthesis:
+    - verifier side:
+      `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp::TMEMCopyOp::verify()` gates all
+      non-scales copy families through
+      `canRepresentAsMMASmemDescriptor(cvtWarp, instrShape, bitwidth, 0, 5)`;
+    - lowering side:
+      `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp::copySharedToTmem(...)`
+      rebuilds the same `cvtWarp` and requires
+      `DotOpMmaSmemLoader::build(..., instrShape={32, bCol/bitwidth}, MNdim=0, mmaVersion=5)`.
+    - both helpers ultimately use the generic MMAv5 shared-descriptor search in
+      `DotOpToLLVM/MMAHelpers.h::{canRepresentAsMMASmemDescriptor,getDescriptor}`,
+      which only models standard 32-row core-matrix descriptors plus LBO/SBO
+      padding. There is no `warpx2`-specific descriptor/address synthesis path.
+- Empirical cross-check:
+  - direct PTX witnesses in the initiative logs still show
+    `tcgen05.cp.warpx2::{02_13,01_23}.64x128b` are real and deterministic at the
+    ISA level, but simple opcode substitution on the existing descriptor does
+    not produce correct full-copy semantics.
+  - bounded refresh on current tree:
+    `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 128 --max-layouts 32 --start-rows 0 --device cuda`
+    now fails cleanly at verifier time with
+    `The source shared layout does not lower to Triton's currently supported tcgen05.copy.warpx4.32x128b descriptor family for tensor memory scales.`
+    No late `failed to legalize operation`, no crash.
+- Current engineering conclusion:
+  - `warpx2` support is blocked by missing family-specific descriptor/address
+    synthesis, not by opcode emission or classifier recognition.
+  - next enabling work needs a dedicated `warpx2` descriptor model in the
+    MMAv5 SMEM loader / descriptor matcher path, plus matching pointer stepping
+    semantics in `copySharedToTmem(...)`.
+
+## 2026-03-26 18:33 UTC: refresh direct-PTX warpx2 / 4x256 semantics boundary
+
+- Re-ran direct PTX probes on GPU 3 with the current toolchain:
+  - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_variants.py`
+  - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_semantics.py --output-json /tmp/probe_cp_direct_ptx_semantics_gpu3.json`
+- Fresh empirical result matches the earlier initiative probes:
+  - `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b` assembles and launches, but deterministically populates only the `02` / `13` warp-pair pattern; it is not numerically equivalent to the working warpx4 path.
+  - `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b` assembles and launches, but deterministically populates only the `01` / `23` warp-pair pattern; again not a drop-in replacement.
+  - `tcgen05.cp.cta_group::1.4x256b` assembles and launches, but remains non-deterministic and does not match the working reference mapping.
+- Compiler-side response:
+  - tightened the clean-unsupported diagnostic in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` for descriptor-build failures on non-scales copy families so future reachable `warpx2` cases explain that Triton still needs family-specific shared-descriptor/address synthesis; this is not just a generic descriptor mismatch.
+- Test maintenance:
+  - synchronized `test/TritonNvidiaGPU/invalid.mlir` with the current canonical TMEM verifier diagnostics for `ttng.tmem_subslice` invalid cases.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `lit -v test/TritonNvidiaGPU/invalid.mlir`
+    -> `1 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_warpx2_candidate_reports_clean_error'`
+    -> `1 passed, 1715 deselected`
+- BUG frontier update:
+  - keep `warpx2` open as a compiler lowering/design task, not an ISA availability question.
+  - keep `4x256b` blocked behind further semantics work; current direct-PTX behavior is still not deterministic enough to expose in Triton.
+
+## 2026-03-26 20:10 UTC: overlay warpx2 semantics probe and verifier-note refresh
+
+- Added focused overlay probe infrastructure:
+  - script:
+    `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_overlay.py`
+  - durable result captures:
+    - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_overlay_gpu3.json`
+    - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_overlay_gpu3_deltas.json`
+- Probe design:
+  - build one kernel with two sequential scales-style `tcgen05.copy` operations;
+  - first copy is a known-good warpx4 seed from sentinel input `A`;
+  - second copy is patched to a single active `warpx2` site sourcing
+    diagnostic input `B = column_id`;
+  - read back the `128x32` TMEM alias view and classify each `32x16` half as:
+    `A`, `B`, or `other`.
+- Stable hardware facts from the overlay probe:
+  - second-copy PTX sites reuse the same base descriptor/address registers as
+    the first copy:
+    - site 0: `[ %r14 + 0 ], %rd3`
+    - site 1: `[ %r12 + 0 ], %rd4`
+  - single-site `warpx2` writes are structured but partial:
+    - `warpx2::02_13` with `%rd3 @ %r14 + 0` writes the left half of chunks
+      `0` and `2`;
+    - `warpx2::02_13` with `%rd4 @ %r14 + 4` writes the right half of chunks
+      `0` and `2`;
+    - `warpx2::01_23` with `%rd3 @ %r14 + 0` writes the left half of chunks
+      `0` and `1`;
+    - `warpx2::01_23` with `%rd4 @ %r14 + 4` writes the right half of chunks
+      `0` and `1`;
+    - `site0` vs `site1` made no observable difference for these overwrite
+      maps.
+  - tested intermediate TMEM destination deltas `+1` and `+2` are not viable:
+    they fault on hardware with `cuCtxSynchronize failed: misaligned address`
+    for both `warpx2` families and both `%rd3` / `%rd4`.
+- Two-message follow-up on the inherited base schedule:
+  - `02_13` with `(%rd3 @ %r14, %rd4 @ %r12)` fully populates chunks `0` and
+    `2`, but leaves chunks `1` and `3` wrong.
+  - `01_23` with `(%rd3 @ %r14, %rd4 @ %r12)` fully populates chunks `0` and
+    `1`, but leaves chunks `2` and `3` wrong.
+  - mixed-family two-message schedules (`02_then_01`, `01_then_02`) are still
+    not exact.
+- Current engineering conclusion is now stronger than “needs more work”:
+  - the inherited two-message warpx4 descriptor/address schedule is
+    semantically insufficient for `warpx2`;
+  - valid `warpx2` support requires family-specific descriptor/address
+    synthesis and likely a different multi-message copy plan, not just opcode
+    substitution or a small TMEM address tweak.
+- Compiler response:
+  - strengthened the clean-unsupported `warpx2` note in
+    `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` so it now reports that:
+    - the inherited warpx4 schedule only fills selected alias chunk pairs, and
+    - intermediate `+1/+2` TMEM deltas fault with misaligned addresses.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && ninja triton-opt && lit -v test/TritonNvidiaGPU/invalid.mlir`
+    -> `1 passed`
+- BUG ledger:
+  - no new Triton compiler BUG found in this pass;
+  - the new failures are direct-PTX schedule candidates that fault on hardware
+    (`misaligned address`), which should remain logged as invalid candidate
+    schedules rather than compiler regressions.
+
+## 2026-03-26 (strict explicit-layout policy for plain TMEM ld/st/alloc)
+- Policy change requested by user:
+  - if a user explicitly requests a TMEM register layout that is not directly
+    TMEM-compatible, the compiler must report an error;
+  - the compiler must not silently insert a fallback `convert_layout`.
+- Compiler changes:
+  - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+    - removed deferred layout feasibility for plain `ttng.tmem_load`,
+      `ttng.tmem_store`, and initialized `ttng.tmem_alloc`;
+    - these ops now fail in the verifier as soon as the explicit tensor layout
+      is not directly compatible with the TMEM memdesc;
+    - diagnostics now suggest either using one of the listed potential TMEM
+      layouts or inserting `convert_layout` explicitly.
+  - `third_party/nvidia/backend/compiler.py`
+    - removed the late `passes.ttgpuir.add_relayout_tritongpu(pm)` call from
+      `make_llir`;
+    - this was the backend path that had been silently repairing plain TMEM
+      ld/st/alloc by inserting `convert_layout` underneath the user.
+- Test updates:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - converted positive copy/scales kernels that previously relied on implicit
+      blocked-layout fallback to use explicit `get_reg_layout(...)` plus
+      explicit `convert_layout`;
+    - converted the old blocked-fallback runtime regression into a clean error
+      regression that accepts the current frontend failure boundary
+      (`RuntimeError` during IR materialization or `CompilationError` later).
+  - `test/TritonNvidiaGPU/invalid.mlir`
+    - updated the impossible-layout note to the new verifier wording.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `python3 -m py_compile third_party/nvidia/backend/compiler.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && ninja triton-opt && lit -v test/TritonNvidiaGPU/invalid.mlir`
+    -> `1 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'blocked_layout_reports_clean_error or cp_no_scales_indexed_view_canonicalized or cp_no_scales_linear_indexed_view or cp_128x128 or cp_scales_warpx4 or ldst_scales_direct_roundtrip or ldst_scales_variant_sweep'`
+    -> `93 passed, 1623 deselected`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_descriptor_multidim_slice_identity_reports_clean_error or ldst_descriptor_multidim_slice_reports_clean_error or ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout or ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout'`
+    -> `27 passed, 1689 deselected`
+  - full matrix rerun with xdist:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+      -> `1598 passed, 117 skipped, 1 xfailed in 60.41s`

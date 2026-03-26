@@ -926,7 +926,7 @@ def TTNG_TMEMSubSliceOp : TTNG_Op<"tmem_subslice", [Pure,
   let hasVerifier = 1;
 }
 
-def TTNG_TMEMCopyOp : TTNG_Op<"tmem_copy"> {
+def TTNG_TMEMCopyOp : TTNG_Op<"tmem_copy", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface, ["getEffects"]>]> {
   let summary = "Initiate an asynchronous copy operation from shared memory to the Tensor Memory.";
 
   let description = [{
@@ -976,9 +976,9 @@ def TTNG_TMEMCopyOp : TTNG_Op<"tmem_copy"> {
 
   }];
   let arguments = (ins
-    Arg<TTG_MemDescType, "", [MemRead<SharedMemory>]>:$src,
-    Arg<TTG_MemDescType, "", [MemWrite<TensorMemory>]>:$dst,
-    Arg<Optional<TTG_MemDescType>, "", [MemWrite<SharedMemory>]>:$barrier
+    TTG_MemDescType:$src,
+    TTG_MemDescType:$dst,
+    Optional<TTG_MemDescType>:$barrier
   );
 
   let assemblyFormat = [{$src `,` $dst (`,` $barrier^)? attr-dict `:` qualified(type(operands))}];

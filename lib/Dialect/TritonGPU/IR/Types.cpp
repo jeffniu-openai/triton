@@ -129,7 +129,7 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
       return emitError() << "alloc shape must have at least " << rank
                          << " dimensions for the TMEM layout";
     }
-    auto layoutShape = allocShape.take_back(rank);
+    auto layoutShape = shape.take_back(rank);
     std::string canonicalizationError;
     auto maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
         layoutShape, encoding, &canonicalizationError);
@@ -140,12 +140,12 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
     auto dims = standardOutDimNames(ctx, rank);
     for (auto [dim, size] : llvm::zip_equal(dims, layoutShape)) {
       if (ll.getOutDimSize(dim) != size) {
-        return emitError() << "allocation shape must match the TMEM linear "
-                              "layout. Expected "
-                           << ll.getOutDimSize(dim) << " for " << dim
-                           << " but got " << size << ". allocShape = "
-                           << allocShape << ", layoutRank = " << rank
-                           << ", encoding = " << encoding;
+        return emitError() << "shape must match the TMEM linear layout. "
+                           << "Expected " << ll.getOutDimSize(dim) << " for "
+                           << dim << " but got " << size << ". shape = "
+                           << shape << ", allocShape = " << allocShape
+                           << ", layoutRank = " << rank << ", encoding = "
+                           << encoding;
       }
     }
   } else if (auto enc = dyn_cast<SharedEncodingTrait>(encoding)) {

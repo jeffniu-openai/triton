@@ -63,6 +63,30 @@
 - A positive MMAv5 runtime test must use the canonical TMEM-linear equivalent
   of a supported legacy MMAv5 accumulator/LHS tile. A generic block-basis
   TMEM-linear layout that is fine for ld/st is not necessarily MMAv5-legal.
+- For tensor-memory scales direct ld/st, `instr_variant` is a hint, not a
+  guarantee of the final atom family:
+  - narrow tiles requested as `32x32b` may still lower through
+    `16x32bx2.x1`, and
+  - some `16x32bx2`-requested cases canonicalize to wider `32x32b.x{1,2,4,8}`
+    atoms when the register layout permits it.
+- The current direct scales ld/st positive frontier is now runtime-validated
+  for exact PTX/LLIR opcode matches across:
+  - `16x32bx2.x1`
+  - `32x32b.x{1,2,4,8,16,32}`
+  - including representative offset-bearing cases (`+2`, `+4`, `+8`, `+16`)
+    and both direct/default and explicit-variant `get_reg_layout(...)` paths.
+- The current x1 direct ld/st frontier is runtime-validated for:
+  - `f16` packed/unpacked one-CTA TMEM
+  - `f32` one-CTA and two-CTA TMEM-linear/legacy-equivalent layouts
+  - descriptor-chain compositions over those x1 shapes
+  - while `16x64b`, `16x128b`, and `16x256b` remain clean negatives for
+    `[M, 1]` x1 shapes.
+- The current no-scales two-CTA `tcgen05.copy` frontier is runtime-validated
+  for both legacy and canonical TMEM-linear destinations over:
+  - `N=16` with `swizzle=32`
+  - `N=32` with `swizzle in {32,64,128}`
+  - `N in {64,128,256}` with `swizzle=128`
+  - all lowering to `tcgen05.cp.cta_group::2.128x256b` with exact counts.
 
 ## Runtime Fuzz Strategy
 
@@ -289,11 +313,94 @@
     `index -> 2D load/store`;
   - full-rank rank-4 TMEM descriptors are working end-to-end for
     `slice -> index -> slice -> index -> 2D load/store`;
+  - the same rank-4 path now passes broad row/col-permuted TMEM-linear sweeps
+    (`736 passed, 64 skipped`) across explicit ld/st variants plus split-N;
   - the same rank-4 path is working for 2-CTA `block_two_ctas` and
     `mmav5_twocta` layouts as well.
+  - descriptor multi-dim slice semantics now have positive GPU proof via the
+    new `tmem_ldst_descriptor_multidim_slice_positive_kernel`; the test
+    exercises `identity`, `mixed`, and `scrambled_cols` linear layouts,
+    verifies the block update and `ttg.memdesc_slice` in TTIR, and checks the
+    `16x128b` PTX/LLIR match.
   - 2D last-dimension TMEM slices that need to preserve split-N / M64 physical
     layout now route through the `ttng.tmem_subslice` compatibility path from
     the frontend, restoring valid `block_m_64` MMAv5 compositions.
+- Plain MMAv5 runtime coverage status:
+  - `f16`, `tf32`, `f8f6f4`, and now `bf16 -> kind::f16` are all exercised
+    with GPU execution and exact PTX/LLIR opcode checks for canonical
+    accumulator layouts.
+  - `kind::i8` remains a clean PTXAS-level unsupported case on `sm_103a`.
+- Active uncovered-but-plausible MMA frontier:
+  - 2-CTA TF32 MMAv5 currently fails lowering cleanly with
+    `tcgen05.mma does not support transposed float32 operands in shared memory`;
+    treat this as a compiler BUG / follow-up target, not a settled unsupported
+    ISA boundary.
+- New 2-CTA plain MMA coverage status (2026-03-26):
+  - plain `tcgen05.mma.cta_group::2` is now GPU-proven for:
+    - `tf32`
+    - `bf16 -> kind::f16`
+    - `f8e5m2 -> kind::f8f6f4`
+    - `f8e4m3 -> kind::f8f6f4`
+  - both legacy and canonical TMEM-linear 2-CTA accumulator layouts are now
+    covered in the runtime matrix with exact PTX/LLIR opcode equality.
+- New no-crash frontend guard:
+  - `SwizzledSharedLayout` now validates `cga_layout` basis rank against
+    `order` rank in Python before IR materialization.
+  - Invalid 1D shared layouts such as `mbarrier.MBarrierLayout(cga_layout=[[1,
+    0]])` now fail with a wrapped `CompilationError` rather than tripping a C++
+    assert during `buildCgaLayoutAttr(...)`.
+- Active 2-CTA copy BUG frontier:
+  - the earlier cold-start failure on 2-CTA no-scales `tcgen05.copy` was not a
+    legal-codegen bug once the sequence was validated empirically;
+  - correct 2-CTA copy usage requires explicit pre-copy async-proxy ordering,
+    i.e. `fence_async_shared(cluster=True)` before `tcgen05_copy` when the
+    source lives in distributed shared memory;
+  - with that fence in place, the runtime matrix now passes for both legacy and
+    canonical TMEM-linear 2-CTA destinations, and PTX/LLIR show the expected
+    `tcgen05.cp.cta_group::2.128x256b` plus
+    `tcgen05.commit.cta_group::2...multicast::cluster.b64`.
+- New verifier/lowering fixes landed:
+  - `ttng.tmem_copy` now validates its optional completion barrier through
+    `verifyBarrierType(...)` and `verifyCompletionBarrierLayout(...)`, so bad
+    barrier layouts fail early and cleanly.
+  - unpredicated cross-CTA `ttng.wait_barrier` lowering no longer crashes when
+    the leader predicate must be synthesized in LLVM lowering.
+- High-value TMEM test gaps from the latest audit:
+  - executable linear `128x128b` copy coverage exists only for legacy TMEM,
+    not canonical TMEM-linear;
+  - TMEM view destinations for `128x256b` and scales `warpx4.32x128b` copy are
+    still under-tested;
+  - direct scaled MMAv5 via TMEM views remains a good next runtime target.
+- New PASS coverage:
+  - executable `32x32b.x1` load/store is now covered for:
+    - canonical `TensorMemoryLinearLayout`,
+    - legacy packed TMEM,
+    - legacy unpacked TMEM;
+  - direct `TensorMemoryScalesLayout` ld/st is now covered end-to-end for:
+    - default descriptor API on `16x8xi8` with `num_warps=8`,
+    - explicit-variant cases on `16x4xi8`, `32x4xi8`, `64x8xi8`, and
+      `128x32xi8`;
+  - isolated LLVMIR checks for canonical x1 TMEM-linear lowering and direct
+    scales x1 load/store are green.
+- New BUG frontier from the scales sweep:
+  - The explicit narrow-scales gap is now closed:
+    - `TensorMemoryScalesLayout(shape=[16, 8], num_warps=8,
+      instr_variant="16x32bx2")` now reuses the broadcasted `32x32b`
+      register layout and lowers/executed correctly as
+      `tcgen05.{ld,st}.sync.aligned.16x32bx2.x1.b32`.
+  - Direct scales ld/st with nontrivial CGA bases is now GPU-proven for:
+    - `shape=[128, 64]`, `num_ctas=2`, `CGALayout=[[1, 0]]`
+    - `shape=[256, 32]`, `num_ctas=2`, `CGALayout=[[1, 0]]`
+    - `shape=[256, 64]`, `num_ctas=2`, `CGALayout=[[1, 0]]`
+    with exact PTX/LLIR checks for the emitted `32x32b` families.
+  - Remaining copy-family frontier:
+    - direct PTX probes still show `tcgen05.cp.warpx2::{02_13,01_23}.64x128b`
+      is real, but Triton's scales-copy verifier/lowering intentionally keeps
+      those layouts `CLEAN_UNSUPPORTED` because the required shared-memory
+      descriptor synthesis is not implemented yet.
+  - Current targeted lit slice is green:
+    - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `test/TritonNvidiaGPU/invalid.mlir`
 - The key implementation boundary is now cleaner:
   - row/col zero-basis stripping is only valid for TMEM view-local encodings;
     doing it globally breaks semantically meaningful M64 / split-N / legacy
@@ -303,3 +410,120 @@
     `get_reg_layout()/load()/store()` with an actionable 2D-only diagnostic.
   - This is acceptable for the current landing, but direct higher-rank TMEM
     access remains future work.
+
+
+- 2-CTA no-scales `tcgen05.copy` status (2026-03-26 10:05 UTC):
+  - the earlier cold-start corruption is fixed on the current tree;
+  - required compiler invariants are now pinned by tests:
+    - `ttng.tmem_copy` is a tracked cross-CTA consumer for barrier insertion,
+    - distributed shared -> `ttng.tmem_copy` gets a pre-copy
+      `ttng.cluster_barrier`,
+    - runtime PTX/LLIR for the 2-CTA `128x256b` family uses aligned cluster
+      barriers, not the old relaxed-barrier shape.
+  - executable coverage is now strong for this path:
+    - 28/28 `cp_no_scales_twocta_codegen` runtime cases pass on GPU,
+    - both former cold-start tuples also pass 10 fresh-process runs each.
+  - remove this from the active BUG frontier; the next copy-family frontier is
+    `warpx2` shared-descriptor synthesis.
+
+- 2-CTA no-scales copy compiler contract (2026-03-26 18:25 UTC):
+  - `ttng.tmem_copy` must participate in memory-effect analysis and cross-CTA
+    barrier insertion just like MMA/TMA consumers.
+  - The explicit-buffer alias fast-path is only sound for non-distributed
+    shared accesses; distributed slices must still participate in hazard
+    tracking.
+  - The executable/runtime contract for the working `cta_group::2.128x256b`
+    path is now pinned as:
+    - `fence_async_shared(cluster=True)` before the copy,
+    - aligned cluster barrier pair before the first copy message,
+    - exact `tcgen05.cp.cta_group::2.128x256b` counts,
+    - exact `tcgen05.commit.cta_group::2...multicast::cluster.b64` commit.
+  - Current validation status:
+    - former cold-start repro tuples pass 10 fresh-process runs each;
+    - full `cp_no_scales_twocta_codegen` matrix is green;
+    - surrounding copy/scales/plain-MMA runtime slice is green (`130 passed`).
+
+- Runtime validation checkpoint (2026-03-26 18:27 UTC):
+  - the repaired 2-CTA copy path still holds under a broader executable slice;
+  - post-fix runtime sweep status:
+    - `cp_no_scales_twocta_codegen`
+    - `cp_scales_warpx4`
+    - `cp_scales_warpx4_via_scaled_mma_copy_matrix`
+    - `cp_scales_warpx4_via_scaled_mma_geometry_sweep`
+    - `cp_no_scales_linear_32bit_dtypes`
+    - `mma_twocta`
+    - `mma_twocta_plain_kinds`
+    all green together (`103 passed`).
+  - no new compiler/runtime correctness frontier opened by this broader slice.
+  - note for future work: the transient `smem_layout is not defined` failure was
+    only a test-harness regression in `test_tmem_runtime_matrix.py`, not a TMEM
+    compiler bug.
+
+- warpx2 frontier audit (2026-03-26 18:32 UTC):
+  - current compiler status:
+    - classifier recognizes `warpx2::{02_13,01_23}.64x128b`;
+    - PTX builder can emit the opcode suffixes;
+    - verifier/lowering still rely on the generic MMAv5 shared-descriptor
+      builder, which has no `warpx2`-specific descriptor/address model.
+  - practical implication:
+    - enabling `warpx2` is not a small opcode toggle; it requires dedicated
+      descriptor synthesis and copy-address stepping.
+  - bounded current-tree probe of the old scales `warpx2` search now fails
+    cleanly at verifier time rather than late LLVM legalization.
+
+- Copy-family frontier update (2026-03-26 18:33 UTC):
+  - fresh direct-PTX probes reconfirm:
+    - `warpx2::02_13` and `warpx2::01_23` are real opcodes with deterministic warp-pair semantics;
+    - they are not drop-in substitutes for the current Triton warpx4 descriptor/message schedule;
+    - `4x256b` still launches but is not deterministic enough for compiler support.
+  - practical implication:
+    - the next `warpx2` support step is family-specific descriptor/address/message synthesis, not just classifier widening or opcode substitution.
+  - until then, keep these families on the clean-unsupported side with explicit notes rather than attempting partial lowering.
+
+- warpx2 overlay semantics checkpoint (2026-03-26 20:10 UTC):
+  - durable experiment artifacts now live in:
+    - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_overlay.py`
+    - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_overlay_gpu3.json`
+    - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_overlay_gpu3_deltas.json`
+  - hardware-proven semantics for the inherited descriptor/address family:
+    - base copy sites are `[ %r14 + 0 ], %rd3` and `[ %r12 + 0 ], %rd4`;
+    - with one active `warpx2` message:
+      - `02_13 + (%rd3 @ %r14 + 0)` writes the left half of chunks `0/2`;
+      - `02_13 + (%rd4 @ %r14 + 4)` writes the right half of chunks `0/2`;
+      - `01_23 + (%rd3 @ %r14 + 0)` writes the left half of chunks `0/1`;
+      - `01_23 + (%rd4 @ %r14 + 4)` writes the right half of chunks `0/1`;
+      - no tested one-message schedule produced the missing complementary left
+        halves for chunks `1/3` or `2/3`.
+    - intermediate TMEM destination deltas `+1` and `+2` are invalid on
+      hardware for both families and both descriptors:
+      `cuCtxSynchronize failed: misaligned address`.
+  - two-message inference:
+    - `02_13` with the inherited descriptor pair `(%rd3 @ %r14, %rd4 @ %r12)`
+      fully covers chunks `0/2` only;
+    - `01_23` with that same pair fully covers chunks `0/1` only;
+    - mixed-family two-message schedules are still not exact.
+  - current design consequence:
+    - `warpx2` cannot be enabled from the current two-message warpx4 plan by
+      changing only opcode suffixes or small TMEM address deltas;
+    - the likely enabling path is a dedicated copy-family planner that can
+      synthesize different descriptors and, if necessary, emit more than the
+      inherited two copy messages.
+  - until that exists, keep `warpx2` cleanly unsupported and preserve the new
+    explicit verifier note about partial chunk-pair fills and invalid `+1/+2`
+    deltas.
+
+- Plain TMEM ld/st/alloc explicit-layout policy (2026-03-26 21:35 UTC):
+  - explicit user-requested TMEM register layouts are now strict:
+    - if the requested tensor layout is directly TMEM-compatible, compile it;
+    - otherwise, fail with a diagnostic and possible suggested TMEM layouts.
+  - the compiler no longer silently inserts fallback `convert_layout` for plain
+    `ttng.tmem_load`, `ttng.tmem_store`, or initialized `ttng.tmem_alloc`.
+  - the late `make_llir` scheduling of `relayout-tritongpu` was removed for
+    this reason; warp-specialization still retains its own relayout path for
+    partition re-inference after changing `numWarps`.
+  - implication for tests/examples:
+    - positive TMEM tests should use `get_reg_layout(...)` when they want a
+      directly codegenable register layout;
+    - if a test wants a blocked or other non-direct TMEM layout, it must use
+      `convert_layout` explicitly around the TMEM access rather than relying on
+      hidden compiler repair.

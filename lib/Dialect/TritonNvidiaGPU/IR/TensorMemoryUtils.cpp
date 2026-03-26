@@ -258,6 +258,16 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
                               /*withWarp=*/true);
     auto maybeReps = getVec(cvt, tile, maxnreg);
     if (maybeReps) {
+      auto &reps = std::get<0>(*maybeReps);
+      // 16x32bx2 needs a distinct lane=16 basis in the repetition layout to
+      // encode the second half offset. Some speculative candidate layouts
+      // match the tile quotient but only have 16 active lanes; reject them
+      // cleanly instead of indexing a non-existent lane basis.
+      auto laneIt = reps.getBases().find(kLane);
+      if (laneIt == reps.getBases().end() || laneIt->second.size() <= 4)
+        maybeReps.reset();
+    }
+    if (maybeReps) {
       auto [reps, perm, numRegsPerMessage] = std::move(*maybeReps);
       // Find the last kLane basis and use it as secondHalfOffset
       auto row = reps.getBasis(kLane, 4, kRow);

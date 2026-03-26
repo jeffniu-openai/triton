@@ -477,6 +477,11 @@ class SwizzledSharedLayout(SharedLayout):
         super().__setattr__("order", _unwrap_if_constexpr(self.order))
         super().__setattr__("cga_layout", _unwrap_if_constexpr(self.cga_layout))
 
+        rank = len(self.order)
+        assert all(len(basis) == rank for basis in self.cga_layout), (
+            f"all cga_layout bases must have rank {rank}"
+        )
+
     def _to_ir(self, builder):
         return builder.get_swizzled_shared_layout(
             self.vec,

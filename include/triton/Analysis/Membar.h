@@ -54,6 +54,7 @@ public:
   bool intersects(const AllocationSlice &other) const;
 
   Allocation::BufferId getBufferId() const { return bufferId; }
+  triton::gpu::MemDescType getAccessType() const { return accessTy; }
 
   AllocationSlice translated(size_t offset,
                              bool invalidateBufferId = false) const {

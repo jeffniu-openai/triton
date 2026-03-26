@@ -362,7 +362,7 @@ tryGetCanonicalTensorMemoryEncoding(MemDescType memDescType,
   if (!isTensorMemoryEncoding(layout))
     return layout;
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
-  auto shape = memDescType.getAllocShape().take_back(rank);
+  auto shape = memDescType.getShape().take_back(rank);
   return tryGetCanonicalTensorMemoryEncoding(shape, layout, error);
 }
 
@@ -397,7 +397,7 @@ tryGetCanonicalTensorMemoryLinearLayout(MemDescType memDescType,
                                         std::string *error) {
   auto layout = memDescType.getEncoding();
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
-  auto shape = memDescType.getAllocShape().take_back(rank);
+  auto shape = memDescType.getShape().take_back(rank);
   return tryGetCanonicalTensorMemoryLinearLayout(shape, layout, error);
 }
 
@@ -443,10 +443,12 @@ normalizeTensorMemoryLinearLayoutForComparison(LinearLayout layout) {
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
 
-  if (layout.hasInDim(kBlock)) {
-    layout = layout.removeZeroBasesAlongDim(kBlock);
-    if (layout.getInDimSize(kBlock) == 1)
-      layout = layout.squeezeIns(kBlock);
+  for (StringAttr dim : {kRow, kCol, kBlock}) {
+    if (layout.hasInDim(dim))
+      layout = layout.removeZeroBasesAlongDim(dim);
+  }
+  if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) == 1) {
+    layout = layout.squeezeIns(kBlock);
   }
 
   SmallVector<StringAttr> canonicalInDims;
@@ -491,7 +493,9 @@ matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout) {
       return candidate.getBlockM() > bestMatch->getBlockM();
     if (candidate.getBlockN() != bestMatch->getBlockN())
       return candidate.getBlockN() > bestMatch->getBlockN();
-    return candidate.getColStride() > bestMatch->getColStride();
+    // Prefer the densest legacy layout when multiple legacy encodings
+    // normalize to the same canonical TMEM-linear layout.
+    return candidate.getColStride() < bestMatch->getColStride();
   };
   for (unsigned blockM : {64u, 128u}) {
     for (unsigned blockN = 1; blockN <= 512; blockN <<= 1) {
@@ -521,7 +525,7 @@ matchTensorMemoryLegacyEncoding(MemDescType memDescType) {
   auto layout = memDescType.getEncoding();
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
   return matchTensorMemoryLegacyEncoding(
-      memDescType.getAllocShape().take_back(rank), layout);
+      memDescType.getShape().take_back(rank), layout);
 }
 
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,

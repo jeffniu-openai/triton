@@ -922,6 +922,17 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 
 @gluon.jit
+def mbarrier_invalid_cga_rank_kernel():
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout(cga_layout=[[1, 0]]))
+    mbarrier.init(bar, count=1)
+
+
+def test_mbarrier_invalid_cga_rank_reports_clean_error():
+    with pytest.raises(CompilationError, match=r"all cga_layout bases must have rank 1"):
+        run_parser(mbarrier_invalid_cga_rank_kernel, *make_args(num_ctas=2), target=BLACKWELL_TARGET)
+
+
+@gluon.jit
 def tcgen05_mma_kernel(nvmma_layout: ttgl.constexpr, acc_layout: ttgl.constexpr):
     a = ttgl.allocate_shared_memory(ttgl.float16, [128, 128], nvmma_layout)
     b = ttgl.allocate_shared_memory(ttgl.float16, [128, 128], nvmma_layout)

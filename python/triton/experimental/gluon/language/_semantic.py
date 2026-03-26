@@ -42,6 +42,14 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
     splitn = instr_variant in ("32x32b_splitn", "16x32bx2")
     requested_variant = instr_variant
 
+    def has_zero_reg_basis(layout_obj):
+        return any(all(value == 0 for value in basis) for basis in layout_obj.reg_bases)
+
+    is_scales_layout = False
+    if requested_variant in ("32x32b", "16x32bx2"):
+        from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryScalesLayout
+        is_scales_layout = isinstance(layout, TensorMemoryScalesLayout)
+
     layout_obj = compute_tmem_reg_layout(
         element_ty,
         shape,
@@ -52,8 +60,10 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
     )
     _check(layout_obj is not None,
            lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
-           "try a different instr_variant, reshape or permute so TMEM columns stay contiguous, "
-           "or use a supported TMEM register layout and insert convert_layout explicitly")
+           + ("for tensor-memory scales, try instr_variant=\"16x32bx2\" for narrow tiles, "
+              if is_scales_layout else "")
+           + "reshape or permute so TMEM columns stay contiguous, or use a supported TMEM register layout "
+             "and insert convert_layout explicitly")
 
     if splitn:
         N = shape[1]
@@ -78,6 +88,21 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
 
             bitwidth = element_ty.primitive_bitwidth
             num_reg = 2**len(layout_obj.reg_bases)
+            if (is_scales_layout and requested_variant == "16x32bx2" and
+                    num_reg <= 32 // bitwidth):
+                # Narrow scales tiles can still lower through the same
+                # broadcasted register layout selected by the default
+                # 32x32b path, which TensorMemoryToLLVM later lowers to
+                # repeated 16x32bx2.x1 messages. Reuse that layout instead of
+                # rejecting an otherwise codegenable case.
+                return _compute_tmem_reg_layout(
+                    element_ty,
+                    shape,
+                    alloc_shape,
+                    layout,
+                    num_warps,
+                    "32x32b",
+                )
             _check(
                 num_reg > 32 // bitwidth, lambda: "To be able to `tmem.load` into `tl.split` you need to have more "
                 f"than {32 // bitwidth} {bitwidth}-bit registers, as you need to use "
@@ -102,6 +127,26 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
                 f"lane={layout_obj.lane_bases}, warp={layout_obj.warp_bases}, "
                 f"shape={shape}",
             )
+    if is_scales_layout and has_zero_reg_basis(layout_obj):
+        if requested_variant == "32x32b":
+            try:
+                return _compute_tmem_reg_layout(
+                    element_ty,
+                    shape,
+                    alloc_shape,
+                    layout,
+                    num_warps,
+                    "16x32bx2",
+                )
+            except ValueError:
+                pass
+        _check(
+            False,
+            lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
+            "for tensor-memory scales, try instr_variant=\"16x32bx2\" for narrow tiles, "
+            "reshape or permute so TMEM columns stay contiguous, or use a supported TMEM register layout "
+            "and insert convert_layout explicitly",
+        )
     return layout_obj
 
 

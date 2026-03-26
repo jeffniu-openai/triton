@@ -19,10 +19,11 @@ namespace ttng = triton::nvidia_gpu;
 // Given a tensor and its representation in tensor memory, determine its
 // distributed layout.
 FailureOr<RankedTensorType>
-getTMEMTensorLayout(const TypeConverter &typeConverter, Operation *op,
+getTMEMTensorLayout(const TypeConverter *tc, Operation *op,
                     RankedTensorType type, MemDescType memdesc,
                     unsigned numWarps) {
-  type = cast<RankedTensorType>(typeConverter.convertType(type));
+  (void)numWarps;
+  type = cast<RankedTensorType>(tc->convertType(type));
   if (ttng::isDistributedLayoutTMemCompatible(op, type, memdesc))
     return type;
   auto layouts = ttng::getTmemCompatibleLayouts(op, type, memdesc);
@@ -31,101 +32,79 @@ getTMEMTensorLayout(const TypeConverter &typeConverter, Operation *op,
         op->emitError("TMEM layout has no supported register layout");
     diag.attachNote() << "tensor type: " << type;
     diag.attachNote() << "tensor memory descriptor type: " << memdesc;
-    diag.attachNote()
-        << "reshape or permute so TMEM columns stay contiguous, or use a "
-           "supported TMEM register layout and insert convert_layout "
-           "explicitly";
     return failure();
   }
   return type.cloneWithEncoding(layouts.front());
 }
 
-LogicalResult relayoutTMEMLoadOp(const TypeConverter &typeConverter,
-                                 ttng::TMEMLoadOp op) {
-  RankedTensorType resultType = op.getType();
-  auto maybeType = getTMEMTensorLayout(typeConverter, op, op.getType(),
-                                       op.getSrc().getType(),
-                                       lookupNumWarps(op));
-  if (failed(maybeType))
-    return failure();
-  RankedTensorType type = *maybeType;
-  if (type == resultType)
+struct TMEMLoadOpPattern : public OpConversionPattern<ttng::TMEMLoadOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ttng::TMEMLoadOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getType());
+    auto maybeType =
+        getTMEMTensorLayout(typeConverter, op, op.getType(), op.getSrc().getType(),
+                            lookupNumWarps(op));
+    if (failed(maybeType))
+      return failure();
+    RankedTensorType type = *maybeType;
+    rewriter.modifyOpInPlace(op, [&] { op.getResult().setType(type); });
+    if (type == resultType)
+      return success();
+
+    rewriter.setInsertionPointAfter(op);
+    auto cvt = ConvertLayoutOp::create(rewriter, op.getLoc(), resultType,
+                                       op.getResult());
+    // Bypass the rewriter to avoid issues with the conversion framework's
+    // tracking of conditional replacements.
+    // See https://github.com/llvm/llvm-project/commit/504b50789602
+    op.getResult().replaceAllUsesExcept(cvt, cvt);
     return success();
-
-  OpBuilder builder(op);
-  op.getResult().setType(type);
-  builder.setInsertionPointAfter(op);
-  auto cvt =
-      ConvertLayoutOp::create(builder, op.getLoc(), resultType, op.getResult());
-  op.getResult().replaceAllUsesExcept(cvt, cvt);
-  return success();
-}
-
-LogicalResult relayoutTMEMStoreOp(const TypeConverter &typeConverter,
-                                  ttng::TMEMStoreOp op) {
-  auto maybeType = getTMEMTensorLayout(typeConverter, op, op.getSrc().getType(),
-                                       op.getDst().getType(),
-                                       lookupNumWarps(op));
-  if (failed(maybeType))
-    return failure();
-  RankedTensorType type = *maybeType;
-  Value src = op.getSrc();
-  if (cast<RankedTensorType>(src.getType()) == type)
-    return success();
-
-  OpBuilder builder(op);
-  src = ConvertLayoutOp::create(builder, op.getLoc(), type, src);
-  op.getSrcMutable().assign(src);
-  return success();
-}
-
-LogicalResult relayoutTMEMAllocOp(const TypeConverter &typeConverter,
-                                  ttng::TMEMAllocOp op) {
-  if (!op.getSrc())
-    return success();
-
-  auto maybeType = getTMEMTensorLayout(typeConverter, op, op.getSrc().getType(),
-                                       op.getType(),
-                                       lookupNumWarps(op));
-  if (failed(maybeType))
-    return failure();
-  RankedTensorType type = *maybeType;
-  Value src = op.getSrc();
-  if (cast<RankedTensorType>(src.getType()) == type)
-    return success();
-
-  OpBuilder builder(op);
-  src = ConvertLayoutOp::create(builder, op.getLoc(), type, src);
-  op.getSrcMutable().assign(src);
-  return success();
-}
-
-LogicalResult relayoutTMEMOps(ModuleOp mod, const TypeConverter &typeConverter) {
-  SmallVector<Operation *> tmemOps;
-  mod.walk([&](Operation *op) {
-    if (isa<ttng::TMEMLoadOp, ttng::TMEMStoreOp, ttng::TMEMAllocOp>(op))
-      tmemOps.push_back(op);
-  });
-
-  for (Operation *op : tmemOps) {
-    if (auto load = dyn_cast<ttng::TMEMLoadOp>(op)) {
-      if (failed(relayoutTMEMLoadOp(typeConverter, load)))
-        return failure();
-      continue;
-    }
-    if (auto store = dyn_cast<ttng::TMEMStoreOp>(op)) {
-      if (failed(relayoutTMEMStoreOp(typeConverter, store)))
-        return failure();
-      continue;
-    }
-    if (auto alloc = dyn_cast<ttng::TMEMAllocOp>(op)) {
-      if (failed(relayoutTMEMAllocOp(typeConverter, alloc)))
-        return failure();
-    }
   }
+};
 
-  return success();
-}
+struct TMEMStoreOpPattern : public OpConversionPattern<ttng::TMEMStoreOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ttng::TMEMStoreOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto maybeType =
+        getTMEMTensorLayout(typeConverter, op, op.getSrc().getType(),
+                            op.getDst().getType(), lookupNumWarps(op));
+    if (failed(maybeType))
+      return failure();
+    RankedTensorType type = *maybeType;
+    Value src = adaptor.getSrc();
+    if (cast<RankedTensorType>(src.getType()) != type)
+      src = ConvertLayoutOp::create(rewriter, op.getLoc(), type, src);
+    rewriter.modifyOpInPlace(op, [&] { op.getSrcMutable().assign(src); });
+    return success();
+  }
+};
+
+struct TMEMAllocOpPattern : public OpConversionPattern<ttng::TMEMAllocOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ttng::TMEMAllocOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!op.getSrc())
+      return success();
+    auto maybeType = getTMEMTensorLayout(typeConverter, op, op.getSrc().getType(),
+                                         op.getType(), lookupNumWarps(op));
+    if (failed(maybeType))
+      return failure();
+    RankedTensorType type = *maybeType;
+    Value src = adaptor.getSrc();
+    if (cast<RankedTensorType>(src.getType()) != type)
+      src = ConvertLayoutOp::create(rewriter, op.getLoc(), type, src);
+    rewriter.modifyOpInPlace(op, [&] { op.getSrcMutable().assign(src); });
+    return success();
+  }
+};
 
 class RelayoutTritonGPU
     : public triton::impl::RelayoutTritonGPUBase<RelayoutTritonGPU> {
@@ -143,17 +122,12 @@ public:
     // type converter
     TritonGPUTypeConverter typeConverter(context, numWarps, threadsPerWarp,
                                          numCTAs, /*enableSourceRemat=*/true);
-    if (failed(relayoutTMEMOps(mod, typeConverter)))
-      return signalPassFailure();
-
     TritonGPUConversionTarget target(*context, typeConverter);
     target.addDynamicallyLegalDialect<ttng::TritonNvidiaGPUDialect>(
         [&](Operation *op) {
           return TritonGPUConversionTarget::isDynamicallyLegal(op,
                                                                typeConverter);
         });
-    target.addLegalOp<ttng::TMEMLoadOp, ttng::TMEMStoreOp,
-                      ttng::TMEMAllocOp>();
 
     // rewrite patterns
     RewritePatternSet patterns(context);
@@ -161,7 +135,10 @@ public:
     patterns.insert<
         // clang-format off
         GatherScatterOpPattern<ttng::AsyncTMAGatherOp>,
-        GatherScatterOpPattern<ttng::AsyncTMAScatterOp>
+        GatherScatterOpPattern<ttng::AsyncTMAScatterOp>,
+        TMEMLoadOpPattern,
+        TMEMStoreOpPattern,
+        TMEMAllocOpPattern
         // clang-format on
         >(typeConverter, context);
 

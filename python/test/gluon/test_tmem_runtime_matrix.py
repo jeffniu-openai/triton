@@ -1,5 +1,10 @@
 import math
+import os
 import re
+import subprocess
+import sys
+import tempfile
+import textwrap
 from itertools import product
 
 import pytest
@@ -16,6 +21,7 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
     TensorMemoryLinearLayout,
     TensorMemoryScalesLayout,
     allocate_tensor_memory,
+    fence_async_shared,
     tcgen05_commit,
     tcgen05_copy,
     tcgen05_mma,
@@ -229,6 +235,20 @@ def _make_scales_shared_layout_warpx2_candidate():
     )
 
 
+def _make_tmem_copy_warpx2_shared_layout():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]],
+        alignment=16,
+    )
+
+
+def _make_tmem_copy_128x128_shared_layout():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        alignment=16,
+    )
+
+
 def _extract_tcgen05_opcode_offsets(asm: str, opcodes=("ld", "st")):
     pattern = re.compile(
         rf"(tcgen05\.(?:{'|'.join(opcodes)})(?:\.red)?\.sync\.aligned\.[^\s;\"]+)"
@@ -274,6 +294,13 @@ def _make_mma_plain_kind_inputs(kind: str, m: int, n: int, k: int):
         shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=128, transposed=True, element_bitwidth=32, rank=2)
         expected_kind = "tcgen05.mma.cta_group::1.kind::tf32"
         atol, rtol = 5e-4, 5e-3
+    elif kind == "bf16":
+        a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+        b = torch.randn((k, n), device="cuda", dtype=torch.bfloat16)
+        shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=16, rank=2)
+        shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=16, rank=2)
+        expected_kind = "tcgen05.mma.cta_group::1.kind::f16"
+        atol, rtol = 1e-1, 1e-1
     else:
         fp8_dtype = torch.float8_e5m2 if kind == "f8e5m2" else torch.float8_e4m3fn
         a = torch.randint(20, 40, (m, k), device="cuda", dtype=torch.uint8).view(fp8_dtype)
@@ -281,6 +308,39 @@ def _make_mma_plain_kind_inputs(kind: str, m: int, n: int, k: int):
         shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
         shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
         expected_kind = "tcgen05.mma.cta_group::1.kind::f8f6f4"
+        atol, rtol = 1e-1, 1e-1
+    return a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol
+
+
+def _make_mma_twocta_plain_kind_inputs(kind: str, m: int, n: int, k: int, cga_layout_a, cga_layout_b):
+    if kind == "tf32":
+        a = _round_to_tf32(torch.randn((m, k), device="cuda", dtype=torch.float32))
+        b = _round_to_tf32(torch.randn((k, n), device="cuda", dtype=torch.float32))
+        shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([m, k], ttgl.float32, cga_layout=cga_layout_a)
+        shared_layout_b = ttgl.NVMMASharedLayout.get_default_for(
+            [k, n], ttgl.float32, transposed=True, cga_layout=cga_layout_b
+        )
+        expected_kind = "tcgen05.mma.cta_group::2.kind::tf32"
+        atol, rtol = 5e-4, 5e-3
+    elif kind == "bf16":
+        a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+        b = torch.randn((k, n), device="cuda", dtype=torch.bfloat16)
+        shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([m, k], ttgl.bfloat16, cga_layout=cga_layout_a)
+        shared_layout_b = ttgl.NVMMASharedLayout.get_default_for(
+            [k, n], ttgl.bfloat16, transposed=True, cga_layout=cga_layout_b
+        )
+        expected_kind = "tcgen05.mma.cta_group::2.kind::f16"
+        atol, rtol = 1e-1, 1e-1
+    else:
+        fp8_dtype = torch.float8_e5m2 if kind == "f8e5m2" else torch.float8_e4m3fn
+        gluon_dtype = ttgl.float8e5 if kind == "f8e5m2" else ttgl.float8e4nv
+        a = torch.randint(20, 40, (m, k), device="cuda", dtype=torch.uint8).view(fp8_dtype)
+        b = torch.randint(20, 40, (k, n), device="cuda", dtype=torch.uint8).view(fp8_dtype)
+        shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([m, k], gluon_dtype, cga_layout=cga_layout_a)
+        shared_layout_b = ttgl.NVMMASharedLayout.get_default_for(
+            [k, n], gluon_dtype, transposed=True, cga_layout=cga_layout_b
+        )
+        expected_kind = "tcgen05.mma.cta_group::2.kind::f8f6f4"
         atol, rtol = 1e-1, 1e-1
     return a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol
 
@@ -295,6 +355,15 @@ def _assert_ldst_ptx_llir_match(compiled):
     llir_imms = _extract_tcgen05_opcode_offset_immediates(compiled.asm["llir"])
     assert ptx_imms == llir_imms
     return ptx_ops, ptx_imms
+
+
+def _expected_ldst_ops(op_shape: str, offsets):
+    ops = []
+    for offset in offsets:
+        ops.append((f"tcgen05.st.sync.aligned.{op_shape}", offset))
+    for offset in offsets:
+        ops.append((f"tcgen05.ld.sync.aligned.{op_shape}", offset))
+    return ops
 
 
 @gluon.jit
@@ -456,6 +525,31 @@ def tmem_ldst_descriptor_multidim_slice_kernel(in_ptr, out_ptr, layout: ttgl.con
 
 
 @gluon.jit
+def tmem_ldst_descriptor_multidim_slice_positive_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                                       N: ttgl.constexpr, instr_variant: ttgl.constexpr,
+                                                       num_warps: ttgl.constexpr):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+
+    view = tmem.reshape((2, M // 2, 2, N // 2))
+    view = view.slice(1, 1, dim=0)
+    view = view.slice(0, M // 4, dim=1)
+    view = view.slice(1, 1, dim=2)
+    view = view.slice(0, N // 4, dim=3)
+    view = view.reshape((M // 4, N // 4))
+
+    sub_layout: ttgl.constexpr = view.get_reg_layout()
+    sub_value = view.load(sub_layout)
+    view.store(sub_value + ttgl.full([M // 4, N // 4], 11.0, ttgl.float32, layout=sub_layout))
+
+    result = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(result, reg_layout))
+
+
+@gluon.jit
 def tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
                                                                 M: ttgl.constexpr, N: ttgl.constexpr,
                                                                 instr_variant: ttgl.constexpr):
@@ -540,6 +634,33 @@ def tmem_ldst_f16_variant_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttg
 
 
 @gluon.jit
+def tmem_scales_ldst_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, cga_layout: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout(cga_layout=list(cga_layout)))
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant="32x32b")
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+    value = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, value)
+
+
+@gluon.jit
+def tmem_scales_ldst_variant_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr,
+                                    instr_variant: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout())
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+    value = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+
+@gluon.jit
 def tmem_copy_no_scales_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
                                swizzle: ttgl.constexpr):
     tmem_layout: ttgl.constexpr = TensorMemoryLayout(
@@ -557,6 +678,7 @@ def tmem_copy_no_scales_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.const
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=swizzle, element_bitwidth=32, rank=2)
     smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
     smem.store(value)
+    fence_async_shared()
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
@@ -582,12 +704,163 @@ def tmem_copy_no_scales_linear_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=swizzle, element_bitwidth=32, rank=2)
     smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
     smem.store(value)
+    fence_async_shared(cluster=layout.two_ctas)
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
     tcgen05_copy(smem, tmem)
     tcgen05_commit(bar)
     mbarrier.wait(bar, phase=0)
+
+    out = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
+def tmem_copy_no_scales_indexed_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
+    N: ttgl.constexpr = 4
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        alignment=16,
+    )
+    smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], layout=smem_layout)
+    tmem = allocate_tensor_memory(ttgl.int32, [2, M, N], layout=TensorMemoryLayout((M, N), col_stride=1))
+    view = tmem.index(1)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, view)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+    output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(output, blocked))
+
+
+@gluon.jit
+def tmem_copy_no_scales_linear_indexed_view_kernel(in_ptr, out_ptr, lifted_layout: ttgl.constexpr,
+                                                   smem_layout: ttgl.constexpr, M: ttgl.constexpr,
+                                                   N: ttgl.constexpr):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout=lifted_layout)
+    view = tmem.index(1)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, view)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, output)
+
+
+@gluon.jit
+def tmem_copy_no_scales_linear_subslice_view_kernel(in_ptr, out_ptr, parent_layout: ttgl.constexpr,
+                                                    M: ttgl.constexpr, N: ttgl.constexpr,
+                                                    swizzle: ttgl.constexpr):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, 2 * N], layout=parent_layout)
+    view = tmem.slice(N, N, dim=1)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, view)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, output)
+
+
+
+
+@gluon.jit
+def tmem_copy_no_scales_warpx2_candidate_kernel(in_ptr, out_ptr, shared_layout: ttgl.constexpr, tmem_layout: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 4
+    shared_reg_layout: ttgl.constexpr = ttgl.DistributedLinearLayout(
+        reg_bases=[[0, 1], [0, 2]],
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
+        warp_bases=[[32, 0], [64, 0]],
+        block_bases=[],
+        shape=[M, N],
+    )
+    in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, shared_reg_layout))
+    in_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, shared_reg_layout))
+    in_offs = in_offs_m[:, None] * N + in_offs_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=tmem_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=shared_layout, value=value)
+    fence_async_shared()
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out = tmem.load(reg_layout)
+    out_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    out_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_offs_m[:, None] * N + out_offs_n[None, :]
+    ttgl.store(out_ptr + out_offs, out)
+
+@gluon.jit
+def tmem_copy_no_scales_twocta_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, cga_layout: ttgl.constexpr,
+                                      M: ttgl.constexpr, N: ttgl.constexpr, swizzle: ttgl.constexpr):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=32,
+        rank=2,
+        cga_layout=cga_layout,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared(cluster=layout.two_ctas)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
 
     out = tmem.load(reg_layout)
     ttgl.store(out_ptr + offs, out)
@@ -613,12 +886,14 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
     barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(barrier, count=1)
     smem.store(value)
+    fence_async_shared()
     tcgen05_copy(smem, tmem)
     tcgen05_commit(barrier)
     mbarrier.wait(barrier, phase=0)
 
-    output = tmem.load(blocked)
-    ttgl.store(out_ptr + offs, output)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    output = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(output, blocked))
 
 
 @gluon.jit
@@ -643,14 +918,17 @@ def tmem_copy_scales_warpx4_kernel(in_ptr, out_ptr):
     mbarrier.init(barrier, count=1)
 
     smem.store(value)
+    fence_async_shared()
     tcgen05_copy(smem, tmem)
     tcgen05_commit(barrier)
     mbarrier.wait(barrier, phase=0)
 
     tmem_alias: ttgl.constexpr = TensorMemoryLayout((NUM_ROWS, NUM_COLS), col_stride=1)
     alias_view = tmem._reinterpret(ttgl.int8, (NUM_ROWS, NUM_COLS), tmem_alias)
-    value = alias_view.load(blocked)
-    ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked), value)
+    reg_layout: ttgl.constexpr = alias_view.get_reg_layout()
+    value = alias_view.load(reg_layout)
+    ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked),
+               ttgl.convert_layout(value, blocked))
 
 
 @gluon.jit
@@ -672,14 +950,17 @@ def tmem_copy_scales_layout_probe_kernel(in_ptr, out_ptr, smem_layout: ttgl.cons
     mbarrier.init(barrier, count=1)
 
     smem.store(value)
+    fence_async_shared()
     tcgen05_copy(smem, tmem)
     tcgen05_commit(barrier)
     mbarrier.wait(barrier, phase=0)
 
     tmem_alias: ttgl.constexpr = TensorMemoryLayout((NUM_ROWS, NUM_COLS), col_stride=1)
     alias_view = tmem._reinterpret(ttgl.int8, (NUM_ROWS, NUM_COLS), tmem_alias)
-    value = alias_view.load(blocked)
-    ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked), value)
+    reg_layout: ttgl.constexpr = alias_view.get_reg_layout()
+    value = alias_view.load(reg_layout)
+    ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked),
+               ttgl.convert_layout(value, blocked))
 
 
 @gluon.jit
@@ -819,6 +1100,15 @@ LDST_EXOTIC_LAYOUTS = {
     "scrambled_cols": lambda n: _make_tmem_linear_layout_scrambled(128, n, scramble_rows=False, scramble_cols=True),
     "scrambled_rows_cols": lambda n: _make_tmem_linear_layout_scrambled(128, n, scramble_rows=True,
                                                                          scramble_cols=True),
+}
+
+MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS_IDENTITY = {
+    "identity": LDST_LAYOUTS["identity"],
+}
+
+MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS = {
+    "mixed": LDST_LAYOUTS["mixed"],
+    "scrambled_cols": LDST_EXOTIC_LAYOUTS["scrambled_cols"],
 }
 
 LDST_EXOTIC_UNSUPPORTED_LAYOUTS = {
@@ -1002,6 +1292,56 @@ CP_LINEAR_NO_SCALES_32BIT_DTYPE_CASES = [
     for m, n, swizzle, expected_count in CP_LINEAR_NO_SCALES_CASES
 ]
 
+CP_INDEXED_VIEW_128X128_CASES = (128, )
+
+CP_LINEAR_INDEXED_VIEW_CASES = [
+    (
+        "128x128b",
+        torch.int32,
+        128,
+        4,
+        _make_tmem_copy_128x128_shared_layout(),
+        1,
+        "tcgen05.cp.cta_group::1.128x256b",
+    ),
+    (
+        "128x256b",
+        torch.float32,
+        128,
+        128,
+        ttgl.NVMMASharedLayout(swizzle_byte_width=128, element_bitwidth=32, rank=2),
+        32,
+        "tcgen05.cp.cta_group::1.128x256b",
+    ),
+]
+
+CP_LINEAR_SUBSLICE_VIEW_CASES = [
+    (torch.float32, 128, 128, 128, 16, "tcgen05.cp.cta_group::1.128x256b"),
+]
+
+CP_NO_SCALES_TWOCTA_CASES = [
+    (layout_kind, n, swizzle, expected_count)
+    for layout_kind, (n, swizzle, expected_count) in product(
+        ("linear", "legacy"),
+        (
+            (16, 32, 2),
+            (16, 64, 2),
+            (32, 32, 4),
+            (32, 64, 4),
+            (32, 128, 4),
+            (64, 32, 8),
+            (64, 64, 8),
+            (64, 128, 8),
+            (128, 32, 16),
+            (128, 64, 16),
+            (128, 128, 16),
+            (256, 32, 32),
+            (256, 64, 32),
+            (256, 128, 32),
+        ),
+    )
+]
+
 CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES = [
     (dtype_name, torch_dtype, 128, n, 32)
     for dtype_name, torch_dtype in (("f16", torch.float16), ("bf16", torch.bfloat16))
@@ -1048,6 +1388,96 @@ F16_LDST_SHAPE_MAP = {
 F16_LDST_CASES = [
     ("identity", n, variant, F16_LDST_SHAPE_MAP[variant][n])
     for n, variant in product((64, 128, 256), ("32x32b", "16x64b", "16x128b", "16x256b"))
+]
+
+X1_F16_LDST_CASES = [
+    ("linear_packed", lambda: _make_tmem_linear_layout(128, 2), "32x32b.x1.b32", "32x32b.x1.b32"),
+    ("legacy_packed", lambda: TensorMemoryLayout((128, 2), col_stride=1), "32x32b.x1.b32", "32x32b.x1.b32"),
+    ("legacy_unpacked", lambda: TensorMemoryLayout((128, 2), col_stride=2), "32x32b.x1.unpack::16b.b32",
+     "32x32b.x1.pack::16b.b32"),
+]
+
+X1_F32_LDST_CASES = [
+    ("linear_onecta", 128, 1, lambda: _make_tmem_linear_layout(128, 1)),
+    ("legacy_onecta", 128, 1, lambda: TensorMemoryLayout((128, 1), col_stride=1)),
+    ("linear_twocta", 256, 2, lambda: _make_tmem_linear_layout_mmav5_twocta(256, 1)),
+]
+
+X1_F32_UNSUPPORTED_VARIANTS = ("16x64b", "16x128b", "16x256b")
+
+SCALES_LDST_CASES = [
+    (16, 8, 8, 1, tuple(), _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (128, 64, 4, 2, ((1, 0),), _expected_ldst_ops("32x32b.x32.b32", [0])),
+    (256, 32, 4, 2, ((1, 0),), _expected_ldst_ops("32x32b.x32.b32", [0])),
+    (256, 64, 4, 2, ((1, 0),), _expected_ldst_ops("32x32b.x64.b32", [0])),
+]
+
+SCALES_LDST_VARIANT_CASES = [
+    (16, 4, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 8, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (16, 8, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 16, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 4])),
+    (32, 4, 8, "32x32b", _expected_ldst_ops("32x32b.x1.b32", [0])),
+    (32, 8, 8, "32x32b", _expected_ldst_ops("32x32b.x1.b32", [0, 2])),
+    (64, 4, 4, "32x32b", _expected_ldst_ops("32x32b.x2.b32", [0])),
+    (64, 8, 4, "32x32b", _expected_ldst_ops("32x32b.x4.b32", [0])),
+    (64, 16, 4, "32x32b", _expected_ldst_ops("32x32b.x8.b32", [0])),
+    (64, 16, 8, "32x32b", _expected_ldst_ops("32x32b.x4.b32", [0])),
+    (64, 32, 4, "32x32b", _expected_ldst_ops("32x32b.x16.b32", [0])),
+    (64, 32, 8, "32x32b", _expected_ldst_ops("32x32b.x8.b32", [0])),
+    (128, 4, 4, "32x32b", _expected_ldst_ops("32x32b.x4.b32", [0])),
+    (128, 8, 4, "32x32b", _expected_ldst_ops("32x32b.x8.b32", [0])),
+    (128, 8, 8, "32x32b", _expected_ldst_ops("32x32b.x4.b32", [0])),
+    (128, 16, 4, "32x32b", _expected_ldst_ops("32x32b.x16.b32", [0])),
+    (128, 16, 8, "32x32b", _expected_ldst_ops("32x32b.x8.b32", [0])),
+    (128, 32, 4, "32x32b", _expected_ldst_ops("32x32b.x32.b32", [0])),
+    (128, 32, 8, "32x32b", _expected_ldst_ops("32x32b.x16.b32", [0])),
+    (16, 4, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 8, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (16, 8, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 16, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 4])),
+    (32, 4, 8, "16x32bx2", _expected_ldst_ops("32x32b.x1.b32", [0])),
+    (64, 8, 8, "16x32bx2", _expected_ldst_ops("32x32b.x1.b32", [0, 2])),
+    (64, 16, 8, "16x32bx2", _expected_ldst_ops("32x32b.x2.b32", [0, 4])),
+    (64, 32, 8, "16x32bx2", _expected_ldst_ops("32x32b.x4.b32", [0, 8])),
+    (128, 8, 8, "16x32bx2", _expected_ldst_ops("32x32b.x2.b32", [0, 4])),
+    (128, 16, 8, "16x32bx2", _expected_ldst_ops("32x32b.x4.b32", [0, 8])),
+    (128, 32, 8, "16x32bx2", _expected_ldst_ops("32x32b.x8.b32", [0, 16])),
+]
+
+SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
+    (
+        16,
+        16,
+        4,
+        "32x32b",
+        "tmem_load on tensor-memory scales does not support register-broadcasted layouts",
+        True,
+    ),
+    (
+        16,
+        16,
+        4,
+        "16x32bx2",
+        "tmem_load on tensor-memory scales does not support register-broadcasted layouts",
+        True,
+    ),
+    (
+        32,
+        8,
+        4,
+        "32x32b",
+        "TMEM layout '32x32b' unsupported for shape [32, 8] and num_warps 4",
+        False,
+    ),
+    (
+        32,
+        16,
+        4,
+        "16x32bx2",
+        "TMEM layout '16x32bx2' unsupported for shape [32, 16] and num_warps 4",
+        False,
+    ),
 ]
 
 LD_RED_LINEAR_CASES = [
@@ -1586,6 +2016,51 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_clea
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS_IDENTITY.items())
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error(
+    layout_name, layout_fn, capfd
+):
+    m = 128
+    n = 128
+    layout = layout_fn(n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, "16x128b", num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout '32x32b' unsupported for shape [32, 32] and num_warps 4" in text
+    assert "reshape or permute so TMEM columns stay contiguous" in text
+    assert "insert convert_layout explicitly" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS.items())
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_error(layout_name, layout_fn, capfd):
+    m = 128
+    n = 128
+    layout = layout_fn(n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, "16x128b", num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "unsupported tensor memory memdesc_subslice view" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_POSITIVE_CASES)
 def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout(
     layout_name, n, variant, expected_shape
@@ -1667,49 +2142,43 @@ def test_tmem_runtime_matrix_ldst_twocta_mmav5_descriptor_higher_rank_reports_cl
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "Result has an invalid layout" in text
-    assert "Layout has 1 CTAs per CGA, but the context requires 2 CTAs per CGA" in text
-    assert "twoCTAs requires a non-empty 'block' basis sequence" not in text
+    assert "twoCTAs requires a non-empty 'block' basis sequence" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,layout", BLOCKED_FALLBACK_CASES)
-def test_tmem_runtime_matrix_blocked_fallback(layout_name, layout):
+def test_tmem_runtime_matrix_blocked_layout_reports_clean_error(layout_name, layout, capfd):
     m = n = 128
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_blocked_fallback_kernel[(1, )](inp, out, layout, num_warps=4)
-    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        tmem_ldst_blocked_fallback_kernel[(1, )](inp, out, layout, num_warps=4)
 
-    llir = compiled.asm["llir"]
-    ptx = compiled.asm["ptx"]
-    assert "st.shared.v4.b32" in ptx
-    assert "ld.shared.v4.b32" in ptx
-    assert "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32" in llir
-    assert "i32 16384" in llir
-
-    expected_offsets = [
-        ("tcgen05.st.sync.aligned.32x32b.x128.b32", 0),
-        ("tcgen05.ld.sync.aligned.32x32b.x128.b32", 0),
-    ]
-    assert _extract_tcgen05_opcode_offsets(ptx) == expected_offsets
-    assert _extract_tcgen05_opcode_offsets(llir) == expected_offsets
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "source has no supported register layout" in text or "result has no supported register layout" in text
+    assert "potential TMEM layout:" in text
+    assert "insert convert_layout explicitly" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout,reinterpret_layout", UNSUPPORTED_BLOCK_DESCRIPTOR_CASES)
 def test_tmem_runtime_matrix_block_descriptor_reports_clean_error(name, layout, reinterpret_layout, capfd):
     reg_layout = _make_tmem_register_layout(2)
-    with pytest.raises(CompilationError) as excinfo:
+    with pytest.raises(Exception) as excinfo:
         tmem_block_descriptor_compile_kernel[(1, )](
             layout, reinterpret_layout, reg_layout, num_warps=4, num_ctas=2
         )
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "unsupported tensor memory memdesc_subslice view" in text
+    assert "result shape: [32, 16, 4]" in text
+    assert "offsets: [0, 0, 2]" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
@@ -1843,6 +2312,155 @@ def test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack(layout_name, n, varian
     assert all(op in (expected_st, expected_ld) for op in observed_opcodes)
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,layout_factory,expected_st,expected_ld", X1_F16_LDST_CASES)
+def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, expected_st, expected_ld):
+    m, n = 128, 2
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.float16, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_f16_variant_kernel[(1, )](inp, out, layout, m, n, "32x32b", num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [(f"tcgen05.st.sync.aligned.{expected_st}", 0), (f"tcgen05.ld.sync.aligned.{expected_ld}", 0)]
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
+def test_tmem_runtime_matrix_ldst_x1_f32_roundtrip(layout_kind, m, num_ctas, layout_factory):
+    n = 1
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, "32x32b", num_warps=4, num_ctas=num_ctas)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    if num_ctas == 2:
+        assert "twoCTAs = true" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
+def test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip(layout_kind, m, num_ctas, layout_factory):
+    n = 1
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_chain_kernel[(1, )](
+        inp, out, layout, m, n, "32x32b", num_warps=4, num_ctas=num_ctas
+    )
+    torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
+    if num_ctas == 2:
+        assert "twoCTAs = true" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
+@pytest.mark.parametrize("variant", X1_F32_UNSUPPORTED_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_f32_unsupported_variants_report_clean_unsupported(
+    layout_kind, m, num_ctas, layout_factory, variant
+):
+    n = 1
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4, num_ctas=num_ctas)
+
+    msg = str(excinfo.value)
+    assert f"TMEM layout '{variant}' unsupported for shape [{m}, 1]" in msg
+    assert "reshape or permute so TMEM columns stay contiguous" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("M,N,num_warps,num_ctas,cga_layout,expected_ops", SCALES_LDST_CASES)
+def test_tmem_runtime_matrix_ldst_scales_direct_roundtrip(M, N, num_warps, num_ctas, cga_layout, expected_ops):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_scales_ldst_kernel[(1, )](inp, out, M, N, cga_layout, num_warps=num_warps, num_ctas=num_ctas)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == expected_ops
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_scales_encoding" in ttgir
+    if cga_layout:
+        assert f"CGALayout = {str([list(basis) for basis in cga_layout])}" in ttgir
+    if num_ctas > 1:
+        assert '"ttg.num-ctas" = 2' in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("M,N,num_warps,instr_variant,expected_ops", SCALES_LDST_VARIANT_CASES)
+def test_tmem_runtime_matrix_ldst_scales_variant_sweep(M, N, num_warps, instr_variant, expected_ops):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_scales_ldst_variant_kernel[(1, )](inp, out, M, N, instr_variant, num_warps=num_warps)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == expected_ops
+    assert "tensor_memory_scales_encoding" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "M,N,num_warps,instr_variant,expected_text,needs_capfd",
+    SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES,
+)
+def test_tmem_runtime_matrix_ldst_scales_variant_reports_clean_unsupported(
+    M, N, num_warps, instr_variant, expected_text, needs_capfd, capfd
+):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_scales_ldst_variant_kernel[(1, )](inp, out, M, N, instr_variant, num_warps=num_warps)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value)
+    if needs_capfd:
+        text += captured.err + captured.out
+
+    assert expected_text in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2093,6 +2711,167 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_32bit_dtypes(dtype_name, torch_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("M", CP_INDEXED_VIEW_128X128_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized(M):
+    N = 4
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_copy_no_scales_indexed_view_kernel[(1, )](inp, out, M, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x128b"] * (M // 128))
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("name,torch_dtype,M,N,smem_layout,expected_count,expected_opcode", CP_LINEAR_INDEXED_VIEW_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view(name, torch_dtype, M, N, smem_layout, expected_count,
+                                                              expected_opcode):
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    lifted_layout = _lift_tmem_layout(_make_tmem_linear_layout(M, N), [2])
+    compiled = tmem_copy_no_scales_linear_indexed_view_kernel[(1, )](
+        inp, out, lifted_layout, smem_layout, M, N, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode] * expected_count)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.xfail(reason="BUG: TMEM linear subslice views still lose parent alloc-shape information", strict=False)
+@pytest.mark.parametrize("torch_dtype,M,N,swizzle,expected_count,expected_opcode", CP_LINEAR_SUBSLICE_VIEW_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_subslice_view(torch_dtype, M, N, swizzle, expected_count,
+                                                               expected_opcode):
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    parent_layout = _make_tmem_linear_layout(M, 2 * N)
+    compiled = tmem_copy_no_scales_linear_subslice_view_kernel[(1, )](
+        inp, out, parent_layout, M, N, swizzle, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode] * expected_count)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_subslice" not in ttgir
+
+
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_candidate_reports_clean_error(capfd):
+    M = 128
+    N = 4
+    shared_layout = _make_tmem_copy_warpx2_shared_layout()
+    tmem_layout = _make_tmem_linear_layout(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_warpx2_candidate_kernel[(1, )](inp, out, shared_layout, tmem_layout, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert (
+        "maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor for it."
+        in text
+    )
+    assert "Use the canonical shared layout for tcgen05.copy.128x128b" in text
+    assert "PassManager::run failed" not in text
+    assert "failed to legalize operation" not in text
+    assert "Assertion" not in text
+    assert "error encountered during parsing" in str(excinfo.value)
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,N,swizzle,expected_count", CP_NO_SCALES_TWOCTA_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen(layout_kind, N, swizzle, expected_count):
+    child = textwrap.dedent(f"""
+        import torch
+        from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryLayout
+        from python.test.gluon.test_tmem_runtime_matrix import (
+            _assert_exact_cp_ptx_llir_match,
+            _make_2cta_cga_layout,
+            _make_tmem_linear_layout_mmav5_twocta,
+            tmem_copy_no_scales_twocta_kernel,
+        )
+
+        M = 256
+        N = {N}
+        swizzle = {swizzle}
+        expected_count = {expected_count}
+        layout_kind = {layout_kind!r}
+        cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+        if layout_kind == "linear":
+            layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
+        else:
+            layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+
+        inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+        out = torch.empty_like(inp)
+        compiled = tmem_copy_no_scales_twocta_kernel[(1, )](
+            inp,
+            out,
+            layout,
+            tuple(tuple(basis) for basis in cga_layout),
+            M,
+            N,
+            swizzle,
+            num_ctas=2,
+            num_warps=4,
+        )
+        torch.cuda.synchronize()
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+        _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x256b"] * expected_count)
+        ptx = compiled.asm["ptx"]
+        llir = compiled.asm["llir"]
+        first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x256b")
+        first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x256b")
+
+        assert ptx.count("tcgen05.commit.cta_group::2") == 1
+        assert llir.count("tcgen05.commit.cta_group::2") == 1
+        assert "tcgen05.commit.cta_group::1" not in ptx
+        assert "tcgen05.commit.cta_group::1" not in llir
+        assert "tcgen05.cp.cta_group::1" not in ptx
+        assert ptx.count("fence.proxy.async.shared::cluster") == 1
+        assert ptx.count("barrier.cluster.arrive.aligned;") == 2
+        assert ptx.count("barrier.cluster.wait.aligned;") == 2
+        assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
+        assert "barrier.cluster.arrive.relaxed.aligned" not in ptx
+        assert llir.count("llvm.nvvm.fence.proxy.async.shared_cluster") == 2
+        assert llir.count("llvm.nvvm.barrier.cluster.arrive.aligned") == 3
+        assert llir.count("llvm.nvvm.barrier.cluster.wait.aligned") == 3
+        assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
+        assert "llvm.nvvm.barrier.cluster.arrive.relaxed.aligned" not in llir
+        if layout_kind == "linear":
+            assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    """)
+    with tempfile.TemporaryDirectory(prefix="tmem-twocta-cache-") as cache_dir:
+        env = os.environ.copy()
+        pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = "python:." if not pythonpath else f"python:.:{pythonpath}"
+        env["TRITON_CACHE_DIR"] = cache_dir
+        env.setdefault("CUDA_VISIBLE_DEVICES", "0")
+        completed = subprocess.run(
+            [sys.executable, "-c", child], cwd=os.getcwd(), env=env, text=True, capture_output=True
+        )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle", CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes_report_clean_error(dtype_name, torch_dtype, M, N,
                                                                                     swizzle, capfd):
@@ -2278,12 +3057,17 @@ MMA_CASES = [
 
 MMA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind)
-    for kind, acc_layout_kind in product(("tf32", "f8e5m2", "f8e4m3"), ("legacy", "linear"))
+    for kind, acc_layout_kind in product(("tf32", "bf16", "f8e5m2", "f8e4m3"), ("legacy", "linear"))
 ]
 
 MMA_TWOCTA_CASES = [
     ("legacy", "legacy"),
     ("linear", "linear"),
+]
+
+MMA_TWOCTA_PLAIN_KIND_CASES = [
+    (kind, acc_layout_kind)
+    for kind, acc_layout_kind in product(("tf32", "bf16", "f8e5m2", "f8e4m3"), ("legacy", "linear"))
 ]
 
 
@@ -2495,6 +3279,73 @@ def test_tmem_runtime_matrix_mma_twocta(name, layout_kind):
     assert "tcgen05.commit.cta_group::2" in compiled.asm["ptx"]
     assert "tcgen05.commit.cta_group::2" in compiled.asm["llir"]
     assert ".multicast::cluster" in compiled.asm["ptx"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,acc_layout_kind", MMA_TWOCTA_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind):
+    ctas_per_cga = [2, 1]
+    ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
+    cta_split_a = [ctas_per_cga[0], 1]
+    cta_split_b = [1, ctas_per_cga_b[1]]
+    cta_order = [1, 0]
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, cta_split_a, cta_order, 0)
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga_b, cta_split_b, cta_order, 1)
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
+    cga_layout_c_arg = tuple(tuple(basis) for basis in cga_layout_c)
+
+    block_m, block_n, block_k = 256, 128, 32
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1], cga_layout=cga_layout_a)
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0], cga_layout=cga_layout_b)
+
+    if acc_layout_kind == "legacy":
+        acc_layout = TensorMemoryLayout(
+            block=(128, block_n // ctas_per_cga[1]),
+            col_stride=1,
+            two_ctas=True,
+            cga_layout=cga_layout_c,
+        )
+    else:
+        acc_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_twocta_plain_kind_inputs(
+        kind, block_m, block_n, block_k, cga_layout_a, cga_layout_b
+    )
+    out = torch.empty((block_m, block_n), device="cuda", dtype=torch.float32)
+
+    compiled = mma_kernel[(1,)](
+        a,
+        b,
+        out,
+        block_m,
+        block_n,
+        block_k,
+        block_layout_a,
+        block_layout_b,
+        cga_layout_c_arg,
+        acc_layout,
+        shared_layout_a,
+        shared_layout_b,
+        ttgl.float32,
+        False,
+        True,
+        num_warps=4,
+        num_ctas=2,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    assert all(op == expected_kind for op in ptx_ops)
+    assert "tcgen05.commit.cta_group::2" in compiled.asm["ptx"]
+    assert "tcgen05.commit.cta_group::2" in compiled.asm["llir"]
+    assert "two_ctas" in compiled.asm["ttgir"]
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 def _fp8e8m0_to_float32(scale):

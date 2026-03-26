@@ -5,6 +5,7 @@
 #include <functional>
 #include <numeric>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -27,6 +28,7 @@
 #include "triton/Tools/LinearLayout.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 namespace py = pybind11;
@@ -35,6 +37,25 @@ namespace ttg = triton::gpu;
 namespace ttng = triton::nvidia_gpu;
 namespace gluon = mlir::triton::gluon;
 namespace ttag = mlir::triton::amdgpu;
+
+static std::string stringifyType(Type ty) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << ty;
+  return result;
+}
+
+template <typename T> static std::string stringifySequence(ArrayRef<T> values) {
+  std::ostringstream os;
+  os << "[";
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (i)
+      os << ", ";
+    os << values[i];
+  }
+  os << "]";
+  return os.str();
+}
 
 static ttg::CGAEncodingAttr
 buildCgaLayoutAttr(MLIRContext *ctx,
@@ -90,6 +111,14 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, tt::LinearLayout ll, bool twoCTAs,
   ll = ll.removeZeroBasesAlongDim(kRow).removeZeroBasesAlongDim(kCol);
   if (ll.hasInDim(kBlock))
     ll = ll.removeZeroBasesAlongDim(kBlock);
+  SmallVector<std::pair<StringAttr, int32_t>> canonicalOutDims;
+  canonicalOutDims.reserve(ll.getNumOutDims());
+  for (auto [idx, dim] : llvm::enumerate(ll.getOutDimNames())) {
+    canonicalOutDims.push_back(
+        {StringAttr::get(ctx, "dim" + llvm::Twine(idx)),
+         ll.getOutDimSize(dim)});
+  }
+  ll = tt::LinearLayout(ll.getBases(), canonicalOutDims, ll.isSurjective());
   if (auto enc =
           ttng::tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs, error)) {
     return enc;
@@ -127,25 +156,6 @@ lookupLinearLayoutCoord(ArrayRef<std::pair<StringAttr, int32_t>> coords,
 }
 
 static SmallVector<std::pair<StringAttr, int32_t>>
-addLinearLayoutCoords(ArrayRef<std::pair<StringAttr, int32_t>> lhs,
-                      ArrayRef<std::pair<StringAttr, int32_t>> rhs) {
-  SmallVector<std::pair<StringAttr, int32_t>> result(lhs.begin(), lhs.end());
-  for (auto [dim, value] : rhs) {
-    bool found = false;
-    for (auto &entry : result) {
-      if (entry.first == dim) {
-        entry.second += value;
-        found = true;
-        break;
-      }
-    }
-    if (!found)
-      result.push_back({dim, value});
-  }
-  return result;
-}
-
-static SmallVector<std::pair<StringAttr, int32_t>>
 makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
                            ArrayRef<std::pair<StringAttr, int32_t>> sparse) {
   SmallVector<std::pair<StringAttr, int32_t>> result;
@@ -155,77 +165,33 @@ makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
   return result;
 }
 
-static bool canRepresentTMemSubview(
-    const tt::LinearLayout &srcLL, const tt::LinearLayout &dstLL,
-    ArrayRef<std::pair<StringAttr, int32_t>> sliceOffsets) {
-  auto srcInv = srcLL.pseudoinvert();
-  auto dstInv = dstLL.pseudoinvert();
-  auto srcLogicalDims = llvm::to_vector(srcLL.getOutDimNames());
-  auto dstLogicalDims = llvm::to_vector(dstLL.getOutDimNames());
-  auto baseCoords = srcInv.apply(makeFullLinearLayoutCoords(srcLogicalDims,
-                                                            sliceOffsets));
-
-  SmallVector<StringAttr> physDims = llvm::to_vector(srcInv.getOutDimNames());
-  for (auto dim : dstInv.getOutDimNames()) {
-    if (!llvm::is_contained(physDims, dim))
-      physDims.push_back(dim);
+static std::optional<ttng::TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(ttg::MemDescType srcTy, std::string *error) {
+  auto enc = srcTy.getEncoding();
+  if (!ttng::isTensorMemoryEncoding(enc) ||
+      isa<ttng::TensorMemoryScalesEncodingAttr>(enc)) {
+    return std::nullopt;
   }
-
-  for (auto logicalDim : dstLL.getOutDimNames()) {
-    int64_t size = dstLL.getOutDimSize(logicalDim);
-    for (int64_t step = 1; step < size; step <<= 1) {
-      SmallVector<std::pair<StringAttr, int32_t>> point = {
-          {logicalDim, static_cast<int32_t>(step)}};
-      auto srcCoords = srcInv.apply(makeFullLinearLayoutCoords(
-          srcLogicalDims, addLinearLayoutCoords(sliceOffsets, point)));
-      auto dstCoords =
-          dstInv.apply(makeFullLinearLayoutCoords(dstLogicalDims, point));
-      for (auto physDim : physDims) {
-        int32_t delta = lookupLinearLayoutCoord(srcCoords, physDim) -
-                        lookupLinearLayoutCoord(baseCoords, physDim);
-        if (delta != lookupLinearLayoutCoord(dstCoords, physDim))
-          return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-static bool isSimpleTrailingTMemSubslice(ttg::MemDescType srcTy,
-                                         ArrayRef<int64_t> dstShape,
-                                         ArrayRef<int32_t> offsets) {
-  if (srcTy.getRank() != static_cast<int>(dstShape.size()) ||
-      offsets.size() != dstShape.size())
-    return false;
-  if (srcTy.getRank() == 0)
-    return false;
-
-  int last = srcTy.getRank() - 1;
-  for (int dim = 0; dim < last; ++dim) {
-    if (srcTy.getDimSize(dim) != dstShape[dim] || offsets[dim] != 0)
-      return false;
-  }
-
-  return offsets[last] >= 0 &&
-         offsets[last] + dstShape[last] <= srcTy.getDimSize(last);
+  auto rank = cast<ttg::LayoutEncodingTrait>(enc).getRank();
+  auto shape = srcTy.getShape().take_back(rank);
+  auto canonical = ttng::tryGetCanonicalTensorMemoryEncoding(shape, enc, error);
+  if (!canonical)
+    return std::nullopt;
+  return dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(*canonical);
 }
 
 static std::optional<ttng::TensorMemoryLinearEncodingAttr>
 inferTMemSubsliceEncoding(ttg::MemDescType srcTy, ArrayRef<int64_t> dstShape,
                           ArrayRef<int32_t> offsets, std::string *error) {
-  auto canonical = ttng::tryGetCanonicalTensorMemoryEncoding(srcTy, error);
-  if (!canonical)
-    return std::nullopt;
-  auto srcEnc = dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(*canonical);
+  auto srcEnc = getCanonicalTMemLinearEncoding(srcTy, error);
   if (!srcEnc) {
     if (error)
       *error = "expected canonical tensor memory linear encoding";
     return std::nullopt;
   }
 
-  auto ll = srcEnc.getLinearLayout();
-  auto layoutRank = srcEnc.getRank();
+  auto ll = srcEnc->getLinearLayout();
+  auto layoutRank = srcEnc->getRank();
   auto extraRank = srcTy.getRank() - layoutRank;
   if (extraRank < 0 || dstShape.size() != static_cast<size_t>(srcTy.getRank()) ||
       offsets.size() != static_cast<size_t>(srcTy.getRank())) {
@@ -234,61 +200,95 @@ inferTMemSubsliceEncoding(ttg::MemDescType srcTy, ArrayRef<int64_t> dstShape,
     return std::nullopt;
   }
 
-  auto outDims = tt::standardOutDimNames(srcTy.getContext(), layoutRank);
-  for (int dim = extraRank; dim < srcTy.getRank(); ++dim) {
-    int64_t newSize = dstShape[dim];
-    auto outDim = outDims[dim - extraRank];
-    int64_t currSize = ll.getOutDimSize(outDim);
-    if (newSize > currSize) {
+  auto *ctx = srcTy.getContext();
+  auto logicalDims = llvm::to_vector(ll.getOutDimNames());
+  SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+  encodedOffsets.reserve(layoutRank);
+  for (auto [dim, offset] : llvm::enumerate(offsets.drop_front(extraRank))) {
+    if (offset < 0) {
       if (error)
         *error = "unsupported tensor memory memdesc_subslice view";
       return std::nullopt;
     }
-    if (newSize != currSize) {
-      if (offsets[dim] < 0 || offsets[dim] % newSize != 0) {
-        if (error)
-          *error = "unsupported tensor memory memdesc_subslice view";
-        return std::nullopt;
+    encodedOffsets.push_back(
+        {logicalDims[dim], static_cast<int32_t>(offset)});
+  }
+
+  auto llInv = ll.pseudoinvert();
+  auto baseCoords =
+      llInv.apply(makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+  auto physOutDimNames = llvm::to_vector(llInv.getOutDimNames());
+  SmallVector<uint32_t> activePhysMasks(physOutDimNames.size(), 0);
+
+  tt::LinearLayout::BasesT dstInvBases;
+  for (int dim = extraRank; dim < srcTy.getRank(); ++dim) {
+    int64_t dstDimSize = dstShape[dim];
+    int64_t srcDimSize = srcTy.getDimSize(dim);
+    if (dstDimSize > srcDimSize || offsets[dim] + dstDimSize > srcDimSize) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_subslice view";
+      return std::nullopt;
+    }
+
+    auto dstDimName =
+        StringAttr::get(ctx, "dim" + llvm::Twine(dim - extraRank));
+    auto &bases = dstInvBases[dstDimName];
+    for (int64_t step = 1; step < dstDimSize; step <<= 1) {
+      auto point = encodedOffsets;
+      point[dim - extraRank].second += static_cast<int32_t>(step);
+      auto pointCoords =
+          llInv.apply(makeFullLinearLayoutCoords(logicalDims, point));
+      std::vector<int32_t> basis;
+      basis.reserve(physOutDimNames.size());
+      for (auto [physIdx, physDim] : llvm::enumerate(physOutDimNames)) {
+        int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
+                        lookupLinearLayoutCoord(baseCoords, physDim);
+        if (delta < 0) {
+          if (error)
+            *error = "unsupported tensor memory memdesc_subslice view";
+          return std::nullopt;
+        }
+        activePhysMasks[physIdx] |= static_cast<uint32_t>(delta);
+        basis.push_back(delta);
       }
-      ll = ll.resizeOutDim(outDim, newSize);
+      bases.push_back(std::move(basis));
     }
   }
 
-  auto result = tryMakeTMemViewEncoding(srcTy.getContext(), std::move(ll),
-                                        srcEnc.getTwoCTAs(), error);
-  if (!result)
-    return std::nullopt;
-  SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
-  encodedOffsets.reserve(layoutRank);
-  for (auto [dim, offset] : llvm::zip_equal(srcEnc.getLinearLayout().getOutDimNames(),
-                                            offsets.drop_front(extraRank))) {
-    if (offset != 0)
-      encodedOffsets.push_back({dim, offset});
+  SmallVector<std::pair<StringAttr, int32_t>> activePhysOutDims;
+  activePhysOutDims.reserve(physOutDimNames.size());
+  for (auto [physIdx, physDim] : llvm::enumerate(physOutDimNames)) {
+    int32_t activePhysSize = 1;
+    while (activePhysSize <= static_cast<int32_t>(activePhysMasks[physIdx]))
+      activePhysSize <<= 1;
+    activePhysOutDims.push_back({physDim, activePhysSize});
   }
-  if (!canRepresentTMemSubview(srcEnc.getLinearLayout(),
-                               result->getLinearLayout(), encodedOffsets)) {
-    if (error)
+
+  auto dstInv = tt::LinearLayout::tryCreate(std::move(dstInvBases),
+                                            activePhysOutDims,
+                                            /*requireSurjective=*/false,
+                                            error);
+  if (!dstInv || !dstInv->isSurjective()) {
+    if (error && error->empty())
       *error = "unsupported tensor memory memdesc_subslice view";
     return std::nullopt;
   }
-  return result;
+  return tryMakeTMemViewEncoding(ctx, dstInv->pseudoinvert(),
+                                 srcEnc->getTwoCTAs(), error);
 }
 
 static std::optional<ttng::TensorMemoryLinearEncodingAttr>
 inferTMemIndexEncoding(ttg::MemDescType srcTy, ArrayRef<int64_t> dstAllocShape,
                        std::string *error) {
-  auto canonical = ttng::tryGetCanonicalTensorMemoryEncoding(srcTy, error);
-  if (!canonical)
-    return std::nullopt;
-  auto srcEnc = dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(*canonical);
+  auto srcEnc = getCanonicalTMemLinearEncoding(srcTy, error);
   if (!srcEnc) {
     if (error)
       *error = "expected canonical tensor memory linear encoding";
     return std::nullopt;
   }
 
-  auto ll = srcEnc.getLinearLayout();
-  auto layoutRank = srcEnc.getRank();
+  auto ll = srcEnc->getLinearLayout();
+  auto layoutRank = srcEnc->getRank();
   auto extraRank = srcTy.getRank() - layoutRank;
   if (extraRank < 0) {
     if (error)
@@ -318,8 +318,9 @@ inferTMemIndexEncoding(ttg::MemDescType srcTy, ArrayRef<int64_t> dstAllocShape,
         tt::standardOutDimPairs(srcTy.getContext(), resultLayoutShape));
   }
 
-  return tryMakeTMemViewEncoding(srcTy.getContext(), std::move(ll),
-                                 srcEnc.getTwoCTAs(), error);
+  return ttng::tryMakeTensorMemoryLinearEncoding(srcTy.getContext(),
+                                                 std::move(ll),
+                                                 srcEnc->getTwoCTAs(), error);
 }
 
 struct GluonOpBuilder : public TritonOpBuilder {
@@ -1082,28 +1083,18 @@ void init_gluon_ir(py::module &&m) {
              if (ttng::isTensorMemoryEncoding(dstEncoding) &&
                  !isa<ttng::TensorMemoryScalesEncodingAttr>(dstEncoding)) {
                std::string error;
-               if (isSimpleTrailingTMemSubslice(srcTy, shape, offsets)) {
-                 auto maybeCanonical =
-                     ttng::tryGetCanonicalTensorMemoryEncoding(srcTy, &error);
-                 if (!maybeCanonical) {
-                   throw py::value_error(
-                       error.empty()
-                           ? "failed to infer tensor memory encoding for "
-                             "memdesc_subslice"
-                           : error);
-                 }
-                 dstEncoding = *maybeCanonical;
-               } else {
-                 dstAllocShape = llvm::to_vector(ArrayRef<int64_t>(shape));
-                 auto maybeDstEnc =
-                     inferTMemSubsliceEncoding(srcTy, shape, offsets, &error);
-                 if (!maybeDstEnc)
-                   throw py::value_error(error.empty()
-                                             ? "failed to infer tensor memory "
-                                               "encoding for memdesc_subslice"
-                                             : error);
-                 dstEncoding = *maybeDstEnc;
-               }
+               auto maybeDstEnc =
+                   inferTMemSubsliceEncoding(srcTy, shape, offsets, &error);
+               if (!maybeDstEnc)
+                 throw py::value_error(
+                     (error.empty()
+                          ? "failed to infer tensor memory encoding for "
+                            "memdesc_subslice"
+                          : error) +
+                     "\nsource type: " + stringifyType(srcTy) +
+                     "\nresult shape: " + stringifySequence<int64_t>(shape) +
+                     "\noffsets: " + stringifySequence<int32_t>(offsets));
+               dstEncoding = *maybeDstEnc;
              }
 
              auto resultTy = self.getChecked<ttg::MemDescType>(
@@ -1126,7 +1117,10 @@ void init_gluon_ir(py::module &&m) {
                      self.getContext(), self.getLastLoc(), srcTy, shape,
                      resultTy))) {
                throw py::value_error(
-                   "failed to infer TMEM memdesc reshape result type");
+                   "failed to infer TMEM memdesc reshape result type\nsource "
+                   "type: " +
+                   stringifyType(srcTy) + "\nresult shape: " +
+                   stringifySequence<int64_t>(shape));
              }
              return self.create<ttg::MemDescReshapeOp>(resultTy, src);
            })
@@ -1504,6 +1498,38 @@ void init_gluon_ir(py::module &&m) {
         auto elementType = elementTyObj.attr("to_ir")(builderObj).cast<Type>();
         auto layoutAttr =
             layoutObj.attr("_to_ir")(builderObj).cast<Attribute>();
+        if (auto tmemLinear =
+                dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(layoutAttr)) {
+          auto ll = tmemLinear.getLinearLayout();
+          auto bases = ll.getBases();
+          auto trimTrailingZeros = [&](StringAttr dim) {
+            auto it = bases.find(dim);
+            if (it == bases.end())
+              return;
+            while (!it->second.empty() &&
+                   llvm::all_of(it->second.back(), [](int32_t value) {
+                     return value == 0;
+                   })) {
+              it->second.pop_back();
+            }
+          };
+          auto kRow = StringAttr::get(builder.getContext(), "row");
+          auto kCol = StringAttr::get(builder.getContext(), "col");
+          auto kBlock = StringAttr::get(builder.getContext(), "block");
+          trimTrailingZeros(kRow);
+          trimTrailingZeros(kCol);
+          trimTrailingZeros(kBlock);
+
+          auto trimmed =
+              tt::LinearLayout(std::move(bases), ll.getOutDims(),
+                               /*requireSurjective=*/false);
+          std::string error;
+          auto maybeCanonical = ttng::tryMakeTensorMemoryLinearEncoding(
+              builder.getContext(), std::move(trimmed),
+              tmemLinear.getTwoCTAs(), &error);
+          if (maybeCanonical)
+            layoutAttr = *maybeCanonical;
+        }
         auto ctx = builder.getContext();
         auto memDescTy = builder.getChecked<ttg::MemDescType>(
             shape, elementType, layoutAttr,

@@ -73,8 +73,10 @@ getCanonicalTMemLinearEncoding(MemDescType type, std::string *error = nullptr) {
   if (!triton::nvidia_gpu::isTensorMemoryEncoding(enc) ||
       isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(enc))
     return std::nullopt;
+  auto rank = cast<LayoutEncodingTrait>(enc).getRank();
+  auto shape = type.getShape().take_back(rank);
   auto canonical =
-      triton::nvidia_gpu::tryGetCanonicalTensorMemoryEncoding(type, error);
+      triton::nvidia_gpu::tryGetCanonicalTensorMemoryEncoding(shape, enc, error);
   if (!canonical)
     return std::nullopt;
   return cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*canonical);
@@ -89,15 +91,6 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs) {
     originalBlockBases = ll.getBases().lookup(kBlock);
   if (ll.hasInDim(kBlock))
     ll = ll.removeZeroBasesAlongDim(kBlock);
-  // TMEM memdesc views can materialize leading size-1 logical dimensions when
-  // slicing a reshaped/permuted view. Represent these as extra leading memdesc
-  // dimensions instead of keeping them in the TMEM linear layout so subsequent
-  // memdesc_index/get_reg_layout paths can treat them as plain buffer dims.
-  auto outDims = llvm::to_vector(ll.getOutDimNames());
-  while (outDims.size() > 1 && ll.getOutDimSize(outDims.front()) == 1) {
-    ll = ll.squeezeOuts(outDims.front());
-    outDims = llvm::to_vector(ll.getOutDimNames());
-  }
   SmallVector<std::pair<StringAttr, int32_t>> canonicalOutDims;
   canonicalOutDims.reserve(ll.getNumOutDims());
   for (auto [idx, dim] : llvm::enumerate(ll.getOutDimNames())) {
@@ -150,31 +143,6 @@ makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
   return result;
 }
 
-static bool isSimpleTrailingTMemSubslice(
-    MemDescType srcTy, MemDescType dstTy, ArrayRef<int64_t> offsets,
-    triton::nvidia_gpu::TensorMemoryLinearEncodingAttr srcEnc,
-    triton::nvidia_gpu::TensorMemoryLinearEncodingAttr dstEnc) {
-  if (srcEnc != dstEnc)
-    return false;
-  if (srcTy.getAllocShape() != dstTy.getAllocShape())
-    return false;
-  if (srcTy.getRank() != dstTy.getRank())
-    return false;
-  if (offsets.size() != static_cast<size_t>(srcTy.getRank()))
-    return false;
-  if (srcTy.getRank() == 0)
-    return false;
-
-  int last = srcTy.getRank() - 1;
-  for (int dim = 0; dim < last; ++dim) {
-    if (srcTy.getDimSize(dim) != dstTy.getDimSize(dim) || offsets[dim] != 0)
-      return false;
-  }
-
-  return offsets[last] >= 0 &&
-         offsets[last] + dstTy.getDimSize(last) <= srcTy.getDimSize(last);
-}
-
 FailureOr<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
 inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy,
                           ArrayRef<int64_t> offsets) {
@@ -203,11 +171,10 @@ inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy,
   auto llInv = ll.pseudoinvert();
   auto baseCoords =
       llInv.apply(makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
-  auto physOutDims = llvm::to_vector(llInv.getOutDims());
+  auto physOutDimNames = llvm::to_vector(llInv.getOutDimNames());
+  SmallVector<uint32_t> activePhysMasks(physOutDimNames.size(), 0);
 
   LinearLayout::BasesT dstInvBases;
-  SmallVector<std::pair<StringAttr, int32_t>> dstLogicalDims;
-  dstLogicalDims.reserve(layoutRank);
   for (int dim = extraRank; dim < srcTy.getRank(); ++dim) {
     int64_t dstDimSize = dstTy.getDimSize(dim);
     int64_t srcDimSize = srcTy.getDimSize(dim);
@@ -216,8 +183,6 @@ inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy,
 
     auto dstDimName =
         StringAttr::get(ctx, "dim" + llvm::Twine(dim - extraRank));
-    dstLogicalDims.push_back(
-        {dstDimName, static_cast<int32_t>(dstDimSize)});
     auto &bases = dstInvBases[dstDimName];
     for (int64_t step = 1; step < dstDimSize; step <<= 1) {
       auto point = encodedOffsets;
@@ -225,20 +190,36 @@ inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy,
       auto pointCoords =
           llInv.apply(makeFullLinearLayoutCoords(logicalDims, point));
       std::vector<int32_t> basis;
-      basis.reserve(physOutDims.size());
-      for (auto [physDim, _] : physOutDims) {
-        basis.push_back(lookupLinearLayoutCoord(pointCoords, physDim) -
-                        lookupLinearLayoutCoord(baseCoords, physDim));
+      basis.reserve(physOutDimNames.size());
+      for (auto [physIdx, physDim] : llvm::enumerate(physOutDimNames)) {
+        int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
+                        lookupLinearLayoutCoord(baseCoords, physDim);
+        if (delta < 0)
+          return failure();
+        activePhysMasks[physIdx] |= static_cast<uint32_t>(delta);
+        basis.push_back(delta);
       }
       bases.push_back(std::move(basis));
     }
   }
 
-  auto dstInv = LinearLayout(std::move(dstInvBases), physOutDims,
-                             /*requireSurjective=*/false);
-  if (!dstInv.isSurjective())
+  SmallVector<std::pair<StringAttr, int32_t>> activePhysOutDims;
+  activePhysOutDims.reserve(physOutDimNames.size());
+  for (auto [physIdx, physDim] : llvm::enumerate(physOutDimNames)) {
+    int32_t activePhysSize = 1;
+    while (activePhysSize <= static_cast<int32_t>(activePhysMasks[physIdx]))
+      activePhysSize <<= 1;
+    activePhysOutDims.push_back({physDim, activePhysSize});
+  }
+
+  // Infer the smallest physical row/col footprint that spans the view rather
+  // than reusing the full source TMEM extent. That keeps valid slices
+  // surjective while still failing malformed views non-fatally.
+  auto dstInv = LinearLayout::tryCreate(std::move(dstInvBases), activePhysOutDims,
+                                        /*requireSurjective=*/false);
+  if (!dstInv || !dstInv->isSurjective())
     return failure();
-  auto result = tryMakeTMemViewEncoding(ctx, dstInv.pseudoinvert(),
+  auto result = tryMakeTMemViewEncoding(ctx, dstInv->pseudoinvert(),
                                         srcEnc->getTwoCTAs());
   if (!result)
     return failure();
@@ -798,20 +779,34 @@ static LogicalResult inferMemDescReshapeOpEncoding(MemDescType srcTy,
     auto *ctx = srcEnc.getContext();
     auto layoutSrcShape = srcShape;
     auto layoutDstShape = dstShape;
+    int64_t layoutElems =
+        static_cast<int64_t>(tmemLinear->getLinearLayout().getTotalOutDimSize());
+
+    auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape) {
+      while (!shape.empty() && shape.front() == 1 &&
+             product<int64_t>(shape.drop_front()) >= layoutElems)
+        shape = shape.drop_front();
+      return shape;
+    };
+    layoutSrcShape = stripLeadingUnitDims(layoutSrcShape);
+    layoutDstShape = stripLeadingUnitDims(layoutDstShape);
 
     // TMEM encodings can represent an extra leading multibuffer dimension that
     // is not part of the physical TMEM linear layout.
-    if (srcShape.size() == static_cast<size_t>(tmemLinear->getRank()) + 1) {
-      if (dstShape.empty() || dstShape.front() != srcShape.front())
+    if (product<int64_t>(layoutSrcShape) > layoutElems) {
+      if (layoutSrcShape.size() !=
+          static_cast<size_t>(tmemLinear->getRank()) + 1) {
         return failure();
-      layoutSrcShape = srcShape.drop_front();
-      layoutDstShape = dstShape.drop_front();
+      }
+      if (layoutDstShape.empty() || layoutDstShape.front() != layoutSrcShape.front())
+        return failure();
+      layoutSrcShape = layoutSrcShape.drop_front();
+      layoutDstShape = layoutDstShape.drop_front();
     }
 
     if (product(layoutSrcShape) != product(layoutDstShape))
       return failure();
-    if (static_cast<int64_t>(tmemLinear->getLinearLayout().getTotalOutDimSize()) !=
-        product<int64_t>(layoutSrcShape))
+    if (layoutElems != product<int64_t>(layoutSrcShape))
       return failure();
     auto dstLL =
         reshapeLayout(ctx, tmemLinear->getLinearLayout(), layoutDstShape);
@@ -1254,10 +1249,6 @@ LogicalResult MemDescSubsliceOp::verify() {
   if (srcTMem || dstTMem) {
     if (!(srcTMem && dstTMem)) {
       return emitError("src and result must both use tensor memory encodings");
-    }
-    if (isSimpleTrailingTMemSubslice(srcTy, dstTy, offsets, *srcTMem,
-                                     *dstTMem)) {
-      return success();
     }
     auto expected = inferTMemSubsliceEncoding(srcTy, dstTy, offsets);
     if (failed(expected)) {

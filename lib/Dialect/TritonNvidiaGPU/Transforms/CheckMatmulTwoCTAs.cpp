@@ -15,6 +15,19 @@ namespace mlir::triton::nvidia_gpu {
 
 namespace {
 
+std::optional<bool> getExplicitTwoCTAs(Type type) {
+  auto memDesc = dyn_cast<gpu::MemDescType>(type);
+  if (!memDesc)
+    return std::nullopt;
+
+  Attribute enc = memDesc.getEncoding();
+  if (auto linear = dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(enc))
+    return linear.getTwoCTAs();
+  if (auto legacy = dyn_cast<ttng::TensorMemoryEncodingAttr>(enc))
+    return legacy.getTwoCTAs();
+  return std::nullopt;
+}
+
 class TritonNvidiaGPUCheckMatmulTwoCTAPass
     : public impl::TritonNvidiaGPUCheckMatmulTwoCTAPassBase<
           TritonNvidiaGPUCheckMatmulTwoCTAPass> {
@@ -25,28 +38,48 @@ public:
 
   void runOnOperation() override {
     ModuleOp mod = getOperation();
-    Operation *firstMatmul = nullptr;
+    Operation *firstUser = nullptr;
     bool firstTwoCTA = false;
 
-    // Walk all MMAv5 ops using the interface
-    WalkResult result = mod.walk([&](ttng::MMAv5OpInterface op) -> WalkResult {
-      bool currentTwoCTA = op.getTwoCtas();
-      if (!firstMatmul) {
-        firstMatmul = op;
+    auto checkAndRecord = [&](Operation *op, bool currentTwoCTA,
+                              StringRef source) -> WalkResult {
+      if (!firstUser) {
+        firstUser = op;
         firstTwoCTA = currentTwoCTA;
         return WalkResult::advance();
       }
       if (currentTwoCTA != firstTwoCTA) {
-        auto diag = op.emitError()
-                    << "inconsistent two_ctas setting across matmuls; "
-                       "expected all matmuls to "
+        auto diag = op->emitError()
+                    << "inconsistent two_ctas setting across tensor memory "
+                       "operations; expected all explicit two_ctas users to "
                     << (firstTwoCTA ? "enable" : "disable") << " two_ctas.";
-        diag.attachNote(firstMatmul->getLoc())
-            << "first matmul here has two_ctas="
+        diag.attachNote(firstUser->getLoc())
+            << "first two_ctas user here has two_ctas="
             << (firstTwoCTA ? "true" : "false") << ".";
+        diag.attachNote() << "current two_ctas source: " << source << ".";
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
+    };
+
+    WalkResult result = mod.walk([&](Operation *op) -> WalkResult {
+      if (auto mma = dyn_cast<ttng::MMAv5OpInterface>(op))
+        return checkAndRecord(op, mma.getTwoCtas(), "MMAv5 op attribute");
+
+      auto checkTypes = [&](TypeRange types, StringRef source) -> WalkResult {
+        for (Type type : types) {
+          if (auto twoCTAs = getExplicitTwoCTAs(type))
+            if (auto res = checkAndRecord(op, *twoCTAs, source);
+                res.wasInterrupted())
+              return res;
+        }
+        return WalkResult::advance();
+      };
+
+      if (auto res = checkTypes(op->getOperandTypes(), "TMEM operand type");
+          res.wasInterrupted())
+        return res;
+      return checkTypes(op->getResultTypes(), "TMEM result type");
     });
 
     if (result.wasInterrupted()) {
@@ -54,7 +87,7 @@ public:
       return;
     }
 
-    bool twoCTAValue = firstMatmul ? firstTwoCTA : false;
+    bool twoCTAValue = firstUser ? firstTwoCTA : false;
     mod->setAttr(AttrTwoCTAsName, BoolAttr::get(mod.getContext(), twoCTAValue));
   }
 };

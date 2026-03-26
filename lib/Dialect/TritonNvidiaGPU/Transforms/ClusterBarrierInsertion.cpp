@@ -45,6 +45,8 @@ static bool isDistributedMultiCTAOp(Operation *op, bool isRead) {
     return mma.getTwoCtas();
   } else if (auto mmaScaled = dyn_cast<ttng::TCGen5MMAScaledOp>(op)) {
     return mmaScaled.getTwoCtas();
+  } else if (isa<ttng::TMEMCopyOp>(op)) {
+    return ttng::getModuleTwoCTAs(op);
   } else if (auto tma = dyn_cast<ttng::AsyncTMACopyGlobalToLocalOp>(op)) {
     return tma.getMulticast();
   }
@@ -55,8 +57,15 @@ static bool isPreAllocAliasSliceFilter(const AllocationSlice &lhsSlice,
                                        const AllocationSlice &rhsSlice,
                                        bool /*lhsIsRead*/, bool /*rhsIsRead*/,
                                        Allocation *allocation) {
+  auto isDistributedSlice = [](const AllocationSlice &slice) {
+    auto accessTy = slice.getAccessType();
+    return accessTy && accessTy.getEncoding() &&
+           ttg::getNumCTAs(accessTy.getEncoding()) > 1;
+  };
+
   auto bufferId = lhsSlice.getBufferId();
-  return bufferId != Allocation::InvalidBufferId &&
+  return !isDistributedSlice(lhsSlice) && !isDistributedSlice(rhsSlice) &&
+         bufferId != Allocation::InvalidBufferId &&
          bufferId == rhsSlice.getBufferId() &&
          allocation->isExplicitBuffer(bufferId);
 }
@@ -107,6 +116,9 @@ usesTrackedBarrierInCrossCTAConsumerOp(Operation *op,
   }
   if (auto commit = dyn_cast<ttng::TCGen5CommitOp>(op)) {
     return ttng::getModuleTwoCTAs(op) && aliasesTracked(commit.getBarrier());
+  }
+  if (auto copy = dyn_cast<ttng::TMEMCopyOp>(op)) {
+    return ttng::getModuleTwoCTAs(op) && aliasesTracked(copy.getBarrier());
   }
   if (auto tma = dyn_cast<ttng::AsyncTMACopyGlobalToLocalOp>(op)) {
     return tma.getMulticast() && aliasesTracked(tma.getBarrier());
