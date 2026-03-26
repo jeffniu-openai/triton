@@ -371,4 +371,134 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   return info;
 }
 
+std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
+                                            int bitwidth) {
+  auto inDims = cvt.getInDimNames();
+  if (inDims.empty())
+    return std::nullopt;
+  auto *ctx = inDims.begin()->getContext();
+  auto S = [ctx](StringRef str) { return StringAttr::get(ctx, str); };
+  auto kRow = S("row");
+  auto kCol = S("col");
+  auto kOffset = S("offset");
+  if (!cvt.hasInDim(kRow) || !cvt.hasInDim(kCol) || !cvt.hasOutDim(kOffset))
+    return std::nullopt;
+  if (cvt.getInDimSize(kRow) != 128)
+    return std::nullopt;
+
+  auto multicastBit = [&](int i) {
+    assert(i == 0 || i == 1);
+    return cvt.getBasis(kRow, llvm::Log2_32(32) + i, kOffset) == 0;
+  };
+  auto multicast = multicastBit(0) | multicastBit(1) << 1;
+  int totalBits = cvt.getInDimSize(kCol) * bitwidth;
+  if (multicast == 0) {
+    if (totalBits == 128)
+      return TMemCopyAtom{128, 128, 0};
+    if (totalBits >= 256)
+      return TMemCopyAtom{128, 256, 0};
+    return std::nullopt;
+  }
+  if (multicast == 1)
+    return TMemCopyAtom{64, 128, 1};
+  if (multicast == 2)
+    return TMemCopyAtom{64, 128, 2};
+  if (multicast == 3)
+    return TMemCopyAtom{32, 128, 3};
+  return std::nullopt;
+}
+
+bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
+                                     llvm::ArrayRef<unsigned> instrShape,
+                                     int bitwidth, unsigned MNdim,
+                                     int mmaVersion) {
+  if (ll.getNumOutDims() != 2)
+    return false;
+  auto dims = to_vector(ll.getInDimNames());
+  if (dims.size() != 2)
+    return false;
+  auto ctx = dims[0].getContext();
+  auto kOffset = StringAttr::get(ctx, "offset");
+  auto CGALayout = triton::gpu::CGAEncodingAttr::get1CTALayout(ctx, 2);
+
+  for (bool fp4Padded :
+       (bitwidth == 4 ? SmallVector<bool>({false, true})
+                      : SmallVector<bool>({false}))) {
+    for (auto transposed : {false, true}) {
+      for (int swizzling : {0, 32, 64, 128}) {
+        auto shmemEnc = triton::gpu::NVMMASharedEncodingAttr::get(
+            ctx, swizzling, transposed, std::max(8, bitwidth), fp4Padded,
+            CGALayout);
+        auto shmemTile =
+            getCoreMatrixLinearLayout(shmemEnc, /*disableSwizzle=*/false);
+        auto outDims = to_vector(shmemTile.getOutDims());
+        outDims[0].first = dims[0];
+        outDims[1].first = dims[1];
+        shmemTile = LinearLayout(shmemTile.getBases(), outDims,
+                                 /*requireSurjective=*/false);
+        if (bitwidth == 4) {
+          shmemTile =
+              LinearLayout::identity1D(2, kOffset, dims[1]) * shmemTile;
+        }
+        if (transposed) {
+          shmemTile = transposeLinearLayout(shmemTile, {1, 0});
+        }
+        auto shmemTileInv = shmemTile.pseudoinvert();
+
+        int leadingDim = transposed ? 0 : 1;
+        int stridedDim = transposed ? 1 : 0;
+        bool MNContig = (MNdim == 0) == transposed;
+        if (swizzling == 0 && MNContig) {
+          std::swap(leadingDim, stridedDim);
+        }
+
+        auto log2RowsTile = shmemTileInv.getInDimSizeLog2(dims[leadingDim]);
+        if (llvm::Log2_32(instrShape[leadingDim]) > log2RowsTile) {
+          if (log2RowsTile >= ll.getInDimSizeLog2(dims[leadingDim]))
+            continue;
+          (void)ll.getBasis(dims[leadingDim], log2RowsTile, kOffset);
+        }
+        auto log2ColsTile = shmemTileInv.getInDimSizeLog2(dims[stridedDim]);
+        if (llvm::Log2_32(instrShape[stridedDim]) > log2ColsTile) {
+          if (log2ColsTile >= ll.getInDimSizeLog2(dims[stridedDim]))
+            continue;
+          (void)ll.getBasis(dims[stridedDim], log2ColsTile, kOffset);
+        }
+
+        auto bases = shmemTileInv.getBases();
+        bool invalidCandidate = false;
+        for (int d : {0, 1}) {
+          auto log2Tile = shmemTileInv.getInDimSizeLog2(dims[d]);
+          if (log2Tile >= ll.getInDimSizeLog2(dims[d]) &&
+              instrShape[d] > shmemTileInv.getInDimSize(dims[d])) {
+            invalidCandidate = true;
+            break;
+          }
+          for (int i = 1; i < instrShape[d] / shmemTileInv.getInDimSize(dims[d]);
+               i *= 2) {
+            auto stride = ll.getBasis(dims[d], log2Tile, kOffset);
+            bases[dims[d]].push_back({stride * i});
+          }
+        }
+        if (invalidCandidate)
+          continue;
+        auto maxBasis = 0;
+        for (auto dimBases : llvm::make_second_range(bases)) {
+          for (auto basis : dimBases) {
+            maxBasis = std::max(maxBasis, basis[0]);
+          }
+        }
+        shmemTileInv = LinearLayout(std::move(bases),
+                                    {{kOffset, llvm::NextPowerOf2(maxBasis)}},
+                                    /*requireSurjective=*/false);
+        shmemTileInv *=
+            LinearLayout::identity1D(1, dims[0], StringAttr::get(ctx, "block"));
+        if (getReps(ll, shmemTileInv).has_value())
+          return true;
+      }
+    }
+  }
+  return false;
+}
+
 } // namespace mlir::triton::nvidia_gpu

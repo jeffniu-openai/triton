@@ -212,6 +212,15 @@ def _extract_tcgen05_cp_opcodes(asm: str):
     return pattern.findall(asm)
 
 
+def _assert_exact_cp_ptx_llir_match(compiled, expected_ops=None):
+    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    if expected_ops is not None:
+        assert ptx_ops == list(expected_ops)
+    return ptx_ops
+
+
 def _extract_tcgen05_mma_opcodes(asm: str):
     pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
     return pattern.findall(asm)
@@ -905,6 +914,15 @@ CP_NO_SCALES_SWIZZLE_CASES = [
     for (m, n, block_n) in ((128, 128, 128), (128, 256, 256), (256, 128, 64))
 ]
 
+CP_NO_SCALES_128X128_CASES = (128, )
+
+CP_SCALES_WARPX4_SCALED_MMA_CASES = [
+    ("mxfp8", "mxfp8", 1, "legacy"),
+    ("mxfp8", "mxfp8", 2, "legacy"),
+    ("nvfp4", "nvfp4", 1, "linear"),
+    ("nvfp4", "nvfp4", 2, "linear"),
+]
+
 F16_LDST_SHAPE_MAP = {
     "32x32b": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
     "16x64b": {64: "16x64b.x16.b32", 128: "16x64b.x32.b32", 256: "16x64b.x64.b32"},
@@ -977,7 +995,7 @@ LDST_EXPECTED_OFFSETS_128x256 = {
 
 CP_SCALES_LAYOUT_PROBE_CASES = [
     ("warpx4", _make_scales_shared_layout_warpx4(), "PASS"),
-    ("warpx2_candidate", _make_scales_shared_layout_warpx2_candidate(), "BUG"),
+    ("warpx2_candidate", _make_scales_shared_layout_warpx2_candidate(), "CLEAN_UNSUPPORTED"),
 ]
 
 
@@ -1494,6 +1512,33 @@ def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(n, splitn_x, expected_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("n", [2, 4, 8, 16, 32, 64, 128])
+def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n):
+    m = 64
+    layout = _make_tmem_linear_layout_m64(n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out_explicit = torch.empty_like(inp)
+    out_splitn = torch.empty_like(inp)
+
+    compiled_explicit = tmem_ldst_variant_kernel[(1, )](
+        inp, out_explicit, layout, m, n, "16x32bx2", num_warps=4
+    )
+    compiled_splitn = tmem_ldst_variant_kernel[(1, )](
+        inp, out_splitn, layout, m, n, "32x32b_splitn", num_warps=4
+    )
+
+    torch.testing.assert_close(out_explicit, inp, atol=0, rtol=0)
+    torch.testing.assert_close(out_splitn, inp, atol=0, rtol=0)
+    torch.testing.assert_close(out_explicit, out_splitn, atol=0, rtol=0)
+
+    explicit_ops, explicit_imms = _assert_ldst_ptx_llir_match(compiled_explicit)
+    splitn_ops, splitn_imms = _assert_ldst_ptx_llir_match(compiled_splitn)
+    assert explicit_ops == splitn_ops
+    assert explicit_imms == splitn_imms
+    assert all("16x32bx2" in op for op, _ in explicit_ops)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("variant", ("32x32b", "16x64b", "16x128b", "16x256b"))
 def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
     m, n = 128, 256
@@ -1675,24 +1720,23 @@ def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_
         expected = inp.reshape(2, 32, 2, 2, 4).permute(1, 2, 3, 0, 4).reshape(num_rows // 4, num_cols)
         for warp in torch.chunk(out, chunks=4, dim=0):
             torch.testing.assert_close(expected, warp, atol=0, rtol=0)
-        ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-        llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
-        assert ptx_ops == llir_ops
-        assert ptx_ops == ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2
+        _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
         return
 
     with pytest.raises(Exception) as excinfo:
         tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "failed to find valid tcgen05.copy layout" in text
 
     if expected_status == "CLEAN_UNSUPPORTED":
+        assert "does not lower to Triton's currently supported tcgen05.copy.warpx4.32x128b descriptor family" in text
+        assert "canonical scales warpx4 shared layout" in text
         assert "PassManager::run failed" not in text
         assert "Assertion" not in text
         return
 
     assert expected_status == "BUG"
+    assert "failed to find valid tcgen05.copy layout" in text
     assert "PassManager::run failed" in text
 
 
@@ -1708,12 +1752,9 @@ def test_tmem_runtime_matrix_cp_no_scales(M, N, BLOCK_N, swizzle):
         pytest.skip(f"shared memory OOR for M={M}, N={N}, BLOCK_N={BLOCK_N}, swizzle={swizzle}")
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
-    assert ptx_ops
-    assert ptx_ops == llir_ops
-    assert all(op.endswith(".128x256b") for op in ptx_ops)
-    assert len(ptx_ops) == (M * N) // 1024
+    expected_count = (M * N) // 1024
+    expected_ops = ["tcgen05.cp.cta_group::1.128x256b"] * expected_count
+    assert _assert_exact_cp_ptx_llir_match(compiled, expected_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1728,11 +1769,8 @@ def test_tmem_runtime_matrix_cp_no_scales_swizzles(M, N, BLOCK_N, swizzle):
         pytest.skip(f"shared memory OOR for M={M}, N={N}, BLOCK_N={BLOCK_N}, swizzle={swizzle}")
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
     expected_count = (M * N) // 1024
-    assert ptx_ops == llir_ops
-    assert ptx_ops == ["tcgen05.cp.cta_group::1.128x256b"] * expected_count
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1745,10 +1783,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear(M, N, swizzle, expected_count):
     compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, M, N, swizzle, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
-    assert ptx_ops == llir_ops
-    assert ptx_ops == ["tcgen05.cp.cta_group::1.128x256b"] * expected_count
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
@@ -1770,7 +1805,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("M", (128, ))
+@pytest.mark.parametrize("M", CP_NO_SCALES_128X128_CASES)
 def test_tmem_runtime_matrix_cp_128x128(M):
     N = 4
     inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
@@ -1779,11 +1814,7 @@ def test_tmem_runtime_matrix_cp_128x128(M):
     compiled = tmem_copy_128x128_kernel[(1, )](inp, out, M, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
-    assert ptx_ops == llir_ops
-    assert all(op == "tcgen05.cp.cta_group::1.128x128b" for op in ptx_ops)
-    assert len(ptx_ops) == M // 128
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x128b"] * (M // 128))
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1800,22 +1831,21 @@ def test_tmem_runtime_matrix_cp_scales_warpx4():
     for warp in torch.chunk(out, chunks=4, dim=0):
         torch.testing.assert_close(expected, warp, atol=0, rtol=0)
 
-    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
-    expected_ops = ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2
-    assert ptx_ops == expected_ops
-    assert llir_ops == expected_ops
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_scales_warpx4_twocta_via_scaled_mma_copy():
-    m, n, k = 256, 128, 128
-    block_m, block_n, block_k = 256, 128, 128
-    vec_size = 32
+@pytest.mark.parametrize("a_format,b_format,num_ctas,acc_layout_kind", CP_SCALES_WARPX4_SCALED_MMA_CASES)
+def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(a_format, b_format, num_ctas, acc_layout_kind):
+    block_m = 256 if num_ctas == 2 else 128
+    block_n = 128
+    block_k = 128
+    m, n, k = block_m, block_n, block_k
+    vec_size = 16 if a_format == "nvfp4" else 32
 
     torch.manual_seed(0)
-    a, a_scale, _ = random_quantized_tensor(m, k, "mxfp8")
-    b, b_scale, _ = random_quantized_tensor(n, k, "mxfp8")
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
     a_scale = swizzle_scales_packed_block(a_scale, vec_size)
     b_scale = swizzle_scales_packed_block(b_scale, vec_size)
 
@@ -1828,16 +1858,14 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_twocta_via_scaled_mma_copy():
         block_m,
         block_n,
         block_k,
-        num_ctas=2,
+        num_ctas=num_ctas,
         multicast=False,
+        acc_layout_kind=acc_layout_kind,
     )
 
-    ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
-    llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
-    assert ptx_ops
-    assert ptx_ops == llir_ops
-    expected = _expected_scaled_cp_opcode(2)
-    assert all(op == expected for op in ptx_ops)
+    expected = _expected_scaled_cp_opcode(num_ctas)
+    expected_count = 64 // vec_size
+    _assert_exact_cp_ptx_llir_match(compiled, [expected] * expected_count)
 
 
 MMA_CASES = [

@@ -1215,6 +1215,8 @@ LogicalResult TMEMCopyOp::verify() {
   auto tmemLl = toLinearLayout(dstTy);
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
+  auto kRow = StringAttr::get(srcTy.getContext(), "row");
+  auto kCol = StringAttr::get(srcTy.getContext(), "col");
   auto cvt = tmemLl.invertAndCompose(shmemLl);
   if (!cvt.isTrivialOver(kBlock))
     return emitOpError("The source and destination must have the same cga "
@@ -1224,10 +1226,63 @@ LogicalResult TMEMCopyOp::verify() {
   // Fp4 we could lift if we needed
   auto nvmmaEnc =
       dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(srcTy.getEncoding());
+  int bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
+  auto copyAtom = getTMemCopyAtom(cvt, bitwidth);
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
+    if (!copyAtom) {
+      auto diag = emitOpError(
+          "The source shared layout does not match any supported "
+          "tcgen05.copy family for tensor memory scales.");
+      diag.attachNote()
+          << "Currently supported scales copy family: "
+             "tcgen05.copy...warpx4.32x128b.";
+      return failure();
+    }
+    if (copyAtom->multicast != 3) {
+      std::string family;
+      if (copyAtom->multicast == 1) {
+        family = "warpx2::02_13.64x128b";
+      } else if (copyAtom->multicast == 2) {
+        family = "warpx2::01_23.64x128b";
+      } else {
+        family = copyAtom->bCol == 256 ? "128x256b" : "128x128b";
+      }
+      auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
+                  << family
+                  << ", but Triton currently only lowers tensor memory scales "
+                     "copies for tcgen05.copy.warpx4.32x128b.";
+      diag.attachNote()
+          << "If you need this to compile today, reshape or permute the shared "
+             "layout to the canonical scales warpx4 layout.";
+      diag.attachNote() << "PTX may support " << family
+                        << ", but Triton does not yet synthesize the required "
+                           "shared-memory descriptor for this scales family.";
+      return failure();
+    }
+    auto kWarp = StringAttr::get(srcTy.getContext(), "warp");
+    auto cvtWarp =
+        cvt.reshapeIns({{kRow, 32},
+                        {kWarp, 4},
+                        {kCol, cvt.getInDimSize(kCol)},
+                        {kBlock, cvt.getInDimSize(kBlock)}})
+            .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
+    SmallVector<unsigned> instrShape = {32u,
+                                        static_cast<unsigned>(copyAtom->bCol /
+                                                              bitwidth)};
+    if (!canRepresentAsMMASmemDescriptor(cvtWarp, instrShape, bitwidth, 0, 5)) {
+      auto diag = emitOpError(
+          "The source shared layout does not lower to Triton's currently "
+          "supported tcgen05.copy.warpx4.32x128b descriptor family for tensor "
+          "memory scales.");
+      diag.attachNote()
+          << "Use the canonical scales warpx4 shared layout, or reshape / "
+             "permute the shared tile until it lowers to "
+             "tcgen05.copy.warpx4.32x128b.";
+      return failure();
+    }
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() != 0) {
       return emitOpError("The source should not be swizzled for now");
     }

@@ -1085,3 +1085,118 @@
 - Kept this as an explicit runtime test expectation (`expected_status="BUG"`)
   so we can flip it to `CLEAN_UNSUPPORTED` or `PASS` once backend/legalization
   is fixed.
+
+## 2026-03-26 (GPU1 copy-runtime matrix broadening: exact opcode sweeps)
+- Expanded executable `tcgen05.copy` coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - added a shared helper `_assert_exact_cp_ptx_llir_match(...)` and switched
+    copy tests to exact PTX/LLIR opcode-list equality checks (not suffix-only
+    or presence-only checks);
+  - widened no-scales positive coverage to lock both currently reachable
+    families with exact counts:
+    - `tcgen05.cp.cta_group::1.128x256b` (matrix sweeps)
+    - `tcgen05.cp.cta_group::1.128x128b` (dedicated path);
+  - widened scales positive runtime coverage via scaled-MMA copy to a matrix:
+    - formats: `mxfp8/mxfp8`, `nvfp4/nvfp4`
+    - CTA groups: `num_ctas in {1, 2}`
+    - accumulator layouts: `legacy`, `linear`
+    - with exact expected warpx4 opcode counts per vector size.
+- Build + validation commands (GPU 1):
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `ninja: no work to do`
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python python3 -m pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "cp_"`
+    - `49 passed, 5 skipped, 549 deselected in 2.90s`
+- Newly encountered compiler-failure classification during sweep bring-up:
+  - `CLEAN_UNSUPPORTED`: forcing `test_tmem_runtime_matrix_cp_128x128` to
+    `M=256` triggers a clean frontend shape/layout diagnostic
+    (`Mismatch in expected shape for dimension 0. Expected: 256, got: 128`);
+    this kernel family is shape-locked to `M=128` today.
+  - Resolved by constraining the positive sweep back to the actually legal
+    shape, and keeping only executable codegen paths in the landed matrix.
+
+## 2026-03-26 (BUG fix: explicit 16x32bx2 frontend path must not crash)
+- Tried making `16x32bx2` a first-class backend atom in
+  `getDistributedLayoutForTmemLdSt(...)`; that immediately exposed a real
+  compiler abort:
+  - requesting `tensor_memory_descriptor.get_reg_layout(instr_variant="16x32bx2")`
+    on the existing legal `M=64` TMEM-linear layouts hit
+    `LinearLayout::getBasis(...): Assertion 'pos < size()' failed`
+    during frontend layout inference.
+  - Classification: `BUG` (public API request triggered a compiler abort).
+- Root cause:
+  - the raw C++ `I16x32bx2` layout generator is still an internal helper, not a
+    safe public entrypoint; exposing it directly violates the no-crash
+    requirement for parser/validation/front-end inference.
+- Fix implemented:
+  - restored the C++ guard that keeps `I16x32bx2` implicit at the backend
+    helper layer;
+  - changed the public Gluon semantic path so
+    `instr_variant="16x32bx2"` reuses the existing safe
+    `32x32b_splitn` layout computation and basis-materialization logic;
+  - this preserves the explicit user-facing variant while avoiding the unsafe
+    internal helper.
+- Validation:
+  - direct per-shape repro on GPU3:
+    - `n in {2,4,8,16,32,64,128}` now all return a valid
+      `DistributedLinearLayout` instead of aborting;
+  - focused runtime comparison:
+    - `CUDA_VISIBLE_DEVICES=3 ... pytest ... -k 'splitn or explicit_16x32bx2'`
+      -> `21 passed, 589 deselected`;
+  - broad regression:
+    - `CUDA_VISIBLE_DEVICES=3 ... pytest ... python/test/gluon/test_tmem_runtime_matrix.py`
+      -> `557 passed, 53 skipped in 142.44s`;
+  - LLVM/lit regression:
+    - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir` -> pass.
+
+## 2026-03-26 (TMEM copy frontier probe: warpx2 + 4x256b, GPU2)
+- Rebuilt before probing:
+  - `make`
+    - `ninja: no work to do.`
+
+- Q1 (`tcgen05.cp.warpx2::{02_13,01_23}.64x128b`) probing:
+  - `BUG` (Gluon lowering path still not executable for warpx2 on this tree):
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_multicast_layouts.py > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_multicast_layouts_gpu2.log 2>&1`
+      - result: no warpx2 layouts found; failing cases still end in
+        `RuntimeError: PassManager::run failed` after
+        `failed to find valid tcgen05.copy layout`.
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 128 --max-layouts 384 --start-rows 0,32,64 > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_warpx2_subslice_128_gpu2.log 2>&1`
+      - result: `successful_compiles=0`, `unknown=1152`, `no warpx2 opcodes observed`.
+  - `PASS` (direct-PTX executable witness on this machine):
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_variants.py > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_variants_gpu2.log 2>&1`
+      - result:
+        - `warpx2_02_13: PASS launch_ok`
+        - `warpx2_01_23: PASS launch_ok`
+      - both run as executable cubins assembled by
+        `third_party/nvidia/backend/bin/ptxas-blackwell`.
+  - Shared/TMEM layout relationship required by the compiler matcher
+    (`lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`):
+    - `warpx2::02_13` iff multicast bits decode to `1`, i.e.
+      `cvt.getBasis(row, log2(32), offset) == 0` and
+      `cvt.getBasis(row, log2(64), offset) != 0`.
+    - `warpx2::01_23` iff multicast bits decode to `2`, i.e.
+      `cvt.getBasis(row, log2(32), offset) != 0` and
+      `cvt.getBasis(row, log2(64), offset) == 0`.
+    - current scales verifier still only accepts multicast `3` (warpx4) for
+      compiler-lowered scales copies, so warpx2 scales stays blocked.
+
+- Q2 (`tcgen05.cp.4x256b`) probing:
+  - `PASS` (direct-PTX executable witness):
+    - same command as above:
+      `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_variants.py ...`
+      - result: `cp_4x256b: PASS launch_ok`.
+  - `CLEAN_UNSUPPORTED` (compiler-side lowering target not matched today):
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python python3 - <<'PY' ... tmem_copy_no_scales_kernel[(1,)](..., 128, 256, 256, 32, ...) ... print(opcodes); print(has_4x256b) ... PY`
+      - result: emits only `tcgen05.cp.cta_group::1.128x256b` (`has_4x256b False`).
+    - `nl -ba lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp | sed -n '374,409p'`
+      - result: `getTMemCopyAtom(...)` currently returns only
+        `{128x128, 128x256, warpx2 64x128, warpx4 32x128}` atoms; no `4x256`.
+  - Matcher/lowering info needed to lower `.4x256b` (inference from current
+    code paths):
+    - add a new `TMemCopyAtom` classification branch in `getTMemCopyAtom(...)`
+      for `.4x256b` (currently absent);
+    - extend verifier acceptance text in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+      so the family is recognized as legal where intended;
+    - update the copy lowering descriptor synthesis in
+      `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+      (`instrShape`, `reshapeIns`, and descriptor stepping logic) so row-4
+      semantics are represented instead of the current row-32-centric path.

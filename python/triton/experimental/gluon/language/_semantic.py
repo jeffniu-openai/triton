@@ -39,8 +39,9 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
            lambda: f"alloc_shape entries must be ints but got {alloc_shape}")
     _check(len(alloc_shape) >= rank, lambda: f"alloc_shape must have rank >= shape rank, got {alloc_shape} and {shape}")
 
-    splitn = instr_variant == "32x32b_splitn"
+    splitn = instr_variant in ("32x32b_splitn", "16x32bx2")
     atom_variant = "32x32b" if splitn else instr_variant
+    requested_variant = instr_variant
 
     layout_obj = compute_tmem_reg_layout(
         element_ty,
@@ -51,7 +52,7 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
         atom_variant,
     )
     _check(layout_obj is not None,
-           lambda: f"TMEM layout '{atom_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
+           lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
            "try a different instr_variant, reshape or permute so TMEM columns stay contiguous, "
            "or use a supported TMEM register layout and insert convert_layout explicitly")
 

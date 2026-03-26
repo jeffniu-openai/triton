@@ -4,6 +4,7 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Tools/LinearLayout.h"
+#include "llvm/ADT/ArrayRef.h"
 
 #include <cstdint>
 #include <functional>
@@ -27,10 +28,26 @@ struct TMemLdStEncodingInfo {
   bool padding = false;
 };
 
+struct TMemCopyAtom {
+  int nRow;
+  int bCol;
+  // a multicast of n represents that warps with (warpId & n) != 0 are
+  // broadcasted
+  int multicast;
+};
+
 FailureOr<TMemLdStEncodingInfo>
 computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             int maxnreg,
                             std::function<InFlightDiagnostic()> emitError = {});
+
+std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
+                                            int bitwidth);
+
+bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
+                                     llvm::ArrayRef<unsigned> instrShape,
+                                     int bitwidth, unsigned MNdim,
+                                     int mmaVersion);
 
 } // namespace mlir::triton::nvidia_gpu
 

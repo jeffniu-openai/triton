@@ -30,63 +30,6 @@ static constexpr int maxRegisters = 256;
 
 namespace {
 
-struct TMemCopyAtom {
-  int nRow;
-  int bCol;
-  // a multicast of n represents that warps with (warpId & n) != 0 are
-  // broadcasted
-  int multicast;
-};
-
-// .shape     = { .128x256b, .128x128b, .64x128b, .32x128b }
-// .multicast = { .warpx2::02_13 , .warpx2::01_23, .warpx4}
-// .shape = .4x256b NYI
-constexpr TMemCopyAtom TMemCopyAtomNone128{128 /*nRow*/, 128 /*bCol*/,
-                                           0 /*multicast*/};
-
-constexpr TMemCopyAtom TMemCopyAtomNone256{128 /*nRow*/, 256 /*bCol*/,
-                                           0 /*multicast*/};
-
-constexpr TMemCopyAtom TMemCopyAtomWarp02_13{64 /*nRow*/, 128 /*bCol*/,
-                                             1 /*multicast*/};
-
-constexpr TMemCopyAtom TMemCopyAtomWarp01_23{64 /*nRow*/, 128 /*bCol*/,
-                                             2 /*multicast*/};
-
-constexpr TMemCopyAtom TMemCopyAtomWarp4{32 /*nRow*/, 128 /*bCol*/,
-                                         3 /*multicast*/};
-
-TMemCopyAtom getTMemCopyAtom(const LinearLayout &cvt, int bitwidth) {
-  auto *ctx = cvt.getInDimNames().begin()->getContext();
-  auto S = [&](StringRef str) { return StringAttr::get(ctx, str); };
-  auto kRow = S("row");
-  auto kCol = S("col");
-  auto kOffset = S("offset");
-  assert(cvt.getInDimSize(kRow) == 128);
-  auto multicastBit = [&](int i) {
-    assert(i == 0 || i == 1);
-    return cvt.getBasis(kRow, llvm::Log2_32(32) + i, kOffset) == 0;
-  };
-  auto multicast = multicastBit(0) | multicastBit(1) << 1;
-  if (multicast == 0) {
-    // TODO we will assert this in the verifier
-    if (cvt.getInDimSize(kCol) * bitwidth == 128) {
-      return TMemCopyAtomNone128;
-    } else {
-      assert(cvt.getInDimSize(kCol) * bitwidth >= 256);
-      return TMemCopyAtomNone256;
-    }
-  } else if (multicast == 1) {
-    return TMemCopyAtomWarp02_13;
-  } else if (multicast == 2) {
-    return TMemCopyAtomWarp01_23;
-  } else if (multicast == 3) {
-    return TMemCopyAtomWarp4;
-  } else {
-    llvm_unreachable("invalid multicast");
-  }
-}
-
 SmallVector<Value> pack(ArrayRef<Value> values, Type outType, Location loc,
                         ConversionPatternRewriter &rewriter, bool pad = false) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -746,6 +689,11 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
   auto atom = getTMemCopyAtom(cvt, bitwidth);
+  if (!atom) {
+    return op->emitOpError("failed to classify tcgen05.copy family from "
+                           "shared memory descriptor ")
+           << srcTy << " to tensor memory descriptor " << dstTy;
+  }
   // Get shmem ptr
   Type elemTy = typeConverter->convertType(srcTy.getElementType());
   auto smemObj =
@@ -754,7 +702,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
 
   // We handle the multicast (the last 2 bits) after the descriptor
   // once we have access to the lbo/sbo
-  const SmallVector<unsigned> instrShape = {32, atom.bCol / bitwidth};
+  const SmallVector<unsigned> instrShape = {32, atom->bCol / bitwidth};
   auto kWarp = str_attr("warp");
   auto cvtWarp = cvt.reshapeIns({{kRow, 32},
                                  {kWarp, 4},
@@ -775,11 +723,11 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   bool twoCTAs = getModuleTwoCTAs(op);
   // Check correct lbo/sbo along the multicast
   auto strideRow = cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
-  if ((atom.multicast & 1) == 0) {
+  if ((atom->multicast & 1) == 0) {
     assert(cvt.getBasis(kRow, llvm::Log2_32(32), kOffset) ==
            strideRow * (32 / 8));
   }
-  if ((atom.multicast & 2) == 0) {
+  if ((atom->multicast & 2) == 0) {
     assert(cvt.getBasis(kRow, llvm::Log2_32(64), kOffset) ==
            strideRow * (64 / 8));
   }
@@ -788,7 +736,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     auto desc = loader->smemLoad(0, col, rewriter, loc);
     auto tmemAddr =
         b.add(b.ptrtoint(i32_ty, baseDst), b.i32_val(col * bitwidth / 32));
-    createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, atom, twoCTAs);
+    createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, *atom, twoCTAs);
   }
   return success();
 }
