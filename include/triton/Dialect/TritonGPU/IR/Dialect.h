@@ -218,6 +218,21 @@ inline SmallVector<unsigned> getThreadOrder(RankedTensorType type) {
 std::optional<CGAEncodingAttr> parseCGAAttr(AsmParser &parser, Attribute attr,
                                             unsigned rank);
 
+std::optional<LinearLayout> parseLinearLayout(
+    const DictionaryAttr &dict, AsmParser &parser,
+    ArrayRef<std::string> inDimNames, int serializedRank = 0);
+
+void printLinearLayout(AsmPrinter &printer, const LinearLayout &ll,
+                       bool skipEmptyBases = false);
+
+SmallVector<unsigned> basesPerDimImpl(const LinearLayout::BasesT &namedBases,
+                                      StringAttr dimName, size_t rank,
+                                      bool skipBroadcast = true);
+
+SmallVector<unsigned> orderPerDimImpl(const LinearLayout &ll,
+                                      StringAttr dimName,
+                                      ArrayRef<unsigned> defaultOrder);
+
 void printCGAAttr(AsmPrinter &printer, CGAEncodingAttr layout);
 
 CGAEncodingAttr getCGALayout(Attribute layout);

@@ -213,7 +213,9 @@ def TTG_LocalDeallocOp : TTG_Op<"local_dealloc"> {
   // Use qualified() otherwise "!ttg.memdesc<X>" is printed as "<X>".
   let assemblyFormat = [{$src attr-dict `:` qualified(type($src))}];
 }
-def TTG_MemDescIndexOp : TTG_Op<"memdesc_index", [Pure, MemDescViewTrait]> {
+def TTG_MemDescIndexOp : TTG_Op<"memdesc_index", [Pure,
+                                                  MemDescViewTrait,
+                                                  InferMemDescTypeOpWithLayoutEquivalence]> {
   let summary = "take a subview of the descriptor.";
 
   let description = [{
@@ -231,6 +233,13 @@ def TTG_MemDescIndexOp : TTG_Op<"memdesc_index", [Pure, MemDescViewTrait]> {
 
   let arguments = (ins TTG_MemDescType:$src, I32:$index);
 
+  let extraClassDeclaration = [{
+      static LogicalResult inferReturnType(MLIRContext *context,
+                                           std::optional<Location> loc,
+                                           MemDescType srcTy,
+                                           MemDescType &inferredReturnType);
+  }];
+
   let results = (outs TTG_MemDescType:$result);
 
   let assemblyFormat = [{$src `[` $index `]` attr-dict `:` qualified(type($src)) `->` qualified(type($result))}];
@@ -238,7 +247,8 @@ def TTG_MemDescIndexOp : TTG_Op<"memdesc_index", [Pure, MemDescViewTrait]> {
   let hasVerifier = 1;
 }
 
-def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure, MemDescViewTrait]> {
+def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure,
+                                                        MemDescViewTrait]> {
   let summary = "take a subview of the descriptor.";
 
   let description = [{
@@ -255,6 +265,28 @@ def TTG_MemDescSubsliceOp : TTG_Op<"memdesc_subslice", [Pure, MemDescViewTrait]>
     The offsets must be larger or equal to the tile of the tensor (or zero).
   }];
   let arguments = (ins TTG_MemDescType:$src, DenseI32ArrayAttr:$offsets);
+  let builders = [
+    OpBuilder<(ins "Value":$src,
+                   "ArrayRef<int64_t>":$shape,
+                   "ArrayRef<int32_t>":$offsets),
+              [{
+                MemDescType dstTy;
+                auto srcTy = cast<MemDescType>(src.getType());
+                auto result = inferReturnType($_builder.getContext(),
+                                              $_builder.getUnknownLoc(),
+                                              srcTy, shape, offsets, dstTy);
+                assert(succeeded(result) && "failed to infer return type");
+                build($_builder, $_state, dstTy, src, offsets);
+              }]>
+  ];
+  let extraClassDeclaration = [{
+      static LogicalResult inferReturnType(MLIRContext *context,
+                                           std::optional<Location> loc,
+                                           MemDescType srcTy,
+                                           ArrayRef<int64_t> dstShape,
+                                           ArrayRef<int32_t> offsets,
+                                           MemDescType &inferredReturnType);
+  }];
   // Use qualified() otherwise "!ttg.memdesc<X>" is printed as "<X>".
   // Render offsets inline as %src[0, 0] via a custom directive, but keep
   // the overall parse/print generated from this assemblyFormat.
@@ -310,19 +342,19 @@ def TTG_MemDescReshapeOp : TTG_Op<"memdesc_reshape", [Pure,
               [{
                 MemDescType dstTy;
                 auto srcTy = cast<MemDescType>(src.getType());
-                auto result = inferReturnTypes($_builder.getContext(),
-                                           $_builder.getUnknownLoc(),
-                                           srcTy, shape, dstTy);
-                assert(succeeded(result) && "failed to infer return types");
+                auto result = inferReturnType($_builder.getContext(),
+                                              $_builder.getUnknownLoc(),
+                                              srcTy, shape, dstTy);
+                assert(succeeded(result) && "failed to infer return type");
                 build($_builder, $_state, dstTy, src);
               }]>
   ];
   let extraClassDeclaration = [{
-      static LogicalResult inferReturnTypes(MLIRContext *context,
-                                        std::optional<Location> loc,
-                                        MemDescType srcTy,
-                                        ArrayRef<int64_t> dstShape,
-                                        MemDescType &inferredReturnType);
+      static LogicalResult inferReturnType(MLIRContext *context,
+                                           std::optional<Location> loc,
+                                           MemDescType srcTy,
+                                           ArrayRef<int64_t> dstShape,
+                                           MemDescType &inferredReturnType);
   }];
 
   let results = (outs TTG_MemDescType:$result);

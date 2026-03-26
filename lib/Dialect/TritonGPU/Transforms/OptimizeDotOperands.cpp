@@ -162,7 +162,7 @@ public:
     // MemDescReshapeOp to infer the source MemDescType that would produce
     // `allocType` after a reshape.
     MemDescType innerTy;
-    if (failed(MemDescReshapeOp::inferReturnTypes(
+    if (failed(MemDescReshapeOp::inferReturnType(
             getContext(), allocOp.getLoc(), allocType, srcShape, innerTy)))
       return failure();
 

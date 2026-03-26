@@ -129,23 +129,33 @@ LogicalResult MemDescType::verify(function_ref<InFlightDiagnostic()> emitError,
       return emitError() << "alloc shape must have at least " << rank
                          << " dimensions for the TMEM layout";
     }
-    auto layoutShape = shape.take_back(rank);
-    std::string canonicalizationError;
-    auto maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
-        layoutShape, encoding, &canonicalizationError);
-    if (!maybeLL) {
-      return emitError() << canonicalizationError;
-    }
-    auto ll = *maybeLL;
-    auto dims = standardOutDimNames(ctx, rank);
-    for (auto [dim, size] : llvm::zip_equal(dims, layoutShape)) {
-      if (ll.getOutDimSize(dim) != size) {
-        return emitError() << "shape must match the TMEM linear layout. "
-                           << "Expected " << ll.getOutDimSize(dim) << " for "
-                           << dim << " but got " << size << ". shape = "
-                           << shape << ", allocShape = " << allocShape
-                           << ", layoutRank = " << rank << ", encoding = "
-                           << encoding;
+    if (isa<nvidia_gpu::TensorMemoryLinearEncodingAttr>(encoding)) {
+      auto layoutShape = shape.take_back(rank);
+      std::string canonicalizationError;
+      auto maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
+          layoutShape, encoding, &canonicalizationError);
+      if (!maybeLL) {
+        return emitError() << canonicalizationError;
+      }
+      auto ll = *maybeLL;
+      auto dims = standardOutDimNames(ctx, rank);
+      for (auto [dim, size] : llvm::zip_equal(dims, layoutShape)) {
+        if (ll.getOutDimSize(dim) != size) {
+          return emitError() << "shape must match the TMEM linear layout. "
+                             << "Expected " << ll.getOutDimSize(dim) << " for "
+                             << dim << " but got " << size << ". shape = "
+                             << shape << ", allocShape = " << allocShape
+                             << ", layoutRank = " << rank << ", encoding = "
+                             << encoding;
+        }
+      }
+    } else {
+      auto allocLayoutShape = allocShape.take_back(rank);
+      std::string canonicalizationError;
+      auto maybeLL = nvidia_gpu::tryGetCanonicalTensorMemoryLinearLayout(
+          allocLayoutShape, encoding, &canonicalizationError);
+      if (!maybeLL) {
+        return emitError() << canonicalizationError;
       }
     }
   } else if (auto enc = dyn_cast<SharedEncodingTrait>(encoding)) {

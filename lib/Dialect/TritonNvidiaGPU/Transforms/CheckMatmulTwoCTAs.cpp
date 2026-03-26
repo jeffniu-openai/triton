@@ -15,19 +15,6 @@ namespace mlir::triton::nvidia_gpu {
 
 namespace {
 
-std::optional<bool> getExplicitTwoCTAs(Type type) {
-  auto memDesc = dyn_cast<gpu::MemDescType>(type);
-  if (!memDesc)
-    return std::nullopt;
-
-  Attribute enc = memDesc.getEncoding();
-  if (auto linear = dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(enc))
-    return linear.getTwoCTAs();
-  if (auto legacy = dyn_cast<ttng::TensorMemoryEncodingAttr>(enc))
-    return legacy.getTwoCTAs();
-  return std::nullopt;
-}
-
 class TritonNvidiaGPUCheckMatmulTwoCTAPass
     : public impl::TritonNvidiaGPUCheckMatmulTwoCTAPassBase<
           TritonNvidiaGPUCheckMatmulTwoCTAPass> {
@@ -68,7 +55,7 @@ public:
 
       auto checkTypes = [&](TypeRange types, StringRef source) -> WalkResult {
         for (Type type : types) {
-          if (auto twoCTAs = getExplicitTwoCTAs(type))
+          if (auto twoCTAs = getTensorMemoryTwoCTAs(type))
             if (auto res = checkAndRecord(op, *twoCTAs, source);
                 res.wasInterrupted())
               return res;

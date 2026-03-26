@@ -126,6 +126,10 @@ uint32_t getTMemViewOffset(gpu::MemDescType memDescType,
 
 bool isTensorMemoryEncoding(Attribute layout);
 
+std::optional<bool> getTensorMemoryTwoCTAs(Attribute layout);
+
+std::optional<bool> getTensorMemoryTwoCTAs(Type type);
+
 std::optional<Attribute>
 tryGetCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape, Attribute layout,
                                     std::string *error = nullptr);

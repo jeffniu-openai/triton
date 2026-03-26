@@ -1405,21 +1405,13 @@ LogicalResult TMEMCopyOp::verify() {
 LogicalResult TMEMSubSliceOp::verify() {
   auto srcTy = cast<triton::gpu::MemDescType>(getSrc().getType());
   auto dstTy = cast<triton::gpu::MemDescType>(getResult().getType());
-  std::string srcError;
-  auto srcCanonical = tryGetCanonicalTensorMemoryEncoding(srcTy, &srcError);
-  if (!srcCanonical)
-    return emitOpError() << srcError;
-  auto srcEnc =
-      dyn_cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*srcCanonical);
-  if (!srcEnc)
+  auto srcLayout = srcTy.getEncoding();
+  auto dstLayout = dstTy.getEncoding();
+  if (!isTensorMemoryEncoding(srcLayout) ||
+      isa<TensorMemoryScalesEncodingAttr>(srcLayout))
     return emitOpError("The source must be a tensor memory buffer.");
-  std::string dstError;
-  auto dstCanonical = tryGetCanonicalTensorMemoryEncoding(dstTy, &dstError);
-  if (!dstCanonical)
-    return emitOpError() << dstError;
-  auto dstEnc =
-      dyn_cast<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>(*dstCanonical);
-  if (!dstEnc)
+  if (!isTensorMemoryEncoding(dstLayout) ||
+      isa<TensorMemoryScalesEncodingAttr>(dstLayout))
     return emitOpError("The destination must be a tensor memory buffer.");
   if (srcTy.getElementType() != dstTy.getElementType())
     return emitOpError(
@@ -1438,13 +1430,37 @@ LogicalResult TMEMSubSliceOp::verify() {
     return emitError("The split offset may not exceed the source shape");
   }
 
-  if (srcEnc != dstEnc) {
-    return emitOpError("The destination must preserve the canonical TMEM "
-                       "physical encoding ")
-           << srcEnc << " but got " << dstTy.getEncoding();
+  if (isa<TensorMemoryEncodingAttr>(srcLayout) &&
+      isa<TensorMemoryEncodingAttr>(dstLayout)) {
+    if (dstLayout == srcLayout)
+      return success();
+    return emitOpError("Legacy TMEM subviews must preserve the source TMEM "
+                       "encoding sugar. Expected ")
+           << srcLayout << " but got " << dstLayout;
   }
 
-  return success();
+  SmallVector<int32_t> offsets = {0, static_cast<int32_t>(offset)};
+  std::string expectedError;
+  auto expectedCanonical = inferTMemSubsliceEncoding(
+      srcTy.getShape(), srcLayout, dstTy.getShape(), offsets, &expectedError);
+  if (failed(expectedCanonical))
+    return emitOpError() << expectedError;
+
+  if (auto dstLinear = dyn_cast<TensorMemoryLinearEncodingAttr>(dstLayout)) {
+    std::string dstError;
+    auto dstCanonical = getCanonicalTMemLinearEncoding(dstTy, &dstError);
+    if (!dstCanonical)
+      return emitOpError() << dstError;
+    if (*dstCanonical == *expectedCanonical)
+      return success();
+    return emitOpError("The destination must preserve the canonical TMEM "
+                       "physical encoding ")
+           << *expectedCanonical << " but got " << dstTy.getEncoding();
+  }
+
+  return emitOpError("The destination must preserve the canonical TMEM "
+                     "physical encoding ")
+         << *expectedCanonical << " but got " << dstLayout;
 }
 
 void TMEMSubSliceOp::build(OpBuilder &builder, OperationState &state,
@@ -1452,7 +1468,13 @@ void TMEMSubSliceOp::build(OpBuilder &builder, OperationState &state,
   auto allocTy = cast<triton::gpu::MemDescType>(alloc.getType());
   SmallVector<int64_t> shape(allocTy.getShape());
   shape.back() = size;
-  Attribute encoding = getCanonicalTensorMemoryEncoding(allocTy);
+  SmallVector<int32_t> offsets(shape.size(), 0);
+  offsets.back() = offset;
+  auto maybeEncoding = inferTMemSubsliceEncoding(
+      allocTy.getShape(), allocTy.getEncoding(), shape, offsets);
+  assert(succeeded(maybeEncoding) &&
+         "failed to infer TMEM subslice encoding");
+  Attribute encoding = *maybeEncoding;
   auto subsliceType = triton::gpu::MemDescType::get(
       shape, allocTy.getElementType(), encoding, allocTy.getMemorySpace(),
       allocTy.getMutableMemory(), allocTy.getAllocShape());

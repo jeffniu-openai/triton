@@ -65,6 +65,24 @@ public:
                          ArrayRef<int64_t> dstShape, Attribute &dstEnc,
                          std::optional<Location> loc) const = 0;
 
+  virtual LogicalResult
+  inferMemDescIndexOpEncoding(ArrayRef<int64_t> srcShape,
+                              ArrayRef<int64_t> srcAllocShape,
+                              Attribute srcEncoding,
+                              ArrayRef<int64_t> dstShape,
+                              ArrayRef<int64_t> dstAllocShape,
+                              Attribute &dstEncoding,
+                              std::optional<Location> loc) const = 0;
+
+  virtual LogicalResult
+  inferMemDescSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                 ArrayRef<int64_t> srcAllocShape,
+                                 Attribute srcEncoding,
+                                 ArrayRef<int64_t> dstShape,
+                                 ArrayRef<int32_t> offsets,
+                                 Attribute &dstEncoding,
+                                 std::optional<Location> loc) const = 0;
+
   // Check if two layouts are structurally the same, even if their names are
   // different
   virtual LogicalResult

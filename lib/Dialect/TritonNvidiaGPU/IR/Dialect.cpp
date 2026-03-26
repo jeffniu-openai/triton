@@ -63,145 +63,6 @@ namespace nvidia_gpu {
 
 static constexpr int numTmemRows = 128;
 
-static SmallVector<unsigned>
-basesPerDimImpl(const LinearLayout::BasesT &namedBases, StringAttr dimName,
-                size_t rank, bool skipBroadcast = true) {
-  auto it = namedBases.find(dimName);
-  if (it == namedBases.end() || it->second.empty())
-    return SmallVector<unsigned>(rank, 1);
-
-  SmallVector<unsigned> ret(rank, 1);
-  auto nonZero = [](auto val) { return val != 0; };
-  int nonZeroIdx = 0;
-  for (const auto &basis : it->second) {
-    auto nz = std::find_if(basis.begin(), basis.end(), nonZero);
-    if (nz != basis.end()) {
-      nonZeroIdx = nz - basis.begin();
-      ret[nonZeroIdx] *= 2;
-    } else if (!skipBroadcast) {
-      ret[nonZeroIdx] *= 2;
-    }
-  }
-  return ret;
-}
-
-static SmallVector<unsigned>
-orderPerDimImpl(const LinearLayout &ll, StringAttr dimName,
-                ArrayRef<unsigned> defaultOrder) {
-  auto it = ll.getBases().find(dimName);
-  if (it == ll.getBases().end())
-    return SmallVector<unsigned>(defaultOrder.begin(), defaultOrder.end());
-
-  llvm::SetVector<unsigned> order;
-  auto nonZero = [](auto val) { return val != 0; };
-  for (const auto &basis : it->second) {
-    auto nz = std::find_if(basis.begin(), basis.end(), nonZero);
-    if (nz != basis.end())
-      order.insert(nz - basis.begin());
-  }
-  for (unsigned dim : defaultOrder)
-    order.insert(dim);
-  return order.takeVector();
-}
-
-static std::optional<LinearLayout>
-parseLinearLayout(const DictionaryAttr &dict, AsmParser &parser,
-                  ArrayRef<std::string> inDimNames, int serializedRank = 0) {
-  LinearLayout::BasesT bases;
-  for (const auto &inDimNameStr : inDimNames) {
-    auto inDimName = StringAttr::get(parser.getContext(), inDimNameStr);
-    Attribute value = dict.get(inDimName);
-    if (!value) {
-      parser.emitError(parser.getCurrentLocation(), "Expected basis of '")
-          << inDimName.getValue() << "' not found";
-      return {};
-    }
-    auto arrayOfArraysAttr = dyn_cast<ArrayAttr>(value);
-    if (!arrayOfArraysAttr) {
-      parser.emitError(parser.getCurrentLocation(),
-                       "Expected array of arrays for basis of '")
-          << inDimName.getValue() << "'";
-      return {};
-    }
-
-    std::vector<std::vector<int32_t>> inDimBases;
-    for (Attribute arrayAttr : arrayOfArraysAttr) {
-      auto intArrayAttr = dyn_cast<ArrayAttr>(arrayAttr);
-      if (!intArrayAttr) {
-        parser.emitError(parser.getCurrentLocation(),
-                         "Expected array of integers in basis for '")
-            << inDimName.getValue() << "'";
-        return {};
-      }
-      std::vector<int32_t> basis;
-      for (Attribute intAttr : intArrayAttr) {
-        auto intValueAttr = dyn_cast<IntegerAttr>(intAttr);
-        if (!intValueAttr) {
-          parser.emitError(parser.getCurrentLocation(),
-                           "Expected integer in basis for '")
-              << inDimName.getValue() << "'";
-          return {};
-        }
-        basis.push_back(intValueAttr.getInt());
-      }
-      inDimBases.push_back(std::move(basis));
-    }
-    bases[inDimName] = std::move(inDimBases);
-  }
-
-  size_t rank = 0;
-  for (const auto &basesDim : llvm::make_second_range(bases)) {
-    if (!basesDim.empty()) {
-      rank = basesDim[0].size();
-      break;
-    }
-  }
-  if (rank == 0 && serializedRank == 0) {
-    parser.emitError(parser.getCurrentLocation(), "Empty Layout not supported");
-    return {};
-  }
-  if (rank == 0)
-    rank = serializedRank;
-  else if (serializedRank != 0 && serializedRank != rank) {
-    parser.emitError(parser.getCurrentLocation(),
-                     "Serialized rank and rank deduced from LL need to match");
-    return {};
-  }
-
-  SmallVector<StringAttr> outDimNames;
-  for (int i = 0; i < rank; ++i)
-    outDimNames.push_back(
-        StringAttr::get(parser.getContext(), "dim" + llvm::Twine(i)));
-  std::string error;
-  auto layout = LinearLayout::tryCreate(std::move(bases), outDimNames,
-                                        /*requireSurjective=*/true, &error);
-  if (!layout) {
-    parser.emitError(parser.getCurrentLocation()) << error;
-    return {};
-  }
-  return layout;
-}
-
-static void printLinearLayout(AsmPrinter &printer, const LinearLayout &ll,
-                              bool skipEmptyBases = false) {
-  auto bases = ll.getBases();
-  if (skipEmptyBases) {
-    decltype(bases) filtered;
-    for (auto &kv : bases)
-      if (!kv.second.empty())
-        filtered.insert(kv);
-    bases = std::move(filtered);
-  }
-  printer << join(bases, ", ", [](const auto &base) {
-    return base.first.str() + " = " + "[" +
-           join(base.second, ", ",
-                [](const std::vector<int32_t> &vec) {
-                  return "[" + join(vec, ", ") + "]";
-                }) +
-           "]";
-  });
-}
-
 static SmallVector<std::pair<StringAttr, int32_t>>
 getStandardOutDimPairs(MLIRContext *ctx, ArrayRef<int64_t> shape,
                        unsigned startIdx = 0) {
@@ -336,6 +197,21 @@ void printCGALayoutRankTwo(AsmPrinter &printer, gpu::CGAEncodingAttr cgaAttr) {
 bool isTensorMemoryEncoding(Attribute layout) {
   return isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr,
              TensorMemoryScalesEncodingAttr>(layout);
+}
+
+std::optional<bool> getTensorMemoryTwoCTAs(Attribute layout) {
+  if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout))
+    return linear.getTwoCTAs();
+  if (auto legacy = dyn_cast<TensorMemoryEncodingAttr>(layout))
+    return legacy.getTwoCTAs();
+  return std::nullopt;
+}
+
+std::optional<bool> getTensorMemoryTwoCTAs(Type type) {
+  auto memDesc = dyn_cast<gpu::MemDescType>(type);
+  if (!memDesc)
+    return std::nullopt;
+  return getTensorMemoryTwoCTAs(memDesc.getEncoding());
 }
 
 std::optional<Attribute>
@@ -1295,36 +1171,87 @@ public:
         return emitOptionalError(loc, "numel of dst shape does not match "
                                       "numel of src shape");
       }
+      if (isa<TensorMemoryEncodingAttr>(srcEnc)) {
+        dstEnc = srcEnc;
+        return success();
+      }
       std::string error;
-      auto canonicalAttr =
-          tryGetCanonicalTensorMemoryEncoding(srcShape, srcEnc, &error);
-      if (!canonicalAttr) {
+      auto elemTy = IntegerType::get(getDialect()->getContext(), 8);
+      auto memTy = triton::gpu::MemDescType::get(
+          srcShape, elemTy, srcEnc,
+          TensorMemorySpaceAttr::get(getDialect()->getContext()),
+          /*mutableMemory=*/false, srcShape);
+      auto resultTy = inferTMemReshapeOpType(memTy, dstShape, &error);
+      if (failed(resultTy))
         return emitOptionalError(loc, error);
-      }
-      auto canonical =
-          cast<TensorMemoryLinearEncodingAttr>(*canonicalAttr);
-      if (canonical.getRank() != srcShape.size() ||
-          canonical.getRank() != dstShape.size()) {
-        return emitOptionalError(
-            loc, "TMEM reshape requires the descriptor rank to match the TMEM "
-                 "layout rank");
-      }
-      std::string reshapeError;
-      auto result = tryMakeTensorMemoryLinearEncoding(
-          getDialect()->getContext(),
-          reshapeLayout(getDialect()->getContext(), canonical.getLinearLayout(),
-                        dstShape),
-          canonical.getTwoCTAs(), &reshapeError);
-      if (!result) {
-        return emitOptionalError(
-            loc, "TMEM reshape produced an invalid tensor memory layout: ",
-            reshapeError);
-      }
-      dstEnc = *result;
+      dstEnc = resultTy->getEncoding();
       return success();
     }
     return getDelegate()->inferReshapeOpEncoding(srcShape, srcEnc, dstShape,
                                                  dstEnc, loc);
+  }
+
+  LogicalResult
+  inferMemDescIndexOpEncoding(ArrayRef<int64_t> srcShape,
+                              ArrayRef<int64_t> srcAllocShape,
+                              Attribute srcEncoding,
+                              ArrayRef<int64_t> dstShape,
+                              ArrayRef<int64_t> dstAllocShape,
+                              Attribute &dstEncoding,
+                              std::optional<Location> loc) const override {
+    if (isTensorMemoryEncoding(srcEncoding) &&
+        !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
+      if (isa<TensorMemoryEncodingAttr>(srcEncoding)) {
+        dstEncoding = srcEncoding;
+        return success();
+      }
+      std::string error;
+      auto result = inferTMemIndexEncoding(srcShape, dstShape, dstAllocShape,
+                                           srcEncoding, &error);
+      if (failed(result)) {
+        return emitOptionalError(
+            loc, error.empty() ? "failed to infer tensor memory encoding for "
+                                 "memdesc_index"
+                               : error);
+      }
+      dstEncoding = *result;
+      return success();
+    }
+    return getDelegate()->inferMemDescIndexOpEncoding(
+        srcShape, srcAllocShape, srcEncoding, dstShape, dstAllocShape,
+        dstEncoding, loc);
+  }
+
+  LogicalResult
+  inferMemDescSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                 ArrayRef<int64_t> srcAllocShape,
+                                 Attribute srcEncoding,
+                                 ArrayRef<int64_t> dstShape,
+                                 ArrayRef<int32_t> offsets,
+                                 Attribute &dstEncoding,
+                                 std::optional<Location> loc) const override {
+    if (isTensorMemoryEncoding(srcEncoding) &&
+        !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
+      if (isa<TensorMemoryEncodingAttr>(srcEncoding)) {
+        dstEncoding = srcEncoding;
+        return success();
+      }
+      std::string error;
+      auto result =
+          inferTMemSubsliceEncoding(srcShape, srcEncoding, dstShape, offsets,
+                                    &error);
+      if (failed(result)) {
+        return emitOptionalError(
+            loc, error.empty() ? "failed to infer tensor memory encoding for "
+                                 "memdesc_subslice"
+                               : error);
+      }
+      dstEncoding = *result;
+      return success();
+    }
+    return getDelegate()->inferMemDescSubsliceOpEncoding(
+        srcShape, srcAllocShape, srcEncoding, dstShape, offsets, dstEncoding,
+        loc);
   }
 
   LogicalResult

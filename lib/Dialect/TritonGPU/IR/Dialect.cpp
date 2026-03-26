@@ -35,10 +35,6 @@ using namespace mlir;
 using namespace mlir::triton;
 using namespace mlir::triton::gpu;
 
-static SmallVector<unsigned>
-basesPerDimImpl(const LinearLayout::BasesT &namedBases, StringAttr dimName,
-                size_t rank, bool skipBroadcast = true);
-
 // Utility
 namespace mlir {
 namespace triton {
@@ -682,10 +678,9 @@ static LogicalResult parseBool(AsmParser &parser, const NamedAttribute &attr,
   return parseBoolAttrValue(parser, attr.getValue(), value, desc);
 };
 
-std::optional<LinearLayout> parseLinearLayout(const DictionaryAttr &dict,
-                                              AsmParser &parser,
-                                              ArrayRef<std::string> inDimNames,
-                                              int serializedRank = 0) {
+std::optional<LinearLayout> mlir::triton::gpu::parseLinearLayout(
+    const DictionaryAttr &dict, AsmParser &parser,
+    ArrayRef<std::string> inDimNames, int serializedRank) {
   LinearLayout::BasesT bases;
 
   // Parse the basis names in order (the order is relevant)
@@ -776,8 +771,9 @@ std::optional<LinearLayout> parseLinearLayout(const DictionaryAttr &dict,
 //   lane = [[0, 2], [0, 4], [1, 0], [2, 0], [4, 0]],
 //   warp = [[16, 0], [32, 0]],
 //   block = []}>
-static void printLinearLayout(AsmPrinter &printer, const LinearLayout &ll,
-                              bool skipEmptyBases = false) {
+void mlir::triton::gpu::printLinearLayout(AsmPrinter &printer,
+                                          const LinearLayout &ll,
+                                          bool skipEmptyBases) {
   auto bases = ll.getBases();
   if (skipEmptyBases) {
     decltype(bases) filtered;
@@ -1043,9 +1039,9 @@ Attribute LinearEncodingAttr::parse(AsmParser &parser, Type type) {
                                                std::move(*maybeLL));
 }
 
-static SmallVector<unsigned>
-basesPerDimImpl(const LinearLayout::BasesT &namedBases, StringAttr dimName,
-                size_t rank, bool skipBroadcast) {
+SmallVector<unsigned> mlir::triton::gpu::basesPerDimImpl(
+    const LinearLayout::BasesT &namedBases, StringAttr dimName, size_t rank,
+    bool skipBroadcast) {
   auto dimIt = namedBases.find(dimName);
   if (dimIt == namedBases.end()) {
     return SmallVector<unsigned>(rank, 1);
@@ -3289,22 +3285,94 @@ struct TritonGPUInferLayoutInterface
     if (succeeded(result)) {
       return result;
     }
-    if (!isa<DistributedEncodingTrait>(srcEnc)) {
-      return emitOptionalError(loc,
-                               "Failed MemDescReshapeOp encoding inference");
-    }
-    // If the legacy encoding failed use LinearLayouts.
-    // Once LinearLayouts are more widely used, we can remove
-    // inferReshapeOpLegacyEncoding and simply use LLs.
-
-    // HACK: We create a dummy tensor type to pass to inferReshapeLinearLayout.
     auto ctx = srcEnc.getContext();
-    auto fp32Type = IntegerType::get(ctx, 32, IntegerType::Unsigned);
-    auto srcTy = RankedTensorType::get(srcShape, fp32Type, srcEnc);
-    LinearLayout ll =
-        inferReshapeLinearLayout(cast<TensorOrMemDesc>(srcTy), dstShape);
+    if (auto mmaEncoding = dyn_cast<NVMMASharedEncodingAttr>(srcEnc)) {
+      if (getNumCTAs(mmaEncoding) == 1) {
+        int innerDimDst =
+            mmaEncoding.getTransposed() ? dstShape.front() : dstShape.back();
+        int innerDimSrc =
+            mmaEncoding.getTransposed() ? srcShape.front() : srcShape.back();
+        if (innerDimDst == innerDimSrc) {
+          auto cgaLayout = CGAEncodingAttr::get1CTALayout(ctx, dstShape.size());
+          auto candidateEncoding = NVMMASharedEncodingAttr::get(
+              ctx, mmaEncoding.getSwizzlingByteWidth(),
+              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
+              mmaEncoding.getFp4Padded(), cgaLayout);
+          auto srcLL = toLinearLayout(srcShape, srcEnc);
+          auto dstLL = toLinearLayout(dstShape, candidateEncoding);
+          if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {
+            dstEnc = candidateEncoding;
+            return success();
+          }
+        }
+      }
+    } else if (auto padded = dyn_cast<PaddedSharedEncodingAttr>(srcEnc)) {
+      LinearLayout ll = padded.getLinearComponent();
+      LinearLayout dst = reshapeLayout(ctx, ll, dstShape);
+      SmallVector<std::pair<unsigned, unsigned>> intervalPads;
+      auto intervals = padded.getIntervals();
+      auto paddings = padded.getPaddings();
+      for (auto [interval, padding] : llvm::zip(intervals, paddings))
+        intervalPads.emplace_back(interval, padding);
+      dstEnc = PaddedSharedEncodingAttr::get(ctx, intervalPads, std::move(dst));
+      return success();
+    } else if (auto sharedEnc = dyn_cast<SharedEncodingTrait>(srcEnc)) {
+      auto srcLL = toLinearLayout(srcShape, srcEnc);
+      auto dstLL = reshapeLayout(ctx, srcLL, dstShape);
+      dstEnc = SharedLinearEncodingAttr::get(ctx, std::move(dstLL),
+                                             sharedEnc.getAlignment());
+      return success();
+    }
 
-    dstEnc = LinearEncodingAttr::get(srcEnc.getContext(), std::move(ll));
+    if (isa<DistributedEncodingTrait>(srcEnc)) {
+      // If the legacy encoding failed use LinearLayouts.
+      // Once LinearLayouts are more widely used, we can remove
+      // inferReshapeOpLegacyEncoding and simply use LLs.
+
+      // HACK: We create a dummy tensor type to pass to inferReshapeLinearLayout.
+      auto fp32Type = IntegerType::get(ctx, 32, IntegerType::Unsigned);
+      auto srcTy = RankedTensorType::get(srcShape, fp32Type, srcEnc);
+      LinearLayout ll =
+          inferReshapeLinearLayout(cast<TensorOrMemDesc>(srcTy), dstShape);
+
+      dstEnc = LinearEncodingAttr::get(srcEnc.getContext(), std::move(ll));
+      return success();
+    }
+
+    return emitOptionalError(loc, "Failed MemDescReshapeOp encoding inference");
+  }
+
+  LogicalResult
+  inferMemDescIndexOpEncoding(ArrayRef<int64_t> srcShape,
+                              ArrayRef<int64_t> srcAllocShape,
+                              Attribute srcEncoding,
+                              ArrayRef<int64_t> dstShape,
+                              ArrayRef<int64_t> dstAllocShape,
+                              Attribute &dstEncoding,
+                              std::optional<Location> loc) const override {
+    (void)srcShape;
+    (void)srcAllocShape;
+    (void)dstShape;
+    (void)dstAllocShape;
+    (void)loc;
+    dstEncoding = srcEncoding;
+    return success();
+  }
+
+  LogicalResult
+  inferMemDescSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
+                                 ArrayRef<int64_t> srcAllocShape,
+                                 Attribute srcEncoding,
+                                 ArrayRef<int64_t> dstShape,
+                                 ArrayRef<int32_t> offsets,
+                                 Attribute &dstEncoding,
+                                 std::optional<Location> loc) const override {
+    (void)srcShape;
+    (void)srcAllocShape;
+    (void)dstShape;
+    (void)offsets;
+    (void)loc;
+    dstEncoding = srcEncoding;
     return success();
   }
 

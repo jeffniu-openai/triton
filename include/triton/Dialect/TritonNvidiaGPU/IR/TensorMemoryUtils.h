@@ -41,6 +41,48 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             int maxnreg,
                             std::function<InFlightDiagnostic()> emitError = {});
 
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(gpu::MemDescType type,
+                               std::string *error = nullptr);
+
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
+                               std::string *error = nullptr);
+
+std::optional<TensorMemoryLinearEncodingAttr>
+tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
+                        std::string *error = nullptr);
+
+FailureOr<TensorMemoryLinearEncodingAttr>
+inferTMemIndexEncoding(gpu::MemDescType srcTy, gpu::MemDescType dstTy);
+
+FailureOr<TensorMemoryLinearEncodingAttr>
+inferTMemIndexEncoding(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
+                       ArrayRef<int64_t> dstAllocShape, Attribute srcEncoding,
+                       std::string *error = nullptr);
+
+FailureOr<TensorMemoryLinearEncodingAttr>
+inferTMemSubsliceEncoding(gpu::MemDescType srcTy, gpu::MemDescType dstTy,
+                          ArrayRef<int64_t> offsets);
+
+FailureOr<TensorMemoryLinearEncodingAttr>
+inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
+                          ArrayRef<int64_t> dstShape,
+                          ArrayRef<int32_t> offsets,
+                          std::string *error = nullptr);
+
+FailureOr<gpu::MemDescType>
+inferTMemIndexOpType(gpu::MemDescType srcTy, std::string *error = nullptr);
+
+FailureOr<gpu::MemDescType>
+inferTMemSubsliceOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
+                        ArrayRef<int32_t> offsets,
+                        std::string *error = nullptr);
+
+FailureOr<gpu::MemDescType>
+inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
+                       std::string *error = nullptr);
+
 std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
                                             int bitwidth);
 
