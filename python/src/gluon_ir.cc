@@ -1516,15 +1516,14 @@ void init_gluon_ir(py::module &&m) {
                 .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
                 .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
                 .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
-                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
+                // split-N variants are inferred from the 32x32b layout and
+                // then adjusted in frontend semantic checks.
+                .Case("16x32bx2", ttng::TMemAccessAtom::I32x32b)
+                .Case("32x32b_splitn", ttng::TMemAccessAtom::I32x32b)
                 .Default(std::nullopt);
         if (!maybeAtom)
           throw std::invalid_argument("unknown TMEM access atom: " + atomName);
         auto atom = *maybeAtom;
-        if (atom == ttng::TMemAccessAtom::I16x32bx2)
-          throw std::invalid_argument(
-              "Atom 16x32bx2 is inferred implicitly and cannot be requested "
-              "explicitly");
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");

@@ -951,9 +951,12 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   int numWarps = lookupNumWarps(op);
   assert(numWarps % 4 == 0);
   SmallVector<DistributedEncodingTrait> layouts;
+  auto memLL = toLinearLayout(memType.getShape(), memType.getEncoding());
+  int bitwidth = memType.getElementTypeBitWidth();
   for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
-                    TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b}) {
-    auto ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
+                    TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
+                    TMemAccessAtom::I16x32bx2}) {
+    auto ll = getDistributedLayoutForTmemLdSt(memLL, atom, numWarps, bitwidth);
     if (ll && isTMemCompatibleCandidate(op, tensorType, memType, *ll)) {
       layouts.push_back(LinearEncodingAttr::get(tensorType.getContext(),
                                                 std::move(ll.value())));

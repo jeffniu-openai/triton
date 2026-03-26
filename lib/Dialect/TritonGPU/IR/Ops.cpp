@@ -82,16 +82,30 @@ getCanonicalTMemLinearEncoding(MemDescType type, std::string *error = nullptr) {
 
 std::optional<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs) {
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
   auto kBlock = StringAttr::get(ctx, "block");
   bool hadBlock = ll.hasInDim(kBlock);
   decltype(ll.getBases().lookup(kBlock)) originalBlockBases;
   if (hadBlock)
     originalBlockBases = ll.getBases().lookup(kBlock);
-  ll = ll.removeZeroBasesAlongDim(kRow).removeZeroBasesAlongDim(kCol);
   if (ll.hasInDim(kBlock))
     ll = ll.removeZeroBasesAlongDim(kBlock);
+  // TMEM memdesc views can materialize leading size-1 logical dimensions when
+  // slicing a reshaped/permuted view. Represent these as extra leading memdesc
+  // dimensions instead of keeping them in the TMEM linear layout so subsequent
+  // memdesc_index/get_reg_layout paths can treat them as plain buffer dims.
+  auto outDims = llvm::to_vector(ll.getOutDimNames());
+  while (outDims.size() > 1 && ll.getOutDimSize(outDims.front()) == 1) {
+    ll = ll.squeezeOuts(outDims.front());
+    outDims = llvm::to_vector(ll.getOutDimNames());
+  }
+  SmallVector<std::pair<StringAttr, int32_t>> canonicalOutDims;
+  canonicalOutDims.reserve(ll.getNumOutDims());
+  for (auto [idx, dim] : llvm::enumerate(ll.getOutDimNames())) {
+    canonicalOutDims.push_back(
+        {StringAttr::get(ctx, "dim" + llvm::Twine(idx)),
+         ll.getOutDimSize(dim)});
+  }
+  ll = LinearLayout(ll.getBases(), canonicalOutDims, ll.isSurjective());
   if (auto enc =
           triton::nvidia_gpu::tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs))
     return enc;
@@ -127,25 +141,6 @@ static int32_t lookupLinearLayoutCoord(
 }
 
 static SmallVector<std::pair<StringAttr, int32_t>>
-addLinearLayoutCoords(ArrayRef<std::pair<StringAttr, int32_t>> lhs,
-                      ArrayRef<std::pair<StringAttr, int32_t>> rhs) {
-  SmallVector<std::pair<StringAttr, int32_t>> result(lhs.begin(), lhs.end());
-  for (auto [dim, value] : rhs) {
-    bool found = false;
-    for (auto &entry : result) {
-      if (entry.first == dim) {
-        entry.second += value;
-        found = true;
-        break;
-      }
-    }
-    if (!found)
-      result.push_back({dim, value});
-  }
-  return result;
-}
-
-static SmallVector<std::pair<StringAttr, int32_t>>
 makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
                            ArrayRef<std::pair<StringAttr, int32_t>> sparse) {
   SmallVector<std::pair<StringAttr, int32_t>> result;
@@ -153,43 +148,6 @@ makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
   for (auto dim : dims)
     result.push_back({dim, lookupLinearLayoutCoord(sparse, dim)});
   return result;
-}
-
-static bool canRepresentTMemSubview(
-    const LinearLayout &srcLL, const LinearLayout &dstLL,
-    ArrayRef<std::pair<StringAttr, int32_t>> sliceOffsets) {
-  auto srcInv = srcLL.pseudoinvert();
-  auto dstInv = dstLL.pseudoinvert();
-  auto srcLogicalDims = llvm::to_vector(srcLL.getOutDimNames());
-  auto dstLogicalDims = llvm::to_vector(dstLL.getOutDimNames());
-  auto baseCoords = srcInv.apply(makeFullLinearLayoutCoords(srcLogicalDims,
-                                                            sliceOffsets));
-
-  SmallVector<StringAttr> physDims = llvm::to_vector(srcInv.getOutDimNames());
-  for (auto dim : dstInv.getOutDimNames()) {
-    if (!llvm::is_contained(physDims, dim))
-      physDims.push_back(dim);
-  }
-
-  for (auto logicalDim : dstLL.getOutDimNames()) {
-    int64_t size = dstLL.getOutDimSize(logicalDim);
-    for (int64_t step = 1; step < size; step <<= 1) {
-      SmallVector<std::pair<StringAttr, int32_t>> point = {
-          {logicalDim, static_cast<int32_t>(step)}};
-      auto srcCoords = srcInv.apply(makeFullLinearLayoutCoords(
-          srcLogicalDims, addLinearLayoutCoords(sliceOffsets, point)));
-      auto dstCoords =
-          dstInv.apply(makeFullLinearLayoutCoords(dstLogicalDims, point));
-      for (auto physDim : physDims) {
-        int32_t delta = lookupLinearLayoutCoord(srcCoords, physDim) -
-                        lookupLinearLayoutCoord(baseCoords, physDim);
-        if (delta != lookupLinearLayoutCoord(dstCoords, physDim))
-          return false;
-      }
-    }
-  }
-
-  return true;
 }
 
 static bool isSimpleTrailingTMemSubslice(
@@ -231,32 +189,58 @@ inferTMemSubsliceEncoding(MemDescType srcTy, MemDescType dstTy,
     return failure();
 
   auto *ctx = srcTy.getContext();
-  auto outDims = standardOutDimNames(ctx, layoutRank);
-  for (int dim = extraRank; dim < srcTy.getRank(); ++dim) {
-    int64_t dstDim = dstTy.getDimSize(dim);
-    auto outDim = outDims[dim - extraRank];
-    int64_t currSize = ll.getOutDimSize(outDim);
-    if (dstDim > currSize)
+  auto logicalDims = llvm::to_vector(ll.getOutDimNames());
+  SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+  encodedOffsets.reserve(layoutRank);
+  for (auto [dim, offset] :
+       llvm::enumerate(offsets.drop_front(extraRank))) {
+    if (offset < 0)
       return failure();
-    if (dstDim != currSize) {
-      if (offsets[dim] < 0 || offsets[dim] % dstDim != 0)
-        return failure();
-      ll = ll.resizeOutDim(outDim, dstDim);
+    encodedOffsets.push_back(
+        {logicalDims[dim], static_cast<int32_t>(offset)});
+  }
+
+  auto llInv = ll.pseudoinvert();
+  auto baseCoords =
+      llInv.apply(makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+  auto physOutDims = llvm::to_vector(llInv.getOutDims());
+
+  LinearLayout::BasesT dstInvBases;
+  SmallVector<std::pair<StringAttr, int32_t>> dstLogicalDims;
+  dstLogicalDims.reserve(layoutRank);
+  for (int dim = extraRank; dim < srcTy.getRank(); ++dim) {
+    int64_t dstDimSize = dstTy.getDimSize(dim);
+    int64_t srcDimSize = srcTy.getDimSize(dim);
+    if (dstDimSize > srcDimSize || offsets[dim] + dstDimSize > srcDimSize)
+      return failure();
+
+    auto dstDimName =
+        StringAttr::get(ctx, "dim" + llvm::Twine(dim - extraRank));
+    dstLogicalDims.push_back(
+        {dstDimName, static_cast<int32_t>(dstDimSize)});
+    auto &bases = dstInvBases[dstDimName];
+    for (int64_t step = 1; step < dstDimSize; step <<= 1) {
+      auto point = encodedOffsets;
+      point[dim - extraRank].second += static_cast<int32_t>(step);
+      auto pointCoords =
+          llInv.apply(makeFullLinearLayoutCoords(logicalDims, point));
+      std::vector<int32_t> basis;
+      basis.reserve(physOutDims.size());
+      for (auto [physDim, _] : physOutDims) {
+        basis.push_back(lookupLinearLayoutCoord(pointCoords, physDim) -
+                        lookupLinearLayoutCoord(baseCoords, physDim));
+      }
+      bases.push_back(std::move(basis));
     }
   }
 
-  auto result = tryMakeTMemViewEncoding(ctx, std::move(ll), srcEnc->getTwoCTAs());
-  if (!result)
+  auto dstInv = LinearLayout(std::move(dstInvBases), physOutDims,
+                             /*requireSurjective=*/false);
+  if (!dstInv.isSurjective())
     return failure();
-  SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
-  encodedOffsets.reserve(layoutRank);
-  for (auto [dim, offset] : llvm::zip_equal(srcEnc->getLinearLayout().getOutDimNames(),
-                                            offsets.drop_front(extraRank))) {
-    if (offset != 0)
-      encodedOffsets.push_back({dim, static_cast<int32_t>(offset)});
-  }
-  if (!canRepresentTMemSubview(srcEnc->getLinearLayout(),
-                               result->getLinearLayout(), encodedOffsets))
+  auto result = tryMakeTMemViewEncoding(ctx, dstInv.pseudoinvert(),
+                                        srcEnc->getTwoCTAs());
+  if (!result)
     return failure();
   return *result;
 }

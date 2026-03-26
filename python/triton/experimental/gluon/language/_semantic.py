@@ -40,7 +40,6 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
     _check(len(alloc_shape) >= rank, lambda: f"alloc_shape must have rank >= shape rank, got {alloc_shape} and {shape}")
 
     splitn = instr_variant in ("32x32b_splitn", "16x32bx2")
-    atom_variant = "32x32b" if splitn else instr_variant
     requested_variant = instr_variant
 
     layout_obj = compute_tmem_reg_layout(
@@ -49,7 +48,7 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
         alloc_shape,
         layout,
         num_warps,
-        atom_variant,
+        requested_variant,
     )
     _check(layout_obj is not None,
            lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
@@ -58,15 +57,25 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
 
     if splitn:
         N = shape[1]
+        half_n_basis = [0, N // 2]
         if not layout_obj.reg_bases:
             # Small split-N shapes can place the second half entirely on a lane
             # basis. Materialize the equivalent register basis explicitly so the
             # frontend exposes the same splitn layout shape that lowering uses.
-            _check(layout_obj.lane_bases[-1] == [0, N // 2],
-                   lambda: f"splitn with 1 register requires the last lane basis to be [0, N / 2]. Got {layout_obj}")
-            layout_obj.reg_bases.append([0, N // 2])
+            _check(layout_obj.lane_bases and layout_obj.lane_bases[-1] == half_n_basis,
+                   lambda: "splitn with 1 register requires the last lane basis "
+                   f"to be [0, N / 2], but got layout {layout_obj}")
+            layout_obj.reg_bases.append(half_n_basis)
             layout_obj.lane_bases[-1] = [0, 0]
-        elif layout_obj.reg_bases[-1] != [0, N // 2]:
+        elif layout_obj.reg_bases[-1] != half_n_basis:
+            if half_n_basis in layout_obj.reg_bases:
+                idx = layout_obj.reg_bases.index(half_n_basis)
+                layout_obj.reg_bases[-1], layout_obj.reg_bases[idx] = (
+                    layout_obj.reg_bases[idx],
+                    layout_obj.reg_bases[-1],
+                )
+                return layout_obj
+
             bitwidth = element_ty.primitive_bitwidth
             num_reg = 2**len(layout_obj.reg_bases)
             _check(
@@ -82,10 +91,17 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
                     # the first 4 warps have their own address space
                     if bases_str == "warp_bases" and i < 2:
                         continue
-                    if basis == [0, N // 2]:
+                    if basis == half_n_basis:
                         reg_bases[-1], bases[i] = bases[i], reg_bases[-1]
                         return layout_obj
-            assert False, f"splitn requires at least one basis of the form [0, N / 2] in lanes or warps[2:] bases. Got {layout}"
+            _check(
+                False,
+                lambda: "splitn requires a [0, N / 2] basis in registers, lanes, "
+                "or non-anchor warp bases, but none was found after TMEM "
+                f"layout inference. reg={layout_obj.reg_bases}, "
+                f"lane={layout_obj.lane_bases}, warp={layout_obj.warp_bases}, "
+                f"shape={shape}",
+            )
     return layout_obj
 
 

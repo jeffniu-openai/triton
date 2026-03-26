@@ -26,6 +26,7 @@ from triton.experimental.gluon.language.nvidia.hopper import mbarrier, tma
 from triton._C.libtriton.gluon_ir import make_cga_layout
 from python.test.gluon.test_core import (
     _expected_scaled_cp_opcode,
+    mma_kernel,
     _run_tmem_reduction_case,
     mma_scaled_tcgen05_copy,
     random_quantized_tensor,
@@ -101,6 +102,17 @@ def _make_tmem_linear_layout_m64(n):
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [0, 0], [16, 0], [32, 0]],
         cols=[[0, 1 << i] for i in range(int(math.log2(n)))],
+        shape=[64, n],
+    )
+
+
+def _make_tmem_linear_layout_m64_permuted(n, row_perm_kind, col_perm_kind):
+    row_bits = _permute_pow2_bases_by_kind([1, 2, 4, 8, 16, 32], row_perm_kind)
+    col_bits = _permute_pow2_bases_by_kind([1 << i for i in range(int(math.log2(n)))], col_perm_kind)
+    return TensorMemoryLinearLayout(
+        rows=[[row_bits[0], 0], [row_bits[1], 0], [row_bits[2], 0], [row_bits[3], 0], [0, 0], [row_bits[4], 0],
+              [row_bits[5], 0]],
+        cols=[[0, bit] for bit in col_bits],
         shape=[64, n],
     )
 
@@ -184,6 +196,12 @@ def _make_tmem_register_layout(num_ctas):
     )
 
 
+def _round_to_tf32(x: torch.Tensor) -> torch.Tensor:
+    x = x.view(torch.int32)
+    x = x & ~((1 << 13) - 1)
+    return x.view(torch.float32)
+
+
 def _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, two_cta_dim):
     ctas_per_cga = list(ctas_per_cga)
     cta_split = list(cta_split)
@@ -246,6 +264,25 @@ def _assert_exact_cp_ptx_llir_match(compiled, expected_ops=None):
 def _extract_tcgen05_mma_opcodes(asm: str):
     pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
     return pattern.findall(asm)
+
+
+def _make_mma_plain_kind_inputs(kind: str, m: int, n: int, k: int):
+    if kind == "tf32":
+        a = _round_to_tf32(torch.randn((m, k), device="cuda", dtype=torch.float32))
+        b = _round_to_tf32(torch.randn((k, n), device="cuda", dtype=torch.float32))
+        shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=128, transposed=False, element_bitwidth=32, rank=2)
+        shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=128, transposed=True, element_bitwidth=32, rank=2)
+        expected_kind = "tcgen05.mma.cta_group::1.kind::tf32"
+        atol, rtol = 5e-4, 5e-3
+    else:
+        fp8_dtype = torch.float8_e5m2 if kind == "f8e5m2" else torch.float8_e4m3fn
+        a = torch.randint(20, 40, (m, k), device="cuda", dtype=torch.uint8).view(fp8_dtype)
+        b = torch.randint(20, 40, (k, n), device="cuda", dtype=torch.uint8).view(fp8_dtype)
+        shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
+        shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
+        expected_kind = "tcgen05.mma.cta_group::1.kind::f8f6f4"
+        atol, rtol = 1e-1, 1e-1
+    return a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol
 
 
 def _assert_ldst_ptx_llir_match(compiled):
@@ -817,10 +854,18 @@ LDST_TWOCTA_DESCRIPTOR_CASES = [
 ]
 
 PERMUTED_LAYOUT_KINDS = ("identity", "rotate1", "even_odd", "reverse")
+PERMUTED_ROW_COL_LAYOUT_KINDS = list(product(PERMUTED_LAYOUT_KINDS, PERMUTED_LAYOUT_KINDS))
 
 LDST_PERMUTED_CASES = [
     (perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
     for perm_kind, n, variant in product(PERMUTED_LAYOUT_KINDS, (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_ROWCOL_PERMUTED_CASES = [
+    (row_perm_kind, col_perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
+    for (row_perm_kind, col_perm_kind), n, variant in product(
+        PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_EXPLICIT_VARIANTS
+    )
 ]
 
 LDST_EXOTIC_CASES = [
@@ -847,6 +892,13 @@ LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
                                       "ttg.memdesc_trans")),
     ("slice_index_reinterpret", 2, 11.0, ("ttg.memdesc_index", "ttg.memdesc_subslice", "ttg.memdesc_reshape",
                                           "ttg.memdesc_trans", "ttg.memdesc_reinterpret")),
+]
+
+LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
+    (row_perm_kind, col_perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
+    for (row_perm_kind, col_perm_kind), n, variant in product(
+        PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_EXPLICIT_VARIANTS
+    )
 ]
 
 LDST_HIGHER_RANK_INDEX_CASES = [
@@ -912,6 +964,13 @@ M64_SPLITN_AUTO_CASES = [
     (128, 64, 64),
 ]
 
+M64_ROWCOL_PERMUTED_CASES = [
+    (row_perm_kind, col_perm_kind, n, variant)
+    for (row_perm_kind, col_perm_kind), n, variant in product(
+        PERMUTED_ROW_COL_LAYOUT_KINDS, (2, 4, 8, 16, 32, 64, 128), ("32x32b_splitn", "16x32bx2")
+    )
+]
+
 LDST_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, ), ("32x32b", "16x64b", "16x128b", "16x256b"))
@@ -937,6 +996,18 @@ CP_LINEAR_NO_SCALES_CASES = [
     (128, 256, 128, 32),
 ]
 
+CP_LINEAR_NO_SCALES_32BIT_DTYPE_CASES = [
+    (dtype_name, torch_dtype, m, n, swizzle, expected_count)
+    for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
+    for m, n, swizzle, expected_count in CP_LINEAR_NO_SCALES_CASES
+]
+
+CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES = [
+    (dtype_name, torch_dtype, 128, n, 32)
+    for dtype_name, torch_dtype in (("f16", torch.float16), ("bf16", torch.bfloat16))
+    for n in (128, 256)
+]
+
 CP_NO_SCALES_SWIZZLE_CASES = [
     (m, n, block_n, swizzle)
     for swizzle in (32, 64, 128)
@@ -957,6 +1028,13 @@ CP_SCALES_WARPX4_SCALED_MMA_CASES = [
     (a_format, b_format, num_ctas, acc_layout_kind)
     for (a_format, b_format), num_ctas, acc_layout_kind in product(
         CP_SCALES_WARPX4_FORMAT_PAIRS, (1, 2), ("legacy", "linear")
+    )
+]
+
+CP_SCALES_WARPX4_GEOMETRY_CASES = [
+    (block_n, block_k, multicast, num_ctas, acc_layout_kind)
+    for block_n, block_k, multicast, num_ctas, acc_layout_kind in product(
+        (128, 256), (128, 256), (False, True), (1, 2), ("legacy", "linear")
     )
 ]
 
@@ -1041,9 +1119,21 @@ CP_LINEAR_EXOTIC_UNSUPPORTED_CASES = [
     ("scrambled_rows_cols", _make_tmem_linear_layout_permuted(128, 128, "even_odd", "even_odd")),
 ]
 
+CP_LINEAR_PERMUTED_UNSUPPORTED_CASES = [
+    (row_perm_kind, col_perm_kind)
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
+    if not (row_perm_kind == "identity" and col_perm_kind == "identity")
+]
+
 MMA_EXOTIC_UNSUPPORTED_CASES = [
     ("mixed", _make_tmem_linear_layout_mixed(128, 128)),
     ("scrambled_cols", _make_tmem_linear_layout_permuted(128, 128, "identity", "even_odd")),
+]
+
+MMA_ROWCOL_PERMUTED_UNSUPPORTED_CASES = [
+    (row_perm_kind, col_perm_kind)
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
+    if not (row_perm_kind == "identity" and col_perm_kind == "identity")
 ]
 
 
@@ -1075,6 +1165,26 @@ def test_tmem_runtime_matrix_ldst(layout_name, n, variant, expected_shape):
 def test_tmem_runtime_matrix_ldst_permuted_layout_sweep(perm_kind, n, variant, expected_shape):
     m = 128
     layout = _make_tmem_linear_layout_permuted(m, n, perm_kind, perm_kind)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n,variant,expected_shape", LDST_ROWCOL_PERMUTED_CASES)
+def test_tmem_runtime_matrix_ldst_rowcol_permuted_layout_sweep(row_perm_kind, col_perm_kind, n, variant, expected_shape):
+    m = 128
+    layout = _make_tmem_linear_layout_permuted(m, n, row_perm_kind, col_perm_kind)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
@@ -1155,6 +1265,28 @@ def test_tmem_runtime_matrix_ldst_descriptor_compositions(layout_name, n, varian
 def test_tmem_runtime_matrix_ldst_descriptor_compositions_permuted_layout_sweep(perm_kind, n, variant, expected_shape):
     m = 128
     layout = _make_tmem_linear_layout_permuted(m, n, perm_kind, perm_kind)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n,variant,expected_shape", LDST_ROWCOL_PERMUTED_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep(
+    row_perm_kind, col_perm_kind, n, variant, expected_shape
+):
+    m = 128
+    layout = _make_tmem_linear_layout_permuted(m, n, row_perm_kind, col_perm_kind)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
@@ -1296,6 +1428,38 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps(layout_name
     ttgir = compiled.asm["ttgir"]
     assert "twoCTAs = true" in ttgir
     assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n,variant,expected_shape", LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_roundtrip_rowcol_permuted_sweeps(
+    row_perm_kind, col_perm_kind, n, variant, expected_shape
+):
+    m = 128
+    layout = _lift_tmem_layout(_make_tmem_linear_layout_permuted(m, n, row_perm_kind, col_perm_kind), [2, 2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    try:
+        compiled = tmem_ldst_descriptor_roundtrip_kernel[(1, )](
+            inp, out, layout, m, n, variant, 1, 7.0, num_warps=4
+        )
+    except triton.runtime.errors.OutOfResources:
+        pytest.skip(
+            f"tensor memory OOR for row={row_perm_kind}, col={col_perm_kind}, n={n}, variant={variant}"
+        )
+    torch.testing.assert_close(out, inp + 7.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_reinterpret" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -1627,6 +1791,24 @@ def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n,variant", M64_ROWCOL_PERMUTED_CASES)
+def test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep(row_perm_kind, col_perm_kind, n, variant):
+    m = 64
+    layout = _make_tmem_linear_layout_m64_permuted(n, row_perm_kind, col_perm_kind)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert observed_opcodes
+    assert all("16x32bx2" in op for op in observed_opcodes)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("variant", ("32x32b", "16x64b", "16x128b", "16x256b"))
 def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
     m, n = 128, 256
@@ -1897,11 +2079,64 @@ def test_tmem_runtime_matrix_cp_no_scales_linear(M, N, swizzle, expected_count):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle,expected_count", CP_LINEAR_NO_SCALES_32BIT_DTYPE_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_32bit_dtypes(dtype_name, torch_dtype, M, N, swizzle, expected_count):
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout(M, N)
+
+    compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, M, N, swizzle, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle", CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes_report_clean_error(dtype_name, torch_dtype, M, N,
+                                                                                    swizzle, capfd):
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout(M, N)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, M, N, swizzle, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "Source element type should be 32-bit." in text
+    assert "error encountered during parsing" in str(excinfo.value)
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout", CP_LINEAR_EXOTIC_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupported(name, layout, capfd):
     m = n = 128
     inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
     out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "Incorrect tmem layout" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind", CP_LINEAR_PERMUTED_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported(
+    row_perm_kind, col_perm_kind, capfd
+):
+    m = n = 128
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout_permuted(m, n, row_perm_kind, col_perm_kind)
 
     with pytest.raises(Exception) as excinfo:
         tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
@@ -1970,12 +2205,12 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(a_forma
     vec_size = 16 if a_format == "nvfp4" else 32
 
     torch.manual_seed(0)
-    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
-    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
     a_scale = swizzle_scales_packed_block(a_scale, vec_size)
     b_scale = swizzle_scales_packed_block(b_scale, vec_size)
 
-    _, compiled = mma_scaled_tcgen05_copy(
+    out, compiled = mma_scaled_tcgen05_copy(
         a,
         b,
         a_scale,
@@ -1988,10 +2223,50 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(a_forma
         multicast=False,
         acc_layout_kind=acc_layout_kind,
     )
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
     expected = _expected_scaled_cp_opcode(num_ctas)
     expected_count = 64 // vec_size
     _assert_exact_cp_ptx_llir_match(compiled, [expected] * expected_count)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("block_n,block_k,multicast,num_ctas,acc_layout_kind", CP_SCALES_WARPX4_GEOMETRY_CASES)
+def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep(
+    block_n, block_k, multicast, num_ctas, acc_layout_kind
+):
+    a_format = "mxfp8"
+    b_format = "mxfp8"
+    block_m = 256 if num_ctas == 2 else 128
+    m, n, k = block_m, block_n, block_k
+    vec_size = 32
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    a_scale = swizzle_scales_packed_block(a_scale, vec_size)
+    b_scale = swizzle_scales_packed_block(b_scale, vec_size)
+
+    out, compiled = mma_scaled_tcgen05_copy(
+        a,
+        b,
+        a_scale,
+        b_scale,
+        vec_size,
+        block_m,
+        block_n,
+        block_k,
+        num_ctas=num_ctas,
+        multicast=multicast,
+        acc_layout_kind=acc_layout_kind,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected = _expected_scaled_cp_opcode(num_ctas)
+    cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
+    assert cp_ops
+    assert all(op == expected for op in cp_ops)
 
 
 MMA_CASES = [
@@ -1999,6 +2274,11 @@ MMA_CASES = [
     ("legacy_use_acc", TensorMemoryLayout((128, 128), col_stride=1), True),
     ("linear_no_acc", _make_tmem_linear_layout(128, 128), False),
     ("linear_use_acc", _make_tmem_linear_layout(128, 128), True),
+]
+
+MMA_PLAIN_KIND_CASES = [
+    (kind, acc_layout_kind)
+    for kind, acc_layout_kind in product(("tf32", "f8e5m2", "f8e4m3"), ("legacy", "linear"))
 ]
 
 MMA_TWOCTA_CASES = [
@@ -2027,6 +2307,93 @@ def test_tmem_runtime_matrix_mma(name, layout, use_acc):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,acc_layout_kind", MMA_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_kind):
+    m = n = 128
+    k = 32
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
+
+    compiled = mma_kernel[(1, )](
+        a,
+        b,
+        out,
+        m,
+        n,
+        k,
+        block_layout_a,
+        block_layout_b,
+        (),
+        acc_layout,
+        shared_layout_a,
+        shared_layout_b,
+        ttgl.float32,
+        False,
+        True,
+        num_warps=4,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    assert all(op == expected_kind for op in ptx_ops)
+    assert "tcgen05.commit.cta_group::1" in compiled.asm["ptx"]
+    assert "tcgen05.commit.cta_group::1" in compiled.asm["llir"]
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind):
+    m = n = 128
+    k = 32
+    a = torch.randint(-8, 8, (m, k), device="cuda", dtype=torch.int8)
+    b = torch.randint(-8, 8, (k, n), device="cuda", dtype=torch.int8)
+    out = torch.empty((m, n), device="cuda", dtype=torch.int32)
+
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
+    shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
+    acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+
+    with pytest.raises(triton.runtime.errors.PTXASError) as excinfo:
+        mma_kernel[(1, )](
+            a,
+            b,
+            out,
+            m,
+            n,
+            k,
+            block_layout_a,
+            block_layout_b,
+            (),
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            ttgl.int32,
+            False,
+            True,
+            num_warps=4,
+        )
+
+    msg = str(excinfo.value)
+    assert "kind::i8" in msg
+    assert "not supported on .target" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout", MMA_EXOTIC_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_mma_exotic_layout_reports_clean_unsupported(name, layout, capfd):
     m, n, k = 128, 128, 32
@@ -2041,6 +2408,29 @@ def test_tmem_runtime_matrix_mma_exotic_layout_reports_clean_unsupported(name, l
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "must have a MMAv5-compatible tensor memory layout" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind", MMA_ROWCOL_PERMUTED_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_mma_rowcol_permuted_layout_reports_clean_unsupported(
+    row_perm_kind, col_perm_kind, capfd
+):
+    m, n, k = 128, 128, 32
+    layout = _make_tmem_linear_layout_permuted(m, n, row_perm_kind, col_perm_kind)
+    a = torch.randn((m, k), dtype=torch.float16, device="cuda")
+    b = torch.randn((k, n), dtype=torch.float16, device="cuda")
+    c = torch.randn((m, n), dtype=torch.float32, device="cuda")
+    out = torch.empty_like(c)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_kernel[(1, )](a, b, c, out, layout, False, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "must have a MMAv5-compatible tensor memory layout" in text
+    assert "Use a canonical #ttng.tensor_memory_linear equivalent" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
