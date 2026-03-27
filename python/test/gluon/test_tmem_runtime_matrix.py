@@ -229,7 +229,9 @@ def _make_scales_shared_layout_warpx4():
 
 
 def _make_scales_shared_layout_warpx2_candidate():
-    # Candidate family from PTX probes; currently expected to fail cleanly.
+    # Historical warpx2 probe candidate. Through the public descriptor API this
+    # currently reaches a clean unsupported descriptor-plan path rather than a
+    # live tcgen05.copy.warpx2 lowering.
     return ttgl.SharedLinearLayout(
         offset_bases=[[32, 0], [0, 1], [1, 0], [0, 2], [0, 4], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]
     )
@@ -1144,8 +1146,11 @@ MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS_IDENTITY = {
     "identity": LDST_LAYOUTS["identity"],
 }
 
-MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS = {
+MULTIDIM_SLICE_POSITIVE_LAYOUTS = {
     "mixed": LDST_LAYOUTS["mixed"],
+}
+
+MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS = {
     "scrambled_cols": LDST_EXOTIC_LAYOUTS["scrambled_cols"],
 }
 
@@ -1984,30 +1989,25 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index(layout_name, n, v
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant", LDST_HIGHER_RANK_SLICE_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_reports_clean_error(layout_name, n, variant):
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(layout_name, n, variant):
     m = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    try:
-        compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4
-        )
-    except CompilationError as exc:
-        msg = str(exc)
-        assert "unsupported tensor memory memdesc_subslice view" in msg
-        assert "PassManager::run failed" not in msg
-        assert "Assertion" not in msg
-        return
-
-    if not torch.allclose(out, inp + 9.0, atol=0, rtol=0):
-        pytest.xfail(
-            "BUG: higher-rank multidimensional TMEM slices compile but write incorrect values"
-        )
+    compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4
+    )
+    torch.testing.assert_close(out, inp + 9.0, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     assert ops
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2046,27 +2046,26 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(layout_nam
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_SLICE_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_reports_clean_error(layout_name, n, variant):
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(layout_name, n, variant):
     m = 256
     layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    try:
-        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-        )
-    except CompilationError as exc:
-        msg = str(exc)
-        assert "unsupported tensor memory memdesc_subslice view" in msg
-        assert "PassManager::run failed" not in msg
-        assert "Assertion" not in msg
-        return
+    compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp + 9.0, atol=0, rtol=0)
 
-    if not torch.allclose(out, inp + 9.0, atol=0, rtol=0):
-        pytest.xfail(
-            "BUG: two-CTA higher-rank multidimensional TMEM slices compile but write incorrect values"
-        )
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops
+    ttgir = compiled.asm["ttgir"]
+    assert "twoCTAs = true" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2117,43 +2116,75 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_cle
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS.items())
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_error(layout_name, layout_fn, capfd):
+@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_POSITIVE_LAYOUTS.items())
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive(layout_name, layout_fn):
     m = 128
     n = 128
     layout = layout_fn(n)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    try:
-        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
-            inp, out, layout, m, n, "16x128b", num_warps=4
-        )
-    except Exception as exc:
-        captured = capfd.readouterr()
-        text = str(exc) + captured.err + captured.out
-        assert (
-            "unsupported tensor memory memdesc_subslice view" in text
-            or (
-                "failed to infer memdesc_reshape result type" in text
-                and "TMEM layout shape must be bounded by the memdesc shape and allocShape" in text
-            )
-            or (
-                "TMEM layout '32x32b' unsupported for shape [32, 32]" in text
-                and "insert convert_layout explicitly" in text
-            )
-        )
-        assert "PassManager::run failed" not in text
-        assert "Assertion" not in text
-        return
-
+    compiled = tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
+        inp, out, layout, m, n, "16x128b", num_warps=4
+    )
     ref = inp.clone().reshape(2, m // 2, 2, n // 2)
     ref[1, 0:m // 4, 1, 0:n // 4] += 11.0
     ref = ref.reshape(m, n)
-    if not torch.allclose(out, ref, atol=0, rtol=0):
-        pytest.xfail(
-            f"BUG: direct multidimensional TMEM slice on layout '{layout_name}' compiles but writes incorrect values"
+    torch.testing.assert_close(out, ref, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 0),
+        ("tcgen05.st.sync.aligned.16x128b.x32.b32", 1048576),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 4),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 8),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 12),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 16),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 20),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 24),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 28),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 4),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 8),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 12),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 16),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 20),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 24),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 28),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 0),
+        ("tcgen05.ld.sync.aligned.16x128b.x32.b32", 1048576),
+    ]
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS.items())
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported(
+    layout_name, layout_fn, capfd
+):
+    m = 128
+    n = 128
+    layout = layout_fn(n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, "16x128b", num_warps=4
         )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout '32x32b' unsupported for shape [32, 32] and num_warps 4" in text
+    assert "reshape or permute so TMEM columns stay contiguous" in text
+    assert "insert convert_layout explicitly" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_POSITIVE_CASES)
@@ -2719,8 +2750,10 @@ def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_
     text = str(excinfo.value) + captured.err + captured.out
 
     if expected_status == "CLEAN_UNSUPPORTED":
-        assert "does not lower to Triton's currently supported tcgen05.copy.warpx4.32x128b descriptor family" in text
-        assert "canonical scales warpx4 shared layout" in text
+        assert "maps to tcgen05.copy." in text
+        assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
+        assert "Use a shared layout that lowers to tcgen05.copy." in text
+        assert "same descriptor family" in text
         assert "PassManager::run failed" not in text
         assert "Assertion" not in text
         return
@@ -2744,8 +2777,10 @@ def test_tmem_runtime_matrix_bug_cp_scales_unsupported_layout_raises_runtimeerro
 
     captured = capfd.readouterr()
     text = captured.err + captured.out
-    assert "does not lower to Triton's currently supported tcgen05.copy.warpx4.32x128b descriptor family" in text
-    assert "canonical scales warpx4 shared layout" in text
+    assert "maps to tcgen05.copy." in text
+    assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
+    assert "Use a shared layout that lowers to tcgen05.copy." in text
+    assert "same descriptor family" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
     assert "error encountered during parsing" in str(excinfo.value)
@@ -2890,7 +2925,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_candidate_reports_clean_error(c
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert (
-        "maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor for it."
+        "maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it."
         in text
     )
     assert "Use the canonical shared layout for tcgen05.copy.128x128b" in text

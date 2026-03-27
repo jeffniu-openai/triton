@@ -1252,8 +1252,6 @@ LogicalResult TMEMCopyOp::verify() {
   auto tmemLl = toLinearLayout(dstTy);
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
-  auto kRow = StringAttr::get(srcTy.getContext(), "row");
-  auto kCol = StringAttr::get(srcTy.getContext(), "col");
   auto cvt = tmemLl.invertAndCompose(shmemLl);
   if (!cvt.isTrivialOver(kBlock))
     return emitOpError("The source and destination must have the same cga "
@@ -1264,12 +1262,12 @@ LogicalResult TMEMCopyOp::verify() {
   auto nvmmaEnc =
       dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(srcTy.getEncoding());
   int bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
-  auto copyAtom = getTMemCopyAtom(cvt, bitwidth);
+  auto copyPlan = getTMemCopyPlan(cvt, bitwidth);
   auto copyFamily = [&](const TMemCopyAtom &atom) -> std::string {
     if (atom.multicast == 1)
-      return "warpx2::02_13.64x128b";
-    if (atom.multicast == 2)
       return "warpx2::01_23.64x128b";
+    if (atom.multicast == 2)
+      return "warpx2::02_13.64x128b";
     if (atom.multicast == 3)
       return "warpx4.32x128b";
     return atom.bCol == 256 ? "128x256b" : "128x128b";
@@ -1278,48 +1276,30 @@ LogicalResult TMEMCopyOp::verify() {
     return emitOpError("The source should not be transposed or padded");
   }
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
-    if (!copyAtom) {
+    if (!copyPlan) {
       auto diag = emitOpError(
           "The source shared layout does not match any supported "
           "tcgen05.copy family for tensor memory scales.");
       diag.attachNote()
-          << "Currently supported scales copy family: "
-             "tcgen05.copy...warpx4.32x128b.";
+          << "Recognized scales copy families are warpx2::01_23.64x128b, "
+             "warpx2::02_13.64x128b, and warpx4.32x128b.";
       return failure();
     }
-    if (copyAtom->multicast != 3) {
-      std::string family = copyFamily(*copyAtom);
+    for (const auto &message : copyPlan->messages) {
+      auto descLayout = getTMemCopyDescriptorLayout(cvt, message);
+      if (canRepresentAsMMASmemDescriptor(descLayout, message.instrShape,
+                                          bitwidth, 0, 5))
+        continue;
+
+      std::string family = copyFamily(message.atom);
       auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
                   << family
-                  << ", but Triton currently only lowers tensor memory scales "
-                     "copies for tcgen05.copy.warpx4.32x128b.";
+                  << ", but Triton could not synthesize a compatible "
+                     "shared-memory descriptor plan for tensor memory scales.";
       diag.attachNote()
-          << "If you need this to compile today, reshape or permute the shared "
-             "layout to the canonical scales warpx4 layout.";
-      diag.attachNote() << "PTX may support " << family
-                        << ", but Triton does not yet synthesize the required "
-                           "shared-memory descriptor for this scales family.";
-      return failure();
-    }
-    auto kWarp = StringAttr::get(srcTy.getContext(), "warp");
-    auto cvtWarp =
-        cvt.reshapeIns({{kRow, 32},
-                        {kWarp, 4},
-                        {kCol, cvt.getInDimSize(kCol)},
-                        {kBlock, cvt.getInDimSize(kBlock)}})
-            .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
-    SmallVector<unsigned> instrShape = {32u,
-                                        static_cast<unsigned>(copyAtom->bCol /
-                                                              bitwidth)};
-    if (!canRepresentAsMMASmemDescriptor(cvtWarp, instrShape, bitwidth, 0, 5)) {
-      auto diag = emitOpError(
-          "The source shared layout does not lower to Triton's currently "
-          "supported tcgen05.copy.warpx4.32x128b descriptor family for tensor "
-          "memory scales.");
-      diag.attachNote()
-          << "Use the canonical scales warpx4 shared layout, or reshape / "
-             "permute the shared tile until it lowers to "
-             "tcgen05.copy.warpx4.32x128b.";
+          << "Use a shared layout that lowers to tcgen05.copy." << family
+          << ", or reshape / permute the shared tile until it lowers to the "
+             "same descriptor family.";
       return failure();
     }
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() != 0) {
@@ -1344,13 +1324,13 @@ LogicalResult TMEMCopyOp::verify() {
     if (srcTy.getElementType().getIntOrFloatBitWidth() != 32) {
       return emitOpError("Source element type should be 32-bit.");
     }
-    if (!copyAtom) {
+    if (!copyPlan) {
       auto diag = emitOpError(
           "The source shared layout does not match any recognized "
           "tcgen05.copy family for non-scales tensor memory copies.");
       diag.attachNote()
           << "Recognized tcgen05.copy families are 128x128b, 128x256b, "
-             "warpx2::02_13.64x128b, warpx2::01_23.64x128b, and "
+             "warpx2::01_23.64x128b, warpx2::02_13.64x128b, and "
              "warpx4.32x128b.";
       diag.attachNote()
           << "Use the canonical shared layout for your intended family, or "
@@ -1358,37 +1338,22 @@ LogicalResult TMEMCopyOp::verify() {
              "those families.";
       return failure();
     }
-    auto kWarp = StringAttr::get(srcTy.getContext(), "warp");
-    auto cvtWarp =
-        cvt.reshapeIns({{kRow, 32},
-                        {kWarp, 4},
-                        {kCol, cvt.getInDimSize(kCol)},
-                        {kBlock, cvt.getInDimSize(kBlock)}})
-            .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
-    SmallVector<unsigned> instrShape = {
-        32u, static_cast<unsigned>(copyAtom->bCol / bitwidth)};
-    if (!canRepresentAsMMASmemDescriptor(cvtWarp, instrShape, bitwidth, 0, 5)) {
-      std::string family = copyFamily(*copyAtom);
+    for (const auto &message : copyPlan->messages) {
+      auto descLayout = getTMemCopyDescriptorLayout(cvt, message);
+      if (canRepresentAsMMASmemDescriptor(descLayout, message.instrShape,
+                                          bitwidth, 0, 5))
+        continue;
+
+      std::string family = copyFamily(message.atom);
       auto diag =
           emitOpError("The source shared layout maps to tcgen05.copy.")
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
-             "descriptor for it.";
+             "descriptor plan for it.";
       diag.attachNote()
           << "Use the canonical shared layout for tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "
              "same descriptor family.";
-      if (copyAtom->multicast == 1 || copyAtom->multicast == 2) {
-        diag.attachNote()
-            << "Direct PTX probes show tcgen05.copy." << family
-            << " is not a drop-in opcode swap for warpx4: the inherited "
-               "two-message warpx4 descriptor/address schedule only fills "
-               "selected alias chunk pairs, and experimental intermediate "
-               "TMEM destination deltas (+1/+2) fault with misaligned "
-               "addresses. Triton still needs family-specific shared-"
-               "descriptor/address synthesis to make this warp-pair copy "
-               "semantically correct.";
-      }
       diag.attachNote()
           << "This is reported as cleanly unsupported instead of falling "
              "through to late LLVM lowering.";
@@ -1455,7 +1420,10 @@ LogicalResult TMEMSubSliceOp::verify() {
     auto dstCanonical = getCanonicalTMemLinearEncoding(dstTy, &dstError);
     if (!dstCanonical)
       return emitOpError() << dstError;
-    if (*dstCanonical == *expectedCanonical)
+    auto *inferLayoutInterface =
+        cast<triton::DialectInferLayoutInterface>(&dstLinear.getDialect());
+    if (succeeded(inferLayoutInterface->verifyLayoutsAreEqual(
+            dstTy.getShape(), *expectedCanonical, *dstCanonical, getLoc())))
       return success();
     return emitOpError("The destination must preserve the canonical TMEM "
                        "physical encoding ")

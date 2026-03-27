@@ -1,0 +1,2352 @@
+{
+  "addr_imms": [
+    0,
+    4
+  ],
+  "base_sites": [
+    [
+      94,
+      "\t",
+      "@%p3",
+      "%r18 + 0",
+      "%rd2"
+    ],
+    [
+      99,
+      "\t",
+      "@%p3",
+      "%r7 + 0",
+      "%rd3"
+    ]
+  ],
+  "plans": [
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "B0/O0/B0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0O/0B/0O/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "B0/O0/B0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0O/0B/0O/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 4,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "O0/O0/O0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 4,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0O/0O/0O/0O",
+      "status": "PASS"
+    },
+    {
+      "error": "LogicError: cuCtxSynchronize failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuModuleUnload failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered",
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "status": "FAIL"
+    },
+    {
+      "error": "LogicError: cuCtxSynchronize failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuModuleUnload failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered",
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "status": "FAIL"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "B0/O0/B0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0O/0B/0O/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0O/0B/0O/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "00/00/00/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "O0/00/O0/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": true,
+      "num_b_halves": 2,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0B/00/0B/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": true,
+      "num_b_halves": 2,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "0B/00/0B/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+      },
+      "quadrant_signature": "00/00/00/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "B0/B0/O0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0O/0O/0B/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "B0/B0/O0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0O/0O/0B/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 2,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 4,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "O0/O0/O0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 3,
+          "matches_zero": 480
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 4,
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0O/0O/0O/0O",
+      "status": "PASS"
+    },
+    {
+      "error": "LogicError: cuCtxSynchronize failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuModuleUnload failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered",
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "status": "FAIL"
+    },
+    {
+      "error": "LogicError: cuCtxSynchronize failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuModuleUnload failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered\nPyCUDA WARNING: a clean-up operation failed (dead context maybe?)\ncuMemFree failed: an illegal memory access was encountered",
+      "plan": {
+        "active_site": 0,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "status": "FAIL"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "B0/B0/O0/O0",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0O/0O/0B/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 2,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0O/0O/0B/0B",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd2",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "00/00/00/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "other",
+          "matches_expected": 1,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 2,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "O0/O0/00/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": true,
+      "num_b_halves": 2,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r18",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0B/0B/00/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "B",
+          "matches_expected": 512,
+          "matches_zero": 3
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": true,
+      "num_b_halves": 2,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "addr_imm": 0,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "0B/0B/00/00",
+      "status": "PASS"
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 0,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 1,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 2,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 0,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        },
+        {
+          "chunk": 3,
+          "half": 1,
+          "label": "0",
+          "matches_expected": 3,
+          "matches_zero": 512
+        }
+      ],
+      "clean_quadrant_mapping": false,
+      "num_b_halves": 0,
+      "num_other_halves": 0,
+      "plan": {
+        "active_site": 1,
+        "addr_expr": "%r7 + 4",
+        "addr_imm": 4,
+        "base_reg": "%r7",
+        "desc_reg": "%rd3",
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+      },
+      "quadrant_signature": "00/00/00/00",
+      "status": "PASS"
+    }
+  ],
+  "summary": {
+    "clean_quadrant_mapping_plans": 4,
+    "fail_plans": 4,
+    "interesting_passes": [
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "B0/B0/O0/O0"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0O/0O/0B/0B"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r7 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "B0/B0/O0/O0"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r7 + 4",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0O/0O/0B/0B"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd3",
+        "num_b_halves": 0,
+        "num_other_halves": 4,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "O0/O0/O0/O0"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd3",
+        "num_b_halves": 0,
+        "num_other_halves": 4,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0O/0O/0O/0O"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "B0/B0/O0/O0"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0O/0O/0B/0B"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0O/0O/0B/0B"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd3",
+        "num_b_halves": 0,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "O0/O0/00/00"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd3",
+        "num_b_halves": 2,
+        "num_other_halves": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0B/0B/00/00"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "desc_reg": "%rd3",
+        "num_b_halves": 2,
+        "num_other_halves": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        "quadrant_signature": "0B/0B/00/00"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "B0/O0/B0/O0"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0O/0B/0O/0B"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r7 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "B0/O0/B0/O0"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r7 + 4",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0O/0B/0O/0B"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd3",
+        "num_b_halves": 0,
+        "num_other_halves": 4,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "O0/O0/O0/O0"
+      },
+      {
+        "active_site": 0,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd3",
+        "num_b_halves": 0,
+        "num_other_halves": 4,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0O/0O/0O/0O"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "B0/O0/B0/O0"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0O/0B/0O/0B"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "desc_reg": "%rd2",
+        "num_b_halves": 2,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0O/0B/0O/0B"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 0",
+        "desc_reg": "%rd3",
+        "num_b_halves": 0,
+        "num_other_halves": 2,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "O0/00/O0/00"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r18 + 4",
+        "desc_reg": "%rd3",
+        "num_b_halves": 2,
+        "num_other_halves": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0B/00/0B/00"
+      },
+      {
+        "active_site": 1,
+        "addr_expr": "%r7 + 0",
+        "desc_reg": "%rd3",
+        "num_b_halves": 2,
+        "num_other_halves": 0,
+        "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        "quadrant_signature": "0B/00/0B/00"
+      }
+    ],
+    "pass_plans": 28,
+    "total_plans": 32,
+    "unique_quadrant_signatures": [
+      "0B/00/0B/00",
+      "0B/0B/00/00",
+      "0O/0B/0O/0B",
+      "0O/0O/0B/0B",
+      "0O/0O/0O/0O",
+      "B0/B0/O0/O0",
+      "B0/O0/B0/O0",
+      "O0/00/O0/00",
+      "O0/O0/00/00",
+      "O0/O0/O0/O0"
+    ]
+  }
+}

@@ -5,6 +5,7 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Tools/LinearLayout.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 
 #include <cstdint>
 #include <functional>
@@ -36,6 +37,20 @@ struct TMemCopyAtom {
   int multicast;
 };
 
+struct TMemCopyMessagePlan {
+  TMemCopyAtom atom;
+  unsigned descriptorRows;
+  unsigned sourceWarpGroups;
+  llvm::SmallVector<unsigned> instrShape;
+  int smemRow = 0;
+  int smemColOffset = 0;
+  int tmemDwordDelta = 0;
+};
+
+struct TMemCopyPlan {
+  llvm::SmallVector<TMemCopyMessagePlan> messages;
+};
+
 FailureOr<TMemLdStEncodingInfo>
 computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             int maxnreg,
@@ -44,6 +59,10 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
                         std::string *error = nullptr);
+
+std::optional<llvm::SmallVector<int64_t>>
+getTMemAllocShapeForEncoding(ArrayRef<int64_t> shape, Attribute encoding,
+                             std::string *error = nullptr);
 
 LogicalResult inferTMemReshapeOpEncoding(ArrayRef<int64_t> srcShape,
                                          Attribute srcEncoding,
@@ -98,6 +117,12 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
 
 std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
                                             int bitwidth);
+
+std::optional<TMemCopyPlan> getTMemCopyPlan(const LinearLayout &cvt,
+                                            int bitwidth);
+
+LinearLayout getTMemCopyDescriptorLayout(const LinearLayout &cvt,
+                                         const TMemCopyMessagePlan &message);
 
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,

@@ -706,7 +706,10 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     // basis
     comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
   }
-  if (!comp.isInjective())
+  auto compWithoutBroadcast = comp;
+  for (auto inDim : comp.getInDimNames())
+    compWithoutBroadcast = compWithoutBroadcast.removeZeroBasesAlongDim(inDim);
+  if (!compWithoutBroadcast.isInjective())
     return std::nullopt;
 
   // Fit the warp bases either tiling on the RHS or in row=16
@@ -768,20 +771,39 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     return std::nullopt;
 
   auto ret = tile.compose(ll);
-  auto nonZero = [](auto val) { return val != 0; };
-  for (const auto &dimBases : llvm::make_second_range(ret.getBases())) {
-    if (!llvm::all_of(dimBases, [&](const auto &basis) {
-          return std::count_if(basis.begin(), basis.end(), nonZero) <= 1;
-        })) {
-      return std::nullopt;
-    }
-  }
   auto withoutBroadcast = ret;
   for (auto inDim : ret.getInDimNames())
     withoutBroadcast = withoutBroadcast.removeZeroBasesAlongDim(inDim);
   if (!withoutBroadcast.isInvertible())
     return std::nullopt;
   return ret;
+}
+
+static LinearLayout
+stripZeroBasesForTmemLdStSelection(LinearLayout ll) {
+  if (ll.getNumInDims() == 0)
+    return ll;
+  auto *ctx = (*ll.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  for (StringAttr dim : {kRow, kCol, kBlock}) {
+    if (ll.hasInDim(dim))
+      ll = ll.removeZeroBasesAlongDim(dim);
+  }
+  if (ll.hasInDim(kBlock) && ll.getInDimSize(kBlock) == 1)
+    ll = ll.squeezeIns(kBlock);
+  return ll;
+}
+
+static bool
+isTMemLdStSelectionLayoutValid(gpu::MemDescType memType,
+                               const LinearLayout &layout) {
+  auto attr = LinearEncodingAttr::get(memType.getContext(), layout);
+  auto regTy =
+      RankedTensorType::get(memType.getShape(), memType.getElementType(), attr);
+  return succeeded(
+      computeTMemLdStEncodingInfo(regTy, memType, /*maxnreg=*/256));
 }
 
 std::optional<LinearLayout>
@@ -791,11 +813,22 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
          TensorMemorySpaceAttr::get(memType.getContext()));
   assert(numWarps >= 4 && llvm::isPowerOf2_32(numWarps) &&
          "numWarps must be a power of 2 and >= 4");
-  assert(atom != TMemAccessAtom::I16x32bx2 &&
-         "This layout is inferred sometimes for the 32x32b atom");
   auto ll = toLinearLayout(memType);
   auto bitwidth = memType.getElementTypeBitWidth();
-  return getDistributedLayoutForTmemLdSt(ll, atom, numWarps, bitwidth);
+  if (auto layout = getDistributedLayoutForTmemLdSt(ll, atom, numWarps,
+                                                    bitwidth);
+      layout && isTMemLdStSelectionLayoutValid(memType, *layout)) {
+    return layout;
+  }
+
+  auto stripped = stripZeroBasesForTmemLdStSelection(ll);
+  if (stripped == ll)
+    return std::nullopt;
+  auto layout = getDistributedLayoutForTmemLdSt(stripped, atom, numWarps,
+                                                bitwidth);
+  if (!layout || !isTMemLdStSelectionLayoutValid(memType, *layout))
+    return std::nullopt;
+  return layout;
 }
 
 static bool isTMemCompatibleCandidate(Operation *op, RankedTensorType tensorType,
@@ -877,6 +910,7 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   SmallVector<DistributedEncodingTrait> layouts;
   if (numWarps % 4 != 0)
     return layouts;
+  bool isScales = isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding());
   LinearLayout memLL = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
       return toLinearLayout(memType.getShape(), memType.getEncoding());
@@ -892,7 +926,10 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
                     TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
                     TMemAccessAtom::I16x32bx2}) {
-    auto ll = getDistributedLayoutForTmemLdSt(memLL, atom, numWarps, bitwidth);
+    std::optional<LinearLayout> ll =
+        isScales ? getDistributedLayoutForTmemLdSt(memLL, atom, numWarps,
+                                                   bitwidth)
+                 : getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
     if (ll && isTMemCompatibleCandidate(op, tensorType, memType, *ll)) {
       layouts.push_back(LinearEncodingAttr::get(tensorType.getContext(),
                                                 std::move(ll.value())));
@@ -1339,9 +1376,21 @@ public:
           tryGetCanonicalTensorMemoryEncoding(shape, got, &gotError);
       if (!gotCanonical)
         return emitOptionalError(loc, gotError);
-      if (*expectedCanonical == *gotCanonical) {
-        return success();
+      if (auto expectedLinear =
+              dyn_cast<TensorMemoryLinearEncodingAttr>(*expectedCanonical)) {
+        if (auto gotLinear =
+                dyn_cast<TensorMemoryLinearEncodingAttr>(*gotCanonical)) {
+          auto expectedLayout =
+              normalizeTensorMemoryLinearLayoutForAnalysis(
+                  expectedLinear.getLinearLayout());
+          auto gotLayout = normalizeTensorMemoryLinearLayoutForAnalysis(
+              gotLinear.getLinearLayout());
+          if (expectedLayout == gotLayout)
+            return success();
+        }
       }
+      if (*expectedCanonical == *gotCanonical)
+        return success();
       return emitOptionalError(loc, "Expected result encoding ", expected,
                                " but was ", got);
     }

@@ -1,0 +1,2765 @@
+{
+  "base_cp_sites": [
+    [
+      113,
+      "\t",
+      "@%p4",
+      "%r14 + 0",
+      "%rd3"
+    ],
+    [
+      118,
+      "\t",
+      "@%p4",
+      "%r12 + 0",
+      "%rd4"
+    ],
+    [
+      151,
+      "\t",
+      "@%p6",
+      "%r14 + 0",
+      "%rd3"
+    ],
+    [
+      154,
+      "\t",
+      "@%p6",
+      "%r12 + 0",
+      "%rd4"
+    ]
+  ],
+  "best_by_mismatch": [
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_nfo_1gsr/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_z8p1h2wc/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_8dku96jg/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_vw2398a7/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_zd5zcgnx/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_ckm_9ueh/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_j8ihnngm/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_up3g7mtt/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_iay6mase/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_hcfomezq/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_hcbxyb1s/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_bc806dnj/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_2dinxz9m/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_bnqv42z1/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_zzgqdelh/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_viwbkeez/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_scd6jpq4/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_r3ljihhj/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_gczxrhu0/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_2lo13fe8/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_hvxx3yqg/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_f239nvty/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_hf1s743r/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_33vrsz9w/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_qa1q8co7/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_sf2ier_e/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_g3kva8ac/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_p7y5yf0r/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_obfhx7z8/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_bq_hc84k/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 4",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_r6yeudbl/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        4,
+        5
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        }
+      },
+      "sum": -9584
+    },
+    {
+      "chunk_halves": [
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 0,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 1,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 1,
+          "exact_expected": true,
+          "half": 1,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": true,
+          "half": 0,
+          "matches_expected": 512
+        },
+        {
+          "chunk": 2,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 0,
+          "matches_expected": 1
+        },
+        {
+          "chunk": 3,
+          "exact_expected": false,
+          "half": 1,
+          "matches_expected": 3
+        }
+      ],
+      "cubin": "/tmp/cp_4site_8csxkato/kernel.cubin",
+      "deterministic": false,
+      "exact_expected": false,
+      "exact_half_indices": [
+        0,
+        1,
+        3,
+        4
+      ],
+      "num_mismatch_expected": 2040,
+      "plan": {
+        "site0": {
+          "addr_expr": "%r14 + 0",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"
+        },
+        "site1": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site2": {
+          "addr_expr": "%r14 + 4",
+          "desc_reg": "%rd3",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        },
+        "site3": {
+          "addr_expr": "%r12 + 0",
+          "desc_reg": "%rd4",
+          "opcode": "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"
+        }
+      },
+      "sum": -9584
+    }
+  ],
+  "exact_matches": [],
+  "launch_failures": 0,
+  "search_space": {
+    "addr_deltas": [
+      0,
+      4
+    ],
+    "allow_cross_base": false,
+    "allow_cross_desc": false
+  },
+  "tested": 256
+}

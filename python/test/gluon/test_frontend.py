@@ -556,6 +556,33 @@ def test_tensor_memory_linear_layout_invalid_block_basis_rank():
 
 
 @gluon.jit
+def tmem_alloc_non_surjective_kernel(layout: ttgl.constexpr):
+    _ = blackwell.allocate_tensor_memory(ttgl.float32, [128, 4], layout)
+
+
+@pytest.mark.parametrize("row_bases", [
+    [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
+    [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
+])
+def test_tensor_memory_linear_layout_warpx2_like_rows_report_non_surjective(row_bases):
+    layout = TensorMemoryLinearLayout(
+        rows=row_bases,
+        cols=[[0, 1], [0, 2]],
+        shape=[128, 4],
+    )
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        run_parser(
+            tmem_alloc_non_surjective_kernel,
+            *make_args(layout),
+            target=BLACKWELL_TARGET,
+        )
+
+    msg = str(excinfo.value)
+    assert "The layout must be surjective" in msg
+    assert "Assertion" not in msg
+
+
+@gluon.jit
 def tcgen05_mma_linear_acc_kernel(a_shared_layout: ttgl.constexpr, b_shared_layout: ttgl.constexpr,
                                   acc_layout: ttgl.constexpr):
     a = ttgl.allocate_shared_memory(ttgl.float16, [128, 256], a_shared_layout)

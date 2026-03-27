@@ -9,6 +9,7 @@
 #include "triton/Dialect/TritonGPU/IR/Types.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
@@ -55,6 +56,14 @@ static void addAttrIfAbsent(mlir::OperationState &state, llvm::StringRef name,
                             mlir::Attribute attr) {
   if (attr && !state.attributes.get(name))
     state.addAttribute(name, attr);
+}
+
+static mlir::LogicalResult
+emitMemDescTypeMismatch(mlir::Operation *op, mlir::Type expected,
+                        mlir::Type actual) {
+  return op->emitError("result memdesc type does not match inferred type; "
+                       "expected ")
+         << expected << " but got " << actual;
 }
 
 #define GET_OP_CLASSES
@@ -666,7 +675,9 @@ LogicalResult MemDescReshapeOp::verify() {
   if (failed(inferReturnType(getContext(), getLoc(), srcType,
                              dstType.getShape(), expectedTy)))
     return failure();
-  return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
+  if (failed(OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType)))
+    return emitMemDescTypeMismatch(*this, expectedTy, dstType);
+  return success();
 }
 
 LogicalResult MemDescReshapeOp::inferReturnType(
@@ -697,7 +708,18 @@ LogicalResult MemDescReshapeOp::inferReturnType(
   SmallVector<int64_t> dstAllocShape =
       to_vector(srcTy.getAllocShape().take_front(srcTy.getAllocShape().size() -
                                                  srcTy.getShape().size()));
-  dstAllocShape.append(dstShape.begin(), dstShape.end());
+  SmallVector<int64_t> dstAllocTail(dstShape.begin(), dstShape.end());
+  if (dstEncoding &&
+      triton::nvidia_gpu::isTensorMemoryEncoding(dstEncoding) &&
+      !isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(dstEncoding)) {
+    std::string error;
+    auto maybeDstAllocTail = triton::nvidia_gpu::getTMemAllocShapeForEncoding(
+        dstShape, dstEncoding, &error);
+    if (!maybeDstAllocTail)
+      return emitOptionalError(loc, error);
+    dstAllocTail = std::move(*maybeDstAllocTail);
+  }
+  dstAllocShape.append(dstAllocTail.begin(), dstAllocTail.end());
 
   auto checkedType = getCheckedMemDescType(
       context, loc, dstShape, srcTy.getElementType(), dstEncoding,
@@ -866,7 +888,9 @@ LogicalResult MemDescReinterpretOp::verify() {
                              getResultAllocShape(), getResultElementType(),
                              resultEncoding, expectedTy)))
     return failure();
-  return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy);
+  if (failed(OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy)))
+    return emitMemDescTypeMismatch(*this, expectedTy, dstTy);
+  return success();
 }
 
 OpFoldResult MemDescReinterpretOp::fold(FoldAdaptor adaptor) {
@@ -1173,7 +1197,9 @@ LogicalResult MemDescIndexOp::verify() {
   MemDescType expectedTy;
   if (failed(inferReturnType(getContext(), getLoc(), srcTy, expectedTy)))
     return failure();
-  return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy);
+  if (failed(OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy)))
+    return emitMemDescTypeMismatch(*this, expectedTy, dstTy);
+  return success();
 }
 
 void MemDescSubsliceOp::print(OpAsmPrinter &p) {
@@ -1343,7 +1369,7 @@ LogicalResult MemDescSubsliceOp::verify() {
                              getOffsets(), expectedTy)))
     return failure();
   if (failed(OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstTy)))
-    return failure();
+    return emitMemDescTypeMismatch(*this, expectedTy, dstTy);
 
   bool isTMemSubview =
       srcEnc && triton::nvidia_gpu::isTensorMemoryEncoding(srcEnc) &&

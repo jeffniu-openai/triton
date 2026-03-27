@@ -2163,3 +2163,288 @@
       -> `13 passed, 49 xfailed in 13.14s`
     - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -q -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
       -> `1557 passed, 117 skipped, 49 xfailed in 31.56s`
+
+## 2026-03-27
+- Fixed the multidimensional TMEM slice/view wrong-code bucket in
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` by validating that a
+  synthesized standalone TMEM-linear subslice encoding preserves the source
+  logical-to-physical TMEM projection. If the projected view would densify
+  sparse physical TMEM row/col bits, inference now rejects it as
+  `unsupported tensor memory memdesc_subslice view` instead of silently
+  re-encoding it to a different physical mapping.
+- Updated the higher-rank multidimensional TMEM runtime-matrix clean-error
+  assertions in `python/test/gluon/test_tmem_runtime_matrix.py` to also accept
+  the clean `memdesc_index` inference failure that reports the sliced view is
+  not representable as a standalone TMEM-linear layout.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - focused multidimensional TMEM slice buckets:
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_reports_clean_error or test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_reports_clean_error or test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_error'`
+    -> `50 passed`
+  - full canonical matrix:
+    `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py`
+    -> `1606 passed, 117 skipped in 97.69s`
+  - frontend parser/inference spot-check:
+    `PYTHONPATH=python:. python3 -m pytest -s --tb=short -q python/test/gluon/test_frontend.py::test_tmem_subslice_reg_layout_constexpr`
+    -> `1 passed`
+- `test/TritonNvidiaGPU/ops.mlir` triage refresh:
+  - `BUILD_DIR=/root/code/triton/build/cmake.linux-aarch64-cpython-3.12`
+  - raw `./bin/triton-opt /root/code/triton/test/TritonNvidiaGPU/ops.mlir`
+    still exits `0` and emits `0` bytes on stdout/stderr, so `lit -v
+    test/TritonNvidiaGPU/ops.mlir` still fails with `FileCheck error:
+    '<stdin>' is empty.`
+  - the issue is not driver-wide: `printf 'module {}\n' | ./bin/triton-opt`
+    prints the trivial module normally, and `./bin/triton-opt --mlir-print-op-generic
+    /root/code/triton/test/TritonNvidiaGPU/ops.mlir` is still empty.
+  - post-link artifact note: `bin/triton-opt` lost its executable bit after the
+    rebuild in this environment; adding `chmod +x` restored executability but
+    did not change the empty-stdout behavior.
+
+- Local confirmation on the current worktree after reverting the discarded projection experiment:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py`
+    -> `1606 passed, 117 skipped in 79.68s`
+  - `PYTHONPATH=python:. python3 -m pytest -s --tb=short -q python/test/gluon/test_frontend.py::test_tmem_subslice_reg_layout_constexpr`
+    -> `1 passed in 0.38s`
+  - local `ops.mlir` repro in this worktree differs slightly from the earlier delegated run:
+    - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/TritonNvidiaGPU/ops.mlir`
+      exits `1` with both stdout/stderr empty,
+    - `--mlir-print-op-generic` is also empty with exit `1`, and
+    - `lit -v test/TritonNvidiaGPU/ops.mlir` still fails because `FileCheck` receives empty stdin.
+
+## 2026-03-27 03:50 UTC
+- Fixed the remaining `test/TritonNvidiaGPU/ops.mlir` verifier/roundtrip failure.
+  - Root cause:
+    - generic `ttg.memdesc_subslice` cases in `ops.mlir` still declared
+      source-sugar TMEM-linear result types after slicing to `128x64`, while
+      current generic TMEM subview inference expects the canonical smaller
+      TMEM-linear result encoding;
+    - verifier/equality checks also compared some semantically identical
+      TMEM-linear encodings by raw attr identity instead of normalized
+      TMEM-linear layout.
+  - Fixes landed:
+    - `test/TritonNvidiaGPU/ops.mlir`
+      - canonicalized the generic TMEM view paths to use `#tmem_linear_small`
+        on the `128x64` result types;
+    - `lib/Dialect/TritonGPU/IR/Ops.cpp`
+      - `memdesc_{reshape,reinterpret,index,subslice}` now emit an explicit
+        inferred-vs-declared memdesc type diagnostic instead of silently
+        returning `failure()`;
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+      - TMEM layout equality now compares normalized TMEM-linear layouts, not
+        only raw canonical-attr identity;
+    - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+      - `ttng.tmem_subslice` now routes canonical-TMEM equality through the
+        same normalized layout comparison.
+  - Validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `BUILD_DIR=/root/code/triton/build/cmake.linux-aarch64-cpython-3.12`
+    - `cd "$BUILD_DIR" && ./bin/triton-opt /root/code/triton/test/TritonNvidiaGPU/ops.mlir`
+      -> `rc=0`, `stdout_bytes=19192`, `stderr_bytes=0`
+    - `cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Analysis/test-buffer-region.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+      -> `4 passed`
+- Revalidated the TMEM runtime baseline after the verifier/layout-equality fixes.
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -n 8 -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py`
+    -> `1606 passed, 117 skipped in 96.30s`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -q python/test/gluon/test_frontend.py::test_tmem_subslice_reg_layout_constexpr`
+    -> `1 passed in 0.37s`
+- Remaining plain TMEM descriptor/load-store clean negatives were reclassified.
+  - Identity quarter-tile `32x32` reshape/slice views, lifted-layout `dim0` /
+    `half_rows` views, scrambled descriptor views, and the block-basis
+    reinterpret frontier now all look like “no single direct TMEM register
+    layout exists for this final view” cases, not residual `TensorMemoryUtils`
+    typing bugs.
+  - Under the current plain-TMEM contract (no silent layout repair for
+    `tmem_load` / `tmem_store` / initialized `tmem_alloc`), these should be
+    treated as direct-lowering / atom-family limits unless we later add a new
+    composite multi-message reg-layout/lowering model.
+- `tcgen05.copy.warpx2` remains the only confirmed supportable compiler gap.
+  - Current evidence refresh:
+    - verifier/classifier in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` already
+      recognizes `warpx2::{02_13,01_23}.64x128b`;
+    - LLVM lowering in
+      `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+      already has opcode emission for those families;
+    - direct PTX / initiative notes still show the inherited warpx4
+      descriptor/address plan is semantically insufficient.
+  - Current conclusion:
+    - `warpx2` is not ISA-impossible;
+    - enabling it needs family-specific shared-descriptor/address/message
+      synthesis in the copy verifier/lowering path, not an opcode swap.
+
+## 2026-03-27 04:44 UTC
+- Added durable bounded PTX-probe helpers for the remaining `warpx2` gap.
+  - new experiment scripts:
+    - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_overlay_both_bases.py`
+    - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_single_site_halves.py`
+    - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_4site.py`
+  - quick validation:
+    - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_overlay_both_bases.py`
+    - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_single_site_halves.py`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_4site.py --limit 1 --output-json /tmp/probe_cp_direct_ptx_4site_smoke.json`
+      -> `tested=1`, no exact match, exact halves only on the `02` family chunk
+      pair (`0/2`) as expected from the earlier overlay work.
+- Persisted the aligned both-base overlay sweep for the second-copy descriptor pair.
+  - command:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_overlay_both_bases.py --output-json .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_overlay_both_bases_gpu0.json`
+  - result:
+    - `64 / 64` plans passed / launched;
+    - `0` clean quadrant mappings;
+    - only six unique overwrite signatures appear under aligned deltas;
+    - `%r12 + 0` duplicates the productive `%r14 + 4` right-half signatures
+      from the earlier overlay probe and does not unlock a new clean family.
+  - strongest new conclusion:
+    - within the current second-copy descriptor pair (`%rd3/%rd4`), no aligned
+      one-message plan writes chunk `3`, left half as an exact expected tile.
+- Persisted the aligned one-copy / live-descriptor sweep.
+  - command:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_single_site_halves.py --output-json .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_single_site_halves_gpu0.json`
+  - result:
+    - `28 / 32` plans passed; `4` plans still faulted and remain invalid;
+    - new clean one-message signatures exist on the live `%rd3` site:
+      - `warpx2::02_13` with `%r18 + 4` or `%r7 + 0` gives `0B/00/0B/00`
+        (clean exact right halves for chunks `0` and `2`);
+      - `warpx2::01_23` with `%r18 + 4` or `%r7 + 0` gives `0B/0B/00/00`
+        (clean exact right halves for chunks `0` and `1`).
+  - combined with the both-base overlay sweep:
+    - the aligned one-message coverage now reaches every exact half except
+      chunk `3`, left half;
+    - this is the current hard frontier for `warpx2`.
+- Current engineering read after the new probes:
+  - there is now strong evidence that the remaining blocker is not “choose a
+    better aligned schedule over the current live descriptors”;
+  - if the bounded four-site search over those same live descriptors fails, the
+    next step should be descriptor synthesis / discovery for the missing `3L`
+    quadrant rather than more schedule reshuffling over the current descriptor
+    pair.
+
+## 2026-03-27 04:46 UTC
+- Ran the bounded four-site search over the current live descriptor/base family.
+  - command:
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_4site.py --output-json .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_4site_gpu1.json`
+  - search space:
+    - same input buffer fed through both copies of the two-copy overlay kernel;
+    - all four emitted `tcgen05.cp` sites remain enabled;
+    - each site keeps its live base register and live descriptor register;
+    - per-site family `{warpx2::02_13, warpx2::01_23}`;
+    - per-site aligned destination delta `{0,4}`.
+  - result:
+    - `256 / 256` plans launched cleanly;
+    - `0` exact matches;
+    - `0` launch failures;
+    - the best bounded plan still stops at `2040` mismatched bytes.
+- Stronger boundary after the bounded four-site result:
+  - even four-message schedule reshuffling over the current live
+    descriptor/base-register family is insufficient in the aligned bounded
+    space;
+  - combined with the earlier one-message probes, this moves the remaining
+    `warpx2` frontier from “maybe there is a better schedule over the current
+    live descriptors” to “we likely need descriptor synthesis / descriptor
+    discovery for the missing quadrant”.
+
+## 2026-03-27 04:59 UTC
+- Ran the live-bit descriptor cube search for the missing `3L` quadrant.
+  - command:
+    - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_descriptor_values.py --output-json .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_descriptor_values_gpu3_fast.json`
+  - search space:
+    - one active `warpx2` site at a time on the one-copy kernel;
+    - aligned address immediates `{0,4}`;
+    - live descriptor bit subcube only, derived from the current `%rd2/%rd3`
+      pair’s differing bits `{5,51}`:
+      `0x0000400800000000`,
+      `0x0000400800000020`,
+      `0x0008400800000000`,
+      `0x0008400800000020`.
+  - result:
+    - `112 / 128` plans passed; `16` still faulted;
+    - `0` exact hits on target quadrant chunk `3`, left half;
+    - `0` clean target hits;
+    - `0` isolated target hits.
+  - strongest read:
+    - the missing `3L` quadrant is not hidden in the current live
+      `{baseAddress, matrixBaseOffset}` cube;
+    - the best near misses still only reproduce already-known clean right-half
+      signatures such as `0B/0B/00/00`.
+- Next bounded descriptor neighborhood after the live-bit miss:
+  - the most plausible next fields are
+    `leadDimensionBaseOffset` / `strideDimensionBaseOffset` around the clean
+    `%rd3` seed, not more schedule reshuffling or more
+    `{baseAddress, matrixBaseOffset}` permutations.
+
+## 2026-03-27 05:02 UTC
+- Ran the `%rd3` seed `leadDimensionBaseOffset` / `strideDimensionBaseOffset` search.
+  - command:
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_direct_ptx_descriptor_lbo_sbo.py --output-json .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_direct_ptx_descriptor_lbo_sbo_gpu1.json`
+  - search space:
+    - clean `%rd3` seed only (`0x0008400800000020`);
+    - active site `1` only;
+    - clean address seeds `%r18 + 4` and `%r7 + 0`;
+    - `warpx2::{02_13,01_23}`;
+    - `leadDimensionBaseOffset ∈ {0,4,8}`;
+    - `strideDimensionBaseOffset ∈ {4,8,12,16}`.
+  - result:
+    - `36 / 48` plans passed; `12` faulted;
+    - `0` exact hits on target quadrant chunk `3`, left half;
+    - `0` clean target hits;
+    - `0` isolated target hits.
+- Current read after the field-aware miss:
+  - bounded `lbo/sbo` perturbations around the clean `%rd3` seed are still not
+    enough to expose the missing `3L` quadrant;
+  - the next plausible PTX-side degree of freedom is now source-coordinate
+    generation, i.e. descriptor values equivalent to changing `smemLoad(a, b)`
+    around the clean `%rd3` seed, not more local field tweaking or more
+    schedule reshuffling.
+
+## 2026-03-27 06:18 UTC
+- Reframed the remaining `warpx2` work against the public TMEM descriptor API
+  rather than direct PTX reachability alone.
+  - bounded public shared-layout classification results:
+    - no-scales canonical destination (`128x4`, `f32`):
+      - pure interleavings: `36` layouts checked, no `warpx2`;
+      - one-mixed: `1134` tested / `252` surjective, no `warpx2`;
+      - two-mixed: `254016` tested / `22680` surjective, no `warpx2`.
+    - scales destination (`64x16`, `i8`):
+      - pure interleavings: `210` layouts checked, all reachable families
+        classify to `multicast=3` / `warpx4`;
+      - one-mixed: `2400` tested / `480` surjective, no `warpx2`;
+      - two-mixed: `1166400` tested / `90720` surjective, no `warpx2`.
+  - bounded explicit TMEM-layout results:
+    - raw `warpx2`-looking row-zero layouts exist for `[128,4]`, `[128,8]`,
+      and `[128,16]`, but they are non-surjective:
+      - `[[1,0],[2,0],[4,0],[8,0],[16,0],[0,0],[32,0]]`
+        -> raw `multicast=1` / `warpx2::01_23`;
+      - `[[1,0],[2,0],[4,0],[8,0],[16,0],[32,0],[0,0]]`
+        -> raw `multicast=2` / `warpx2::02_13`.
+    - the real frontend parser probe (`/tmp/probe_warpx2_explicit_tmem.py`)
+      confirms these layouts fail at `allocate_tensor_memory` with
+      `The layout must be surjective`; no `tcgen05.cp` opcode is emitted.
+    - surjective explicit TMEM searches still found no `warpx2` hits:
+      - `[128,4]`: `254016` tested / `22680` surjective;
+      - `[128,8]`: `893025` tested / `68040` surjective;
+      - `[128,16]`: `2371600` tested / `152460` surjective.
+- Updated test coverage and refreshed stale negative expectations.
+  - edited `python/test/gluon/test_frontend.py`:
+    - added a parser regression for the two non-surjective row-zero explicit
+      TMEM layouts that raw-classify as `warpx2`.
+  - edited `python/test/gluon/test_tmem_runtime_matrix.py`:
+    - refreshed the historical `warpx2` negative assertions to match the
+      current clean verifier diagnostics (`descriptor plan` wording and
+      family-agnostic scales message fragments).
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `PYTHONPATH=python:. python3 -m pytest -s --tb=short python/test/gluon/test_frontend.py -k 'warpx2_like_rows_report_non_surjective'`
+    - `2 passed, 199 deselected`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_layout_probe or cp_scales_unsupported_layout_raises_runtimeerror_parse or cp_no_scales_warpx2_candidate_reports_clean_error'`
+    - `4 passed, 1719 deselected`
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=python:. python3 -m pytest -n 8 -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1606 passed, 117 skipped in 83.86s`
+- Current conclusion:
+  - direct PTX `tcgen05.cp.warpx2::{02_13,01_23}.64x128b` remains a real ISA
+    frontier, but it is not a remaining blocker for “all public TMEM
+    descriptor API code”;
+  - under the current user-visible shared/TMEM layout constructors, bounded
+    reachable searches found no surjective path that lowers to `warpx2`;
+  - making `warpx2` user-reachable would require more than late opcode
+    selection: at minimum a legal user-visible layout / descriptor
+    representation that maps to `warpx2`, plus family-specific
+    descriptor/address/message synthesis.

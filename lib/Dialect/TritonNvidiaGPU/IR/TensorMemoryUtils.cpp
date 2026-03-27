@@ -181,6 +181,85 @@ computeLeftInverseLayout(const LinearLayout &layout, std::string *error) {
   return flat.reshapeIns(inDims).reshapeOuts(outDims);
 }
 
+static FailureOr<LinearLayout>
+restrictTMemAnalysisLayoutToShape(const LinearLayout &layout,
+                                  ArrayRef<int64_t> shape,
+                                  std::string *error) {
+  if (shape.size() != static_cast<size_t>(layout.getNumOutDims())) {
+    if (error)
+      *error = "invalid tensor memory rank/layout combination";
+    return failure();
+  }
+
+  auto restrictedLayout = layout;
+  for (auto [dim, dimName] : llvm::enumerate(layout.getOutDimNames())) {
+    int64_t dimSize = shape[dim];
+    if (dimSize > restrictedLayout.getOutDimSize(dimName)) {
+      if (error)
+        *error = "TMEM reshape rank does not match the canonical TMEM layout";
+      return failure();
+    }
+    restrictedLayout = restrictedLayout.resizeOutDim(dimName, dimSize);
+  }
+
+  return restrictedLayout;
+}
+
+static LogicalResult verifyTMemSubsliceProjection(
+    const LinearLayout &srcInv, ArrayRef<StringAttr> srcLogicalDims,
+    ArrayRef<std::pair<StringAttr, int32_t>> encodedOffsets,
+    ArrayRef<std::pair<StringAttr, int32_t>> baseCoords,
+    const LinearLayout &dstLayout, ArrayRef<int64_t> dstShape,
+    std::string *error) {
+  auto maybeDstInv = computeLeftInverseLayout(dstLayout, error);
+  if (failed(maybeDstInv)) {
+    if (error && error->empty())
+      *error = "unsupported tensor memory memdesc_subslice view";
+    return failure();
+  }
+
+  auto dstLogicalDims = llvm::to_vector(dstLayout.getOutDimNames());
+  auto dstBaseCoords =
+      maybeDstInv->apply(makeFullLinearLayoutCoords(dstLogicalDims, {}));
+
+  SmallVector<StringAttr> physDims = llvm::to_vector(srcInv.getOutDimNames());
+  for (auto physDim : maybeDstInv->getOutDimNames()) {
+    if (!llvm::is_contained(physDims, physDim))
+      physDims.push_back(physDim);
+  }
+
+  for (auto [dim, dstDimSize] : llvm::enumerate(dstShape)) {
+    auto dstDimName = dstLogicalDims[dim];
+    for (int64_t step = 1; step < dstDimSize; step <<= 1) {
+      auto srcPoint = llvm::to_vector(encodedOffsets);
+      srcPoint[dim].second += static_cast<int32_t>(step);
+      auto srcCoords =
+          srcInv.apply(makeFullLinearLayoutCoords(srcLogicalDims, srcPoint));
+
+      SmallVector<std::pair<StringAttr, int32_t>> dstPoint;
+      dstPoint.reserve(dstLogicalDims.size());
+      for (auto logicalDim : dstLogicalDims)
+        dstPoint.push_back({logicalDim, logicalDim == dstDimName ? step : 0});
+      auto dstCoords = maybeDstInv->apply(
+          makeFullLinearLayoutCoords(dstLogicalDims, dstPoint));
+
+      for (auto physDim : physDims) {
+        int32_t expected = lookupLinearLayoutCoord(srcCoords, physDim) -
+                           lookupLinearLayoutCoord(baseCoords, physDim);
+        int32_t actual = lookupLinearLayoutCoord(dstCoords, physDim) -
+                         lookupLinearLayoutCoord(dstBaseCoords, physDim);
+        if (expected != actual) {
+          if (error)
+            *error = "unsupported tensor memory memdesc_subslice view";
+          return failure();
+        }
+      }
+    }
+  }
+
+  return success();
+}
+
 static std::optional<gpu::MemDescType>
 tryCreateMemDescType(MLIRContext *ctx, ArrayRef<int64_t> shape, Type elementType,
                      Attribute encoding, Attribute memorySpace,
@@ -223,6 +302,31 @@ static bool canUseTMemViewEncoding(MLIRContext *ctx, ArrayRef<int64_t> shape,
                               /*mutableMemory=*/false, allocShape,
                               /*error=*/nullptr)
              .has_value();
+}
+
+static bool canMaterializeTMemViewEncoding(MLIRContext *ctx,
+                                           ArrayRef<int64_t> shape,
+                                           ArrayRef<int64_t> allocShape,
+                                           Attribute encoding) {
+  if (isTensorMemoryEncoding(encoding) &&
+      !isa<TensorMemoryScalesEncodingAttr>(encoding)) {
+    auto layoutTrait = dyn_cast<LayoutEncodingTrait>(encoding);
+    if (!layoutTrait)
+      return false;
+    auto layoutRank = static_cast<size_t>(layoutTrait.getRank());
+    if (shape.size() < layoutRank)
+      return false;
+    if (!tryGetCanonicalTensorMemoryLinearLayout(shape.take_back(layoutRank),
+                                                 encoding,
+                                                 /*error=*/nullptr)) {
+      return false;
+    }
+  }
+  return tryCreateMemDescType(ctx, shape, IntegerType::get(ctx, 8), encoding,
+                              TensorMemorySpaceAttr::get(ctx),
+                              /*mutableMemory=*/false, allocShape,
+                              /*error=*/nullptr)
+      .has_value();
 }
 
 static LogicalResult preserveTMemViewEncodingIfValid(
@@ -270,13 +374,17 @@ getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
       *error = "invalid tensor memory rank/layout combination";
     return std::nullopt;
   }
-  auto maybeCanonical =
-      getCanonicalTMemLinearEncoding(shape.take_back(layoutRank), encoding,
-                                     error);
-  if (!maybeCanonical)
+  auto maybeLayout = tryGetCanonicalTensorMemoryLinearLayout(
+      shape.take_back(layoutRank), encoding, error);
+  if (!maybeLayout)
     return std::nullopt;
-  return TMemViewAnalysisLayout{maybeCanonical->getLinearLayout(),
-                                maybeCanonical->getTwoCTAs()};
+  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
+  if (!maybeTwoCTAs) {
+    if (error)
+      *error = "expected tensor memory layout encoding";
+    return std::nullopt;
+  }
+  return TMemViewAnalysisLayout{*maybeLayout, *maybeTwoCTAs};
 }
 } // namespace
 
@@ -290,12 +398,23 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
   decltype(ll.getBases().lookup(kBlock)) originalBlockBases;
   if (hadBlock)
     originalBlockBases = ll.getBases().lookup(kBlock);
-  if (ll.hasInDim(kRow))
-    ll = ll.removeZeroBasesAlongDim(kRow);
-  if (ll.hasInDim(kCol))
-    ll = ll.removeZeroBasesAlongDim(kCol);
-  if (ll.hasInDim(kBlock))
-    ll = ll.removeZeroBasesAlongDim(kBlock);
+  auto trimTrailingZeroBases = [&](StringAttr dim) {
+    auto bases = ll.getBases();
+    auto it = bases.find(dim);
+    if (it == bases.end())
+      return;
+    auto &dimBases = it->second;
+    while (!dimBases.empty() &&
+           llvm::all_of(dimBases.back(), [](int32_t value) {
+             return value == 0;
+           })) {
+      dimBases.pop_back();
+    }
+    ll = LinearLayout(std::move(bases), ll.getOutDims(), ll.isSurjective());
+  };
+  trimTrailingZeroBases(kRow);
+  trimTrailingZeroBases(kCol);
+  trimTrailingZeroBases(kBlock);
   SmallVector<std::pair<StringAttr, int32_t>> canonicalOutDims;
   canonicalOutDims.reserve(ll.getNumOutDims());
   for (auto [idx, dim] : llvm::enumerate(ll.getOutDimNames())) {
@@ -337,6 +456,41 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
   return tryMakeTensorMemoryLinearEncoding(ctx, ll, /*twoCTAs=*/false, error);
 }
 
+std::optional<SmallVector<int64_t>>
+getTMemAllocShapeForEncoding(ArrayRef<int64_t> shape, Attribute encoding,
+                             std::string *error) {
+  SmallVector<int64_t> allocShape(shape.begin(), shape.end());
+  if (!isTensorMemoryEncoding(encoding) ||
+      isa<TensorMemoryScalesEncodingAttr>(encoding)) {
+    return allocShape;
+  }
+
+  auto layoutTrait = dyn_cast<LayoutEncodingTrait>(encoding);
+  if (!layoutTrait) {
+    if (error)
+      *error = "expected tensor memory layout encoding";
+    return std::nullopt;
+  }
+  auto layoutRank = static_cast<size_t>(layoutTrait.getRank());
+  if (shape.size() < layoutRank) {
+    if (error)
+      *error = "invalid tensor memory rank/layout combination";
+    return std::nullopt;
+  }
+
+  auto maybeLayout = tryGetCanonicalTensorMemoryLinearLayout(
+      shape.take_back(layoutRank), encoding, error);
+  if (!maybeLayout)
+    return std::nullopt;
+
+  auto layoutShape = maybeLayout->getOutDimSizes();
+  for (auto [idx, dimSize] : llvm::enumerate(layoutShape)) {
+    auto allocIdx = allocShape.size() - layoutRank + idx;
+    allocShape[allocIdx] = std::max<int64_t>(allocShape[allocIdx], dimSize);
+  }
+  return allocShape;
+}
+
 LogicalResult inferTMemReshapeOpEncoding(ArrayRef<int64_t> srcShape,
                                          Attribute srcEncoding,
                                          ArrayRef<int64_t> dstShape,
@@ -351,9 +505,14 @@ LogicalResult inferTMemReshapeOpEncoding(ArrayRef<int64_t> srcShape,
   auto elemTy = IntegerType::get(ctx, 8);
 
   std::string error;
-  auto memTy = tryCreateMemDescType(ctx, srcShape, elemTy, srcEncoding,
-                                    TensorMemorySpaceAttr::get(ctx),
-                                    /*mutableMemory=*/false, srcShape, &error);
+  auto srcAllocShape = getTMemAllocShapeForEncoding(srcShape, srcEncoding,
+                                                    &error);
+  auto memTy = srcAllocShape
+                   ? tryCreateMemDescType(ctx, srcShape, elemTy, srcEncoding,
+                                          TensorMemorySpaceAttr::get(ctx),
+                                          /*mutableMemory=*/false,
+                                          *srcAllocShape, &error)
+                   : std::nullopt;
   FailureOr<gpu::MemDescType> resultTy = failure();
   if (memTy)
     resultTy = inferTMemReshapeOpType(*memTy, dstShape, &error);
@@ -396,7 +555,7 @@ LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
       inferTMemIndexEncoding(srcShape, dstShape, dstAllocShape, srcEncoding,
                              &error);
   if (succeeded(result) &&
-      canUseTMemViewEncoding(ctx, dstShape, dstAllocShape, *result)) {
+      canMaterializeTMemViewEncoding(ctx, dstShape, dstAllocShape, *result)) {
     dstEncoding = *result;
     return success();
   }
@@ -423,7 +582,7 @@ LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
       inferTMemSubsliceEncoding(srcShape, srcEncoding, dstShape, offsets,
                                 &error);
   if (succeeded(result) &&
-      canUseTMemViewEncoding(ctx, dstShape, srcAllocShape, *result)) {
+      canMaterializeTMemViewEncoding(ctx, dstShape, srcAllocShape, *result)) {
     dstEncoding = *result;
     return success();
   }
@@ -464,10 +623,10 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
     return failure();
   }
 
+  auto *ctx = srcEncoding.getContext();
   if (srcShape.drop_front(extraRank) == dstShape.drop_front(extraRank) &&
       llvm::all_of(offsets.drop_front(extraRank),
                    [](int32_t offset) { return offset == 0; })) {
-    auto *ctx = srcEncoding.getContext();
     auto result =
         tryMakeTMemViewEncoding(ctx, ll, maybeSrcLayout->twoCTAs, error);
     if (!result)
@@ -475,7 +634,6 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
     return *result;
   }
 
-  auto *ctx = srcEncoding.getContext();
   auto logicalDims = llvm::to_vector(ll.getOutDimNames());
   SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
   encodedOffsets.reserve(layoutRank);
@@ -562,11 +720,11 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
                                         maybeSrcLayout->twoCTAs, error);
   if (!result)
     return failure();
-  if (!tensorMemoryLinearLayoutMatchesShape(result->getLinearLayout(),
-                                            dstShape.drop_front(extraRank))) {
-    if (error)
-      *error = "tensor memory view is not representable as a standalone TMEM "
-               "linear layout";
+  if (failed(verifyTMemSubsliceProjection(
+          *llInv, logicalDims, encodedOffsets, baseCoords,
+          result->getLinearLayout(), dstShape.drop_front(extraRank), error))) {
+    if (error && error->empty())
+      *error = "unsupported tensor memory memdesc_subslice view";
     return failure();
   }
   return *result;
@@ -622,7 +780,7 @@ inferTMemIndexEncoding(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape,
   SmallVector<StringAttr> outDims = llvm::to_vector(ll.getOutDimNames());
   outDims.erase(outDims.begin());
   ll = ll.sublayout(llvm::to_vector(ll.getInDimNames()), outDims);
-  auto resultLayoutShape = dstAllocShape.take_back(layoutRank - 1);
+  auto resultLayoutShape = dstShape.take_back(layoutRank - 1);
   if (static_cast<int64_t>(ll.getTotalOutDimSize()) !=
       product<int64_t>(resultLayoutShape)) {
     if (error)
@@ -734,6 +892,15 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   };
   layoutSrcShape = stripLeadingUnitDims(layoutSrcShape);
   layoutDstShape = stripLeadingUnitDims(layoutDstShape);
+  while (static_cast<size_t>(maybeSrcLayout->layout.getNumOutDims()) >
+         layoutSrcShape.size()) {
+    auto firstDim = *maybeSrcLayout->layout.getOutDimNames().begin();
+    if (maybeSrcLayout->layout.getOutDimSize(firstDim) != 1)
+      break;
+    maybeSrcLayout->layout = maybeSrcLayout->layout.squeezeOuts(firstDim);
+  }
+  layoutElems =
+      static_cast<int64_t>(maybeSrcLayout->layout.getTotalOutDimSize());
 
   if (product<int64_t>(layoutSrcShape) > layoutElems) {
     if (layoutSrcShape.size() !=
@@ -757,6 +924,18 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
       *error = "dst shape has different number of elements than src";
     return failure();
   }
+  if (!llvm::equal(maybeSrcLayout->layout.getOutDimSizes(), layoutSrcShape)) {
+    auto maybeRestrictedLayout = restrictTMemAnalysisLayoutToShape(
+        maybeSrcLayout->layout, layoutSrcShape, error);
+    if (failed(maybeRestrictedLayout)) {
+      if (error && error->empty())
+        *error = "TMEM reshape rank does not match the canonical TMEM layout";
+      return failure();
+    }
+    maybeSrcLayout->layout = *maybeRestrictedLayout;
+    layoutElems =
+        static_cast<int64_t>(maybeSrcLayout->layout.getTotalOutDimSize());
+  }
   if (layoutElems != product<int64_t>(layoutSrcShape)) {
     if (error)
       *error = "TMEM reshape rank does not match the canonical TMEM layout";
@@ -773,7 +952,10 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   SmallVector<int64_t> dstAllocShape = llvm::to_vector(
       srcTy.getAllocShape().take_front(srcTy.getAllocShape().size() -
                                        srcTy.getShape().size()));
-  dstAllocShape.append(dstShape.begin(), dstShape.end());
+  auto maybeDstAllocTail = getTMemAllocShapeForEncoding(dstShape, *result, error);
+  if (!maybeDstAllocTail)
+    return failure();
+  dstAllocShape.append(maybeDstAllocTail->begin(), maybeDstAllocTail->end());
   auto resultTy = tryCreateMemDescType(srcTy.getContext(), dstShape,
                                        srcTy.getElementType(), *result,
                                        srcTy.getMemorySpace(),
@@ -1134,6 +1316,59 @@ std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
   if (multicast == 3)
     return TMemCopyAtom{32, 128, 3};
   return std::nullopt;
+}
+
+std::optional<TMemCopyPlan> getTMemCopyPlan(const LinearLayout &cvt,
+                                            int bitwidth) {
+  auto atom = getTMemCopyAtom(cvt, bitwidth);
+  if (!atom)
+    return std::nullopt;
+
+  TMemCopyPlan plan;
+  auto addMessage = [&](unsigned descriptorRows, unsigned sourceWarpGroups,
+                        unsigned instrRows, int smemRow) {
+    TMemCopyMessagePlan message;
+    message.atom = *atom;
+    message.descriptorRows = descriptorRows;
+    message.sourceWarpGroups = sourceWarpGroups;
+    message.instrShape = {instrRows, static_cast<unsigned>(atom->bCol / bitwidth)};
+    message.smemRow = smemRow;
+    plan.messages.push_back(std::move(message));
+  };
+
+  // CUTLASS models the two warpx2 families differently:
+  //   - 01_23 is a 32x128b core-descriptor family with one broadcast axis and
+  //     one repeat axis.
+  //   - 02_13 is a true 64x128b core-descriptor family with one broadcast
+  //     axis.
+  if (atom->multicast == 1) {
+    addMessage(/*descriptorRows=*/32, /*sourceWarpGroups=*/4,
+               /*instrRows=*/64, /*smemRow=*/0);
+  } else if (atom->multicast == 2) {
+    addMessage(/*descriptorRows=*/64, /*sourceWarpGroups=*/2,
+               /*instrRows=*/64, /*smemRow=*/0);
+  } else {
+    addMessage(/*descriptorRows=*/32, /*sourceWarpGroups=*/4,
+               /*instrRows=*/32, /*smemRow=*/0);
+  }
+  return plan;
+}
+
+LinearLayout getTMemCopyDescriptorLayout(const LinearLayout &cvt,
+                                         const TMemCopyMessagePlan &message) {
+  auto inDims = cvt.getInDimNames();
+  assert(!inDims.empty());
+  auto *ctx = inDims.begin()->getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  return cvt
+      .reshapeIns({{kRow, static_cast<int>(message.descriptorRows)},
+                   {kWarp, static_cast<int>(message.sourceWarpGroups)},
+                   {kCol, cvt.getInDimSize(kCol)},
+                   {kBlock, cvt.getInDimSize(kBlock)}})
+      .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
 }
 
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,

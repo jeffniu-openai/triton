@@ -660,9 +660,9 @@ static void createTcgen05Cp(ConversionPatternRewriter &rewriter, Location loc,
   auto src = ptxBuilder.newOperand(src_desc, "l");
   std::string warp;
   if (atom.multicast == 1) {
-    warp = ".warpx2::02_13";
-  } else if (atom.multicast == 2) {
     warp = ".warpx2::01_23";
+  } else if (atom.multicast == 2) {
+    warp = ".warpx2::02_13";
   } else if (atom.multicast == 3) {
     warp = ".warpx4";
   }
@@ -695,8 +695,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto cvt = tmemLl.invertAndCompose(shmemLl);
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
-  auto atom = getTMemCopyAtom(cvt, bitwidth);
-  if (!atom) {
+  auto copyPlan = getTMemCopyPlan(cvt, bitwidth);
+  if (!copyPlan) {
     return op->emitOpError("failed to classify tcgen05.copy family from "
                            "shared memory descriptor ")
            << srcTy << " to tensor memory descriptor " << dstTy;
@@ -707,43 +707,53 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       LLVM::getSharedMemoryObjectFromStruct(loc, src, elemTy, rewriter);
   auto smemBase = smemObj.getShmemAffineBase(loc, rewriter, srcTy);
 
-  // We handle the multicast (the last 2 bits) after the descriptor
-  // once we have access to the lbo/sbo
-  const SmallVector<unsigned> instrShape = {32, atom->bCol / bitwidth};
-  auto kWarp = str_attr("warp");
-  auto cvtWarp = cvt.reshapeIns({{kRow, 32},
-                                 {kWarp, 4},
-                                 {kCol, cvt.getInDimSize(kCol)},
-                                 {kBlock, cvt.getInDimSize(kBlock)}})
-                     .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
-
-  auto loader = DotOpMmaSmemLoader::build(loc, rewriter, cvtWarp, bitwidth,
-                                          smemBase, instrShape, 0, 5);
-  if (failed(loader)) {
-    return op->emitOpError("failed to find valid tcgen05.copy layout from "
-                           "shared memory descriptor ")
-           << srcTy << " to tensor memory descriptor " << dstTy;
+  struct PlannedCopyMessage {
+    TMemCopyMessagePlan plan;
+    DotOpMmaSmemLoader loader;
+  };
+  SmallVector<PlannedCopyMessage> plannedMessages;
+  plannedMessages.reserve(copyPlan->messages.size());
+  for (const auto &message : copyPlan->messages) {
+    auto descLayout = getTMemCopyDescriptorLayout(cvt, message);
+    auto loader = DotOpMmaSmemLoader::build(loc, rewriter, descLayout, bitwidth,
+                                            smemBase, message.instrShape, 0, 5);
+    if (failed(loader)) {
+      return op->emitOpError("failed to find valid tcgen05.copy layout from "
+                             "shared memory descriptor ")
+             << srcTy << " to tensor memory descriptor " << dstTy;
+    }
+    if (loader->getDescriptor().transposed) {
+      return op->emitOpError("does not support transposed shared memory layout");
+    }
+    plannedMessages.push_back({message, *loader});
   }
-  if (loader->getDescriptor().transposed)
-    return op->emitOpError("does not support transposed shared memory layout");
 
   bool twoCTAs = getModuleTwoCTAs(op);
   // Check correct lbo/sbo along the multicast
   auto strideRow = cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
-  if ((atom->multicast & 1) == 0) {
+  const auto &copyAtom = plannedMessages.front().plan.atom;
+  if ((copyAtom.multicast & 1) == 0) {
     assert(cvt.getBasis(kRow, llvm::Log2_32(32), kOffset) ==
            strideRow * (32 / 8));
   }
-  if ((atom->multicast & 2) == 0) {
+  if ((copyAtom.multicast & 2) == 0) {
     assert(cvt.getBasis(kRow, llvm::Log2_32(64), kOffset) ==
            strideRow * (64 / 8));
   }
 
-  for (int col = 0; col < cvt.getInDimSize(kCol); col += instrShape[1]) {
-    auto desc = loader->smemLoad(0, col, rewriter, loc);
-    auto tmemAddr =
-        b.add(b.ptrtoint(i32_ty, baseDst), b.i32_val(col * bitwidth / 32));
-    createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, *atom, twoCTAs);
+  const unsigned colStride = plannedMessages.front().plan.instrShape[1];
+  for (int col = 0; col < cvt.getInDimSize(kCol); col += colStride) {
+    for (const auto &message : plannedMessages) {
+      auto desc =
+          message.loader.smemLoad(message.plan.smemRow,
+                                  col + message.plan.smemColOffset, rewriter,
+                                  loc);
+      auto tmemAddr = b.add(
+          b.ptrtoint(i32_ty, baseDst),
+          b.i32_val(message.plan.tmemDwordDelta + col * bitwidth / 32));
+      createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, message.plan.atom,
+                      twoCTAs);
+    }
   }
   return success();
 }
