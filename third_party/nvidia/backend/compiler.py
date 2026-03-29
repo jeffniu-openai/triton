@@ -343,6 +343,8 @@ class CUDABackend(BaseBackend):
         passes.ttir.add_loop_aware_cse(pm)
         passes.gluon.add_canonicalizer(pm)
         passes.ttgpuir.add_combine_tensor_select_and_if(pm)
+        nvidia.passes.ttnvgpuir.add_optimize_tmem_layouts(pm)
+        passes.ttgpuir.add_remove_layout_conversions(pm)
 
         if options.instrumentation_mode == "fpsan":
             passes.ttgpuir.add_fp_sanitizer(pm)

@@ -17,16 +17,46 @@ namespace mlir::triton::nvidia_gpu {
 // by default 256, but it can be overridden by `ttg.maxnreg` set on the module
 // or a contextual register limit set by the compiler on partitions.
 int getContextualMaxNReg(Operation *op);
+
+struct TMemLdStRowPlan {
+  int32_t warpRow0;
+  int32_t warpRow1;
+  int32_t rowSpan;
+  uint32_t baseOffset = 0;
+};
+
+struct TMemLdStQueryLayout {
+  LinearLayout layout;
+  bool twoCTAs;
+  llvm::SmallVector<int32_t> origin;
+};
+
+struct TMemLdStSupportQueryPlan {
+  TMemLdStQueryLayout query;
+  std::optional<TMemLdStRowPlan> rowPlan;
+};
+
 struct TMemLdStEncodingInfo {
   TMemAccessAtom atom;
   LinearLayout reps;
   ColumnAction perm;
   int numRegsPerMessage;
   std::optional<uint32_t> secondHalfOffset;
+  uint32_t baseOffset = 0;
+  uint32_t warpBaseOffset0 = 32u << 16;
+  uint32_t warpBaseOffset1 = 64u << 16;
+  int32_t warpRow0 = 32;
+  int32_t warpRow1 = 64;
   std::optional<ColumnAction> broadcast = std::nullopt;
   bool unpacked = false;
   unsigned vec = 1;
   bool padding = false;
+};
+
+struct TMemLdStPhysicalSupportPlan {
+  gpu::MemDescType memTy;
+  RankedTensorType regTy;
+  TMemAccessAtom atom;
 };
 
 struct TMemCopyAtom {
@@ -37,24 +67,91 @@ struct TMemCopyAtom {
   int multicast;
 };
 
+enum class TMemCopyFamily {
+  Dense128x128b,
+  Dense128x256b,
+  Warpx2_01_23_64x128b,
+  Warpx2_02_13_64x128b,
+  Warpx4_32x128b,
+};
+
 struct TMemCopyMessagePlan {
   TMemCopyAtom atom;
   unsigned descriptorRows;
   unsigned sourceWarpGroups;
+  llvm::SmallVector<unsigned> descriptorShape;
   llvm::SmallVector<unsigned> instrShape;
   int smemRow = 0;
   int smemColOffset = 0;
   int tmemDwordDelta = 0;
+  bool useDirectSeedDescriptor = false;
+  int directSourceOffsetB128 = 0;
 };
 
 struct TMemCopyPlan {
+  TMemCopyFamily family;
   llvm::SmallVector<TMemCopyMessagePlan> messages;
 };
+
+std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
+
+std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc);
+
+std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
+                                                          gpu::MemDescType queryTy);
+
+llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
+
+FailureOr<gpu::MemDescType>
+inferStandaloneTMemRegLayoutQueryType(Value memDesc,
+                                      std::string *error = nullptr);
+
+FailureOr<TMemLdStQueryLayout>
+inferStandaloneTMemLdStQueryLayout(Value memDesc,
+                                   bool preserveNonCanonicalView = true,
+                                   std::string *error = nullptr);
+
+std::optional<TMemLdStSupportQueryPlan>
+getTMemLdStSubviewSupportPlan(Value memDesc, std::string *error = nullptr);
+
+std::optional<TMemLdStQueryLayout> getTMemLdStSupportQueryLayout(
+    Value memDesc, std::string *error = nullptr);
+
+bool isUnsupportedDirectTMemLdStDescriptorView(
+    Value memDesc, std::string *error = nullptr);
+
+FailureOr<gpu::MemDescType>
+inferStandaloneTMemViewType(Value memDesc, std::string *error = nullptr);
 
 FailureOr<TMemLdStEncodingInfo>
 computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             int maxnreg,
-                            std::function<InFlightDiagnostic()> emitError = {});
+                            std::function<InFlightDiagnostic()> emitError = {},
+                            std::optional<TMemLdStRowPlan> rowPlanOverride =
+                                std::nullopt);
+
+FailureOr<TMemLdStEncodingInfo>
+computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
+                            const LinearLayout &queryLayout, int maxnreg,
+                            std::function<InFlightDiagnostic()> emitError = {},
+                            std::optional<TMemLdStRowPlan> rowPlanOverride =
+                                std::nullopt);
+
+FailureOr<TMemLdStEncodingInfo>
+computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
+                            const TMemLdStQueryLayout &queryLayout, int maxnreg,
+                            std::function<InFlightDiagnostic()> emitError = {},
+                            std::optional<TMemLdStRowPlan> rowPlanOverride =
+                                std::nullopt);
+
+std::optional<TMemLdStPhysicalSupportPlan>
+getTMemLdStPhysicalSupportPlan(gpu::MemDescType memTy, unsigned numWarps,
+                               int maxnreg);
+
+std::optional<LinearLayout>
+getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
+                                unsigned numWarps,
+                                std::optional<TMemLdStRowPlan> rowPlanOverride);
 
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
@@ -115,14 +212,28 @@ FailureOr<gpu::MemDescType>
 inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
                        std::string *error = nullptr);
 
+TMemCopyFamily getTMemCopyFamily(const TMemCopyAtom &atom);
+
+StringRef stringifyTMemCopyFamily(TMemCopyFamily family);
+
+bool isDirectTMemCopyLayoutSupported(gpu::MemDescType memTy,
+                                     TMemCopyFamily family,
+                                     std::string *error = nullptr);
+
+std::optional<uint64_t>
+getDirectTMemCopySeedDescriptorImm(gpu::MemDescType srcTy,
+                                   TMemCopyFamily family);
+
 std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
                                             int bitwidth);
 
-std::optional<TMemCopyPlan> getTMemCopyPlan(const LinearLayout &cvt,
-                                            int bitwidth);
+llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
+                                                 int bitwidth);
 
-LinearLayout getTMemCopyDescriptorLayout(const LinearLayout &cvt,
-                                         const TMemCopyMessagePlan &message);
+llvm::SmallVector<LinearLayout>
+getTMemCopyDescriptorLayouts(gpu::MemDescType srcTy, const LinearLayout &shmemLl,
+                             const LinearLayout &cvt,
+                             const TMemCopyMessagePlan &message);
 
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,

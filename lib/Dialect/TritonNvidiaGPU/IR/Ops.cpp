@@ -26,7 +26,9 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/Support/LLVM.h"
 #include "triton/Analysis/Utility.h"
+#include "triton/Dialect/Gluon/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
@@ -605,38 +607,47 @@ LogicalResult TCGen5MMAOp::verify() {
                          << " operand must have a MMAv5-compatible tensor "
                             "memory layout, but got "
                          << layout
-                         << ". Use a canonical #ttng.tensor_memory_linear "
-                            "equivalent to a supported "
-                            "#ttng.tensor_memory_encoding, or reshape/permute "
-                            "the descriptor to a supported MMAv5 tile.";
+                         << ". Use a directly supported "
+                            "#ttng.tensor_memory_linear layout, or "
+                            "reshape/permute the descriptor to a supported "
+                            "MMAv5 tile.";
   };
-  auto aTmemEnc = isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(
-                      aEnc)
-                      ? matchTensorMemoryLegacyEncoding(getA().getType())
-                      : std::optional<TensorMemoryEncodingAttr>{};
+  auto lhsTy = getA().getType();
+  auto aTmemInfo = isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(
+                       aEnc)
+                       ? getMMAv5LhsLayoutInfo(getA().getType())
+                       : std::optional<MMAv5LhsLayoutInfo>{};
   if (isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc) &&
-      !aTmemEnc)
+      !aTmemInfo)
     return emitUnsupportedTMemLayout("LHS", aEnc);
-  auto retEnc = matchTensorMemoryLegacyEncoding(getD().getType());
-  if (!retEnc)
-    return emitUnsupportedTMemLayout("return", retType.getEncoding());
+  auto retInfo = getMMAv5AccumulatorLayoutInfo(retType);
+  if (!retInfo)
+    return emitUnsupportedTMemLayout("return", getD().getType().getEncoding());
 
   // Check colStride of TMEM operands
-  if (aTmemEnc) {
-    if (aTmemEnc->getColStride() != 1)
+  if (aTmemInfo) {
+    if (aTmemInfo->colStride != 1)
       return emitOpError("The col stride of the LHS operand must be 1");
   }
-  if (retEnc->getColStride() != 32 / retType.getElementTypeBitWidth())
+  if (retInfo->colStride != 32 / retType.getElementTypeBitWidth())
     return emitOpError("The col stride of the return operand must be 32 / ")
            << retType.getElementTypeBitWidth() << " but got "
-           << retEnc->getColStride();
+           << retInfo->colStride;
   // The maximum size of a MMA instruction is 128x256
-  auto ctaShape = getShapePerCTA(retEnc->getCGALayout().getCTASplitNum(),
-                                 retType.getShape());
-  auto instrSizeN = std::min<unsigned>(retEnc->getBlockN(), ctaShape[1]);
+  auto ctaShape =
+      getShapePerCTA(getCGALayout(retType.getEncoding()).getCTASplitNum(),
+                     retType.getShape());
+  auto instrSizeN = std::min<unsigned>(retInfo->mmaSizeN, ctaShape[1]);
   if (instrSizeN > 256)
     return emitOpError("The block size of the return operand must be less than "
                        "or equal to 256");
+  auto emitTwoCTARepeatNError = [&]() {
+    return emitOpError(
+        "We don't allow to emit more than one mma instruction along N. "
+        "Reduce the block or increase the number of warps or CTAs along N");
+  };
+  if (getTwoCtas() && (ctaShape[1] + instrSizeN - 1) / instrSizeN > 1)
+    return emitTwoCTARepeatNError();
 
   auto aCGA = getCGALayout(aEnc).getLinearLayout();
   auto bCGA = getCGALayout(bEnc).getLinearLayout();
@@ -686,20 +697,18 @@ LogicalResult TCGen5MMAOp::verify() {
     // right.
     // We could allow with a bit of effort SharedLinearLayouts that did not
     // divide on the right by a CGALayout, but for now we throw a lovely error.
-    auto dCGA = getCGALayout(getD().getType().getEncoding()).getLinearLayout();
+    auto dCGA = getCGALayout(retType.getEncoding()).getLinearLayout();
     auto nPerCTA = retType.getDimSize(1) / dCGA.getOutDimSize(outDims[1]);
     if (nPerCTA > 256)
-      return emitOpError(
-          "We don't allow to emit more than one mma instruction along N. "
-          "Reduce the block or increase the number of warps or CTAs along N");
+      return emitTwoCTARepeatNError();
   }
-  if (retEnc->getTwoCTAs() != getTwoCtas()) {
+  if (retInfo->twoCTAs != getTwoCtas()) {
     return emitOpError("The returned value's encoding must have twoCTA=")
            << getTwoCtas() << " to be used in a "
            << (getTwoCtas() ? "twoCTA" : "non-twoCTA") << " kernel";
   }
-  if (aTmemEnc) {
-    if (aTmemEnc->getTwoCTAs() != getTwoCtas()) {
+  if (aTmemInfo) {
+    if (aTmemInfo->twoCTAs != getTwoCtas()) {
       return emitOpError("The LHS operand's encoding must have twoCTA=")
              << getTwoCtas() << " to be used in a "
              << (getTwoCtas() ? "twoCTA" : "non-twoCTA") << " kernel";
@@ -708,7 +717,7 @@ LogicalResult TCGen5MMAOp::verify() {
 
   auto aLayout = toLinearLayout(getA().getType());
   auto bLayout = toLinearLayout(getB().getType());
-  auto dLayout = toLinearLayout(getD().getType());
+  auto dLayout = toLinearLayout(retType);
   auto log2nCTAs = dLayout.hasInDim(kBlock) ? dLayout.getInDimSizeLog2(kBlock)
                                             : 0;
   auto getBasisOrZero = [&](const LinearLayout &layout, int idx,
@@ -862,19 +871,48 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   Type btype =
       getScaledMMAOperandType(getB().getType().getElementType(), getBType());
   Type dtype = getD().getType().getElementType();
+  auto aEnc = getA().getType().getEncoding();
   if (failed(verifyMMADType(*this, atype, btype, dtype)))
     return failure();
-  auto enc = matchTensorMemoryLegacyEncoding(getD().getType());
-  if (!enc) {
+  if (isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc) &&
+      !getMMAv5LhsLayoutInfo(getA().getType())) {
     return emitOpError()
-           << "expected accumulator layout to be MMAv5-compatible tensor "
-              "memory, but got "
-           << getD().getType().getEncoding()
-           << ". Use a canonical #ttng.tensor_memory_linear equivalent to a "
-              "supported #ttng.tensor_memory_encoding.";
+           << "LHS operand must have a MMAv5-compatible tensor memory layout, "
+              "but got "
+           << aEnc
+           << ". Use a directly supported #ttng.tensor_memory_linear layout, "
+              "or reshape/permute the descriptor to a supported MMAv5 tile.";
   }
-  if (enc->getBlockM() != 128)
+  auto info = getMMAv5ScaledAccumulatorLayoutInfo(getD().getType());
+  if (!info) {
+    return emitOpError()
+           << "expected accumulator layout to be directly supported MMAv5 "
+              "block-scaled tensor memory, but got "
+           << getD().getType().getEncoding()
+           << ". Block-scaled tcgen05.mma currently requires a directly "
+              "supported MMAv5 tensor-memory linear layout; tile-permuted "
+              "accumulator layouts are not directly representable.";
+  }
+  if (info->mmaSizeM != 128)
     return emitOpError("only supports instruction shape blockM=128");
+  auto ctaShape = getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
+                                 getD().getType().getShape());
+  auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
+  if ((ctaShape[1] + instrSizeN - 1) / instrSizeN > 1 && instrSizeN == 32) {
+    return emitOpError()
+           << "direct block-scaled MMAv5 does not support repeated N=32 "
+              "instructions along N for "
+           << getD().getType().getEncoding()
+           << ". The public tensor-memory scales layout only exposes matrix-B "
+              "scale fragments at 64-column alignment, so layouts that would "
+              "need multiple N=32 scaled instructions must be reshaped to a "
+              "larger directly supported MMAv5 tile.";
+  }
+  if (getTwoCtas() && (ctaShape[1] + instrSizeN - 1) / instrSizeN > 1) {
+    return emitOpError(
+        "We don't allow to emit more than one mma instruction along N. "
+        "Reduce the block or increase the number of warps or CTAs along N");
+  }
   return success();
 }
 
@@ -1049,17 +1087,170 @@ void TCGen5MMAScaledOp::build(OpBuilder &builder, OperationState &state,
 
 bool TCGen5MMAScaledOp::isAsync() { return getIsAsync(); }
 
-// -- TMEMStoreOp --
 static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
-                                       MemDescType memdesc,
+                                       MemDescType memdesc, Value memdescValue,
                                        StringRef regName) {
   if (type.getRank() != 2)
     return op->emitOpError(regName) << " must be a 2D tensor";
   if (!type.getEncoding())
     return success();
+  if (isa<gluon::AutoEncodingAttr>(type.getEncoding())) {
+    return op->emitOpError(regName)
+           << " must have a concrete distributed layout, but got "
+           << type.getEncoding()
+           << ". Insert set_auto_layout or convert_layout before using a "
+              "TMEM load/store.";
+  }
 
-  if (isDistributedLayoutTMemCompatible(op, type, memdesc))
-    return success();
+  std::string unsupportedDescriptorViewError;
+  if (isUnsupportedDirectTMemLdStDescriptorView(memdescValue,
+                                                &unsupportedDescriptorViewError)) {
+    InFlightDiagnostic diag =
+        op->emitOpError(regName) << " has no supported register layout";
+    if (!unsupportedDescriptorViewError.empty())
+      diag.attachNote() << unsupportedDescriptorViewError;
+    return diag;
+  }
+  bool isViewLikeMemDesc =
+      isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp,
+                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
+                      gpu::MemDescReinterpretOp>(memdescValue.getDefiningOp());
+  bool disallowSupportRescueFor32x32Subview =
+      isViewLikeMemDesc && memdesc.getRank() == 2 && memdesc.getShape()[0] == 32 &&
+      memdesc.getShape()[1] == 32;
+
+  auto maxnreg = getContextualMaxNReg(op);
+  std::string supportQueryError;
+  auto trySupportQuery = [&](const TMemLdStQueryLayout &supportQuery,
+                             std::optional<TMemLdStRowPlan> rowPlan) {
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlan(supportQuery.layout);
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+    if (!rowPlan)
+      rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+    return succeeded(computeTMemLdStEncodingInfo(type, memdesc, supportQuery,
+                                                 maxnreg, /*emitError=*/{},
+                                                 rowPlan));
+  };
+  if (auto supportPlan =
+          getTMemLdStSubviewSupportPlan(memdescValue, &supportQueryError)) {
+    if (trySupportQuery(supportPlan->query, supportPlan->rowPlan)) {
+      return success();
+    }
+  }
+  if (!disallowSupportRescueFor32x32Subview) {
+    if (auto supportQuery = getTMemLdStSupportQueryLayout(memdescValue,
+                                                          &supportQueryError)) {
+      if (trySupportQuery(*supportQuery, std::nullopt))
+        return success();
+    }
+  }
+  std::string rawQueryError;
+  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+          memdescValue, /*preserveNonCanonicalView=*/true, &rawQueryError);
+      succeeded(rawQuery)) {
+    auto rowPlan = disallowSupportRescueFor32x32Subview
+                       ? std::optional<TMemLdStRowPlan>{}
+                       : getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+    if (!rowPlan && !disallowSupportRescueFor32x32Subview)
+      rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
+                                              /*emitError=*/{}, rowPlan))) {
+      return success();
+    }
+  }
+  auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
+  for (MemDescType queryTy : queryTypes) {
+    auto rowPlan = disallowSupportRescueFor32x32Subview
+                       ? std::optional<TMemLdStRowPlan>{}
+                       : getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+    if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
+                                              /*emitError=*/{}, rowPlan))) {
+      return success();
+    }
+  }
+
+  std::string standaloneError;
+  if (auto standaloneTy =
+          inferStandaloneTMemViewType(memdescValue, &standaloneError);
+      succeeded(standaloneTy)) {
+    if (!disallowSupportRescueFor32x32Subview) {
+      if (auto maybePlan = getTMemLdStPhysicalSupportPlan(
+              *standaloneTy, lookupNumWarps(op), maxnreg);
+          maybePlan && maybePlan->regTy == type) {
+        return success();
+      }
+    }
+  }
+
+  std::string requestedLayoutDetails;
+  {
+    llvm::raw_string_ostream os(requestedLayoutDetails);
+    ScopedDiagnosticHandler handler(op->getContext(),
+                                    [&](Diagnostic &diag) { diag.print(os); });
+    std::string supportError;
+    if (auto supportPlan =
+            getTMemLdStSubviewSupportPlan(memdescValue, &supportError)) {
+      auto rowPlan = supportPlan->rowPlan;
+      if (!rowPlan)
+        rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
+      if (!rowPlan)
+        rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+      if (!rowPlan)
+        rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+      (void)computeTMemLdStEncodingInfo(type, memdesc, supportPlan->query,
+                                        maxnreg,
+                                        [&]() {
+                                          return mlir::emitError(op->getLoc());
+                                        },
+                                        rowPlan);
+    }
+    if (!disallowSupportRescueFor32x32Subview) {
+      if (auto supportQuery =
+              getTMemLdStSupportQueryLayout(memdescValue, &supportError)) {
+        auto rowPlan = getTMemLdStRowPlan(supportQuery->layout);
+        if (!rowPlan)
+          rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+        if (!rowPlan)
+          rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+        (void)computeTMemLdStEncodingInfo(type, memdesc, *supportQuery, maxnreg,
+                                          [&]() {
+                                            return mlir::emitError(op->getLoc());
+                                          },
+                                          rowPlan);
+      }
+    }
+    std::string rawError;
+    if (requestedLayoutDetails.empty()) {
+      if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+              memdescValue, /*preserveNonCanonicalView=*/true, &rawError);
+          succeeded(rawQuery)) {
+        auto rowPlan = disallowSupportRescueFor32x32Subview
+                           ? std::optional<TMemLdStRowPlan>{}
+                           : getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+        if (!rowPlan && !disallowSupportRescueFor32x32Subview)
+          rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+        (void)computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
+                                          [&]() {
+                                            return mlir::emitError(op->getLoc());
+                                          },
+                                          rowPlan);
+      }
+    }
+    if (requestedLayoutDetails.empty()) {
+      for (MemDescType queryTy : queryTypes) {
+        auto rowPlan = disallowSupportRescueFor32x32Subview
+                           ? std::optional<TMemLdStRowPlan>{}
+                           : getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+        (void)computeTMemLdStEncodingInfo(
+            type, queryTy, maxnreg,
+            [&]() { return mlir::emitError(op->getLoc()); }, rowPlan);
+        if (!requestedLayoutDetails.empty())
+          break;
+      }
+    }
+  }
 
   SmallVector<DistributedEncodingTrait> layouts =
       getTmemCompatibleLayouts(op, type, memdesc);
@@ -1069,6 +1260,11 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   diag.attachNote() << "Got: " << type.getEncoding();
   for (Attribute layout : layouts)
     diag.attachNote() << "potential TMEM layout: " << layout;
+  if (!requestedLayoutDetails.empty()) {
+    diag.attachNote()
+        << "requested layout direct-lowering details:\n"
+        << StringRef(requestedLayoutDetails).trim();
+  }
   if (layouts.empty()) {
     diag.attachNote()
         << "No TMEM-compatible register layout exists for this operand. "
@@ -1089,7 +1285,7 @@ LogicalResult TMEMStoreOp::verify() {
     return emitOpError("Cannot store into an immutable alloc");
   }
   if (failed(
-          verifyTMEMOperand(*this, getSrc().getType(), getDst().getType(),
+          verifyTMEMOperand(*this, getSrc().getType(), getDst().getType(), getDst(),
                             "source")))
     return failure();
   return triton::gpu::verifyMemoryOpTypes(*this, getSrc().getType(),
@@ -1103,7 +1299,7 @@ LogicalResult TMEMLoadOp::verify() {
     return emitOpError("source must be a tensor memory buffer.");
   if (!isTensorMemoryEncoding(getSrc().getType().getEncoding()))
     return emitOpError("should use tensor memory encoding.");
-  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(),
+  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(), getSrc(),
                                "result")))
     return failure();
   if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()) &&
@@ -1144,15 +1340,82 @@ LogicalResult TMEMLoadOp::verify() {
 
   // Validate reduction conditions
   if (redOp) {
+    if (!elemTy.isF32())
+      return emitOpError(
+          "tmem_load reduction currently requires f32 element type");
     if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()))
       return emitOpError(
           "tmem_load reduction is not supported for tensor memory scales.");
+    if (!isReductionFriendlyTmemSourceLayout(getSrc().getType()))
+      return emitOpError(
+          "tmem_load reduction source layout is not directly "
+          "tcgen05.ld.red-compatible; use tmem.load(...)+tt.reduce(...) "
+          "explicitly for software reduction");
     auto regTy = getType();
-    auto memTy = getSrc().getType();
     auto maxnreg = getContextualMaxNReg(*this);
-    auto encodingInfoOr = computeTMemLdStEncodingInfo(regTy, memTy, maxnreg);
-    if (failed(encodingInfoOr))
-      return emitOpError("failed to compute TMEM encoding info");
+    std::string encodingDetails;
+    auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(getSrc());
+    auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
+      llvm::raw_string_ostream os(encodingDetails);
+      ScopedDiagnosticHandler handler(getContext(),
+                                      [&](Diagnostic &diag) { diag.print(os); });
+      std::string supportError;
+      if (auto supportQuery = getTMemLdStSupportQueryLayout(getSrc(),
+                                                            &supportError)) {
+        auto srcMemTy = cast<MemDescType>(getSrc().getType());
+        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
+        if (!rowPlan)
+          rowPlan = getTMemLdStRowPlan(supportQuery->layout);
+        if (!rowPlan)
+          rowPlan = getBackingTMemLdStRowPlan(getSrc());
+        if (auto maybeInfo = computeTMemLdStEncodingInfo(
+                regTy, srcMemTy, *supportQuery, maxnreg,
+                [&]() { return mlir::emitError(getOperation()->getLoc()); },
+                rowPlan);
+            succeeded(maybeInfo)) {
+          return maybeInfo;
+        }
+      }
+      std::string rawError;
+      if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+              getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
+          succeeded(rawQuery)) {
+        auto srcMemTy = cast<MemDescType>(getSrc().getType());
+        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
+        if (!rowPlan)
+          rowPlan = getBackingTMemLdStRowPlan(getSrc());
+        if (auto maybeInfo = computeTMemLdStEncodingInfo(
+                regTy, srcMemTy, *rawQuery, maxnreg,
+                [&]() { return mlir::emitError(getOperation()->getLoc()); },
+                rowPlan);
+            succeeded(maybeInfo)) {
+          return maybeInfo;
+        }
+      }
+      for (MemDescType queryTy : queryTypes) {
+        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
+        if (auto maybeInfo = computeTMemLdStEncodingInfo(
+                regTy, queryTy, maxnreg,
+                [&]() { return mlir::emitError(getOperation()->getLoc()); },
+                rowPlan);
+            succeeded(maybeInfo)) {
+          return maybeInfo;
+        }
+        if (!encodingDetails.empty())
+          break;
+      }
+      return failure();
+    }();
+    if (failed(encodingInfoOr)) {
+      InFlightDiagnostic diag = emitOpError(
+          "failed to compute TMEM encoding info for reduction");
+      if (!encodingDetails.empty()) {
+        diag.attachNote()
+            << "requested layout direct-lowering details:\n"
+            << StringRef(encodingDetails).trim();
+      }
+      return diag;
+    }
 
     if (encodingInfoOr->unpacked)
       return emitOpError(
@@ -1163,11 +1426,17 @@ LogicalResult TMEMLoadOp::verify() {
     // kReg bases along N then cross-warp/block reduction becomes needed.
     auto kReg = StringAttr::get(regTy.getContext(), "register");
     int dimM = 0, dimN = 1;
+    auto regLayout = toLinearLayout(regTy);
     auto regDims = toLinearEncoding(regTy).basesPerDim(kReg);
-    if (regDims[dimN] != toLinearLayout(regTy).getOutDimSizes().begin()[dimN] ||
+    if (regDims[dimN] != regLayout.getOutDimSizes().begin()[dimN] ||
         regDims[dimM] != 1) {
-      return emitOpError("tmem_load reduction with N dimension sharded across "
-                         "threads is not supported.");
+      InFlightDiagnostic diag = emitOpError(
+          "tmem_load reduction with N dimension sharded across threads is not "
+          "supported.");
+      diag.attachNote() << "Reduction requires all N elements to reside in the "
+                           "register dimension and M to be unsharded.";
+      diag.attachNote() << "Got register layout:\n" << regLayout.toString();
+      return diag;
     }
   }
 
@@ -1180,7 +1449,8 @@ LogicalResult TMEMAllocOp::verify() {
     return emitOpError("should use tensor memory encoding");
   if (getSrc() &&
       failed(
-          verifyTMEMOperand(*this, getSrc().getType(), getType(), "source")))
+          verifyTMEMOperand(*this, getSrc().getType(), getType(), getResult(),
+                            "source")))
     return failure();
   return triton::gpu::verifyAllocOp(*this, getSrc(), getType());
 }
@@ -1249,7 +1519,15 @@ LogicalResult TMEMCopyOp::verify() {
                        "representable in a matrix descriptor.");
   }
   auto shmemLl = toLinearLayout(srcTy);
-  auto tmemLl = toLinearLayout(dstTy);
+  std::string tmemError;
+  auto maybeStandaloneDstTy = inferStandaloneTMemViewType(getDst(), &tmemError);
+  if (failed(maybeStandaloneDstTy)) {
+    return emitOpError(tmemError.empty()
+                           ? "unsupported tensor memory descriptor view for "
+                             "tcgen05.copy"
+                           : tmemError);
+  }
+  auto tmemLl = toLinearLayout(*maybeStandaloneDstTy);
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
   auto cvt = tmemLl.invertAndCompose(shmemLl);
@@ -1262,21 +1540,12 @@ LogicalResult TMEMCopyOp::verify() {
   auto nvmmaEnc =
       dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(srcTy.getEncoding());
   int bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
-  auto copyPlan = getTMemCopyPlan(cvt, bitwidth);
-  auto copyFamily = [&](const TMemCopyAtom &atom) -> std::string {
-    if (atom.multicast == 1)
-      return "warpx2::01_23.64x128b";
-    if (atom.multicast == 2)
-      return "warpx2::02_13.64x128b";
-    if (atom.multicast == 3)
-      return "warpx4.32x128b";
-    return atom.bCol == 256 ? "128x256b" : "128x128b";
-  };
+  auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
-    if (!copyPlan) {
+    if (copyPlans.empty()) {
       auto diag = emitOpError(
           "The source shared layout does not match any supported "
           "tcgen05.copy family for tensor memory scales.");
@@ -1285,13 +1554,28 @@ LogicalResult TMEMCopyOp::verify() {
              "warpx2::02_13.64x128b, and warpx4.32x128b.";
       return failure();
     }
-    for (const auto &message : copyPlan->messages) {
-      auto descLayout = getTMemCopyDescriptorLayout(cvt, message);
-      if (canRepresentAsMMASmemDescriptor(descLayout, message.instrShape,
-                                          bitwidth, 0, 5))
-        continue;
-
-      std::string family = copyFamily(message.atom);
+    auto isScalesPlanSupported = [&](const TMemCopyPlan &plan) {
+      std::string layoutSupportError;
+      if (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family,
+                                           &layoutSupportError))
+        return false;
+      return llvm::all_of(plan.messages, [&](const auto &message) {
+        auto srcDescLayouts =
+            getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
+        return llvm::any_of(srcDescLayouts,
+                            [&](const LinearLayout &srcDescLayout) {
+                              static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
+                              return llvm::any_of(ArrayRef(kDescriptorOrientations),
+                                                  [&](unsigned mnDim) {
+                                return canRepresentAsMMASmemDescriptor(
+                                    srcDescLayout, message.descriptorShape,
+                                    bitwidth, mnDim, 5);
+                              });
+                            });
+      });
+    };
+    if (!llvm::any_of(copyPlans, isScalesPlanSupported)) {
+      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
       auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
                   << family
                   << ", but Triton could not synthesize a compatible "
@@ -1310,13 +1594,6 @@ LogicalResult TMEMCopyOp::verify() {
       return emitOpError(
           "The source and destination must have the same shape.");
     }
-    auto tmemEnc = matchTensorMemoryLegacyEncoding(dstTy);
-    if (!tmemEnc) {
-      return emitOpError("Incorrect tmem layout.");
-    }
-    if (tmemEnc->getBlockM() != 128) {
-      return emitOpError("Tmem layout must have blockM=128.");
-    }
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() == 0) {
       return emitOpError("Source layout should be swizzled.");
     }
@@ -1324,7 +1601,7 @@ LogicalResult TMEMCopyOp::verify() {
     if (srcTy.getElementType().getIntOrFloatBitWidth() != 32) {
       return emitOpError("Source element type should be 32-bit.");
     }
-    if (!copyPlan) {
+    if (copyPlans.empty()) {
       auto diag = emitOpError(
           "The source shared layout does not match any recognized "
           "tcgen05.copy family for non-scales tensor memory copies.");
@@ -1338,18 +1615,43 @@ LogicalResult TMEMCopyOp::verify() {
              "those families.";
       return failure();
     }
-    for (const auto &message : copyPlan->messages) {
-      auto descLayout = getTMemCopyDescriptorLayout(cvt, message);
-      if (canRepresentAsMMASmemDescriptor(descLayout, message.instrShape,
-                                          bitwidth, 0, 5))
-        continue;
-
-      std::string family = copyFamily(message.atom);
+    auto isNoScalesPlanSupported = [&](const TMemCopyPlan &plan) {
+      std::string layoutSupportError;
+      if (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family,
+                                           &layoutSupportError))
+        return false;
+      return llvm::all_of(plan.messages, [&](const auto &message) {
+        if (message.useDirectSeedDescriptor &&
+            getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
+          return true;
+        auto srcDescLayouts =
+            getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
+        return llvm::any_of(srcDescLayouts,
+                            [&](const LinearLayout &srcDescLayout) {
+                              static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
+                              return llvm::any_of(ArrayRef(kDescriptorOrientations),
+                                                  [&](unsigned mnDim) {
+                                return canRepresentAsMMASmemDescriptor(
+                                    srcDescLayout, message.descriptorShape,
+                                    bitwidth, mnDim, 5);
+                              });
+                            });
+      });
+    };
+    if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
+      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
+      std::string layoutSupportError;
+      (void)isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy,
+                                            copyPlans.front().family,
+                                            &layoutSupportError);
       auto diag =
           emitOpError("The source shared layout maps to tcgen05.copy.")
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for it.";
+      if (!layoutSupportError.empty()) {
+        diag.attachNote() << layoutSupportError;
+      }
       diag.attachNote()
           << "Use the canonical shared layout for tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "

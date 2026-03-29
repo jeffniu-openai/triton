@@ -27,6 +27,8 @@
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
 
+#include <algorithm>
+#include <array>
 #include <functional>
 #include <numeric>
 
@@ -126,6 +128,127 @@ static int64_t getShapeProduct(ArrayRef<int64_t> shape) {
 }
 
 static std::optional<LinearLayout>
+buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
+                                         unsigned blockM, unsigned blockN,
+                                         unsigned colStride,
+                                         gpu::CGAEncodingAttr cgaLayout,
+                                         bool twoCTAs,
+                                         std::string *error = nullptr) {
+  auto setError = [&](const Twine &msg) {
+    if (error)
+      *error = msg.str();
+    return std::nullopt;
+  };
+  if (shape.size() != 2) {
+    return setError("expected a rank-2 tensor memory shape but got " +
+                    Twine(shape.size()) + " dimensions");
+  }
+  if (blockM != 64 && blockM != 128)
+    return setError("unsupported legacy-like TMEM blockM=" + Twine(blockM) +
+                    "; expected 64 or 128");
+  if (!llvm::isPowerOf2_32(blockN) || blockN > 512)
+    return setError("unsupported legacy-like TMEM blockN=" + Twine(blockN));
+  if (!(colStride == 1 || colStride == 2 || colStride == 4))
+    return setError("unsupported legacy-like TMEM colStride=" +
+                    Twine(colStride));
+
+  auto *ctx = cgaLayout.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto dims = standardOutDimNames(ctx, 2);
+  auto cgaLL = cgaLayout.getLinearLayout();
+  bool isM64TwoCTA = blockM == 64 && twoCTAs;
+
+  auto shapePerCTA = getShapePerCTA(cgaLayout.getCTASplitNum(), shape);
+  if (shapePerCTA.size() != 2) {
+    return setError("expected a rank-2 per-CTA tensor memory shape but got " +
+                    Twine(shapePerCTA.size()) + " dimensions");
+  }
+
+  unsigned effectiveBlockN = std::min<int64_t>(blockN, shapePerCTA[1]);
+  LinearLayout tile = LinearLayout::zeros1D(colStride, kCol, dims[1]);
+  if (blockM == 64 && !twoCTAs) {
+    tile *= LinearLayout::identity1D(16, kRow, dims[0]) *
+            LinearLayout::identity1D(effectiveBlockN, kCol, dims[1]);
+    auto bases = tile.getBases();
+    if (shapePerCTA[0] > blockM) {
+      bases[kRow].push_back({64, 0});
+    } else if (shapePerCTA[1] > effectiveBlockN) {
+      bases[kRow].push_back({0, static_cast<int32_t>(effectiveBlockN)});
+    } else {
+      // Empty half-tile when the allocation shape does not use this row group.
+      bases[kRow].push_back({0, 0});
+    }
+    bases[kRow].push_back({16, 0});
+    bases[kRow].push_back({32, 0});
+    std::string layoutError;
+    auto maybeTile = LinearLayout::tryCreate(std::move(bases), dims,
+                                             /*requireSurjective=*/true,
+                                             &layoutError);
+    if (!maybeTile)
+      return setError(layoutError);
+    tile = *maybeTile;
+  } else {
+    tile *= LinearLayout::identity1D(blockM, kRow, dims[0]) *
+            LinearLayout::identity1D(effectiveBlockN, kCol, dims[1]);
+    if (isM64TwoCTA) {
+      auto bases = tile.getBases();
+      auto colIt = bases.find(kCol);
+      if (colIt == bases.end() || colIt->second.empty()) {
+        return setError("legacy-like twoCTA blockM=64 TMEM layout requires "
+                        "at least one column basis");
+      }
+      bases[kRow].push_back(colIt->second.back());
+      colIt->second.pop_back();
+      std::string layoutError;
+      auto maybeTile = LinearLayout::tryCreate(
+          std::move(bases), tile.getOutDims(),
+          /*requireSurjective=*/tile.isSurjective(), &layoutError);
+      if (!maybeTile)
+        return setError(layoutError);
+      tile = *maybeTile;
+    }
+  }
+
+  auto tileM = tile.getOutDimSize(dims[0]);
+  auto tileN = tile.getOutDimSize(dims[1]);
+  if (shapePerCTA[0] < tileM || shapePerCTA[1] < tileN) {
+    return setError("shape per CTA " + Twine(shapePerCTA[0]) + "x" +
+                    Twine(shapePerCTA[1]) +
+                    " is smaller than the TMEM tile " + Twine(tileM) + "x" +
+                    Twine(tileN));
+  }
+  if (shapePerCTA[0] % tileM != 0 || shapePerCTA[1] % tileN != 0) {
+    return setError("shape per CTA " + Twine(shapePerCTA[0]) + "x" +
+                    Twine(shapePerCTA[1]) +
+                    " is not an integer multiple of the TMEM tile " +
+                    Twine(tileM) + "x" + Twine(tileN));
+  }
+  auto repsM = shapePerCTA[0] / tileM;
+  auto repsN = shapePerCTA[1] / tileN;
+  if (!llvm::isPowerOf2_32(repsM) || !llvm::isPowerOf2_32(repsN)) {
+    return setError("shape per CTA " + Twine(shapePerCTA[0]) + "x" +
+                    Twine(shapePerCTA[1]) +
+                    " expands the TMEM tile by non-power-of-two factors " +
+                    Twine(repsM) + "x" + Twine(repsN));
+  }
+
+  // Broadcast the remaining dimensions in order [0, 1].
+  tile = tile * LinearLayout::identity1D(repsM, kCol, dims[0]) *
+         LinearLayout::identity1D(repsN, kCol, dims[1]);
+  tile *= cgaLL;
+  auto expectedElems = getShapeProduct(shape);
+  auto actualElems = static_cast<int64_t>(tile.getTotalOutDimSize());
+  if (actualElems != expectedElems) {
+    return setError("TMEM tile expands to " + Twine(actualElems) +
+                    " logical elements for requested shape " +
+                    stringifyShape(shape) + " (" + Twine(expectedElems) +
+                    " elements)");
+  }
+  return tile;
+}
+
+static std::optional<LinearLayout>
 canonicalizeLegacyTensorMemoryLayout(ArrayRef<int64_t> shape, Attribute encoding,
                                      std::string *error = nullptr) {
   auto legacy = cast<TensorMemoryEncodingAttr>(encoding);
@@ -140,12 +263,13 @@ canonicalizeLegacyTensorMemoryLayout(ArrayRef<int64_t> shape, Attribute encoding
   }
   auto trailingShape = shape.take_back(2);
   std::string baseError;
-  auto base =
-      triton::gpu::tensorMemoryToLinearLayout(trailingShape, legacy, &baseError);
-    if (!base) {
-      if (error != nullptr) {
-      *error = "tensor memory layout sugar " +
-               stringifyAttribute(encoding) +
+  auto base = buildCanonicalLegacyLikeTMemLinearLayout(
+      trailingShape, legacy.getBlockM(), legacy.getBlockN(),
+      legacy.getColStride(), legacy.getCGALayout(), legacy.getTwoCTAs(),
+      &baseError);
+  if (!base) {
+    if (error != nullptr) {
+      *error = "tensor memory layout sugar " + stringifyAttribute(encoding) +
                " cannot be canonicalized for shape " +
                stringifyShape(trailingShape) + ": " + baseError +
                ". Use #ttng.tensor_memory_linear for arbitrary TMEM views, or "
@@ -321,6 +445,20 @@ getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
   return linear;
 }
 
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, unsigned blockM,
+                               unsigned blockN, unsigned colStride,
+                               gpu::CGAEncodingAttr cgaLayout, bool twoCTAs,
+                               std::string *error) {
+  auto maybeLayout = buildCanonicalLegacyLikeTMemLinearLayout(
+      shape, blockM, blockN, colStride, cgaLayout, twoCTAs, error);
+  if (!maybeLayout)
+    return std::nullopt;
+  return tryMakeTensorMemoryLinearEncoding(cgaLayout.getContext(),
+                                           std::move(*maybeLayout), twoCTAs,
+                                           error);
+}
+
 LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
                                                   Attribute layout) {
   std::string error;
@@ -380,71 +518,517 @@ LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout) {
   return layout.transposeOuts(standardOutDimNames(ctx, layout.getNumOutDims()));
 }
 
-std::optional<TensorMemoryEncodingAttr>
-matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout) {
-  if (auto legacy = dyn_cast<TensorMemoryEncodingAttr>(layout))
-    return legacy;
-  auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout);
-  if (!linear || shape.size() != 2)
+struct MMAv5TMemLayoutPlan {
+  unsigned instrShapeM;
+  unsigned instrShapeN;
+  unsigned colStride;
+  bool twoCTAs;
+};
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5Family(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
+                gpu::CGAEncodingAttr cga, bool twoCTAs,
+                ArrayRef<unsigned> blockNs,
+                std::optional<unsigned> preferredColStride = std::nullopt) {
+  if (shape.size() != 2)
     return std::nullopt;
+
   auto normalizedLinear =
-      normalizeTensorMemoryLinearLayoutForAnalysis(linear.getLinearLayout());
-  auto cga = linear.getCGALayout();
-  if (linear.getTwoCTAs()) {
-    auto kBlock = StringAttr::get(layout.getContext(), "block");
-    if (cga.getLinearLayout().getBasis(kBlock, 0) != ArrayRef<int32_t>{1, 0})
-      return std::nullopt;
-  }
-  std::optional<TensorMemoryEncodingAttr> bestMatch;
-  bool isM64TwoCTA = linear.getTwoCTAs() &&
-                     llvm::any_of(cga.getCTAsPerCGA(),
-                                  [](unsigned count) { return count > 1; });
-  auto isBetterMatch = [&](TensorMemoryEncodingAttr candidate) {
-    if (!bestMatch)
+      normalizeTensorMemoryLinearLayoutForAnalysis(canonicalLayout);
+  if (normalizedLinear.getNumOutDims() != 2)
+    return std::nullopt;
+
+  auto *ctx = (*normalizedLinear.getOutDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+
+  auto basisIsWholeTileMultiple = [](ArrayRef<int32_t> basis, unsigned tileM,
+                                     unsigned tileN) {
+    return basis.size() == 2 && basis[0] % static_cast<int32_t>(tileM) == 0 &&
+           basis[1] % static_cast<int32_t>(tileN) == 0;
+  };
+
+  auto gatherTileBases =
+      [&](const LinearLayout &layout, StringAttr dim, unsigned bitCount) {
+        SmallVector<std::array<int32_t, 2>> bases;
+        bases.reserve(bitCount);
+        for (unsigned i = 0; i < bitCount; ++i) {
+          auto basis = layout.getBasis(dim, i);
+          std::array<int32_t, 2> entry;
+          entry[0] = basis[0];
+          entry[1] = basis[1];
+          bases.push_back(entry);
+        }
+        return bases;
+      };
+
+  auto matchesTilePreservingFamily =
+      [&](const LinearLayout &candidateLayout, unsigned tileM,
+          unsigned tileN) -> bool {
+        if (candidateLayout.getNumOutDims() != 2 ||
+            candidateLayout.getOutDims() != normalizedLinear.getOutDims())
+          return false;
+        if (!normalizedLinear.hasInDim(kRow) || !normalizedLinear.hasInDim(kCol) ||
+            !candidateLayout.hasInDim(kRow) || !candidateLayout.hasInDim(kCol))
+          return false;
+
+        auto checkDim = [&](StringAttr dim, unsigned tileSize) {
+          unsigned tileBits = llvm::Log2_64(tileSize);
+          unsigned candidateBits = candidateLayout.getInDimSizeLog2(dim);
+          unsigned dimBits = normalizedLinear.getInDimSizeLog2(dim);
+          if (tileBits > dimBits || tileBits > candidateBits)
+            return false;
+          auto canonicalBases = gatherTileBases(normalizedLinear, dim, tileBits);
+          auto candidateBases = gatherTileBases(candidateLayout, dim, tileBits);
+          if (canonicalBases != candidateBases)
+            return false;
+          for (unsigned i = tileBits; i < dimBits; ++i) {
+            if (!basisIsWholeTileMultiple(normalizedLinear.getBasis(dim, i), tileM,
+                                          tileN))
+              return false;
+          }
+          return true;
+        };
+
+        if (!checkDim(kRow, tileM) || !checkDim(kCol, tileN))
+          return false;
+
+        for (StringAttr dim : normalizedLinear.getInDimNames()) {
+          if (dim == kRow || dim == kCol)
+            continue;
+          unsigned dimBits = normalizedLinear.getInDimSizeLog2(dim);
+          for (unsigned i = 0; i < dimBits; ++i) {
+            if (!basisIsWholeTileMultiple(normalizedLinear.getBasis(dim, i), tileM,
+                                          tileN))
+              return false;
+          }
+        }
+        return true;
+      };
+
+  std::optional<MMAv5TMemLayoutPlan> bestPlan;
+  auto isBetterMatch = [&](const MMAv5TMemLayoutPlan &candidate) {
+    if (!bestPlan)
       return true;
     auto candidateArea =
-        static_cast<uint64_t>(candidate.getBlockM()) * candidate.getBlockN();
+        static_cast<uint64_t>(candidate.instrShapeM) * candidate.instrShapeN;
     auto bestArea =
-        static_cast<uint64_t>(bestMatch->getBlockM()) * bestMatch->getBlockN();
+        static_cast<uint64_t>(bestPlan->instrShapeM) * bestPlan->instrShapeN;
     if (candidateArea != bestArea)
       return candidateArea > bestArea;
-    if (candidate.getBlockM() != bestMatch->getBlockM())
-      return candidate.getBlockM() > bestMatch->getBlockM();
-    if (candidate.getBlockN() != bestMatch->getBlockN())
-      return candidate.getBlockN() > bestMatch->getBlockN();
-    // Prefer the densest legacy layout when multiple legacy encodings
-    // normalize to the same canonical TMEM-linear layout.
-    return candidate.getColStride() < bestMatch->getColStride();
+    if (candidate.instrShapeM != bestPlan->instrShapeM)
+      return candidate.instrShapeM > bestPlan->instrShapeM;
+    if (candidate.instrShapeN != bestPlan->instrShapeN)
+      return candidate.instrShapeN > bestPlan->instrShapeN;
+    if (preferredColStride) {
+      bool candidateMatches = candidate.colStride == *preferredColStride;
+      bool bestMatches = bestPlan->colStride == *preferredColStride;
+      if (candidateMatches != bestMatches)
+        return candidateMatches;
+    }
+    return candidate.colStride < bestPlan->colStride;
   };
+
   for (unsigned blockM : {64u, 128u}) {
-    for (unsigned blockN = 1; blockN <= 512; blockN <<= 1) {
-      if (isM64TwoCTA && blockM == 64 && blockN == 1)
-        continue;
+    for (unsigned blockN : blockNs) {
       for (unsigned colStride : {1u, 2u, 4u}) {
-        auto candidate = TensorMemoryEncodingAttr::get(
-            layout.getContext(), blockM, blockN, colStride, cga,
-            linear.getTwoCTAs());
-        std::string candidateError;
-        auto maybeCandidate = tryGetCanonicalTensorMemoryLinearLayout(
-            shape, candidate, &candidateError);
+        auto maybeCandidate = buildCanonicalLegacyLikeTMemLinearLayout(
+            shape, blockM, blockN, colStride, cga, twoCTAs,
+            /*error=*/nullptr);
         if (!maybeCandidate)
           continue;
-        auto normalizedCandidate = normalizeTensorMemoryLinearLayoutForAnalysis(
-            *maybeCandidate);
-        if (normalizedCandidate == normalizedLinear && isBetterMatch(candidate))
-          bestMatch = candidate;
+        auto normalizedCandidate =
+            normalizeTensorMemoryLinearLayoutForAnalysis(*maybeCandidate);
+        if (!matchesTilePreservingFamily(normalizedCandidate, blockM, blockN))
+          continue;
+        MMAv5TMemLayoutPlan candidatePlan{
+            /*instrShapeM=*/blockM,
+            /*instrShapeN=*/blockN,
+            /*colStride=*/colStride,
+            /*twoCTAs=*/twoCTAs,
+        };
+        if (isBetterMatch(candidatePlan))
+          bestPlan = candidatePlan;
       }
     }
   }
-  return bestMatch;
+
+  return bestPlan;
 }
 
-std::optional<TensorMemoryEncodingAttr>
-matchTensorMemoryLegacyEncoding(MemDescType memDescType) {
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5Family(ArrayRef<int64_t> shape, Attribute layout,
+                ArrayRef<unsigned> blockNs,
+                std::optional<unsigned> preferredColStride = std::nullopt) {
+  if (shape.size() != 2)
+    return std::nullopt;
+
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(shape, layout, /*error=*/nullptr);
+  if (!maybeCanonical)
+    return std::nullopt;
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+  return planMMAv5Family(shape, *maybeCanonical, gpu::getCGALayout(layout),
+                         *twoCTAs, blockNs, preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5ExactFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
+                     gpu::CGAEncodingAttr cga, bool twoCTAs,
+                     ArrayRef<unsigned> blockNs,
+                     std::optional<unsigned> preferredColStride = std::nullopt) {
+  if (shape.size() != 2)
+    return std::nullopt;
+
+  auto normalizedLinear =
+      normalizeTensorMemoryLinearLayoutForAnalysis(canonicalLayout);
+
+  std::optional<MMAv5TMemLayoutPlan> bestPlan;
+  auto isBetterMatch = [&](const MMAv5TMemLayoutPlan &candidate) {
+    if (!bestPlan)
+      return true;
+    auto candidateArea =
+        static_cast<uint64_t>(candidate.instrShapeM) * candidate.instrShapeN;
+    auto bestArea =
+        static_cast<uint64_t>(bestPlan->instrShapeM) * bestPlan->instrShapeN;
+    if (candidateArea != bestArea)
+      return candidateArea > bestArea;
+    if (candidate.instrShapeM != bestPlan->instrShapeM)
+      return candidate.instrShapeM > bestPlan->instrShapeM;
+    if (candidate.instrShapeN != bestPlan->instrShapeN)
+      return candidate.instrShapeN > bestPlan->instrShapeN;
+    if (preferredColStride) {
+      bool candidateMatches = candidate.colStride == *preferredColStride;
+      bool bestMatches = bestPlan->colStride == *preferredColStride;
+      if (candidateMatches != bestMatches)
+        return candidateMatches;
+    }
+    return candidate.colStride < bestPlan->colStride;
+  };
+
+  for (unsigned blockM : {64u, 128u}) {
+    for (unsigned blockN : blockNs) {
+      for (unsigned colStride : {1u, 2u, 4u}) {
+        auto maybeCandidate = buildCanonicalLegacyLikeTMemLinearLayout(
+            shape, blockM, blockN, colStride, cga, twoCTAs,
+            /*error=*/nullptr);
+        if (!maybeCandidate)
+          continue;
+        auto normalizedCandidate =
+            normalizeTensorMemoryLinearLayoutForAnalysis(*maybeCandidate);
+        if (normalizedCandidate != normalizedLinear)
+          continue;
+        MMAv5TMemLayoutPlan candidatePlan{
+            /*instrShapeM=*/blockM,
+            /*instrShapeN=*/blockN,
+            /*colStride=*/colStride,
+            /*twoCTAs=*/twoCTAs,
+        };
+        if (isBetterMatch(candidatePlan))
+          bestPlan = candidatePlan;
+      }
+    }
+  }
+  return bestPlan;
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5ExactFamily(ArrayRef<int64_t> shape, Attribute layout,
+                     ArrayRef<unsigned> blockNs,
+                     std::optional<unsigned> preferredColStride = std::nullopt) {
+  if (shape.size() != 2)
+    return std::nullopt;
+
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(shape, layout, /*error=*/nullptr);
+  if (!maybeCanonical)
+    return std::nullopt;
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+  return planMMAv5ExactFamily(shape, *maybeCanonical, gpu::getCGALayout(layout),
+                              *twoCTAs, blockNs, preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5AccumulatorFamily(ArrayRef<int64_t> shape, Attribute layout,
+                          std::optional<unsigned> preferredColStride =
+                              std::nullopt) {
+  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  if (isa<TensorMemoryEncodingAttr>(layout)) {
+    if (auto exact =
+            planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
+                                 preferredColStride)) {
+      return exact;
+    }
+  }
+  return planMMAv5Family(shape, layout, kAccumulatorBlockNs,
+                         preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5AccumulatorFamily(ArrayRef<int64_t> shape,
+                           const LinearLayout &canonicalLayout,
+                           gpu::CGAEncodingAttr cga, bool twoCTAs,
+                           std::optional<unsigned> preferredColStride =
+                               std::nullopt) {
+  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  return planMMAv5Family(shape, canonicalLayout, cga, twoCTAs,
+                         kAccumulatorBlockNs, preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5LhsFamily(ArrayRef<int64_t> shape, Attribute layout,
+                   std::optional<unsigned> preferredColStride = std::nullopt) {
+  static constexpr unsigned kLhsBlockNs[] = {32u, 64u, 128u, 256u};
+  if (isa<TensorMemoryEncodingAttr>(layout)) {
+    if (auto exact =
+            planMMAv5ExactFamily(shape, layout, kLhsBlockNs,
+                                 preferredColStride)) {
+      return exact;
+    }
+  }
+  return planMMAv5Family(shape, layout, kLhsBlockNs, preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5LhsFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
+                   gpu::CGAEncodingAttr cga, bool twoCTAs,
+                   std::optional<unsigned> preferredColStride = std::nullopt) {
+  static constexpr unsigned kLhsBlockNs[] = {32u, 64u, 128u, 256u};
+  return planMMAv5Family(shape, canonicalLayout, cga, twoCTAs, kLhsBlockNs,
+                         preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5ScaledAccumulatorFamily(ArrayRef<int64_t> shape, Attribute layout,
+                                 std::optional<unsigned> preferredColStride =
+                                     std::nullopt) {
+  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  if (isa<TensorMemoryEncodingAttr>(layout)) {
+    if (auto exact =
+            planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
+                                 preferredColStride)) {
+      return exact;
+    }
+  }
+  return planMMAv5Family(shape, layout, kAccumulatorBlockNs,
+                         preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+planMMAv5ScaledAccumulatorFamily(ArrayRef<int64_t> shape,
+                                 const LinearLayout &canonicalLayout,
+                                 gpu::CGAEncodingAttr cga, bool twoCTAs,
+                                 std::optional<unsigned> preferredColStride =
+                                     std::nullopt) {
+  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  return planMMAv5Family(shape, canonicalLayout, cga, twoCTAs,
+                         kAccumulatorBlockNs, preferredColStride);
+}
+
+using MMAv5FamilyPlanner = std::optional<MMAv5TMemLayoutPlan> (*)(
+    ArrayRef<int64_t>, Attribute, std::optional<unsigned>);
+using MMAv5LinearFamilyPlanner = std::optional<MMAv5TMemLayoutPlan> (*)(
+    ArrayRef<int64_t>, const LinearLayout &, gpu::CGAEncodingAttr, bool,
+    std::optional<unsigned>);
+
+static std::optional<MMAv5TMemLayoutPlan>
+getMMAv5AccumulatorLikeLayoutPlan(MemDescType memDescType,
+                                  MMAv5FamilyPlanner planner,
+                                  MMAv5LinearFamilyPlanner linearPlanner) {
   auto layout = memDescType.getEncoding();
   auto rank = cast<LayoutEncodingTrait>(layout).getRank();
-  return matchTensorMemoryLegacyEncoding(
-      memDescType.getShape().take_back(rank), layout);
+  auto shape = memDescType.getShape().take_back(rank);
+  unsigned preferredColStride = 32 / memDescType.getElementTypeBitWidth();
+  if (auto plan = planner(shape, layout, preferredColStride))
+    return plan;
+
+  auto allocShape = memDescType.getAllocShape().take_back(rank);
+  if (shape.size() != 2 || allocShape.size() != shape.size())
+    return std::nullopt;
+
+  // Accumulator subviews remain compatible when they preserve the full M
+  // extent of the underlying allocation and only narrow N.
+  if (shape == allocShape || shape[0] != allocShape[0])
+    return std::nullopt;
+
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(allocShape, layout,
+                                              /*error=*/nullptr);
+  if (!maybeCanonical ||
+      !tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, allocShape)) {
+    return std::nullopt;
+  }
+
+  return linearPlanner(allocShape, *maybeCanonical, gpu::getCGALayout(layout),
+                       *twoCTAs, preferredColStride);
+}
+
+static std::optional<MMAv5TMemLayoutPlan>
+getMMAv5LhsLikeLayoutPlan(MemDescType memDescType) {
+  auto layout = memDescType.getEncoding();
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getShape().take_back(rank);
+  constexpr unsigned kPreferredColStride = 1u;
+  if (auto plan =
+          planMMAv5LhsFamily(shape, layout, /*preferredColStride=*/kPreferredColStride))
+    return plan;
+
+  auto allocShape = memDescType.getAllocShape().take_back(rank);
+  if (shape.size() != 2 || allocShape.size() != shape.size())
+    return std::nullopt;
+
+  // LHS subviews remain MMAv5-compatible when they preserve the full M extent
+  // of the allocation and only narrow K. Lowering already uses the memdesc
+  // view to compute tile addresses, so verifier planning only needs the
+  // underlying MMAv5 family properties.
+  if (shape == allocShape || shape[0] != allocShape[0])
+    return std::nullopt;
+
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(allocShape, layout,
+                                              /*error=*/nullptr);
+  if (!maybeCanonical ||
+      !tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, allocShape)) {
+    return std::nullopt;
+  }
+
+  return planMMAv5LhsFamily(allocShape, *maybeCanonical,
+                            gpu::getCGALayout(layout), *twoCTAs,
+                            kPreferredColStride);
+}
+
+static std::optional<MMAv5LhsLayoutInfo>
+getMMAv5LhsLikeLayoutInfo(MemDescType memDescType) {
+  auto layout = memDescType.getEncoding();
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getShape().take_back(rank);
+  auto allocShape = memDescType.getAllocShape().take_back(rank);
+  constexpr unsigned kPreferredColStride = 1u;
+  auto makeInfo = [&](const LinearLayout &canonical,
+                      const MMAv5TMemLayoutPlan &plan) {
+    return MMAv5LhsLayoutInfo{
+        /*canonicalLayout=*/canonical,
+        /*mmaSizeM=*/plan.instrShapeM,
+        /*mmaSizeN=*/plan.instrShapeN,
+        /*colStride=*/plan.colStride,
+        /*twoCTAs=*/plan.twoCTAs,
+    };
+  };
+
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(shape, layout, /*error=*/nullptr);
+  if (maybeCanonical &&
+      tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, shape)) {
+    if (auto plan = planMMAv5LhsFamily(shape, layout, kPreferredColStride))
+      return makeInfo(*maybeCanonical, *plan);
+  }
+
+  if (shape.size() != 2 || allocShape.size() != shape.size())
+    return std::nullopt;
+
+  if (shape == allocShape || shape[0] != allocShape[0])
+    return std::nullopt;
+
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+  maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(allocShape, layout,
+                                              /*error=*/nullptr);
+  if (!maybeCanonical ||
+      !tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, allocShape)) {
+    return std::nullopt;
+  }
+
+  if (auto plan = planMMAv5LhsFamily(allocShape, *maybeCanonical,
+                                     gpu::getCGALayout(layout), *twoCTAs,
+                                     kPreferredColStride)) {
+    return makeInfo(*maybeCanonical, *plan);
+  }
+  return std::nullopt;
+}
+
+static std::optional<MMAv5AccumulatorLayoutInfo>
+getMMAv5AccumulatorLikeLayoutInfo(MemDescType memDescType,
+                                  MMAv5FamilyPlanner planner,
+                                  MMAv5LinearFamilyPlanner linearPlanner) {
+  auto layout = memDescType.getEncoding();
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getShape().take_back(rank);
+  auto allocShape = memDescType.getAllocShape().take_back(rank);
+  unsigned preferredColStride = 32 / memDescType.getElementTypeBitWidth();
+  auto makeInfo = [&](const LinearLayout &canonical,
+                      const MMAv5TMemLayoutPlan &plan) {
+    return MMAv5AccumulatorLayoutInfo{
+        /*canonicalLayout=*/canonical,
+        /*mmaSizeM=*/plan.instrShapeM,
+        /*mmaSizeN=*/plan.instrShapeN,
+        /*colStride=*/plan.colStride,
+        /*twoCTAs=*/plan.twoCTAs,
+        /*interleavedM64=*/getTmemAllocSizes(memDescType).numRows != 64 &&
+            plan.instrShapeM == 64,
+    };
+  };
+
+  auto maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(shape, layout, /*error=*/nullptr);
+  if (maybeCanonical && tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, shape)) {
+    if (auto plan = planner(shape, layout, preferredColStride))
+      return makeInfo(*maybeCanonical, *plan);
+  }
+
+  if (shape.size() != 2 || allocShape.size() != shape.size())
+    return std::nullopt;
+
+  if (shape == allocShape || shape[0] != allocShape[0])
+    return std::nullopt;
+
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+  maybeCanonical =
+      tryGetCanonicalTensorMemoryLinearLayout(allocShape, layout,
+                                              /*error=*/nullptr);
+  if (!maybeCanonical ||
+      !tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, allocShape)) {
+    return std::nullopt;
+  }
+
+  if (auto plan = linearPlanner(allocShape, *maybeCanonical,
+                                gpu::getCGALayout(layout), *twoCTAs,
+                                preferredColStride)) {
+    return makeInfo(*maybeCanonical, *plan);
+  }
+  return std::nullopt;
+}
+
+std::optional<MMAv5LhsLayoutInfo>
+getMMAv5LhsLayoutInfo(MemDescType memDescType) {
+  return getMMAv5LhsLikeLayoutInfo(memDescType);
+}
+
+std::optional<MMAv5AccumulatorLayoutInfo>
+getMMAv5AccumulatorLayoutInfo(MemDescType memDescType) {
+  return getMMAv5AccumulatorLikeLayoutInfo(memDescType,
+                                           planMMAv5AccumulatorFamily,
+                                           planMMAv5AccumulatorFamily);
+}
+
+std::optional<MMAv5AccumulatorLayoutInfo>
+getMMAv5ScaledAccumulatorLayoutInfo(MemDescType memDescType) {
+  return getMMAv5AccumulatorLikeLayoutInfo(memDescType,
+                                           planMMAv5ScaledAccumulatorFamily,
+                                           planMMAv5ScaledAccumulatorFamily);
 }
 
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
@@ -499,15 +1083,32 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
   auto *ctx = memDescType.getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
-  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(
-      triton::gpu::toLinearLayout(memDescType));
-  auto layoutRank = ll.getNumOutDims();
-  auto extraRank = memDescType.getRank() - layoutRank;
+  LinearLayout ll = [&]() {
+    if (isTensorMemoryEncoding(memDescType.getEncoding()) &&
+        !isa<TensorMemoryScalesEncodingAttr>(memDescType.getEncoding())) {
+      std::string error;
+      if (auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
+              memDescType.getShape(), memDescType.getEncoding(), &error)) {
+        return normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis);
+      }
+    }
+    return normalizeTensorMemoryLinearLayoutForAnalysis(
+        triton::gpu::toLinearLayout(memDescType));
+  }();
+  unsigned memRank = memDescType.getRank();
+  unsigned layoutRank = ll.getNumOutDims();
+  auto outDimNames = llvm::to_vector(ll.getOutDimNames());
+  if (layoutRank > memRank) {
+    outDimNames.erase(outDimNames.begin(),
+                      outDimNames.begin() + (layoutRank - memRank));
+    layoutRank = memRank;
+  }
+  unsigned extraRank = memRank - layoutRank;
 
   SmallVector<std::pair<StringAttr, int32_t>> logicalOffsets;
   logicalOffsets.reserve(layoutRank);
   for (auto [dim, offset] :
-       llvm::zip_equal(ll.getOutDimNames(), offsets.drop_front(extraRank))) {
+       llvm::zip_equal(outDimNames, offsets.drop_front(extraRank))) {
     logicalOffsets.push_back({dim, offset});
   }
 
@@ -533,7 +1134,8 @@ uint32_t getTMemViewOffset(MemDescType memDescType, ArrayRef<int32_t> offsets) {
 }
 
 LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
-                           bool withWarp) {
+                           bool withWarp, ArrayRef<int32_t> warpBasis0,
+                           ArrayRef<int32_t> warpBasis1, int32_t rowSpan) {
   auto str_attr = [&](StringRef str) { return StringAttr::get(ctx, str); };
   auto kReg = str_attr("register");
   auto kLane = str_attr("lane");
@@ -568,18 +1170,613 @@ LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
     llvm_unreachable("Unsupported TMEM access atom");
   }
   if (withWarp) {
+    auto nRow = tile.getOutDimSize(kRow);
     auto nCol = tile.getOutDimSize(kCol);
+    int32_t rowExtent = rowSpan;
+    int32_t colSpan = nCol;
+    auto updateRowExtent = [&](ArrayRef<int32_t> basis) {
+      assert(basis.size() == 2 && "TMEM warp bases must be 2D row/col vectors");
+      rowExtent = std::max<int32_t>(rowExtent, basis[0] + nRow);
+    };
+    auto updateColSpan = [&](ArrayRef<int32_t> basis) {
+      assert(basis.size() == 2 && "TMEM warp bases must be 2D row/col vectors");
+      colSpan = std::max<int32_t>(colSpan, basis[1] + nCol);
+    };
+    updateRowExtent(warpBasis0);
+    updateRowExtent(warpBasis1);
+    updateColSpan(warpBasis0);
+    updateColSpan(warpBasis1);
+    if (!llvm::isPowerOf2_32(static_cast<uint32_t>(rowExtent)))
+      rowExtent = llvm::PowerOf2Ceil(static_cast<uint32_t>(rowExtent));
+    if (!llvm::isPowerOf2_32(static_cast<uint32_t>(colSpan)))
+      colSpan = llvm::PowerOf2Ceil(static_cast<uint32_t>(colSpan));
     auto bases = tile.getBases();
-    bases[kWarp].push_back({32, 0});
-    bases[kWarp].push_back({64, 0});
-    tile = LinearLayout(std::move(bases), {{kRow, 128}, {kCol, nCol}}, false);
+    bases[kWarp].push_back({warpBasis0.begin(), warpBasis0.end()});
+    bases[kWarp].push_back({warpBasis1.begin(), warpBasis1.end()});
+    tile = LinearLayout(std::move(bases), {{kRow, rowExtent}, {kCol, colSpan}},
+                        false);
   }
   return tile;
 }
 
+LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
+                           bool withWarp, int32_t warpRow0,
+                           int32_t warpRow1, int32_t rowSpan) {
+  SmallVector<int32_t> warpBasis0 = {warpRow0, 0};
+  SmallVector<int32_t> warpBasis1 = {warpRow1, 0};
+  return getTileLayout(ctx, atom, unpacked, withWarp, warpBasis0, warpBasis1,
+                       rowSpan);
+}
+
+static bool canComposeLinearLayouts(const LinearLayout &inner,
+                                    const LinearLayout &outer) {
+  for (StringAttr outDim : inner.getOutDimNames()) {
+    if (inner.getOutDimSize(outDim) > outer.getInDimSize(outDim))
+      return false;
+  }
+  return true;
+}
+
+static LinearLayout
+stripZeroBasesForTmemLdStSelection(LinearLayout ll);
+
+std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll) {
+  if (ll.getNumInDims() == 0)
+    return std::nullopt;
+  auto *ctx = (*ll.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  if (!ll.hasInDim(kRow))
+    return std::nullopt;
+  unsigned rowBits = ll.getInDimSizeLog2(kRow);
+  auto isZeroRowBasis = [&](unsigned idx) {
+    return idx < rowBits && llvm::all_of(ll.getBasis(kRow, idx), [](int32_t v) {
+      return v == 0;
+    });
+  };
+  if (rowBits >= 7) {
+    if (isZeroRowBasis(rowBits - 2) && isZeroRowBasis(rowBits - 1)) {
+      return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
+                             /*rowSpan=*/128};
+    }
+    return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+                           /*rowSpan=*/128};
+  }
+  if (rowBits == 6) {
+    if (isZeroRowBasis(rowBits - 2) && isZeroRowBasis(rowBits - 1)) {
+      return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
+                             /*rowSpan=*/64};
+    }
+    return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                           /*rowSpan=*/64};
+  }
+  return std::nullopt;
+}
+
 static std::optional<LinearLayout>
+getCanonicalM64SplitNLayout(MemDescType memType, unsigned numWarps) {
+  if (memType.getRank() != 2 || (numWarps != 4 && numWarps != 8))
+    return std::nullopt;
+  int64_t m = memType.getShape()[0];
+  int64_t n = memType.getShape()[1];
+  if (m != 64 || n < 2 || !llvm::isPowerOf2_64(n))
+    return std::nullopt;
+
+  auto *ctx = memType.getContext();
+  auto kReg = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  auto kDim0 = StringAttr::get(ctx, "dim0");
+  auto kDim1 = StringAttr::get(ctx, "dim1");
+
+  SmallVector<std::vector<int32_t>> regBases;
+  SmallVector<std::vector<int32_t>> laneBases = {
+      {1, 0}, {2, 0}, {4, 0}, {8, 0}};
+  SmallVector<std::vector<int32_t>> warpBases;
+  if (numWarps == 4) {
+    int64_t laneSplitCol = n >= 4 ? n / 4 : 0;
+    laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+    for (int64_t col = 1; col < n; col <<= 1) {
+      if (col == laneSplitCol)
+        continue;
+      regBases.push_back({0, static_cast<int32_t>(col)});
+    }
+    warpBases = {{16, 0}, {32, 0}};
+  } else {
+    int64_t warpSplitCol = n >= 4 ? n / 4 : 0;
+    int64_t laneSplitCol = n >= 2 ? n / 2 : 0;
+    laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+    for (int64_t col = 1; col < warpSplitCol; col <<= 1)
+      regBases.push_back({0, static_cast<int32_t>(col)});
+    warpBases = {{16, 0}, {32, 0}, {0, static_cast<int32_t>(warpSplitCol)}};
+  }
+
+  SmallVector<std::pair<StringAttr, std::vector<std::vector<int32_t>>>> bases = {
+      {kReg, std::vector<std::vector<int32_t>>(regBases.begin(), regBases.end())},
+      {kLane,
+       std::vector<std::vector<int32_t>>(laneBases.begin(), laneBases.end())},
+      {kWarp,
+       std::vector<std::vector<int32_t>>(warpBases.begin(), warpBases.end())},
+  };
+  LinearLayout layout(bases, {{kDim0, 64}, {kDim1, static_cast<int32_t>(n)}},
+                      /*requireSurjective=*/false);
+  return layout;
+}
+
+static bool matchesCanonicalContiguousM64LinearView(const LinearLayout &ll) {
+  if (ll.getNumOutDims() != 2 || ll.getNumInDims() != 2)
+    return false;
+  auto *ctx = (*ll.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getInDimSize(kRow) != 64)
+    return false;
+  int64_t n = ll.getInDimSize(kCol);
+  if (n < 2 || !llvm::isPowerOf2_64(n))
+    return false;
+  for (int bit = 0; bit < 6; ++bit) {
+    if (ll.getBasis(kRow, bit) != ArrayRef<int32_t>{1 << bit, 0})
+      return false;
+  }
+  for (int bit = 0; (1ll << bit) < n; ++bit) {
+    if (ll.getBasis(kCol, bit) != ArrayRef<int32_t>{0, 1 << bit})
+      return false;
+  }
+  return true;
+}
+
+static std::optional<LinearLayout>
+getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n,
+                                unsigned numWarps) {
+  if (n < 2 || !llvm::isPowerOf2_64(n) || (numWarps != 4 && numWarps != 8))
+    return std::nullopt;
+  auto kReg = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  auto kDim0 = StringAttr::get(ctx, "dim0");
+  auto kDim1 = StringAttr::get(ctx, "dim1");
+
+  SmallVector<std::vector<int32_t>> regBases;
+  SmallVector<std::vector<int32_t>> laneBases;
+  SmallVector<std::vector<int32_t>> warpBases;
+
+  switch (atom) {
+  case TMemAccessAtom::I32x32b:
+    laneBases = {{1, 0}, {2, 0}, {4, 0}, {8, 0}};
+    if (numWarps == 4) {
+      int64_t laneSplitCol = n >= 4 ? n / 4 : 0;
+      laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+      for (int64_t col = 1; col < n; col <<= 1) {
+        if (col == laneSplitCol)
+          continue;
+        regBases.push_back({0, static_cast<int32_t>(col)});
+      }
+      warpBases = {{16, 0}, {32, 0}};
+    } else {
+      int64_t warpSplitCol = n >= 4 ? n / 4 : 0;
+      int64_t laneSplitCol = n >= 2 ? n / 2 : 0;
+      laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+      for (int64_t col = 1; col < warpSplitCol; col <<= 1)
+        regBases.push_back({0, static_cast<int32_t>(col)});
+      warpBases = {{16, 0}, {32, 0}, {0, static_cast<int32_t>(warpSplitCol)}};
+    }
+    break;
+  case TMemAccessAtom::I16x64b:
+    laneBases = {{8, 0}, {0, 1}, {1, 0}, {2, 0}, {4, 0}};
+    for (int64_t col = 2; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
+      regBases.push_back({0, static_cast<int32_t>(col)});
+    warpBases = {{16, 0}, {32, 0}};
+    if (numWarps == 8)
+      warpBases.push_back({0, static_cast<int32_t>(n / 2)});
+    break;
+  case TMemAccessAtom::I16x128b:
+    if (n < 4)
+      return std::nullopt;
+    laneBases = {{0, 1}, {0, 2}, {1, 0}, {2, 0}, {4, 0}};
+    regBases.push_back({8, 0});
+    for (int64_t col = 4; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
+      regBases.push_back({0, static_cast<int32_t>(col)});
+    warpBases = {{16, 0}, {32, 0}};
+    if (numWarps == 8)
+      warpBases.push_back({0, static_cast<int32_t>(n / 2)});
+    break;
+  case TMemAccessAtom::I16x256b:
+    if (n < 8)
+      return std::nullopt;
+    laneBases = {{0, 2}, {0, 4}, {1, 0}, {2, 0}, {4, 0}};
+    regBases = {{0, 1}, {8, 0}};
+    for (int64_t col = 8; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
+      regBases.push_back({0, static_cast<int32_t>(col)});
+    warpBases = {{16, 0}, {32, 0}};
+    if (numWarps == 8)
+      warpBases.push_back({0, static_cast<int32_t>(n / 2)});
+    break;
+  case TMemAccessAtom::I16x32bx2:
+    return std::nullopt;
+  }
+
+  SmallVector<std::pair<StringAttr, std::vector<std::vector<int32_t>>>> bases = {
+      {kReg, std::vector<std::vector<int32_t>>(regBases.begin(), regBases.end())},
+      {kLane,
+       std::vector<std::vector<int32_t>>(laneBases.begin(), laneBases.end())},
+      {kWarp,
+       std::vector<std::vector<int32_t>>(warpBases.begin(), warpBases.end())},
+  };
+  return LinearLayout(bases, {{kDim0, 64}, {kDim1, static_cast<int32_t>(n)}},
+                      /*requireSurjective=*/false);
+}
+
+static std::optional<LinearLayout>
+getTMemLdStSplitNLayout(const LinearLayout &ll, unsigned numWarps,
+                        const TMemLdStRowPlan &rowPlan) {
+  if (numWarps != 4 || rowPlan.rowSpan != 64)
+    return std::nullopt;
+  auto dims = to_vector(ll.getOutDimNames());
+  if (dims.size() != 2)
+    return std::nullopt;
+  auto rowColDims = to_vector(ll.getInDimNames());
+  auto *ctx = dims[0].getContext();
+  auto kReg = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+
+  bool hasBlockDim = llvm::is_contained(rowColDims, kBlock);
+  if (hasBlockDim && ll.getInDimSize(kBlock) > 1) {
+    auto ctasPerCGA =
+        ::mlir::triton::basesPerDimImpl(ll.getBases(), kBlock, dims.size(),
+                                        /*skipBroadcast=*/false);
+    auto ctaSplitNum =
+        ::mlir::triton::basesPerDimImpl(ll.getBases(), kBlock, dims.size(),
+                                        /*skipBroadcast=*/true);
+    SmallVector<unsigned> defaultOrder(dims.size());
+    std::iota(defaultOrder.begin(), defaultOrder.end(), 0);
+    auto ctaOrder = ::mlir::triton::orderPerDimImpl(ll, kBlock, defaultOrder);
+    auto blockOnly =
+        gpu::CGAEncodingAttr::fromSplitParams(ctx, ctasPerCGA, ctaSplitNum,
+                                              ctaOrder)
+            .getLinearLayout();
+    if (auto maybePerCTA = divideRight(ll, blockOnly)) {
+      if (auto perCTA =
+              getTMemLdStSplitNLayout(*maybePerCTA, numWarps, rowPlan)) {
+        return *perCTA * blockOnly;
+      }
+    }
+    return std::nullopt;
+  }
+
+  int64_t nCols = ll.getInDimSize(rowColDims[1]);
+  if (nCols < 2 || !llvm::isPowerOf2_64(nCols))
+    return std::nullopt;
+
+  LinearLayout::BasesT bases;
+  auto &laneBases = bases[kLane];
+  laneBases = {{1, 0}, {2, 0}, {4, 0}, {8, 0}};
+  int64_t laneSplitCol = nCols >= 4 ? nCols / 4 : 0;
+  laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+
+  auto &regBases = bases[kReg];
+  for (int64_t col = 1; col < nCols; col <<= 1) {
+    if (col == laneSplitCol)
+      continue;
+    regBases.push_back({0, static_cast<int32_t>(col)});
+  }
+
+  bases[kWarp] = {
+      {rowPlan.warpRow0, 0},
+      {rowPlan.warpRow1, 0},
+  };
+
+  int32_t rowExtent = std::max<int32_t>(rowPlan.rowSpan, 16);
+  rowExtent = std::max<int32_t>(rowExtent, rowPlan.warpRow0 + 16);
+  rowExtent = std::max<int32_t>(rowExtent, rowPlan.warpRow1 + 16);
+  if (!llvm::isPowerOf2_32(static_cast<uint32_t>(rowExtent)))
+    rowExtent = llvm::PowerOf2Ceil(static_cast<uint32_t>(rowExtent));
+  LinearLayout tile(std::move(bases),
+                    {{rowColDims[0], rowExtent}, {rowColDims[1], nCols}},
+                    /*requireSurjective=*/false);
+  if (hasBlockDim) {
+    int64_t nCTAs = ll.getInDimSize(kBlock);
+    tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
+  }
+  if (!canComposeLinearLayouts(tile, ll))
+    return std::nullopt;
+
+  auto ret = tile.compose(ll);
+  SmallVector<StringAttr> canonicalInDims;
+  for (StringAttr dim : {kReg, kLane, kWarp, kBlock}) {
+    if (ret.hasInDim(dim))
+      canonicalInDims.push_back(dim);
+  }
+  if (!canonicalInDims.empty())
+    ret = ret.transposeIns(canonicalInDims);
+  auto withoutBroadcast = ret;
+  for (auto inDim : ret.getInDimNames())
+    withoutBroadcast = withoutBroadcast.removeZeroBasesAlongDim(inDim);
+  if (!withoutBroadcast.isInvertible())
+    return std::nullopt;
+  return ret;
+}
+
+std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
-                                unsigned numWarps, int bitwidth) {
+                                unsigned numWarps, int bitwidth,
+                                const TMemLdStRowPlan &rowPlan) {
+  bool debugSupportLayoutGen =
+      std::getenv("TRITON_DEBUG_TMEM_SUPPORT_LAYOUT_GEN") != nullptr;
+  auto tryLayout = [&](const LinearLayout &candidateLL) -> std::optional<LinearLayout> {
+    auto dims = to_vector(candidateLL.getOutDimNames());
+    assert(dims.size() == 2);
+    auto rowColDims = to_vector(candidateLL.getInDimNames());
+    auto *ctx = dims[0].getContext();
+    auto kBlock = StringAttr::get(ctx, "block");
+    bool hasBlockDim = llvm::is_contained(rowColDims, kBlock);
+    if (hasBlockDim && candidateLL.getInDimSize(kBlock) > 1) {
+      auto ctasPerCGA =
+          ::mlir::triton::basesPerDimImpl(candidateLL.getBases(), kBlock,
+                                          dims.size(),
+                                          /*skipBroadcast=*/false);
+      auto ctaSplitNum =
+          ::mlir::triton::basesPerDimImpl(candidateLL.getBases(), kBlock,
+                                          dims.size(),
+                                          /*skipBroadcast=*/true);
+      SmallVector<unsigned> defaultOrder(dims.size());
+      std::iota(defaultOrder.begin(), defaultOrder.end(), 0);
+      auto ctaOrder =
+          ::mlir::triton::orderPerDimImpl(candidateLL, kBlock, defaultOrder);
+      auto blockOnly =
+          gpu::CGAEncodingAttr::fromSplitParams(ctx, ctasPerCGA, ctaSplitNum,
+                                                ctaOrder)
+              .getLinearLayout();
+      if (auto maybePerCTA = divideRight(candidateLL, blockOnly)) {
+        if (auto perCTA = getDistributedLayoutForTmemLdSt(
+                *maybePerCTA, atom, numWarps, bitwidth, rowPlan)) {
+          return *perCTA * blockOnly;
+        }
+      }
+    }
+    if (bitwidth == 32 && atom == TMemAccessAtom::I32x32b) {
+      if (auto splitN = getTMemLdStSplitNLayout(candidateLL, numWarps, rowPlan))
+        return splitN;
+    }
+    // This code is dual to the one in lowerTMemLdSt
+    if (bitwidth != 32) {
+      auto kReg = StringAttr::get(ctx, "register");
+      LinearLayout quot;
+      int bestContig = 1;
+      for (int contig = 1; bitwidth * contig <= 32; contig *= 2) {
+        auto maybeQuot = divideLeft(
+            candidateLL,
+            LinearLayout::identity1D(contig, rowColDims[1], dims[1]));
+        if (!maybeQuot)
+          break;
+        quot = *maybeQuot;
+        bestContig = contig;
+      }
+
+      if (bestContig > 1) {
+        auto ret = getDistributedLayoutForTmemLdSt(
+            quot, atom, numWarps, bitwidth * bestContig, rowPlan);
+        if (!ret)
+          return ret;
+        auto castbbitwidth =
+            LinearLayout::identity1D(bestContig, kReg, dims[1]);
+        return castbbitwidth * ret.value();
+      }
+      if (auto maybeQuot = divideLeft(
+              candidateLL,
+              LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
+                  LinearLayout::identity1D(2, rowColDims[1], dims[1]));
+          bitwidth == 16 && maybeQuot) {
+        auto ret =
+            getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32,
+                                            rowPlan);
+        if (!ret)
+          return ret;
+        auto castbbitwidth = LinearLayout::identity1D(2, kReg, dims[1]);
+        return castbbitwidth * ret.value();
+      } else if (auto maybeQuot = divideLeft(
+                     candidateLL, LinearLayout::zeros1D(
+                                      32 / bitwidth, rowColDims[1], dims[1]))) {
+        return getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32,
+                                               rowPlan);
+      } else if (candidateLL.getInDimSize(rowColDims[1]) == 1) {
+        return getDistributedLayoutForTmemLdSt(candidateLL, atom, numWarps, 32,
+                                               rowPlan);
+      } else {
+        return std::nullopt;
+      }
+    }
+    assert(bitwidth == 32);
+    if (atom == TMemAccessAtom::I16x32bx2 && rowPlan.rowSpan == 64 &&
+        !hasBlockDim && candidateLL.getInDimSize(rowColDims[0]) == 64) {
+      int64_t n = candidateLL.getInDimSize(rowColDims[1]);
+      if (n >= 2 && llvm::isPowerOf2_64(n)) {
+        auto kReg = StringAttr::get(ctx, "register");
+        auto kLane = StringAttr::get(ctx, "lane");
+        auto kWarp = StringAttr::get(ctx, "warp");
+        SmallVector<std::vector<int32_t>> regBases;
+        SmallVector<std::vector<int32_t>> laneBases = {
+            {1, 0}, {2, 0}, {4, 0}, {8, 0}};
+        SmallVector<std::vector<int32_t>> warpBases;
+        if (numWarps == 4) {
+          int64_t laneSplitCol = n >= 4 ? n / 4 : 0;
+          laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+          for (int64_t col = 1; col < n; col <<= 1) {
+            if (col == laneSplitCol)
+              continue;
+            regBases.push_back({0, static_cast<int32_t>(col)});
+          }
+          warpBases = {{16, 0}, {32, 0}};
+        } else if (numWarps == 8) {
+          int64_t warpSplitCol = n >= 4 ? n / 4 : 0;
+          int64_t laneSplitCol = n >= 2 ? n / 2 : 0;
+          laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
+          for (int64_t col = 1; col < warpSplitCol; col <<= 1)
+            regBases.push_back({0, static_cast<int32_t>(col)});
+          warpBases = {{16, 0}, {32, 0},
+                       {0, static_cast<int32_t>(warpSplitCol)}};
+        }
+        if (!warpBases.empty()) {
+          SmallVector<
+              std::pair<StringAttr, std::vector<std::vector<int32_t>>>>
+              bases = {
+                  {kReg, std::vector<std::vector<int32_t>>(regBases.begin(),
+                                                           regBases.end())},
+                  {kLane, std::vector<std::vector<int32_t>>(laneBases.begin(),
+                                                            laneBases.end())},
+                  {kWarp, std::vector<std::vector<int32_t>>(warpBases.begin(),
+                                                            warpBases.end())},
+              };
+          std::string error;
+          LinearLayout::BasesT basisMap;
+          for (auto &entry : bases)
+            basisMap[entry.first] = entry.second;
+          auto maybeLayout = LinearLayout::tryCreate(
+              std::move(basisMap), candidateLL.getOutDims(),
+              /*requireSurjective=*/false, &error);
+          if (!maybeLayout)
+            return std::nullopt;
+          return *maybeLayout;
+        }
+      }
+    }
+    auto tile = getTileLayout(ctx, atom, false, /*withWarp=*/false,
+                              rowPlan.warpRow0, rowPlan.warpRow1,
+                              rowPlan.rowSpan);
+
+    auto nColsTile = tile.getOutDimSize(rowColDims[1]);
+    auto nColsLL = candidateLL.getInDimSize(rowColDims[1]);
+    auto nColsMissing = nColsLL / nColsTile;
+    if (nColsMissing == 0)
+      return std::nullopt;
+    auto kReg = StringAttr::get(ctx, "register");
+    auto kLane = StringAttr::get(ctx, "lane");
+    auto kWarp = StringAttr::get(ctx, "warp");
+    bool instr32Rows = atom == TMemAccessAtom::I32x32b;
+    bool layout16Rows =
+        candidateLL.getInDimSize(rowColDims[0]) <= 16 ||
+        candidateLL.getBasis(rowColDims[0], llvm::Log2_32(16)) ==
+            ArrayRef{0, 0};
+
+    auto compInput = tile;
+    if (hasBlockDim)
+      compInput *= LinearLayout::identity1D(1, kBlock, kBlock);
+    if (!canComposeLinearLayouts(compInput, candidateLL)) {
+      if (debugSupportLayoutGen)
+        llvm::errs() << "[tmem-layout-gen] reject: compInput cannot compose\n";
+      return std::nullopt;
+    }
+    auto comp = compInput.compose(candidateLL)
+                    .sublayout({kReg, kLane},
+                               to_vector(candidateLL.getOutDimNames()));
+    if (instr32Rows) {
+      comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
+    }
+    auto compWithoutBroadcast = comp;
+    for (auto inDim : comp.getInDimNames())
+      compWithoutBroadcast =
+          compWithoutBroadcast.removeZeroBasesAlongDim(inDim);
+    if (!compWithoutBroadcast.isInjective() &&
+        rowPlan.warpRow0 != 0 && rowPlan.warpRow1 != 0) {
+      if (debugSupportLayoutGen) {
+        llvm::errs() << "[tmem-layout-gen] reject: pre-warp injective failed\n"
+                     << candidateLL.toString() << "\n";
+      }
+      return std::nullopt;
+    }
+
+    StringAttr row16;
+    if (!instr32Rows && !layout16Rows) {
+      if (numWarps > 4) {
+        row16 = kWarp;
+      } else {
+        row16 = kReg;
+      }
+    }
+
+    int warpsToTile = numWarps / ((row16 == kWarp) ? 8 : 4);
+    int warpBroadcast = warpsToTile / std::min(nColsMissing, warpsToTile);
+    warpsToTile /= warpBroadcast;
+    nColsMissing /= warpsToTile;
+
+    if (nColsMissing > 1) {
+      if (instr32Rows && layout16Rows) {
+        tile =
+            divideLeft(tile, LinearLayout::identity1D(2, kLane, rowColDims[0]))
+                .value();
+        tile *=
+            LinearLayout::identity1D(nColsMissing / 2, kReg, rowColDims[1]) *
+            LinearLayout::identity1D(2, kLane, rowColDims[1]);
+
+      } else {
+        tile *= LinearLayout::identity1D(nColsMissing, kReg, rowColDims[1]);
+      }
+    }
+
+    auto bases = tile.getBases();
+    auto &warpBases = bases[kWarp];
+    warpBases.push_back({rowPlan.warpRow0, 0});
+    warpBases.push_back({rowPlan.warpRow1, 0});
+
+    if (row16) {
+      bases[row16].push_back({16, 0});
+    }
+    std::string error;
+    auto maybeTile = LinearLayout::tryCreate(
+        std::move(bases),
+        {{rowColDims[0], rowPlan.rowSpan},
+         {rowColDims[1], tile.getOutDimSize(rowColDims[1])}},
+        /*requireSurjective=*/false, &error);
+    if (!maybeTile)
+      return std::nullopt;
+    tile = *maybeTile;
+    tile *= LinearLayout::identity1D(warpsToTile, kWarp, rowColDims[1]);
+    tile *= LinearLayout::zeros1D(warpBroadcast, kWarp, rowColDims[1]);
+    if (hasBlockDim) {
+      auto nCTAs = candidateLL.getInDimSize(kBlock);
+      tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
+    }
+    assert(tile.getOutDimSize(rowColDims[1]) ==
+           candidateLL.getInDimSize(rowColDims[1]));
+    if (!canComposeLinearLayouts(tile, candidateLL)) {
+      if (debugSupportLayoutGen) {
+        llvm::errs() << "[tmem-layout-gen] reject: tile cannot compose\n"
+                     << tile.toString() << "\nwith\n"
+                     << candidateLL.toString() << "\n";
+      }
+      return std::nullopt;
+    }
+
+    auto ret = tile.compose(candidateLL);
+    auto withoutBroadcast = ret;
+    for (auto inDim : ret.getInDimNames()) {
+      withoutBroadcast = withoutBroadcast.removeZeroBasesAlongDim(inDim);
+    }
+    if (!withoutBroadcast.isInvertible()) {
+      if (debugSupportLayoutGen) {
+        llvm::errs() << "[tmem-layout-gen] reject: final invertible failed\n"
+                     << ret.toString() << "\n";
+      }
+      return std::nullopt;
+    }
+    return ret;
+  };
+
+  if (auto ret = tryLayout(ll))
+    return ret;
+  auto stripped = stripZeroBasesForTmemLdStSelection(ll);
+  if (stripped == ll)
+    return std::nullopt;
+  return tryLayout(stripped);
+}
+
+static std::optional<LinearLayout>
+getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
+                                              TMemAccessAtom atom,
+                                              unsigned numWarps,
+                                              int bitwidth) {
   auto dims = to_vector(ll.getOutDimNames());
   assert(dims.size() == 2);
   auto rowColDims = to_vector(ll.getInDimNames());
@@ -601,23 +1798,13 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
                                               ctaOrder)
             .getLinearLayout();
     if (auto maybePerCTA = divideRight(ll, blockOnly)) {
-      if (auto perCTA = getDistributedLayoutForTmemLdSt(*maybePerCTA, atom,
-                                                        numWarps, bitwidth)) {
+      if (auto perCTA = getDistributedLayoutForTmemLdStLegacyAnchored(
+              *maybePerCTA, atom, numWarps, bitwidth)) {
         return *perCTA * blockOnly;
       }
     }
   }
-  auto canCompose = [](const LinearLayout &inner,
-                       const LinearLayout &outer) -> bool {
-    for (StringAttr outDim : inner.getOutDimNames()) {
-      if (inner.getOutDimSize(outDim) > outer.getInDimSize(outDim))
-        return false;
-    }
-    return true;
-  };
-  // This code is dual to the one in lowerTMemLdSt
   if (bitwidth != 32) {
-    // TODO move this to a helper function
     auto kReg = StringAttr::get(ctx, "register");
     LinearLayout quot;
     int bestContig = 1;
@@ -630,11 +1817,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
       bestContig = contig;
     }
 
-    // Pack contiguous elements
-    // This works to pack b8 or b16 into b32 but also b8 into b16 and recurse
     if (bestContig > 1) {
-      auto ret = getDistributedLayoutForTmemLdSt(quot, atom, numWarps,
-                                                 bitwidth * bestContig);
+      auto ret = getDistributedLayoutForTmemLdStLegacyAnchored(
+          quot, atom, numWarps, bitwidth * bestContig);
       if (!ret)
         return ret;
       auto castbbitwidth = LinearLayout::identity1D(bestContig, kReg, dims[1]);
@@ -644,9 +1829,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
             ll, LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
                     LinearLayout::identity1D(2, rowColDims[1], dims[1]));
         bitwidth == 16 && maybeQuot) {
-      // Unpacked case
-      auto ret =
-          getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32);
+      auto ret = getDistributedLayoutForTmemLdStLegacyAnchored(
+          *maybeQuot, atom, numWarps, 32);
       if (!ret)
         return ret;
       auto castbbitwidth = LinearLayout::identity1D(2, kReg, dims[1]);
@@ -654,25 +1838,18 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     } else if (auto maybeQuot =
                    divideLeft(ll, LinearLayout::zeros1D(
                                       32 / bitwidth, rowColDims[1], dims[1]))) {
-      // Software padding
-      assert(maybeQuot);
-      return getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32);
+      return getDistributedLayoutForTmemLdStLegacyAnchored(*maybeQuot, atom,
+                                                           numWarps, 32);
     } else if (ll.getInDimSize(rowColDims[1]) == 1) {
-      // Software padding with just one column
-      return getDistributedLayoutForTmemLdSt(ll, atom, numWarps, 32);
+      return getDistributedLayoutForTmemLdStLegacyAnchored(ll, atom, numWarps,
+                                                           32);
     } else {
       return std::nullopt;
     }
   }
-  // getTileLayout returns the layout for a bitwidth of 32
+
   assert(bitwidth == 32);
   auto tile = getTileLayout(ctx, atom, false, /*withWarp=*/false);
-  // Plan:
-  // tile: register, lane -> row, cols
-  // ll: row, cols -> dim0, dim1
-  // We extend the tile to have the right vectorisation + warps and
-  // the result is given by
-  // ll o tile : register, lane, warp -> dim0, dim1
 
   auto nColsTile = tile.getOutDimSize(rowColDims[1]);
   auto nColsLL = ll.getInDimSize(rowColDims[1]);
@@ -684,26 +1861,16 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   auto kLane = StringAttr::get(ctx, "lane");
   auto kWarp = StringAttr::get(ctx, "warp");
   bool instr32Rows = atom == TMemAccessAtom::I32x32b;
-  bool layout16Rows =
-      ll.getBasis(rowColDims[0], llvm::Log2_32(16)) == ArrayRef{0, 0};
+  bool layout16Rows = ll.getInDimSize(rowColDims[0]) <= 16;
 
-  // We are choosing the distributed layout (ll o tile). In the lowering
-  // we will do ll^{-1} o (ll o tile) and we expect to get tile back.
-  // For this to be possible, ll should accept a left-inverse, that is, it
-  // should be injective
-  // In less fancy words, we look for the `comp` layout not to have any zero
-  // basis as that would disallow the resulting layout to be left-divisible by
-  // the tile
   auto compInput = tile;
   if (hasBlockDim)
     compInput *= LinearLayout::identity1D(1, kBlock, kBlock);
-  if (!canCompose(compInput, ll))
+  if (!canComposeLinearLayouts(compInput, ll))
     return std::nullopt;
   auto comp =
       compInput.compose(ll).sublayout({kReg, kLane}, to_vector(ll.getOutDimNames()));
   if (instr32Rows) {
-    // We will use 16x32bx2 instruction for lane=16 so we remove the last lane
-    // basis
     comp = comp.resizeInDim(kLane, comp.getInDimSize(kLane) / 2);
   }
   auto compWithoutBroadcast = comp;
@@ -712,11 +1879,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
   if (!compWithoutBroadcast.isInjective())
     return std::nullopt;
 
-  // Fit the warp bases either tiling on the RHS or in row=16
   StringAttr row16;
-  // If we need to fit something (the instruction does not cover it
-  // and the layout has 32 rows) we first try to fit a warp, and if we
-  // can't we fit a register
   if (!instr32Rows && !layout16Rows) {
     if (numWarps > 4) {
       row16 = kWarp;
@@ -725,28 +1888,22 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     }
   }
 
-  // We reserve enough columns to fit in the warps
   int warpsToTile = numWarps / ((row16 == kWarp) ? 8 : 4);
-  // Cap warps to tile above by nColsMissing. The rest go to broadcasting
   int warpBroadcast = warpsToTile / std::min(nColsMissing, warpsToTile);
   warpsToTile /= warpBroadcast;
   nColsMissing /= warpsToTile;
 
   if (nColsMissing > 1) {
     if (instr32Rows && layout16Rows) {
-      // If the lane 16 would load repeated data, instead we make it load half
-      // of the data via the 16x32bx2 instruction
       tile = divideLeft(tile, LinearLayout::identity1D(2, kLane, rowColDims[0]))
                  .value();
       tile *= LinearLayout::identity1D(nColsMissing / 2, kReg, rowColDims[1]) *
               LinearLayout::identity1D(2, kLane, rowColDims[1]);
-
     } else {
       tile *= LinearLayout::identity1D(nColsMissing, kReg, rowColDims[1]);
     }
   }
 
-  // add the warp bases. The M=64 + 2CTA case has already been handled
   auto bases = tile.getBases();
   auto &warpBases = bases[kWarp];
   warpBases.push_back({32, 0});
@@ -761,13 +1918,12 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
                       false);
   tile *= LinearLayout::identity1D(warpsToTile, kWarp, rowColDims[1]);
   tile *= LinearLayout::zeros1D(warpBroadcast, kWarp, rowColDims[1]);
-  // Add CTAs as a trivial map
   if (hasBlockDim) {
     auto nCTAs = ll.getInDimSize(kBlock);
     tile *= LinearLayout::identity1D(nCTAs, kBlock, kBlock);
   }
   assert(tile.getOutDimSize(rowColDims[1]) == ll.getInDimSize(rowColDims[1]));
-  if (!canCompose(tile, ll))
+  if (!canComposeLinearLayouts(tile, ll))
     return std::nullopt;
 
   auto ret = tile.compose(ll);
@@ -808,27 +1964,138 @@ isTMemLdStSelectionLayoutValid(gpu::MemDescType memType,
 
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
-                                unsigned numWarps) {
+                                unsigned numWarps,
+                                std::optional<TMemLdStRowPlan> rowPlanOverride) {
   assert(memType.getMemorySpace() ==
          TensorMemorySpaceAttr::get(memType.getContext()));
   assert(numWarps >= 4 && llvm::isPowerOf2_32(numWarps) &&
          "numWarps must be a power of 2 and >= 4");
-  auto ll = toLinearLayout(memType);
+  auto isValidLayout = [&](const LinearLayout &layout) {
+    if (!rowPlanOverride)
+      return isTMemLdStSelectionLayoutValid(memType, layout);
+    auto attr = LinearEncodingAttr::get(memType.getContext(), layout);
+    auto regTy =
+        RankedTensorType::get(memType.getShape(), memType.getElementType(), attr);
+    return succeeded(computeTMemLdStEncodingInfo(
+        regTy, memType, /*maxnreg=*/256, /*emitError=*/{}, rowPlanOverride));
+  };
+  auto ll = [&]() -> LinearLayout {
+    if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
+      return toLinearLayout(memType);
+    std::string error;
+    SmallVector<int64_t> layoutShape(memType.getShape().begin(),
+                                     memType.getShape().end());
+    auto layoutRank =
+        static_cast<size_t>(cast<LayoutEncodingTrait>(memType.getEncoding())
+                                .getRank());
+    if (rowPlanOverride && layoutShape.size() >= layoutRank &&
+        memType.getAllocShape().size() >= layoutRank &&
+        ArrayRef<int64_t>(layoutShape).take_back(layoutRank) !=
+            memType.getAllocShape().take_back(layoutRank)) {
+      layoutShape.assign(memType.getAllocShape().begin(),
+                         memType.getAllocShape().end());
+    }
+    auto maybe = getTMemViewAnalysisLinearLayout(layoutShape,
+                                                 memType.getEncoding(), &error);
+    if (!maybe)
+      return LinearLayout();
+    return normalizeTensorMemoryLinearLayoutForAnalysis(*maybe);
+  }();
+  if (ll.getNumOutDims() == 0)
+    return std::nullopt;
   auto bitwidth = memType.getElementTypeBitWidth();
+  if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
+      !rowPlanOverride) {
+    if (auto layout = getDistributedLayoutForTmemLdStLegacyAnchored(
+            ll, atom, numWarps, bitwidth);
+        layout && isTMemLdStSelectionLayoutValid(memType, *layout)) {
+      return layout;
+    }
+
+    auto stripped = stripZeroBasesForTmemLdStSelection(ll);
+    if (stripped != ll) {
+      auto layout = getDistributedLayoutForTmemLdStLegacyAnchored(
+          stripped, atom, numWarps, bitwidth);
+      if (layout && isTMemLdStSelectionLayoutValid(memType, *layout))
+        return layout;
+    }
+    return std::nullopt;
+  }
+  if (!rowPlanOverride && bitwidth == 32 &&
+      matchesCanonicalContiguousM64LinearView(ll)) {
+    auto *ctx = memType.getContext();
+    auto kCol = StringAttr::get(ctx, "col");
+    if (auto canonical = getCanonicalContiguousM64Layout(ctx, atom,
+                                                         ll.getInDimSize(kCol),
+                                                         numWarps);
+        canonical && isTMemLdStSelectionLayoutValid(memType, *canonical)) {
+      return canonical;
+    }
+  }
+  auto rowPlan = rowPlanOverride;
+  if (!rowPlan) {
+    if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
+      rowPlan = getTMemLdStRowPlanForType(memType);
+    else
+      rowPlan = getTMemLdStRowPlan(ll);
+  }
+  if (!rowPlan)
+    return std::nullopt;
   if (auto layout = getDistributedLayoutForTmemLdSt(ll, atom, numWarps,
-                                                    bitwidth);
-      layout && isTMemLdStSelectionLayoutValid(memType, *layout)) {
+                                                    bitwidth, *rowPlan);
+      layout && isValidLayout(*layout)) {
     return layout;
   }
 
   auto stripped = stripZeroBasesForTmemLdStSelection(ll);
   if (stripped == ll)
     return std::nullopt;
-  auto layout = getDistributedLayoutForTmemLdSt(stripped, atom, numWarps,
-                                                bitwidth);
-  if (!layout || !isTMemLdStSelectionLayoutValid(memType, *layout))
+  auto strippedRowPlan = rowPlanOverride;
+  if (!strippedRowPlan) {
+    if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
+      strippedRowPlan = getTMemLdStRowPlanForType(memType);
+    else
+      strippedRowPlan = getTMemLdStRowPlan(stripped);
+  }
+  if (!strippedRowPlan)
     return std::nullopt;
+  if (bitwidth == 32 && matchesCanonicalContiguousM64LinearView(stripped)) {
+    auto *ctx = memType.getContext();
+    auto kCol = StringAttr::get(ctx, "col");
+    if (auto canonical = getCanonicalContiguousM64Layout(ctx, atom,
+                                                         stripped.getInDimSize(kCol),
+                                                         numWarps);
+        canonical) {
+      auto attr = LinearEncodingAttr::get(memType.getContext(), *canonical);
+      auto regTy = RankedTensorType::get(memType.getShape(),
+                                         memType.getElementType(), attr);
+      if (succeeded(computeTMemLdStEncodingInfo(
+              regTy, memType, /*maxnreg=*/256, /*emitError=*/{},
+              strippedRowPlan))) {
+        return canonical;
+      }
+    }
+  }
+  auto layout = getDistributedLayoutForTmemLdSt(stripped, atom, numWarps,
+                                                bitwidth, *strippedRowPlan);
+  if (!layout)
+    return std::nullopt;
+  auto attr = LinearEncodingAttr::get(memType.getContext(), *layout);
+  auto regTy =
+      RankedTensorType::get(memType.getShape(), memType.getElementType(), attr);
+  if (failed(computeTMemLdStEncodingInfo(
+          regTy, memType, /*maxnreg=*/256, /*emitError=*/{},
+          strippedRowPlan))) {
+    return std::nullopt;
+  }
   return layout;
+}
+
+std::optional<LinearLayout>
+getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
+                                unsigned numWarps) {
+  return getDistributedLayoutForTmemLdSt(memType, atom, numWarps,
+                                         std::nullopt);
 }
 
 static bool isTMemCompatibleCandidate(Operation *op, RankedTensorType tensorType,
@@ -854,16 +2121,18 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
       return LinearEncodingAttr::get(ctx, std::move(*layout));
     }
   }
-  auto layout = getDistributedLayoutForTmemLdSt(
-      memType, TMemAccessAtom::I32x32b, numWarps);
-  assert(layout);
-  return LinearEncodingAttr::get(ctx, std::move(*layout));
+  auto layouts = getTmemCompatibleLayouts(memType, numWarps);
+  assert(!layouts.empty() &&
+         "expected at least one TMEM-compatible register layout");
+  return layouts.front();
 }
 
 std::optional<DistributedEncodingTrait>
 getTmemLoadLayoutSplitLongM(RankedTensorType tensorType, MemDescType memType,
                             int numWarps) {
   if (numWarps != 8)
+    return std::nullopt;
+  if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
     return std::nullopt;
 
   std::optional<LinearLayout> layout = getDistributedLayoutForTmemLdSt(
@@ -903,6 +2172,224 @@ getTmemLoadLayoutSplitLongM(RankedTensorType tensorType, MemDescType memType,
   return std::nullopt;
 }
 
+bool isReductionFriendlyTmemLoadLayout(RankedTensorType tensorType,
+                                       const LinearLayout &layout) {
+  if (layout.getNumOutDims() != 2)
+    return false;
+  auto attr = LinearEncodingAttr::get(tensorType.getContext(), layout);
+  auto regTy = tensorType.cloneWithEncoding(attr);
+  auto kReg = StringAttr::get(tensorType.getContext(), "register");
+  auto regLayout = toLinearLayout(regTy);
+  auto regDims = toLinearEncoding(regTy).basesPerDim(kReg);
+  auto outDims = llvm::to_vector(regLayout.getOutDimSizes());
+  if (outDims.size() < 2)
+    return false;
+  return regDims[1] == outDims[1] && regDims[0] == 1;
+}
+
+bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
+  std::string error;
+  auto maybeCanonical = getCanonicalTMemLinearEncoding(memType, &error);
+  if (!maybeCanonical)
+    return false;
+
+  auto layout = normalizeTensorMemoryLinearLayoutForAnalysis(
+      maybeCanonical->getLinearLayout());
+  if (layout.getNumOutDims() != 2)
+    return false;
+
+  auto *ctx = memType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto dims = standardOutDimNames(ctx, 2);
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
+    return false;
+
+  auto rowBits = layout.getInDimSizeLog2(kRow);
+  auto blockM = int64_t{1} << rowBits;
+  if (blockM != 128)
+    return false;
+
+  SmallVector<int32_t> pureRowBases;
+  for (unsigned idx = 0; idx < rowBits; ++idx) {
+    auto basis = layout.getBasis(kRow, idx);
+    if (basis.size() != 2 || basis[0] == 0 || basis[1] != 0) {
+      return false;
+    }
+    pureRowBases.push_back(basis[0]);
+  }
+  llvm::sort(pureRowBases);
+  SmallVector<int32_t> expectedPureRowBases;
+  for (unsigned idx = 0; idx < rowBits; ++idx)
+    expectedPureRowBases.push_back(static_cast<int32_t>(1u << idx));
+  if (!llvm::equal(pureRowBases, expectedPureRowBases))
+    return false;
+
+  SmallVector<int32_t> pureRowCarryBases;
+  SmallVector<int32_t> pureColBases;
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(kCol); ++idx) {
+    auto basis = layout.getBasis(kCol, idx);
+    if (basis.size() != 2)
+      return false;
+    if (basis[0] != 0 && basis[1] == 0) {
+      pureRowCarryBases.push_back(basis[0]);
+      continue;
+    }
+    if (basis[0] == 0 && basis[1] != 0) {
+      pureColBases.push_back(basis[1]);
+      continue;
+    }
+    return false;
+  }
+
+  llvm::sort(pureRowCarryBases);
+  llvm::sort(pureColBases);
+
+  SmallVector<int32_t> expectedPureRowCarryBases;
+  int64_t repsM = layout.getOutDimSize(dims[0]) / blockM;
+  if (repsM < 1 || !llvm::isPowerOf2_64(repsM))
+    return false;
+  for (int64_t carry = blockM; carry < layout.getOutDimSize(dims[0]);
+       carry <<= 1)
+    expectedPureRowCarryBases.push_back(static_cast<int32_t>(carry));
+  if (!llvm::equal(pureRowCarryBases, expectedPureRowCarryBases))
+    return false;
+
+  SmallVector<int32_t> expectedPureColBases;
+  int64_t n = layout.getOutDimSize(dims[1]);
+  if (n < 1 || !llvm::isPowerOf2_64(n))
+    return false;
+  for (int64_t col = 1; col < n; col <<= 1)
+    expectedPureColBases.push_back(static_cast<int32_t>(col));
+  return llvm::equal(pureColBases, expectedPureColBases);
+}
+
+std::optional<DistributedEncodingTrait>
+getTmemLoadReductionLayout(RankedTensorType tensorType, MemDescType memType,
+                           int numWarps) {
+  // Reduction layout inference should follow the same direct I32x32b query
+  // path as ordinary TMEM load/store. Larger warp counts are legal when the
+  // resulting register layout keeps N fully in registers and leaves M
+  // unsharded, e.g. 256x128 with 8 warps.
+  if (memType.getRank() != 2 ||
+      isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) ||
+      memType.getElementTypeBitWidth() != 32) {
+    return std::nullopt;
+  }
+  if (!isReductionFriendlyTmemSourceLayout(memType))
+    return std::nullopt;
+
+  std::optional<LinearLayout> layout = getDistributedLayoutForTmemLdSt(
+      memType, TMemAccessAtom::I32x32b, numWarps);
+  if (!layout)
+    return std::nullopt;
+  auto ret = std::move(*layout);
+  if (isReductionFriendlyTmemLoadLayout(tensorType, ret))
+    return LinearEncodingAttr::get(tensorType.getContext(), ret);
+
+  auto *ctx = tensorType.getContext();
+  auto kReg = StringAttr::get(ctx, "register");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  if (!ret.hasInDim(kReg) || !ret.hasInDim(kWarp))
+    return std::nullopt;
+
+  auto basisTouchesOnlyDim = [&](StringAttr inDim, unsigned idx,
+                                 unsigned dim) -> bool {
+    auto dims = to_vector(ret.getOutDimNames());
+    if (dim >= dims.size())
+      return false;
+    bool touchesTarget = ret.getBasis(inDim, idx, dims[dim]) != 0;
+    bool touchesOther = false;
+    for (auto [otherIdx, otherDim] : llvm::enumerate(dims)) {
+      if (otherIdx == dim)
+        continue;
+      touchesOther |= ret.getBasis(inDim, idx, otherDim) != 0;
+    }
+    return touchesTarget && !touchesOther;
+  };
+
+  SmallVector<unsigned> regMIndices;
+  for (unsigned idx = 0; idx < ret.getInDimSizeLog2(kReg); ++idx) {
+    if (basisTouchesOnlyDim(kReg, idx, /*dim=*/0))
+      regMIndices.push_back(idx);
+  }
+  SmallVector<unsigned> warpNIndices;
+  for (unsigned idx = 0; idx < ret.getInDimSizeLog2(kWarp); ++idx) {
+    if (basisTouchesOnlyDim(kWarp, idx, /*dim=*/1))
+      warpNIndices.push_back(idx);
+  }
+  if (regMIndices.empty() || warpNIndices.empty() ||
+      regMIndices.size() != warpNIndices.size()) {
+    return std::nullopt;
+  }
+
+  auto bases = ret.getBases();
+  for (auto [regIdx, warpIdx] : llvm::zip_equal(regMIndices, warpNIndices))
+    std::swap(bases[kReg][regIdx], bases[kWarp][warpIdx]);
+  ret = LinearLayout(std::move(bases), ret.getOutDims(), ret.isSurjective());
+
+  if (!isReductionFriendlyTmemLoadLayout(tensorType, ret))
+    return std::nullopt;
+  auto attr = LinearEncodingAttr::get(ctx, ret);
+  if (failed(computeTMemLdStEncodingInfo(tensorType.cloneWithEncoding(attr),
+                                         memType,
+                                         /*maxnreg=*/256))) {
+    return std::nullopt;
+  }
+  return attr;
+}
+
+SmallVector<DistributedEncodingTrait>
+getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
+                         ArrayRef<int64_t> ctaSplit) {
+  (void)ctaSplit;
+  SmallVector<DistributedEncodingTrait> layouts;
+  if (numWarps % 4 != 0)
+    return layouts;
+
+  bool isScales = isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding());
+  LinearLayout memLL;
+  if (isScales)
+    memLL = toLinearLayout(memType);
+
+  auto tensorTy =
+      RankedTensorType::get(memType.getShape(), memType.getElementType());
+  auto isCompatible = [&](const LinearLayout &layout) {
+    auto candidateEncoding =
+        LinearEncodingAttr::get(memType.getContext(), layout);
+    auto candidateType = tensorTy.cloneWithEncoding(candidateEncoding);
+    return succeeded(
+        computeTMemLdStEncodingInfo(candidateType, memType, /*maxnreg=*/256));
+  };
+
+  int bitwidth = memType.getElementTypeBitWidth();
+  for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
+                    TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
+                    TMemAccessAtom::I16x32bx2}) {
+    std::optional<LinearLayout> ll;
+    if (isScales) {
+      ll = getDistributedLayoutForTmemLdStLegacyAnchored(memLL, atom, numWarps,
+                                                         bitwidth);
+    } else {
+      ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
+    }
+    if (ll && isCompatible(*ll)) {
+      layouts.push_back(LinearEncodingAttr::get(memType.getContext(),
+                                                std::move(ll.value())));
+    }
+  }
+
+  if (auto splitLongM = getTmemLoadLayoutSplitLongM(tensorTy, memType,
+                                                    numWarps);
+      splitLongM &&
+      succeeded(computeTMemLdStEncodingInfo(
+          tensorTy.cloneWithEncoding(splitLongM.value()), memType,
+          /*maxnreg=*/256))) {
+    layouts.push_back(splitLongM.value());
+  }
+  return layouts;
+}
+
 SmallVector<DistributedEncodingTrait>
 getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
                          MemDescType memType) {
@@ -913,12 +2400,13 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding());
   LinearLayout memLL = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
-      return toLinearLayout(memType.getShape(), memType.getEncoding());
+      return toLinearLayout(memType);
     std::string error;
-    auto maybeCanonical = getCanonicalTMemLinearEncoding(memType, &error);
-    if (!maybeCanonical)
+    auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
+        memType.getShape(), memType.getEncoding(), &error);
+    if (!maybeAnalysis)
       return LinearLayout();
-    return maybeCanonical->getLinearLayout();
+    return normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis);
   }();
   if (memLL.getNumOutDims() == 0)
     return layouts;
@@ -926,10 +2414,13 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
                     TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
                     TMemAccessAtom::I16x32bx2}) {
-    std::optional<LinearLayout> ll =
-        isScales ? getDistributedLayoutForTmemLdSt(memLL, atom, numWarps,
-                                                   bitwidth)
-                 : getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
+    std::optional<LinearLayout> ll;
+    if (isScales) {
+      ll = getDistributedLayoutForTmemLdStLegacyAnchored(memLL, atom, numWarps,
+                                                         bitwidth);
+    } else {
+      ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
+    }
     if (ll && isTMemCompatibleCandidate(op, tensorType, memType, *ll)) {
       layouts.push_back(LinearEncodingAttr::get(tensorType.getContext(),
                                                 std::move(ll.value())));
@@ -1017,8 +2508,6 @@ LogicalResult TensorMemoryLinearEncodingAttr::verify(
   }
   if (linearLayout.getNumOutDims() == 0)
     return emitError() << "Expected at least one output dimension";
-  if (!linearLayout.isSurjective())
-    return emitError() << "The layout must be surjective";
 
   auto *ctx = linearLayout.getOutDimNames().begin()->getContext();
   auto kRow = StringAttr::get(ctx, "row");
@@ -1028,9 +2517,15 @@ LogicalResult TensorMemoryLinearEncodingAttr::verify(
                       .removeZeroBasesAlongDim(kCol);
   if (llvm::is_contained(linearLayout.getInDimNames(), kBlock))
     stripped = stripped.removeZeroBasesAlongDim(kBlock);
-  if (!stripped.isInvertible()) {
+  // Allow sparse/non-surjective TMEM-linear layouts when the only aliasing
+  // comes from explicit zero bases. After stripping those zero bases, the
+  // remaining active TMEM coordinates must still map injectively into the
+  // logical tensor space. This keeps sparse/copy-only reachability paths such
+  // as tcgen05.copy.warpx2 expressible, while still rejecting arbitrary
+  // aliasing layouts.
+  if (!stripped.isInjective()) {
     return emitError()
-           << "After removing zero bases the layout must be bijective";
+           << "After removing zero bases the layout must be injective";
   }
   if (twoCTAs) {
     auto bases = linearLayout.getBases().lookup(kBlock);
@@ -1136,15 +2631,19 @@ LogicalResult TensorMemoryScalesEncodingAttr::verify(
 }
 
 LogicalResult impl::verifyMMAv5Op(Operation *op) {
-  auto isInterleaved = [](MemDescType memdesc) {
-    auto enc = dyn_cast<TensorMemoryEncodingAttr>(memdesc.getEncoding());
-    return enc && getTmemAllocSizes(memdesc).numRows != 64 &&
-           enc.getBlockM() == 64;
+  auto isInterleaved = [](const std::optional<MMAv5AccumulatorLayoutInfo> &info) {
+    return info && info->interleavedM64;
   };
 
   auto itf = cast<MMAv5OpInterface>(op);
-  if (isInterleaved(itf.getA().getType()) &&
-      isInterleaved(itf.getAccumulator().getType())) {
+  auto lhsInfo = getMMAv5LhsLayoutInfo(itf.getA().getType());
+  auto accPlan = isa<TCGen5MMAScaledOp>(op)
+                     ? getMMAv5ScaledAccumulatorLayoutInfo(
+                           itf.getAccumulator().getType())
+                     : getMMAv5AccumulatorLayoutInfo(
+                           itf.getAccumulator().getType());
+  if (lhsInfo && getTmemAllocSizes(itf.getA().getType()).numRows != 64 &&
+      lhsInfo->mmaSizeM == 64 && isInterleaved(accPlan)) {
     return op->emitOpError(
         "does not support blockM=64 with interleaved blocks in TMEM layout");
   }

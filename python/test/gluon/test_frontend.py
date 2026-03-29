@@ -263,6 +263,8 @@ def test_tensor_memory():
         anonymize_ir(mod.str_nodebug()), """\
 #blocked = #ttg.blocked<{sizePerThread = [1, 64], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_linear1 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tensor_memory_kernel() attributes {noinline = false} {
     %c0_i32 = arith.constant 0 : i32
@@ -272,8 +274,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %result_1 = ttng.tmem_load %result_0 : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xi32, #blocked>
     %true = arith.constant true
     ttng.tmem_store %cst, %result_0, %true : tensor<128x128xi32, #blocked> -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
-    %0 = ttg.memdesc_subslice %result_0[0, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
-    %1 = ttg.memdesc_subslice %result_0[64, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
+    %0 = ttg.memdesc_subslice %result_0[0, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xi32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
+    %1 = ttg.memdesc_subslice %result_0[64, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x128xi32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
     %result_2 = ttng.tmem_alloc : () -> !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32_3 = arith.constant 0 : i32
     %c2_i32 = arith.constant 2 : i32
@@ -283,8 +285,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %4 = arith.bitcast %c1_i32 : i32 to i32
     %5 = ub.poison : i32
     scf.for %arg0 = %2 to %3 step %4  : i32 {
-      %6 = ttg.memdesc_index %result_2[%arg0] : !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
-      %result_4 = ttng.tmem_load %6 : !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked>
+      %6 = ttg.memdesc_index %result_2[%arg0] : !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear1, #ttng.tensor_memory, mutable>
+      %result_4 = ttng.tmem_load %6 : !ttg.memdesc<128x128xf32, #tmem_linear1, #ttng.tensor_memory, mutable> -> tensor<128x128xf32, #blocked>
     }
     tt.return
   }
@@ -462,7 +464,7 @@ def test_tensor_memory_linear_views_block_layout_ir():
     )
     assert "twoCTAs = true" in ir
     assert "ttg.memdesc_subslice %7[0, 0, 2]" in ir
-    assert "-> !ttg.memdesc<32x16x4xf32, #tmem_linear4" in ir
+    assert "-> !ttg.memdesc<32x16x4xf32, #tmem_linear" in ir
 
 
 def test_tensor_memory_linear_view_load_reports_clean_error(capfd):
@@ -560,26 +562,52 @@ def tmem_alloc_non_surjective_kernel(layout: ttgl.constexpr):
     _ = blackwell.allocate_tensor_memory(ttgl.float32, [128, 4], layout)
 
 
+@gluon.jit
+def tmem_get_reg_layout_non_surjective_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
+    tmem = blackwell.allocate_tensor_memory(ttgl.float32, [128, 4], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs = ttgl.arange(0, 128)[:, None] * 4 + ttgl.arange(0, 4)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+    value = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+
 @pytest.mark.parametrize("row_bases", [
     [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
     [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
 ])
-def test_tensor_memory_linear_layout_warpx2_like_rows_report_non_surjective(row_bases):
+def test_tensor_memory_linear_layout_warpx2_like_rows_parse(row_bases):
     layout = TensorMemoryLinearLayout(
         rows=row_bases,
         cols=[[0, 1], [0, 2]],
         shape=[128, 4],
     )
-    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
-        run_parser(
-            tmem_alloc_non_surjective_kernel,
-            *make_args(layout),
-            target=BLACKWELL_TARGET,
-        )
+    module = run_parser(
+        tmem_alloc_non_surjective_kernel,
+        *make_args(layout),
+        target=BLACKWELL_TARGET,
+    )
+    text = anonymize_ir(module.str_nodebug())
+    assert "tensor_memory_linear" in text
+    assert "[0, 0]" in text
 
-    msg = str(excinfo.value)
-    assert "The layout must be surjective" in msg
-    assert "Assertion" not in msg
+
+def test_tensor_memory_linear_layout_non_surjective_reg_layout_parses():
+    layout = TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
+        cols=[[0, 1], [0, 2]],
+        shape=[128, 4],
+    )
+    mod = run_parser(
+        tmem_get_reg_layout_non_surjective_kernel,
+        *make_args(MockTensor(ttgl.float32), MockTensor(ttgl.float32), layout),
+        target=BLACKWELL_TARGET,
+    )
+    text = anonymize_ir(mod.str_nodebug())
+    assert "tensor_memory_linear" in text
+    assert "ttng.tmem_store" in text
+    assert "ttng.tmem_load" in text
 
 
 @gluon.jit
@@ -767,7 +795,7 @@ def shared_memory_cast_kernel():
     smem = ttgl.allocate_shared_memory(ttgl.float16, [32, 1, 4, 64], layout_b)
     smem.reshape((128, 64))
 
-    smem._reinterpret(ttgl.int8, [1024], ttgl.SwizzledSharedLayout(1, 1, 1, [0]))
+    smem._reinterpret(ttgl.int8, [16384], ttgl.SwizzledSharedLayout(1, 1, 1, [0]))
 
 
 @pytest.mark.parametrize("target", ALL_TARGETS)
@@ -790,7 +818,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     tt.call @test_frontend.anchor_noinline__MDi8S128_256SLNVMMA_64_8_True_False__NVMMALAS128_256ASMD(%2) : (!ttg.memdesc<128x256xi8, #shared1, #smem, mutable>) -> ()
     %3 = ttg.local_alloc : () -> !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable>
     %4 = ttg.memdesc_reshape %3 : !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable> -> !ttg.memdesc<128x64xf16, #shared3, #smem, mutable>
-    %5 = ttg.memdesc_reinterpret %3 : !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable> -> !ttg.memdesc<1024xi8, #shared4, #smem, mutable>
+    %5 = ttg.memdesc_reinterpret %3 : !ttg.memdesc<32x1x4x64xf16, #shared2, #smem, mutable> -> !ttg.memdesc<16384xi8, #shared4, #smem, mutable>
     tt.return
   }
   tt.func private @test_frontend.anchor_noinline__MDi8S128_256SLNVMMA_64_8_True_False__NVMMALAS128_256ASMD(%arg0: !ttg.memdesc<128x256xi8, #shared1, #smem, mutable>) attributes {noinline = true} {
@@ -985,15 +1013,15 @@ def test_tcgen05_mma():
         anonymize_ir(mod.str_nodebug()), """\
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
-#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 0], [0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 2>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tcgen05_mma_kernel() attributes {noinline = false} {
     %0 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
-    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_0 = arith.constant true
-    %2 = ttng.tc_gen5_mma %0, %1, %result[], %true, %true_0 : !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>
+    %2 = ttng.tc_gen5_mma %0, %1, %result[], %true, %true_0 {is_async} : !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
     tt.return
   }
 }
@@ -1021,7 +1049,7 @@ def test_tcgen05_mma_scaled():
         anonymize_ir(mod.str_nodebug()), """\
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
-#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 0], [0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 2>
 #tmem_scales = #ttng.tensor_memory_scales_encoding<>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tcgen05_mma_scaled_kernel() attributes {noinline = false} {
@@ -1029,14 +1057,60 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>
     %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     %result_0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
-    %result_1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>
+    %result_1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_2 = arith.constant true
-    %2 = ttng.tc_gen5_mma_scaled %0, %1, %result_1[], %result, %result_0, %true, %true_2 lhs = e5m2 rhs = e5m2 : !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem_linear, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
+    %2 = ttng.tc_gen5_mma_scaled %0, %1, %result_1[], %result, %result_0, %true, %true_2 lhs = e5m2 rhs = e5m2 {is_async} : !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     tt.return
   }
 }
 """)
+
+
+@gluon.jit
+def tensor_memory_scales_small_dim0_alloc_shape_kernel(scale_layout: ttgl.constexpr):
+    _ = blackwell.allocate_tensor_memory(ttgl.int8, [32, 2], scale_layout)
+
+
+def test_tensor_memory_scales_small_dim0_promotes_alloc_shape():
+    scale_layout = TensorMemoryScalesLayout()
+    mod = run_parser(tensor_memory_scales_small_dim0_alloc_shape_kernel, *make_args(scale_layout), target=BLACKWELL_TARGET)
+    expecttest.assert_expected_inline(
+        anonymize_ir(mod.str_nodebug()), """\
+#tmem_scales = #ttng.tensor_memory_scales_encoding<>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tensor_memory_scales_small_dim0_alloc_shape_kernel() attributes {noinline = false} {
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<32x2xi8, #tmem_scales, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}
+""")
+
+
+def test_tensor_memory_scales_explicit_16x32bx2_descriptor_type_small_tile():
+    tmem_ty = blackwell.tensor_memory_descriptor_type(
+        ttgl.int8,
+        [16, 4],
+        TensorMemoryScalesLayout(),
+        [16, 4],
+    )
+    layout = tmem_ty.get_reg_layout(num_warps=4, instr_variant="16x32bx2")
+    assert layout.shape == [16, 4]
+    assert layout.reg_bases == [[0, 1], [0, 2]]
+
+
+def test_tensor_memory_scales_explicit_16x32bx2_descriptor_type_reports_clean_error():
+    tmem_ty = blackwell.tensor_memory_descriptor_type(
+        ttgl.int8,
+        [32, 16],
+        TensorMemoryScalesLayout(),
+        [32, 16],
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"TMEM layout '16x32bx2' unsupported for shape \[32, 16\] and num_warps 4",
+    ):
+        tmem_ty.get_reg_layout(num_warps=4, instr_variant="16x32bx2")
 
 
 @gluon.jit
@@ -1340,11 +1414,12 @@ def test_tmem_index_constexpr():
     expecttest.assert_expected_inline(
         anonymize_ir(run_parser(tmem_index_kernel).str_nodebug()), """\
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [128, 0], [0, 128]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_index_kernel() attributes {noinline = false} {
     %result = ttng.tmem_alloc : () -> !ttg.memdesc<2x256x256xi32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32 = arith.constant 0 : i32
-    %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x256x256xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<256x256xi32, #tmem, #ttng.tensor_memory, mutable>
+    %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x256x256xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<256x256xi32, #tmem_linear, #ttng.tensor_memory, mutable>
     tt.return
   }
 }
@@ -1369,13 +1444,15 @@ def test_tmem_subslice_reg_layout_constexpr():
             ).str_nodebug()), """\
 #linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]], warp = [[32, 0], [64, 0]], block = [[128, 0], [256, 0]]}>
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1, CGALayout = [[1, 0], [2, 0]]>
+#tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]], block = [[128, 0], [256, 0]]}>
+#tmem_linear1 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]], block = [[128, 0], [256, 0]]}>
 module attributes {"ttg.num-ctas" = 4 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_subslice_reg_layout_kernel() attributes {noinline = false} {
     %result = ttng.tmem_alloc : () -> !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32 = arith.constant 0 : i32
-    %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable>
-    %1 = ttg.memdesc_subslice %0[0, 0] : !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x32xf32, #tmem, #ttng.tensor_memory, mutable, 512x256>
-    %result_0 = ttng.tmem_load %1 : !ttg.memdesc<512x32xf32, #tmem, #ttng.tensor_memory, mutable, 512x256> -> tensor<512x32xf32, #linear>
+    %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x256xf32, #tmem_linear, #ttng.tensor_memory, mutable>
+    %1 = ttg.memdesc_subslice %0[0, 0] : !ttg.memdesc<512x256xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x32xf32, #tmem_linear1, #ttng.tensor_memory, mutable, 512x256>
+    %result_0 = ttng.tmem_load %1 : !ttg.memdesc<512x32xf32, #tmem_linear1, #ttng.tensor_memory, mutable, 512x256> -> tensor<512x32xf32, #linear>
     tt.return
   }
 }

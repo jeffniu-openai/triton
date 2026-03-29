@@ -21,9 +21,8 @@ using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
     Value tmemBase) {
-  // We take the full layout even when it is a subview
-  // We'll just iterate the real shape when calling tmemLoad tho
-  auto ll = toLinearLayout(memTy);
+  auto ll =
+      ttng::normalizeTensorMemoryLinearLayoutForAnalysis(toLinearLayout(memTy));
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);
@@ -40,11 +39,31 @@ MemDescOperand mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::tmemLoad(
   return {address, offset};
 }
 
+static SmallVector<int>
+getSortedTMemTileOrder(MemDescType memTy, int varyingDim, int numRep,
+                       int tileSize) {
+  SmallVector<std::pair<uint32_t, int>> offsets;
+  offsets.reserve(numRep);
+  for (int rep = 0; rep < numRep; ++rep) {
+    SmallVector<int32_t> logicalOffsets(memTy.getRank(), 0);
+    logicalOffsets[memTy.getRank() - 2 + varyingDim] = rep * tileSize;
+    offsets.emplace_back(ttng::getTMemViewOffset(memTy, logicalOffsets), rep);
+  }
+  llvm::sort(offsets, [](const auto &lhs, const auto &rhs) {
+    return lhs.first < rhs.first;
+  });
+  SmallVector<int> order;
+  order.reserve(numRep);
+  for (auto [_, rep] : offsets)
+    order.push_back(rep);
+  return order;
+}
+
+namespace {
+
 //===----------------------------------------------------------------------===//
 // InstDescriptor
 //===----------------------------------------------------------------------===//
-
-namespace {
 
 enum class mxfpKind { mxf8f6f4 = 0, mxf4 = 1, mxf4nvf4 = 2 };
 
@@ -376,6 +395,8 @@ struct DotConversion {
 
   using GetAccAddressFn = std::function<MemDescOperand(
       ConversionPatternRewriter &, Location, int, int, const InstDesc &)>;
+  using GetAccumulatorInfoFn = std::function<
+      std::optional<ttng::MMAv5AccumulatorLayoutInfo>(MemDescType)>;
   using CreateMMAInstFn = std::function<void(
       ConversionPatternRewriter &, Location, MemDescOperand, MemDescOperand,
       Value, Value, Value, const InstDesc &, int, int, int)>;
@@ -390,6 +411,7 @@ struct DotConversion {
   SmallVector<int64_t> shapeB;
   int numBitsPerElementA;
   int numBitsPerElementB;
+  GetAccumulatorInfoFn getAccumulatorInfo;
   GetAccAddressFn getAccAddress;
   CreateMMAInstFn createMMAInst;
 };
@@ -427,7 +449,7 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
 
   auto aTensorTy = cast<MemDescType>(a.getType());
   auto bTensorTy = cast<MemDescType>(b.getType());
-  bool aInTmem = ttng::matchTensorMemoryLegacyEncoding(aTensorTy).has_value();
+  bool aInTmem = ttng::getMMAv5LhsLayoutInfo(aTensorTy).has_value();
 
   Value baseA = loadedA;
   if (!aInTmem) {
@@ -438,23 +460,30 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
 
   auto [M, N, K] = op.shape;
 
-  auto tensorMemAttr = ttng::matchTensorMemoryLegacyEncoding(dTensorTy);
-  if (!tensorMemAttr) {
+  auto tensorMemInfo = op.getAccumulatorInfo
+                           ? op.getAccumulatorInfo(dTensorTy)
+                           : ttng::getMMAv5AccumulatorLayoutInfo(dTensorTy);
+  if (!tensorMemInfo) {
     return mlir::emitError(
                loc, "failed to normalize TMEM accumulator encoding for MMAv5")
            << dTensorTy;
   }
-  unsigned mmaSizeM = tensorMemAttr->getBlockM();
+  unsigned mmaSizeM = tensorMemInfo->mmaSizeM;
   // Account for subslices
-  unsigned mmaSizeN = std::min<unsigned>(tensorMemAttr->getBlockN(), N);
+  unsigned mmaSizeN = std::min<unsigned>(tensorMemInfo->mmaSizeN, N);
   // Checked in the verifier
   assert(mmaSizeN <= 256 &&
          "The maximum size of an MMA instruction is 128x256");
   unsigned mmaSizeK = op.mmaSizeK;
   int numRepM = ceil<unsigned>(M, mmaSizeM);
   int numRepN = ceil<unsigned>(N, mmaSizeN);
-  assert((!twoCTAs || numRepN == 1) &&
-         "grep for [Note: numRepN > 1 and two_ctas]");
+  if (twoCTAs && numRepN > 1) {
+    return mlir::emitError(
+               loc,
+               "MMAv5 two-CTA lowering requires the accumulator tile to fit "
+               "a single instruction along N")
+           << " after MMAv5 accumulator normalization";
+  }
   int numRepK = ceil<unsigned>(K, mmaSizeK);
 
   SmallVector<int64_t> shapeA = op.shapeA;
@@ -468,11 +497,23 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
   SmallVector<unsigned> bOperandShape = {mmaSizeK,
                                          mmaSizeN / (twoCTAs ? 2 : 1)};
 
+  SmallVector<int> nRepOrder(numRepN);
+  std::iota(nRepOrder.begin(), nRepOrder.end(), 0);
+  if (isa<ttng::TensorMemoryEncodingAttr, ttng::TensorMemoryLinearEncodingAttr>(
+          dTensorTy.getEncoding())) {
+    nRepOrder = getSortedTMemTileOrder(dTensorTy, /*varyingDim=*/1, numRepN,
+                                       mmaSizeN);
+  }
+
   std::unique_ptr<DotOpMmaMemLoader> aLoader;
   bool transA = false;
+  SmallVector<int> kRepOrder(numRepK);
+  std::iota(kRepOrder.begin(), kRepOrder.end(), 0);
   if (aInTmem) {
     aLoader = std::make_unique<DotOpMmaV5TmemLoader>(
         DotOpMmaV5TmemLoader::build(loc, rewriter, aTensorTy, baseA));
+    kRepOrder = getSortedTMemTileOrder(aTensorTy, /*varyingDim=*/1, numRepK,
+                                       aOperandShape[1]);
   } else {
     auto isFp4a = op.numBitsPerElementA == 4;
     auto loader = DotOpMmaSmemLoader::build(loc, rewriter, aTensorTy, baseA,
@@ -506,10 +547,12 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
   DotConversion::InstDesc desc{mmaSizeM, mmaSizeN, {numRepM, numRepN, numRepK},
                                transA,   transB,   aInTmem};
   for (int m = 0; m < numRepM; m++) {
-    for (int n = 0; n < numRepN; n++) {
+    for (int nIdx = 0; nIdx < numRepN; nIdx++) {
+      int n = nRepOrder[nIdx];
       Value useInitAcc = useDFlag;
       MemDescOperand accAddress = op.getAccAddress(rewriter, loc, m, n, desc);
-      for (int k = 0; k < numRepK; k++) {
+      for (int kIdx = 0; kIdx < numRepK; kIdx++) {
+        int k = kRepOrder[kIdx];
         MemDescOperand a = aLoader->memLoad(
             m * aOperandShape[0], k * aOperandShape[1], rewriter, loc);
         Value b = bLoader->smemLoad(k * bOperandShape[0], n * bOperandShape[1],
@@ -623,6 +666,17 @@ int getScaleFactorColsPerSet(mxfpKind kind) {
   }
 };
 
+static uint32_t packTypedTMemWordAndSelector(uint32_t rawWordOffset,
+                                             int bitwidth,
+                                             uint32_t subword) {
+  if (bitwidth >= 32)
+    return rawWordOffset;
+  unsigned elemsPerWord = 32 / bitwidth;
+  unsigned offsetShift = llvm::Log2_32(elemsPerWord);
+  assert(subword < elemsPerWord && "subword selector must fit in a TMEM word");
+  return rawWordOffset + llvm::rotr(subword, offsetShift);
+}
+
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                                ConversionPatternRewriter &rewriter,
                                Location loc, ttng::TCGen5MMAScaledOp op,
@@ -647,6 +701,22 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.shape.N = dstPerCTA[1];
   dot.shape.K = op.getBlockK(); // K is not split across CTAs
   dot.mmaSizeK = !opKindIsMXFP4 ? 32 : 64;
+  if (auto scaledInfo = ttng::getMMAv5ScaledAccumulatorLayoutInfo(dTensorTy)) {
+    unsigned scaledMmaSizeN =
+        std::min<unsigned>(scaledInfo->mmaSizeN, dot.shape.N);
+    if (scaledMmaSizeN == 32 &&
+        ceil<unsigned>(dot.shape.N, scaledMmaSizeN) > 1) {
+      return mlir::emitError(
+                 loc,
+                 "direct block-scaled MMAv5 does not support repeated N=32 "
+                 "instructions along N for ")
+             << dTensorTy.getEncoding()
+             << ". The public tensor-memory scales layout only exposes "
+                "matrix-B scale fragments at 64-column alignment, so layouts "
+                "that would need multiple N=32 scaled instructions must be "
+                "reshaped to a larger directly supported MMAv5 tile.";
+    }
+  }
 
   dot.shapeA = triton::gpu::getAllocationShapePerCTA(aTensorTy);
   dot.shapeB = triton::gpu::getAllocationShapePerCTA(bTensorTy);
@@ -659,20 +729,24 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.numBitsPerElementB = getFormatBitSize(op.getBType());
 
   TritonLLVMOpBuilder tb(loc, rewriter);
-  Value baseD = tb.ptrtoint(i32_ty, adaptor.getD());
   Value baseScaleA = tb.ptrtoint(i32_ty, adaptor.getAScale());
   Value baseScaleB = tb.ptrtoint(i32_ty, adaptor.getBScale());
+  auto aScaleTy = cast<MemDescType>(op.getAScale().getType());
+  auto bScaleTy = cast<MemDescType>(op.getBScale().getType());
   bool twoCTAs = ttng::getModuleTwoCTAs(op);
-
-  int numRows = 128;
-  int colSizeInBits = 32;
+  // Use the layout-aware TMEM loader for all scaled MMAv5 accumulators, not
+  // just non-legacy layouts. This keeps scaled lowering on the same physical
+  // TMEM address model as plain MMAv5 and preserves whole-tile permutations
+  // and descriptor-view offsets without a separate block-id schedule.
+  DotOpMmaV5TmemLoader dLoader =
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD());
+  dot.getAccumulatorInfo = [](MemDescType memTy) {
+    return ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
+  };
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,
                           int m, int n, const DotConversion::InstDesc &desc) {
-    int numColPerBlock = ceil<int>(desc.mmaSizeM * desc.mmaSizeN *
-                                       dTensorTy.getElementTypeBitWidth(),
-                                   numRows * colSizeInBits);
-    int blockId = m + n * desc.repShape.numRepM;
-    return MemDescOperand{baseD, numColPerBlock * blockId};
+    return dLoader.tmemLoad(m * desc.mmaSizeM, n * desc.mmaSizeN, rewriter,
+                            loc);
   };
 
   dot.createMMAInst = [&](ConversionPatternRewriter &rewriter, Location loc,
@@ -680,29 +754,34 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                           Value pred, Value useInitAcc,
                           const DotConversion::InstDesc &desc, int m, int n,
                           int k) {
-    auto [numRepM, numRepN, numRepK] = desc.repShape;
     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
-    int numColPerScaleBlockA = ceil<int>(
-        ttng::getTmemAllocSizes(cast<MemDescType>(op.getAScale().getType()))
-            .numCols,
-        numRepM * (ceil<int>(numRepK, 4 / scaleFactorColsPerSet)));
-    int numColPerScaleBlockB = ceil<int>(
-        ttng::getTmemAllocSizes(cast<MemDescType>(op.getBScale().getType()))
-            .numCols,
-        numRepN * (ceil<int>(numRepK, 4 / scaleFactorColsPerSet)));
-    numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
-    int subWordIdx = k % (4 / scaleFactorColsPerSet);
-    int wordIdx = k / (4 / scaleFactorColsPerSet);
-    Value scaleA = tb.add(
-        baseScaleA, tb.i32_val((m + wordIdx * numRepM) * numColPerScaleBlockA));
-    Value scaleB = tb.add(
-        baseScaleB, tb.i32_val((n + wordIdx * numRepN) * numColPerScaleBlockB));
-    // For 2CTA mode, the M dimension in the instruction descriptor must be
-    // doubled to match the hardware's expectation for cta_group::2 operations.
+    int colsPerWord = 4 / scaleFactorColsPerSet;
+    int subWordIdx = k % colsPerWord;
+    int wordIdx = k / colsPerWord;
+    // Scale TMEM addresses are encoded at 32-bit word granularity. `logicalCol`
+    // must point at the first 8-bit scale column in the selected dword, while
+    // `subWordIdx` selects the sub-fragment within that word for vec1X/vec2X.
+    int logicalCol = wordIdx * 4;
+    auto getScaleAddress = [&](Value baseScale, MemDescType scaleTy,
+                               int logicalRow, int logicalCol,
+                               int selector, uint32_t wordCarry = 0) {
+      SmallVector<int32_t> offsets(scaleTy.getRank(), 0);
+      offsets[scaleTy.getRank() - 2] = logicalRow;
+      offsets[scaleTy.getRank() - 1] = logicalCol;
+      uint32_t rawWordOffset = ttng::getTMemViewOffset(scaleTy, offsets) + wordCarry;
+      uint32_t encodedOffset = packTypedTMemWordAndSelector(
+          rawWordOffset, scaleTy.getElementTypeBitWidth(), selector);
+      return tb.add(baseScale, tb.i32_val(static_cast<int32_t>(encodedOffset)));
+    };
+    Value scaleA = getScaleAddress(baseScaleA, aScaleTy, m * desc.mmaSizeM,
+                                   logicalCol, subWordIdx);
+    Value scaleB = getScaleAddress(baseScaleB, bScaleTy, n * desc.mmaSizeN,
+                                   logicalCol, subWordIdx);
+    int bScaleDescriptorSelector = subWordIdx;
     Value instDescriptor = createScaleInstDescriptor(
         rewriter, op, twoCTAs ? desc.mmaSizeM * 2 : desc.mmaSizeM,
-        desc.mmaSizeN, desc.transA, desc.transB, subWordIdx, subWordIdx,
-        mxfpInstKind);
+        desc.mmaSizeN, desc.transA, desc.transB, subWordIdx,
+        bScaleDescriptorSelector, mxfpInstKind);
     createScaledGen5MMA(rewriter, loc, op, a, b, accAddress, scaleA, scaleB,
                         pred, instDescriptor, useInitAcc, desc.aInTmem,
                         mxfpInstKind, twoCTAs);

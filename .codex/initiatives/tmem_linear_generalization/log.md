@@ -2448,3 +2448,1806 @@
     selection: at minimum a legal user-visible layout / descriptor
     representation that maps to `warpx2`, plus family-specific
     descriptor/address/message synthesis.
+- Requested follow-up TODO:
+  - evaluate an opt-in `warpx2` enablement path that permits non-surjective
+    layouts only for the copy-direction use case, paired with the required
+    family-specific `warpx2` codegen changes;
+  - this would be a semantic/API extension, not just a late-lowering tweak,
+    because current TMEM layout verification assumes tensor-storage
+    surjectivity/bijectivity.
+  - broaden the project scope from “all current public TMEM descriptor API
+    code” to “all ISA/PTX-level `tcgen05` families reachable from some legal
+    user input”, including:
+    - `tcgen05.mma` and `tcgen05.mma_scaled`: support all PTX-level MMAv5
+      instruction shapes/layouts that are ISA-legal, expand codegen to accept
+      arbitrary user layouts that map to them, and fuzz at the user level;
+    - `tcgen05.ld/st`: support all PTX-level ISA-legal atom/layout families
+      reachable from arbitrary user TMEM layouts and descriptor-view chains,
+      with user-level fuzzing;
+    - `tcgen05.copy`: extend the same reachability/fuzzing model to the
+      remaining PTX-level copy families.
+  - broaden the initiative goal from the current runtime-matrix frontier to the
+    full PTX-level tcgen05 surface:
+    - `cp`: make every ISA/PTX-level family reachable from some legal user
+      layout, then support arbitrary user layouts that map to those families;
+    - `mma` / `mma_scaled`: support all PTX-level MMAv5 instruction
+      shapes/layouts that are ISA-legal and expand user-layout lowering beyond
+      the current MMAv5-compatible canonical subset;
+    - `ld/st`: support all ISA-legal atom/layout combinations plus arbitrary
+      user descriptor layouts that factor to those atoms without wrong-code;
+    - add user-level fuzzing to saturate those expanded surfaces and keep the
+      parser/verifier/lowering no-crash invariants.
+
+2026-03-27 20:55Z - MMAv5 accumulator N-subslice support
+
+- Landed a narrow MMAv5 accumulator-view widening that keeps the old generic
+  TMEM matcher untouched.
+  - added `matchMMAv5AccumulatorEncoding(gpu::MemDescType)` in
+    `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` and declared it in
+    `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`;
+  - helper behavior:
+    - first try the existing logical-shape
+      `matchTensorMemoryLegacyEncoding(...)`;
+    - if that fails and the encoding is `tensor_memory_linear`, retry on the
+      memdesc `allocShape`;
+    - only allow the fallback when the view preserves the full `M` extent of
+      the allocation and narrows only `N`.
+- Routed accumulator-only users through the new helper:
+  - plain `tc_gen5_mma` verifier;
+  - `tc_gen5_mma_scaled` verifier;
+  - MMAv5 LLVM lowering;
+  - accumulator-derived row constraints in `TensorMemoryAllocation.cpp`;
+  - accumulator-derived LHS promotion policy in `PromoteLHSToTMem.cpp`.
+- Added coverage for public accumulator subviews from both legacy and
+  TMEM-linear parents.
+  - `test/TritonNvidiaGPU/ops.mlir`:
+    - plain `ttg.memdesc_subslice` -> `ttng.tc_gen5_mma` verifier/roundtrip
+      regression for a `128x64` TMEM-linear accumulator view with allocShape
+      `128x128`.
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`:
+    - plain MMAv5 lowering regression for a second-half `N` subslice from a
+      TMEM-linear accumulator parent;
+    - scaled MMAv5 lowering regression for the same second-half `N` subslice
+      pattern.
+  - `python/test/gluon/test_tmem_runtime_matrix.py`:
+    - added end-to-end runtime coverage for plain `tcgen05_mma` with indexed
+      and second-half `N`-subslice accumulators from legacy and TMEM-linear
+      parents;
+    - added end-to-end runtime coverage for `tcgen05_mma_scaled` with a
+      second-half `N`-subslice accumulator from legacy and TMEM-linear parents.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `2 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_indexed_acc_view or mma_subslice_acc_view or mma_scaled_minimal or mma_scaled_subslice_acc_view'`
+    - `7 passed`
+- Current boundary after this slice:
+  - MMAv5 accumulator `D` now supports allocation-compatible `N`-subslice
+    views from TMEM-linear parents;
+  - this does **not** yet widen A-in-TMEM, non-legacy-equivalent accumulator
+    families, or arbitrary shared-memory A/B layouts.
+
+2026-03-27 08:25Z - MMAv5 accumulator view composition expansion; LHS views quarantined
+
+- Kept the new accumulator-side normalization path and expanded its validated
+  public-view surface without widening the unsafe LHS path.
+  - accumulator `D` coverage now includes:
+    - indexed views from lifted parents for plain `tcgen05_mma`;
+    - indexed views from lifted parents for `tcgen05_mma_scaled`;
+    - second-half `N` subslices from legacy and TMEM-linear parents for plain
+      and scaled MMA;
+    - composed `index(1).slice(64, 64, dim=1)` views from lifted parents for
+      plain and scaled MMA.
+- Converted the attempted LHS-TMEM subslice expansion into explicit clean
+  negatives instead of leaving a wrong-code path open.
+  - plain runtime-matrix coverage now asserts
+    `LHS tensor memory views are currently unsupported for MMAv5...` and checks
+    that we do not fall through to `PassManager::run failed` / `Assertion`;
+  - `test/TritonNvidiaGPU/invalid.mlir` now covers the same verifier boundary
+    for both `ttng.tc_gen5_mma` and `ttng.tc_gen5_mma_scaled`.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_indexed_acc_view or mma_subslice_acc_view or mma_lhs_subslice_view_reports_clean_error or mma_scaled_minimal or mma_scaled_subslice_acc_view'`
+    - `9 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_indexed_acc_view or mma_indexed_subslice_acc_view'`
+    - `4 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_indexed_subslice_acc_view'`
+    - `2 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1618 passed, 117 skipped in 371.45s`
+- Current boundary after this validation:
+  - MMAv5 accumulator `D` supports indexed, `N`-subslice, and composed
+    indexed-then-`N`-subslice public views from legacy / TMEM-linear parents
+    when the physical allocation remains legacy-MMAv5-compatible;
+  - LHS tensor-memory views still miscompile if accepted, so they remain
+    verifier-rejected for both plain and scaled MMAv5;
+  - this still does not widen arbitrary non-legacy-equivalent accumulator
+    families or arbitrary shared-memory A/B layouts.
+
+2026-03-27 - MMAv5 accumulator view-composition follow-up
+
+- Expanded validated MMAv5 accumulator-view coverage without widening the
+  underlying matcher again.
+  - new runtime-matrix positives for `tcgen05_mma_scaled` with indexed
+    accumulator `D` views from:
+    - legacy lifted parents;
+    - lifted `tensor_memory_linear` parents.
+  - new runtime-matrix positives for composed public accumulator view chains:
+    - plain `tcgen05_mma` with `acc.index(...).slice(..., dim=1)`;
+    - scaled `tcgen05_mma_scaled` with the same
+      `acc.index(...).slice(..., dim=1)` chain;
+    - each validated for both legacy and lifted `tensor_memory_linear`
+      parents.
+- Locked down the newly discovered A-in-TMEM subview bug as a clean-negative
+  boundary instead of allowing wrong-code.
+  - verifier quarantine in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` now rejects
+    LHS tensor-memory views for both:
+    - `ttng.tc_gen5_mma`;
+    - `ttng.tc_gen5_mma_scaled`.
+  - added frontend/runtime clean-negative coverage in
+    `python/test/gluon/test_tmem_runtime_matrix.py`;
+  - added verifier regressions in `test/TritonNvidiaGPU/invalid.mlir`,
+    including the scaled path.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_indexed_acc_view or mma_scaled_indexed_acc_view or mma_subslice_acc_view or mma_indexed_subslice_acc_view or mma_lhs_subslice_view_reports_clean_error or mma_scaled_minimal or mma_scaled_subslice_acc_view or mma_scaled_indexed_subslice_acc_view'`
+    - `15 passed`
+  - full matrix:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1618 passed, 117 skipped in 331.68s`
+- Current MMAv5 boundary after this follow-up:
+  - accumulator `D` now has validated public-view coverage for:
+    - index;
+    - `N` subslice;
+    - `index -> N-subslice` composition;
+    - plain and scaled MMAv5;
+    - legacy and TMEM-linear lifted parents.
+  - LHS/A TMEM views remain explicitly unsupported pending a real lowering fix;
+    they now fail cleanly instead of miscompiling.
+
+2026-03-27 21:40Z - MMAv5 accumulator view-chain expansion and LHS TMEM-view quarantine
+
+- Followed the next safe MMAv5 public-view increment after accumulator
+  `N`-subslice support.
+  - added positive runtime coverage for composed accumulator view chains
+    `index(...).slice(..., dim=1)` on top of canonical MMAv5 parents for both
+    `tcgen05_mma` and `tcgen05_mma_scaled`;
+  - legacy parent coverage uses the existing `TensorMemoryLayout`;
+  - TMEM-linear parent coverage uses lifted `tensor_memory_linear` layouts for
+    rank-3 parents so the runtime path exercises `memdesc_index` plus
+    `memdesc_subslice` composition before MMAv5 lowering.
+- Added verifier/roundtrip coverage for the plain composed chain.
+  - `test/TritonNvidiaGPU/ops.mlir` now has a
+    `ttg.memdesc_index -> ttg.memdesc_subslice -> ttng.tc_gen5_mma`
+    regression over a TMEM-linear parent accumulator.
+- Confirmed a separate open BUG on A-in-TMEM public views instead of widening
+  that path.
+  - attempted positive LHS TMEM `subslice` support miscompiled at runtime for
+    both legacy and TMEM-linear parents;
+  - kept the compiler safe by rejecting MMAv5 LHS tensor-memory views whenever
+    the memdesc logical shape differs from the allocation shape;
+  - added direct verifier regressions for both plain and scaled MMAv5 LHS view
+    rejection in `test/TritonNvidiaGPU/invalid.mlir`;
+  - converted the Gluon runtime-matrix LHS subslice attempt into a clean
+    negative regression that asserts the explicit diagnostic and no crash /
+    `PassManager::run failed`.
+- Source inspection after this slice still points to a larger frontier for
+  arbitrary MMAv5 accumulator layouts.
+  - the remaining row/col-mixed or low-bit-permuted negatives are not
+    supportable by a bounded matcher tweak alone;
+  - current MMAv5 lowering still normalizes through legacy-compatible families
+    and emits accumulator addresses as `base + (row << 16 | col)` style tile
+    offsets, with no instruction-level metadata for arbitrary accumulator
+    swizzles;
+  - so tile-preserving / canonical-family view composition is now stronger, but
+    arbitrary PTX-level MMAv5 accumulator layouts still require a more general
+    accumulator address model.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_indexed_acc_view or mma_subslice_acc_view or mma_indexed_subslice_acc_view or mma_lhs_subslice_view_reports_clean_error or mma_scaled_minimal or mma_scaled_subslice_acc_view or mma_scaled_indexed_subslice_acc_view'`
+    - `13 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1616 passed, 117 skipped in 527.21s`
+- Current boundary after this slice:
+  - MMAv5 accumulator `D` now supports canonical public view chains that stay
+    allocation-compatible along `M` and narrow only `N`, including
+    `index(...).slice(...)` from lifted TMEM-linear parents;
+  - MMAv5 LHS tensor-memory views remain an open BUG and are intentionally
+    rejected cleanly for now;
+  - arbitrary PTX-level MMAv5 accumulator layouts remain outside the current
+    lowering model.
+
+2026-03-27 22:20Z - MMAv5 canonical large-N accumulator normalization
+
+- Landed a bounded MMAv5 accumulator-family fix for larger canonical
+  accumulators along `N`.
+  - refactored the legacy matcher in
+    `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` through
+    `matchTensorMemoryLegacyEncodingImpl(...)`, which can now search under an
+    optional `maxBlockN` cap;
+  - added accumulator-only `matchMMAv5AccumulatorFamily(...)` that selects the
+    largest legacy family preserving the same physical TMEM packing while
+    respecting the MMAv5 per-instruction `N <= 256` limit;
+  - oversized explicit legacy layouts (for example
+    `#ttng.tensor_memory_encoding<blockM = 128, blockN = 512, ...>`) now
+    normalize through their canonical TMEM-linear form instead of hard-failing
+    before the capped search runs.
+- This unlocks canonical plain-MMAv5 accumulators that span multiple
+  instructions along `N`.
+  - direct GPU probes confirmed both explicit legacy and TMEM-linear
+    `128x512xf32` accumulators now compile and run correctly for plain
+    `tcgen05_mma`, each emitting four
+    `tcgen05.mma.cta_group::1.kind::f16` instructions with correct numerics.
+- Added permanent runtime coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`.
+  - new `test_tmem_runtime_matrix_mma_large_n` covers legacy and TMEM-linear
+    `128x512` accumulators and checks:
+    - correct `A @ B + C` numerics;
+    - exact PTX/LLIR opcode agreement;
+    - four emitted `tcgen05.mma.cta_group::1.kind::f16` instructions.
+- Important boundary after this fix:
+  - the large-`N` widening is currently validated for plain MMAv5 only;
+  - scaled `128x512` is still blocked separately by TMEM resource pressure
+    (`Required: 532, Hardware limit: 512`) and was not widened by this
+    matcher-only change;
+  - non-canonical / tile-permuted accumulator layouts still need a more
+    general address model than the current legacy-family matching.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `3 passed`
+ - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_large_n or mma_indexed_acc_view or mma_subslice_acc_view or mma_indexed_subslice_acc_view or mma_lhs_subslice_view_reports_clean_error or mma_scaled_minimal or mma_scaled_subslice_acc_view or mma_scaled_indexed_subslice_acc_view'`
+    - `15 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1620 passed, 117 skipped in 544.82s`
+
+2026-03-28 01:35Z - MMAv5 one-CTA tile-permuted TMEM-linear accumulators
+
+- Moved MMAv5 accumulator lowering past the old “exact legacy-equivalent only”
+  boundary for a bounded new family: one-CTA TMEM-linear accumulators whose
+  intra-instruction MMAv5 tile packing is canonical, but whose whole MMAv5
+  tiles are permuted in TMEM.
+  - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+    now gives `matchMMAv5AccumulatorFamily(...)` a second path for
+    TMEM-linear accumulators that:
+    - first strips exact legacy-equivalent matches under the existing
+      `N <= 256` cap;
+    - then accepts only tile-preserving one-CTA layouts against actual MMAv5
+      instruction-width candidates `{64, 128, 256}` along `N`;
+    - keeps low-bit/intra-tile packing exact while allowing only whole-tile
+      movements from higher bits.
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+    now uses `DotOpMmaV5TmemLoader` for scaled-MMAv5 accumulator addressing
+    too, instead of the old row-major block-id formula, so plain
+    `tcgen05_mma` and `tcgen05.mma_scaled` share the same full-layout TMEM
+    accumulator addressing model.
+- Added new permanent coverage for a user-visible non-legacy TMEM-linear
+  accumulator family.
+  - `python/test/gluon/test_tmem_runtime_matrix.py` now covers:
+    - plain `tcgen05_mma` with a `128x256` TMEM-linear accumulator whose
+      64-wide MMAv5 tile columns are permuted (`mma_tile_permuted_layout`);
+    - scaled `tcgen05.mma_scaled` with the same accumulator family
+      (`mma_scaled_tile_permuted_layout`);
+    - both assert correct numerics, exact PTX/LLIR agreement, and
+      `tensor_memory_linear` staying present in TTGIR.
+  - `test/TritonNvidiaGPU/ops.mlir` now has a direct verifier/round-trip
+    regression for a non-legacy tile-permuted MMAv5 accumulator.
+- Important tightening found during validation:
+  - the first matcher draft was too permissive and allowed scrambled/permuted
+    accumulator negatives to compile, which later faulted with GPU illegal
+    instructions during the full matrix;
+  - tightening the non-legacy search to real MMAv5 instruction widths
+    `{64, 128, 256}` restored the old clean-negative behavior for
+    mixed/scrambled/row-col-permuted layouts while keeping the intended
+    tile-permuted positives.
+- Current MMAv5 boundary after this slice:
+  - supported:
+    - canonical legacy / TMEM-linear accumulators;
+    - canonical large-`N` accumulators (`128x512`);
+    - public accumulator view chains that preserve full `M` and narrow `N`;
+    - one-CTA TMEM-linear accumulators that preserve MMAv5 intra-tile packing
+      and only permute whole tiles along `N`;
+    - scaled MMAv5 shares that same one-CTA accumulator-address model.
+  - still unsupported / open:
+    - low-bit row/col-permuted or mixed/scrambled accumulator layouts;
+    - two-CTA non-legacy tile permutations;
+    - LHS/A TMEM public views.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_tile_permuted_layout or mma_scaled_tile_permuted_layout or mma_large_n or mma_indexed_acc_view or mma_subslice_acc_view or mma_indexed_subslice_acc_view or mma_scaled_minimal or mma_scaled_subslice_acc_view or mma_scaled_indexed_subslice_acc_view or mma_lhs_subslice_view_reports_clean_error'`
+    - `17 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_exotic_layout_reports_clean_unsupported or mma_rowcol_permuted_layout_reports_clean_unsupported or mma_tile_permuted_layout or mma_scaled_tile_permuted_layout'`
+    - `19 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1622 passed, 117 skipped in 538.84s`
+
+2026-03-28 02:05Z - MMAv5 tile-permuted large-N coverage expansion
+
+- Extended the new one-CTA tile-permuted MMAv5 coverage beyond the initial
+  `128x256` case.
+  - direct GPU probes confirmed plain `tcgen05_mma` also handles:
+    - `128x512` accumulators with 64-wide tile-grid permutations;
+    - `128x512` accumulators with 128-wide tile-grid permutations;
+  - scaled MMAv5 remains bounded by TMEM capacity there:
+    - `128x512` tile-permuted scaled accumulators still hit
+      `OutOfResources out of resource: tensor memory, Required: 532, Hardware limit: 512`.
+- Added permanent runtime coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`.
+  - `MMA_TILE_PERMUTED_CASES` now covers:
+    - `128x256`, tile width `64`;
+    - `128x512`, tile width `64`;
+    - `128x512`, tile width `128`;
+  - opcode expectations now pin the observed instruction counts:
+    - `8`, `16`, and `8` plain MMAv5 instructions respectively.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `ninja: no work to do.`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_tile_permuted_layout or mma_scaled_tile_permuted_layout'`
+    - `4 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1624 passed, 117 skipped in 93.24s`
+2026-03-28 03:45Z - Plain MMAv5 LHS TMEM views narrowed to whole-K direct subslices
+
+- I tried the obvious verifier broadening first: remove the blanket `TCGen5MMAOp` / `TCGen5MMAScaledOp` ban on TMEM LHS views and flip the runtime-matrix `mma_lhs_subslice` BUG bucket positive.
+- That was wrong. The new `128x32` plain-LHS and `128x64` scaled-LHS kernels compiled, but runtime numerics were bad (`NaN`-heavy for plain, materially wrong for scaled). So the broad ban was over-conservative, but the broad acceptance path was real wrong-code.
+- The key clue was existing positive coverage in `python/test/gluon/test_core.py::test_block_m_64_mma`: TMEM operand-A direct `memdesc_subslice` tiles were already working there for the manually tiled `blockM=64` path. So the real boundary is not “all LHS views unsupported”, it is “only certain aligned whole-tile LHS views are supported today”.
+- I replaced the blanket plain-MMA verifier ban in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` with a narrower rule:
+  - plain `tc_gen5_mma` accepts TMEM LHS views only when they are direct `ttg.memdesc_subslice` values,
+  - preserve full `M`,
+  - slice whole `blockN` tiles along `K`,
+  - and keep the subslice aligned to the underlying parent TMEM family.
+- The historical runtime-matrix `128x32` / partial-`K` LHS cases stay clean-negative with the new diagnostic (“whole-K MMAv5 tiles”), while the pre-existing positive `test_block_m_64_mma` path continues to pass.
+- I left `tc_gen5_mma_scaled` conservative for now: TMEM LHS views remain cleanly unsupported there because I do not yet have a validated positive scaled-LHS view family.
+- Added verifier coverage:
+  - `test/TritonNvidiaGPU/invalid.mlir` now checks the new plain-MMA partial-`K` rejection text.
+  - `test/TritonNvidiaGPU/ops.mlir` now includes a positive plain-MMA whole-tile TMEM-LHS subslice case (`64x128 -> 64x64`).
+
+Validation:
+- `TRITON_BUILD_WITH_CCACHE=true make -j96`
+- `lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`
+- `pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_lhs_subslice_view_reports_clean_error'`
+- `pytest -s --tb=short -n 1 python/test/gluon/test_core.py -k 'test_block_m_64_mma'`
+- full TMEM runtime matrix: `1624 passed, 117 skipped in 552.30s`
+
+Open after this slice:
+- scaled MMAv5 TMEM LHS views still need real positive support, not blanket rejection;
+- plain MMAv5 TMEM LHS views are still not generalized beyond direct whole-`K` aligned subslices;
+- the bigger MMAv5 work is still the non-legacy / arbitrary-layout accumulator-family expansion (two-CTA non-legacy, broader tile-grid permutations, etc.).
+
+2026-03-28 05:20Z - ld/st clean-negative assertion normalization for frontend `auto` variant
+
+- Folded the known full-matrix failure where ld/st clean-negative assertions
+  still hardcoded `"TMEM layout '32x32b' unsupported..."` while frontend now
+  defaults to `"auto"` in those paths.
+- Updated `python/test/gluon/test_tmem_runtime_matrix.py` assertions to accept
+  either spelling without changing the underlying unsupported semantics:
+  - `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error`;
+  - `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported`;
+  - `test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean_error`.
+- Validation:
+  - attempted rebuild (required before tests):
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - currently fails out of scope in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+      (`ceil<unsigned>(...)` parse error); no ld/st-owned files in that stack.
+  - targeted cluster:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_descriptor_multidim_slice_identity_reports_clean_error or ldst_descriptor_multidim_slice_reports_clean_unsupported or cp_no_scales_linear_unsupported_shape_reports_clean_error'`
+    - `3 passed`
+  - full matrix rerun:
+    - `CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH=python:. pytest -s --tb=short -n 2 python/test/gluon/test_tmem_runtime_matrix.py`
+    - no remaining failures from stale `'32x32b'` assertions.
+
+2026-03-28 07:10Z - MMAv5 plain 32-wide tile-permuted accumulators; scaled fence
+
+- Extended the non-legacy tile-preserving MMAv5 accumulator matcher in
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` to consider `blockN = 32`
+  for plain MMAv5 accumulator families.
+  - direct GPU probes confirmed plain `tcgen05_mma` handles one-CTA TMEM-linear
+    tile-preserving `32`-wide permutations for:
+    - `128x128`;
+    - `128x256`;
+    - `128x512`;
+  - observed opcode counts:
+    - `8`, `16`, and `32` respectively.
+- The same widening is not safe for scaled MMAv5 yet.
+  - direct probes showed non-legacy `blockN = 32` accumulators produce
+    materially wrong results for `tcgen05.mma_scaled`;
+  - added a verifier fence in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`:
+    scaled MMAv5 now rejects non-legacy 32-wide accumulator permutations
+    cleanly instead of compiling wrong-code;
+  - this fence is intentionally narrow:
+    canonical legacy-equivalent 32-wide layouts are not blanket-banned.
+- Coverage updates:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - positive plain-MMAv5 tile-permuted-32 cases for
+      `128x128`, `128x256`, `128x512`;
+    - clean-negative scaled-MMAv5 tile-permuted-32 cases for
+      `128x128`, `128x256`;
+  - `test/TritonNvidiaGPU/ops.mlir`
+    - positive round-trip for a plain `128x128` tile-permuted-32 accumulator;
+  - `test/TritonNvidiaGPU/invalid.mlir`
+    - scaled non-legacy `blockN = 32` verifier regression.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=/root/code/triton/build/cmake.linux-aarch64-cpython-3.12; cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_tile_permuted_layout or mma_scaled_tile_permuted_layout or mma_scaled_tile_permuted_32_reports_clean_unsupported or mma_exotic_layout_reports_clean_unsupported or mma_rowcol_permuted_layout_reports_clean_unsupported'`
+    - `26 passed`
+  - `CUDA_VISIBLE_DEVICES=0,1 PYTHONPATH=python:. pytest -s --tb=short -n 2 python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1639 passed, 117 skipped in 307.17s`
+- Current headline boundary after this slice:
+  - plain MMAv5 supports one-CTA non-legacy tile-preserving accumulator
+    permutations for tile widths `{32, 64, 128}`;
+  - scaled MMAv5 supports the `{64}` family but still rejects the non-legacy
+    `32`-wide family cleanly;
+  - low-bit mixed/scrambled accumulator layouts and two-CTA non-legacy
+    permutations are still open.
+
+## 2026-03-27: ld/st frontend selection now uses TMEM view-analysis layout
+
+- Scope (ld/st-only, disjoint from MMAv5 lowering edits):
+  - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+  - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+  - `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`
+- Change:
+  - added `getTMemViewAnalysisLinearLayout(shape, encoding, error)` API;
+  - switched TMEM ld/st register-layout selection helpers to derive non-scales
+    layout candidates from TMEM view-analysis layout instead of canonical-only
+    extraction.
+- Why:
+  - canonical-only selection can drop valid view-preserved TMEM encodings in
+    descriptor chains before `computeTMemLdStEncodingInfo(...)` runs.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_descriptor_higher_rank_dim0_slice_reports_clean_error_lifted_layout or ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout or ldst_descriptor_multidim_slice_positive or ldst_descriptor_multidim_slice_reports_clean_unsupported'`
+    - `26 passed`
+- Follow-up finding:
+  - lifted higher-rank clean-negative buckets remain unchanged because frontend
+    `compute_tmem_reg_layout(...)` still lacks enough view metadata when
+    `shape` rank is lower than preserved encoding rank; this is a separate gap.
+
+## 2026-03-27: removed implicit MMAv5 accumulator/LHS rematerialization
+
+- User direction:
+  - no silent compiler-inserted MMA rematerialization; user-specified layouts
+    must either lower directly or fail with a clean diagnostic.
+- Compiler-side outcome:
+  - removed the hidden MMAv5 accumulator rematerialization path;
+  - removed the hidden TMEM-LHS-view materialization path;
+  - MMAv5 TMEM LHS views now fail cleanly instead of being rewritten behind the
+    user’s back;
+  - direct MMAv5 matching/lowering for supported layouts remains in place.
+- Test updates:
+  - restored plain MMA exotic / row-col permuted runtime buckets to clean
+    unsupported checks;
+  - converted MMAv5 TMEM-LHS-subslice runtime coverage to clean unsupported
+    checks;
+  - removed lit expectations that relied on hidden TMEM-LHS materialization;
+  - added verifier coverage in `test/TritonNvidiaGPU/invalid.mlir` for plain
+    and scaled MMAv5 TMEM-LHS view rejection.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `BUILD_DIR=/root/code/triton/build/cmake.linux-aarch64-cpython-3.12; cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/test_promotion_to_tensor_memory.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `4 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_exotic_layout_reports_clean_unsupported or mma_rowcol_permuted_layout_reports_clean_unsupported or mma_lhs_whole_tile_subslice_reports_clean_unsupported or mma_lhs_subslice_reports_clean_unsupported or mma_scaled_lhs_subslice_reports_clean_unsupported or mma_scaled_blockn32'`
+    - `24 passed, 1 xfailed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_large_n or mma_tile_permuted_layout or mma_indexed_acc_view or mma_subslice_acc_view or mma_indexed_subslice_acc_view or mma_lhs_tmem_layout or mma_scaled_indexed_acc_view or mma_scaled_large_n or mma_scaled_tile_permuted_layout or mma_scaled_subslice_acc_view or mma_scaled_indexed_subslice_acc_view or mma_scaled_lhs_tmem_layout'`
+    - `27 passed`
+- New explicit BUG:
+  - scaled MMAv5 direct linear `128x32` accumulator layout still compiles but
+    produces incorrect numerics;
+  - kept as explicit `xfail(strict=True)` runtime coverage in
+    `test_tmem_runtime_matrix_mma_scaled_blockn32_linear_bug`.
+
+## 2026-03-27: MMAv5 verifier/lowering moved off returned legacy TMEM attrs
+
+- Goal of this slice:
+  - start removing the “recover a legacy TMEM family, then inspect
+    `blockM/blockN/colStride`” bottleneck from MMAv5 support paths while
+    keeping current direct-support behavior unchanged.
+- Compiler-side changes:
+  - introduced `MMAv5TMemLayoutPlan` in
+    `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`;
+  - replaced `matchMMAv5LhsEncoding(...)` /
+    `matchMMAv5AccumulatorEncoding(...)` with
+    `getMMAv5LhsLayoutPlan(...)` /
+    `getMMAv5AccumulatorLayoutPlan(...)`;
+  - updated MMAv5 verifier logic in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+    to consume the plan instead of a returned `TensorMemoryEncodingAttr`;
+  - updated MMAv5 LLVM lowering in
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+    to derive instruction tile sizes from the plan instead of the legacy attr;
+  - updated TMEM row-coupling allocation logic in
+    `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`
+    to use plan-derived instruction shape rather than legacy attr access;
+  - updated `PromoteLHSToTMem.cpp` to derive accumulator blockM/twoCTAs from
+    the MMAv5 plan.
+- Important scope note:
+  - this does not yet remove the internal finite-family search inside the MMAv5
+    planner; it removes the returned legacy-attr dependency from verifier,
+    lowering, and allocation call sites.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - direct `triton-opt` checks:
+    - `test/TritonNvidiaGPU/invalid.mlir --split-input-file --verify-diagnostics`
+      -> `OK`
+    - `test/TritonNvidiaGPU/ops.mlir` -> `OK`
+    - `test/TritonNvidiaGPU/test_promotion_to_tensor_memory.mlir -split-input-file -tritongpu-promote-lhs-to-tmem`
+      -> `OK`
+    - `test/TritonGPU/promote-lhs-to-tmem.mlir -tritongpu-promote-lhs-to-tmem`
+      -> `OK`
+    - `test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse`
+      -> `OK`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_exotic_layout_reports_clean_unsupported or mma_rowcol_permuted_layout_reports_clean_unsupported or mma_lhs_whole_tile_subslice_reports_clean_unsupported or mma_lhs_subslice_reports_clean_unsupported or mma_scaled_lhs_subslice_reports_clean_unsupported or mma_scaled_blockn32'`
+    - `25 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_large_n or mma_tile_permuted_layout or mma_indexed_acc_view or mma_subslice_acc_view or mma_indexed_subslice_acc_view or mma_lhs_tmem_layout or mma_scaled_indexed_acc_view or mma_scaled_large_n or mma_scaled_tile_permuted_layout or mma_scaled_subslice_acc_view or mma_scaled_indexed_subslice_acc_view or mma_scaled_lhs_tmem_layout'`
+    - `27 passed`
+- Follow-up direction:
+  - next MMAv5 step is to replace the planner’s remaining finite-family
+    recovery logic with direct analysis over the normalized TMEM linear layout,
+    then widen direct support beyond the current MMAv5-compatible family set.
+
+## 2026-03-27: Gluon MMAv5 surface is async-only
+
+- Changed the Gluon builders in `python/src/gluon_ir.cc` so
+  `tcgen05_mma(...)` and `tcgen05_mma_scaled(...)` always set
+  `is_async=true`.
+- Updated the Gluon API docs in
+  `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`
+  to remove the old “sync if no barrier” wording. The contract is now:
+  MMAv5 ops are always async from Gluon; users must use
+  `tcgen05_commit(...)` + `mbarrier.wait(...)` before consuming the
+  accumulator unless they attach completion barriers directly.
+- Updated Gluon parser expectations in
+  `python/test/gluon/test_frontend.py` so no-barrier MMAv5 ops print
+  `{is_async}`.
+- Updated `tmem_mma_scaled_blockn32_kernel` in
+  `python/test/gluon/test_tmem_runtime_matrix.py` to use explicit
+  `tcgen05_commit(...)` + `mbarrier.wait(...)` before `acc_tmem.load()`.
+- Important rationale:
+  - the earlier `blockN=32` scaled wrong-data bucket was not a scale
+    descriptor bug; the same emitted MMAv5 instruction sequence becomes
+    numerically correct once the async completion contract is honored.
+  - this avoids relying on the currently-missing sync-lowering path for
+    Gluon-authored MMAv5 ops.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_frontend.py -k 'test_tcgen05_mma or test_tcgen05_mma_scaled'`
+    -> `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_scaled_blockn32_layout'`
+    -> `2 passed`
+
+## 2026-03-27: scaled MMAv5 32-wide tile-permuted bucket is a real BUG; higher-rank ld/st tests cleaned up
+
+- Cleaned up the stale higher-rank ld/st runtime-matrix conversion from the
+  delegated test pass.
+  - one-CTA higher-rank `dim0_slice` / `half_rows` cases stay positive;
+  - two-CTA higher-rank `dim0_slice` / `half_rows` cases are still clean
+    negatives at the `get_reg_layout(...)` boundary, so the runtime matrix now
+    reflects the current compiler instead of carrying a broken mixed state.
+  - `python/test/gluon/test_tmem_runtime_matrix.py` imports cleanly again.
+- Investigated scaled MMAv5 tile-permuted `tile_n=32` accumulators.
+  - `128x128` and `128x256` tile-permuted-32 accumulators compile and emit the
+    expected scaled MMAv5 PTX family/op counts (`8` and `16` ops
+    respectively), but runtime numerics are wrong.
+  - direct positive conversion of those cases is therefore incorrect; they are
+    not stale negatives, they are a real wrong-code / fault bucket.
+  - kept the working `256x64` scaled tile-permuted case positive.
+  - added isolated `BUG` xfails for the `128x32` / `256x32` scaled
+    tile-permuted cases using `@pytest.mark.forked` so the runtime matrix keeps
+    the explicit BUG signal without poisoning the CUDA context for following
+    tests.
+- Tried a bounded lowering tweak in
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+  (loosening the `numColPerScaleBlockB >= 2` floor for `mmaSizeN == 32`).
+  - result: wrong change; it turned the existing wrong-code into a device
+    misaligned-address fault and also regressed the previously-good
+    `256x64` scaled tile-permuted case.
+  - reverted the tweak immediately; current tree is back to:
+    - `256x64` scaled tile-permuted = positive;
+    - `128x32` / `256x32` scaled tile-permuted = explicit `BUG` xfail.
+- Repaired the `test/TritonNvidiaGPU/ops.mlir` regression James added for the
+  higher-rank TMEM `reshape -> subslice -> index` chain.
+  - the initial MLIR types were malformed because the intermediate TMEM view
+    encodings / alloc-shapes change across the rank-3 reshape and slice.
+  - `ops.mlir` now uses the exact inferred intermediate TMEM-linear types:
+    - `#tmem_linear_rank3`
+    - `#tmem_linear_rank3_small`
+    - `#tmem_linear_half_rows`
+  - also added a direct verifier/round-trip regression for
+    `ttng.tc_gen5_mma_scaled` with a tile-permuted-32 accumulator.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_reports_clean_error_lifted_layout or test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout'`
+    -> `24 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_scaled_tile_permuted_layout or test_tmem_runtime_matrix_mma_scaled_tile_permuted_32_bug or test_tmem_runtime_matrix_mma_scaled_indexed_acc_view'`
+    -> `3 passed, 2 xfailed`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd \"$BUILD_DIR\" && lit -v test/TritonNvidiaGPU/ops.mlir`
+    -> `1 passed`
+
+## 2026-03-27: canonical fallback added for view-derived layouts
+- `compute_tmem_reg_layout` now analyses the user-supplied TMEM layout via `ttng::getTMemViewAnalysisLinearLayout` and `ttng::tryMakeTMemViewEncoding` before re-running `ttng::getTmemCompatibleLayouts`, so future higher-rank view slices can recycle the canonical TMEM encoding instead of being rejected outright.
+- Higher-rank descriptor slice and half-rows kernels still hit the current `get_reg_layout` guard (`TMEM layout '<variant>' unsupported`), so the runtime-matrix clean-error cases stay in place while the new canonical fallback waits for the remaining layout-column-contiguity blockers to disappear.
+
+## 2026-03-28: ld/st direct-lowering fallback + ld.red gap audit
+
+- In `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`, updated
+  `computeTMemLdStEncodingInfo(...)` to fall back to
+  `getTMemViewAnalysisLinearLayout(shape, encoding, ...)` when
+  `getCanonicalTMemLinearEncoding(...)` fails.
+  - Prior behavior: immediate failure for non-standalone TMEM descriptor views.
+  - New behavior: if the view-analysis projection is available, continue with
+    direct `tcgen05.ld/st` lowering; reject only when both canonical and
+    analysis layouts are unavailable.
+  - This stays within the direct-support-only contract: no silent relayout and
+    no hidden rematerialization.
+
+- Validation run after rebuild:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_mixed_layout_reports_clean_unsupported`
+    -> `14 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ld_red or test_tmem_runtime_matrix_ldst_x1_f32_roundtrip or test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip or test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive'`
+    -> `35 passed`
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd \"$BUILD_DIR\" && ninja triton-opt && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`
+    -> `2 passed`
+
+- `ld.red` status from this audit:
+  - Supported: `f32` min/max row-wise reduction over `N`, with optional
+    `.abs` and `.NaN` modifiers, for layouts where `N` is register-local for
+    each row.
+  - Clean-unsupported (intentional): mixed layouts where `N` is sharded across
+    threads; tensor-memory scales reductions; unpacked reduction formats.
+  - Remaining expansion path: support additional ISA-realizable cases where
+    row-wise reduction can be proven despite nontrivial register distributions
+    (requires explicit cross-thread combine semantics, not layout repair).
+
+## 2026-03-28: ld/st + ld.red full owned-scope audit rerun (no new promotable gaps)
+
+- Re-ran the broad owned-scope runtime surface after the
+  `getTMemViewAnalysisLinearLayout(...)` fallback landed in
+  `computeTMemLdStEncodingInfo(...)`.
+- Result:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst or ld_red'`
+    -> `1143 passed, 112 skipped in 403.56s`
+- Re-ran the targeted clean-negative boundary slice:
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_descriptor_higher_rank_dim0_slice_reports_clean_error_lifted_layout or ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout or ldst_descriptor_multidim_slice_identity_reports_clean_error or ldst_descriptor_multidim_slice_reports_clean_unsupported or ld_red_mixed_layout_reports_clean_unsupported'`
+    -> `38 passed`
+- Lit sanity in owned files:
+  - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && ninja triton-opt && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`
+    -> `2 passed`
+- Conclusion for ld/st + ld.red in current owned scope:
+  - no additional direct-lowering gaps were found that are safely promotable
+    without changing semantics;
+  - remaining clean negatives are still layout/semantic boundaries:
+    - high-rank lifted descriptor views that cannot materialize a supported
+      direct TMEM register layout for the requested explicit variant;
+    - `ld.red` layouts where N is sharded across threads (would require
+      explicit cross-thread combine semantics, not direct single-op lowering).
+
+## 2026-03-28: MMAv5 transform linearization sweep + planner cleanup
+
+- Removed one remaining internal legacy-TMEM construction site in
+  `lib/Dialect/TritonNvidiaGPU/Transforms/PromoteLHSToTMem.cpp`.
+  - The pass now builds canonical TMEM-linear layouts directly via
+    `getCanonicalTMemLinearEncoding(...)`, matching the earlier
+    `AccelerateMatmul.cpp` sweep.
+  - This keeps legacy TMEM encodings as user/IR sugar only and avoids
+    reintroducing finite-family assumptions inside transforms.
+
+- Updated `test/TritonGPU/accelerate-matmul.mlir` to stop depending on exact
+  `#ttng.tensor_memory_encoding<...>` print forms where the canonical output is
+  now `#ttng.tensor_memory_linear<...>`.
+  - Also removed one stale warning expectation that no longer fires on the
+    current transform path.
+
+- Cleaned up the MMAv5 planner in
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`:
+  - removed the unconditional "legacy attr in, legacy plan out" fast paths from
+    the main `planMMAv5Family(...)`, `planMMAv5ExactFamily(...)`, and scaled
+    accumulator-family flow;
+  - kept a narrow explicit-legacy preservation path only for accumulator /
+    scaled-accumulator cases where the user explicitly spelled a non-default
+    `colStride` that canonical TMEM-linear form does not yet uniquely preserve;
+  - kept LHS planning fully linear-first again.
+  - practical effect: direct MMAv5 planning now canonicalizes and reasons from
+    TMEM-linear layouts in more cases, while still preserving exact legacy
+    `colStride=2/4` accumulator sugar where dropping it would regress valid
+    direct codegen.
+
+- Focused validation after this sweep:
+  - transform lit sanity:
+    - `lit -v test/TritonGPU/accelerate-matmul.mlir`
+    - `lit -v test/TritonGPU/promote-lhs-to-tmem.mlir`
+    - `lit -v test/TritonNvidiaGPU/test_promotion_to_tensor_memory.mlir`
+    -> all passed
+  - MMAv5 frontend/runtime slices:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_frontend.py -k 'test_tcgen05_mma or test_tcgen05_mma_mbar or test_tcgen05_mma_scaled or test_tensor_memory_linear_mma_compile_reports_unsupported_layout'`
+      -> `6 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_exotic_layout_reports_clean_unsupported or test_tmem_runtime_matrix_mma_rowcol_permuted_layout_reports_clean_unsupported or test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout or test_tmem_runtime_matrix_mma_scaled_acc_blockn64_direct_layout or test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_reports_clean_unsupported'`
+      -> `20 passed`
+    - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/ops.mlir`
+      -> `1 passed`
+
+- Build note for this dirty tree:
+  - a broad `TRITON_BUILD_WITH_CCACHE=true make -j96` succeeded earlier in the
+    day, but a later full rebuild hit unrelated link failures in broad
+    non-owned targets and one transient `bin/triton-opt` permission-bit glitch;
+  - targeted relinks of `triton-opt` and `libtriton.so` with
+    `ninja -C build/cmake.linux-aarch64-cpython-3.12 triton-opt triton`
+    produced valid ELF artifacts and unblocked the focused TMEM/MMAv5 checks;
+  - treat this as a workspace/build-system issue until reproduced in a clean
+    tree; it is not currently tied to the MMAv5 planner changes above.
+
+## 2026-03-28: one-CTA lifted higher-rank ld/st bucket split into clean negatives plus BUG xfails
+
+- Re-audited the one-CTA lifted higher-rank `ld/st` runtime buckets after the
+  recent view-analysis fallback work.
+- Result:
+  - the old blanket clean-negative expectation was too coarse;
+  - however, these are **not** all safe positives.
+- Precise outcome:
+  - `dim0_slice` with explicit `32x32b` now compiles but miscomputes for
+    `n = 64 / 128 / 256`.
+    - converted to explicit strict `BUG` xfails in
+      `python/test/gluon/test_tmem_runtime_matrix.py`.
+  - `half_rows` now compiles but miscomputes for the full explicit variant set
+    (`32x32b`, `16x64b`, `16x128b`, `16x256b`) at
+    `n = 64 / 128 / 256`.
+    - converted to explicit strict `BUG` xfails.
+  - the remaining one-CTA lifted `dim0_slice` variants
+    (`16x64b`, `16x128b`, `16x256b`) are still genuine clean negatives at the
+    public `get_reg_layout(...)` boundary and stay as clean-error tests.
+- Focused validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_clean_error_lifted_layout or test_tmem_runtime_matrix_bug_ldst_descriptor_higher_rank_dim0_slice_lifted_layout or test_tmem_runtime_matrix_bug_ldst_descriptor_higher_rank_half_rows_lifted_layout'`
+    -> `9 passed, 15 xfailed`
+
+## 2026-03-28: copy-planner experiments and current `warpx2` / dense-copy status
+
+- Bounded experiment: tried canonicalizing the internal copy descriptor layout
+  by reordering TMEM row/col basis bits before descriptor synthesis.
+  - reverted immediately.
+  - reason: it widened support by changing semantics, producing one wrong-code
+    no-scales copy case and one late lowering assertion. This violated the
+    direct-support-only contract.
+- Bounded follow-up: added a dense-family planner path that can try both the
+  canonical `32x4` descriptor factorization and a `64x2` fallback before
+  rejecting.
+  - current public clean-negative copy buckets are unchanged after this:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupported or test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or test_tmem_runtime_matrix_cp_no_scales_warpx2_candidate_reports_clean_error'`
+      -> `19 passed`
+    - `lit -v test/TritonNvidiaGPU/invalid.mlir`
+      -> `1 passed`
+  - so this is currently a safe planner broadening with no user-visible
+    promotion yet.
+- Side-audit conclusions:
+  - the historical no-scales `warpx2` candidate still classifies as
+    `tcgen05.copy.128x128b`, not `warpx2`;
+  - the historical scales `warpx2` probe still classifies as `warpx4`, not
+    `warpx2`;
+  - real `warpx2` support still needs:
+    - a user-visible representation path (likely scoped non-surjective TMEM for
+      copy destinations or an equivalent copy-only representation),
+    - family-specific `warpx2` message / descriptor / address planning,
+    - lowering that consumes that plan directly instead of relying only on the
+      generic MMA shared-descriptor builder.
+
+## 2026-03-28: remaining MMAv5 legacy bottlenecks after planner cleanup
+
+- The MMAv5 planner is more linear-first now, but the side audit identified
+  remaining legacy-family bottlenecks:
+  - `matchTensorMemoryLegacyEncoding(...)` still returns
+    `TensorMemoryEncodingAttr` by searching finite legacy families;
+  - `planMMAv5LegacyExactFamily(...)` is still used as an explicit fast path
+    for accumulator / scaled-accumulator exact-family recovery;
+  - verifier and lowering remain bounded by `getMMAv5*LayoutPlan(...)`, so any
+    legal linear layout that does not collapse to one of the currently-plannable
+    families is still rejected;
+  - `impl::verifyMMAv5Op(...)` still uses a legacy-only interleaved
+    `blockM=64` check keyed on `TensorMemoryEncodingAttr`;
+  - allocator row-coupling still depends on MMAv5 family plans rather than a
+    fully general linear TMEM physical-footprint query.
+
+## 2026-03-28: MMAv5 planner cleanup follow-up
+
+- Removed the explicit `planMMAv5LegacyExactFamily(...)` fast path from the
+  MMAv5 accumulator / scaled-accumulator planners.
+  - plain and scaled MMAv5 accumulator planning now share the same
+    memdesc-based fallback: try the direct view shape first, then canonicalize
+    the memdesc through `tryGetCanonicalTensorMemoryEncoding(memDescType, ...)`
+    and retry on the backing allocation shape only for full-`M`, narrowed-`N`
+    accumulator views.
+  - this keeps legacy TMEM encodings as user sugar while routing internal MMAv5
+    planning through canonical TMEM-linear analysis.
+- Added direct scaled-accumulator subslice coverage from user code.
+  - new Gluon runtime coverage uses a parent `128x128`
+    `#ttng.tensor_memory_linear` accumulator and writes through a
+    `ttg.memdesc_subslice` view for `N=32` and `N=64`.
+  - new TTGIR regression added in `test/TritonNvidiaGPU/ops.mlir`.
+- Fixed the remaining legacy-only interleaved `blockM=64` verifier check.
+  - `impl::verifyMMAv5Op(...)` now keys the rejection off MMAv5 layout plans
+    plus physical TMEM row footprint (`getTmemAllocSizes`), instead of only
+    `TensorMemoryEncodingAttr`.
+  - added an `invalid.mlir` regression that uses the explicit linear equivalent
+    of the interleaved `blockM=64` family (`128x64` TMEM-linear), and it now
+    rejects with the same diagnostic as the legacy sugar.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `lit -v test/TritonNvidiaGPU/ops.mlir` -> `1 passed`
+  - `lit -v test/TritonNvidiaGPU/invalid.mlir` -> `1 passed`
+  - focused scaled MMAv5 slice
+    (`test_tmem_runtime_matrix_mma_scaled_minimal`,
+    `..._blockn64_direct_layout`,
+    `..._blockn32_direct_layout`,
+    `..._acc_subslice_view`,
+    `..._acc_tile_permuted_32_reports_clean_unsupported`)
+    -> `6 passed`
+  - broader MMA slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma'`)
+    -> `52 passed`
+
+## 2026-03-28: ld/st audit follow-up after raw-query repair
+
+- Audited the remaining direct-lowering gaps on the ld/st track after the
+  raw-query memdesc view path was repaired and the broader
+  `ldst_descriptor_multidim_slice or ldst_descriptor_higher_rank` cluster went
+  green.
+- Concrete next unsupported-but-supportable buckets:
+  - two-CTA higher-rank `half_rows` descriptor views:
+    - current raw query layout for the failing `block_two_ctas` case is
+      `row=[[2,0],[4,0],[8,0],[16,0],[32,0],[64,0]]`,
+      `col=[[0,1],[0,2],[0,4],[0,8],[0,16],[0,32]]`,
+      `block=[[1,0]]`, shape `[128,64]`;
+    - the failure is no longer raw-view inference; it is ld/st planning on a
+      view where the low logical row bit is carried in `block`;
+    - likely fix area: linear-first row-footprint / row-anchor reasoning in
+      `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+      (`getDistributedLayoutForTmemLdSt(...)`) together with the matching row
+      anchor checks in
+      `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      (`computeTMemLdStEncodingInfoImpl(...)`).
+  - narrow scales explicit `16x32bx2` (`M=32, N=16`) on
+    `TensorMemoryScalesLayout`:
+    - the raw-query reg-layout path can already synthesize a candidate
+      `16x32bx2` register layout;
+    - the remaining failure is in direct lowering / matcher selection, where
+      `computeTMemLdStEncodingInfo(..., queryLayout.layout, ...)` falls through
+      to `Failed to lower TMEM load/store: unsupported dst layout`;
+    - likely fix area:
+      `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      (`lowerTMemLdSt(...)` / `I16x32bx2` quotient path).
+- Larger future bucket still open:
+  - `scrambled_cols` multidimensional descriptor slices still fail in the raw
+    query-layout inference itself (`unsupported tensor memory memdesc_subslice
+    view`), so they need a more general internal query representation or a
+    multi-message decomposition rather than a small local ld/st planner tweak.
+- Validation snapshot for the audit:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - targeted clean-negative slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout or test_tmem_runtime_matrix_ldst_scales_variant_reports_clean_unsupported or test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported'`)
+    -> `23 passed`
+
+## 2026-03-28: scales `16x32bx2` selector cleanup and frontend alignment
+
+- Fixed a no-crash regression in the TMEM ld/st selector:
+  `getDistributedLayoutForTmemLdSt(const LinearLayout&, ...)` was reading the
+  row-16 basis unconditionally even when the TMEM row dimension was only 16
+  high. That surfaced as a hard `LinearLayout::getBasis` assertion from the
+  pure descriptor-type `get_reg_layout(instr_variant="16x32bx2")` path on
+  tensor-memory scales shapes like `[16, 4]`.
+- Kept the zero-base retry / row-plan consistency cleanup in
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`:
+  - selector synthesis now retries after stripping zero row/col/block bases;
+  - scales memtype selection now uses the same `32/64` row-anchor plan as
+    direct ld/st validation instead of mixing that with the broadcast `0/0`
+    row plan recovered from the raw scales linear layout.
+- Aligned the pure type-based frontend helper in `python/src/gluon_ir.cc` with
+  the handle-aware memdesc path:
+  - explicit TMEM atoms now first filter the full compatible-layout set via
+    `getTmemCompatibleLayouts(...)` instead of relying only on the narrower
+    direct memtype synthesis path.
+- User-visible result:
+  - small explicit tensor-memory-scales `16x32bx2` descriptor-type queries are
+    now exposed directly instead of failing/crashing:
+    - `[16, 4]`, `num_warps=4` -> positive
+    - `[16, 8]`, `num_warps=8` -> positive
+  - larger shapes that still do not have a direct lowering remain clean
+    negatives:
+    - `[32, 16]`, `num_warps=4`
+    - `[32, 4]`, `num_warps=8`
+- Added frontend coverage in `python/test/gluon/test_frontend.py` for both:
+  - the new positive small explicit `16x32bx2` descriptor-type path;
+  - the larger clean-negative path, explicitly guarding against regressions
+    back to crashes.
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_frontend.py -k 'test_tensor_memory_scales_explicit_16x32bx2_descriptor_type_small_tile or test_tensor_memory_scales_explicit_16x32bx2_descriptor_type_reports_clean_error'`
+    -> `2 passed`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_scales_variant_sweep or test_tmem_runtime_matrix_ldst_scales_variant_reports_clean_unsupported'`
+    -> `34 passed`
+
+## 2026-03-28: scaled MMAv5 tile-preserving planner widening
+
+- Widened `planMMAv5ScaledAccumulatorFamily(...)` in
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` from exact-family matching to
+  the same tile-preserving family search already used by plain MMAv5.
+  - This is a real linear-first cleanup: scaled accumulator planning no longer
+    rejects tile-preserving `#ttng.tensor_memory_linear` layouts solely because
+    they are not byte-for-byte equal to a canonical legacy family.
+- User-visible result:
+  - direct scaled MMAv5 now supports a tile-permuted accumulator layout with
+    shape `128x256` and `tile_n=64`;
+  - the repeated-`N=32` tile-permuted case remains a clean negative, but now
+    for the real public-scales-layout limit rather than the old
+    “layout not directly supported” verifier gate.
+- Added runtime coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - new positive:
+    `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_direct_layout`
+  - tightened negative:
+    `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported`
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - targeted scaled slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout or test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_direct_layout or test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported'`)
+    -> `3 passed`
+  - broader scaled MMAv5 slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_scaled'`)
+    -> `7 passed`
+  - full TMEM runtime matrix
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py > /tmp/tmem_runtime_matrix_full.log 2>&1`)
+    -> `1588 passed, 118 skipped`
+
+## 2026-03-28: reachable `warpx2::01_23` copy support plus `02_13` boundary
+
+- Extended `getTMemCopyDescriptorLayouts(...)` in
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` with bounded
+  candidate generation for user-reachable `warpx2::01_23` layouts:
+  - fold source warp-group bits into row/col;
+  - rotate leading row-repeat bits out of the core descriptor prefix;
+  - promote one extra low-order column bit into the row prefix when needed.
+- User-visible result:
+  - the public non-surjective TMEM-linear `warpx2::01_23` destination path now
+    compiles, emits `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`, and runs
+    with the expected aliased logical result for that layout;
+  - `warpx2::02_13` is still a clean negative with a specific
+    descriptor-plan diagnostic.
+- Runtime-matrix coverage was updated accordingly:
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
+    is now a real positive with exact output checks;
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_reports_clean_error`
+    keeps the remaining unsupported family explicit.
+- Focused validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - targeted `warpx2` slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'warpx2_01_23_candidate_positive or warpx2_02_13_candidate_reports_clean_error or warpx2_01_23_canonical_codegen'`)
+    -> `3 passed`
+
+## 2026-03-28: MMAv5 LHS `memdesc_subslice` direct support
+
+- Extended `getMMAv5LhsLayoutPlan(...)` in
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` to treat full-`M`, narrower-`K`
+  TMEM descriptor views the same way the accumulator path already treats
+  full-`M`, narrower-`N` accumulator views.
+  - Planning now retries on the backing allocation shape when the visible LHS
+    view preserves `M` and only narrows `K`.
+  - This is still direct lowering: the actual `ttg.memdesc_subslice` operand is
+    preserved, and lowering uses the view value directly.
+- New direct user-visible support:
+  - plain `tcgen05_mma` with a TMEM LHS `memdesc_subslice`;
+  - scaled `tcgen05_mma_scaled` with a TMEM LHS `memdesc_subslice`.
+- Added runtime coverage in `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - `test_tmem_runtime_matrix_mma_lhs_subslice_view`
+  - `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view`
+- Added positive IR coverage in `test/TritonNvidiaGPU/ops.mlir` and removed the
+  stale rejection-only cases from `test/TritonNvidiaGPU/invalid.mlir`.
+- Focused validation:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - plain LHS subslice runtime -> `1 passed`
+  - scaled LHS subslice runtime -> `1 passed`
+  - combined focused slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'warpx2_01_23_candidate_positive or warpx2_02_13_candidate_reports_clean_error or mma_lhs_subslice_view'`)
+    -> `3 passed`
+  - lit bundle
+    (`lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`)
+    -> `2 passed`
+  - full TMEM runtime matrix
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py > /tmp/tmem_runtime_matrix_full_20260328.log 2>&1`)
+    -> `1592 passed, 118 skipped`
+
+## 2026-03-28: ld/st legacy-hook cleanup plus broader ld.red coverage
+
+- Removed the last legacy-only M64 ld/st layout-selection detour from
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`.
+  - Deleted the `getLegacyEquivalentM64MemType(...)` recovery path and the now-dead
+    `matchTensorMemoryLegacyEncoding(...)` helpers.
+  - `getDistributedLayoutForTmemLdSt(...)` now stays fully on the linear-first
+    selection path for the exercised M64 / split-N cases.
+- Validation after the cleanup:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - focused M64 / split-N / f32 ld-st slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'splitn_immediates or splitn_auto_selects_16x32bx2 or explicit_16x32bx2_matches_splitn or ldst_x1_f32_roundtrip or ldst_x1_f32_descriptor_chain_roundtrip or ldst_x1_f32_unsupported_variants_report_clean_unsupported or mma_lhs_subslice_view or mma_scaled_lhs_subslice_view or mma_acc_tile_permuted'`)
+    -> `40 passed`
+- Probed the actual ld.red surface from user-written TMEM-linear layouts and
+  found the current direct lowering is broader than the old runtime matrix
+  covered.
+  - Direct `tcgen05.ld.red` lowering already works for:
+    - tile-permuted accumulators (`tile_n=32` / `64`) at `N=128/256`
+    - all row/col-permuted `128x128` pure-linear layouts built from the current
+      permutation sweep
+  - Mixed TMEM layouts still fall back to the generic reduction path, which
+    stays the correct negative boundary for now.
+- Added new permanent runtime coverage in
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - `test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout`
+  - `test_tmem_runtime_matrix_ld_red_rowcol_permuted_linear_layout`
+  - kept `test_tmem_runtime_matrix_ld_red_mixed_linear_layout_falls_back`
+    as the fallback boundary
+- Validation for the new ld.red coverage:
+  - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+  - focused ld.red slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_identity_linear_layout or ld_red_tile_permuted_linear_layout or ld_red_rowcol_permuted_linear_layout or ld_red_mixed_linear_layout_falls_back'`)
+    -> `100 passed`
+  - broad ld/st + ld.red slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst or ld_red'`)
+    -> `1215 passed, 113 skipped`
+
+## 2026-03-28: bounded `warpx2::02_13` widening and handle-aware ld/st query follow-up
+
+- Revisited the remaining user-visible `tcgen05.copy.warpx2::02_13.64x128b`
+  gap in `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`.
+  - Fixed the dead `multicast == 2` descriptor-layout widening branch in
+    `getTMemCopyDescriptorLayouts(...)`.
+  - Added a bounded single-row-basis move search on top of the existing
+    row-rotation / row-column reassignment variants for `multicast == 2`.
+  - Result: the historical non-surjective `warpx2::02_13` user path still
+    cleanly rejects. The gap is no longer a trivial dead-branch bug; it needs
+    deeper descriptor/message synthesis than the current bounded search.
+- Extended the handle-aware TMEM reg-layout query path in
+  `python/src/gluon_ir.cc`.
+  - `compute_tmem_reg_layout_from_memdesc(...)` now augments the type-only
+    candidate list with layouts synthesized using
+    `getTMemLdStRowPlanForQuery(memDesc, queryTy)` and the new
+    `getDistributedLayoutForTmemLdSt(memType, atom, numWarps, rowPlanOverride)`
+    overload declared in `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`.
+  - This keeps descriptor-view reg-layout probing aligned with the backing
+    memdesc value instead of only the erased query type.
+- Probed two remaining ld/st clean-negative buckets with the new handle-aware
+  path:
+  - identity multidimensional `32x32` descriptor view:
+    still clean-negative; the raw query and both canonical/surrogate query
+    types fail to produce a legal direct ld/st register layout.
+  - two-CTA higher-rank `half_rows` descriptor view:
+    still clean-negative; raw-query and query-type probing now reach candidate
+    blocked layouts, but `computeTMemLdStEncodingInfo(...)` still rejects them.
+- Tried a 32-row TMEM row-plan extension to make the identity `32x32` slice
+  reachable, but reverted it immediately.
+  - It made the identity `32x32` slice compile, but the lowered code emitted a
+    single `tcgen05.{ld,st}.sync.aligned.32x32b.x32.b32` pair at offset `0`
+    and produced wrong data for the sliced view.
+  - The revert keeps the safe clean-rejection boundary instead of introducing
+    wrong-code.
+- Focused validation after the safe revert:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`
+    -> `2 passed`
+  - focused runtime slice
+    (`CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'warpx2_01_23_candidate_positive or warpx2_02_13_candidate_reports_clean_error or test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error or test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout or test_tmem_runtime_matrix_mma_lhs_subslice_view or test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view'`)
+    -> `17 passed`
+
+## 2026-03-28: direct `warpx2::02_13` no-scales copy support plus scaled-MMAv5 repeated-`N=32` probe
+
+- Finished the user-visible `tcgen05.copy.warpx2::02_13.64x128b` no-scales path.
+  - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+    - relaxed `getDirectTMemCopySeedDescriptorImm(...)` so it matches the
+      canonical `SharedLinear` offset pattern directly instead of requiring full
+      linear-layout equality on optional empty dims
+    - kept the existing direct seed descriptor immediate
+      `0x0008400800000020` / `tmemDwordDelta=4` plan for
+      `warpx2::02_13.64x128b`
+    - extended `getTMemLdStRowPlanForType(...)` with a `baseOffset=4` plan for
+      the reachable non-surjective `02_13` TMEM-linear layout
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+    - threaded the new TMEM ld/st `baseOffset` through lowering so the same
+      non-surjective layout that `tcgen05.copy.warpx2::02_13` writes at
+      `tmem_base + 4` also loads/stores from that anchor directly
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - converted
+      `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_reports_clean_error`
+      into the positive
+      `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
+    - added `_expected_tmem_copy_warpx2_02_13_output(...)`
+- Validation for the new `02_13` path:
+  - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_ALWAYS_COMPILE=1 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'warpx2'`
+    -> `4 passed`
+  - `PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_frontend.py -k 'non_surjective or warpx2_like_rows_parse'`
+    -> `3 passed`
+  - focused runtime slice after cache clear
+    (`CUDA_VISIBLE_DEVICES=0 TRITON_ALWAYS_COMPILE=1 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'warpx2_01_23_candidate_positive or warpx2_02_13_candidate_positive or tile_permuted_32_repeated_n32'`)
+    -> `3 passed`
+
+- Bounded scaled-MMAv5 repeated-`N=32` probe:
+  - temporarily lifted the clean rejection in
+    `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` and
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+    for tile-permuted `blockN=32` accumulators
+  - result:
+    - with the original B-scale address model, the `128x128 tile_n=32` case
+      compiled but hit a runtime `CUDA error: misaligned address`
+    - instrumentation showed the second `N=32` instruction for matrix-B scales
+      uses `origRaw=1` from `ttng::getTMemViewOffset(...)` at
+      `(row,col)=(32,0)` under the public `TensorMemoryScalesLayout`
+    - a bounded rewrite that folded the odd `N=32` half-tile into
+      `(row,col)=(0,4)` removed the misaligned-address fault but still produced
+      wrong numerics (`max_abs ~= 5e-2` versus the float32 reference), so it was
+      reverted immediately
+  - conclusion:
+    - the current clean rejection is still required to satisfy the
+      direct-support-or-clean-reject contract
+    - supporting repeated scaled `N=32` needs a more complete matrix-B scale
+      address model than the current `getTMemViewOffset(...)` + selector path
+
+- Bounded higher-rank ld/st half-rows probe (`reshape((2, M/2, N)).slice(1,1,dim=0).index(0)`):
+  - reproduced the only remaining full-matrix failures after the `warpx2`
+    work:
+    - `test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lifted_layout`
+      for `layout_name="identity"` across `n in {64,128,256}` and all explicit
+      variants
+  - representative failure:
+    - the subview is intended to update rows `64:128` of the backing
+      `128xN` TMEM tile
+    - runtime output still updates rows `0:64` instead
+  - direct-lowering experiments:
+    - tried preserving the local `64`-row row plan
+    - tried forcing the larger `128`-row backing row plan
+    - tried emitting backing warp anchors while keeping local register-layout
+      selection
+    - tried canceling the extra row-half TMEM base shift while keeping either
+      local or backing anchors
+  - outcome:
+    - all bounded single-atom variants still hit the wrong half (or, when the
+      planner was forced too hard toward the backing row span, turned into a
+      clean compile-time rejection instead of a positive)
+    - no simple `rowPlan` / `warpBaseOffset` / `baseOffset` tweak was enough
+  - conclusion:
+    - this bucket is not a small address-bookkeeping bug anymore
+    - it likely needs a deeper direct decomposition for ld/st on row-half views
+      carved from a larger TMEM backing tile, rather than another local anchor
+      tweak
+  - important cleanup:
+    - all exploratory planner mutations were reverted after the probe, so the
+      worktree is back on the last stable direct-lowering baseline for this
+      bucket
+
+- 2026-03-29: scales ld/st direct recovery, ld.red direct-or-reject cleanup,
+  and clean-cache validation are now green
+  - direct scales ld/st recovery landed in the linear-first path instead of a
+    Python-only fallback:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+      - restored scales-specific
+        `getDistributedLayoutForTmemLdStLegacyAnchored(...)`
+      - threaded scales handling through
+        `getDistributedLayoutForTmemLdSt(...)` and
+        `getTmemCompatibleLayouts(...)`
+      - `getTmemLoadLayoutSplitLongM(...)` now returns `nullopt` for scales so
+        the planner does not force invalid long-M reshapes
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      - restored the scales-specific direct-validator branch in
+        `computeTMemLdStEncodingInfoImpl(...)`
+      - taught `lowerTMemLdSt(...)` to prefer split-N scales plans directly
+    - `python/triton/experimental/gluon/language/_semantic.py`
+      - widened the split-N fallback so explicit scales `16x32bx2` can reuse
+        the `32x32b`-derived reg layout and then adjust the register bases
+    - `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`
+      - added `_strip_zero_reg_bases_from_layout(...)`
+      - applied it for scales descriptor `get_reg_layout(...)`
+  - validation for the recovered scales direct path:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - focused scales ld/st slice:
+      `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_scales_direct_roundtrip or ldst_scales_variant_sweep or ldst_scales_variant_reports_clean_unsupported'`
+      -> `38 passed, 1 skipped`
+
+- 2026-03-29: `ld.red` now follows the direct-support-or-clean-reject rule
+  - removed the silent Gluon fallback from
+    `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`
+    `_load_red(...)`
+  - mixed / unsupported TMEM reduction layouts now raise a direct error instead
+    of compiling `tmem_load + tt.reduce`
+  - tests updated:
+    - `python/test/gluon/test_core.py`
+    - `python/test/gluon/test_tmem_runtime_matrix.py`
+  - fresh-cache validation:
+    - `rm -rf /root/.triton/cache/*`
+    - `PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py -k 'tmem_reduction_linear_mixed_layout_reports_clean_error'`
+      -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_identity_linear_layout or ld_red_tile_permuted_linear_layout or ld_red_rowcol_permuted_linear_layout or ld_red_mixed_linear_layout_reports_clean_unsupported'`
+      -> `100 passed`
+  - important local-validation caveat:
+    - Triton’s on-disk JIT cache will reuse an old binary even if the Python
+      helper behavior changed without changing the kernel hash
+    - clearing `/root/.triton/cache/*` was required to validate the fallback
+      removal locally
+
+- 2026-03-29: MMAv5 legacy sugar now re-enters the exact direct family path
+  - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+    - `planMMAv5AccumulatorFamily(...)`
+    - `planMMAv5LhsFamily(...)`
+    - `planMMAv5ScaledAccumulatorFamily(...)`
+  - all three now first try `planMMAv5ExactFamily(...)` when the input is
+    legacy `#ttng.tensor_memory_encoding` sugar, then fall back to the broader
+    linear-family matcher
+  - result:
+    - legacy sugar remains parseable/usable at the source and IR level
+    - direct codegen stays on the same exact family path as the equivalent
+      canonical linear layout instead of spuriously rejecting in conversion
+
+- 2026-03-29: Blackwell conversion checks refreshed to the current direct codegen
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - updated the multi-tile MMA expectations to the current two-instruction
+      direct emission
+    - updated unpacked-f16 ld/st expectations to the current
+      `st ... x64.b32` + `ld ... x64.pack::16b.b32` split
+    - updated scales direct ld/st expectations to the current
+      `16x32bx2` immediate form
+    - relaxed the unpacked `x1` check so it no longer assumes the integer
+      constants are materialized after the bitcast
+  - validation:
+    - `ninja -C build/cmake.linux-aarch64-cpython-3.12 triton-opt`
+    - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/tmem_layouts.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+      -> `4 passed`
+
+- 2026-03-29: clean-cache full TMEM runtime matrix is green again on the current tree
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `rm -rf /root/.triton/cache/* && CUDA_VISIBLE_DEVICES=0,1,2,3 PYTHONPATH=python:. pytest -s --tb=short -n 4 python/test/gluon/test_tmem_runtime_matrix.py`
+      -> `1664 passed, 119 skipped in 149.43s`
+  - this rerun covers the current direct-codegen state, including:
+    - scales ld/st recovery
+    - `ld.red` fallback removal
+    - the MMAv5 legacy exact-family fast path
+
+- 2026-03-29: read-only audits of the remaining semantic debt
+  - `ld.red`
+    - the direct lowering path is still narrower than generic ld/st
+    - the default reduction-layout helper in
+      `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` still hard-limits to
+      `numWarps == 4`
+    - missing targeted coverage remains for descriptor-view `ld.red`,
+      scales rejection, unpacked rejection, and two-CTA reduction
+  - MMAv5
+    - the user-visible legacy-sugar rejection is fixed, but the semantic core
+      still compresses arbitrary linear TMEM layouts through
+      `MMAv5TMemLayoutPlan` / finite family recovery
+    - the main bottlenecks remain the family planners in
+      `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`, verifier consumers in
+      `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`, allocator coupling in
+      `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`, and
+      final lowering in
+      `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+
+- 2026-03-29: `ld.red` source-layout legality is now enforced at the helper + verifier boundary
+  - `python/src/gluon_ir.cc`
+    - `compute_tmem_reduce_reg_layout_from_memdesc(...)` now immediately
+      rejects TMEM descriptors whose source layout is not
+      `isReductionFriendlyTmemSourceLayout(...)`
+  - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+    - `TMEMLoadOp::verify()` now rejects `redOp` on source TMEM layouts that
+      are not directly `tcgen05.ld.red`-compatible instead of silently
+      accepting them and leaving runtime to miscompute
+  - `python/test/gluon/test_core.py`
+    - added a direct positive regression for the canonical linear form
+      equivalent to legacy `TensorMemoryLayout(block=(128, 128), col_stride=1)`
+      at shape `256x128`, `num_warps=8`
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - kept identity, tile-permuted, pure-column-permuted, and the canonical
+      `256x128` legacy-equivalent linear case as positive `ld.red` runtime
+      coverage
+    - reclassified row-permuted and mixed TMEM-linear layouts to clean
+      unsupported coverage
+  - effective direct `ld.red` support boundary on the current tree:
+    - positive:
+      - canonical identity TMEM-linear layouts
+      - pure-column permutations
+      - tile-permuted layouts
+      - the canonical linear form corresponding to legacy `256x128` `8-warp`
+        reduction
+    - clean unsupported:
+      - row-permuted TMEM-linear layouts
+      - mixed TMEM-linear layouts that mix row/column physical bits
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py -k 'test_tmem_reduction_linear_legacy_block_equiv_layout or test_tmem_reduction and 256'`
+      -> `32 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_identity_linear_layout or ld_red_tile_permuted_linear_layout or ld_red_col_permuted_linear_layout or ld_red_row_permuted_linear_layout_reports_clean_unsupported or ld_red_mixed_linear_layout_reports_clean_unsupported'`
+      -> `104 passed`
+
+- 2026-03-29: bounded sidecar probe on the remaining ld/st half-row/higher-rank bug
+  - repro status stays negative for the direct row-half pattern:
+    - `/tmp/test_direct_row_slice.py`
+      - still `num_diff 4096`
+      - wrong region pattern remains (first-half columns updated on both row
+        halves instead of a clean bottom-half update)
+    - `/tmp/test_candidate_layout.py`
+      - projected full-view candidate layout also fails (`num_diff 4096`)
+      - observed `x64` path still updates top-half rows only
+  - key trace observation with
+    `TRITON_TRACE_TMEM_QUERY_LOWERING_FILE=1`:
+    - support-query lowering for the problematic 64x64 half-row view currently
+      picks `I32x32b.x1` with:
+      - `baseOffset=4194304` (`+64<<16`)
+      - `warpBase0=2097152` (`+32<<16`)
+      - `warpBase1=32` (column carry)
+      - `reps` that only carry register-column steps
+    - this indicates the remaining wrong-code is not a missing support origin
+      carry anymore; it is a mapping/planning issue for the selected direct
+      register-layout family.
+  - bounded experiments and outcomes:
+    - disabling the Gluon half-row special layout picker in
+      `python/src/gluon_ir.cc` initially triggered a hard backend abort:
+      `LLVM ERROR: Invalid basis 64 for in-dim 'warp' and out-dim 'row'`.
+    - added a safety fix in
+      `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` so
+      `getTileLayout(..., warpBasis0, warpBasis1, ...)` grows the row out-dim
+      extent based on warp basis coverage (rounded to power-of-two), mirroring
+      the existing column-span handling.
+      - this removes the invalid-basis abort for that path.
+    - removing support-base adjustment in
+      `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+      did not fix the half-row bug and was reverted.
+  - current conclusion:
+    - no clean direct-lowering fix landed for the half-row positive bucket in
+      this probe.
+    - the row/col support-origin plumbing is active, but the selected `x1`
+      half-row mapping remains semantically wrong.
+    - likely next step is a new direct decomposition/planner for row-half views
+      carved from larger backing tiles rather than another base-offset tweak.
+  - validation run during this probe:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `/tmp/test_direct_row_slice.py` (multiple clean-cache reruns)
+    - `/tmp/test_candidate_layout.py` (clean-cache rerun)
+
+- 2026-03-29: multidimensional `32x32` TMEM descriptor subviews are back to
+  exact-final-view lowering only
+  - root cause:
+    - the old half-row fix only disabled support-query rescue for view-like
+      `32x32` descriptors
+    - bad multidimensional `reshape -> subslice -> reshape` views (identity and
+      scrambled-cols) were still accepted through the canonical-surrogate query
+      type path in `getTMemLdStQueryTypes(...)`
+    - that let `get_reg_layout(auto)` recover a backing-tile `128-row` plan for
+      a final `32x32` view whose standalone direct lowering is actually
+      unsupported, producing wrong-code
+  - fix:
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      - `getTMemLdStQueryTypes(...)` now suppresses canonical-surrogate query
+        types for explicit view-like `32x32` TMEM descriptors
+    - `python/src/gluon_ir.cc`
+      - the raw-query `32x32` view path no longer forces a backing row-plan
+        override before probing direct reg layouts
+    - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+      - verifier-side raw-query probing matches the same `32x32` exact-view
+        rule
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+      - lowering-side raw-query probing matches the same `32x32` exact-view
+        rule
+  - result:
+    - bad multidimensional `32x32` identity and scrambled-cols descriptor views
+      are cleanly rejected again
+    - the mixed positive stays directly supported
+    - surrounding higher-rank ld/st descriptor buckets remain green
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'multidim_slice_identity_reports_clean_error or multidim_slice_reports_clean_unsupported or multidim_slice_positive'`
+      -> `3 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'multidim_slice or higher_rank_half_rows or higher_rank_dim0_slice'`
+      -> `99 passed, 1 skipped`
+    - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir`
+      -> `2 passed`
+
+- 2026-03-29: full TMEM runtime matrix is green again after the
+  multidimensional-ld/st and stale-expectation fixes
+  - updated `python/test/gluon/test_tmem_runtime_matrix.py` for two expectation
+    drifts:
+    - small-shape scales `16x32bx2` direct sweeps now expect the shorter direct
+      opcode sequences the current lowering actually emits:
+      - `16x8, num_warps=4` -> one `st` + one `ld`
+      - `16x16, num_warps=4` -> two `st` + two `ld`
+      - `16x16, num_warps=8` -> one `st` + one `ld`
+    - `ld.red` clean-unsupported tests now check the current verifier message:
+      `tmem_load reduction source layout is not directly tcgen05.ld.red-compatible; use tmem.load(...)+tt.reduce(...) explicitly for software reduction`
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst_scales_variant_sweep and 16x32bx2'`
+      -> `13 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_row_permuted_linear_layout_reports_clean_unsupported or ld_red_mixed_linear_layout_reports_clean_unsupported'`
+      -> `60 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+      -> `1668 passed, 119 skipped in 18.00s`
+
+- 2026-03-29: MMAv5 accumulator-side consumers now use direct accumulator
+  layout info instead of the recovered family-plan API
+  - added a new public accumulator query in
+    `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h` /
+    `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`:
+    - `getMMAv5AccumulatorLayoutInfo(...)`
+    - `getMMAv5ScaledAccumulatorLayoutInfo(...)`
+  - the new info bundles:
+    - canonical TMEM linear layout
+    - selected MMAv5 instruction sizes `mmaSizeM/N`
+    - `colStride`
+    - `twoCTAs`
+    - `interleavedM64`
+  - accumulator-side users switched from `MMAv5TMemLayoutPlan` to the new
+    info:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+      - plain/scaled MMA verifier D-side checks
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+      - `impl::verifyMMAv5Op`
+    - `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`
+      - row-anchor constraint logic for accumulator allocations
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+      - D-side instruction-size selection in lowering
+  - the old `MMAv5TMemLayoutPlan` API still exists for the remaining LHS /
+    promotion paths, but the D-side verifier/lowering/allocation stack is no
+    longer directly wired to it
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/canonicalize.mlir test/TritonGPU/accelerate-matmul.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+      -> `6 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_acc_tile_permuted or test_tmem_runtime_matrix_mma_lhs_tile_permuted or test_tmem_runtime_matrix_mma_lhs_subslice_view or test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout or test_tmem_runtime_matrix_mma_scaled_acc_subslice_view or test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view'`
+      -> `8 passed`
+
+- 2026-03-29: `ld.red` now directly supports pure row-permuted TMEM linear
+  source layouts
+  - root cause:
+    - `isReductionFriendlyTmemSourceLayout(...)` accepted tile permutations and
+      col permutations, but still required the row bases to appear in canonical
+      order
+    - that made all pure row-permuted source layouts fail cleanly even though
+      the direct `ld.red` lowering path can handle them
+  - fix:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+      - collect row bases, sort them, and compare against the expected
+        canonical set `{1, 2, 4, 8, 16, 32, 64}` instead of requiring
+        canonical order
+    - `python/test/gluon/test_tmem_runtime_matrix.py`
+      - convert the row-permuted `ld.red` clean-negative bucket into positive
+        runtime coverage
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/canonicalize.mlir test/TritonGPU/accelerate-matmul.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+      -> `6 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_'`
+      -> `104 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+      -> `1668 passed, 119 skipped in 519.91s`
+
+- 2026-03-29: plain ld/st `32x32` multidim-slice identity still needs a
+  dedicated support-query helper; raw-query row-plan override alone is not
+  enough
+  - attempted bounded fix:
+    - add `getDirect32x32SubviewRawRowPlan(...)` in
+      `TensorMemoryUtils.cpp/.h`
+    - let frontend/verifier/lowering reuse the backing row plan on the raw
+      query path for canonical contiguous view-like `32x32` f32 subviews
+  - result:
+    - the representative focused slice stayed unchanged:
+      `pytest -k 'multidim_slice_identity_reports_clean_error or multidim_slice_reports_clean_unsupported or multidim_slice_positive'`
+      -> `3 passed`
+    - the identity case still clean-fails
+  - trace result from `TRITON_TRACE_TMEM_REG_LAYOUT_FILE=1` on
+    `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error`:
+    - the initial full-tile `16x128b` layout still succeeds through raw query
+    - the final `view.get_reg_layout(auto)` never reaches the new raw-row-plan
+      override because `inferStandaloneTMemLdStQueryLayout(...)` itself fails
+      first with:
+      `unsupported tensor memory memdesc_subslice view`
+  - concrete implication:
+    - the next patch should not keep pushing on the raw-query row-plan hook
+    - it needs a dedicated `32x32` support-query helper that constructs a
+      safe scalarizable query layout plus backing row plan for canonical
+      contiguous view-like `32x32` subviews
+    - `scrambled_cols` should stay negative in that patch
+
+- 2026-03-29: lifted half-row ld/st (`reshape((2, M/2, N)).slice(1).index(0)`)
+  is down to a direct TMEM packet/origin question, not a frontend
+  reg-layout-discovery hole
+  - representative bucket:
+    - `python/test/gluon/test_tmem_runtime_matrix.py`
+      `tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel`
+    - focused probe:
+      - identity layout
+      - `N=64`
+      - `instr_variant='32x32b'`
+      - `num_warps=4`
+  - direct support status after bounded experiments:
+    - removing the blanket
+      `isUnsupportedDirectTMemLdStDescriptorView(...)` reject when a support
+      query exists allows the part view to compile again
+    - `ViewOpToLLVM.cpp` now zeroes the dim-0 subslice base for the lifted
+      row-half `reshape -> subslice([1,0,0])` pattern, so the descriptor SSA
+      value no longer carries the old extra `128<<16` row delta
+    - but the runtime result is still wrong
+  - concrete probe results:
+    - widened `128x64` support-query path with `I32x32b.x64`:
+      - PTX shape: direct `tcgen05.ld/st.sync.aligned.32x32b.x64.b32`
+      - runtime: still updates rows `0:64` instead of `64:128`
+      - representative TMEM base seen in PTX after the row-half subslice fix:
+        `full_view`: `+64`
+        `part_view`: `+4194368` (`0x400040`)
+    - widened support-query path plus forced scalarization (`x1` packets):
+      - PTX shape: 64x `tcgen05.ld/st.sync.aligned.32x32b.x1.b32`
+      - runtime: still updates rows `0:64`
+    - forcing the logical `64`-row warp anchors (`16/32`) onto the lifted
+      support path:
+      - result: `CUDA error: misaligned address`
+      - so that anchor pair is not valid as a post-hoc override on the current
+        support-tile packet plan
+    - direct `64x64` query-layout-with-origin attempt:
+      - reg-layout discovery does not stay on `I32x32b`
+      - it falls back to `I16x32bx2` (`matchesDesiredAtom(...)` currently
+        accepts that fallback for `32x32b` requests on `64x64` f32 views)
+      - runtime remains wrong (`row_minmax 0..111`)
+  - current best evidence:
+    - the remaining hole is not “find any reg layout” anymore
+    - it is whether a lifted upper-half `64x64` TMEM view has a physically
+      correct direct packet decomposition under the real tcgen05 row-anchor
+      rules
+    - the two current candidate models are both bad:
+      - support-tile `128x64` + lifted origin: wrong first half
+      - logical-query `64x64` + lifted origin: degrades to `I16x32bx2`
+        fallback and still wrong
+
+- 2026-03-29: MMAv5 no longer exposes the old public family-plan API on the
+  LHS side
+  - cleanup:
+    - added `MMAv5LhsLayoutInfo` in
+      `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`
+    - moved `MMAv5TMemLayoutPlan` to an internal-only helper in
+      `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+    - removed external users of:
+      - `getMMAv5LhsLayoutPlan(...)`
+      - `getMMAv5AccumulatorLayoutPlan(...)`
+      - `getMMAv5ScaledAccumulatorLayoutPlan(...)`
+  - updated users:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+      - plain/scaled MMA verifier LHS checks now consume
+        `getMMAv5LhsLayoutInfo(...)`
+    - `lib/Dialect/TritonNvidiaGPU/Transforms/TensorMemoryAllocation.cpp`
+      - LHS/acc row-anchor coupling now uses `mmaSizeM` from layout info
+    - `lib/Dialect/TritonNvidiaGPU/Transforms/PromoteLHSToTMem.cpp`
+      - canonical promoted-A layout now keys off accumulator layout info
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+      - TMEM-LHS detection now uses LHS layout info rather than the old plan
+  - practical effect:
+    - the remaining public MMAv5 semantic queries are now linear-layout info
+      queries on both the A and D sides
+    - the finite-family plan still exists internally inside `Dialect.cpp`, but
+      verifier/lowering/allocation no longer consume it as a public semantic
+      API
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir test/TritonGPU/accelerate-matmul.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+      -> `4 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_acc_tile_permuted or test_tmem_runtime_matrix_mma_lhs_tile_permuted or test_tmem_runtime_matrix_mma_lhs_subslice_view or test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout or test_tmem_runtime_matrix_mma_scaled_acc_subslice_view or test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view'`
+      -> `8 passed`
+
+- 2026-03-29: bounded dense-copy permutation experiment stays rejected; forcing
+  it through produces logical wrong-code
+  - attempted bounded widening:
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      - temporarily relaxed the dense-family `isDirectTMemCopyLayoutSupported`
+        row/col basis-order gate to allow pure permutations of the canonical
+        basis sets
+      - temporarily widened `getTMemCopyDescriptorLayouts(...)` to try a
+        sorted-basis descriptor candidate for dense families
+  - focused runtime result:
+    - representative case:
+      - `python/test/gluon/test_tmem_runtime_matrix.py`
+        `tmem_copy_no_scales_linear_kernel`
+      - layout:
+        `_make_tmem_linear_layout_permuted(128, 128, "identity", "rotate1")`
+    - outcome with the widened descriptor search:
+      - compile/lowering succeeded
+      - PTX still emitted canonical
+        `tcgen05.cp.cta_group::1.128x256b`
+      - runtime was wrong:
+        - `torch.equal(out, inp) == False`
+        - `mismatch_count = 16128`
+        - row 0 observed:
+          - input:  `[0, 1, 2, 3, 4, 5, 6, 7, ...]`
+          - output: `[0, 64, 1, 65, 2, 66, 3, 67, ...]`
+  - conclusion:
+    - this is not a harmless descriptor-ordering cleanup
+    - forcing pure dense TMEM row/col permutations through the current
+      `tcgen05.copy.128x{128,256}b` path changes logical semantics instead of
+      preserving the user layout
+    - the original clean-negative gate is therefore still the right boundary
+      until we have a descriptor/address model that can faithfully realize
+      those logical permutations
+  - action taken:
+    - reverted the experimental widening
+    - restored the dense-family clean-negative expectations
+  - validation after revert:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or cp_no_scales_linear_exotic_reports_clean_unsupported'`
+      -> `18 passed`
+
+- 2026-03-29: lifted row-half ld/st rescue is still not directly realizable;
+  restored the clean-negative boundary
+  - bucket:
+    - `python/test/gluon/test_tmem_runtime_matrix.py`
+      `test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout`
+  - what I re-checked:
+    - the multidim descriptor chain
+      `full_view.reshape((2, M // 2, N)).slice(1, 1, dim=0).index(0)`
+      over the lifted identity TMEM layout
+    - raw direct lowering still hits the old sparse wrong-code footprint for
+      `32x32b`:
+      - modified rows: `0-15,48-79,112-127`
+    - a `128x64` support-query rescue still over-covers the backing tile when
+      scalarized to `tcgen05.ld/st.sync.aligned.32x32b.x1.b32`
+    - a bounded `64x64` canonical support-query rescue falls back to
+      `I16x32bx2`/local 64-row anchors and reproduces the same sparse wrong
+      footprint instead of the logical upper-half view
+  - conclusion:
+    - this lifted row-half descriptor view is still not directly realizable by
+      the current `tcgen05.ld/st` packet families without changing semantics
+    - the right state today is a clean descriptor-view rejection, not a rescue
+      that compiles to sparse or over-wide wrong-code
+  - action taken:
+    - removed the half-row support-query rescue from
+      `getTMemLdStSupportQueryLayout(...)`
+    - kept the existing verifier-side clean-negative wording for lifted
+      row-half TMEM views
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout'`
+      -> `12 passed`
+
+- 2026-03-29: mixed `ld.red` layout with shared row/col bases stays a clean reject
+  - Reviewed `TMEMLoadOp::verify` and the helper `isReductionFriendlyTmemSourceLayout` in
+    `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp` / `Dialect.cpp`; the mixed layout fails because the
+    normalized TMEM linear layout strips zero bases, expects `row` to encode a 128-row block with
+    pure row bases, and the mixed row dimension carries `[0,1]`/`[0,2]` column bits that break that
+    canonical set.
+  - The lowering path (`TensorMemoryToLLVM.cpp` + `lowerTMemLdStFromTypes`) never finds a valid
+    register layout when row column carriers violate the 128-row anchor plan, so accepting it would
+    silently emit wrong semantics rather than a clean reduction packet.
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupported`
+    still watches for the clean-negative diagnostic, so the current verifier message is the right
+    boundary until a new decomposition strategy for those mixed row/col bases exists.
+
+2026-03-29 12:40Z - Row/col-permuted MMAv5 accumulators remain unsupported
+
+- Experiment: relaxed the MMAv5 accumulator layout matcher so row/col-permuted TMEM-linear accumulators would pass the verifier, then tried to let the runtime convert the permuted register layout back to the canonical AutoLayout before storing the result.
+- Validation: `TRITON_BUILD_WITH_CCACHE=true make -j96` (pass) followed by `PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_rowcol_permuted_layout` (fails because the `tt.make_range` expansion in the converted kernel could not infer a return type after the AutoLayout conversion and ultimately emitted `PassManager::run failed`).
+- Conclusion: even though the matcher could be widened, the kernel still miscompiles (and the emitted data layout cannot be trivially converted back to row-major), so the clean-negative behavior should remain in place.
+
+- 2026-03-29: multidimensional `32x32` ld/st slice bucket is green again
+  - remaining full-matrix failures were:
+    - `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error`
+      compiled instead of rejecting
+    - `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive[mixed]`
+      emitted wrong-code (`1536` mismatches)
+  - root causes split into two separate branches:
+    - identity:
+      - the explicit descriptor view inferred an **exact dense row/col
+        `32x32` TMEM-linear type**
+      - the dedicated `32x32` support-plan rescue still admitted that exact
+        canonical view, even though it comes from a larger backing tile and is
+        not directly representable
+    - mixed:
+      - the direct `queryTy` scalar `tcgen05.ld/st.sync.aligned.32x32b.x1.b32`
+        path was selected, but the recovery path for collapsed scalar reps was
+        advancing the low-bit PTX immediate by `1` instead of `4`
+      - that changed the packet sequence from the validated
+        `0,4,8,...,28` col-immediates to `0,1,2,...,7`
+  - fixes:
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      - added an exact-literal `32x32` dense row/col view predicate for
+        explicit TMEM descriptor views
+      - exact dense `32x32` views from larger backing tiles now stay on the
+        clean-negative path in `isUnsupportedDirectTMemLdStDescriptorView(...)`
+      - the dedicated subview-support helper now also declines that exact
+        canonical case
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+      - scalarized `32x32b.x1` recovery now advances PTX col-immediates in
+        `.b32` byte units (`4` bytes per packet), restoring the intended
+        `0,4,8,...,28` sequence
+  - result:
+    - identity is back to a clean compile-time descriptor-view rejection
+    - mixed is back to a real positive with correct numerics and expected PTX
+      packet offsets
+    - scrambled-cols stays clean unsupported
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'multidim_slice_identity_reports_clean_error or multidim_slice_positive or multidim_slice_reports_clean_unsupported'`
+      -> `3 passed`
+- 2026-03-29: MMAv5 barriered Gluon kernels must not also issue explicit
+  `tcgen05_commit(...)`
+  - barriered `tcgen05_mma(..., mbarriers=[bar])` already lowers to
+    completion-barrier signaling
+  - the earlier extra `tcgen05_commit(bar)` in the runtime kernels emitted a
+    second `tcgen05.commit...mbarrier::arrive::one...` in PTX/LLIR and wedged
+    runtime execution
+  - removing the redundant explicit commit restored the canonical plain MMA and
+    indexed-acc-view positives
+  - validation:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma[legacy_no_acc-layout0-False]'`
+      -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma_indexed_acc_view and legacy_parent'`
+      -> `1 passed`
+- 2026-03-29: MMAv5 direct-layout matcher now rejects in-tile row/col basis
+  permutations again
+  - root cause:
+    - `planMMAv5Family(...)` was comparing the low-order TMEM row/col tile
+      bases as a **sorted multiset**, which incorrectly treated arbitrary
+      in-instruction basis permutations as MMAv5-compatible
+  - fix:
+    - require exact low-order basis order equality inside the candidate MMA
+      tile and only allow freedom in the higher-order whole-tile repetition
+      bases
+  - effect:
+    - scrambled / row-col permuted TMEM-linear accumulator layouts are back to
+      clean verifier rejection
+    - intended tile-permuted whole-tile layouts remain directly supported
+    - scaled `tile_n=32` still rejects cleanly through the dedicated repeated
+      `N=32` verifier path
+  - tests updated:
+    - runtime row/col-permuted MMA bucket now expects clean unsupported
+    - `test/TritonNvidiaGPU/invalid.mlir` has a dedicated row/col-permuted
+      MMAv5 accumulator rejection
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_exotic_layout_reports_clean_unsupported or mma_rowcol_permuted_layout or mma_acc_tile_permuted or mma_scaled_acc_tile_permuted_64_direct_layout or mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported'`
+      -> `21 passed`
+    - `bin/triton-opt --split-input-file /root/code/triton/test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`
+      -> success
+- 2026-03-29: broad MMAv5 runtime slice is green after restoring the verifier
+  boundary
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'mma'`
+    -> `196 passed, 12 skipped`
+  - this covers:
+    - canonical plain MMA
+    - indexed/subslice views
+    - two-CTA cases
+    - tile-permuted direct positives
+    - scaled MMAv5 direct positives
+    - the clean-negative exotic / row-col-permuted / repeated-`N=32` scaled
+      buckets
+- 2026-03-29: full TMEM runtime matrix is green again after the MMAv5 verifier
+  boundary fix
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py`
+    -> `1668 passed, 119 skipped`
+- 2026-03-29: frontend/core validation is green on the TMEM surface
+  - fixes after the full runtime matrix:
+    - refreshed stale frontend expecttests for TMEM subview/index IR now that
+      memdesc view/result types keep the precise inferred
+      `#ttng.tensor_memory_linear` encoding
+    - fixed `test_shared_memory_cast` to preserve the total number of bits in
+      the shared-memory reinterpret (`16384xi8`, not `1024xi8`)
+    - fixed Gluon `_check_tensor_memory_layout_ctas(...)` so `two_ctas=True`
+      layouts honor the actual `cga_layout` CTA count when present instead of
+      collapsing every two-CTA layout to `2` CTAs per CGA
+    - updated stale `ld.red` clean-negative substrings in
+      `python/test/gluon/test_core.py` to the current direct-lowering
+      diagnostics
+  - validation:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_frontend.py`
+      -> `205 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_core.py -k 'tmem_reduction or tcgen05_mma_multicast_commit'`
+      -> `92 passed`
+    - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt /root/code/triton/test/TritonNvidiaGPU/ops.mlir >/tmp/tmem_ops_out.mlir`
+      -> non-empty output (`226` lines)
+    - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file /root/code/triton/test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`
+      -> success

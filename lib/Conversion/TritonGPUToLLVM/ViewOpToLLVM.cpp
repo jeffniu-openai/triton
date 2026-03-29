@@ -17,6 +17,97 @@ bool isTensorMemoryMemDesc(MemDescType type) {
          triton::nvidia_gpu::isTensorMemoryEncoding(type.getEncoding());
 }
 
+static bool isTensorMemoryColumnHalfDim0Slice(triton::gpu::MemDescSubsliceOp op) {
+  auto srcTy = cast<MemDescType>(op.getSrc().getType());
+  auto dstTy = cast<MemDescType>(op.getType());
+  if (!isTensorMemoryMemDesc(srcTy))
+    return false;
+  if (srcTy.getRank() != 3 || dstTy.getRank() != 3)
+    return false;
+  auto reshape = op.getSrc().getDefiningOp<triton::gpu::MemDescReshapeOp>();
+  if (!reshape)
+    return false;
+  auto reshapeSrcTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
+  if (!reshapeSrcTy || reshapeSrcTy.getRank() != 2)
+    return false;
+  auto offsets = op.getOffsets();
+  if (offsets.size() != 3 || offsets[0] != 1 || offsets[1] != 0 ||
+      offsets[2] != 0)
+    return false;
+  if (srcTy.getShape()[0] != 2 || dstTy.getShape()[0] != 1 ||
+      srcTy.getShape()[1] != dstTy.getShape()[1] ||
+      srcTy.getShape()[2] != dstTy.getShape()[2])
+    return false;
+  int64_t rows = dstTy.getShape()[1];
+  int64_t cols = dstTy.getShape()[2];
+  return reshapeSrcTy.getShape()[0] == rows &&
+         reshapeSrcTy.getShape()[1] == cols * 2;
+}
+
+static bool isTensorMemoryRowHalfDim0Slice(triton::gpu::MemDescSubsliceOp op) {
+  auto srcTy = cast<MemDescType>(op.getSrc().getType());
+  auto dstTy = cast<MemDescType>(op.getType());
+  if (!isTensorMemoryMemDesc(srcTy))
+    return false;
+  if (srcTy.getRank() != 3 || dstTy.getRank() != 3)
+    return false;
+  auto reshape = op.getSrc().getDefiningOp<triton::gpu::MemDescReshapeOp>();
+  if (!reshape)
+    return false;
+  auto reshapeSrcTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
+  if (!reshapeSrcTy || reshapeSrcTy.getRank() != 2)
+    return false;
+  auto offsets = op.getOffsets();
+  if (offsets.size() != 3 || offsets[0] != 1 || offsets[1] != 0 ||
+      offsets[2] != 0)
+    return false;
+  if (srcTy.getShape()[0] != 2 || dstTy.getShape()[0] != 1 ||
+      srcTy.getShape()[1] != dstTy.getShape()[1] ||
+      srcTy.getShape()[2] != dstTy.getShape()[2])
+    return false;
+  int64_t rows = dstTy.getShape()[1];
+  int64_t cols = dstTy.getShape()[2];
+  return reshapeSrcTy.getShape()[0] == rows * 2 &&
+         reshapeSrcTy.getShape()[1] == cols;
+}
+
+static std::optional<uint32_t>
+getCanonicalContiguous32x32SubviewOffset(triton::gpu::MemDescSubsliceOp op) {
+  auto srcTy = cast<MemDescType>(op.getSrc().getType());
+  auto dstTy = cast<MemDescType>(op.getType());
+  if (!isTensorMemoryMemDesc(srcTy) || srcTy.getRank() != 4 ||
+      dstTy.getRank() != 4)
+    return std::nullopt;
+  auto reshape = op.getSrc().getDefiningOp<triton::gpu::MemDescReshapeOp>();
+  if (!reshape)
+    return std::nullopt;
+  auto rootTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
+  if (!rootTy || rootTy.getRank() != 2 || rootTy.getShape()[0] != 128 ||
+      rootTy.getShape()[1] != 128)
+    return std::nullopt;
+  std::string error;
+  if (!triton::nvidia_gpu::getCanonicalTMemLinearEncoding(rootTy, &error))
+    return std::nullopt;
+
+  auto offsets = op.getOffsets();
+  if (offsets.size() != 4 || offsets[0] != 1 || offsets[1] != 0 ||
+      offsets[2] != 1 || offsets[3] != 0)
+    return std::nullopt;
+  if (srcTy.getShape()[0] != 2 || srcTy.getShape()[1] != 64 ||
+      srcTy.getShape()[2] != 2 || srcTy.getShape()[3] != 64)
+    return std::nullopt;
+  if (dstTy.getShape()[0] != 1 || dstTy.getShape()[1] != 32 ||
+      dstTy.getShape()[2] != 1 || dstTy.getShape()[3] != 32)
+    return std::nullopt;
+
+  // Direct 32x32 ld/st uses the scalarized x1 packet family, which expects
+  // this static contiguous slice to be addressed in the same folded support
+  // frame as the working mixed-layout path instead of the raw canonical
+  // row<<16|col view offset.
+  return static_cast<uint32_t>(srcTy.getShape()[3] +
+                               srcTy.getShape()[1] / dstTy.getShape()[1]);
+}
+
 Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
                               Value base, uint32_t offset) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -609,7 +700,33 @@ struct MemDescSubsliceOpConversion
     auto b = TritonLLVMOpBuilder(loc, rewriter);
     auto srcTy = op.getSrc().getType();
     if (isTensorMemoryMemDesc(srcTy)) {
+      if (auto specialOffset = getCanonicalContiguous32x32SubviewOffset(op)) {
+        rewriter.replaceOp(op, advanceTensorMemoryBase(loc, rewriter,
+                                                       adaptor.getSrc(),
+                                                       *specialOffset));
+        return success();
+      }
+      if (isTensorMemoryRowHalfDim0Slice(op)) {
+        if (const char *overrideOffset =
+                std::getenv("TRITON_TMEM_ROW_HALF_BASE_OFFSET")) {
+          rewriter.replaceOp(
+              op, advanceTensorMemoryBase(
+                      loc, rewriter, adaptor.getSrc(),
+                      static_cast<uint32_t>(std::strtoul(overrideOffset,
+                                                          /*endptr=*/nullptr,
+                                                          /*base=*/0))));
+          return success();
+        }
+        SmallVector<int32_t> offsets(op.getOffsets().begin(), op.getOffsets().end());
+        rewriter.replaceOp(
+            op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(),
+                                        triton::nvidia_gpu::getTMemViewOffset(
+                                            srcTy, offsets)));
+        return success();
+      }
       SmallVector<int32_t> offsets(op.getOffsets().begin(), op.getOffsets().end());
+      if (isTensorMemoryColumnHalfDim0Slice(op))
+        offsets.assign(offsets.size(), 0);
       rewriter.replaceOp(
           op, advanceTensorMemoryBase(loc, rewriter, adaptor.getSrc(),
                                       triton::nvidia_gpu::getTMemViewOffset(

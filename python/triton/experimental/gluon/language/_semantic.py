@@ -20,7 +20,7 @@ def _is_int_list(value):
 
 def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, instr_variant):
     _check(isinstance(instr_variant, str), lambda: "instr_variant must be a string")
-    _check(instr_variant in ("32x32b", "16x64b", "16x128b", "16x256b", "16x32bx2", "32x32b_splitn"),
+    _check(instr_variant in ("auto", "32x32b", "16x64b", "16x128b", "16x256b", "16x32bx2", "32x32b_splitn"),
            lambda: f"unknown instr_variant: {instr_variant}")
     _check(isinstance(num_warps, int), lambda: f"num_warps must be an int but got {type(num_warps)!r}")
     _check(num_warps >= 4 and (num_warps & (num_warps - 1)) == 0, lambda: "num_warps must be a power of two and >= 4")
@@ -58,6 +58,29 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
         num_warps,
         requested_variant,
     )
+    if layout_obj is None and splitn:
+        layout_obj = compute_tmem_reg_layout(
+            element_ty,
+            shape,
+            alloc_shape,
+            layout,
+            num_warps,
+            "32x32b",
+        )
+    if (layout_obj is None and requested_variant == "auto" and not is_scales_layout and
+            alloc_shape[-rank:] != shape):
+        # Retry narrower descriptor views as standalone tiles. The backend still
+        # validates the actual memdesc view at load/store lowering time, but
+        # whole-tile subslices should not be rejected here just because the
+        # public descriptor type preserves the parent allocation shape.
+        layout_obj = compute_tmem_reg_layout(
+            element_ty,
+            shape,
+            shape,
+            layout,
+            num_warps,
+            requested_variant,
+        )
     _check(layout_obj is not None,
            lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
            + ("for tensor-memory scales, try instr_variant=\"16x32bx2\" for narrow tiles, "

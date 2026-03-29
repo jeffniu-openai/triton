@@ -61,6 +61,8 @@ namespace mlir::triton::nvidia_gpu {
 
 constexpr static char AttrTwoCTAsName[] = "ttng.two-ctas";
 
+struct TMemLdStRowPlan;
+
 inline bool getModuleTwoCTAs(ModuleOp mod) {
   auto attr = mod->getAttrOfType<BoolAttr>(AttrTwoCTAsName);
   return attr ? attr.getValue() : false;
@@ -115,7 +117,13 @@ inline const char *getOpShape(TMemAccessAtom atom) {
 }
 
 LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
-                           bool withWarp);
+                           bool withWarp, int32_t warpRow0 = 32,
+                           int32_t warpRow1 = 64, int32_t rowSpan = 128);
+
+LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
+                           bool withWarp, ArrayRef<int32_t> warpBasis0,
+                           ArrayRef<int32_t> warpBasis1,
+                           int32_t rowSpan = 128);
 
 TMemAllocation getTmemAllocSizes(gpu::MemDescType memDescType);
 
@@ -146,6 +154,16 @@ std::optional<TensorMemoryLinearEncodingAttr>
 getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, Attribute encoding,
                                std::string *error = nullptr);
 
+std::optional<TensorMemoryLinearEncodingAttr>
+getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, unsigned blockM,
+                               unsigned blockN, unsigned colStride,
+                               gpu::CGAEncodingAttr cgaLayout, bool twoCTAs,
+                               std::string *error = nullptr);
+
+std::optional<LinearLayout>
+getTMemViewAnalysisLinearLayout(ArrayRef<int64_t> shape, Attribute encoding,
+                                std::string *error = nullptr);
+
 Attribute getCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape,
                                            Attribute layout);
 
@@ -175,11 +193,31 @@ tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
                                   bool twoCTAs,
                                   std::string *error = nullptr);
 
-std::optional<TensorMemoryEncodingAttr>
-matchTensorMemoryLegacyEncoding(ArrayRef<int64_t> shape, Attribute layout);
+struct MMAv5LhsLayoutInfo {
+  LinearLayout canonicalLayout;
+  unsigned mmaSizeM;
+  unsigned mmaSizeN;
+  unsigned colStride;
+  bool twoCTAs;
+};
 
-std::optional<TensorMemoryEncodingAttr>
-matchTensorMemoryLegacyEncoding(gpu::MemDescType memDescType);
+struct MMAv5AccumulatorLayoutInfo {
+  LinearLayout canonicalLayout;
+  unsigned mmaSizeM;
+  unsigned mmaSizeN;
+  unsigned colStride;
+  bool twoCTAs;
+  bool interleavedM64;
+};
+
+std::optional<MMAv5LhsLayoutInfo>
+getMMAv5LhsLayoutInfo(gpu::MemDescType memDescType);
+
+std::optional<MMAv5AccumulatorLayoutInfo>
+getMMAv5AccumulatorLayoutInfo(gpu::MemDescType memDescType);
+
+std::optional<MMAv5AccumulatorLayoutInfo>
+getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
 SmallVector<gpu::DistributedEncodingTrait>
 getTmemCompatibleLayouts(gpu::MemDescType memType, unsigned numWarps,
@@ -188,6 +226,15 @@ getTmemCompatibleLayouts(gpu::MemDescType memType, unsigned numWarps,
 std::optional<gpu::DistributedEncodingTrait>
 getTmemLoadLayoutSplitLongM(RankedTensorType tensorType,
                             gpu::MemDescType memType, int numWarps);
+
+std::optional<gpu::DistributedEncodingTrait>
+getTmemLoadReductionLayout(RankedTensorType tensorType,
+                           gpu::MemDescType memType, int numWarps);
+
+bool isReductionFriendlyTmemSourceLayout(gpu::MemDescType memType);
+
+bool isReductionFriendlyTmemLoadLayout(RankedTensorType tensorType,
+                                       const LinearLayout &regLayout);
 
 SmallVector<gpu::DistributedEncodingTrait>
 getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
@@ -203,6 +250,19 @@ getDefaultLayoutForTmemLdSt(gpu::MemDescType memType, unsigned numWarps);
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                 unsigned numWarps);
+
+std::optional<LinearLayout>
+getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
+                                unsigned numWarps,
+                                std::optional<TMemLdStRowPlan> rowPlanOverride);
+
+std::optional<LinearLayout>
+getDistributedLayoutForTmemLdSt(const LinearLayout &memLayout,
+                                TMemAccessAtom atom, unsigned numWarps,
+                                int bitwidth,
+                                const TMemLdStRowPlan &rowPlan);
+
+std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll);
 
 } // namespace mlir::triton::nvidia_gpu
 

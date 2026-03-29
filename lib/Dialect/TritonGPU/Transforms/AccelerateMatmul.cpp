@@ -581,14 +581,16 @@ public:
         versionMajor, retShapePerCTA, oldAType.getElementType(), numWarps);
     auto bitwidth = oldRetType.getElementType().getIntOrFloatBitWidth();
     unsigned colStride = 32 / bitwidth;
-    Attribute accEncoding = triton::nvidia_gpu::TensorMemoryEncodingAttr::get(
-        context, instrShape[0], instrShape[1], colStride, CGALayout,
-        useTwoCTAs);
+    auto accEncoding = triton::nvidia_gpu::getCanonicalTMemLinearEncoding(
+        oldRetType.getShape(), instrShape[0], instrShape[1], colStride,
+        CGALayout, useTwoCTAs);
+    if (!accEncoding)
+      return failure();
     Attribute tensorMemorySpace =
         triton::nvidia_gpu::TensorMemorySpaceAttr::get(context);
     MemDescType accMemDescType =
         MemDescType::get(oldRetType.getShape(), oldRetType.getElementType(),
-                         accEncoding, tensorMemorySpace,
+                         *accEncoding, tensorMemorySpace,
                          /*mutableMemory=*/true);
     auto newDistributedEncoding =
         nvidia_gpu::getDefaultLayoutForTmemLdSt(accMemDescType, numWarps);
@@ -837,13 +839,15 @@ public:
 
     auto bitwidth = oldRetType.getElementType().getIntOrFloatBitWidth();
     unsigned colStride = 32 / bitwidth;
-    Attribute accEncoding = triton::nvidia_gpu::TensorMemoryEncodingAttr::get(
-        context, m, n, colStride, CGALayout, false);
+    auto accEncoding = triton::nvidia_gpu::getCanonicalTMemLinearEncoding(
+        oldRetType.getShape(), m, n, colStride, CGALayout, false);
+    if (!accEncoding)
+      return failure();
     Attribute tensorMemorySpace =
         triton::nvidia_gpu::TensorMemorySpaceAttr::get(context);
     MemDescType accMemDescType =
         MemDescType::get(oldRetType.getShape(), oldRetType.getElementType(),
-                         accEncoding, tensorMemorySpace,
+                         *accEncoding, tensorMemorySpace,
                          /*mutableMemory=*/true);
     auto newDistributedEncoding =
         nvidia_gpu::getDefaultLayoutForTmemLdSt(accMemDescType, numWarps);

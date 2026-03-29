@@ -190,13 +190,41 @@ class DistributedLinearLayout(DistributedLayout):
         rank = len(self.shape)
 
         for basis in self.reg_bases:
-            assert len(basis) == rank
+            if len(basis) != rank:
+                raise ValueError(f"Expected register basis rank {rank}, got {len(basis)}")
+            for dim, value in enumerate(basis):
+                if value < 0 or value >= self.shape[dim]:
+                    raise ValueError(
+                        f"Register basis component {value} is out of range for dim {dim} "
+                        f"with extent {self.shape[dim]}"
+                    )
         for basis in self.lane_bases:
-            assert len(basis) == rank
+            if len(basis) != rank:
+                raise ValueError(f"Expected lane basis rank {rank}, got {len(basis)}")
+            for dim, value in enumerate(basis):
+                if value < 0 or value >= self.shape[dim]:
+                    raise ValueError(
+                        f"Lane basis component {value} is out of range for dim {dim} "
+                        f"with extent {self.shape[dim]}"
+                    )
         for basis in self.warp_bases:
-            assert len(basis) == rank
+            if len(basis) != rank:
+                raise ValueError(f"Expected warp basis rank {rank}, got {len(basis)}")
+            for dim, value in enumerate(basis):
+                if value < 0 or value >= self.shape[dim]:
+                    raise ValueError(
+                        f"Warp basis component {value} is out of range for dim {dim} "
+                        f"with extent {self.shape[dim]}"
+                    )
         for basis in self.block_bases:
-            assert len(basis) == rank
+            if len(basis) != rank:
+                raise ValueError(f"Expected block basis rank {rank}, got {len(basis)}")
+            for dim, value in enumerate(basis):
+                if value < 0 or value >= self.shape[dim]:
+                    raise ValueError(
+                        f"Block basis component {value} is out of range for dim {dim} "
+                        f"with extent {self.shape[dim]}"
+                    )
 
     def _to_ir(self, builder):
         return builder.get_distributed_linear_layout(self.reg_bases, self.lane_bases, self.warp_bases, self.block_bases,

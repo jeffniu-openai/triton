@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Tuple, List, TYPE_CHECKING
 
 from dataclasses import dataclass, field
+from triton.experimental import gluon
 from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
@@ -45,14 +46,51 @@ def _check_tensor_memory_layout_ctas(builder, two_ctas, cga_layout=None):
     context_ctas = getattr(options, "num_ctas", None)
     if context_ctas is None:
         return
-    if two_ctas:
+    if cga_layout:
+        layout_ctas = _count_cta_splits(cga_layout)
+    elif two_ctas:
         layout_ctas = 2
     else:
-        layout_ctas = _count_cta_splits(cga_layout or [])
+        layout_ctas = 1
     if layout_ctas != context_ctas:
         raise ValueError(
             f"Layout has {layout_ctas} CTAs per CGA, but the context requires {context_ctas} CTAs per CGA."
         )
+
+
+def _strip_zero_reg_bases_from_layout(layout):
+    if not hasattr(layout, "reg_bases") or not hasattr(layout, "lane_bases") or not hasattr(layout, "warp_bases"):
+        return layout
+    reg_bases = [basis for basis in layout.reg_bases if any(value != 0 for value in basis)]
+    if len(reg_bases) == len(layout.reg_bases):
+        return layout
+    return type(layout)(
+        reg_bases=reg_bases,
+        lane_bases=layout.lane_bases,
+        warp_bases=layout.warp_bases,
+        block_bases=layout.block_bases,
+        shape=layout.shape,
+    )
+
+
+@gluon.jit
+def _reduce_min_direct(a, b):
+    return ttgl.minimum(a, b)
+
+
+@gluon.jit
+def _reduce_max_direct(a, b):
+    return ttgl.maximum(a, b)
+
+
+@gluon.jit
+def _reduce_min_propagate_nan(a, b):
+    return ttgl.where(a != a, a, ttgl.where(b != b, b, ttgl.minimum(a, b)))
+
+
+@gluon.jit
+def _reduce_max_propagate_nan(a, b):
+    return ttgl.where(a != a, a, ttgl.where(b != b, b, ttgl.maximum(a, b)))
 
 
 @dataclass(frozen=True, eq=True)
@@ -246,7 +284,7 @@ class tensor_memory_descriptor_type(base_type):
         return f"MD{self.element_ty.mangle()}S{shape_str}SL{self.layout.mangle()}LAS{self.alloc_shape}ASMD"
 
     @constexpr_function
-    def get_reg_layout(self, num_warps=None, instr_variant="32x32b"):
+    def get_reg_layout(self, num_warps=None, instr_variant="auto"):
         """
         Return a DistributedLinearLayout compatible with TMEM load/store
         instructions for this descriptor type.
@@ -255,7 +293,9 @@ class tensor_memory_descriptor_type(base_type):
             num_warps (Optional[int]): Number of warps participating in the
                 operation. Must be provided when it cannot be inferred by the
                 caller.
-            instr_variant (str): TMEM instruction variant (e.g. ``"32x32b"``).
+            instr_variant (str): TMEM instruction variant (e.g. ``"auto"``,
+                ``"32x32b"``). ``"auto"`` selects the first supported TMEM
+                register layout for the descriptor.
         """
         tmem_ty = _unwrap_tmem_layout_arg(self)
         if not isinstance(tmem_ty, tensor_memory_descriptor_type):
@@ -266,7 +306,7 @@ class tensor_memory_descriptor_type(base_type):
         if not isinstance(num_warps, int) or num_warps <= 0 or (num_warps & (num_warps - 1)) != 0:
             raise ValueError(f"num_warps must be a positive power of two, got {num_warps!r}")
 
-        return _compute_tmem_reg_layout(
+        layout = _compute_tmem_reg_layout(
             _unwrap_tmem_layout_arg(tmem_ty.element_ty),
             _unwrap_tmem_layout_arg(tmem_ty.shape),
             _unwrap_tmem_layout_arg(tmem_ty.alloc_shape),
@@ -274,6 +314,9 @@ class tensor_memory_descriptor_type(base_type):
             num_warps,
             _unwrap_tmem_layout_arg(instr_variant),
         )
+        if isinstance(tmem_ty.layout, TensorMemoryScalesLayout):
+            layout = _strip_zero_reg_bases_from_layout(layout)
+        return layout
 
 
 class tensor_memory_descriptor(base_value):
@@ -311,7 +354,7 @@ class tensor_memory_descriptor(base_value):
         return str(self.type)
 
     @builtin
-    def get_reg_layout(self, num_warps=None, instr_variant="32x32b", _semantic: GluonSemantic = None, _generator=None):
+    def get_reg_layout(self, num_warps=None, instr_variant="auto", _semantic: GluonSemantic = None, _generator=None):
         """
         Return the register layout used to access this tensor memory descriptor.
 
@@ -319,7 +362,8 @@ class tensor_memory_descriptor(base_value):
             num_warps (Optional[int]): Number of warps participating in the
                 operation. When omitted, infer it from the caller's context.
             instr_variant (str): TMEM instruction variant. Defaults to
-                ``"32x32b"``.
+                ``"auto"``, which selects the first supported TMEM register
+                layout for the descriptor.
 
         Returns:
             DistributedLayout: A register layout compatible with TMEM
@@ -327,7 +371,34 @@ class tensor_memory_descriptor(base_value):
         """
         if num_warps is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
-        return self.type.get_reg_layout(num_warps=num_warps, instr_variant=instr_variant)
+        num_warps = _unwrap_if_constexpr(num_warps)
+        requested_variant = _unwrap_if_constexpr(instr_variant)
+        splitn_direct_fallback = (
+            requested_variant in ("32x32b_splitn", "16x32bx2")
+            and list(self.shape) == list(self.type.alloc_shape)
+        )
+        layout = None
+        try:
+            layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
+                self.handle, num_warps, requested_variant
+            )
+        except Exception as e:
+            if not splitn_direct_fallback:
+                raise ValueError(str(e)) from e
+        if layout is None and splitn_direct_fallback:
+            layout = _compute_tmem_reg_layout(
+                self.dtype,
+                self.shape,
+                self.type.alloc_shape,
+                self.layout,
+                num_warps,
+                requested_variant,
+            )
+        if isinstance(self.layout, TensorMemoryScalesLayout):
+            layout = _strip_zero_reg_bases_from_layout(layout)
+        if layout is None:
+            raise ValueError(f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}")
+        return layout
 
     @builtin
     def load(self, layout=None, _semantic: GluonSemantic = None, _generator=None) -> ttgl.tensor:
@@ -354,11 +425,20 @@ class tensor_memory_descriptor(base_value):
         #   red_op: MIN/MAX reduction operation
         #   abs (bool): If True, reduce absolute values.
         #   propagate_nan (NONE): If ALL, propagate NaN in specified reduction operation.
-        if layout is None:
-            layout = self.get_reg_layout(_semantic=_semantic, _generator=_generator)
-        layout = _unwrap_if_constexpr(layout)
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
+        if layout is None:
+            num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
+            try:
+                layout = self.get_reg_layout(
+                    num_warps=num_warps,
+                    instr_variant="32x32b",
+                    _semantic=_semantic,
+                    _generator=_generator,
+                )
+            except Exception as e:
+                raise ValueError(str(e)) from e
+        layout = _unwrap_if_constexpr(layout)
 
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder
@@ -522,10 +602,13 @@ def allocate_tensor_memory(element_ty, shape, layout, value=None, _semantic=None
     layout = _unwrap_if_constexpr(layout)
     value = value.handle if value is not None else None
 
-    ty = tensor_memory_descriptor_type(element_ty, shape, layout, shape)
     builder = _semantic.builder
+    alloc_shape = shape
+    if isinstance(layout, TensorMemoryScalesLayout):
+        alloc_shape = builder.get_tmem_alloc_shape(shape, layout._to_ir(builder))
+    ty = tensor_memory_descriptor_type(element_ty, shape, layout, alloc_shape)
     handle = builder.create_tmem_alloc(ty.to_ir(builder), value)
-    return tensor_memory_descriptor(handle, element_ty, shape, layout, shape)
+    return tensor_memory_descriptor(handle, element_ty, shape, layout, alloc_shape)
 
 
 @builtin
@@ -546,7 +629,7 @@ def tcgen05_copy(src, dst, _semantic=None):
 def tcgen05_mma(a, b, acc, *, use_acc=True, pred=True, multicast=False, mbarriers=None, mbarrier_preds=None,
                 _semantic=None):
     """
-    Emit a 5th generation TensorCore MMA instruction.
+    Emit an asynchronous 5th generation TensorCore MMA instruction.
     acc = a * b + (acc if use_acc else 0)
 
     Args:
@@ -556,7 +639,7 @@ def tcgen05_mma(a, b, acc, *, use_acc=True, pred=True, multicast=False, mbarrier
         use_acc (bool): Whether to use the initial value of the accumulator. Defaults to True.
         pred (bool): Scalar predicate. Operation is skipped if predicate is False. Defaults to True.
         multicast (bool): Whether tcgen05 commit should multicast across a CTA cluster. Defaults to False.
-        mbarriers (Sequence[shared_memory_descriptor], optional): Barriers to signal when the operation is complete. If None, mma is synchronous. Defaults to None.
+        mbarriers (Sequence[shared_memory_descriptor], optional): Barriers to signal when the operation is complete. If omitted, the operation still executes asynchronously and must be synchronized later via tcgen05_commit and mbarrier.wait before reading the result. Defaults to None.
         mbarrier_preds (Sequence[bool], optional): Predicates for barriers. Defaults to None.
     """
     use_acc = _semantic.to_tensor(use_acc)
@@ -583,7 +666,7 @@ def tcgen05_mma(a, b, acc, *, use_acc=True, pred=True, multicast=False, mbarrier
 def tcgen05_mma_scaled(a, b, acc, a_scale, b_scale, a_type, b_type, *, use_acc=True, pred=True, mbarriers=None,
                        mbarrier_preds=None, _semantic=None):
     """
-    Emit a 5th generation TensorCore MMA scaled instruction.
+    Emit an asynchronous 5th generation TensorCore MMA scaled instruction.
     acc = (a * a_scale) * (b * b_scale) + (acc if use_acc else 0)
 
     Args:
@@ -596,7 +679,7 @@ def tcgen05_mma_scaled(a, b, acc, a_scale, b_scale, a_type, b_type, *, use_acc=T
         b_type (str): Type of operand B. One of {"e2m1", "e4m3", "e5m2"}.
         use_acc (bool): Whether to use the initial value of the accumulator. Defaults to True.
         pred (bool): Scalar predicate. Operation is skipped if predicate is False. Defaults to True.
-        mbarriers (Sequence[mbarrier], optional): Barriers to signal when the operation is complete. If None, mma is synchronous. Defaults to None.
+        mbarriers (Sequence[mbarrier], optional): Barriers to signal when the operation is complete. If omitted, the operation still executes asynchronously and must be synchronized later via tcgen05_commit and mbarrier.wait before reading the result. Defaults to None.
         mbarrier_preds (Sequence[bool], optional): Predicates for barriers. Defaults to None.
     """
     use_acc = _semantic.to_tensor(use_acc)

@@ -42,9 +42,8 @@ public:
     Value src = localAllocOp.getSrc();
     auto srcType = cast<RankedTensorType>(src.getType());
     auto srcLayout = srcType.getEncoding();
-    auto accTMemEncoding =
-        matchTensorMemoryLegacyEncoding(tcGen5MMAOp.getD().getType());
-    if (!accTMemEncoding)
+    auto accInfo = getMMAv5AccumulatorLayoutInfo(tcGen5MMAOp.getD().getType());
+    if (!accInfo)
       return failure();
     auto cgaLayout = triton::gpu::getCGALayout(srcLayout);
     // TMem encoding for A operand is the same as for D (Acc), but packed for
@@ -56,13 +55,9 @@ public:
       return failure();
     }
     const unsigned colStride = 1;
-    auto aTMemEncoding = TensorMemoryEncodingAttr::get(
-        context, accTMemEncoding->getBlockM(), lhs.getType().getShape()[1],
-        colStride, cgaLayout, accTMemEncoding->getTwoCTAs());
-    std::string canonicalError;
-    auto canonicalATMemEncoding =
-        nvidia_gpu::tryGetCanonicalTensorMemoryEncoding(
-            lhs.getType().getShape(), aTMemEncoding, &canonicalError);
+    auto canonicalATMemEncoding = nvidia_gpu::getCanonicalTMemLinearEncoding(
+        lhs.getType().getShape(), accInfo->mmaSizeM,
+        lhs.getType().getShape()[1], colStride, cgaLayout, accInfo->twoCTAs);
     if (!canonicalATMemEncoding)
       return failure();
     Attribute tensorMemorySpace =

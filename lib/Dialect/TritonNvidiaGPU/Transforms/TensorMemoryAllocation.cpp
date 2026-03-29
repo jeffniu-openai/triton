@@ -119,18 +119,25 @@ private:
 static Interval<int> getLiveIntervals(Value value, Liveness &liveness,
                                       DenseMap<Operation *, int> &operationId) {
   auto liveOperations = liveness.resolveLiveness(value);
-  // Merge the alloc liverange with the liverange of any subview of the
-  // allocation.
-  SmallVector<Operation *> users(value.getUsers());
-  while (!users.empty()) {
-    Operation *user = users.pop_back_val();
-    if (!isa<ttg::MemDescIndexOp, ttg::MemDescReinterpretOp>(user))
+  // Merge the alloc liverange with the liverange of any view derived from the
+  // allocation so we do not reuse the backing rows/cols while a later
+  // materialization load/store still needs the parent allocation.
+  DenseSet<Value> seenValues;
+  SmallVector<Value> worklist{value};
+  while (!worklist.empty()) {
+    Value current = worklist.pop_back_val();
+    if (!seenValues.insert(current).second)
       continue;
-    auto usersLivness = liveness.resolveLiveness(user->getResult(0));
-    liveOperations.insert(liveOperations.end(), usersLivness.begin(),
-                          usersLivness.end());
-    users.append(user->getResult(0).getUsers().begin(),
-                 user->getResult(0).getUsers().end());
+    for (Operation *user : current.getUsers()) {
+      if (!user->hasTrait<OpTrait::MemDescViewTrait>() &&
+          !isa<TMEMSubSliceOp>(user))
+        continue;
+      Value result = user->getResult(0);
+      auto userLiveness = liveness.resolveLiveness(result);
+      liveOperations.insert(liveOperations.end(), userLiveness.begin(),
+                            userLiveness.end());
+      worklist.push_back(result);
+    }
   }
   auto minId = std::numeric_limits<int>::max();
   auto maxId = std::numeric_limits<int>::min();
@@ -305,13 +312,12 @@ allocateTMem(Operation *parentOp,
       allocs.push_back(alloc);
     }
     if (auto mmaOp = dyn_cast<MMAv5OpInterface>(op)) {
-      auto aLegacy = matchTensorMemoryLegacyEncoding(mmaOp.getA().getType());
-      if (aLegacy) {
-        auto accLegacy =
-            matchTensorMemoryLegacyEncoding(mmaOp.getAccumulator().getType());
+      auto aTMemInfo = getMMAv5LhsLayoutInfo(mmaOp.getA().getType());
+      if (aTMemInfo) {
+        auto accInfo = getMMAv5AccumulatorLayoutInfo(mmaOp.getAccumulator().getType());
         TMemAllocation allocSize = getTmemAllocSizes(mmaOp.getA().getType());
-        if (allocSize.numRows == 64 || aLegacy->getBlockM() == 64 ||
-            (accLegacy && accLegacy->getBlockM() == 64)) {
+        if (allocSize.numRows == 64 || aTMemInfo->mmaSizeM == 64 ||
+            (accInfo && accInfo->mmaSizeM == 64)) {
           // HW restriction, the A alloc and accumulator needs to be in the same
           // rows. This also applies to interleaved blockM=64 layouts that span
           // 128 physical rows: they still need a consistent row anchor between

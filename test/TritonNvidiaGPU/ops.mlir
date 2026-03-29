@@ -2,6 +2,9 @@
 
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = false, elementBitWidth = 8}>
 #shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = true, elementBitWidth = 8}>
+#shared8_64t = #ttg.nvmma_shared<{swizzlingByteWidth = 64, transposed = true, elementBitWidth = 8}>
+#shared16_32 = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = false, elementBitWidth = 16}>
+#shared16_32t = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = true, elementBitWidth = 16}>
 #shared16 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #shared16t = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>
 #shared32 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32}>
@@ -11,11 +14,17 @@
 #tmem_f32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 #tmem_scales = #ttng.tensor_memory_scales_encoding<>
 #tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_linear_tile_perm_128_32 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 64], [0, 32]]}>
 #tmem_linear_256 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
+#tmem_linear_tile_perm_256 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 128], [0, 64]]}>
 #tmem_linear_t = #ttng.tensor_memory_linear<{row = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], col = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}>
 #tmem_linear_block = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[1, 0]]}>
 #tmem_linear_twoctas = #ttng.tensor_memory_linear<{row = [[2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[1, 0]]}, twoCTAs = true>
 #tmem_linear_small = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]]}>
+#tmem_linear_tiny = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]]}>
+#tmem_linear_rank3 = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [0, 2, 0], [0, 4, 0], [0, 8, 0], [0, 16, 0], [0, 32, 0], [1, 0, 0]], col = [[0, 0, 1], [0, 0, 2], [0, 0, 4], [0, 0, 8], [0, 0, 16], [0, 0, 32], [0, 0, 64]]}>
+#tmem_linear_rank3_small = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [0, 2, 0], [0, 4, 0], [0, 8, 0], [0, 16, 0], [0, 32, 0]], col = [[0, 0, 1], [0, 0, 2], [0, 0, 4], [0, 0, 8], [0, 0, 16], [0, 0, 32], [0, 0, 64]]}>
+#tmem_linear_half_rows = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 
 #linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]], warp = [[32, 0], [64, 0]], block = []}>
 
@@ -231,6 +240,123 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
     tt.return
   }
 
+  // CHECK-LABEL: @tcgen5_tmem_linear_lhs
+  // CHECK: ttng.tc_gen5_mma
+  // CHECK: !ttg.memdesc<128x64xf16,
+  // CHECK: #ttng.tensor_memory>
+  tt.func @tcgen5_tmem_linear_lhs(
+      %a: !ttg.memdesc<128x64xf16, #tmem_linear_small, #ttng.tensor_memory>,
+      %b: !ttg.memdesc<64x128xf16, #shared16_32t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %useAcc: i1,
+      %pred: i1) {
+    ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
+       !ttg.memdesc<128x64xf16, #tmem_linear_small, #ttng.tensor_memory>,
+       !ttg.memdesc<64x128xf16, #shared16_32t, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tcgen5_tmem_linear_lhs_subslice
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttng.tc_gen5_mma
+  tt.func @tcgen5_tmem_linear_lhs_subslice(
+      %a: !ttg.memdesc<128x64xf16, #tmem_linear_small, #ttng.tensor_memory, mutable>,
+      %b: !ttg.memdesc<32x128xf16, #shared16_32t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %useAcc: i1,
+      %pred: i1) {
+    %sub = ttg.memdesc_subslice %a [0, 32] : !ttg.memdesc<128x64xf16, #tmem_linear_small, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x32xf16, #tmem_linear_tiny, #ttng.tensor_memory, mutable, 128x64>
+    ttng.tc_gen5_mma %sub, %b, %c, %useAcc, %pred :
+       !ttg.memdesc<128x32xf16, #tmem_linear_tiny, #ttng.tensor_memory, mutable, 128x64>,
+       !ttg.memdesc<32x128xf16, #shared16_32t, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tcgen5_tmem_linear_scaled_lhs_subslice
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttng.tc_gen5_mma_scaled
+  tt.func @tcgen5_tmem_linear_scaled_lhs_subslice(
+      %a: !ttg.memdesc<128x128xi8, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %b: !ttg.memdesc<64x128xi8, #shared8_64t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %scale_a: !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>,
+      %scale_b: !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>,
+      %useAcc: i1,
+      %pred: i1) {
+    %sub = ttg.memdesc_subslice %a [0, 64] : !ttg.memdesc<128x128xi8, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xi8, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
+    ttng.tc_gen5_mma_scaled %sub, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e5m2 rhs = e5m2 :
+       !ttg.memdesc<128x64xi8, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>,
+       !ttg.memdesc<64x128xi8, #shared8_64t, #ttg.shared_memory>,
+       !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+       !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>,
+       !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tcgen5_tmem_linear_scaled_acc_subslice
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttng.tc_gen5_mma_scaled
+  tt.func @tcgen5_tmem_linear_scaled_acc_subslice(
+      %a: !ttg.memdesc<128x64xi8, #shared8_64t, #ttg.shared_memory>,
+      %b: !ttg.memdesc<64x64xi8, #shared8_64t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %scale_a: !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>,
+      %scale_b: !ttg.memdesc<64x2xi8, #tmem_scales, #ttng.tensor_memory>,
+      %useAcc: i1,
+      %pred: i1) {
+    %sub = ttg.memdesc_subslice %c [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
+    ttng.tc_gen5_mma_scaled %a, %b, %sub, %scale_a, %scale_b, %useAcc, %pred lhs = e5m2 rhs = e5m2 :
+       !ttg.memdesc<128x64xi8, #shared8_64t, #ttg.shared_memory>,
+       !ttg.memdesc<64x64xi8, #shared8_64t, #ttg.shared_memory>,
+       !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>,
+       !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>,
+       !ttg.memdesc<64x2xi8, #tmem_scales, #ttng.tensor_memory>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tcgen5_tmem_linear_acc_subslice
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttng.tc_gen5_mma
+  // CHECK: !ttg.memdesc<128x64xf32,
+  // CHECK: mutable, 128x128>
+  tt.func @tcgen5_tmem_linear_acc_subslice(
+      %a: !ttg.memdesc<128x64xf16, #shared16, #ttg.shared_memory>,
+      %b: !ttg.memdesc<64x64xf16, #shared16t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %useAcc: i1,
+      %pred: i1) {
+    %sub = ttg.memdesc_subslice %c [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
+    ttng.tc_gen5_mma %a, %b, %sub, %useAcc, %pred :
+       !ttg.memdesc<128x64xf16, #shared16, #ttg.shared_memory>,
+       !ttg.memdesc<64x64xf16, #shared16t, #ttg.shared_memory>,
+       !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tcgen5_tmem_linear_index_subslice_acc
+  // CHECK: ttg.memdesc_index
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttng.tc_gen5_mma
+  // CHECK: !ttg.memdesc<128x64xf32,
+  // CHECK: mutable, 128x128>
+  tt.func @tcgen5_tmem_linear_index_subslice_acc(
+      %a: !ttg.memdesc<128x64xf16, #shared16, #ttg.shared_memory>,
+      %b: !ttg.memdesc<64x64xf16, #shared16t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>,
+      %useAcc: i1,
+      %pred: i1) {
+    %c1 = arith.constant 1 : i32
+    %idx = ttg.memdesc_index %c[%c1] : !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
+    %sub = ttg.memdesc_subslice %idx [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
+    ttng.tc_gen5_mma %a, %b, %sub, %useAcc, %pred :
+       !ttg.memdesc<128x64xf16, #shared16, #ttg.shared_memory>,
+       !ttg.memdesc<64x64xf16, #shared16t, #ttg.shared_memory>,
+       !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
+    tt.return
+  }
+
   // CHECK-LABEL: @tmem_linear_high_rank_view_chain
   // CHECK: ttg.memdesc_subslice
   // CHECK: ttg.memdesc_index
@@ -275,6 +401,23 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
     tt.return %5 : !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
   }
 
+  // CHECK-LABEL: @tmem_linear_half_rows_reshape_slice_index
+  // CHECK: ttg.memdesc_index
+  // CHECK: ttg.memdesc_reshape
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttg.memdesc_index
+  tt.func @tmem_linear_half_rows_reshape_slice_index(
+      %arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>)
+      -> !ttg.memdesc<64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable> {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %idx = ttg.memdesc_index %arg0[%c1] : !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
+    %reshape = ttg.memdesc_reshape %idx : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable>
+    %slice = ttg.memdesc_subslice %reshape [1, 0, 0] : !ttg.memdesc<2x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x64x128xf32, #tmem_linear_rank3_small, #ttng.tensor_memory, mutable, 2x64x128>
+    %result = ttg.memdesc_index %slice[%c0] : !ttg.memdesc<1x64x128xf32, #tmem_linear_rank3_small, #ttng.tensor_memory, mutable, 2x64x128> -> !ttg.memdesc<64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable>
+    tt.return %result : !ttg.memdesc<64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable>
+  }
+
   // CHECK-LABEL: @tmem_linear_transpose_reshape_roundtrip
   // CHECK: ttg.memdesc_reshape
   // CHECK: ttg.memdesc_trans
@@ -292,9 +435,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
     tt.return %4 : !ttg.memdesc<128x64xf32, #tmem_linear_small, #ttng.tensor_memory, mutable, 128x128>
   }
 
-  tt.func @scale_encoding(%arg0: tensor<128x8xi8, #scales>, %arg1: tensor<128x8xf8E5M2, #scales>) {
-    %0 = ttng.tmem_alloc %arg0 : (tensor<128x8xi8, #scales>) -> !ttg.memdesc<128x8xi8, #tmem_scales, #ttng.tensor_memory>
-    %1 = ttng.tmem_alloc %arg1 : (tensor<128x8xf8E5M2, #scales>) -> !ttg.memdesc<128x8xf8E5M2, #tmem_scales, #ttng.tensor_memory>
+  tt.func @scale_encoding() {
+    %0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x8xi8, #tmem_scales, #ttng.tensor_memory, mutable>
+    %1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x8xf8E5M2, #tmem_scales, #ttng.tensor_memory, mutable>
     tt.return
   }
 }

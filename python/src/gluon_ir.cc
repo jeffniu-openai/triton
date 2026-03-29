@@ -4,6 +4,8 @@
 
 #include <optional>
 #include <stdexcept>
+#include <cstdlib>
+#include <numeric>
 
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -24,6 +26,7 @@
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/LinearLayout.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -397,6 +400,16 @@ void init_gluon_ir(py::module &&m) {
                  /*mutableMemory=*/true,
                  /*allocShape=*/allocShape);
            })
+      .def("get_tmem_alloc_shape",
+           [](GluonOpBuilder &self, std::vector<int64_t> &shape,
+              Attribute layout) -> std::vector<int64_t> {
+             std::string error;
+             auto maybeAllocShape =
+                 ttng::getTMemAllocShapeForEncoding(shape, layout, &error);
+             check(maybeAllocShape, error.c_str());
+             return std::vector<int64_t>(maybeAllocShape->begin(),
+                                         maybeAllocShape->end());
+           })
       .def("get_blocked_layout",
            [](GluonOpBuilder &self, std::vector<unsigned> &sizePerThread,
               std::vector<unsigned> &threadsPerWarp,
@@ -428,13 +441,17 @@ void init_gluon_ir(py::module &&m) {
              auto kWarp = mlir::StringAttr::get(ctx, "warp");
              auto kBlock = mlir::StringAttr::get(ctx, "block");
              auto outDims = tt::standardOutDimPairs(ctx, shape);
-             auto ll = tt::LinearLayout({{kReg, regBases},
-                                         {kLane, laneBases},
-                                         {kWarp, warpBases},
-                                         {kBlock, blockBases}},
-                                        outDims,
-                                        /*requiresSurjective=*/true);
-             return ttg::LinearEncodingAttr::get(ctx, std::move(ll));
+             tt::LinearLayout::BasesT bases;
+             bases[kReg] = std::move(regBases);
+             bases[kLane] = std::move(laneBases);
+             bases[kWarp] = std::move(warpBases);
+             bases[kBlock] = std::move(blockBases);
+             std::string error;
+             auto maybeLL = tt::LinearLayout::tryCreate(
+                 std::move(bases), outDims, /*requireSurjective=*/true, &error);
+             if (!maybeLL)
+               throw py::value_error(error);
+             return ttg::LinearEncodingAttr::get(ctx, std::move(*maybeLL));
            })
       .def("to_linear_layout",
            [](GluonOpBuilder &self, Attribute layout,
@@ -985,7 +1002,8 @@ void init_gluon_ir(py::module &&m) {
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
              self.create<ttng::TCGen5MMAOp>(tokType, a, b, acc, accDep, useAcc,
                                             pred, two_ctas, multicast,
-                                            mbarriers, mbarrier_preds);
+                                            mbarriers, mbarrier_preds,
+                                            /*is_async=*/true);
            })
       .def("create_tcgen05_mma_scaled",
            [](GluonOpBuilder &self, Value a, Value b, Value acc, Value aScale,
@@ -997,7 +1015,8 @@ void init_gluon_ir(py::module &&m) {
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
              self.create<ttng::TCGen5MMAScaledOp>(
                  tokType, a, b, acc, accDep, aScale, bScale, aType, bType,
-                 useAcc, pred, mbarriers, mbarrier_preds, two_ctas);
+                 useAcc, pred, mbarriers, mbarrier_preds, two_ctas,
+                 /*is_async=*/true);
            })
       .def("create_tcgen05_commit",
            [](GluonOpBuilder &self, Value &barrier, Value &pred,
@@ -1206,6 +1225,79 @@ void init_gluon_ir(py::module &&m) {
             shape, elementType, layoutAttr,
             ttng::TensorMemorySpaceAttr::get(ctx),
             /*mutableMemory=*/true, allocShape);
+        auto firstLegalLayoutForType =
+            [&](ttg::MemDescType queryTy,
+                ArrayRef<ttg::DistributedEncodingTrait> layouts,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          for (auto candidateLayout : layouts) {
+            auto regTy =
+                RankedTensorType::get(shape, elementType, candidateLayout);
+            auto maybeInfo = ttng::computeTMemLdStEncodingInfo(
+                regTy, queryTy, /*maxnreg=*/256);
+            if (succeeded(maybeInfo) &&
+                (!desiredAtom || maybeInfo->atom == *desiredAtom)) {
+              return layoutToGluon(candidateLayout);
+            }
+          }
+          return py::none();
+        };
+        auto getBlockedFallbackLayouts =
+            [&](ArrayRef<int64_t> tensorShape)
+                -> SmallVector<ttg::DistributedEncodingTrait> {
+          SmallVector<ttg::DistributedEncodingTrait> layouts;
+          auto rank = tensorShape.size();
+          auto cga = ttg::CGAEncodingAttr::get1CTALayout(ctx, rank);
+          if (rank == 2 && tensorShape[1] >= 32) {
+            layouts.push_back(ttg::BlockedEncodingAttr::get(
+                ctx, /*sizePerThread=*/SmallVector<unsigned>{1, 1},
+                /*threadsPerWarp=*/SmallVector<unsigned>{1, 32},
+                /*warpsPerCTA=*/SmallVector<unsigned>{numWarps, 1},
+                /*order=*/SmallVector<unsigned>{1, 0}, cga));
+          }
+          layouts.push_back(ttg::getDefaultBlockedEncoding(
+              ctx, tensorShape, /*numWarps=*/numWarps,
+              /*threadsPerWarp=*/32, /*numCTAs=*/1));
+          return layouts;
+        };
+        auto physicalSupportLayout =
+            [&](ttg::MemDescType queryTy,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          auto maybePlan = ttng::getTMemLdStPhysicalSupportPlan(
+              queryTy, numWarps, /*maxnreg=*/256);
+          if (!maybePlan ||
+              !llvm::equal(maybePlan->regTy.getShape(), ArrayRef<int64_t>(shape)))
+            return py::none();
+          if (desiredAtom && maybePlan->atom != *desiredAtom)
+            return py::none();
+          return layoutToGluon(maybePlan->regTy.getEncoding());
+        };
+
+        if (atomName == "auto") {
+          auto layouts = ttng::getTmemCompatibleLayouts(memDescTy, numWarps);
+          if (layouts.empty()) {
+            std::string analysisError;
+            if (auto maybeLayout = ttng::getTMemViewAnalysisLinearLayout(
+                    shape, layoutAttr, &analysisError)) {
+              auto twoCTAs = ttng::getTensorMemoryTwoCTAs(layoutAttr).value_or(false);
+              if (auto maybeEncoding = ttng::tryMakeTMemViewEncoding(ctx, *maybeLayout, twoCTAs, &analysisError)) {
+                auto canonicalTy = builder.getChecked<ttg::MemDescType>(
+                    shape, elementType, *maybeEncoding,
+                    ttng::TensorMemorySpaceAttr::get(ctx),
+                    /*mutableMemory=*/true, allocShape);
+                layouts = ttng::getTmemCompatibleLayouts(canonicalTy, numWarps);
+              }
+            }
+          }
+          if (!layouts.empty())
+            return layoutToGluon(layouts.front());
+          if (py::object blockedLayout = firstLegalLayoutForType(
+                  memDescTy, getBlockedFallbackLayouts(shape),
+                  /*desiredAtom=*/std::nullopt);
+              !blockedLayout.is_none()) {
+            return blockedLayout;
+          }
+          return physicalSupportLayout(memDescTy, /*desiredAtom=*/std::nullopt);
+        }
 
         auto maybeAtom =
             llvm::StringSwitch<std::optional<ttng::TMemAccessAtom>>(atomName)
@@ -1213,9 +1305,9 @@ void init_gluon_ir(py::module &&m) {
                 .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
                 .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
                 .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
+                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
                 // split-N variants are inferred from the 32x32b layout and
                 // then adjusted in frontend semantic checks.
-                .Case("16x32bx2", ttng::TMemAccessAtom::I32x32b)
                 .Case("32x32b_splitn", ttng::TMemAccessAtom::I32x32b)
                 .Default(std::nullopt);
         if (!maybeAtom)
@@ -1225,10 +1317,17 @@ void init_gluon_ir(py::module &&m) {
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
 
+        if (py::object layout = firstLegalLayoutForType(
+                memDescTy, ttng::getTmemCompatibleLayouts(memDescTy, numWarps),
+                atom);
+            !layout.is_none()) {
+          return layout;
+        }
+
         auto layout =
             ttng::getDistributedLayoutForTmemLdSt(memDescTy, atom, numWarps);
         if (!layout)
-          return py::none();
+          return physicalSupportLayout(memDescTy, atom);
 
         auto attr =
             builder.getChecked<ttg::LinearEncodingAttr>(ctx, std::move(*layout));
@@ -1238,8 +1337,830 @@ void init_gluon_ir(py::module &&m) {
         // parsing happens without an op context.
         if (failed(ttng::computeTMemLdStEncodingInfo(regTy, memDescTy,
                                                      /*maxnreg=*/256)))
+          layout.reset();
+        else
+          return layoutToGluon(attr);
+
+        if (py::object blockedLayout =
+                firstLegalLayoutForType(memDescTy,
+                                        getBlockedFallbackLayouts(shape), atom);
+            !blockedLayout.is_none()) {
+          return blockedLayout;
+        }
+        if (py::object supportLayout = physicalSupportLayout(memDescTy, atom);
+            !supportLayout.is_none()) {
+          return supportLayout;
+        }
+        return py::none();
+      });
+
+  m.def(
+      "infer_standalone_tmem_reg_layout_query_type_from_memdesc",
+      [](Value memDesc) -> py::object {
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
+          throw std::invalid_argument("expected a memdesc value");
+        std::string error;
+        auto maybeTy =
+            ttng::inferStandaloneTMemRegLayoutQueryType(memDesc, &error);
+        if (failed(maybeTy))
           return py::none();
-        return layoutToGluon(attr);
+        if (*maybeTy == memDescTy)
+          return py::none();
+        std::string tyStr;
+        llvm::raw_string_ostream os(tyStr);
+        os << *maybeTy;
+        return py::str(os.str());
+      });
+
+  m.def(
+      "get_tmem_view_offset_from_memdesc",
+      [](Value memDesc, std::vector<int32_t> offsets) -> uint32_t {
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
+          throw std::invalid_argument("expected a memdesc value");
+        if (offsets.size() != static_cast<size_t>(memDescTy.getRank()))
+          throw std::invalid_argument("offset rank mismatch");
+        return ttng::getTMemViewOffset(memDescTy, offsets);
+      });
+
+  m.def(
+      "compute_tmem_reg_layout_from_memdesc",
+      [](Value memDesc, unsigned numWarps,
+         const std::string &atomName) -> py::object {
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
+          throw std::invalid_argument("expected a memdesc value");
+        bool debug = std::getenv("TRITON_DEBUG_TMEM_REG_LAYOUT") != nullptr;
+        bool traceToFile =
+            std::getenv("TRITON_TRACE_TMEM_REG_LAYOUT_FILE") != nullptr;
+        std::string debugLogStr;
+        llvm::raw_string_ostream debugLog(debugLogStr);
+        auto appendTrace = [&](const Twine &msg) {
+          if (!traceToFile)
+            return;
+          std::error_code ec;
+          llvm::raw_fd_ostream os("/tmp/tmem_reg_layout_trace.log", ec,
+                                  llvm::sys::fs::OF_Append);
+          if (ec)
+            return;
+          os << msg << "\n";
+        };
+        auto ctx = memDesc.getContext();
+        auto matchesDesiredAtom =
+            [&](ttg::MemDescType queryTy,
+                std::optional<ttng::TMemAccessAtom> desiredAtom,
+                ttng::TMemAccessAtom actualAtom) {
+              if (!desiredAtom || actualAtom == *desiredAtom)
+                return true;
+              return *desiredAtom == ttng::TMemAccessAtom::I32x32b &&
+                     actualAtom == ttng::TMemAccessAtom::I16x32bx2 &&
+                     queryTy.getRank() == 2 &&
+                     queryTy.getElementTypeBitWidth() == 32 &&
+                     queryTy.getShape()[0] == 64;
+            };
+        auto normalizeRegLayoutForAttr =
+            [&](tt::LinearLayout layout) -> std::optional<tt::LinearLayout> {
+          auto outDimNames =
+              mlir::triton::standardOutDimNames(ctx, layout.getNumOutDims());
+          SmallVector<std::pair<StringAttr, int32_t>> outDims;
+          outDims.reserve(layout.getNumOutDims());
+          for (auto [idx, size] : llvm::enumerate(layout.getOutDimSizes()))
+            outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
+          return tt::LinearLayout::tryCreate(layout.getBases(), std::move(outDims),
+                                             layout.isSurjective(),
+                                             /*error=*/nullptr);
+        };
+
+        auto getCompatibleLayouts = [&](Value queryMemDesc,
+                                       ttg::MemDescType queryTy) {
+          SmallVector<ttg::DistributedEncodingTrait> layouts;
+          auto addAttr = [&](ttg::DistributedEncodingTrait attr) {
+            if (llvm::none_of(layouts, [&](ttg::DistributedEncodingTrait existing) {
+                  return cast<Attribute>(existing) == cast<Attribute>(attr);
+                })) {
+              layouts.push_back(attr);
+            }
+          };
+          auto rowPlan =
+              ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
+          auto addLayout = [&](tt::LinearLayout layout) {
+            auto normalizedLayout =
+                normalizeRegLayoutForAttr(std::move(layout));
+            if (!normalizedLayout)
+              return;
+            auto attr =
+                ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+            addAttr(attr);
+          };
+
+          if (rowPlan) {
+            for (auto atom : {ttng::TMemAccessAtom::I32x32b,
+                              ttng::TMemAccessAtom::I16x256b,
+                              ttng::TMemAccessAtom::I16x128b,
+                              ttng::TMemAccessAtom::I16x64b,
+                              ttng::TMemAccessAtom::I16x32bx2}) {
+              if (auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
+                      queryTy, atom, numWarps, rowPlan)) {
+                addLayout(std::move(*maybeLayout));
+              }
+            }
+          }
+          for (auto layout : ttng::getTmemCompatibleLayouts(queryTy, numWarps))
+            addAttr(layout);
+          return layouts;
+        };
+        auto getBlockedFallbackLayouts =
+            [&](ArrayRef<int64_t> tensorShape)
+                -> SmallVector<ttg::DistributedEncodingTrait> {
+          SmallVector<ttg::DistributedEncodingTrait> layouts;
+          auto rank = tensorShape.size();
+          auto cga = ttg::CGAEncodingAttr::get1CTALayout(ctx, rank);
+          if (rank == 2 && tensorShape[1] >= 32) {
+            layouts.push_back(ttg::BlockedEncodingAttr::get(
+                ctx, /*sizePerThread=*/SmallVector<unsigned>{1, 1},
+                /*threadsPerWarp=*/SmallVector<unsigned>{1, 32},
+                /*warpsPerCTA=*/SmallVector<unsigned>{numWarps, 1},
+                /*order=*/SmallVector<unsigned>{1, 0}, cga));
+          }
+          layouts.push_back(ttg::getDefaultBlockedEncoding(
+              ctx, tensorShape, /*numWarps=*/numWarps,
+              /*threadsPerWarp=*/32, /*numCTAs=*/1));
+          return layouts;
+        };
+        auto firstLegalLayoutForType =
+            [&](ttg::MemDescType queryTy,
+                ArrayRef<ttg::DistributedEncodingTrait> layouts,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          auto shape = llvm::to_vector(queryTy.getShape());
+          auto elementType = queryTy.getElementType();
+          for (auto candidateLayout : layouts) {
+            auto regTy =
+                RankedTensorType::get(shape, elementType, candidateLayout);
+            auto maybeInfo = ttng::computeTMemLdStEncodingInfo(
+                regTy, queryTy, /*maxnreg=*/256);
+            if (succeeded(maybeInfo) &&
+                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
+              appendTrace(Twine("firstLegalLayoutForType atomName=") + atomName +
+                          " matchedAtom=" +
+                          Twine(static_cast<int>(maybeInfo->atom)));
+              return layoutToGluon(candidateLayout);
+            }
+          }
+          return py::none();
+        };
+        auto firstLegalLayout = [&](Value queryMemDesc, ttg::MemDescType queryTy,
+                                    ArrayRef<ttg::DistributedEncodingTrait> layouts,
+                                    std::optional<ttng::TMemAccessAtom> desiredAtom)
+            -> py::object {
+          auto queryMemDescTy = cast<ttg::MemDescType>(queryMemDesc.getType());
+          auto shape = llvm::to_vector(
+              queryMemDescTy.getShape().take_back(queryMemDescTy.getRank()));
+          auto elementType = queryMemDescTy.getElementType();
+          auto rowPlan = ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
+          if (debug) {
+            debugLog << "[tmem-reg-layout] queryTy=" << queryTy
+                     << " atom=" << atomName
+                     << " layouts=" << layouts.size() << "\n";
+          }
+          for (auto candidateLayout : layouts) {
+            auto regTy =
+                RankedTensorType::get(shape, elementType, candidateLayout);
+            std::string candidateDetails;
+            auto maybeInfo = [&]() -> FailureOr<ttng::TMemLdStEncodingInfo> {
+              llvm::raw_string_ostream os(candidateDetails);
+              ScopedDiagnosticHandler handler(
+                  ctx, [&](Diagnostic &diag) { diag.print(os); });
+              return ttng::computeTMemLdStEncodingInfo(
+                  regTy, queryTy, /*maxnreg=*/256,
+                  [&]() { return mlir::emitError(mlir::UnknownLoc::get(ctx)); },
+                  rowPlan);
+            }();
+            if (debug) {
+              debugLog << "[tmem-reg-layout] candidate="
+                       << cast<Attribute>(candidateLayout) << " -> "
+                       << (succeeded(maybeInfo)
+                               ? ("ok atom=" +
+                                  llvm::Twine(static_cast<int>(maybeInfo->atom)))
+                                     .str()
+                               : ("fail details=" + candidateDetails))
+                       << "\n";
+            }
+            if (traceToFile) {
+              appendTrace(Twine("firstLegalLayout atomName=") + atomName +
+                          " candidate=" +
+                          (succeeded(maybeInfo)
+                               ? (Twine("ok matchedAtom=") +
+                                  Twine(static_cast<int>(maybeInfo->atom)))
+                               : (Twine("fail details=") + candidateDetails)));
+            }
+            if (succeeded(maybeInfo) &&
+                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
+              return layoutToGluon(candidateLayout);
+            }
+          }
+          return py::none();
+        };
+        auto physicalSupportLayout =
+            [&](Value queryMemDesc,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          std::string error;
+          auto standaloneTy =
+              ttng::inferStandaloneTMemViewType(queryMemDesc, &error);
+          if (failed(standaloneTy))
+            return py::none();
+          auto maybePlan = ttng::getTMemLdStPhysicalSupportPlan(
+              *standaloneTy, numWarps, /*maxnreg=*/256);
+          if (!maybePlan)
+            return py::none();
+          auto queryTy = cast<ttg::MemDescType>(queryMemDesc.getType());
+          if (!matchesDesiredAtom(queryTy, desiredAtom, maybePlan->atom))
+            return py::none();
+          auto queryShape = llvm::to_vector(
+              cast<ttg::MemDescType>(queryMemDesc.getType()).getShape());
+          if (!llvm::equal(maybePlan->regTy.getShape(),
+                           ArrayRef<int64_t>(queryShape))) {
+            auto countElems = [](auto shape) {
+              return std::accumulate(shape.begin(), shape.end(), int64_t{1},
+                                     std::multiplies<int64_t>());
+            };
+            if (countElems(maybePlan->regTy.getShape()) !=
+                countElems(queryShape)) {
+              return py::none();
+            }
+            auto reshapedRegLayout =
+                mlir::triton::reshapeLayout(ctx,
+                                            ttg::toLinearLayout(maybePlan->regTy),
+                                            queryShape);
+            auto normalizedLayout =
+                normalizeRegLayoutForAttr(std::move(reshapedRegLayout));
+            if (!normalizedLayout)
+              return py::none();
+            auto attr =
+                ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+            return layoutToGluon(attr);
+          }
+          return layoutToGluon(maybePlan->regTy.getEncoding());
+        };
+        auto reshapeRegLayoutToQueryShape =
+            [&](const tt::LinearLayout &layout,
+                ArrayRef<int64_t> queryShape)
+                -> std::optional<tt::LinearLayout> {
+          SmallVector<int64_t> layoutShape(layout.getOutDimSizes().begin(),
+                                           layout.getOutDimSizes().end());
+          if (llvm::equal(layoutShape, queryShape))
+            return layout;
+          if (layoutShape.size() == queryShape.size() &&
+              llvm::all_of(queryShape, llvm::isPowerOf2_64)) {
+            auto resized = layout;
+            auto outDims = llvm::to_vector(resized.getOutDimNames());
+            bool canResize = true;
+            for (auto [idx, outDim] : llvm::enumerate(outDims)) {
+              if (queryShape[idx] > resized.getOutDimSize(outDim)) {
+                canResize = false;
+                break;
+              }
+            }
+            if (canResize) {
+              for (auto [idx, outDim] : llvm::enumerate(outDims)) {
+                if (queryShape[idx] < resized.getOutDimSize(outDim))
+                  resized = resized.resizeOutDim(outDim, queryShape[idx]);
+              }
+              return resized;
+            }
+          }
+          auto countElems = [](ArrayRef<int64_t> shape) {
+            return std::accumulate(shape.begin(), shape.end(), int64_t{1},
+                                   std::multiplies<int64_t>());
+          };
+          if (countElems(layoutShape) != countElems(queryShape))
+            return std::nullopt;
+          return mlir::triton::reshapeLayout(ctx, layout, queryShape);
+        };
+        auto inferRawQueryLayout =
+            [&](Value queryMemDesc) -> std::optional<ttng::TMemLdStQueryLayout> {
+          std::string error;
+          auto maybeQueryLayout = ttng::inferStandaloneTMemLdStQueryLayout(
+              queryMemDesc, /*preserveNonCanonicalView=*/true, &error);
+          if (failed(maybeQueryLayout)) {
+            if (traceToFile && !error.empty()) {
+              appendTrace(Twine("inferRawQueryLayout atomName=") + atomName +
+                          " error=" + error);
+            }
+            if (debug && !error.empty()) {
+              debugLog << "[tmem-reg-layout] raw query layout failed: " << error
+                       << "\n";
+            }
+            return std::nullopt;
+          }
+          maybeQueryLayout->layout =
+              ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+                  maybeQueryLayout->layout);
+          return *maybeQueryLayout;
+        };
+        auto firstLegalLayoutForRawQuery =
+            [&](Value queryMemDesc, const ttng::TMemLdStQueryLayout &queryLayout,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          auto queryTy = cast<ttg::MemDescType>(queryMemDesc.getType());
+          bool disableRawRowPlanOverride =
+              isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
+                              ttg::MemDescReshapeOp, ttg::MemDescTransOp,
+                              ttg::MemDescReinterpretOp>(
+                  queryMemDesc.getDefiningOp()) &&
+              queryTy.getRank() == 2 && queryTy.getShape()[0] == 32 &&
+              queryTy.getShape()[1] == 32;
+          std::optional<ttng::TMemLdStRowPlan> rowPlan;
+          if (!disableRawRowPlanOverride) {
+            rowPlan = ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
+            if (!rowPlan)
+              rowPlan = ttng::getTMemLdStRowPlan(queryLayout.layout);
+            if (!rowPlan)
+              rowPlan = ttng::getBackingTMemLdStRowPlan(queryMemDesc);
+          }
+          if (!rowPlan)
+            rowPlan = ttng::getTMemLdStRowPlan(queryLayout.layout);
+
+          auto tryAtom = [&](ttng::TMemAccessAtom atom) -> py::object {
+            auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
+                queryLayout.layout, atom, numWarps,
+                queryTy.getElementTypeBitWidth(), *rowPlan);
+            if (debug) {
+              debugLog << "[tmem-reg-layout] raw atom="
+                       << static_cast<int>(atom) << " -> "
+                       << (maybeLayout ? "layout" : "none") << "\n";
+            }
+            if (traceToFile && !maybeLayout)
+              appendTrace(Twine("rawQuery atomName=") + atomName + " tryAtom=" +
+                          Twine(static_cast<int>(atom)) + " no-layout");
+            if (!maybeLayout)
+              return py::none();
+            auto reshapedLayout =
+                reshapeRegLayoutToQueryShape(*maybeLayout, queryTy.getShape());
+            if (!reshapedLayout)
+              return py::none();
+            auto normalizedLayout =
+                normalizeRegLayoutForAttr(std::move(*reshapedLayout));
+            if (!normalizedLayout)
+              return py::none();
+            auto attr =
+                ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+            auto regTy = RankedTensorType::get(
+                queryTy.getShape(), queryTy.getElementType(), attr);
+            std::string rawDetails;
+            auto maybeInfo = [&]() -> FailureOr<ttng::TMemLdStEncodingInfo> {
+              llvm::raw_string_ostream os(rawDetails);
+              ScopedDiagnosticHandler handler(
+                  ctx, [&](Diagnostic &diag) { diag.print(os); });
+              return ttng::computeTMemLdStEncodingInfo(
+                  regTy, queryTy, queryLayout, /*maxnreg=*/256,
+                  [&]() { return mlir::emitError(mlir::UnknownLoc::get(ctx)); },
+                  rowPlan);
+            }();
+            if (debug) {
+              debugLog << "[tmem-reg-layout] raw candidate="
+                       << cast<Attribute>(attr) << " -> "
+                       << (succeeded(maybeInfo)
+                               ? ("ok atom=" +
+                                  llvm::Twine(static_cast<int>(maybeInfo->atom)))
+                                     .str()
+                               : ("fail details=" + rawDetails))
+                       << "\n";
+            }
+            if (traceToFile) {
+              appendTrace(Twine("rawQuery atomName=") + atomName + " tryAtom=" +
+                          Twine(static_cast<int>(atom)) + " candidate=" +
+                          (succeeded(maybeInfo)
+                               ? (Twine("ok matchedAtom=") +
+                                  Twine(static_cast<int>(maybeInfo->atom)))
+                               : (Twine("fail details=") + rawDetails)));
+            }
+            if (succeeded(maybeInfo) &&
+                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
+              appendTrace(Twine("firstLegalLayoutForRawQuery atomName=") +
+                          atomName + " matchedAtom=" +
+                          Twine(static_cast<int>(maybeInfo->atom)));
+              return layoutToGluon(attr);
+            }
+            return py::none();
+          };
+
+          SmallVector<ttng::TMemAccessAtom> atomOrder;
+          if (desiredAtom)
+            atomOrder.push_back(*desiredAtom);
+          for (auto atom : {ttng::TMemAccessAtom::I32x32b,
+                            ttng::TMemAccessAtom::I16x256b,
+                            ttng::TMemAccessAtom::I16x128b,
+                            ttng::TMemAccessAtom::I16x64b,
+                            ttng::TMemAccessAtom::I16x32bx2}) {
+            if (!desiredAtom || atom != *desiredAtom)
+              atomOrder.push_back(atom);
+          }
+          for (auto atom : atomOrder) {
+            py::object layout = tryAtom(atom);
+            if (!layout.is_none())
+              return layout;
+          }
+          return py::none();
+        };
+
+        auto findDirectLayoutForMemDesc =
+            [&](Value queryMemDesc,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          auto queryMemDescTy = dyn_cast<ttg::MemDescType>(queryMemDesc.getType());
+          if (!queryMemDescTy)
+            return py::none();
+          std::string unsupportedDescriptorViewError;
+          if (ttng::isUnsupportedDirectTMemLdStDescriptorView(
+                  queryMemDesc, &unsupportedDescriptorViewError)) {
+            if (traceToFile && !unsupportedDescriptorViewError.empty()) {
+              appendTrace(Twine("findDirectLayoutForMemDesc unsupportedView=") +
+                          unsupportedDescriptorViewError);
+            }
+            if (debug && !unsupportedDescriptorViewError.empty()) {
+              debugLog << "[tmem-reg-layout] unsupported descriptor view: "
+                       << unsupportedDescriptorViewError << "\n";
+            }
+            return py::none();
+          }
+          bool isViewLikeMemDesc =
+              isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
+                              ttg::MemDescReshapeOp, ttg::MemDescTransOp,
+                              ttg::MemDescReinterpretOp>(
+                  queryMemDesc.getDefiningOp());
+          bool disallowSupportRescueFor32x32Subview =
+              isViewLikeMemDesc && queryMemDescTy.getRank() == 2 &&
+              queryMemDescTy.getShape()[0] == 32 &&
+              queryMemDescTy.getShape()[1] == 32;
+          bool disableTypeOnlyFallback =
+              std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
+              nullptr;
+          std::string supportError;
+          auto trySupportLayout =
+              [&](const ttng::TMemLdStQueryLayout &supportQuery,
+                  std::optional<ttng::TMemLdStRowPlan> supportRowPlan)
+              -> py::object {
+            if (!supportRowPlan)
+              supportRowPlan = ttng::getTMemLdStRowPlan(supportQuery.layout);
+            if (!supportRowPlan)
+              supportRowPlan =
+                  ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryMemDescTy);
+            if (!supportRowPlan)
+              supportRowPlan = ttng::getBackingTMemLdStRowPlan(queryMemDesc);
+            if (debug) {
+              debugLog << "[tmem-reg-layout] support rowPlan="
+                       << (supportRowPlan
+                               ? ("{" +
+                                  std::to_string(supportRowPlan->warpRow0) +
+                                  "," +
+                                  std::to_string(supportRowPlan->warpRow1) +
+                                  ";span=" +
+                                  std::to_string(supportRowPlan->rowSpan) +
+                                  ";base=" +
+                                  std::to_string(supportRowPlan->baseOffset) +
+                                  "}")
+                               : std::string("none"))
+                       << "\n";
+            }
+            auto trySupportAtom = [&](ttng::TMemAccessAtom atom) -> py::object {
+              if (!supportRowPlan) {
+                if (traceToFile)
+                  appendTrace(Twine("supportQuery atomName=") + atomName +
+                              " tryAtom=" + Twine(static_cast<int>(atom)) +
+                              " no-row-plan");
+                return py::none();
+              }
+              auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
+                  supportQuery.layout, atom, numWarps,
+                  queryMemDescTy.getElementTypeBitWidth(), *supportRowPlan);
+              if (debug) {
+                debugLog << "[tmem-reg-layout] support atom="
+                         << static_cast<int>(atom) << " -> "
+                         << (maybeLayout ? "layout" : "none") << "\n";
+              }
+              if (!maybeLayout) {
+                if (traceToFile)
+                  appendTrace(Twine("supportQuery atomName=") + atomName +
+                              " tryAtom=" + Twine(static_cast<int>(atom)) +
+                              " no-layout");
+                return py::none();
+              }
+              auto reshapedLayout = reshapeRegLayoutToQueryShape(
+                  *maybeLayout, queryMemDescTy.getShape());
+              if (!reshapedLayout) {
+                if (traceToFile)
+                  appendTrace(Twine("supportQuery atomName=") + atomName +
+                              " tryAtom=" + Twine(static_cast<int>(atom)) +
+                              " reshape-failed");
+                return py::none();
+              }
+              auto normalizedLayout =
+                  normalizeRegLayoutForAttr(std::move(*reshapedLayout));
+              if (!normalizedLayout) {
+                if (traceToFile)
+                  appendTrace(Twine("supportQuery atomName=") + atomName +
+                              " tryAtom=" + Twine(static_cast<int>(atom)) +
+                              " normalize-failed");
+                return py::none();
+              }
+              auto attr =
+                  ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+              auto regTy = RankedTensorType::get(
+                  queryMemDescTy.getShape(), queryMemDescTy.getElementType(),
+                  attr);
+              std::string supportDetails;
+              auto maybeInfo = [&]() -> FailureOr<ttng::TMemLdStEncodingInfo> {
+                llvm::raw_string_ostream os(supportDetails);
+                ScopedDiagnosticHandler handler(
+                    ctx, [&](Diagnostic &diag) { diag.print(os); });
+                return ttng::computeTMemLdStEncodingInfo(
+                    regTy, queryMemDescTy, supportQuery, /*maxnreg=*/256,
+                    [&]() { return mlir::emitError(mlir::UnknownLoc::get(ctx)); },
+                    supportRowPlan);
+              }();
+              if (traceToFile) {
+                appendTrace(Twine("supportQuery atomName=") + atomName +
+                            " tryAtom=" + Twine(static_cast<int>(atom)) +
+                            " candidate=" +
+                            (succeeded(maybeInfo)
+                                 ? (Twine("ok matchedAtom=") +
+                                    Twine(static_cast<int>(maybeInfo->atom)))
+                                 : (Twine("fail details=") + supportDetails)));
+              }
+              if (succeeded(maybeInfo) &&
+                  matchesDesiredAtom(queryMemDescTy, desiredAtom,
+                                     maybeInfo->atom)) {
+                return layoutToGluon(attr);
+              }
+              return py::none();
+            };
+            SmallVector<ttng::TMemAccessAtom> atomOrder;
+            if (desiredAtom)
+              atomOrder.push_back(*desiredAtom);
+            for (auto atom : {ttng::TMemAccessAtom::I32x32b,
+                              ttng::TMemAccessAtom::I16x256b,
+                              ttng::TMemAccessAtom::I16x128b,
+                              ttng::TMemAccessAtom::I16x64b,
+                              ttng::TMemAccessAtom::I16x32bx2}) {
+              if (!desiredAtom || atom != *desiredAtom)
+                atomOrder.push_back(atom);
+            }
+            py::object layout = py::none();
+            for (auto atom : atomOrder) {
+              layout = trySupportAtom(atom);
+              if (!layout.is_none())
+                break;
+            }
+            if (layout.is_none()) {
+              layout = firstLegalLayoutForRawQuery(queryMemDesc, supportQuery,
+                                                  desiredAtom);
+            }
+            if (!layout.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc supportQuery");
+              return layout;
+            }
+            if (debug)
+              debugLog << "[tmem-reg-layout] reshaped support query failed\n";
+            return py::none();
+          };
+          if (auto supportPlan =
+                  ttng::getTMemLdStSubviewSupportPlan(queryMemDesc,
+                                                      &supportError)) {
+            py::object layout =
+                trySupportLayout(supportPlan->query, supportPlan->rowPlan);
+            if (!layout.is_none())
+              return layout;
+          }
+          if (!disallowSupportRescueFor32x32Subview) {
+            if (auto supportQuery =
+                    ttng::getTMemLdStSupportQueryLayout(queryMemDesc,
+                                                       &supportError)) {
+              py::object layout = trySupportLayout(*supportQuery, std::nullopt);
+              if (!layout.is_none())
+                return layout;
+            } else if (debug && !supportError.empty()) {
+              debugLog << "[tmem-reg-layout] reshaped support query unavailable: "
+                       << supportError << "\n";
+            }
+          }
+          if (auto rawQueryLayout = inferRawQueryLayout(queryMemDesc)) {
+            py::object layout = firstLegalLayoutForRawQuery(
+                queryMemDesc, *rawQueryLayout, desiredAtom);
+            if (!layout.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc rawQuery");
+              return layout;
+            }
+          }
+          if (disableTypeOnlyFallback &&
+              isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
+                              ttg::MemDescReshapeOp, ttg::MemDescTransOp,
+                              ttg::MemDescReinterpretOp>(
+                  queryMemDesc.getDefiningOp())) {
+            return py::none();
+          }
+          py::object supportFallback = py::none();
+          if (!disallowSupportRescueFor32x32Subview) {
+            supportFallback = physicalSupportLayout(queryMemDesc, desiredAtom);
+            if (!supportFallback.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
+              return supportFallback;
+            }
+          }
+          auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
+          for (ttg::MemDescType queryTy : queryTypes) {
+            py::object layout = py::none();
+            if (disallowSupportRescueFor32x32Subview) {
+              auto directLayouts = ttng::getTmemCompatibleLayouts(queryTy, numWarps);
+              layout = firstLegalLayoutForType(queryTy, directLayouts, desiredAtom);
+            } else {
+              auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);
+              layout = firstLegalLayout(queryMemDesc, queryTy, layouts, desiredAtom);
+            }
+            if (!layout.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc queryTy layouts");
+              return layout;
+            }
+            auto shape = llvm::to_vector(
+                queryMemDescTy.getShape().take_back(queryMemDescTy.getRank()));
+            auto blockedLayouts = getBlockedFallbackLayouts(shape);
+            if (disallowSupportRescueFor32x32Subview) {
+              layout = firstLegalLayoutForType(queryTy, blockedLayouts,
+                                               desiredAtom);
+            } else {
+              layout = firstLegalLayout(queryMemDesc, queryTy, blockedLayouts,
+                                        desiredAtom);
+            }
+            if (!layout.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc blocked fallback");
+              return layout;
+            }
+          }
+          py::object fallbackLayout = py::none();
+          if (!disallowSupportRescueFor32x32Subview) {
+            fallbackLayout = physicalSupportLayout(queryMemDesc, desiredAtom);
+            if (!fallbackLayout.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
+              return fallbackLayout;
+            }
+          }
+          if (desiredAtom) {
+            if (isViewLikeMemDesc)
+              return py::none();
+            if (auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
+                    memDescTy, *desiredAtom, numWarps)) {
+              auto normalizedLayout =
+                  normalizeRegLayoutForAttr(std::move(*maybeLayout));
+              if (!normalizedLayout)
+                return py::none();
+              auto attr =
+                  ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+              auto regTy = RankedTensorType::get(
+                  memDescTy.getShape(), memDescTy.getElementType(), attr);
+              if (succeeded(ttng::computeTMemLdStEncodingInfo(
+                      regTy, memDescTy, /*maxnreg=*/256))) {
+                return layoutToGluon(attr);
+              }
+            }
+          } else {
+            fallbackLayout = firstLegalLayoutForType(
+                memDescTy, getCompatibleLayouts(memDesc, memDescTy), desiredAtom);
+            if (!fallbackLayout.is_none())
+              return fallbackLayout;
+          }
+          return py::none();
+        };
+
+        auto maybeAtom =
+            llvm::StringSwitch<std::optional<ttng::TMemAccessAtom>>(atomName)
+                .Case("auto", std::nullopt)
+                .Case("32x32b", ttng::TMemAccessAtom::I32x32b)
+                .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
+                .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
+                .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
+                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
+                // The type-based split-N path reuses the 16x32bx2 direct family
+                // and then applies split-N register-basis adjustments in Python.
+                // The handle-aware memdesc query returns the final reg layout
+                // directly, so it must resolve split-N through the same direct
+                // family instead of probing the 32x32b atom.
+                .Case("32x32b_splitn", ttng::TMemAccessAtom::I16x32bx2)
+                .Default(std::nullopt);
+        if (atomName != "auto" && !maybeAtom)
+          throw std::invalid_argument("unknown TMEM access atom: " + atomName);
+        if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
+          throw std::invalid_argument(
+              "numWarps must be a power of two and >= 4");
+
+        if (atomName == "auto" &&
+            isa<ttng::TensorMemoryEncodingAttr>(memDescTy.getEncoding())) {
+          py::object legacyLayout =
+              findDirectLayoutForMemDesc(memDesc, ttng::TMemAccessAtom::I32x32b);
+          if (!legacyLayout.is_none()) {
+            if (debug)
+              llvm::errs() << debugLog.str();
+            return legacyLayout;
+          }
+        }
+
+        py::object layout = findDirectLayoutForMemDesc(memDesc, maybeAtom);
+        if (!layout.is_none()) {
+          // For 64-row TMEM views, keep auto-selection aligned with the direct
+          // 16x32bx2 family. That preserves the split-N-capable register layout
+          // used by the explicit 16x32bx2 / 32x32b_splitn paths instead of an
+          // alternate layout that lowers to different repeat/immediate pairs.
+          if (atomName == "auto" && memDescTy.getRank() == 2 &&
+              memDescTy.getShape()[0] == 64) {
+            py::object splitNLayout = findDirectLayoutForMemDesc(
+                memDesc, ttng::TMemAccessAtom::I16x32bx2);
+            if (!splitNLayout.is_none()) {
+              if (debug)
+                llvm::errs() << debugLog.str();
+              return splitNLayout;
+            }
+          }
+          if (debug)
+            llvm::errs() << debugLog.str();
+          return layout;
+        }
+          if (debug)
+            llvm::errs() << debugLog.str();
+          return py::none();
+      });
+
+  m.def(
+      "compute_tmem_reduce_reg_layout_from_memdesc",
+      [](Value memDesc, unsigned numWarps) -> py::object {
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
+          throw std::invalid_argument("expected a memdesc value");
+        if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
+          throw std::invalid_argument(
+              "numWarps must be a power of two and >= 4");
+        if (!ttng::isReductionFriendlyTmemSourceLayout(memDescTy))
+          return py::none();
+        bool isViewLikeMemDesc =
+            isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
+                            ttg::MemDescReshapeOp, ttg::MemDescTransOp,
+                            ttg::MemDescReinterpretOp>(
+                memDesc.getDefiningOp());
+
+        auto ctx = memDesc.getContext();
+        auto shape = llvm::to_vector(memDescTy.getShape());
+        auto elementType = memDescTy.getElementType();
+        auto tensorTy = RankedTensorType::get(shape, elementType);
+        if (!ttng::isReductionFriendlyTmemSourceLayout(memDescTy))
+          return py::none();
+        std::optional<ttng::TMemLdStQueryLayout> rawQueryLayout;
+        std::optional<ttng::TMemLdStRowPlan> rawRowPlan;
+        std::string rawError;
+        if (auto maybeRawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
+                memDesc, /*preserveNonCanonicalView=*/true, &rawError);
+            succeeded(maybeRawQuery)) {
+          rawQueryLayout = *maybeRawQuery;
+          rawRowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
+          if (!rawRowPlan)
+            rawRowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
+        }
+
+        auto tryReductionLayout = [&](ttg::MemDescType queryTy) -> py::object {
+          auto directMatches = [&](FailureOr<ttng::TMemLdStEncodingInfo> info) {
+            return succeeded(info) &&
+                   info->atom == ttng::TMemAccessAtom::I32x32b;
+          };
+          auto maybeLayout =
+              ttng::getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);
+          if (!maybeLayout)
+            return py::none();
+
+          auto queryRowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, queryTy);
+          if (!queryRowPlan)
+            queryRowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
+
+          auto regTy = RankedTensorType::get(shape, elementType, *maybeLayout);
+          if (!ttng::isReductionFriendlyTmemLoadLayout(
+                  tensorTy, ttg::toLinearLayout(regTy)))
+            return py::none();
+          if (rawQueryLayout &&
+              directMatches(ttng::computeTMemLdStEncodingInfo(
+                  regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
+                  /*emitError=*/{}, rawRowPlan))) {
+            return layoutToGluon(*maybeLayout);
+          }
+          if (rawQueryLayout && isViewLikeMemDesc)
+            return py::none();
+          if (directMatches(ttng::computeTMemLdStEncodingInfo(
+                  regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
+                  queryRowPlan))) {
+            return layoutToGluon(*maybeLayout);
+          }
+          return py::none();
+        };
+
+        for (ttg::MemDescType queryTy : ttng::getTMemLdStQueryTypes(memDesc)) {
+          py::object layout = tryReductionLayout(queryTy);
+          if (!layout.is_none())
+            return layout;
+        }
+        return py::none();
       });
 
   m.def(

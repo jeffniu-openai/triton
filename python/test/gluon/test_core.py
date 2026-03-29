@@ -81,6 +81,17 @@ def _make_tmem_linear_layout_block(m, n, two_ctas=False):
     )
 
 
+def _make_tmem_linear_layout_legacy_block_equiv(m, n):
+    assert m >= 128 and (m & (m - 1)) == 0
+    assert n >= 1 and (n & (n - 1)) == 0
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(7)],
+        cols=[[0, 1 << i] for i in range(int(math.log2(n)))] +
+        [[1 << i, 0] for i in range(7, int(math.log2(m)))],
+        shape=[m, n],
+    )
+
+
 def _make_tmem_linear_layout_mmav5_twocta(m, n):
     assert m >= 128 and (m & (m - 1)) == 0
     assert n >= 1 and (n & (n - 1)) == 0
@@ -4675,7 +4686,34 @@ def tmem_reduction_kernel(
     ttgl.store(red_ptr + offs_1d, reduced)
 
 
-def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_warps):
+@gluon.jit
+def tmem_reduction_i32_kernel(in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    num_warps: ttgl.constexpr = 4
+    global_memory_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_memory_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_memory_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_memory_layout))
+    offs_2d = offs_m[:, None] * N + offs_n[None, :]
+
+    input_data = ttgl.load(in_ptr + offs_2d)
+    tmem = allocate_tensor_memory(ttgl.int32, [M, N], layout)
+    tmem_reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    input_data = ttgl.convert_layout(input_data, tmem_reg_layout)
+    tmem.store(input_data)
+
+    output, reduced = tmem.load_min()
+    output = ttgl.convert_layout(output, global_memory_layout)
+    ttgl.store(out_ptr + offs_2d, output)
+
+    offs_1d = ttgl.arange(0, M, global_memory_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_memory_layout_1d)
+    ttgl.store(red_ptr + offs_1d, reduced)
+
+
+def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_warps, expect_hw_reduce=True):
     input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
 
     use_nan = propagate_nan == tl.PropagateNan.ALL
@@ -4713,15 +4751,23 @@ def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_w
         op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
     ]
     assert ptx_red_ops == llir_red_ops
-    assert ptx_red_ops
-    expected_modifier = f".{red_op}"
-    if use_abs:
-        expected_modifier += ".abs"
-    if propagate_nan == tl.PropagateNan.ALL:
-        expected_modifier += ".NaN"
-    expected_modifier += ".f32"
-    assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x") for op in ptx_red_ops)
-    assert all(expected_modifier in op for op in ptx_red_ops)
+    if expect_hw_reduce:
+        assert ptx_red_ops
+        expected_modifier = f".{red_op}"
+        if use_abs:
+            expected_modifier += ".abs"
+        if propagate_nan == tl.PropagateNan.ALL:
+            expected_modifier += ".NaN"
+        expected_modifier += ".f32"
+        assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x") for op in ptx_red_ops)
+        assert all(expected_modifier in op for op in ptx_red_ops)
+    else:
+        assert not ptx_red_ops
+        ptx_ld_ops = [
+            op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+            if op.startswith("tcgen05.ld.sync.aligned.")
+        ]
+        assert ptx_ld_ops
     return compiled
 
 
@@ -4757,26 +4803,37 @@ def test_tmem_reduction_linear_layouts(layout_name, layout_factory, red_op, use_
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs", [False, True])
+@pytest.mark.parametrize("propagate_nan", [tl.PropagateNan.NONE, tl.PropagateNan.ALL])
+def test_tmem_reduction_linear_legacy_block_equiv_layout(red_op, use_abs, propagate_nan):
+    compiled = _run_tmem_reduction_case(
+        _make_tmem_linear_layout_legacy_block_equiv(256, 128),
+        256,
+        128,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=8,
+    )
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
     "layout, M, N, diag_substr",
     [
         (
-            _make_tmem_linear_layout_mixed(128, 64),
-            128,
-            64,
-            "tmem_load reduction with N dimension sharded across threads is not supported",
-        ),
-        (
             _make_tmem_linear_layout_m64(64),
             64,
             64,
-            "tmem_load reduction with N dimension sharded across threads is not supported",
+            "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
         ),
         (
             _make_tmem_linear_layout_block(128, 64),
             128,
             64,
-            "TMEM layout '32x32b' unsupported",
+            "TMEM layout '32x32b' unsupported for descriptor view",
         ),
     ],
 )
@@ -4786,6 +4843,41 @@ def test_tmem_reduction_linear_reports_clean_error(layout, M, N, diag_substr, ca
     captured = capfd.readouterr()
     text = str(err.value) + captured.err + captured.out
     assert diag_substr in text
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+def test_tmem_reduction_linear_mixed_layout_reports_clean_error(capfd):
+    with pytest.raises(Exception) as err:
+        _run_tmem_reduction_case(
+            _make_tmem_linear_layout_mixed(128, 64),
+            128,
+            64,
+            "min",
+            False,
+            tl.PropagateNan.NONE,
+            num_warps=4,
+        )
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
+    assert "tmem.load(...)+tt.reduce(...)" in text
+    assert "tt.reduce" in text
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+def test_tmem_reduction_non_f32_reports_clean_error(capfd):
+    layout = TensorMemoryLayout(block=(128, 128), col_stride=1)
+    inp = torch.randint(-50, 50, (128, 128), dtype=torch.int32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(128, dtype=torch.int32, device="cuda")
+
+    with pytest.raises(Exception) as err:
+        tmem_reduction_i32_kernel[(1, )](inp, out, red, layout, num_warps=4)
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "tmem_load reduction currently requires f32 element type" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.parametrize("num_ctas", [1, 2])
