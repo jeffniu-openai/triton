@@ -4497,3 +4497,30 @@ Open after this slice:
       - `test/TritonGPU/consan.mlir`
       - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
     - note: `make test-lit` immediately after an incremental rebuild hit transient `triton-opt: Text file busy` fanout; rerunning lit separately from the already-built tree avoids the harness issue
+
+
+- 2026-04-01: fixed GB200 Blackwell MMAv5 16x256 epilogue-subtile unit failures by disabling the buggy sub-32-bit split-load replay rewrite
+  - failing GB200 shard node after the TMEM subslice/base-offset fixes:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]`
+  - control node that already passed with the direct ld/st base-offset fix:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float32-tensorfloat32]`
+  - symptom before fix:
+    - only the epilogue-subtile path failed, and only for sub-32-bit MMAv5 accumulators with `TRITON_PREFER_TMEM_16x256_LAYOUT=1`
+    - the rewritten TTGIR replayed `reshape -> trans -> split` as two `ttng.tmem_subslice` / `ttng.tmem_load` pairs on `128x64xf16`
+    - runtime corruption matched the second 64-column half of each 128-column tile (`48.9%` mismatches), while the original full-load path was otherwise healthy
+  - root cause:
+    - `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp`
+    - the split-load replay optimization is currently sound for 32-bit TMEM tiles, but not for the sub-32-bit `pack::16b` MMAv5 accumulator path
+    - the transformed F16 kernel stayed numerically wrong even after fixing TMEM subslice physical base offsets and raw-query double-application of TMEM origins, which isolates the remaining bug to the replayed split-load rewrite itself rather than the base lowering
+  - fix:
+    - keep the exact user-visible semantics by falling back to the original full `ttng.tmem_load` epilogue path for sub-32-bit replay candidates instead of applying the buggy split-load rewrite
+    - keep the earlier TMEM lowering fixes in place (`TMEMSubSliceOpConversion` source-type base offsets and raw-query baseOffset zeroing for already-adjusted `ttng.tmem_subslice` / `ttg.memdesc_index` views)
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - exact F16 repro -> `1 passed`
+      - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]`
+    - exact TF32 control -> `1 passed`
+      - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float32-tensorfloat32]`
+    - persistent ragged `triton_kernels` control -> `1 passed`
+      - `python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-128-768-512-1024-ragged-float16-float16-None-10-1-False-False-None-False-False-False-True-None]`
+    - full lit -> `248 passed, 2 unsupported`

@@ -763,9 +763,14 @@ lowerTMemLdStFromTypes(
             memDescValue, /*preserveNonCanonicalView=*/true, &rawError);
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
+      MemDescType rawMemTy = memTy;
+      if (auto maybeStandaloneTy =
+              inferStandaloneTMemViewType(memDescValue, /*error=*/nullptr);
+          succeeded(maybeStandaloneTy))
+        rawMemTy = *maybeStandaloneTy;
       rawRowPlan = disallowSupportRescueFor32x32Subview
                        ? std::optional<TMemLdStRowPlan>{}
-                       : getTMemLdStRowPlanForQuery(memDescValue, memTy);
+                       : getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
       if (!rawRowPlan && !disallowSupportRescueFor32x32Subview)
         rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       if (debugQuerySelection) {
@@ -780,7 +785,7 @@ lowerTMemLdStFromTypes(
         ScopedDiagnosticHandler handler(
             rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
         return computeTMemLdStEncodingInfo(
-            regTy, memTy, *rawQuery, maxnreg,
+            regTy, rawMemTy, *rawQuery, maxnreg,
             debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
             rawRowPlan);
       }();
@@ -808,12 +813,14 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(rawEncodingInfoOr)) {
         auto &encodingInfoOr = rawEncodingInfoOr;
-        bool preserveRawBaseOffset =
-            isa_and_nonnull<TMEMSubSliceOp>(memDescValue.getDefiningOp());
-        // Raw ttng.tmem_subslice queries carry the translated column origin in
-        // baseOffset. Preserve it so higher-level epilogue subtiles lower to
-        // distinct TMEM windows instead of duplicating the left half.
-        if (!preserveRawBaseOffset)
+        bool baseAlreadyAdjusted = isa_and_nonnull<TMEMSubSliceOp,
+                                                   triton::gpu::MemDescIndexOp>(
+            memDescValue.getDefiningOp());
+        // ttng.tmem_subslice and ttg.memdesc_index lower their TMEM view
+        // translation into the base pointer value itself. Do not re-apply the
+        // raw-query origin as a second baseOffset or N-half views collapse onto
+        // the wrong physical tile window.
+        if (baseAlreadyAdjusted)
           encodingInfoOr->baseOffset = 0;
         return lowerTMemLdStFromInfo(loc, rewriter, *encodingInfoOr, pred,
                                      llvmElemTy, vals, tmemBase, redOp,

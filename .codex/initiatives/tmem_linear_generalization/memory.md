@@ -2405,3 +2405,25 @@ rejection, not rescue
 - Validation checkpoint:
   - the exact persistent ragged `triton_kernels` repro is green again
   - focused conversion/analysis lit checks now encode the correct nonzero subslice offsets
+
+
+## 2026-04-01: sub-32-bit Blackwell MMAv5 epilogue subtile replay must stay on the original full-load path
+
+- After the TMEM subslice/base-offset fixes, one GB200 unit bucket was still failing:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]`
+- Symptom pattern:
+  - only the Blackwell `LAYOUT_16x256=True` + `EPILOGUE_SUBTILE=True` path failed for sub-32-bit accumulators
+  - the TTGIR replayed the epilogue `reshape -> trans -> split` into two `ttng.tmem_subslice` / `ttng.tmem_load` pairs on `128x64xf16`
+  - numerically, the second 64-column half of each 128-column tile was corrupted while the matching TF32 control passed
+- Root cause:
+  - the remaining bug is in the replay optimization itself (`OptimizeTMemLayouts.cpp`), not in raw TMEM address arithmetic
+  - once the earlier source-type TMEM subslice offset fix and raw-query baseOffset fix were in place, the F16 replayed split-load kernel still failed unchanged, which means the sub-32-bit `pack::16b` replayed split-load lowering is not yet semantics-preserving
+- Current rule:
+  - for sub-32-bit TMEM tiles, do not apply the `reshape -> trans -> split` replay optimization into `ttng.tmem_subslice` / `ttng.tmem_load`
+  - keep the original full `ttng.tmem_load` epilogue path until a direct sub-32-bit replay decomposition is proven correct
+  - 32-bit replayed split-loads stay enabled
+- Validation checkpoint:
+  - exact F16 GB200 node is green again
+  - matching TF32 control stays green
+  - the previously fixed persistent ragged `triton_kernels` MMAv5 repro still passes
+  - full lit remains `248 passed, 2 unsupported`

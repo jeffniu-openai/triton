@@ -1081,33 +1081,31 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
       return failure();
     }
     std::string layoutError;
-    if (memDescTy.getElementTypeBitWidth() >= 32) {
-      if (auto maybeDstAnalysis = getTMemViewAnalysisLayout(
-              memDescTy.getShape(), memDescTy.getEncoding(), &layoutError)) {
-        auto llInv = computeLeftInverseLayout(srcQuery->layout, &layoutError);
-        if (succeeded(llInv)) {
-          auto logicalDims = llvm::to_vector(srcQuery->layout.getOutDimNames());
-          SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
-          encodedOffsets.reserve(logicalDims.size());
-          for (auto [dim, logicalDim] : llvm::enumerate(logicalDims))
-            encodedOffsets.push_back({logicalDim,
-                                      dim + 1 == logicalDims.size()
-                                          ? subslice.getN()
-                                          : 0});
-          auto baseCoords = llInv->apply(
-              makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
-          auto result = TMemLdStQueryLayout{
-              maybeDstAnalysis->layout, maybeDstAnalysis->twoCTAs,
-              remapTMemLdStQueryOrigin(*srcQuery, maybeDstAnalysis->layout,
-                                       baseCoords)};
-          if (debug) {
-            llvm::errs() << "[tmem-ldst] ttng.tmem_subslice origin:";
-            for (int32_t value : result.origin)
-              llvm::errs() << " " << value;
-            llvm::errs() << "\n";
-          }
-          return result;
+    if (auto maybeDstAnalysis = getTMemViewAnalysisLayout(
+            memDescTy.getShape(), memDescTy.getEncoding(), &layoutError)) {
+      auto llInv = computeLeftInverseLayout(srcQuery->layout, &layoutError);
+      if (succeeded(llInv)) {
+        auto logicalDims = llvm::to_vector(srcQuery->layout.getOutDimNames());
+        SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+        encodedOffsets.reserve(logicalDims.size());
+        for (auto [dim, logicalDim] : llvm::enumerate(logicalDims))
+          encodedOffsets.push_back({logicalDim,
+                                    dim + 1 == logicalDims.size()
+                                        ? subslice.getN()
+                                        : 0});
+        auto baseCoords = llInv->apply(
+            makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+        auto result = TMemLdStQueryLayout{
+            maybeDstAnalysis->layout, maybeDstAnalysis->twoCTAs,
+            remapTMemLdStQueryOrigin(*srcQuery, maybeDstAnalysis->layout,
+                                     baseCoords)};
+        if (debug) {
+          llvm::errs() << "[tmem-ldst] ttng.tmem_subslice origin:";
+          for (int32_t value : result.origin)
+            llvm::errs() << " " << value;
+          llvm::errs() << "\n";
         }
+        return result;
       }
     }
     auto *layoutCtx = memDesc.getContext();
@@ -1560,8 +1558,9 @@ inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
 
   Operation *defOp = memDesc.getDefiningOp();
   bool hasExplicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, gpu::MemDescIndexOp,
-                      gpu::MemDescReshapeOp>(defOp);
+      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
+                      gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
+                      gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(defOp);
   auto layoutRank = static_cast<size_t>(cast<LayoutEncodingTrait>(encoding).getRank());
   if (preserveNonCanonicalView && memDescTy.getShape().size() >= layoutRank &&
       memDescTy.getAllocShape().size() >= layoutRank &&

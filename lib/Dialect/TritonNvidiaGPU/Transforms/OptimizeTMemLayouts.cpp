@@ -425,6 +425,11 @@ public:
     auto rootMemTy = getSplitLoadRootMemDescType(tmemLoad.getSrc());
     if (!rootMemTy)
       return failure();
+    // The split-load replay is currently only semantics-preserving on 32-bit
+    // TMEM tiles. Sub-32-bit Blackwell epilogues must keep the original
+    // full-load path until the replayed pack::16b decomposition is fixed.
+    if (rootMemTy.getElementTypeBitWidth() < 32)
+      return failure();
     // Ensure M dimension is preserved by the logical TMEM tile, even if the
     // current source is a reinterpret of the backing TMEM allocation.
     if (shape[0] != rootMemTy.getShape()[rootMemTy.getRank() - 2])
@@ -451,8 +456,15 @@ public:
       // Choose a layout compatible with the slice size.
       gpu::MemDescType subSliceType =
           cast<gpu::MemDescType>(subSlice.getType());
+      gpu::MemDescType layoutQueryTy = subSliceType;
+      std::string layoutQueryError;
+      if (auto maybeQueryTy =
+              nvidia_gpu::inferStandaloneTMemRegLayoutQueryType(
+                  subSlice, &layoutQueryError);
+          succeeded(maybeQueryTy))
+        layoutQueryTy = *maybeQueryTy;
       auto distLayout =
-          nvidia_gpu::getDefaultLayoutForTmemLdSt(subSliceType, numWarps);
+          nvidia_gpu::getDefaultLayoutForTmemLdSt(layoutQueryTy, numWarps);
 
       RankedTensorType newLoadType =
           splitOp.getOutLHS().getType().cloneWithEncoding(distLayout);
@@ -550,8 +562,16 @@ public:
 
     auto createSlice = [&](TypedValue<RankedTensorType> input, int offset) {
       auto subSlice = TMEMSubSliceOp::create(b, loc, tmem, offset, splitNSize);
+      auto subSliceType = cast<gpu::MemDescType>(subSlice.getType());
+      gpu::MemDescType layoutQueryTy = subSliceType;
+      std::string layoutQueryError;
+      if (auto maybeQueryTy =
+              nvidia_gpu::inferStandaloneTMemRegLayoutQueryType(
+                  subSlice, &layoutQueryError);
+          succeeded(maybeQueryTy))
+        layoutQueryTy = *maybeQueryTy;
       auto distLayout =
-          nvidia_gpu::getDefaultLayoutForTmemLdSt(subSlice.getType(), numWarps);
+          nvidia_gpu::getDefaultLayoutForTmemLdSt(layoutQueryTy, numWarps);
       auto newType = input.getType().cloneWithEncoding(distLayout);
       auto cvt = ttg::ConvertLayoutOp::create(b, loc, newType, input);
       auto store =
