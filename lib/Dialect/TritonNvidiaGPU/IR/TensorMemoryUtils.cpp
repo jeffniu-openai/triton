@@ -803,20 +803,18 @@ inferTMemIndexQueryLayout(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape
   }
 
   if (extraRank > 0) {
-    if (!leadingIndex) {
-      if (error)
-        *error =
-            "unsupported tensor memory memdesc_index view: dynamic multibuffer "
-            "index";
-      return failure();
-    }
-    SmallVector<int32_t> prefixOffsets(extraRank, 0);
-    prefixOffsets.front() = *leadingIndex;
+    // Leading multibuffer indices are lowered by MemDescIndexOpConversion into
+    // the TMEM base value itself. The reg-layout/support query must therefore
+    // preserve only the row/col translation already tracked in srcQuery.origin
+    // and must not try to re-encode the selected buffer as an additional query
+    // origin offset. Otherwise dynamic multibuffer views lose their raw query
+    // path and later tmem_subslice/tmem_load chains collapse distinct column
+    // windows onto the same tcgen05.ld base address.
+    (void)leadingIndex;
+    (void)bitwidth;
     return TMemLdStQueryLayout{
         ll, srcQuery.twoCTAs,
-        addPrefixOffsetsToQueryOrigin(ll, srcQuery.origin,
-                                      srcShape.take_front(extraRank),
-                                      prefixOffsets, bitwidth)};
+        remapTMemLdStQueryOrigin(srcQuery, ll, /*deltaCoords=*/{})};
   }
 
   if (layoutRank == 0) {

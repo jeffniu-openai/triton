@@ -2383,3 +2383,25 @@ rejection, not rescue
   - the GB200 `f16` `64x512x32` unit matmul passes again
   - the earlier tf32 `64x512x32` control also stays green
   - PTX now restores the origin-style wide subword forms with `pack::16b` / `unpack::16b`
+
+
+## 2026-04-01: TMEM subslice physical offsets must be computed in the source tile address space
+
+- A GB200 `triton_kernels` persistent ragged matmul regression remained after the earlier TMEM direct-lowering sweep:
+  - `python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-128-768-512-1024-ragged-float16-float16-None-10-1-False-False-None-False-False-False-True-None]`
+- Symptom pattern:
+  - only the second 128-column half of each 256-column MMAv5 accumulator tile was corrupted
+  - the dumped `_p_matmul` TTGIR split the accumulator into `ttng.tmem_subslice {N = 0}` and `{N = 128}` followed by two `ttng.tmem_load`s
+  - the dumped PTX then showed both loads coming from the same physical TMEM base, which explains why the `128:256` and `384:512` column bands were wrong
+- Root cause:
+  - `TMEMSubSliceOpConversion` in `TensorMemoryToLLVM.cpp` was calling `getTMemSubSliceOffset(...)` on the narrowed result memdesc type
+  - physical TMEM base arithmetic is defined in the source tile's address space, not the result view's address space
+  - for N-half views like `128x256 -> 128x128`, the result type drops the high-order column basis that differentiates the second half, so `{N = 128}` collapsed onto `{N = 0}`
+  - `BufferRegion.cpp` had the same stale assumption in its TMEM-subslice region accounting
+- Current rule:
+  - compute TMEM subslice physical offsets from the source memdesc type in lowering and region analysis
+  - the result memdesc type still describes the logical view shape/encoding, but not the address space used to advance the raw TMEM base
+  - multibuffer direct-ld/st query plumbing should preserve the already-lowered base translation instead of re-encoding the selected leading buffer as an extra query-origin offset
+- Validation checkpoint:
+  - the exact persistent ragged `triton_kernels` repro is green again
+  - focused conversion/analysis lit checks now encode the correct nonzero subslice offsets

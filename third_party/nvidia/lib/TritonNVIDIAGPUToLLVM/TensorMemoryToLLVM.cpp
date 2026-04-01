@@ -1396,8 +1396,12 @@ struct TMEMSubSliceOpConversion
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
     auto b = TritonLLVMOpBuilder(loc, rewriter);
-    auto dstTy = cast<MemDescType>(op.getResult().getType());
-    uint32_t offset = getTMemSubSliceOffset(dstTy, op.getN());
+    auto srcTy = cast<MemDescType>(op.getSrc().getType());
+    // Physical TMEM pointer arithmetic is defined in the source tile's address
+    // space. Using the narrowed result type can erase high-order column bits
+    // for N-half views (for example 128x256 -> 128x128), collapsing distinct
+    // subslices onto the same base address.
+    uint32_t offset = getTMemSubSliceOffset(srcTy, op.getN());
 
     Value tmemBase = adaptor.getSrc();
     Value offsetVal = b.i32_val(offset);

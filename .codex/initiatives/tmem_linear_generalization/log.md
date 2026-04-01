@@ -4471,3 +4471,29 @@ Open after this slice:
     - `TRITON_BUILD_WITH_CCACHE=true make -j96`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float16-float16]` -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
+
+
+- 2026-04-01: fixed persistent ragged `triton_kernels` MMAv5 accumulator N-half corruption for TMEM subslices
+  - failing node:
+    - `python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-128-768-512-1024-ragged-float16-float16-None-10-1-False-False-None-False-False-False-True-None]`
+  - symptom before fix:
+    - structured corruption only in the second 128-column half of each 256-column MMAv5 accumulator tile (`columns 128:256` and `384:512` wrong; neighbors correct)
+    - dumped PTX for `_p_matmul` showed the two `ttng.tmem_load` halves issuing `tcgen05.ld.sync.aligned.32x32b.x64.b32` from the same physical TMEM base after `ttng.tmem_subslice {N = 0}` / `{N = 128}`
+  - root cause:
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+    - `TMEMSubSliceOpConversion` was computing the physical base advance from the narrowed result memdesc type instead of the source tile
+    - for N-half views like `128x256 -> 128x128`, that erases the high-order column basis needed to distinguish the second half and collapses distinct subslices onto the same base address
+    - `lib/Analysis/BufferRegion.cpp` had the same source-vs-result-type bug in its TMEM subslice offset accounting, so analysis/tests were also encoding the stale zero-offset assumption
+    - the current worktree also carries a direct-ld/st query fix in `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` so multibuffer `memdesc_index` support queries preserve only the already-lowered TMEM base translation instead of trying to re-encode the selected buffer as extra query origin
+  - fix:
+    - compute `ttng.tmem_subslice` physical offsets from the source memdesc type in both LLVM lowering and buffer-region analysis
+    - update lit expectations for the now-correct nonzero TMEM subslice offsets (`test-buffer-region.mlir`, `consan.mlir`, `tritongpu_to_llvm_blackwell.mlir`)
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - exact repro -> `1 passed`
+      - `python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-128-768-512-1024-ragged-float16-float16-None-10-1-False-False-None-False-False-False-True-None]`
+    - focused lit bundle -> `3 passed`
+      - `test/Analysis/test-buffer-region.mlir`
+      - `test/TritonGPU/consan.mlir`
+      - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - note: `make test-lit` immediately after an incremental rebuild hit transient `triton-opt: Text file busy` fanout; rerunning lit separately from the already-built tree avoids the harness issue
