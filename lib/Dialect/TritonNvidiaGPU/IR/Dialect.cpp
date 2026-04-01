@@ -1416,9 +1416,11 @@ getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n
   case TMemAccessAtom::I16x256b:
     if (n < 8)
       return std::nullopt;
-    laneBases = {{0, 2}, {0, 4}, {1, 0}, {2, 0}, {4, 0}};
-    regBases = {{0, 1}, {8, 0}};
-    for (int64_t col = 8; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
+    // Keep the legacy M64 family for x256 so the direct ld/st matcher reaches
+    // the native 16x256b path instead of degrading to x128.
+    laneBases = {{0, 4}, {0, 8}, {1, 0}, {2, 0}, {4, 0}};
+    regBases = {{0, 1}, {0, 2}, {8, 0}};
+    for (int64_t col = 16; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
       regBases.push_back({0, static_cast<int32_t>(col)});
     warpBases = {{16, 0}, {32, 0}};
     if (numWarps == 8)
@@ -1573,6 +1575,18 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     if (bitwidth == 32 && atom == TMemAccessAtom::I32x32b) {
       if (auto splitN = getTMemLdStSplitNLayout(candidateLL, numWarps, rowPlan))
         return splitN;
+    }
+    // Canonical contiguous M64 TMEM views should keep the dedicated M64
+    // register families even when row-plan selection uses the active 64-row
+    // footprint. Restricting this fast-path to 128-row plans regresses the
+    // preferred 16x256b Blackwell accumulator layout to narrower x128/x64
+    // shapes.
+    if (bitwidth == 16 && !hasBlockDim && atom != TMemAccessAtom::I16x32bx2 &&
+        matchesCanonicalContiguousM64LinearView(candidateLL)) {
+      if (auto canonical = getCanonicalContiguousM64Layout(
+              ctx, atom, candidateLL.getInDimSize(rowColDims[1]), numWarps)) {
+        return canonical;
+      }
     }
     // This code is dual to the one in lowerTMemLdSt
     if (bitwidth != 32) {
@@ -2065,7 +2079,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     }
     return std::nullopt;
   }
-  if (!rowPlanOverride && bitwidth == 32) {
+  if (!rowPlanOverride) {
     auto tryCanonicalContiguousM64 =
         [&](const LinearLayout &candidate) -> std::optional<LinearLayout> {
       if (!matchesCanonicalContiguousM64LinearView(candidate))
@@ -2138,7 +2152,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   }
   if (!strippedRowPlan)
     return std::nullopt;
-  if (bitwidth == 32 && matchesCanonicalContiguousM64LinearView(stripped)) {
+  if (matchesCanonicalContiguousM64LinearView(stripped)) {
     auto *ctx = memType.getContext();
     auto kCol = StringAttr::get(ctx, "col");
     if (auto canonical = getCanonicalContiguousM64Layout(ctx, atom,
@@ -2194,6 +2208,26 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
   bool prefer16x256 =
       triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
   if (prefer16x256) {
+    std::string error;
+    if (auto maybeLayout = getTMemViewAnalysisLinearLayout(
+            memType.getShape(), memType.getEncoding(), &error)) {
+      auto stripped = stripZeroBasesForTmemLdStSelection(
+          normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout));
+      if (matchesCanonicalContiguousM64LinearView(stripped)) {
+        auto kCol = StringAttr::get(ctx, "col");
+        if (auto canonical = getCanonicalContiguousM64Layout(
+                ctx, TMemAccessAtom::I16x256b, stripped.getInDimSize(kCol),
+                numWarps)) {
+          return LinearEncodingAttr::get(ctx, std::move(*canonical));
+        }
+        TMemLdStRowPlan legacyM64Plan{/*warpRow0=*/32, /*warpRow1=*/64,
+                                      /*rowSpan=*/128};
+        if (auto layout = getDistributedLayoutForTmemLdSt(
+                memType, TMemAccessAtom::I16x256b, numWarps, legacyM64Plan)) {
+          return LinearEncodingAttr::get(ctx, std::move(*layout));
+        }
+      }
+    }
     auto layout = getDistributedLayoutForTmemLdSt(
         memType, TMemAccessAtom::I16x256b, numWarps);
     if (layout) {
