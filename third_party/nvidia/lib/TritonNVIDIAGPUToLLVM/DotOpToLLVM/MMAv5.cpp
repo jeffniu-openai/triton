@@ -20,13 +20,14 @@ using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
-    Value tmemBase) {
+    Value tmemBase, bool useRawWordColumns) {
   auto ll =
       ttng::normalizeTensorMemoryLinearLayoutForAnalysis(toLinearLayout(memTy));
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);
-  return DotOpMmaV5TmemLoader(ll.pseudoinvert(), address, bitwidth);
+  return DotOpMmaV5TmemLoader(ll.pseudoinvert(), address, bitwidth,
+                              useRawWordColumns);
 }
 
 MemDescOperand mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::tmemLoad(
@@ -34,7 +35,13 @@ MemDescOperand mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::tmemLoad(
   auto dims = to_vector(ll.getInDimNames());
   auto rowCol = ll.apply({{dims[0], a}, {dims[1], b}});
   int row = rowCol[0].second;
-  int col = rowCol[1].second * bitwidth / 32;
+  int col = rowCol[1].second;
+  // MMAv5 accumulators use raw 32-bit TMEM word columns on the destination
+  // side. Packed f16 accumulator tiles therefore advance by word columns even
+  // though the logical element layout uses colStride=2. TMEM lhs operands
+  // still use typed-column addressing, so keep the old scaling there.
+  if (!useRawWordColumns)
+    col = col * bitwidth / 32;
   int offset = col | (row << 16);
   return {address, offset};
 }
@@ -606,7 +613,8 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
   dot.numBitsPerElementB = bTensorTy.getElementTypeBitWidth();
 
   DotOpMmaV5TmemLoader dLoader =
-      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD());
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
+                                  /*useRawWordColumns=*/true);
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,
                           int m, int n, const DotConversion::InstDesc &desc) {
     return dLoader.tmemLoad(m * desc.mmaSizeM, n * desc.mmaSizeN, rewriter,
@@ -665,17 +673,6 @@ int getScaleFactorColsPerSet(mxfpKind kind) {
     llvm_unreachable("Unsupported mxfp kind.");
   }
 };
-
-static uint32_t packTypedTMemWordAndSelector(uint32_t rawWordOffset,
-                                             int bitwidth,
-                                             uint32_t subword) {
-  if (bitwidth >= 32)
-    return rawWordOffset;
-  unsigned elemsPerWord = 32 / bitwidth;
-  unsigned offsetShift = llvm::Log2_32(elemsPerWord);
-  assert(subword < elemsPerWord && "subword selector must fit in a TMEM word");
-  return rawWordOffset + llvm::rotr(subword, offsetShift);
-}
 
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                                ConversionPatternRewriter &rewriter,
@@ -739,7 +736,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   // TMEM address model as plain MMAv5 and preserves whole-tile permutations
   // and descriptor-view offsets without a separate block-id schedule.
   DotOpMmaV5TmemLoader dLoader =
-      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD());
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
+                                  /*useRawWordColumns=*/true);
   dot.getAccumulatorInfo = [](MemDescType memTy) {
     return ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
   };
@@ -754,34 +752,26 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                           Value pred, Value useInitAcc,
                           const DotConversion::InstDesc &desc, int m, int n,
                           int k) {
+    auto [numRepM, numRepN, numRepK] = desc.repShape;
     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
     int colsPerWord = 4 / scaleFactorColsPerSet;
+    int numColPerScaleBlockA = ceil<int>(
+        ttng::getTmemAllocSizes(aScaleTy).numCols,
+        numRepM * (ceil<int>(numRepK, colsPerWord)));
+    int numColPerScaleBlockB = ceil<int>(
+        ttng::getTmemAllocSizes(bScaleTy).numCols,
+        numRepN * (ceil<int>(numRepK, colsPerWord)));
+    numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
     int subWordIdx = k % colsPerWord;
     int wordIdx = k / colsPerWord;
-    // Scale TMEM addresses are encoded at 32-bit word granularity. `logicalCol`
-    // must point at the first 8-bit scale column in the selected dword, while
-    // `subWordIdx` selects the sub-fragment within that word for vec1X/vec2X.
-    int logicalCol = wordIdx * 4;
-    auto getScaleAddress = [&](Value baseScale, MemDescType scaleTy,
-                               int logicalRow, int logicalCol,
-                               int selector, uint32_t wordCarry = 0) {
-      SmallVector<int32_t> offsets(scaleTy.getRank(), 0);
-      offsets[scaleTy.getRank() - 2] = logicalRow;
-      offsets[scaleTy.getRank() - 1] = logicalCol;
-      uint32_t rawWordOffset = ttng::getTMemViewOffset(scaleTy, offsets) + wordCarry;
-      uint32_t encodedOffset = packTypedTMemWordAndSelector(
-          rawWordOffset, scaleTy.getElementTypeBitWidth(), selector);
-      return tb.add(baseScale, tb.i32_val(static_cast<int32_t>(encodedOffset)));
-    };
-    Value scaleA = getScaleAddress(baseScaleA, aScaleTy, m * desc.mmaSizeM,
-                                   logicalCol, subWordIdx);
-    Value scaleB = getScaleAddress(baseScaleB, bScaleTy, n * desc.mmaSizeN,
-                                   logicalCol, subWordIdx);
-    int bScaleDescriptorSelector = subWordIdx;
+    Value scaleA = tb.add(
+        baseScaleA, tb.i32_val((m + wordIdx * numRepM) * numColPerScaleBlockA));
+    Value scaleB = tb.add(
+        baseScaleB, tb.i32_val((n + wordIdx * numRepN) * numColPerScaleBlockB));
     Value instDescriptor = createScaleInstDescriptor(
         rewriter, op, twoCTAs ? desc.mmaSizeM * 2 : desc.mmaSizeM,
-        desc.mmaSizeN, desc.transA, desc.transB, subWordIdx,
-        bScaleDescriptorSelector, mxfpInstKind);
+        desc.mmaSizeN, desc.transA, desc.transB, subWordIdx, subWordIdx,
+        mxfpInstKind);
     createScaledGen5MMA(rewriter, loc, op, a, b, accAddress, scaleA, scaleB,
                         pred, instDescriptor, useInitAcc, desc.aInTmem,
                         mxfpInstKind, twoCTAs);

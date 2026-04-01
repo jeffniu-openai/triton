@@ -1435,21 +1435,16 @@ void replaceUsesAndPropagateType(
     builder.setInsertionPoint(user);
     Value newVal;
     if (auto subview = dyn_cast<ttg::MemDescIndexOp>(user)) {
-      ttg::MemDescType oldType = subview.getType();
-      bool isMutable = cast<ttg::MemDescType>(val.getType()).getMutableMemory();
-      Type newDstType = ttg::MemDescType::get(
-          oldType.getShape(), oldType.getElementType(), oldType.getEncoding(),
-          oldType.getMemorySpace(), isMutable);
-      newVal = ttg::MemDescIndexOp::create(builder, subview.getLoc(),
-                                           newDstType, val, subview.getIndex());
+      auto newSubview = ttg::MemDescIndexOp::createChecked(
+          builder, subview.getLoc(), val, subview.getIndex());
+      assert(succeeded(newSubview) && "expected valid memdesc_index");
+      newVal = newSubview->getResult();
     } else if (auto subslice = dyn_cast<ttg::MemDescSubsliceOp>(user)) {
-      ttg::MemDescType oldType = subslice.getType();
-      bool isMutable = cast<ttg::MemDescType>(val.getType()).getMutableMemory();
-      Type newDstType = ttg::MemDescType::get(
-          oldType.getShape(), oldType.getElementType(), oldType.getEncoding(),
-          oldType.getMemorySpace(), isMutable, oldType.getAllocShape());
-      newVal = ttg::MemDescSubsliceOp::create(
-          builder, subslice.getLoc(), newDstType, val, subslice.getOffsets());
+      auto newSubview = ttg::MemDescSubsliceOp::createChecked(
+          builder, subslice.getLoc(), val, subslice.getType().getShape(),
+          subslice.getOffsets());
+      assert(succeeded(newSubview) && "expected valid memdesc_subslice");
+      newVal = newSubview->getResult();
     } else if (auto trans = dyn_cast<ttg::MemDescTransOp>(user)) {
       newVal = ttg::MemDescTransOp::create(builder, trans.getLoc(), val,
                                            trans.getOrder());

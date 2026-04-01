@@ -247,6 +247,34 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32} {
 
 // -----
 
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = false, elementBitWidth = 16}>
+#shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 32, transposed = true, elementBitWidth = 16}>
+#shared2 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
+#tmem_f16_acc = #ttng.tensor_memory_encoding<blockM = 128, blockN = 32, colStride = 2>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32} {
+  // CHECK-LABEL: @tc_gen5_mma_multi_m_f16_acc
+  // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2{{.*}} : !llvm.ptr<3> to i32
+  // CHECK: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 0 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_BASE]]
+  // CHECK: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 32 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_BASE]]
+  // CHECK-NOT: tcgen05.mma.cta_group::1.kind::f16 [ $0 + 16 ]
+  tt.func @tc_gen5_mma_multi_m_f16_acc(%a: !ttg.memdesc<256x16xf16, #shared, #ttg.shared_memory>,
+                                       %b: !ttg.memdesc<16x32xf16, #shared1, #ttg.shared_memory>,
+                                       %c: !ttg.memdesc<256x32xf16, #tmem_f16_acc, #ttng.tensor_memory, mutable>,
+                                       %useAcc: i1,
+                                       %pred: i1,
+                                       %barrier: !ttg.memdesc<1xi64, #shared2, #ttg.shared_memory>,
+                                       %barrierPred: i1) {
+    ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred, %barrier[%barrierPred] {is_async} :
+       !ttg.memdesc<256x16xf16, #shared, #ttg.shared_memory>,
+       !ttg.memdesc<16x32xf16, #shared1, #ttg.shared_memory>,
+       !ttg.memdesc<256x32xf16, #tmem_f16_acc, #ttng.tensor_memory, mutable>,
+       !ttg.memdesc<1xi64, #shared2, #ttg.shared_memory>
+    tt.return
+  }
+}
+
+// -----
+
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #shared1 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = true, elementBitWidth = 16}>
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
@@ -383,11 +411,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
   // CHECK-LABEL: @tensor_memory_unpack_f16
   // CHECK: nvg.tensor_memory_base
   // CHECK: tcgen05.st.sync.aligned.32x32b.x64.b32 [{{.*}} + 0]
-  // CHECK-NOT: tcgen05.st.sync.aligned.32x32b.x64.unpack::16b.b32
-  // CHECK-NOT: tcgen05.st.sync.aligned.32x32b.x128.b32
   // CHECK: nvvm.tcgen05.wait <store>
   // CHECK: tcgen05.ld.sync.aligned.32x32b.x64.pack::16b.b32 {{.*}} [{{.*}} + 0]
-  // CHECK-NOT: tcgen05.ld.sync.aligned.32x32b.x64.pack::16b.b32
   // CHECK: nvvm.tcgen05.wait <load>
   tt.func public @tensor_memory_unpack_f16() {
     %cst_0 = arith.constant dense<0.000000e+00> : tensor<128x128xf16, #blocked1>

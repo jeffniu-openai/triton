@@ -1252,11 +1252,69 @@ bool supportMMA(Value value, int version) {
 // distributed shared memory. If it's also the identity on kWarp, we can
 // transfer via warp-shuffles, and if it's the identity on kLane just have to
 // reorder the registers.
+static std::pair<LinearLayout, LinearLayout>
+normalizeExclusiveUnitInDims(LinearLayout srcLayout, LinearLayout dstLayout) {
+  SmallVector<StringAttr> srcOnlyUnitDims;
+  SmallVector<StringAttr> dstOnlyUnitDims;
+  for (auto dim : srcLayout.getInDimNames()) {
+    if (!dstLayout.hasInDim(dim) && srcLayout.getInDimSize(dim) == 1)
+      srcOnlyUnitDims.push_back(dim);
+  }
+  for (auto dim : dstLayout.getInDimNames()) {
+    if (!srcLayout.hasInDim(dim) && dstLayout.getInDimSize(dim) == 1)
+      dstOnlyUnitDims.push_back(dim);
+  }
+  for (auto dim : srcOnlyUnitDims)
+    srcLayout = srcLayout.squeezeIns(dim);
+  for (auto dim : dstOnlyUnitDims)
+    dstLayout = dstLayout.squeezeIns(dim);
+  return {srcLayout, dstLayout};
+}
+
+static bool canInvertAndComposeLayouts(const LinearLayout &srcLayout,
+                                       const LinearLayout &dstLayout) {
+  auto [normalizedSrc, normalizedDst] =
+      normalizeExclusiveUnitInDims(srcLayout, dstLayout);
+  auto outDims = to_vector(normalizedDst.getOutDimNames());
+  if (outDims.size() != llvm::range_size(normalizedSrc.getOutDimNames()))
+    return false;
+  for (auto dim : outDims) {
+    if (!normalizedSrc.hasOutDim(dim))
+      return false;
+  }
+  auto srcTransposed = normalizedSrc.transposeOuts(outDims);
+  for (auto dim : outDims) {
+    if (srcTransposed.getOutDimSize(dim) < normalizedDst.getOutDimSize(dim))
+      return false;
+  }
+  SmallVector<StringAttr> identityDims;
+  for (auto dim : srcTransposed.getInDimNames()) {
+    if (normalizedDst.hasInDim(dim) &&
+        srcTransposed.sublayout(dim, outDims) ==
+            normalizedDst.sublayout(dim, outDims)) {
+      identityDims.push_back(dim);
+    }
+  }
+  SmallVector<StringAttr> srcNonIdentityInDims;
+  SmallVector<StringAttr> dstNonIdentityInDims;
+  for (auto dim : srcTransposed.getInDimNames()) {
+    if (!llvm::is_contained(identityDims, dim))
+      srcNonIdentityInDims.push_back(dim);
+  }
+  for (auto dim : normalizedDst.getInDimNames()) {
+    if (!llvm::is_contained(identityDims, dim))
+      dstNonIdentityInDims.push_back(dim);
+  }
+  return srcNonIdentityInDims.empty() == dstNonIdentityInDims.empty();
+}
+
 LinearLayout minimalCvtLayout(Type srcTy_, Type dstTy_) {
   auto srcTy = cast<triton::gpu::TensorOrMemDesc>(srcTy_);
   auto dstTy = cast<triton::gpu::TensorOrMemDesc>(dstTy_);
   LinearLayout srcLayout = toLinearLayout(srcTy);
   LinearLayout dstLayout = toLinearLayout(dstTy);
+  std::tie(srcLayout, dstLayout) =
+      normalizeExclusiveUnitInDims(srcLayout, dstLayout);
   auto sDims = to_vector(srcLayout.getInDimNames());
   auto dDims = to_vector(dstLayout.getInDimNames());
   SmallVector<StringAttr> dims;
@@ -1282,6 +1340,8 @@ LinearLayout minimalCvtLayout(Type srcTy_, Type dstTy_) {
 }
 
 bool cvtReordersRegisters(RankedTensorType srcTy, RankedTensorType dstTy) {
+  if (!canInvertAndComposeLayouts(toLinearLayout(srcTy), toLinearLayout(dstTy)))
+    return false;
   auto layout = minimalCvtLayout(srcTy, dstTy);
   MLIRContext *ctx = srcTy.getContext();
   auto kRegister = StringAttr::get(ctx, "register");
@@ -1290,6 +1350,8 @@ bool cvtReordersRegisters(RankedTensorType srcTy, RankedTensorType dstTy) {
 }
 
 bool cvtNeedsWarpShuffle(RankedTensorType srcTy, RankedTensorType dstTy) {
+  if (!canInvertAndComposeLayouts(toLinearLayout(srcTy), toLinearLayout(dstTy)))
+    return false;
   auto layout = minimalCvtLayout(srcTy, dstTy);
   MLIRContext *ctx = srcTy.getContext();
   auto kRegister = StringAttr::get(ctx, "register");
@@ -1316,9 +1378,11 @@ std::unique_ptr<DataFlowSolver> createDataFlowSolver() {
 
 bool isCvtDimSync(const triton::LinearLayout &srcLayout,
                   const triton::LinearLayout &dstLayout, StringAttr dim) {
+  auto [normalizedSrc, normalizedDst] =
+      normalizeExclusiveUnitInDims(srcLayout, dstLayout);
   // We can use a dimension-level sync when the conversion is trivial over that
   // dimension and there is no broadcasting over it.
-  auto *ctx = srcLayout.getInDimNames().begin()->getContext();
+  auto *ctx = dim.getContext();
   auto kWarp = StringAttr::get(ctx, "warp");
   auto kBlock = StringAttr::get(ctx, "block");
   auto isUnitOrMissing = [&](const triton::LinearLayout &layout) {
@@ -1326,21 +1390,23 @@ bool isCvtDimSync(const triton::LinearLayout &srcLayout,
     bool trivialOut = !layout.hasOutDim(dim) || layout.getOutDimSize(dim) == 1;
     return trivialIn && trivialOut;
   };
-  if (!srcLayout.hasInDim(dim) || !dstLayout.hasInDim(dim)) {
-    return isUnitOrMissing(srcLayout) && isUnitOrMissing(dstLayout);
+  if (!normalizedSrc.hasInDim(dim) || !normalizedDst.hasInDim(dim)) {
+    return isUnitOrMissing(normalizedSrc) && isUnitOrMissing(normalizedDst);
   }
-  auto comp = dstLayout.invertAndCompose(srcLayout);
+  if (!canInvertAndComposeLayouts(normalizedSrc, normalizedDst))
+    return false;
+  auto comp = normalizedDst.invertAndCompose(normalizedSrc);
   if (!comp.hasInDim(dim) || !comp.hasOutDim(dim))
-    return isUnitOrMissing(srcLayout) && isUnitOrMissing(dstLayout);
+    return isUnitOrMissing(normalizedSrc) && isUnitOrMissing(normalizedDst);
   if (dim == kWarp) {
     // We check that it's trivial over block and warps and that
     // there is no broadcasting over warp, as if there is, we'll
     // deduplicate the writes and the reads will read from data
     // that other warp has written.
-    auto isBlockSync = isCvtDimSync(srcLayout, dstLayout, kBlock);
+    auto isBlockSync = isCvtDimSync(normalizedSrc, normalizedDst, kBlock);
     return isBlockSync && comp.isTrivialOver(dim) &&
-           srcLayout.getFreeVariableMasks()[dim] == 0 &&
-           dstLayout.getFreeVariableMasks()[dim] == 0;
+           normalizedSrc.getFreeVariableMasks()[dim] == 0 &&
+           normalizedDst.getFreeVariableMasks()[dim] == 0;
   } else {
     assert(dim == kBlock);
     return comp.isTrivialOver(dim);

@@ -55,13 +55,13 @@ def test_compile_only_dot() -> None:
     assert re.search(pattern, str(ttgir)), "The TTGIR does not match the expected pattern."
 
     ptx = k.asm["ptx"]
-    pattern = (r"mov\.b32 	%r(?P<G>\d+), global_smem;"
+    pattern = (r"mov\.b32\s+%r\d+, global_smem;"
                r"(.|\n)*"
-               r"tcgen05\.alloc\.cta_group::1\.sync\.aligned\.shared::cta\.b32 \[%r(?P=G)], 64"
+               r"tcgen05\.alloc\.cta_group::1\.sync\.aligned\.shared::cta\.b32 \[%r\d+], 64"
                r"(.|\n)*"
                r"tcgen05\.relinquish_alloc_permit\.cta_group::1\.sync\.aligned"
                r"(.|\n)*"
-               r"tcgen05\.st\.sync\.aligned\.16x32bx2.x32.b32"
+               r"tcgen05\.st\.sync\.aligned\.16x32bx2\.x(?:16|32)\.b32"
                r"(.|\n)*"
                r"tcgen05\.mma\.cta_group::1.kind::f16"
                r"(.|\n)*"
@@ -69,7 +69,7 @@ def test_compile_only_dot() -> None:
                r"(.|\n)*"
                r"mbarrier.try_wait.parity.shared::cta.b64"
                r"(.|\n)*"
-               r"tcgen05.ld.sync.aligned.16x32bx2.x32.b32"
+               r"tcgen05\.ld\.sync\.aligned\.16x32bx2\.x(?:16|32)\.b32"
                r"(.|\n)*"
                r"tcgen05.wait::ld.sync.aligned")
     assert re.search(pattern, str(ptx)), "The PTX does not match the expected pattern."

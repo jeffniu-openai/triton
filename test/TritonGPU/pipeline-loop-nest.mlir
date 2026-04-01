@@ -26,7 +26,7 @@ tt.func public @matmul_kernel_tma_persistent(%arg0: !tt.ptr<i8, 0>, %arg1: !tt.p
   %8 = arith.subi %0, %c132_i32 : i32
   %9 = arith.muli %4, %c8_i32 : i32
 
-  // BLACKWELL: [[ACC_BUFS:%.*]] = ttng.tmem_alloc : () -> !ttg.memdesc<2x128x128xf32, #tmem,
+  // BLACKWELL: [[ACC_BUFS:%.*]] = ttng.tmem_alloc : () -> !ttg.memdesc<2x128x128xf32, #{{.*}}, #ttng.tensor_memory, mutable>
   // BLACKWELL: ttg.memdesc_trans
   // BLACKWELL: [[ACC_BUF:%.*]] = ttg.memdesc_index [[ACC_BUFS]]
   // BLACKWELL: ttng.tc_gen5_mma {{%[0-9]+}}, {{%[0-9]+}}, [[ACC_BUF]], %false

@@ -145,6 +145,36 @@ static SmallVector<unsigned> eraseOrder(ArrayRef<unsigned> order,
   return resOrder;
 }
 
+static LinearLayout normalizeDistributedLinearLayout(LinearLayout ll,
+                                                     MLIRContext *ctx) {
+  auto kRegister = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  auto kBlock = StringAttr::get(ctx, "block");
+  SmallVector<StringAttr> expectedDims = {kRegister, kLane, kWarp, kBlock};
+  auto existingBases = ll.getBases();
+  bool needsNormalization =
+      llvm::any_of(expectedDims, [&](StringAttr dim) { return !ll.hasInDim(dim); });
+  if (!needsNormalization)
+    return ll;
+
+  LinearLayout::BasesT normalizedBases;
+  for (StringAttr dim : expectedDims) {
+    auto it = existingBases.find(dim);
+    if (it != existingBases.end()) {
+      normalizedBases[dim] = it->second;
+    } else {
+      normalizedBases[dim] = {};
+    }
+  }
+  for (const auto &[dim, bases] : existingBases) {
+    if (!llvm::is_contained(expectedDims, dim))
+      normalizedBases[dim] = bases;
+  }
+  return LinearLayout(std::move(normalizedBases), ll.getOutDims(),
+                      ll.isSurjective());
+}
+
 SmallVector<unsigned> getMatrixOrder(unsigned rank, bool rowMajor) {
   // Return the order that represents that the batch is in row-major or
   // column-major order for a batch of matrices of shape [*, m, n] with
@@ -877,7 +907,8 @@ SmallVector<unsigned> BlockedEncodingAttr::getRepOrder() const {
 
 void LinearEncodingAttr::print(mlir::AsmPrinter &printer) const {
   printer << "<{";
-  printLinearLayout(printer, getLinearLayout());
+  printLinearLayout(
+      printer, normalizeDistributedLinearLayout(getLinearLayout(), getContext()));
   printer << "}>";
 }
 
@@ -922,19 +953,27 @@ CGAEncodingAttr linearToCGAEncodingAttr(const LinearLayout &ll,
     std::iota(order.begin(), order.end(), 0);
     return CGAEncodingAttr::fromSplitParams(ctx, ones, ones, order);
   }
-  auto cgaLayout = ll.sublayout({kBlock}, outDims);
   assert(cgaLogicalShape.size() == outDims.size() &&
          "layout rank and CGA rank must match");
-  for (auto [idx, outDim] : llvm::enumerate(outDims))
-    cgaLayout = cgaLayout.resizeOutDim(outDim, cgaLogicalShape[idx]);
-  return CGAEncodingAttr::get(ctx, std::move(cgaLayout));
+  auto shapePerCTA = ll.getOutDims();
+  for (auto [idx, dim] : llvm::enumerate(shapePerCTA))
+    dim.second /= cgaLogicalShape[idx];
+  llvm::erase(inDims, kBlock);
+  auto singleCTALayout = ll.sublayout(inDims, outDims);
+  singleCTALayout = LinearLayout(singleCTALayout.getBases(), shapePerCTA,
+                                 /*requireSurjective=*/false);
+  auto maybeCgaLayout = divideLeft(ll, singleCTALayout);
+  assert(maybeCgaLayout.has_value());
+  return CGAEncodingAttr::get(ctx,
+                              maybeCgaLayout->sublayout({kBlock}, outDims));
 }
 
 SmallVector<unsigned>
 LinearEncodingAttr::orderPerDim(StringAttr dimName,
                                 ArrayRef<unsigned> defaultOrder) const {
-  return ::mlir::triton::orderPerDimImpl(getLinearLayout(), dimName,
-                                         defaultOrder);
+  return ::mlir::triton::orderPerDimImpl(
+      normalizeDistributedLinearLayout(getLinearLayout(), getContext()), dimName,
+      defaultOrder);
 }
 
 // [Note. Divergence of methods wrt. legacy layouts]
@@ -954,7 +993,9 @@ SmallVector<unsigned> LinearEncodingAttr::getRepOrder() const {
 
 CGAEncodingAttr LinearEncodingAttr::getCGALayout() const {
   auto splitNum = basesPerDim(StringAttr::get(getContext(), "block"));
-  return linearToCGAEncodingAttr(getLinearLayout(), splitNum);
+  return linearToCGAEncodingAttr(
+      normalizeDistributedLinearLayout(getLinearLayout(), getContext()),
+      splitNum);
 }
 SmallVector<unsigned> LinearEncodingAttr::getWarpsPerCTA() const {
   return basesPerDim(StringAttr::get(getContext(), "warp"));
@@ -971,7 +1012,7 @@ SmallVector<unsigned> LinearEncodingAttr::getThreadOrder() const {
 
 SmallVector<unsigned> LinearEncodingAttr::getSizePerThread() const {
   auto rank = getOrder().size();
-  const auto &ll = getLinearLayout();
+  auto ll = normalizeDistributedLinearLayout(getLinearLayout(), getContext());
   auto ctx = getContext();
   auto kRegister = StringAttr::get(ctx, "register");
   auto splitNum = getCGALayout().getCTASplitNum();
@@ -1008,7 +1049,9 @@ SmallVector<unsigned> LinearEncodingAttr::getSizePerThread() const {
 }
 
 SmallVector<unsigned> LinearEncodingAttr::getOrder() const {
-  auto rank = getLinearLayout().getNumOutDims();
+  auto rank =
+      normalizeDistributedLinearLayout(getLinearLayout(), getContext())
+          .getNumOutDims();
   SmallVector<unsigned> order(rank);
   // Choose [rank-1, rank-2, ... 0] as the default order in case
   // there are dims that do not move in the register
@@ -1019,7 +1062,7 @@ SmallVector<unsigned> LinearEncodingAttr::getOrder() const {
 }
 
 LinearLayout LinearEncodingAttr::toLinearLayout(ArrayRef<int64_t> shape) const {
-  auto ll = getLinearLayout();
+  auto ll = normalizeDistributedLinearLayout(getLinearLayout(), getContext());
   auto canonicalDims = llvm::to_vector(ll.getOutDimNames());
   llvm::SmallDenseMap<StringAttr, int64_t> namedShape;
   llvm::SmallVector<StringAttr> permutedDims;
@@ -1049,7 +1092,7 @@ LinearEncodingAttr::getElemsPerThread(ArrayRef<int64_t> shape) const {
 SmallVector<unsigned>
 LinearEncodingAttr::getContig(const char *inDim,
                               SmallVector<unsigned int> lowerContig) const {
-  const auto &ll = getLinearLayout();
+  auto ll = normalizeDistributedLinearLayout(getLinearLayout(), getContext());
   const auto &bases =
       ll.getBases().find(StringAttr::get(getContext(), inDim))->second;
   auto order = getOrder();

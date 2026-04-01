@@ -1108,6 +1108,7 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
 
   auto *ctx = memTy.getContext();
   auto kRow = StringAttr::get(ctx, "row");
+  auto kBlock = StringAttr::get(ctx, "block");
   if (!maybeLayout->hasInDim(kRow))
     return std::nullopt;
   int64_t logicalRows = memTy.getShape()[memTy.getRank() - 2];
@@ -1117,7 +1118,9 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
            llvm::all_of(maybeLayout->getBasis(kRow, idx),
                         [](int32_t v) { return v == 0; });
   };
-  auto activeLayout = maybeLayout->removeZeroBasesAlongDim(kRow);
+  auto normalizedLayout =
+      normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
+  auto activeLayout = normalizedLayout.removeZeroBasesAlongDim(kRow);
   unsigned activeRowBits =
       activeLayout.hasInDim(kRow) ? activeLayout.getInDimSizeLog2(kRow) : 0;
   auto isZeroActiveRowBasis = [&](unsigned idx) {
@@ -1125,43 +1128,50 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
            llvm::all_of(activeLayout.getBasis(kRow, idx),
                         [](int32_t v) { return v == 0; });
   };
+  auto planFromRowBits = [&](unsigned bits, auto &&isZeroBasis)
+      -> std::optional<TMemLdStRowPlan> {
+    if (bits >= 7) {
+      if (isZeroBasis(bits - 2) && isZeroBasis(bits - 1)) {
+        return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
+                               /*rowSpan=*/128};
+      }
+      if (!isZeroBasis(bits - 2) && isZeroBasis(bits - 1)) {
+        return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+                               /*rowSpan=*/128, /*baseOffset=*/4};
+      }
+      return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+                             /*rowSpan=*/128};
+    }
+    if (bits == 6) {
+      if (isZeroBasis(bits - 2) && isZeroBasis(bits - 1)) {
+        return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
+                               /*rowSpan=*/64};
+      }
+      return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                             /*rowSpan=*/64};
+    }
+    return std::nullopt;
+  };
+  // When the logical M dimension is widened via CGA block bases, direct
+  // ld/st anchors must be derived from the local active row footprint, not
+  // from the widened global logical shape. Otherwise blockM=64 accumulator
+  // layouts incorrectly widen to the 128-row family and reject valid direct
+  // register layouts.
+  if (normalizedLayout.hasInDim(kBlock) &&
+      normalizedLayout.getInDimSize(kBlock) > 1 &&
+      activeLayout.hasInDim(kRow) &&
+      logicalRows > activeLayout.getInDimSize(kRow)) {
+    return planFromRowBits(activeRowBits, isZeroActiveRowBasis);
+  }
   // After relaxing TMEM-linear verification to admit sparse/non-surjective
   // layouts, the 64-row split-N families now carry one explicit zero row basis.
   // Classifying those layouts from the raw row-basis count alone widens them to
   // the 128-row warpx2 family and breaks direct ld/st selection. For logical
   // M64 tiles, derive the row plan from the active row bases instead.
   if (logicalRows == 64 && activeRowBits == 6) {
-    if (isZeroActiveRowBasis(activeRowBits - 2) &&
-        isZeroActiveRowBasis(activeRowBits - 1)) {
-      return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
-                             /*rowSpan=*/64};
-    }
-    return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
-                           /*rowSpan=*/64};
+    return planFromRowBits(activeRowBits, isZeroActiveRowBasis);
   }
-  if (rowBits >= 7) {
-    if (isZeroRowBasis(rowBits - 2) && isZeroRowBasis(rowBits - 1)) {
-      return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
-                             /*rowSpan=*/128};
-    }
-    if (!isZeroRowBasis(rowBits - 2) && isZeroRowBasis(rowBits - 1)) {
-      // warpx2::02_13-style layouts keep the 128-row anchor pair but the live
-      // 64x128b window starts 4 dwords into the allocation.
-      return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
-                             /*rowSpan=*/128, /*baseOffset=*/4};
-    }
-    return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
-                           /*rowSpan=*/128};
-  }
-  if (rowBits == 6) {
-    if (isZeroRowBasis(rowBits - 2) && isZeroRowBasis(rowBits - 1)) {
-      return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
-                             /*rowSpan=*/64};
-    }
-    return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
-                           /*rowSpan=*/64};
-  }
-  return std::nullopt;
+  return planFromRowBits(rowBits, isZeroRowBasis);
 }
 
 std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc) {
@@ -3250,10 +3260,12 @@ computeTMemLdStEncodingInfoImpl(
     int maxnreg, std::function<InFlightDiagnostic()> emitError,
     std::optional<TMemLdStRowPlan> rowPlanOverride) {
   bool debug = std::getenv("TRITON_DEBUG_TMEM_HALFROWS") != nullptr;
+  bool debugScales = std::getenv("TRITON_DEBUG_TMEM_SCALES") != nullptr;
   auto *ctx = regTy.getContext();
   auto S = [ctx](StringRef str) { return StringAttr::get(ctx, str); };
   auto kBlock = S("block");
   auto kReg = S("register");
+  auto kLane = S("lane");
   auto kWarp = S("warp");
   auto kRow = S("row");
   auto kCol = S("col");
@@ -3304,11 +3316,50 @@ computeTMemLdStEncodingInfoImpl(
       return std::nullopt;
     return squeezeTrivialBlock(std::move(*maybeRaw));
   };
+  bool isScales = isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding());
   LinearLayout regLayout =
-      (physicalRows > logicalRows || physicalCols > logicalCols)
-          ? getRawLinearRegLayout().value_or(squeezeTrivialBlock(
-                toLinearLayout(regTy)))
-          : squeezeTrivialBlock(toLinearLayout(regTy));
+      isScales
+          ? squeezeTrivialBlock(toLinearLayout(regTy))
+          : ((physicalRows > logicalRows || physicalCols > logicalCols)
+                 ? getRawLinearRegLayout().value_or(
+                       squeezeTrivialBlock(toLinearLayout(regTy)))
+                 : squeezeTrivialBlock(toLinearLayout(regTy)));
+  if (isScales) {
+    auto outDims = to_vector(regLayout.getOutDims());
+    auto rowBases = memLayout.getBases().lookup(kRow);
+    std::optional<unsigned> rowOutIdx;
+    for (ArrayRef<int32_t> basis : rowBases) {
+      for (auto [idx, value] : llvm::enumerate(basis)) {
+        if (value != 0) {
+          rowOutIdx = idx;
+          break;
+        }
+      }
+      if (rowOutIdx)
+        break;
+    }
+    if (rowOutIdx) {
+      auto bases = regLayout.getBases();
+      for (auto &dimBases : llvm::make_second_range(bases)) {
+        for (auto &basis : dimBases) {
+          bool touchesOnlyRow = basis[*rowOutIdx] != 0;
+          for (auto [idx, value] : llvm::enumerate(basis)) {
+            if (idx == *rowOutIdx)
+              continue;
+            touchesOnlyRow &= value == 0;
+          }
+          if (touchesOnlyRow &&
+              std::abs(basis[*rowOutIdx]) >= logicalRows) {
+            std::fill(basis.begin(), basis.end(), 0);
+          }
+        }
+      }
+      outDims[*rowOutIdx].second = static_cast<int32_t>(logicalRows);
+      regLayout = squeezeTrivialBlock(LinearLayout(std::move(bases),
+                                                   std::move(outDims),
+                                                   /*requireSurjective=*/false));
+    }
+  }
   if (!canInvertAndComposeSafely(regLayout, memLayout)) {
     if (emitError) {
       emitError() << "Failed to lower TMEM load/store: register layout image "
@@ -3344,7 +3395,7 @@ computeTMemLdStEncodingInfoImpl(
     }
     cvt = maybeSublayout.value();
   }
-  if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+  if (isScales) {
     auto prefersI16x32bx2 = [&]() {
       if (!regLayout.hasInDim(kReg) || regLayout.getNumOutDims() != 2)
         return false;
@@ -3359,6 +3410,17 @@ computeTMemLdStEncodingInfoImpl(
       }
       return false;
     }();
+    if (debugScales) {
+      llvm::errs() << "[tmem-scales] regTy=" << regTy << "\n";
+      llvm::errs() << "[tmem-scales] memTy=" << memTy << "\n";
+      llvm::errs() << "[tmem-scales] regLayout:\n"
+                   << regLayout.toString() << "\n";
+      llvm::errs() << "[tmem-scales] memLayout:\n"
+                   << memLayout.toString() << "\n";
+      llvm::errs() << "[tmem-scales] cvt:\n" << cvt.toString() << "\n";
+      llvm::errs() << "[tmem-scales] preferI16x32bx2="
+                   << prefersI16x32bx2 << "\n";
+    }
     if (regLayout.getInDimSizeLog2(kWarp) < 2 ||
         memLayout.getInDimSizeLog2(kRow) < 7) {
       if (emitError) {
@@ -3384,12 +3446,34 @@ computeTMemLdStEncodingInfoImpl(
     cvt = LinearLayout(std::move(bases), cvt.getOutDims(),
                        /*isSurjective=*/cvt.isSurjective());
 
-  auto info =
+    auto info =
         lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError,
                       /*unpacked=*/false, /*warpRow0=*/32, /*warpRow1=*/64,
                       /*rowSpan=*/128, prefersI16x32bx2);
     if (failed(info))
       return failure();
+    if (info->atom == TMemAccessAtom::I16x32bx2 && logicalRows <= 16 &&
+        logicalCols > 4 && info->numRegsPerMessage > 1 &&
+        (!info->secondHalfOffset || *info->secondHalfOffset == 0)) {
+      if (emitError) {
+        emitError() << "Failed to lower TMEM scales load/store: the selected "
+                       "register layout carries the 16x32bx2 half-tile split "
+                       "through register repetition instead of the native "
+                       "second-half offset. Use a register layout with the "
+                       "half-tile split on lane=16.";
+      }
+      return failure();
+    }
+    if (debugScales) {
+      llvm::errs() << "[tmem-scales] atom="
+                   << static_cast<int>(info->atom)
+                   << " numRegsPerMessage=" << info->numRegsPerMessage
+                   << " vec=" << info->vec;
+      if (info->secondHalfOffset)
+        llvm::errs() << " secondHalfOffset=" << *info->secondHalfOffset;
+      llvm::errs() << "\n[tmem-scales] reps:\n"
+                   << info->reps.toString() << "\n";
+    }
 
     auto kReg = *regLayout.getInDimNames().begin();
     if (bitwidth == 32) {
@@ -3610,17 +3694,6 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
     if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
       return squeezeTrivialBlock(toLinearLayout(memTy));
 
-    std::string error;
-    auto maybeCanonical = getCanonicalTMemLinearEncoding(memTy, &error);
-    if (maybeCanonical) {
-      return squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
-          maybeCanonical->getLinearLayout()));
-    }
-
-    // Some descriptor views are not materializable as standalone canonical
-    // TMEM encodings but still have a well-defined analysis projection.
-    // Keep direct lowering available for those cases when the view-analysis
-    // layout can still be lowered exactly.
     std::string analysisError;
     auto maybeAnalysisLayout = getTMemViewAnalysisLinearLayout(
         memTy.getShape(), memTy.getEncoding(), &analysisError);
@@ -3629,13 +3702,20 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
           normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysisLayout));
     }
 
+    std::string canonicalError;
+    auto maybeCanonical = getCanonicalTMemLinearEncoding(memTy, &canonicalError);
+    if (maybeCanonical) {
+      return squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+          maybeCanonical->getLinearLayout()));
+    }
+
     if (emitError) {
-      emitError() << (error.empty()
-                          ? (analysisError.empty()
+      emitError() << (analysisError.empty()
+                          ? (canonicalError.empty()
                                  ? "TMEM descriptor view is not representable "
                                    "for direct TMEM load/store lowering"
-                                 : analysisError)
-                          : error);
+                                 : canonicalError)
+                          : analysisError);
     }
     return LinearLayout();
   }();
@@ -4122,7 +4202,7 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
 }
 
 llvm::SmallVector<LinearLayout>
-getTMemCopyDescriptorLayouts(MemDescType /*srcTy*/,
+getTMemCopyDescriptorLayouts(MemDescType srcTy,
                              const LinearLayout &shmemLl,
                              const LinearLayout &cvt,
                              const TMemCopyMessagePlan &message) {
@@ -4144,10 +4224,15 @@ getTMemCopyDescriptorLayouts(MemDescType /*srcTy*/,
   };
   auto makeSharedSeedLayout = [&](unsigned descriptorRows,
                                   unsigned sourceWarpGroups,
-                                  unsigned descriptorCols) {
+                                  unsigned descriptorCols)
+      -> std::optional<LinearLayout> {
     auto dataLayout = shmemLl.pseudoinvert();
     auto dataDims = to_vector(dataLayout.getInDimNames());
     assert(dataDims.size() == 2);
+    int64_t reshapeVolume = static_cast<int64_t>(descriptorRows) *
+                            sourceWarpGroups * descriptorCols;
+    if (dataLayout.getTotalInDimSize() != reshapeVolume)
+      return std::nullopt;
     return dataLayout
         .reshapeIns({{dataDims[0], static_cast<int32_t>(descriptorRows)},
                      {kWarp, static_cast<int32_t>(sourceWarpGroups)},
@@ -4264,12 +4349,16 @@ getTMemCopyDescriptorLayouts(MemDescType /*srcTy*/,
   };
   pushUnique(makeLayout(message.descriptorRows, message.sourceWarpGroups,
                         cvt.getInDimSize(kCol)));
-  if (message.atom.multicast == 2) {
-    auto directSharedLayout =
-        makeSharedSeedLayout(message.descriptorRows, message.sourceWarpGroups,
-                             cvt.getInDimSize(kCol));
-    pushUnique(directSharedLayout);
-    pushSortedInputBasesVariant(directSharedLayout);
+  if (auto directSharedLayout =
+          makeSharedSeedLayout(message.descriptorRows,
+                               message.sourceWarpGroups,
+                               cvt.getInDimSize(kCol))) {
+    pushUnique(*directSharedLayout);
+    pushSortedInputBasesVariant(*directSharedLayout);
+    if (message.atom.multicast == 2) {
+      pushUnique(*directSharedLayout);
+      pushSortedInputBasesVariant(*directSharedLayout);
+    }
   }
   // tcgen05.copy.warpx2::01_23 exposes a 32x128b core descriptor plus extra
   // source warp-group bits that can materialize as repeat along row, repeat
@@ -4371,6 +4460,10 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
   auto kOffset = StringAttr::get(ctx, "offset");
   if (!ll.hasOutDim(kOffset))
     return false;
+  for (auto [dim, instrSize] : llvm::zip(ll.getInDimNames(), instrShape)) {
+    if (instrSize > ll.getInDimSize(dim))
+      return false;
+  }
   auto CGALayout = triton::gpu::CGAEncodingAttr::get1CTALayout(ctx, 2);
   for (bool fp4Padded :
        (bitwidth == 4 ? SmallVector<bool>({false, true})
@@ -4404,35 +4497,21 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
         }
 
         auto log2RowsTile = shmemTileInv.getInDimSizeLog2(dims[leadingDim]);
-        if (llvm::Log2_32(instrShape[leadingDim]) > log2RowsTile) {
-          if (log2RowsTile >= ll.getInDimSizeLog2(dims[leadingDim]))
-            continue;
+        if (llvm::Log2_32(instrShape[leadingDim]) > log2RowsTile)
           (void)ll.getBasis(dims[leadingDim], log2RowsTile, kOffset);
-        }
         auto log2ColsTile = shmemTileInv.getInDimSizeLog2(dims[stridedDim]);
-        if (llvm::Log2_32(instrShape[stridedDim]) > log2ColsTile) {
-          if (log2ColsTile >= ll.getInDimSizeLog2(dims[stridedDim]))
-            continue;
+        if (llvm::Log2_32(instrShape[stridedDim]) > log2ColsTile)
           (void)ll.getBasis(dims[stridedDim], log2ColsTile, kOffset);
-        }
 
         auto bases = shmemTileInv.getBases();
-        bool invalidCandidate = false;
         for (int d : {0, 1}) {
-          auto log2Tile = shmemTileInv.getInDimSizeLog2(dims[d]);
-          if (log2Tile >= ll.getInDimSizeLog2(dims[d]) &&
-              instrShape[d] > shmemTileInv.getInDimSize(dims[d])) {
-            invalidCandidate = true;
-            break;
-          }
           for (int i = 1; i < instrShape[d] / shmemTileInv.getInDimSize(dims[d]);
                i *= 2) {
-            auto stride = ll.getBasis(dims[d], log2Tile, kOffset);
+            auto stride = ll.getBasis(
+                dims[d], shmemTileInv.getInDimSizeLog2(dims[d]), kOffset);
             bases[dims[d]].push_back({stride * i});
           }
         }
-        if (invalidCandidate)
-          continue;
         auto maxBasis = 0;
         for (auto dimBases : llvm::make_second_range(bases)) {
           for (auto basis : dimBases) {

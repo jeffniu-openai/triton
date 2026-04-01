@@ -518,17 +518,11 @@ public:
 };
 
 static Value createTMAlloc(IRRewriter &rewriter, LLVM::LLVMFuncOp func,
-                           size_t size, int sharedOffset, Value pred,
-                           bool twoCTAs) {
+                           size_t size, Value pred, bool twoCTAs) {
   PTXBuilder ptxBuilder;
   Location loc = func.getLoc();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   Value sharedMem = mlir::LLVM::getStackPointer(rewriter, func);
-  if (sharedOffset != 0) {
-    Value sharedMemInt = b.ptrtoint(i32_ty, sharedMem);
-    Value sharedMemOffset = b.add(sharedMemInt, b.i32_val(sharedOffset));
-    sharedMem = b.inttoptr(sharedMem.getType(), sharedMemOffset);
-  }
   std::string ptxString =
       "@$0 tcgen05.alloc.cta_group::" + std::to_string(twoCTAs ? 2 : 1) +
       ".sync.aligned.shared::cta.b32 [$1], " + std::to_string(size) + ";";
@@ -604,14 +598,10 @@ static Value initTensorMemory(LLVM::LLVMFuncOp func) {
   }
 
   bool useTwoCTAs = mlir::triton::nvidia_gpu::getModuleTwoCTAs(mod);
-  auto sharedAttr = mod->getAttrOfType<IntegerAttr>("ttg.shared");
-  int sharedBytes = sharedAttr ? sharedAttr.getInt() : 0;
-  int sharedOffset = std::max(0, sharedBytes - 4);
   // This code is only executed by the default warp group.
   Value threadId = NVVM::ThreadIdXOp::create(rewriter, loc, i32_ty);
   Value pred = b.icmp_ult(threadId, b.i32_val(32));
-  Value alloc =
-      createTMAlloc(rewriter, func, size, sharedOffset, pred, useTwoCTAs);
+  Value alloc = createTMAlloc(rewriter, func, size, pred, useTwoCTAs);
   createRelinquishAlloc(rewriter, loc, pred, useTwoCTAs);
   // TODO: pred will have a long liverange, we need to check if this is a
   // problem and how it can be fixed.

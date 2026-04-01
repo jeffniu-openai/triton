@@ -292,15 +292,13 @@ SmallVector<Value> splitRhs(OpBuilder &builder,
   auto shape = llvm::to_vector(type.getShape());
   shape[kDim] = newK;
   SmallVector<int32_t> offsets(rank, 0);
-  auto newType = ttg::MemDescType::get(
-      shape, type.getElementType(), type.getEncoding(), type.getMemorySpace(),
-      /*isMutable=*/false, type.getAllocShape());
   SmallVector<Value> ret;
   for (int i = 0; i < nSplits; i++) {
     offsets[kDim] = i * newK;
-    Value newSmem =
-        ttg::MemDescSubsliceOp::create(builder, loc, newType, rhs, offsets);
-    ret.push_back(newSmem);
+    auto newSmem =
+        ttg::MemDescSubsliceOp::createChecked(builder, loc, rhs, shape, offsets);
+    assert(succeeded(newSmem) && "expected valid memdesc_subslice");
+    ret.push_back(newSmem->getResult());
   }
   return ret;
 }

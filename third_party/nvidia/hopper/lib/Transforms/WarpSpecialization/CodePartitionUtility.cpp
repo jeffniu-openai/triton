@@ -166,8 +166,11 @@ Value getBarrierForPipelineStage(OpBuilderWithAsyncTaskIds &builder,
       /*mutableMemory=*/true);
 
   // Create barrierForTMA from barrierAlloc.
-  return builder.createWithAsyncTaskIds<ttg::MemDescIndexOp>(
-      barrierAlloc.getLoc(), barrierTy, barrierAlloc, bufferIdx);
+  auto barrierView = ttg::MemDescIndexOp::createChecked(
+      builder, barrierAlloc.getLoc(), barrierAlloc, bufferIdx);
+  assert(succeeded(barrierView) && "expected valid barrier memdesc_index");
+  setAsyncTaskIds(barrierView->getOperation(), builder.getAsyncTaskIds());
+  return barrierView->getResult();
 }
 
 } // namespace mlir

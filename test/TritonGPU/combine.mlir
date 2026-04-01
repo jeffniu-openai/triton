@@ -3756,8 +3756,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     //     CHECK:   ttg.convert_layout
     //     CHECK:   tt.load
     //     CHECK:   ttg.convert_layout
-    // CHECK-NOT:   ttg.convert_layout
-    //     CHECK:   scf.yield
+    //     CHECK-NEXT:   tt.fp_to_fp
     %62:4 = scf.for %arg11 = %c0_i32 to %59 step %c1_i32 iter_args(%arg12 = %cst_2, %arg13 = %47, %arg14 = %57, %arg15 = %37) -> (tensor<128x128xf32, #blocked1>, tensor<128x128x!tt.ptr<f8E5M2>, #blocked3>, tensor<64x128x!tt.ptr<i8>, #blocked3>, tensor<128x4x!tt.ptr<i8>, #blocked2>)  : i32 {
       %80 = tt.load %arg13 : tensor<128x128x!tt.ptr<f8E5M2>, #blocked3>
       %81 = ttg.convert_layout %80 : tensor<128x128xf8E5M2, #blocked3> -> tensor<128x128xf8E5M2, #blocked1>

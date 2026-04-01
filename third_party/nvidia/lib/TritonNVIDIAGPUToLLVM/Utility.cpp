@@ -205,10 +205,12 @@ LogicalResult lowerLdStMatrix(
   // Lower load via ldmatrix, store via stmatrix
 
   bool isStore = !vals.empty();
-  if (isStore && !targetInfo.supportStMatrix())
+  if (isStore && !targetInfo.supportStMatrix()) {
     return failure();
-  if (!isStore && !targetInfo.supportLdMatrix())
+  }
+  if (!isStore && !targetInfo.supportLdMatrix()) {
     return failure();
+  }
 
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   auto *ctx = rewriter.getContext();
@@ -225,8 +227,9 @@ LogicalResult lowerLdStMatrix(
   // In the transpose case we just have the b8 and b16 cases
   if ((!transpose && bitwidth > 32) ||
       (transpose && !(bitwidth == 16 ||
-                      (bitwidth == 8 && targetInfo.supportLdStMatrixB8()))))
+                      (bitwidth == 8 && targetInfo.supportLdStMatrixB8())))) {
     return failure();
+  }
 
   // Map onto offsets (contiguous part) and addr (non-contiguous part)
   LinearLayout fullTile;

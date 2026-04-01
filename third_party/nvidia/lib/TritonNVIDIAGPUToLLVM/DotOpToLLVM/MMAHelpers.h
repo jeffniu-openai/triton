@@ -334,7 +334,8 @@ class DotOpMmaV5TmemLoader : public DotOpMmaMemLoader {
 public:
   DotOpMmaV5TmemLoader() {}
   static DotOpMmaV5TmemLoader build(Location loc, RewriterBase &rewriter,
-                                    gpu::MemDescType memTy, Value tmemBase);
+                                    gpu::MemDescType memTy, Value tmemBase,
+                                    bool useRawWordColumns = false);
 
   MemDescOperand tmemLoad(int a, int b, ConversionPatternRewriter &rewriter,
                           Location loc) const;
@@ -345,12 +346,15 @@ public:
   }
 
 private:
-  DotOpMmaV5TmemLoader(LinearLayout ll, Value address, int bitwidth)
-      : ll(std::move(ll)), address(address), bitwidth(bitwidth) {}
+  DotOpMmaV5TmemLoader(LinearLayout ll, Value address, int bitwidth,
+                       bool useRawWordColumns)
+      : ll(std::move(ll)), address(address), bitwidth(bitwidth),
+        useRawWordColumns(useRawWordColumns) {}
 
   LinearLayout ll;
   Value address;
   int bitwidth;
+  bool useRawWordColumns = false;
 };
 
 static Value getOffsetedBase(Value v, gpu::MemDescType memDescTy,

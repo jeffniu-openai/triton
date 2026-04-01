@@ -1032,7 +1032,11 @@ struct TensorMemoryAllocOpConversion
       SmallVector<Value> srcValues =
           unpackLLElements(loc, adaptor.getSrc(), rewriter);
       Value ptr = b.inttoptr(base.getType(), allocAddress);
-      if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy, Value(),
+      // A fresh tmem_alloc result is not a descriptor view; use the direct
+      // memdesc type query path here so legacy-equivalent initialized allocs
+      // lower identically to the pre-generalization codegen.
+      if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy,
+                                        /*memDescValue=*/Value(),
                                         ptr, maxnreg, b.i1_val(true),
                                         llvmElemTy, srcValues)))
         return failure();
@@ -1110,6 +1114,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
                                : tmemError);
   }
   auto tmemLl = toLinearLayout(*maybeStandaloneDstTy);
+  bool isScales = isa<TensorMemoryScalesEncodingAttr>(dstTy.getEncoding());
 
   // This subtlely handles subviews
   auto cvt = tmemLl.invertAndCompose(shmemLl);
@@ -1135,7 +1140,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   SmallVector<PlannedCopyMessage, 2> plannedMessages;
   std::optional<TMemCopyPlan> selectedPlan;
   for (const auto &plan : copyPlans) {
-    if (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family))
+    if (!isScales &&
+        !isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family))
       continue;
     SmallVector<PlannedCopyMessage, 2> candidateMessages;
     candidateMessages.reserve(plan.messages.size());
@@ -1178,6 +1184,23 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     break;
   }
   if (!selectedPlan) {
+    if (isScales) {
+      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
+      auto diag =
+          op->emitOpError("The source shared layout maps to tcgen05.copy.")
+          << family
+          << ", but Triton could not synthesize a compatible shared-memory "
+             "descriptor plan for tensor memory scales.";
+      diag.attachNote()
+          << "Use a shared layout that lowers to tcgen05.copy." << family
+          << ", or reshape / permute the shared tile until it lowers to the "
+             "same descriptor family.";
+      diag.attachNote()
+          << "This is reported during lowering because the final "
+             "shared-memory descriptor layout is only known after shared "
+             "memory allocation.";
+      return failure();
+    }
     return op->emitOpError("failed to find valid tcgen05.copy layout from "
                            "shared memory descriptor ")
            << srcTy << " to tensor memory descriptor " << dstTy;

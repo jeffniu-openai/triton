@@ -66,9 +66,8 @@ LogicalResult lowerLdStMatrix(
     auto result = LLVM::NVIDIA::lowerLdStMatrix(
         loc, cvt, transpose, vals, smemBase, affineOffset, maskSpanAffineOffset,
         llvmElemTy, rewriter, targetInfo);
-    if (succeeded(result)) {
+    if (succeeded(result))
       return result;
-    }
   }
   return failure();
 }

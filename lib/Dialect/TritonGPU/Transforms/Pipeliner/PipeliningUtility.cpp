@@ -653,11 +653,10 @@ triton::createSingleBufferView(OpBuilder &builder, Value alloc, Value idx) {
          "Expected multi-dimensional memdesc (e.g., Nx...) for subview");
   shape.insert(shape.end(), allocDescType.getShape().begin() + 1,
                allocDescType.getShape().end());
-  auto viewDescType = ttg::MemDescType::get(
-      shape, allocDescType.getElementType(), allocDescType.getEncoding(),
-      allocDescType.getMemorySpace(), allocDescType.getMutableMemory());
-  return ttg::MemDescIndexOp::create(builder, alloc.getLoc(), viewDescType,
-                                     alloc, idx);
+  auto view = ttg::MemDescIndexOp::createChecked(builder, alloc.getLoc(), alloc,
+                                                 idx);
+  assert(succeeded(view) && "expected valid memdesc_index");
+  return view->getResult();
 }
 
 TypedValue<ttg::MemDescType>

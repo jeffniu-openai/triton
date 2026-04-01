@@ -4251,3 +4251,73 @@ Open after this slice:
       -> non-empty output (`226` lines)
     - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file /root/code/triton/test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`
       -> success
+- 2026-03-30: stale lit fallout cleared and current full lit is green again
+  - compared stale CHECK-only files against `/tmp/triton-origin-main` output and
+    updated expectations where the underlying pass/output intent stayed the same
+  - fixed the real tensor-memory-scales / pipeline fallout and refreshed the
+    stale `memdesc_subslice` / canonical TMEM-linear print expectations
+  - current validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `cd build/cmake.linux-aarch64-cpython-3.12 && ninja check-triton-lit-tests`
+      -> `248 passed, 2 unsupported`
+- 2026-03-30: split-N permuted `64x2` ld/st direct support restored
+  - root cause:
+    - `getTMemLdStRowPlanForType(...)` started deriving the active `M64`
+      split-N row footprint from the normalized TMEM-linear layout without
+      first removing the explicit zero row basis
+    - for `64x2` split-N layouts that left the active row-bit count widened, so
+      `get_reg_layout(...)` stopped recovering the 64-row row plan and the
+      direct `16x32bx2` / `32x32b_splitn` path fell off the supported set
+  - fix:
+    - restored the active-row query to use
+      `normalizedLayout.removeZeroBasesAlongDim(kRow)` in
+      `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+  - validation:
+    - `PYTHONPATH=python:. python - <<'PY' ... tensor_memory_descriptor_type(float32, [64,2], layout, [64,2]).get_reg_layout(...) ... PY`
+      -> `auto`, `32x32b`, `16x64b`, `16x32bx2`, and `32x32b_splitn`
+         all return concrete layouts again for `_make_tmem_linear_layout_m64(2)`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn or test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep'`
+      -> `231 passed`
+- 2026-03-30: copy-scales clean-unsupported diagnostics re-normalized in late lowering
+  - remaining `warpx2`-candidate scales copies are still intentionally
+    unsupported, but after shared-memory allocation they now fail in
+    `TensorMemoryToLLVM.cpp`
+  - updated late lowering to emit the same family-specific
+    `maps to tcgen05.copy... could not synthesize a compatible shared-memory
+    descriptor plan for tensor memory scales` guidance before the outer
+    `PassManager::run failed`
+  - updated the runtime-matrix tests to accept the current outer exception
+    wrapper while still asserting the real unsupported reason
+  - validation:
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -x 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe[warpx2_candidate-smem_layout1-CLEAN_UNSUPPORTED]'`
+      -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -x python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_bug_cp_scales_unsupported_layout_raises_runtimeerror_parse`
+      -> `1 passed`
+- 2026-03-30: broad Gluon/TMEM Python validation is green on the current tree
+  - compile/tooling smoke:
+    - `PYTHONPATH=python:. pytest -s --tb=short python/test/unit/language/test_compile_only.py`
+      -> `7 passed`
+    - `PYTHONPATH=python:. pytest -s --tb=short python/test/unit/language/test_frontend.py`
+      -> `34 passed`
+    - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_frontend.py`
+      -> `205 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py -k 'tmem_reduction or tcgen05_mma_multicast_commit'`
+      -> `92 passed`
+    - `PYTHONPATH=python:. pytest -s --tb=short python/test/unit/tools/test_triton_to_gluon.py`
+      -> `16 passed`
+  - split GPU runtime batch:
+    - ran `python/test/gluon/test_tmem_runtime_matrix.py` with
+      `pytest -s --tb=short --splits 4 --group N` pinned to
+      `CUDA_VISIBLE_DEVICES=0/1/2/3`
+    - aggregate result:
+      - group 1 -> `447 passed`
+      - group 2 -> `367 passed, 80 skipped`
+      - group 3 -> `414 passed, 33 skipped`
+      - group 4 -> `440 passed, 6 skipped`
+      - total -> `1668 passed, 119 skipped`
+  - `triton_kernels` smoke:
+    - exact nvfp4 Blackwell slice:
+      - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -x 'python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-16-16-256-256-ragged-nvfp4_e2m1-nvfp4_e2m1-bfloat16-10-1-False-True-None-False-False-False-True-None]'`
+        -> `1 passed`
+      - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -x 'python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-16-1000-704-800-batched-nvfp4_e2m1-nvfp4_e2m1-bfloat16-10-1-True-True-None-False-False-False-True-None]' 'python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-16-1024-1024-1024-batched-nvfp4_e2m1-nvfp4_e2m1-bfloat16-10-1-False-True-None-False-False-False-True-None]'`
+        -> `1 passed, 1 skipped`

@@ -48,15 +48,16 @@ public:
     asyncTaskIds = SmallVector<AsyncTaskId>(newAsyncTaskIds.begin(),
                                             newAsyncTaskIds.end());
   }
+  ArrayRef<AsyncTaskId> getAsyncTaskIds() const { return asyncTaskIds; }
 
   void setAsyncTaskIdsFromOp(Operation *op) {
-    setAsynTaskIdsFromArray(getAsyncTaskIds(op));
+    setAsynTaskIdsFromArray(mlir::getAsyncTaskIds(op));
   }
 
   void setAsyncTaskIdsFromValueUsers(Value value) {
     SetVector<AsyncTaskId> asyncTaskIdSet;
     for (Operation *user : value.getUsers())
-      for (AsyncTaskId asyncTaskId : getAsyncTaskIds(user))
+      for (AsyncTaskId asyncTaskId : mlir::getAsyncTaskIds(user))
         asyncTaskIdSet.insert(asyncTaskId);
     setAsynTaskIdsFromArray(asyncTaskIdSet.getArrayRef());
   }

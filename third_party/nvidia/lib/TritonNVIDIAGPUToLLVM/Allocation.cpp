@@ -61,30 +61,51 @@ struct AllocateSharedMemoryNv
 
 namespace mlir::triton::nvidia_gpu {
 
+static std::pair<LinearLayout, LinearLayout>
+normalizeExclusiveUnitInDims(LinearLayout a, LinearLayout b) {
+  SmallVector<StringAttr> aOnlyUnitDims;
+  SmallVector<StringAttr> bOnlyUnitDims;
+  for (auto dim : a.getInDimNames()) {
+    if (!b.hasInDim(dim) && a.getInDimSize(dim) == 1)
+      aOnlyUnitDims.push_back(dim);
+  }
+  for (auto dim : b.getInDimNames()) {
+    if (!a.hasInDim(dim) && b.getInDimSize(dim) == 1)
+      bOnlyUnitDims.push_back(dim);
+  }
+  for (auto dim : aOnlyUnitDims)
+    a = a.squeezeIns(dim);
+  for (auto dim : bOnlyUnitDims)
+    b = b.squeezeIns(dim);
+  return {a, b};
+}
+
 static bool canInvertAndComposeLayouts(const LinearLayout &a,
                                        const LinearLayout &b) {
-  SmallVector<StringAttr> outDims = llvm::to_vector(a.getOutDimNames());
-  if (outDims.size() != llvm::range_size(b.getOutDimNames()))
+  auto [normalizedA, normalizedB] = normalizeExclusiveUnitInDims(a, b);
+  SmallVector<StringAttr> outDims = llvm::to_vector(normalizedA.getOutDimNames());
+  if (outDims.size() != llvm::range_size(normalizedB.getOutDimNames()))
     return false;
   for (auto dim : outDims) {
-    if (!b.hasOutDim(dim))
+    if (!normalizedB.hasOutDim(dim))
       return false;
   }
-  auto transposedB = b.transposeOuts(outDims);
+  auto transposedB = normalizedB.transposeOuts(outDims);
   for (auto dim : outDims) {
-    if (transposedB.getOutDimSize(dim) < a.getOutDimSize(dim))
+    if (transposedB.getOutDimSize(dim) < normalizedA.getOutDimSize(dim))
       return false;
   }
   SmallVector<StringAttr> identityDims;
-  for (auto dim : a.getInDimNames()) {
-    if (transposedB.hasInDim(dim) &&
-        a.sublayout(dim, outDims) == transposedB.sublayout(dim, outDims))
+  for (auto dim : transposedB.getInDimNames()) {
+    if (normalizedA.hasInDim(dim) &&
+        normalizedA.sublayout(dim, outDims) ==
+            transposedB.sublayout(dim, outDims))
       identityDims.push_back(dim);
   }
 
   SmallVector<StringAttr> aNonIdentityInDims;
   SmallVector<StringAttr> bNonIdentityInDims;
-  for (auto dim : a.getInDimNames()) {
+  for (auto dim : normalizedA.getInDimNames()) {
     if (!llvm::is_contained(identityDims, dim))
       aNonIdentityInDims.push_back(dim);
   }
@@ -98,6 +119,12 @@ static bool canInvertAndComposeLayouts(const LinearLayout &a,
 static unsigned getNumScratchElemsSwizzledCvt(RankedTensorType srcTy,
                                               RankedTensorType dstTy,
                                               TargetInfoBase &targetInfo) {
+  if (isa<triton::gpu::LinearEncodingAttr>(srcTy.getEncoding()) ||
+      isa<triton::gpu::LinearEncodingAttr>(dstTy.getEncoding())) {
+    auto srcLayout = triton::gpu::toLinearLayout(srcTy);
+    auto nBlocks = product(triton::gpu::getCTASplitNum(srcTy.getEncoding()));
+    return srcLayout.getTotalOutDimSize() / nBlocks;
+  }
   auto *ctx = srcTy.getContext();
   auto srcLayout = triton::gpu::toLinearLayout(srcTy);
   auto dstLayout = triton::gpu::toLinearLayout(dstTy);
@@ -113,6 +140,11 @@ static unsigned getNumScratchElemsSwizzledCvt(RankedTensorType srcTy,
       !dstLayout.invertAndCompose(srcLayout).isTrivialOver({kBlock});
   auto [srcTiles, dstTiles] =
       gpu::getSrcDstTiles(targetInfo, bitwidth, crossCTA);
+  if (!canInvertAndComposeLayouts(dstLayout.flattenOuts(),
+                                  srcLayout.flattenOuts())) {
+    auto nBlocks = product(triton::gpu::getCTASplitNum(srcTy.getEncoding()));
+    return srcLayout.getTotalOutDimSize() / nBlocks;
+  }
   auto [smem, _] = triton::gpu::optimalSwizzling(srcLayout, dstLayout, srcTiles,
                                                  dstTiles, bitwidth);
   auto reps = smem.getInDimSize(StringAttr::get(ctx, "reps"));

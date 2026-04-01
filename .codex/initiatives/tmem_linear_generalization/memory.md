@@ -2214,3 +2214,44 @@ rejection, not rescue
   - `TRITON_BUILD_WITH_CCACHE=true make -j96`
   - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -n 1 python/test/gluon/test_tmem_runtime_matrix.py -k 'multidim_slice_identity_reports_clean_error or multidim_slice_positive or multidim_slice_reports_clean_unsupported'`
     -> `3 passed`
+
+## 2026-03-30: follow-up validation and direct-support fixes
+
+- Full lit is green again on the current post-fix tree:
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && ninja check-triton-lit-tests`
+    -> `248 passed, 2 unsupported`
+
+- Direct non-scales ld/st regained support for permuted `64x2` split-N TMEM
+  layouts:
+  - root cause was a premature non-scales lane/warp broadcast rejection in
+    `computeTMemLdStEncodingInfoImpl(...)`
+  - `lowerTMemLdSt(...)` already knows how to remove broadcasted registers, so
+    rejecting those layouts before it ran was unnecessarily cutting off the
+    valid `16x32bx2` / `32x32b_splitn` direct path
+  - after removing that precheck, the full
+    `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep` bucket is
+    back to green (`224 passed`)
+
+- Tensor-memory-scales `warpx2` candidate copies remain intentionally
+  unsupported, but their late-lowering diagnostics now re-emit the family-level
+  `tcgen05.copy` guidance:
+  - lowering still fails after shared-memory allocation because no compatible
+    descriptor plan exists
+  - `TensorMemoryToLLVM.cpp` now emits the
+    `maps to tcgen05.copy... could not synthesize a compatible shared-memory
+    descriptor plan for tensor memory scales` diagnostic before the outer
+    `PassManager::run failed`
+  - runtime-matrix tests now accept the outer exception wrapper while checking
+    the real unsupported reason
+
+- Current Python validation checkpoint:
+  - `python/test/unit/language/test_compile_only.py` -> `7 passed`
+  - `python/test/gluon/test_core.py -k 'tmem_reduction or tcgen05_mma_multicast_commit'`
+    -> `92 passed`
+  - `python/test/unit/tools/test_triton_to_gluon.py` -> `16 passed`
+  - split 4-way run over
+    `python/test/gluon/test_frontend.py` +
+    `python/test/gluon/test_tmem_runtime_matrix.py`
+    -> aggregate `1873 passed, 119 skipped`
+  - focused `triton_kernels` nvfp4 persistent slice
+    -> `1 passed, 1 skipped`

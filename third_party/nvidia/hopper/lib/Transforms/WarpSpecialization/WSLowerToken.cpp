@@ -140,16 +140,20 @@ void lowerTokenOperations(Operation *parentOp, int numCTAs,
     unsigned bufferEmptyCount = THREADS_PER_TASK;
     for (unsigned i = 0; i < createTokenOp.getNumBuffers(); i++) {
       Value idx = arith::ConstantIntOp::create(builder, loc, i, 32);
-      Value barrierFullView = ttg::MemDescIndexOp::create(
-          builder, loc, singleBarrierMemDescType, bufferFullArray, idx);
+      auto barrierFullView = ttg::MemDescIndexOp::createChecked(
+          builder, loc, bufferFullArray, idx);
+      assert(succeeded(barrierFullView) &&
+             "expected valid full barrier memdesc_index");
       // EmptyView is used for ConsumerRelease and ProducerAcquire.
       // FullView is for ConsumerWait and ProducerCommit.
-      ttng::InitBarrierOp::create(builder, loc, barrierFullView,
+      ttng::InitBarrierOp::create(builder, loc, barrierFullView->getResult(),
                                   bufferFullCount);
 
-      Value barrierEmptyView = ttg::MemDescIndexOp::create(
-          builder, loc, singleBarrierMemDescType, bufferEmptyArray, idx);
-      ttng::InitBarrierOp::create(builder, loc, barrierEmptyView,
+      auto barrierEmptyView = ttg::MemDescIndexOp::createChecked(
+          builder, loc, bufferEmptyArray, idx);
+      assert(succeeded(barrierEmptyView) &&
+             "expected valid empty barrier memdesc_index");
+      ttng::InitBarrierOp::create(builder, loc, barrierEmptyView->getResult(),
                                   bufferEmptyCount);
     }
 
@@ -159,14 +163,20 @@ void lowerTokenOperations(Operation *parentOp, int numCTAs,
 
     // Helper function for extracting one index from bufferFullArray.
     auto extractBufferFull = [&](Location loc, Value idx) -> Value {
-      return ttg::MemDescIndexOp::create(builder, loc, singleBarrierMemDescType,
-                                         bufferFullArray, idx);
+      auto barrierView =
+          ttg::MemDescIndexOp::createChecked(builder, loc, bufferFullArray, idx);
+      assert(succeeded(barrierView) &&
+             "expected valid full barrier memdesc_index");
+      return barrierView->getResult();
     };
 
     // Helper function for extracting one index from bufferEmptyArray.
     auto extractBufferEmpty = [&](Location loc, Value idx) -> Value {
-      return ttg::MemDescIndexOp::create(builder, loc, singleBarrierMemDescType,
-                                         bufferEmptyArray, idx);
+      auto barrierView = ttg::MemDescIndexOp::createChecked(
+          builder, loc, bufferEmptyArray, idx);
+      assert(succeeded(barrierView) &&
+             "expected valid empty barrier memdesc_index");
+      return barrierView->getResult();
     };
     auto handleOneUser = [&](Operation *user) -> bool {
       // Here builder is at the user, make sure usage of values outside of

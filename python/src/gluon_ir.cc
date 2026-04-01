@@ -1242,11 +1242,12 @@ void init_gluon_ir(py::module &&m) {
           return py::none();
         };
         auto getBlockedFallbackLayouts =
-            [&](ArrayRef<int64_t> tensorShape)
+            [&](ttg::MemDescType queryTy, ArrayRef<int64_t> tensorShape)
                 -> SmallVector<ttg::DistributedEncodingTrait> {
           SmallVector<ttg::DistributedEncodingTrait> layouts;
           auto rank = tensorShape.size();
-          auto cga = ttg::CGAEncodingAttr::get1CTALayout(ctx, rank);
+          auto cga = ttg::getCGALayout(queryTy.getEncoding());
+          auto numCTAs = ttg::getNumCTAs(queryTy.getEncoding());
           if (rank == 2 && tensorShape[1] >= 32) {
             layouts.push_back(ttg::BlockedEncodingAttr::get(
                 ctx, /*sizePerThread=*/SmallVector<unsigned>{1, 1},
@@ -1256,7 +1257,7 @@ void init_gluon_ir(py::module &&m) {
           }
           layouts.push_back(ttg::getDefaultBlockedEncoding(
               ctx, tensorShape, /*numWarps=*/numWarps,
-              /*threadsPerWarp=*/32, /*numCTAs=*/1));
+              /*threadsPerWarp=*/32, /*numCTAs=*/numCTAs));
           return layouts;
         };
         auto physicalSupportLayout =
@@ -1291,7 +1292,7 @@ void init_gluon_ir(py::module &&m) {
           if (!layouts.empty())
             return layoutToGluon(layouts.front());
           if (py::object blockedLayout = firstLegalLayoutForType(
-                  memDescTy, getBlockedFallbackLayouts(shape),
+                  memDescTy, getBlockedFallbackLayouts(memDescTy, shape),
                   /*desiredAtom=*/std::nullopt);
               !blockedLayout.is_none()) {
             return blockedLayout;
@@ -1343,7 +1344,7 @@ void init_gluon_ir(py::module &&m) {
 
         if (py::object blockedLayout =
                 firstLegalLayoutForType(memDescTy,
-                                        getBlockedFallbackLayouts(shape), atom);
+                                        getBlockedFallbackLayouts(memDescTy, shape), atom);
             !blockedLayout.is_none()) {
           return blockedLayout;
         }
@@ -1471,11 +1472,12 @@ void init_gluon_ir(py::module &&m) {
           return layouts;
         };
         auto getBlockedFallbackLayouts =
-            [&](ArrayRef<int64_t> tensorShape)
+            [&](ttg::MemDescType queryTy, ArrayRef<int64_t> tensorShape)
                 -> SmallVector<ttg::DistributedEncodingTrait> {
           SmallVector<ttg::DistributedEncodingTrait> layouts;
           auto rank = tensorShape.size();
-          auto cga = ttg::CGAEncodingAttr::get1CTALayout(ctx, rank);
+          auto cga = ttg::getCGALayout(queryTy.getEncoding());
+          auto numCTAs = ttg::getNumCTAs(queryTy.getEncoding());
           if (rank == 2 && tensorShape[1] >= 32) {
             layouts.push_back(ttg::BlockedEncodingAttr::get(
                 ctx, /*sizePerThread=*/SmallVector<unsigned>{1, 1},
@@ -1485,7 +1487,7 @@ void init_gluon_ir(py::module &&m) {
           }
           layouts.push_back(ttg::getDefaultBlockedEncoding(
               ctx, tensorShape, /*numWarps=*/numWarps,
-              /*threadsPerWarp=*/32, /*numCTAs=*/1));
+              /*threadsPerWarp=*/32, /*numCTAs=*/numCTAs));
           return layouts;
         };
         auto firstLegalLayoutForType =
@@ -1981,7 +1983,7 @@ void init_gluon_ir(py::module &&m) {
             }
             auto shape = llvm::to_vector(
                 queryMemDescTy.getShape().take_back(queryMemDescTy.getRank()));
-            auto blockedLayouts = getBlockedFallbackLayouts(shape);
+            auto blockedLayouts = getBlockedFallbackLayouts(queryTy, shape);
             if (disallowSupportRescueFor32x32Subview) {
               layout = firstLegalLayoutForType(queryTy, blockedLayouts,
                                                desiredAtom);

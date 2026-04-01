@@ -13,6 +13,7 @@
 #include "triton/Tools/GenericSwizzling.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/LinearLayout.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -39,6 +40,26 @@ static int __builtin_ctz(unsigned x) {
 namespace mlir {
 
 namespace triton::gpu {
+
+template <typename T>
+static SmallVector<std::pair<StringAttr, T>>
+normalizeLinearLayoutInputs(const LinearLayout &layout,
+                            ArrayRef<std::pair<StringAttr, T>> indices,
+                            T zero) {
+  DenseMap<StringAttr, T> indexMap;
+  indexMap.reserve(indices.size());
+  for (auto [dimName, idx] : indices) {
+    indexMap.try_emplace(dimName, idx);
+  }
+  SmallVector<std::pair<StringAttr, T>> normalizedIndices;
+  normalizedIndices.reserve(layout.getNumInDims());
+  for (auto dimName : layout.getInDimNames()) {
+    auto it = indexMap.find(dimName);
+    normalizedIndices.push_back(
+        {dimName, it == indexMap.end() ? zero : it->second});
+  }
+  return normalizedIndices;
+}
 
 std::pair<SmallVector<LocalMemOpTile>, SmallVector<LocalMemOpTile>>
 getSrcDstTiles(const TargetInfoBase &targetInfo, int bitwidth,
@@ -298,8 +319,9 @@ applyLinearLayout(Location loc, RewriterBase &rewriter,
                   const LinearLayout &layout,
                   ArrayRef<std::pair<StringAttr, Value>> indices) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
-  assert(layout.getNumInDims() == indices.size());
-  assert(llvm::equal(layout.getInDimNames(), llvm::make_first_range(indices)));
+  auto normalizedIndices = triton::gpu::normalizeLinearLayoutInputs(
+      layout, indices, b.i32_val(0));
+  indices = normalizedIndices;
   // Trivial layout
   if (layout.getNumOutDims() == 0) {
     return {};
@@ -744,8 +766,11 @@ lowerLdSt(Location loc, MLIRContext *ctx, LinearLayout cvt,
   SmallVector<Value> outVals;
   auto vecTy = vec_ty(llvmElemTy, elemsPerVec);
   for (int i = 0; i < cvt.getInDimSize(kReg); i += nAdditive) {
-    auto idxAndBlock =
-        reps.apply({{kReg, i}, {kLane, 0}, {kWarp, 0}, {kBlock, 0}});
+    SmallVector<std::pair<StringAttr, int32_t>> idxInputs = {
+        {kReg, i}, {kLane, 0}, {kWarp, 0}, {kBlock, 0}};
+    auto idxAndBlock = reps.apply(
+        triton::gpu::normalizeLinearLayoutInputs(
+            reps, ArrayRef<std::pair<StringAttr, int32_t>>(idxInputs), 0));
     auto regIdxI8 = idxAndBlock[0].second * (bitwidth / 8);
     Value offset = b.xor_(regBaseI8, b.i32_val(regIdxI8));
     Value ctaOffset = b.i32_val(0);
@@ -755,8 +780,11 @@ lowerLdSt(Location loc, MLIRContext *ctx, LinearLayout cvt,
     offset = applyPadding(loc, rewriter, offset, paddingShifts);
     for (int j = 0; j < nAdditive; j += elemsPerVec) {
       // all these constants will go as immediate values to LDS/STS
-      auto idxAndBlockAdd =
-          reps.apply({{kReg, j}, {kLane, 0}, {kWarp, 0}, {kBlock, 0}});
+      SmallVector<std::pair<StringAttr, int32_t>> idxAddInputs = {
+          {kReg, j}, {kLane, 0}, {kWarp, 0}, {kBlock, 0}};
+      auto idxAndBlockAdd = reps.apply(
+          triton::gpu::normalizeLinearLayoutInputs(
+              reps, ArrayRef<std::pair<StringAttr, int32_t>>(idxAddInputs), 0));
       auto regIdxAddI8 = idxAndBlockAdd[0].second * (bitwidth / 8);
       // `actionAdditiveStrides` forces `regIdxAddI8` and `offset` to be bitwise
       // disjoint, so we can calculate their padding contributions separately.
@@ -1007,7 +1035,19 @@ SmallVector<SmallVector<unsigned>> emitOffsetForLayout(Attribute layout,
 
   SmallVector<SmallVector<unsigned>> offsets;
   for (int i = 0; i < ll.getInDimSize(str_attr("register")); i++) {
-    auto idxs = ll.apply({{kRegister, i}, {kLane, 0}, {kWarp, 0}, {kBlock, 0}});
+    SmallVector<std::pair<StringAttr, int32_t>> inputs;
+    inputs.reserve(llvm::range_size(ll.getInDimNames()));
+    for (auto dim : ll.getInDimNames()) {
+      if (dim == kRegister) {
+        inputs.push_back({dim, i});
+      } else if (dim == kLane || dim == kWarp || dim == kBlock) {
+        inputs.push_back({dim, 0});
+      } else {
+        llvm::report_fatal_error(llvm::Twine(
+            "Unexpected input dim in emitOffsetForLayout: ") + dim.str());
+      }
+    }
+    auto idxs = ll.apply(inputs);
     assert(idxs.size() == rank);
     for (unsigned k = 0; k < rank; ++k) {
       assert(idxs[k].first == str_attr("dim" + std::to_string(k)));

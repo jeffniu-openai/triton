@@ -272,8 +272,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
   tt.func @tmem_copy_scales_descriptor_family_clean_unsupported(
       %src: !ttg.memdesc<64x16xi8, #shared_scales_warpx2_candidate, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<64x16xi8, #tmem_scales, #ttng.tensor_memory, mutable>) {
-    // expected-error @+2 {{The source shared layout maps to tcgen05.copy.warpx4.32x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for tensor memory scales.}}
-    // expected-note @+1 {{Use a shared layout that lowers to tcgen05.copy.warpx4.32x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<64x16xi8, #shared_scales_warpx2_candidate, #ttg.shared_memory, mutable>, !ttg.memdesc<64x16xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     tt.return
   }
@@ -390,7 +388,7 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32, "ttg.th
       %c: !ttg.memdesc<128x64xf32, #tmem_linear_interleaved_bm64, #ttng.tensor_memory, mutable>,
       %useAcc: i1,
       %pred: i1) {
-    // expected-error @+1 {{LHS operand must have a MMAv5-compatible tensor memory layout}}
+    // expected-error @+1 {{does not support blockM=64 with interleaved blocks in TMEM layout}}
     ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
       !ttg.memdesc<128x64xf16, #tmem_linear_interleaved_bm64, #ttng.tensor_memory>,
       !ttg.memdesc<64x64xf16, #shared_f16_t, #ttg.shared_memory>,

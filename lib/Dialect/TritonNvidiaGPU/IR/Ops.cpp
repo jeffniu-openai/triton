@@ -41,7 +41,6 @@
 #include "triton/Tools/StrUtil.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir::triton::gpu;
 
@@ -1544,6 +1543,26 @@ LogicalResult TMEMCopyOp::verify() {
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
+  auto canBuildSharedDescriptorPlan = [&](const TMemCopyPlan &plan) {
+    return llvm::all_of(plan.messages, [&](const auto &message) {
+      if (message.useDirectSeedDescriptor &&
+          getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
+        return true;
+      auto srcDescLayouts =
+          getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
+      return llvm::any_of(srcDescLayouts,
+                          [&](const LinearLayout &srcDescLayout) {
+                            static constexpr unsigned
+                                kDescriptorOrientations[] = {0u, 1u};
+                            return llvm::any_of(ArrayRef(kDescriptorOrientations),
+                                                [&](unsigned mnDim) {
+                              return canRepresentAsMMASmemDescriptor(
+                                  srcDescLayout, message.descriptorShape,
+                                  bitwidth, mnDim, 5);
+                            });
+                          });
+    });
+  };
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
     if (copyPlans.empty()) {
       auto diag = emitOpError(
@@ -1552,38 +1571,6 @@ LogicalResult TMEMCopyOp::verify() {
       diag.attachNote()
           << "Recognized scales copy families are warpx2::01_23.64x128b, "
              "warpx2::02_13.64x128b, and warpx4.32x128b.";
-      return failure();
-    }
-    auto isScalesPlanSupported = [&](const TMemCopyPlan &plan) {
-      std::string layoutSupportError;
-      if (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family,
-                                           &layoutSupportError))
-        return false;
-      return llvm::all_of(plan.messages, [&](const auto &message) {
-        auto srcDescLayouts =
-            getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
-        return llvm::any_of(srcDescLayouts,
-                            [&](const LinearLayout &srcDescLayout) {
-                              static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
-                              return llvm::any_of(ArrayRef(kDescriptorOrientations),
-                                                  [&](unsigned mnDim) {
-                                return canRepresentAsMMASmemDescriptor(
-                                    srcDescLayout, message.descriptorShape,
-                                    bitwidth, mnDim, 5);
-                              });
-                            });
-      });
-    };
-    if (!llvm::any_of(copyPlans, isScalesPlanSupported)) {
-      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
-      auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
-                  << family
-                  << ", but Triton could not synthesize a compatible "
-                     "shared-memory descriptor plan for tensor memory scales.";
-      diag.attachNote()
-          << "Use a shared layout that lowers to tcgen05.copy." << family
-          << ", or reshape / permute the shared tile until it lowers to the "
-             "same descriptor family.";
       return failure();
     }
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() != 0) {
@@ -1628,13 +1615,16 @@ LogicalResult TMEMCopyOp::verify() {
             getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
         return llvm::any_of(srcDescLayouts,
                             [&](const LinearLayout &srcDescLayout) {
-                              static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
-                              return llvm::any_of(ArrayRef(kDescriptorOrientations),
-                                                  [&](unsigned mnDim) {
-                                return canRepresentAsMMASmemDescriptor(
-                                    srcDescLayout, message.descriptorShape,
-                                    bitwidth, mnDim, 5);
-                              });
+                              static constexpr unsigned
+                                  kDescriptorOrientations[] = {0u, 1u};
+                              return llvm::any_of(
+                                  ArrayRef(kDescriptorOrientations),
+                                  [&](unsigned mnDim) {
+                                    return canRepresentAsMMASmemDescriptor(
+                                        srcDescLayout,
+                                        message.descriptorShape, bitwidth,
+                                        mnDim, 5);
+                                  });
                             });
       });
     };

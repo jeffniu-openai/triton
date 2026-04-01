@@ -8,6 +8,7 @@
 #include "third_party/f2reduce/f2reduce.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/StrUtil.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/StringRef.h"
@@ -911,7 +912,17 @@ bool LinearLayout::sublayoutIsZero(ArrayRef<StringAttr> inDimNames,
 
 SmallVector<std::pair<StringAttr, int32_t>>
 LinearLayout::apply(ArrayRef<std::pair<StringAttr, int32_t>> ins) const {
-  assertDimsEqualIgnoringOrder(llvm::make_first_range(ins), getInDimNames());
+  assertDimsSubsetIgnoringOrder(getInDimNames(), llvm::make_first_range(ins));
+  llvm::SmallDenseMap<StringAttr, int32_t> inputMap;
+  inputMap.reserve(ins.size());
+  for (auto [inDim, val] : ins)
+    inputMap.try_emplace(inDim, val);
+  SmallVector<std::pair<StringAttr, int32_t>> normalizedIns;
+  normalizedIns.reserve(getNumInDims());
+  for (StringAttr inDim : getInDimNames()) {
+    normalizedIns.push_back(std::make_pair(inDim, inputMap.lookup(inDim)));
+  }
+  ins = normalizedIns;
 
   SmallVector<std::pair<StringAttr, int32_t>> ret;
   for (StringAttr outDim : getOutDimNames()) {

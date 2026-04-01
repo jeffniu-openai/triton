@@ -501,7 +501,9 @@ void specializeRegion(triton::FuncOp funcOp, unsigned requestedRegisters) {
       LDBG("erasing op ");
       op->dump();
     });
-    // For debugging purposes, check to see if the original op is still in use.
+    // Some cloned ops may still legally reference original defs if they were
+    // not remapped in a particular task region. Keep those originals alive
+    // instead of erasing them and crashing with dangling uses.
     bool hasUse = false;
     for (unsigned i = 0; i < op->getNumResults(); ++i) {
       for (Operation *user : op->getResult(i).getUsers()) {
@@ -512,6 +514,8 @@ void specializeRegion(triton::FuncOp funcOp, unsigned requestedRegisters) {
         });
       }
     }
+    if (hasUse)
+      continue;
     op->erase();
   }
 }

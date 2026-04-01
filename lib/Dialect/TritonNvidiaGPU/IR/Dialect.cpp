@@ -518,6 +518,28 @@ LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout) {
   return layout.transposeOuts(standardOutDimNames(ctx, layout.getNumOutDims()));
 }
 
+static LinearLayout
+normalizeTensorMemoryLinearLayoutForMMAv5Family(LinearLayout layout) {
+  if (layout.getNumInDims() == 0)
+    return layout;
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+
+  if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) == 1)
+    layout = layout.squeezeIns(kBlock);
+
+  SmallVector<StringAttr> canonicalInDims;
+  for (StringAttr dim : {kRow, kCol, kBlock}) {
+    if (layout.hasInDim(dim))
+      canonicalInDims.push_back(dim);
+  }
+  if (!canonicalInDims.empty())
+    layout = layout.transposeIns(canonicalInDims);
+  return layout.transposeOuts(standardOutDimNames(ctx, layout.getNumOutDims()));
+}
+
 struct MMAv5TMemLayoutPlan {
   unsigned instrShapeM;
   unsigned instrShapeN;
@@ -534,7 +556,7 @@ planMMAv5Family(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
     return std::nullopt;
 
   auto normalizedLinear =
-      normalizeTensorMemoryLinearLayoutForAnalysis(canonicalLayout);
+      normalizeTensorMemoryLinearLayoutForMMAv5Family(canonicalLayout);
   if (normalizedLinear.getNumOutDims() != 2)
     return std::nullopt;
 
@@ -638,7 +660,7 @@ planMMAv5Family(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
         if (!maybeCandidate)
           continue;
         auto normalizedCandidate =
-            normalizeTensorMemoryLinearLayoutForAnalysis(*maybeCandidate);
+            normalizeTensorMemoryLinearLayoutForMMAv5Family(*maybeCandidate);
         if (!matchesTilePreservingFamily(normalizedCandidate, blockM, blockN))
           continue;
         MMAv5TMemLayoutPlan candidatePlan{
@@ -683,7 +705,7 @@ planMMAv5ExactFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayou
     return std::nullopt;
 
   auto normalizedLinear =
-      normalizeTensorMemoryLinearLayoutForAnalysis(canonicalLayout);
+      normalizeTensorMemoryLinearLayoutForMMAv5Family(canonicalLayout);
 
   std::optional<MMAv5TMemLayoutPlan> bestPlan;
   auto isBetterMatch = [&](const MMAv5TMemLayoutPlan &candidate) {
@@ -717,7 +739,7 @@ planMMAv5ExactFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayou
         if (!maybeCandidate)
           continue;
         auto normalizedCandidate =
-            normalizeTensorMemoryLinearLayoutForAnalysis(*maybeCandidate);
+            normalizeTensorMemoryLinearLayoutForMMAv5Family(*maybeCandidate);
         if (normalizedCandidate != normalizedLinear)
           continue;
         MMAv5TMemLayoutPlan candidatePlan{
@@ -757,12 +779,9 @@ planMMAv5AccumulatorFamily(ArrayRef<int64_t> shape, Attribute layout,
                           std::optional<unsigned> preferredColStride =
                               std::nullopt) {
   static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
-  if (isa<TensorMemoryEncodingAttr>(layout)) {
-    if (auto exact =
-            planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
-                                 preferredColStride)) {
-      return exact;
-    }
+  if (auto exact = planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
+                                        preferredColStride)) {
+    return exact;
   }
   return planMMAv5Family(shape, layout, kAccumulatorBlockNs,
                          preferredColStride);
@@ -775,6 +794,11 @@ planMMAv5AccumulatorFamily(ArrayRef<int64_t> shape,
                            std::optional<unsigned> preferredColStride =
                                std::nullopt) {
   static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  if (auto exact = planMMAv5ExactFamily(shape, canonicalLayout, cga, twoCTAs,
+                                        kAccumulatorBlockNs,
+                                        preferredColStride)) {
+    return exact;
+  }
   return planMMAv5Family(shape, canonicalLayout, cga, twoCTAs,
                          kAccumulatorBlockNs, preferredColStride);
 }
@@ -783,12 +807,9 @@ static std::optional<MMAv5TMemLayoutPlan>
 planMMAv5LhsFamily(ArrayRef<int64_t> shape, Attribute layout,
                    std::optional<unsigned> preferredColStride = std::nullopt) {
   static constexpr unsigned kLhsBlockNs[] = {32u, 64u, 128u, 256u};
-  if (isa<TensorMemoryEncodingAttr>(layout)) {
-    if (auto exact =
-            planMMAv5ExactFamily(shape, layout, kLhsBlockNs,
-                                 preferredColStride)) {
-      return exact;
-    }
+  if (auto exact = planMMAv5ExactFamily(shape, layout, kLhsBlockNs,
+                                        preferredColStride)) {
+    return exact;
   }
   return planMMAv5Family(shape, layout, kLhsBlockNs, preferredColStride);
 }
@@ -798,6 +819,10 @@ planMMAv5LhsFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
                    gpu::CGAEncodingAttr cga, bool twoCTAs,
                    std::optional<unsigned> preferredColStride = std::nullopt) {
   static constexpr unsigned kLhsBlockNs[] = {32u, 64u, 128u, 256u};
+  if (auto exact = planMMAv5ExactFamily(shape, canonicalLayout, cga, twoCTAs,
+                                        kLhsBlockNs, preferredColStride)) {
+    return exact;
+  }
   return planMMAv5Family(shape, canonicalLayout, cga, twoCTAs, kLhsBlockNs,
                          preferredColStride);
 }
@@ -807,12 +832,9 @@ planMMAv5ScaledAccumulatorFamily(ArrayRef<int64_t> shape, Attribute layout,
                                  std::optional<unsigned> preferredColStride =
                                      std::nullopt) {
   static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
-  if (isa<TensorMemoryEncodingAttr>(layout)) {
-    if (auto exact =
-            planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
-                                 preferredColStride)) {
-      return exact;
-    }
+  if (auto exact = planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
+                                        preferredColStride)) {
+    return exact;
   }
   return planMMAv5Family(shape, layout, kAccumulatorBlockNs,
                          preferredColStride);
@@ -825,6 +847,11 @@ planMMAv5ScaledAccumulatorFamily(ArrayRef<int64_t> shape,
                                  std::optional<unsigned> preferredColStride =
                                      std::nullopt) {
   static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  if (auto exact = planMMAv5ExactFamily(shape, canonicalLayout, cga, twoCTAs,
+                                        kAccumulatorBlockNs,
+                                        preferredColStride)) {
+    return exact;
+  }
   return planMMAv5Family(shape, canonicalLayout, cga, twoCTAs,
                          kAccumulatorBlockNs, preferredColStride);
 }
@@ -1899,6 +1926,13 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
                  .value();
       tile *= LinearLayout::identity1D(nColsMissing / 2, kReg, rowColDims[1]) *
               LinearLayout::identity1D(2, kLane, rowColDims[1]);
+    } else if (atom == TMemAccessAtom::I16x32bx2 && layout16Rows &&
+               nColsMissing >= 2) {
+      // Keep the last half-tile column split on lane=16 so direct lowering can
+      // use the native second-half offset instead of materializing two x1
+      // packets at different base addresses.
+      tile *= LinearLayout::identity1D(nColsMissing / 2, kReg, rowColDims[1]) *
+              LinearLayout::identity1D(2, kLane, rowColDims[1]);
     } else {
       tile *= LinearLayout::identity1D(nColsMissing, kReg, rowColDims[1]);
     }
@@ -2352,6 +2386,40 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
   if (isScales)
     memLL = toLinearLayout(memType);
 
+  auto tryAddScalesNarrowTileLayout = [&]() {
+    if (!isScales || numWarps != 4 || memType.getElementTypeBitWidth() != 8)
+      return;
+    auto shape = memType.getShape();
+    if (shape.size() < 2 || shape[shape.size() - 2] != 16 ||
+        shape[shape.size() - 1] != 8)
+      return;
+    auto *ctx = memType.getContext();
+    auto dims = standardOutDimNames(ctx, 2);
+    auto kReg = StringAttr::get(ctx, "register");
+    auto kLane = StringAttr::get(ctx, "lane");
+    auto kWarp = StringAttr::get(ctx, "warp");
+    LinearLayout::BasesT bases;
+    bases[kReg] = {{0, 1}, {0, 2}, {0, 0}};
+    bases[kLane] = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 4}};
+    bases[kWarp] = {{0, 0}, {0, 0}};
+    auto narrow =
+        LinearLayout(std::move(bases),
+                     {{dims[0], static_cast<int32_t>(shape[shape.size() - 2])},
+                      {dims[1],
+                       static_cast<int32_t>(shape[shape.size() - 1])}},
+                     /*requireSurjective=*/false);
+    auto candidateEncoding =
+        LinearEncodingAttr::get(memType.getContext(), narrow);
+    auto tensorTy = RankedTensorType::get(memType.getShape(),
+                                          memType.getElementType(),
+                                          candidateEncoding);
+    if (succeeded(computeTMemLdStEncodingInfo(
+            tensorTy, memType, /*maxnreg=*/256))) {
+      layouts.push_back(candidateEncoding);
+    }
+  };
+  tryAddScalesNarrowTileLayout();
+
   auto tensorTy =
       RankedTensorType::get(memType.getShape(), memType.getElementType());
   auto isCompatible = [&](const LinearLayout &layout) {
@@ -2398,6 +2466,34 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   if (numWarps % 4 != 0)
     return layouts;
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding());
+  auto tryAddScalesNarrowTileLayout = [&]() {
+    if (!isScales || numWarps != 4 || memType.getElementTypeBitWidth() != 8)
+      return;
+    auto shape = memType.getShape();
+    if (shape.size() < 2 || shape[shape.size() - 2] != 16 ||
+        shape[shape.size() - 1] != 8)
+      return;
+    auto *ctx = tensorType.getContext();
+    auto dims = standardOutDimNames(ctx, 2);
+    auto kReg = StringAttr::get(ctx, "register");
+    auto kLane = StringAttr::get(ctx, "lane");
+    auto kWarp = StringAttr::get(ctx, "warp");
+    LinearLayout::BasesT bases;
+    bases[kReg] = {{0, 1}, {0, 2}, {0, 0}};
+    bases[kLane] = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 4}};
+    bases[kWarp] = {{0, 0}, {0, 0}};
+    auto narrow =
+        LinearLayout(std::move(bases),
+                     {{dims[0], static_cast<int32_t>(shape[shape.size() - 2])},
+                      {dims[1],
+                       static_cast<int32_t>(shape[shape.size() - 1])}},
+                     /*requireSurjective=*/false);
+    if (isTMemCompatibleCandidate(op, tensorType, memType, narrow)) {
+      layouts.push_back(
+          LinearEncodingAttr::get(tensorType.getContext(), std::move(narrow)));
+    }
+  };
+  tryAddScalesNarrowTileLayout();
   LinearLayout memLL = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
       return toLinearLayout(memType);

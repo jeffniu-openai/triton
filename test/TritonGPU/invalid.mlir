@@ -44,7 +44,7 @@ module attributes {"ttg.num-warps" = 1 : i32} {
 module attributes {"ttg.num-warps" = 4 : i32} {
   tt.func @result_rank_too_large_tmem(%arg0: !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm>) {
     %zero = arith.constant 0 : i32
-    // expected-error @+1 {{result rank}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_index %arg0[%zero] : !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm> -> !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttm>
     tt.return
   }
@@ -57,7 +57,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
 #ttm = #ttng.tensor_memory
 module attributes {"ttg.num-warps" = 4 : i32} {
   tt.func @memdesc_subslice_layout_mismatch_tmem(%arg0: !ttg.memdesc<128x128xf32, #tmem_linear, #ttm>) {
-    // expected-error @+1 {{result tensor memory encoding must be}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_subslice %arg0 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttm> -> !ttg.memdesc<128x64xf32, #tmem_linear_t, #ttm, 128x128>
     tt.return
   }
@@ -82,7 +82,7 @@ module attributes {"ttg.num-warps" = 4 : i32} {
 #smem = #ttg.shared_memory
 module attributes {"ttg.num-ctas" = 2 : i32} {
   tt.func public @subslice_non_broadcast_cga_dim(%arg0: !ttg.memdesc<8x16xf32, #shared, #smem>) {
-      // expected-error @+1 {{CTA dimensions}}
+      // expected-error @+1 {{result memdesc type does not match inferred type}}
       %a = ttg.memdesc_subslice %arg0 [0, 0] : !ttg.memdesc<8x16xf32, #shared, #smem> -> !ttg.memdesc<8x8xf32, #shared, #smem>
       tt.return
   }
@@ -94,7 +94,7 @@ module attributes {"ttg.num-ctas" = 2 : i32} {
 #smem = #ttg.shared_memory
 module attributes {"ttg.num-ctas" = 2 : i32} {
   tt.func public @subslice_broadcasted_cga_output(%arg0: !ttg.memdesc<8x16xf32, #shared, #smem>) {
-      // expected-error @+1 {{broadcasted CTA outputs}}
+      // expected-error @+1 {{result memdesc type does not match inferred type}}
       %a = ttg.memdesc_subslice %arg0 [0, 0] : !ttg.memdesc<8x16xf32, #shared, #smem> -> !ttg.memdesc<4x16xf32, #shared, #smem>
       tt.return
   }
@@ -160,7 +160,7 @@ tt.func public @too_few_offsets(%arg0: !ttg.memdesc<8x16xf32, #shared, #smem>) {
 #smem = #ttg.shared_memory
 tt.func public @result_rank_too_large(%arg0: !ttg.memdesc<3x8x16xf32, #shared, #smem>) {
     %zero = arith.constant 0 : i32
-    // expected-error @+1 {{result rank}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_index %arg0[%zero] : !ttg.memdesc<3x8x16xf32, #shared, #smem> -> !ttg.memdesc<3x8x16xf32, #shared, #smem>
     tt.return
 }
@@ -171,7 +171,7 @@ tt.func public @result_rank_too_large(%arg0: !ttg.memdesc<3x8x16xf32, #shared, #
 #smem = #ttg.shared_memory
 tt.func public @memdesc_index_result_alloc_shape_mismatch(%arg0: !ttg.memdesc<3x8x16xf32, #shared, #smem>) {
     %zero = arith.constant 0 : i32
-    // expected-error @+1 {{alloc shape must match shape for both result and src}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_index %arg0[%zero] : !ttg.memdesc<3x8x16xf32, #shared, #smem> -> !ttg.memdesc<8x16xf32, #shared, #smem, 3x8x16>
     tt.return
 }
@@ -181,7 +181,7 @@ tt.func public @memdesc_index_result_alloc_shape_mismatch(%arg0: !ttg.memdesc<3x
 #smem = #ttg.shared_memory
 tt.func public @result_1d_to_1d(%arg0: !ttg.memdesc<8xf32, #shared, #smem>) {
     %zero = arith.constant 0 : i32
-    // expected-error @+1 {{result rank}}
+    // expected-error @+1 {{rank 0 memdesc is not allowed}}
     %a = ttg.memdesc_index %arg0[%zero] : !ttg.memdesc<8xf32, #shared, #smem> -> !ttg.memdesc<2xf32, #shared, #smem>
     tt.return
 }
@@ -192,7 +192,7 @@ tt.func public @result_1d_to_1d(%arg0: !ttg.memdesc<8xf32, #shared, #smem>) {
 #shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 16, order = [0, 1]}>
 #smem = #ttg.shared_memory
 tt.func public @subview_along_swizzling_pattern(%arg0: !ttg.memdesc<8x16xf32, #shared, #smem>) {
-    // expected-error @+1 {{swizzling pattern}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_subslice %arg0 [0, 0] : !ttg.memdesc<8x16xf32, #shared, #smem> -> !ttg.memdesc<8x4xf32, #shared, #smem>
     tt.return
 }
@@ -202,7 +202,7 @@ tt.func public @subview_along_swizzling_pattern(%arg0: !ttg.memdesc<8x16xf32, #s
 #shared = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 16, order = [0, 1]}>
 #smem = #ttg.shared_memory
 tt.func public @subview_along_swizzling(%arg0: !ttg.memdesc<8x16xf32, #shared, #smem>, %index: i32) {
-    // expected-error @+1 {{tile}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_subslice %arg0 [2, 0] : !ttg.memdesc<8x16xf32, #shared, #smem> -> !ttg.memdesc<4x16xf32, #shared, #smem>
     tt.return
 }
@@ -214,7 +214,7 @@ tt.func public @subview_along_swizzling(%arg0: !ttg.memdesc<8x16xf32, #shared, #
 #smem = #ttg.shared_memory
 tt.func public @result_dim_too_large(%arg0: !ttg.memdesc<8x16xf32, #shared1d, #smem>) {
     %zero = arith.constant 0 : i32
-    // expected-error @+1 {{result shape}}
+    // expected-error @+1 {{result memdesc type does not match inferred type}}
     %a = ttg.memdesc_index %arg0[%zero] : !ttg.memdesc<8x16xf32, #shared1d, #smem> -> !ttg.memdesc<32xf32, #shared1d, #smem>
     tt.return
 }
