@@ -1111,7 +1111,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     return diag;
   }
   bool isViewLikeMemDesc =
-      isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp,
+      isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp, gpu::MemDescSubsliceOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
                       gpu::MemDescReinterpretOp>(memdescValue.getDefiningOp());
   bool disallowSupportRescueFor32x32Subview =

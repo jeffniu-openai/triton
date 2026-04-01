@@ -41,9 +41,15 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
+static bool useLocalHalfRowSupportWarpAnchors(
+    MemDescType memTy, const TMemLdStQueryLayout &supportQuery);
+
 static bool preserveTMemLdStSupportQueryBaseOffset(
     MemDescType memTy, const TMemLdStQueryLayout &supportQuery) {
-  return false;
+  if (useLocalHalfRowSupportWarpAnchors(memTy, supportQuery))
+    return false;
+  return llvm::any_of(supportQuery.origin,
+                      [](int32_t value) { return value != 0; });
 }
 
 static bool useLocalHalfRowSupportWarpAnchors(
@@ -657,7 +663,7 @@ lowerTMemLdStFromTypes(
   bool isViewLikeMemDesc =
       memDescValue &&
       isa_and_nonnull<triton::gpu::MemDescIndexOp,
-                      triton::gpu::MemDescSubsliceOp,
+                      TMEMSubSliceOp, triton::gpu::MemDescSubsliceOp,
                       triton::gpu::MemDescReshapeOp,
                       triton::gpu::MemDescTransOp,
                       triton::gpu::MemDescReinterpretOp>(
@@ -791,12 +797,14 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(rawEncodingInfoOr)) {
         auto &encodingInfoOr = rawEncodingInfoOr;
-        encodingInfoOr->baseOffset = 0;
+        // Raw query layouts already encode the exact translated TMEM view.
         return lowerTMemLdStFromInfo(loc, rewriter, *encodingInfoOr, pred,
                                      llvmElemTy, vals, tmemBase, redOp,
                                      useAbs,
                                      useNaN);
       }
+    } else if (debugQuerySelection && !rawError.empty()) {
+      llvm::errs() << "[tmem-ldst] rawQuery fail: " << rawError << "\n";
     }
   }
   std::optional<MemDescType> firstQueryTy;
@@ -837,7 +845,7 @@ lowerTMemLdStFromTypes(
                      : Twine("fail")));
     if (succeeded(encodingInfoOr)) {
       if (memDescValue &&
-          isa_and_nonnull<triton::gpu::MemDescSubsliceOp,
+          isa_and_nonnull<TMEMSubSliceOp, triton::gpu::MemDescSubsliceOp,
                           triton::gpu::MemDescIndexOp,
                           triton::gpu::MemDescReshapeOp>(
               memDescValue.getDefiningOp()) &&

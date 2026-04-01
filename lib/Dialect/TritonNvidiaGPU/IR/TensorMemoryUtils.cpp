@@ -982,6 +982,7 @@ static FailureOr<TMemLdStQueryLayout>
 inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
                                        bool preserveNonCanonicalView,
                                        std::string *error) {
+  bool debug = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
   auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
   if (!memDescTy || memDescTy.getMemorySpace() !=
                         TensorMemorySpaceAttr::get(memDesc.getContext())) {
@@ -1010,7 +1011,7 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
 
   Operation *defOp = memDesc.getDefiningOp();
   bool hasExplicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, gpu::MemDescIndexOp,
+      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
                       gpu::MemDescReshapeOp>(defOp);
   auto layoutRank =
       static_cast<size_t>(cast<LayoutEncodingTrait>(encoding).getRank());
@@ -1035,6 +1036,43 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
                                         subslice.getOffsets(),
                                         srcTy.getElementTypeBitWidth(), ctx,
                                         error);
+  }
+  if (auto subslice = memDesc.getDefiningOp<TMEMSubSliceOp>()) {
+    auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+        subslice.getSrc(), preserveNonCanonicalView, error);
+    if (failed(srcQuery))
+      return failure();
+    auto maybeDstAnalysis =
+        getTMemViewAnalysisLayout(memDescTy.getShape(), memDescTy.getEncoding(),
+                                  error);
+    if (!maybeDstAnalysis)
+      return failure();
+    auto llInv = computeLeftInverseLayout(srcQuery->layout, error);
+    if (failed(llInv)) {
+      if (error && error->empty())
+        *error = "unsupported tensor memory memdesc_subslice view";
+      return failure();
+    }
+    auto logicalDims = llvm::to_vector(srcQuery->layout.getOutDimNames());
+    SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+    encodedOffsets.reserve(logicalDims.size());
+    for (auto dim : logicalDims)
+      encodedOffsets.push_back({dim, 0});
+    if (!encodedOffsets.empty())
+      encodedOffsets.back().second = subslice.getN();
+    auto baseCoords =
+        llInv->apply(makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+    auto result = TMemLdStQueryLayout{
+        maybeDstAnalysis->layout, maybeDstAnalysis->twoCTAs,
+        remapTMemLdStQueryOrigin(*srcQuery, maybeDstAnalysis->layout,
+                                 baseCoords)};
+    if (debug) {
+      llvm::errs() << "[tmem-ldst] ttng.tmem_subslice origin:";
+      for (int32_t value : result.origin)
+        llvm::errs() << " " << value;
+      llvm::errs() << "\n";
+    }
+    return result;
   }
   if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
     auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
@@ -1201,6 +1239,10 @@ std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc) {
       cur = op.getSrc();
       continue;
     }
+    if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
     if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
       cur = op.getSrc();
       continue;
@@ -1222,7 +1264,7 @@ bool preferBackingTMemLdStQueryTypes(Value memDesc) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy)
     return false;
-  if (!isa_and_nonnull<gpu::MemDescSubsliceOp, gpu::MemDescIndexOp,
+  if (!isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
                        gpu::MemDescReshapeOp>(memDesc.getDefiningOp())) {
     return false;
   }
@@ -1317,7 +1359,7 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc) {
   if (!memTy)
     return queryTypes;
   bool explicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, gpu::MemDescIndexOp,
+      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
                       gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
 
@@ -1499,6 +1541,22 @@ inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
     auto maybeEncoding = inferTMemSubsliceEncoding(
         srcTy->getShape(), srcTy->getEncoding(), memDescTy.getShape(),
         subslice.getOffsets(), error);
+    if (failed(maybeEncoding))
+      return failure();
+    return makeStandaloneTy(*maybeEncoding);
+  }
+  if (auto subslice = memDesc.getDefiningOp<TMEMSubSliceOp>()) {
+    auto srcTy = inferStandaloneTMemViewTypeImpl(subslice.getSrc(),
+                                                 preserveNonCanonicalView,
+                                                 error);
+    if (failed(srcTy))
+      return failure();
+    SmallVector<int32_t> offsets(srcTy->getRank(), 0);
+    if (!offsets.empty())
+      offsets.back() = subslice.getN();
+    auto maybeEncoding = inferTMemSubsliceEncoding(
+        srcTy->getShape(), srcTy->getEncoding(), memDescTy.getShape(),
+        offsets, error);
     if (failed(maybeEncoding))
       return failure();
     return makeStandaloneTy(*maybeEncoding);
@@ -1888,6 +1946,18 @@ getStaticSubviewRootMapping(Value memDesc, std::string *error) {
       continue;
     }
 
+    if (auto subslice = dyn_cast<TMEMSubSliceOp>(defOp)) {
+      if (origin.empty()) {
+        if (error)
+          *error = "unsupported tensor memory descriptor view for support "
+                   "query";
+        return failure();
+      }
+      origin.back() += subslice.getN();
+      cur = subslice.getSrc();
+      continue;
+    }
+
     if (auto index = dyn_cast<gpu::MemDescIndexOp>(defOp)) {
       APInt indexValue;
       if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue))) {
@@ -2174,7 +2244,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
     return false;
   }
   bool explicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, gpu::MemDescIndexOp,
+      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
                       gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
   if (explicitViewProducer &&
