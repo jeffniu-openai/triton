@@ -2316,3 +2316,23 @@ rejection, not rescue
 - Revalidation note (2026-04-01):
   - the exact GB200 `64x128x32` `f16` epilogue-subtile matmul node is green on clean committed HEAD `69c7822a8`
   - the temporary opcode-shape experiments were a dead end and were discarded; the current tree is back at the committed checkpoint before the full GB200 CI-equivalent sweep
+
+## 2026-04-01: MMAv5 lowering must use raw TMEM-linear accumulator mappings, not recovered legacy families
+
+- A second GB200 unit-matmul regression surfaced after the whole-root ld/st fix:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-256-128-32-4-float16-float16]`
+- The direct PTX symptom isolated the bug:
+  - stores were still `tcgen05.st.sync.aligned.16x256b.x16.unpack::16b.b32` as expected
+  - the final load could stay a single `tcgen05.ld.sync.aligned.32x32b.x128.pack::16b.b32` and still be numerically correct
+  - the real divergence was the MMAv5 accumulator write addresses: current tree used `[%r437 + 256]`, while `/tmp/triton-origin-main` used `[%r437 + 128]`
+- Root cause was in the LLVM lowering loader, not the ld/st selector:
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+  - `DotOpMmaV5TmemLoader::build(...)` was taking a TMEM-linear memdesc, recovering a legacy-like MMAv5 family, then rebuilding the loader address model from that recovered legacy family
+  - for whole-tile linear accumulators, that internal legacy normalization can change the physical stepping used by the generated MMAv5 address operands even though the user-visible memdesc is already precise
+- Current rule:
+  - MMAv5 loader/address generation must use the raw `toLinearLayout(memTy)` mapping for TMEM-linear accumulators/LHS descriptors
+  - legacy/TMEM shorthands may still exist in IR/source as sugar, but lowering should not depend on recovering them when a precise linear mapping is already available
+- Validation checkpoint:
+  - `64x128x32` and `256x128x32` GB200 `f16` epilogue-subtile unit matmuls both pass again
+  - PTX for the `256x128` case now restores the `+128` MMAv5 slice offsets
+  - `make test-lit` is green again after updating the one stale Blackwell conversion CHECK from `+64` to `+32`

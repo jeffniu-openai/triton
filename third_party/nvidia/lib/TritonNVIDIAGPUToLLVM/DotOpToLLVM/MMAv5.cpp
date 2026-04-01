@@ -22,27 +22,6 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
     Value tmemBase, bool useRawWordColumns) {
   auto ll = toLinearLayout(memTy);
-  if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
-    auto rank =
-        static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding())
-                                .getRank());
-    auto shape = memTy.getShape().take_back(rank);
-    auto allocShape = memTy.getAllocShape().take_back(rank);
-    auto cga = gpu::getCGALayout(memTy.getEncoding());
-    if (shape == allocShape) {
-      if (auto accInfo = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
-        auto legacy = ttng::TensorMemoryEncodingAttr::get(
-            loc.getContext(), accInfo->mmaSizeM, accInfo->mmaSizeN,
-            accInfo->colStride, cga, accInfo->twoCTAs);
-        ll = toLinearLayout(shape, legacy);
-      } else if (auto lhsInfo = ttng::getMMAv5LhsLayoutInfo(memTy)) {
-        auto legacy = ttng::TensorMemoryEncodingAttr::get(
-            loc.getContext(), lhsInfo->mmaSizeM, lhsInfo->mmaSizeN,
-            lhsInfo->colStride, cga, lhsInfo->twoCTAs);
-        ll = toLinearLayout(shape, legacy);
-      }
-    }
-  }
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);
@@ -634,7 +613,7 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
 
   DotOpMmaV5TmemLoader dLoader =
       DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
-                                  /*useRawWordColumns=*/true);
+                                  /*useRawWordColumns=*/false);
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,
                           int m, int n, const DotConversion::InstDesc &desc) {
     return dLoader.tmemLoad(m * desc.mmaSizeM, n * desc.mmaSizeN, rewriter,
@@ -757,7 +736,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   // and descriptor-view offsets without a separate block-id schedule.
   DotOpMmaV5TmemLoader dLoader =
       DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
-                                  /*useRawWordColumns=*/true);
+                                  /*useRawWordColumns=*/false);
   dot.getAccumulatorInfo = [](MemDescType memTy) {
     return ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
   };

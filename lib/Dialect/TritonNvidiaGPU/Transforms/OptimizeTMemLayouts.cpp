@@ -11,6 +11,8 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
+#include <numeric>
+
 namespace ttg = mlir::triton::gpu;
 
 namespace mlir {
@@ -57,6 +59,30 @@ static Value stripConvertLayout(Value v) {
   while (auto cvt = v.getDefiningOp<ttg::ConvertLayoutOp>())
     v = cvt.getSrc();
   return v;
+}
+
+static ttg::MemDescType getSplitLoadRootMemDescType(Value memDesc) {
+  auto memTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+  if (!memTy)
+    return {};
+
+  auto reinterpretOp = memDesc.getDefiningOp<ttg::MemDescReinterpretOp>();
+  if (!reinterpretOp)
+    return memTy;
+
+  auto srcTy = dyn_cast<ttg::MemDescType>(reinterpretOp.getSrc().getType());
+  if (!srcTy || srcTy.getRank() != memTy.getRank())
+    return memTy;
+  auto numElements = [](ArrayRef<int64_t> shape) {
+    return std::accumulate(shape.begin(), shape.end(), int64_t{1},
+                           std::multiplies<int64_t>());
+  };
+  if (numElements(srcTy.getShape()) != numElements(memTy.getShape()))
+    return memTy;
+  if (!isTensorMemoryEncoding(srcTy.getEncoding()) ||
+      !isTensorMemoryEncoding(memTy.getEncoding()))
+    return memTy;
+  return srcTy;
 }
 
 static bool shouldPreserveDirectLeadingSliceView(Value memDesc) {
@@ -396,10 +422,14 @@ public:
       return failure();
 
     auto shape = reshapeOp.getResult().getType().getShape();
-    // Ensure M dimension is preserved by the reshape.
-    if (shape[0] != cast<RankedTensorType>(reshapeSrc.getType()).getShape()[0])
+    auto rootMemTy = getSplitLoadRootMemDescType(tmemLoad.getSrc());
+    if (!rootMemTy)
       return failure();
-    int mDim = getShapePerCTA(tmemLoad.getSrc().getType())[0];
+    // Ensure M dimension is preserved by the logical TMEM tile, even if the
+    // current source is a reinterpret of the backing TMEM allocation.
+    if (shape[0] != rootMemTy.getShape()[rootMemTy.getRank() - 2])
+      return failure();
+    int mDim = getShapePerCTA(rootMemTy)[0];
     // TODO: enable other M cases. (the layout is a bit more complex).
     if (mDim != 128)
       return failure();

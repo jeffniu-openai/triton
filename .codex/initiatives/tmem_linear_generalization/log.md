@@ -4401,3 +4401,30 @@ Open after this slice:
     - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir` -> `1 passed`
     - `python/test/gluon/test_core.py -k 'linear_m64_16x256b_64x128 and test_tmem_linear_m64_roundtrip_direct_shapes'` -> `1 passed`
     - `python/test/gluon/test_core.py::test_tmem_packed_f16_roundtrip_atom_shapes` -> `1 passed`
+
+- 2026-04-01: GB200 unit matmul `256x128x32` f16 epilogue-subtile regression fixed on top of `69c7822a8`
+  - failing node:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-256-128-32-4-float16-float16]`
+  - symptom before fix:
+    - numerics wrong (`261331 / 524288` mismatches)
+    - PTX showed the accumulator MMAv5 writes stepping by `+256`, while `/tmp/triton-origin-main` stepped by `+128`
+    - the final load was still a single `tcgen05.ld.sync.aligned.32x32b.x128.pack::16b.b32`; the numerical bug tracked the MMAv5 accumulator address model, not the load opcode family
+  - root cause:
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+    - `DotOpMmaV5TmemLoader::build(...)` was re-normalizing TMEM-linear accumulator/LHS memdescs back through legacy-family matching before building the address model
+    - for this whole-tile linear accumulator case that legacy recovery changed the physical accumulator stepping and over-advanced the second MMAv5 slice along N/M
+  - fix:
+    - remove the legacy-family normalization from `DotOpMmaV5TmemLoader::build(...)`
+    - keep the loader on the raw `toLinearLayout(memTy)` physical TMEM mapping instead
+    - this is also the correct long-term direction for the initiative: loader/codegen should consume the full linear form directly, not recover legacy shorthands internally
+  - related cleanup:
+    - `lib/Dialect/TritonNvidiaGPU/Transforms/OptimizeTMemLayouts.cpp`
+    - broaden `TMemSplitLoadPattern` so its M-preservation check can look through a `ttg.memdesc_reinterpret` of the backing TMEM allocation when matching the reshape->trans->split load pattern
+    - this did not change the PTX for the exact `256x128` GB200 node, but it keeps the split-load rewrite aligned with the newer TMEM-linear accumulator forms
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `make test-lit` -> `248 passed, 2 unsupported`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-256-128-32-4-float16-float16]` -> `1 passed`
+    - resumed GB200-style `python/test/unit` shards:
+      - groups `13..16` across GPUs `0..3` -> all passed
