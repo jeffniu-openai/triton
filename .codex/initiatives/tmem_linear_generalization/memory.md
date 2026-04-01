@@ -2464,3 +2464,17 @@ rejection, not rescue
   - the direct `DISABLE_SUBPROCESS=1` repro is back to the original expected device-side assert (`Buffer being accessed has outstanding reads`)
   - the wrapped `test_aliasing_tensor_visibility_outstanding_read[1ctas-True]` passes again
   - the stale `test_tensor_memory` frontend expectation was updated to the restored trailing-dimension TMEM shorthand
+
+
+## 2026-04-01: GB200 `test_tmem_subslice_block_m_64` fix
+
+- The remaining M64 TMEM column-subview bug was not the half-tile zero store anymore; after the root `64xN` TMEM layout selection change, the `64x128 -> 64x64 -> reinterpret<f16, 64x128>` zeroing path was correct and only the three `64x2xf32` follow-up stores were still wrong.
+- The bad behavior came from the old column-subview support-rescue path in `TensorMemoryUtils.cpp`:
+  - it approximated `64`-row TMEM column subviews with a reshaped support tile that treated them like contiguous leading columns
+  - that shifted `64x2` packets onto the wrong TMEM half (the LLIR base addresses moved to `+64/+68/+72` instead of the expected `+32/+36/+40` family)
+- The fix is to stop using that support-rescue path for `64`-row TMEM column subviews and let them use the raw TMEM view query instead.
+- `gluon_ir.cc` also now avoids the old legacy-only auto-layout shortcut for root `64xN` TMEM descriptors before running the direct TMEM-compatible layout search, so `s_tmem.get_reg_layout()` can be reused by those M64 subviews again.
+- Validation checkpoint:
+  - `test_tmem_subslice_block_m_64[legacy]` passes
+  - `test_tmem_subslice_block_m_64[linear]` passes
+  - paired rerun passes

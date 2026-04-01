@@ -4569,3 +4569,18 @@ Open after this slice:
       - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_consan.py::test_aliasing_tensor_visibility_outstanding_read[1ctas-True]'`
     - stale frontend expectation updated for the restored TMEM slice shorthand
       - `EXPECTTEST_ACCEPT=1 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_frontend.py::test_tensor_memory`
+
+
+- 2026-04-01: fixed the GB200 `test_tmem_subslice_block_m_64` TMEM column-subview regression
+  - failure:
+    - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[{legacy,linear}]` was still broken after the earlier GB200 checkpoint
+    - `s_tmem.slice(...)._reinterpret(...).store(...)` on `64xN` TMEM tiles either rejected the full-tile `get_reg_layout()` layout or miscompiled the column-subview packets
+    - the bad support-rescue path treated `64`-row TMEM column subviews like contiguous leading columns and shifted the `64x2` follow-up stores onto the wrong TMEM half
+  - fix:
+    - keep the new TMEM reinterpret query builder in `TensorMemoryUtils.cpp`, but disable the old column-subview support-rescue path for `64`-row TMEM column subviews so they fall back to the raw TMEM view query instead of the lossy reshaped-support approximation
+    - tighten `gluon_ir.cc` auto layout selection for root `64xN` TMEM descriptors so `get_reg_layout()` no longer gets pinned to the old legacy-only shortcut before the direct TMEM-compatible layout search runs
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]'` -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[linear]'` -> `1 passed`
+    - paired rerun -> `2 passed`

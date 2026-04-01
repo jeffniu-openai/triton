@@ -2053,7 +2053,8 @@ void init_gluon_ir(py::module &&m) {
               "numWarps must be a power of two and >= 4");
 
         if (atomName == "auto" &&
-            isa<ttng::TensorMemoryEncodingAttr>(memDescTy.getEncoding())) {
+            isa<ttng::TensorMemoryEncodingAttr>(memDescTy.getEncoding()) &&
+            !(memDescTy.getRank() == 2 && memDescTy.getShape()[0] == 64)) {
           py::object legacyLayout =
               findDirectLayoutForMemDesc(memDesc, ttng::TMemAccessAtom::I32x32b);
           if (!legacyLayout.is_none()) {
@@ -2071,6 +2072,19 @@ void init_gluon_ir(py::module &&m) {
           // alternate layout that lowers to different repeat/immediate pairs.
           if (atomName == "auto" && memDescTy.getRank() == 2 &&
               memDescTy.getShape()[0] == 64) {
+            if (!isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
+                                 ttg::MemDescReshapeOp, ttg::MemDescTransOp,
+                                 ttg::MemDescReinterpretOp>(
+                    memDesc.getDefiningOp())) {
+              py::object canonicalM64Layout = firstLegalLayoutForType(
+                  memDescTy, ttng::getTmemCompatibleLayouts(memDescTy, numWarps),
+                  std::nullopt);
+              if (!canonicalM64Layout.is_none()) {
+                if (debug)
+                  llvm::errs() << debugLog.str();
+                return canonicalM64Layout;
+              }
+            }
             py::object splitNLayout = findDirectLayoutForMemDesc(
                 memDesc, ttng::TMemAccessAtom::I16x32bx2);
             if (!splitNLayout.is_none()) {

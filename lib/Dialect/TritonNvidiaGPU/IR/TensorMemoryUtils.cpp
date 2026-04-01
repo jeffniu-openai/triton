@@ -977,6 +977,223 @@ inferTMemReshapeQueryLayout(ArrayRef<int64_t> srcShape,
 }
 
 static FailureOr<TMemLdStQueryLayout>
+inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
+                                const TMemLdStQueryLayout &srcQuery,
+                                ArrayRef<int64_t> dstShape, int dstBitwidth,
+                                MLIRContext *ctx, std::string *error) {
+  bool debug = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
+  auto ll = srcQuery.layout;
+  auto layoutSrcShape = srcShape;
+  auto layoutDstShape = dstShape;
+  int64_t layoutElems = static_cast<int64_t>(ll.getTotalOutDimSize());
+
+  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape) {
+    while (!shape.empty() && shape.front() == 1 &&
+           product<int64_t>(shape.drop_front()) >= layoutElems)
+      shape = shape.drop_front();
+    return shape;
+  };
+  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape);
+  layoutDstShape = stripLeadingUnitDims(layoutDstShape);
+  while (static_cast<size_t>(ll.getNumOutDims()) > layoutSrcShape.size()) {
+    auto firstDim = *ll.getOutDimNames().begin();
+    if (ll.getOutDimSize(firstDim) != 1)
+      break;
+    ll = ll.squeezeOuts(firstDim);
+  }
+  layoutElems = static_cast<int64_t>(ll.getTotalOutDimSize());
+
+  if (product<int64_t>(layoutSrcShape) > layoutElems) {
+    if (layoutSrcShape.size() != static_cast<size_t>(ll.getNumOutDims()) + 1) {
+      if (error)
+        *error = "TMEM reinterpret requires the descriptor rank to match the "
+                 "TMEM layout rank or have one leading multibuffer dimension";
+      return failure();
+    }
+    if (layoutDstShape.empty() ||
+        layoutDstShape.front() != layoutSrcShape.front()) {
+      if (error)
+        *error =
+            "TMEM reinterpret must preserve the leading multibuffer dimension";
+      return failure();
+    }
+    layoutSrcShape = layoutSrcShape.drop_front();
+    layoutDstShape = layoutDstShape.drop_front();
+  }
+
+  if (product<int64_t>(layoutSrcShape) * srcBitwidth !=
+      product<int64_t>(layoutDstShape) * dstBitwidth) {
+    if (error)
+      *error = "TMEM reinterpret must preserve the total number of bits";
+    return failure();
+  }
+  if (!llvm::equal(ll.getOutDimSizes(), layoutSrcShape)) {
+    auto maybeRestrictedLayout =
+        restrictTMemAnalysisLayoutToShape(ll, layoutSrcShape, error);
+    if (failed(maybeRestrictedLayout)) {
+      if (error && error->empty())
+        *error =
+            "TMEM reinterpret rank does not match the canonical TMEM layout";
+      return failure();
+    }
+    ll = *maybeRestrictedLayout;
+    layoutElems = static_cast<int64_t>(ll.getTotalOutDimSize());
+  }
+  if (layoutElems != product<int64_t>(layoutSrcShape)) {
+    if (error)
+      *error = "TMEM reinterpret rank does not match the canonical TMEM "
+               "layout";
+    return failure();
+  }
+
+  auto maybeSrcInv = computeLeftInverseLayout(ll, error);
+  if (failed(maybeSrcInv)) {
+    if (error && error->empty())
+      *error = "unsupported tensor memory memdesc_reinterpret view";
+    return failure();
+  }
+
+  auto linearizeRowMajorCoordsLocal = [&](ArrayRef<int64_t> shape,
+                                          ArrayRef<int32_t> coords)
+      -> FailureOr<int64_t> {
+    if (shape.size() != coords.size()) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return failure();
+    }
+    int64_t linearOffset = 0;
+    int64_t stride = 1;
+    for (auto [size, coord] : llvm::reverse(llvm::zip_equal(shape, coords))) {
+      if (coord < 0 || coord >= size) {
+        if (error)
+          *error = "unsupported tensor memory memdesc_reinterpret view";
+        return failure();
+      }
+      linearOffset += static_cast<int64_t>(coord) * stride;
+      stride *= size;
+    }
+    return linearOffset;
+  };
+  auto unravelRowMajorCoordsLocal = [&](ArrayRef<int64_t> shape,
+                                        int64_t linearOffset)
+      -> FailureOr<SmallVector<int32_t>> {
+    if (linearOffset < 0 || linearOffset >= product<int64_t>(shape)) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return failure();
+    }
+    SmallVector<int32_t> coords(shape.size(), 0);
+    for (int64_t dim = static_cast<int64_t>(shape.size()) - 1; dim >= 0;
+         --dim) {
+      int64_t size = shape[dim];
+      if (size <= 0) {
+        if (error)
+          *error = "unsupported tensor memory memdesc_reinterpret view";
+        return failure();
+      }
+      coords[dim] = static_cast<int32_t>(linearOffset % size);
+      linearOffset /= size;
+    }
+    return coords;
+  };
+  auto mapPoint = [&](ArrayRef<int32_t> dstPoint)
+      -> FailureOr<SmallVector<int32_t>> {
+    auto linearDst = linearizeRowMajorCoordsLocal(layoutDstShape, dstPoint);
+    if (failed(linearDst))
+      return failure();
+    int64_t linearSrc =
+        (*linearDst * static_cast<int64_t>(dstBitwidth)) / srcBitwidth;
+    return unravelRowMajorCoordsLocal(layoutSrcShape, linearSrc);
+  };
+
+  auto srcLogicalDims = llvm::to_vector(ll.getOutDimNames());
+  auto makeLogicalCoords = [&](ArrayRef<int32_t> point) {
+    SmallVector<std::pair<StringAttr, int32_t>> sparse;
+    sparse.reserve(srcLogicalDims.size());
+    for (auto [dim, value] : llvm::zip_equal(srcLogicalDims, point))
+      sparse.push_back({dim, value});
+    return makeFullLinearLayoutCoords(srcLogicalDims, sparse);
+  };
+  SmallVector<int32_t> zeroPoint(layoutDstShape.size(), 0);
+  auto basePoint = mapPoint(zeroPoint);
+  if (failed(basePoint))
+    return failure();
+  auto baseCoords = maybeSrcInv->apply(makeLogicalCoords(*basePoint));
+  auto physOutDimNames = llvm::to_vector(maybeSrcInv->getOutDimNames());
+
+  LinearLayout::BasesT dstInvBases;
+  for (int64_t dim = 0; dim < static_cast<int64_t>(layoutDstShape.size());
+       ++dim) {
+    auto dstDimName = StringAttr::get(ctx, "dim" + llvm::Twine(dim));
+    auto &bases = dstInvBases[dstDimName];
+    for (int64_t step = 1; step < layoutDstShape[dim]; step <<= 1) {
+      SmallVector<int32_t> dstPoint(layoutDstShape.size(), 0);
+      dstPoint[dim] = static_cast<int32_t>(step);
+      auto srcPoint = mapPoint(dstPoint);
+      if (failed(srcPoint))
+        return failure();
+      auto pointCoords = maybeSrcInv->apply(makeLogicalCoords(*srcPoint));
+      std::vector<int32_t> basis;
+      basis.reserve(physOutDimNames.size());
+      for (auto physDim : physOutDimNames) {
+        int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
+                        lookupLinearLayoutCoord(baseCoords, physDim);
+        if (delta < 0) {
+          if (error)
+            *error = "unsupported tensor memory memdesc_reinterpret view";
+          return failure();
+        }
+        basis.push_back(delta);
+      }
+      bases.push_back(std::move(basis));
+    }
+  }
+
+  SmallVector<std::pair<StringAttr, int32_t>> activePhysOutDims;
+  activePhysOutDims.reserve(physOutDimNames.size());
+  for (auto physDim : physOutDimNames)
+    activePhysOutDims.push_back({physDim, maybeSrcInv->getOutDimSize(physDim)});
+
+  auto dstInv = LinearLayout::tryCreate(std::move(dstInvBases),
+                                        activePhysOutDims,
+                                        /*requireSurjective=*/false, error);
+  if (!dstInv) {
+    if (error && error->empty())
+      *error = "unsupported tensor memory memdesc_reinterpret view: failed to "
+               "construct support inverse";
+    return failure();
+  }
+  auto dstLayout = computeLeftInverseLayout(*dstInv, error);
+  if (failed(dstLayout)) {
+    if (error && error->empty())
+      *error = "unsupported tensor memory memdesc_reinterpret view: failed to "
+               "compute support layout";
+    return failure();
+  }
+  auto result = TMemLdStQueryLayout{
+      *dstLayout, srcQuery.twoCTAs,
+      remapTMemLdStQueryOrigin(srcQuery, *dstLayout, /*deltaCoords=*/{})};
+  if (debug) {
+    llvm::errs() << "[tmem-ldst] reinterpret srcShape=";
+    for (int64_t size : srcShape)
+      llvm::errs() << " " << size;
+    llvm::errs() << " srcBitwidth=" << srcBitwidth << " dstShape=";
+    for (int64_t size : dstShape)
+      llvm::errs() << " " << size;
+    llvm::errs() << " dstBitwidth=" << dstBitwidth << "\n";
+    llvm::errs() << "[tmem-ldst] reinterpret src layout:\n"
+                 << srcQuery.layout.toString() << "\n";
+    llvm::errs() << "[tmem-ldst] reinterpret dst layout:\n"
+                 << result.layout.toString() << "\n";
+    llvm::errs() << "[tmem-ldst] reinterpret origin:";
+    for (int32_t value : result.origin)
+      llvm::errs() << " " << value;
+    llvm::errs() << "\n";
+  }
+  return result;
+}
+
+static FailureOr<TMemLdStQueryLayout>
 inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
                                        bool preserveNonCanonicalView,
                                        std::string *error) {
@@ -1219,8 +1436,22 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
   };
   if (auto trans = memDesc.getDefiningOp<gpu::MemDescTransOp>())
     return preserveViewOrigin(trans.getSrc());
-  if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>())
+  if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
+    if (debug)
+      llvm::errs() << "[tmem-ldst] reinterpret branch memTy=" << memDescTy
+                   << "\n";
+    auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+        reinterpret.getSrc(), preserveNonCanonicalView, error);
+    if (failed(srcQuery))
+      return failure();
+    auto srcTy = cast<MemDescType>(reinterpret.getSrc().getType());
+    if (srcTy.getElementTypeBitWidth() != memDescTy.getElementTypeBitWidth())
+      return inferTMemReinterpretQueryLayout(
+          srcTy.getShape(), srcTy.getElementTypeBitWidth(), *srcQuery,
+          memDescTy.getShape(), memDescTy.getElementTypeBitWidth(),
+          memDesc.getContext(), error);
     return preserveViewOrigin(reinterpret.getSrc());
+  }
 
   if (memDescTy.getShape().take_back(layoutRank) ==
       memDescTy.getAllocShape().take_back(layoutRank)) {
@@ -2497,12 +2728,172 @@ getDirectHalfRowsTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
   return result;
 }
 
+static std::optional<TMemLdStQueryLayout>
+reinterpretColumnSubviewSupportQueryLayout(
+    ArrayRef<int64_t> srcShape, int srcBitwidth,
+    const TMemLdStQueryLayout &srcSupport, ArrayRef<int64_t> dstShape,
+    int dstBitwidth, std::string *error) {
+  if (srcShape.size() != 2 || dstShape.size() != 2 || srcShape[0] != dstShape[0] ||
+      product<int64_t>(srcShape) * srcBitwidth !=
+          product<int64_t>(dstShape) * dstBitwidth) {
+    return std::nullopt;
+  }
+  if (srcBitwidth == dstBitwidth)
+    return srcSupport;
+
+  auto *ctx = srcSupport.layout.getInDimNames().begin()->getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  auto bases = srcSupport.layout.getBases();
+  auto colIt = bases.find(kCol);
+  if (colIt == bases.end())
+    return std::nullopt;
+
+  auto inDims = llvm::to_vector(srcSupport.layout.getInDimNames());
+  auto origin = srcSupport.origin;
+  auto originIt = llvm::find(inDims, kCol);
+  if (originIt == inDims.end())
+    return std::nullopt;
+  size_t originIdx = std::distance(inDims.begin(), originIt);
+
+  auto zeroBasis = [&]() { return std::vector<int32_t>(srcSupport.layout.getNumOutDims(), 0); };
+  if (srcBitwidth > dstBitwidth) {
+    int64_t ratio = srcBitwidth / dstBitwidth;
+    if (srcBitwidth % dstBitwidth != 0 || !llvm::isPowerOf2_64(ratio)) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return std::nullopt;
+    }
+    unsigned extraBits = llvm::Log2_64(ratio);
+    colIt->second.insert(colIt->second.begin(), extraBits, zeroBasis());
+    origin[originIdx] *= static_cast<int32_t>(ratio);
+  } else {
+    int64_t ratio = dstBitwidth / srcBitwidth;
+    if (dstBitwidth % srcBitwidth != 0 || !llvm::isPowerOf2_64(ratio)) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return std::nullopt;
+    }
+    unsigned removeBits = llvm::Log2_64(ratio);
+    if (removeBits > colIt->second.size()) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return std::nullopt;
+    }
+    for (unsigned i = 0; i < removeBits; ++i) {
+      if (!llvm::all_of(colIt->second[i], [](int32_t value) { return value == 0; })) {
+        if (error)
+          *error = "unsupported tensor memory memdesc_reinterpret view";
+        return std::nullopt;
+      }
+    }
+    colIt->second.erase(colIt->second.begin(), colIt->second.begin() + removeBits);
+    if (origin[originIdx] % static_cast<int32_t>(ratio) != 0) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return std::nullopt;
+    }
+    origin[originIdx] /= static_cast<int32_t>(ratio);
+  }
+
+  return TMemLdStQueryLayout{LinearLayout(std::move(bases), srcSupport.layout.getOutDims(),
+                                          srcSupport.layout.isSurjective()),
+                             srcSupport.twoCTAs, std::move(origin)};
+}
+
+static std::optional<TMemLdStQueryLayout>
+getColumnSubviewTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
+  auto queryTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!queryTy || queryTy.getRank() != 2 ||
+      !isTensorMemoryEncoding(queryTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding())) {
+    return std::nullopt;
+  }
+
+  if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
+    auto srcTy = dyn_cast<MemDescType>(reinterpret.getSrc().getType());
+    if (!srcTy || srcTy.getRank() != 2)
+      return std::nullopt;
+    int64_t srcBits =
+        product<int64_t>(srcTy.getShape()) * srcTy.getElementTypeBitWidth();
+    int64_t dstBits =
+        product<int64_t>(queryTy.getShape()) * queryTy.getElementTypeBitWidth();
+    if (srcBits != dstBits)
+      return std::nullopt;
+    auto support =
+        getColumnSubviewTMemLdStSupportQueryLayout(reinterpret.getSrc(), error);
+    if (!support)
+      return std::nullopt;
+    auto reinterpretedSupport = reinterpretColumnSubviewSupportQueryLayout(
+        srcTy.getShape(), srcTy.getElementTypeBitWidth(), *support,
+        queryTy.getShape(), queryTy.getElementTypeBitWidth(), error);
+    if (!reinterpretedSupport)
+      return std::nullopt;
+    if (auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding()))
+      reinterpretedSupport->twoCTAs = *maybeTwoCTAs;
+    return *reinterpretedSupport;
+  }
+
+  auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>();
+  if (!subslice)
+    return std::nullopt;
+
+  auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+  if (!srcTy || srcTy.getRank() != 2 || subslice.getOffsets().size() != 2 ||
+      subslice.getOffsets()[0] != 0 ||
+      srcTy.getShape()[0] != queryTy.getShape()[0] ||
+      srcTy.getShape()[1] <= queryTy.getShape()[1] ||
+      !isTensorMemoryEncoding(srcTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
+    return std::nullopt;
+  }
+  if (queryTy.getShape()[0] == 64 && srcTy.getShape()[0] == 64) {
+    return std::nullopt;
+  }
+
+  std::string srcError;
+  auto maybeSrcSupport =
+      getColumnSubviewTMemLdStSupportQueryLayout(subslice.getSrc(), &srcError);
+  FailureOr<TMemLdStQueryLayout> srcQuery = maybeSrcSupport
+                                                ? FailureOr<TMemLdStQueryLayout>{*maybeSrcSupport}
+                                                : inferStandaloneTMemLdStQueryLayoutImpl(
+                                                      subslice.getSrc(),
+                                                      /*preserveNonCanonicalView=*/true,
+                                                      &srcError);
+  if (failed(srcQuery))
+    return std::nullopt;
+
+  auto *ctx = memDesc.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+  encodedOffsets.reserve(srcQuery->layout.getNumInDims());
+  for (auto dim : srcQuery->layout.getInDimNames()) {
+    if (dim == kRow)
+      encodedOffsets.push_back({dim, subslice.getOffsets()[0]});
+    else if (dim == kCol)
+      encodedOffsets.push_back({dim, subslice.getOffsets()[1]});
+    else
+      encodedOffsets.push_back({dim, 0});
+  }
+
+  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+  return TMemLdStQueryLayout{
+      srcQuery->layout, maybeTwoCTAs.value_or(srcQuery->twoCTAs),
+      remapTMemLdStQueryOrigin(*srcQuery, srcQuery->layout, encodedOffsets)};
+}
+
 std::optional<TMemLdStQueryLayout>
 getTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
   bool debug = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
   auto queryTy = dyn_cast<MemDescType>(memDesc.getType());
   if (!queryTy)
     return std::nullopt;
+  if (auto support = getColumnSubviewTMemLdStSupportQueryLayout(memDesc, error)) {
+    if (debug)
+      llvm::errs() << "[tmem-ldst-support] column-slice support layout:\n"
+                   << support->layout.toString() << "\n";
+    return support;
+  }
   auto support = getGenericTMemLdStReshapedSupportQueryLayout(memDesc, error);
   if (debug && support)
     llvm::errs() << "[tmem-ldst-support] generic support layout:\n"
@@ -3879,6 +4270,18 @@ computeTMemLdStEncodingInfoImpl(
                                         warpBasis1, rowPlan->rowSpan);
         succeeded(scalarInfo) && scalarInfo->atom == info->atom) {
       info = *scalarInfo;
+    }
+  }
+  if (bitwidth == 16 && info->atom == TMemAccessAtom::I16x32bx2 &&
+      info->numRegsPerMessage > 1 && hasZeroBasisAlong(memLayout, kCol)) {
+    if (auto scalarInfo = lowerTMemLdSt(cvt, /*maxnreg=*/2, bitwidth,
+                                        /*emitError=*/{},
+                                        /*unpacked=*/false, warpBasis0,
+                                        warpBasis1, rowPlan->rowSpan);
+        succeeded(scalarInfo) && scalarInfo->atom == info->atom) {
+      info = *scalarInfo;
+    } else {
+      info->numRegsPerMessage = 1;
     }
   }
   if (debug) {
