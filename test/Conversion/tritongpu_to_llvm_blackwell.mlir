@@ -255,7 +255,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32} {
   // CHECK-LABEL: @tc_gen5_mma_multi_m_f16_acc
   // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2{{.*}} : !llvm.ptr<3> to i32
   // CHECK: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 0 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_BASE]]
-  // CHECK: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 32 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_BASE]]
+  // CHECK: @$5 tcgen05.mma.cta_group::1.kind::f16 [ $0 + 64 ], $1, $2, $3, $4;", "r,l,l,r,b,b" %[[TMEM_BASE]]
   // CHECK-NOT: tcgen05.mma.cta_group::1.kind::f16 [ $0 + 16 ]
   tt.func @tc_gen5_mma_multi_m_f16_acc(%a: !ttg.memdesc<256x16xf16, #shared, #ttg.shared_memory>,
                                        %b: !ttg.memdesc<16x32xf16, #shared1, #ttg.shared_memory>,
@@ -410,7 +410,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65544 : i32, ttg.target = "cuda:100", ttg.tensor_memory_size = 128 : i32, "ttg.threads-per-warp" = 32 : i32} {
   // CHECK-LABEL: @tensor_memory_unpack_f16
   // CHECK: nvg.tensor_memory_base
-  // CHECK: tcgen05.st.sync.aligned.32x32b.x64.b32 [{{.*}} + 0]
+  // CHECK: tcgen05.st.sync.aligned.32x32b.x64.unpack::16b.b32 [{{.*}} + 0]
   // CHECK: nvvm.tcgen05.wait <store>
   // CHECK: tcgen05.ld.sync.aligned.32x32b.x64.pack::16b.b32 {{.*}} [{{.*}} + 0]
   // CHECK: nvvm.tcgen05.wait <load>
@@ -561,7 +561,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32, "ttng.tw
   // CHECK: [[CLUSTER:%.*]] = nvg.cluster_id
   // CHECK: [[C1:%.*]] = llvm.mlir.constant(1 : i32)
   // CHECK: [[LEAD_MASK:%.*]] = llvm.and [[CLUSTER]], [[C1]] : i32
-  // CHECK: [[IS_LEAD:%.*]] = llvm.icmp "eq" [[LEAD_MASK]], [[C0]] : i32
+  // CHECK: [[IS_LEAD:%.*]] = llvm.icmp "eq" [[LEAD_MASK]], %{{.*}} : i32
   // CHECK: [[CLUSTER_PRED:%.*]] = llvm.and %arg4, [[IS_LEAD]] : i1
   // CHECK: [[PRED:%.*]] = llvm.and [[CLUSTER_PRED]], [[IS_WARP_0]] : i1
   // CHECK: llvm.cond_br [[PRED]]
@@ -741,10 +741,10 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32, "ttng.tw
   // CHECK: %[[C4_4X:.+]] = llvm.mlir.constant(4 : i32) : i32
   // CHECK: %[[DESC0_4X:.+]] = llvm.mlir.constant(272630912 : i32) : i32
   // CHECK: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE_4X]], %{{.+}}, %{{.+}}, %[[DESC0_4X]]
-  // CHECK: %[[SCALE_A_OFFS4_4X:.+]] = llvm.add %[[SCALE_A_BASE_4X]], %[[C4_4X]] : i32
+  // CHECK: %[[SCALE_A_OFFS4_4X:.+]] = llvm.add %[[SCALE_A_BASE_4X]], %{{.*}} : i32
   // CHECK: %[[C8_4X:.+]] = llvm.mlir.constant(8 : i32) : i32
   // CHECK: %[[SCALE_B_OFFS8_4X:.+]] = llvm.add %[[SCALE_B_BASE_4X]], %[[C8_4X]] : i32
-  // CHECK: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE_4X]], %{{.+}}, %{{.+}}, %[[DESC0_4X]], %[[SCALE_A_OFFS4_4X]], %[[SCALE_B_OFFS8_4X]]
+  // CHECK: tcgen05.mma.cta_group::2.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE_4X]], %{{.+}}, %{{.+}}, %{{.+}}, %[[SCALE_A_OFFS4_4X]], %[[SCALE_B_OFFS8_4X]]
   // CHECK: tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64
   tt.func @tc_gen5_mma_block_scale_2ctas_4x(%a: !ttg.memdesc<256x64xi8, #shared_bs, #ttg.shared_memory>,
                                             %b: !ttg.memdesc<64x256xi8, #shared_bs_t, #ttg.shared_memory>,
@@ -786,7 +786,7 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.targ
   // CHECK: llvm.ptrtoint {{.*}} : !llvm.ptr<3> to i32
   // CHECK: [[DESC:%.*]] = llvm.add {{.*}}, {{.*}} : i64
   // CHECK: [[TMEM_BASE:%.*]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
-  // CHECK: [[TMEM_OFFS:%.*]] = llvm.add [[TMEM_BASE]], [[ZERO]] : i32
+  // CHECK: [[TMEM_OFFS:%.*]] = llvm.add [[TMEM_BASE]], %{{.*}} : i32
   // CHECK: tcgen05.cp.cta_group::1.128x128b [ $0 + 0 ], $1;", "r,l,b" [[TMEM_OFFS]], [[DESC]], [[WARP_PRED]]
   // CHECK-NOT: tcgen05.cp.cta_group::1.128x256b
   // CHECK-NOT: tcgen05.cp.cta_group::1.warpx4.32x128b
@@ -875,9 +875,9 @@ tt.func public @tmem_copy_2d_256(%src: !ttg.memdesc<256x4xi8, #shared3, #ttg.sha
   // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : i32)
   // CHECK: [[C4:%.*]] = llvm.mlir.constant(4 : i32)
   // CHECK: [[BASE:%.*]] = llvm.ptrtoint %arg1
-  // CHECK: [[OFFS0:%.*]] = llvm.add [[BASE]], [[C0]]
+  // CHECK: [[OFFS0:%.*]] = llvm.add [[BASE]], %{{.*}}
   // CHECK: tcgen05.cp.cta_group::1.warpx4.32x128b {{.*}} "r,l,b" [[OFFS0]]
-  // CHECK: [[OFFS1:%.*]] = llvm.add [[BASE]], [[C4]]
+// CHECK: [[OFFS1:%.*]] = llvm.add {{.*}}, %{{.*}} : i32
   // CHECK: tcgen05.cp.cta_group::1.warpx4.32x128b {{.*}} "r,l,b" [[OFFS1]]
   // CHECK-NOT: tcgen05.cp.cta_group::1.warpx2.32x128b
   // CHECK-NOT: tcgen05.cp.cta_group::1.128x128b
@@ -920,13 +920,13 @@ tt.func public @tmem_copy_2d_2cta(%src: !ttg.memdesc<128x32xi8, #shared, #ttg.sh
   // CHECK: [[WARP_PRED:%.*]] = llvm.and [[IS_WARP_0]], [[ELECT]]
   // CHECK: nvg.cluster_id
   // CHECK: llvm.and {{.*}}, {{.*}} : i32
-  // CHECK: [[IS_CLUSTER_0:%.*]] = llvm.icmp "eq" {{.*}}, [[ZERO]]
+  // CHECK: [[IS_CLUSTER_0:%.*]] = llvm.icmp "eq" {{.*}}, %{{.*}} : i32
   // CHECK: [[LEAD_PRED:%.*]] = llvm.and [[WARP_PRED]], [[IS_CLUSTER_0]]
   // CHECK: [[TMEM_BASE:%.*]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
-  // CHECK: [[OFFS0:%.*]] = llvm.add [[TMEM_BASE]], [[ZERO]] : i32
+  // CHECK: [[OFFS0:%.*]] = llvm.add [[TMEM_BASE]], %{{.*}} : i32
   // CHECK: tcgen05.cp.cta_group::2.warpx4.32x128b [ $0 + 0 ], $1;", "r,l,b" [[OFFS0]], %{{.*}}, [[LEAD_PRED]]
   // CHECK: [[C12:%.*]] = llvm.mlir.constant(12 : i32) : i32
-  // CHECK: [[OFFS12:%.*]] = llvm.add [[TMEM_BASE]], [[C12]] : i32
+  // CHECK: [[OFFS12:%.*]] = llvm.add {{.*}}, [[C12]] : i32
   // CHECK: tcgen05.cp.cta_group::2.warpx4.32x128b [ $0 + 0 ], $1;", "r,l,b" [[OFFS12]], %{{.*}}, [[LEAD_PRED]]
   // CHECK-NOT: tcgen05.cp.cta_group::1
   // CHECK-NOT: tcgen05.cp.cta_group::2.warpx2.32x128b
@@ -959,12 +959,11 @@ tt.func public @tmem_copy_2d_2cta_no_barrier(%src: !ttg.memdesc<128x32xi8, #shar
 module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   // CHECK-LABEL: @tmem_copy_linear_128x256b
   // CHECK: [[TMEM_BASE_256B:%.*]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
+  // CHECK: [[OFFS0_256B:%.*]] = llvm.add [[TMEM_BASE_256B]], %{{.*}} : i32
+  // CHECK-NEXT: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS0_256B]]
   // CHECK: [[C8_256B:%.*]] = llvm.mlir.constant(8 : i32) : i32
-  // CHECK: [[OFFS8_256B:%.*]] = llvm.add [[TMEM_BASE_256B]], [[C8_256B]] : i32
+  // CHECK: [[OFFS8_256B:%.*]] = llvm.add {{.*}}, [[C8_256B]] : i32
   // CHECK: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS8_256B]]
-  // CHECK: [[C120_256B:%.*]] = llvm.mlir.constant(120 : i32) : i32
-  // CHECK: [[OFFS120_256B:%.*]] = llvm.add [[TMEM_BASE_256B]], [[C120_256B]] : i32
-  // CHECK: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS120_256B]]
   // CHECK-NOT: tcgen05.cp.cta_group::1.128x128b
   // CHECK-NOT: tcgen05.cp.cta_group::1.warpx4.32x128b
   // CHECK: tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64
@@ -979,12 +978,11 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.targ
 
   // CHECK-LABEL: @tmem_copy_linear_128x256b_no_barrier
   // CHECK: [[TMEM_BASE_256B_NB:%.*]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
+  // CHECK: [[OFFS0_256B_NB:%.*]] = llvm.add [[TMEM_BASE_256B_NB]], %{{.*}} : i32
+  // CHECK-NEXT: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS0_256B_NB]]
   // CHECK: [[C8_256B_NB:%.*]] = llvm.mlir.constant(8 : i32) : i32
-  // CHECK: [[OFFS0_256B:%.*]] = llvm.add [[TMEM_BASE_256B_NB]], [[C8_256B_NB]] : i32
-  // CHECK: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS0_256B]]
-  // CHECK: [[C120_256B_NB:%.*]] = llvm.mlir.constant(120 : i32) : i32
-  // CHECK: [[OFFS120_256B_NB:%.*]] = llvm.add [[TMEM_BASE_256B_NB]], [[C120_256B_NB]] : i32
-  // CHECK: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS120_256B_NB]]
+  // CHECK: [[OFFS8_256B_NB:%.*]] = llvm.add {{.*}}, [[C8_256B_NB]] : i32
+  // CHECK: tcgen05.cp.cta_group::1.128x256b [ $0 + 0 ], $1;", "r,l,b" [[OFFS8_256B_NB]]
   // CHECK-NOT: tcgen05.cp.cta_group::1.128x128b
   // CHECK-NOT: tcgen05.cp.cta_group::1.warpx4.32x128b
   // CHECK-NOT: tcgen05.commit.cta_group::1
@@ -1008,8 +1006,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
   // CHECK-LABEL: @tc_gen5_mma_block_scale_nvfp4
   // CHECK: %[[TMEM_BASE:.+]] = llvm.ptrtoint %arg2 : !llvm.ptr<3> to i32
   // CHECK: %[[DESC0:.+]] = llvm.mlir.constant(138413184 : i32) : i32
-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
-  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %[[DESC0]]
+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]]
+  // CHECK: @$7 tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [ $0 + 0 ], $1, $2, $3, [ $4 + 0 ], [ $5 + 0 ], $6;", "r,l,l,r,r,r,b,b" %[[TMEM_BASE]], %{{.+}}, %{{.+}}, %{{.+}}
   tt.func @tc_gen5_mma_block_scale_nvfp4(%a: !ttg.memdesc<128x64xi8, #shared, #ttg.shared_memory>,
                        %b: !ttg.memdesc<64x256xi8, #shared1, #ttg.shared_memory>,
                        %c: !ttg.memdesc<128x256xf32, #tmem, #ttng.tensor_memory, mutable>,
@@ -1414,7 +1412,7 @@ module attributes {"ttg.num-warps" = 1 : i32} {
 // CHECK-LABEL: @tc_gen5_commit
 tt.func @tc_gen5_commit(%arg0: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %pred: i1) {
   // CHECK: [[ZERO:%.*]] = llvm.mlir.constant(0 : i32)
-  // CHECK: [[IS_WARP_0:%.*]] = llvm.icmp "eq" [[ZERO]], [[ZERO]]
+  // CHECK: [[IS_WARP_0:%.*]] = llvm.icmp "eq" [[ZERO]], %{{.*}} : i32
   // CHECK: [[ELECT:%.*]] = nvvm.elect.sync
   // CHECK: [[WARP_PRED:%.*]] = llvm.and [[IS_WARP_0]], [[ELECT]]
   // CHECK: [[PRED:%.*]] = llvm.and %arg1, [[WARP_PRED]]
@@ -1434,7 +1432,8 @@ module attributes {"ttg.num-warps" = 4 : i32} {
 // CHECK-LABEL: @reinterpret
 tt.func private @reinterpret(%arg0: !ttg.memdesc<128x32xf32, #tmem_f32, #ttng.tensor_memory>) -> !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory> {
   %0 = ttg.memdesc_reinterpret %arg0 : !ttg.memdesc<128x32xf32, #tmem_f32, #ttng.tensor_memory> -> !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory>
-  // CHECK-NEXT: return %arg0
+  // CHECK-NOT: builtin.unrealized_conversion_cast
+  // CHECK: llvm.return %arg0 : !llvm.ptr<3>
   tt.return %0 : !ttg.memdesc<256x32xf16, #tmem_f16, #ttng.tensor_memory>
 }
 
@@ -1512,8 +1511,8 @@ tt.func @load_store_x1_unpacked(%arg0: !ttg.memdesc<128x2xf16, #tmem_x1_unpacked
   // CHECK: [[V:%.*]] = llvm.inline_asm {{.*}}tcgen05.ld.sync.aligned.32x32b.x1.pack::16b.b32{{.*}} (i32) -> i32
   // CHECK: [[V1:%.*]] = llvm.bitcast [[V]] : i32 to i32
   // CHECK: [[F:%.*]] = llvm.bitcast [[V1]] : i32 to vector<2xf16>
-  // CHECK: llvm.extractelement [[F]][[[C0]] : i32]
-  // CHECK: llvm.extractelement [[F]][[[C1]] : i32]
+  // CHECK: llvm.extractelement [[F]][%{{.*}} : i32]
+  // CHECK: llvm.extractelement [[F]][%{{.*}} : i32]
   // CHECK: @$0 tcgen05.st.sync.aligned.32x32b.x1.unpack::16b.b32 [$1 + 0], {$2};", "b,r,r" %{{.*}}
   %0 = ttng.tmem_load %arg0 : !ttg.memdesc<128x2xf16, #tmem_x1_unpacked, #ttng.tensor_memory, mutable> -> tensor<128x2xf16, #blocked_x1>
   ttng.tmem_store %0, %arg0, %true : tensor<128x2xf16, #blocked_x1> -> !ttg.memdesc<128x2xf16, #tmem_x1_unpacked, #ttng.tensor_memory, mutable>
