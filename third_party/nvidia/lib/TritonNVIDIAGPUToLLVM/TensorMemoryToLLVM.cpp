@@ -641,6 +641,10 @@ lowerTMemLdStFromTypes(
   bool debugQuerySelection = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
   bool traceQuerySelection =
       std::getenv("TRITON_TRACE_TMEM_QUERY_LOWERING_FILE") != nullptr;
+  if (debugQuerySelection && memDescValue && memDescValue.getDefiningOp())
+    llvm::errs() << "[tmem-ldst] defOp="
+                 << memDescValue.getDefiningOp()->getName().getStringRef()
+                 << " memTy=" << memTy << "\n";
   auto appendTrace = [&](const Twine &msg) {
     if (!traceQuerySelection)
       return;
@@ -770,9 +774,16 @@ lowerTMemLdStFromTypes(
                                     : std::string("none"))
                      << "\n";
       }
-      auto rawEncodingInfoOr = computeTMemLdStEncodingInfo(
-          regTy, memTy, *rawQuery, maxnreg, /*emitError=*/{},
-          rawRowPlan);
+      std::string rawDetails;
+      auto rawEncodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
+        llvm::raw_string_ostream os(rawDetails);
+        ScopedDiagnosticHandler handler(
+            rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
+        return computeTMemLdStEncodingInfo(
+            regTy, memTy, *rawQuery, maxnreg,
+            debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
+            rawRowPlan);
+      }();
       appendTrace(Twine("rawQuery ") +
                   (succeeded(rawEncodingInfoOr)
                        ? (Twine("ok atom=") +
@@ -785,19 +796,25 @@ lowerTMemLdStFromTypes(
                           " warpBase1=" +
                           Twine(rawEncodingInfoOr->warpBaseOffset1) +
                           " reps=" + rawEncodingInfoOr->reps.toString())
-                       : Twine("fail")));
+                       : (Twine("fail details=") + rawDetails)));
       if (debugQuerySelection) {
         llvm::errs() << "[tmem-ldst] rawQuery -> "
                      << (succeeded(rawEncodingInfoOr)
                              ? ("ok atom=" +
                                 llvm::Twine(static_cast<int>(rawEncodingInfoOr->atom)))
                                    .str()
-                             : "fail")
+                             : ("fail details=" + rawDetails))
                      << "\n";
       }
       if (succeeded(rawEncodingInfoOr)) {
         auto &encodingInfoOr = rawEncodingInfoOr;
-        // Raw query layouts already encode the exact translated TMEM view.
+        bool preserveRawBaseOffset =
+            isa_and_nonnull<TMEMSubSliceOp>(memDescValue.getDefiningOp());
+        // Raw ttng.tmem_subslice queries carry the translated column origin in
+        // baseOffset. Preserve it so higher-level epilogue subtiles lower to
+        // distinct TMEM windows instead of duplicating the left half.
+        if (!preserveRawBaseOffset)
+          encodingInfoOr->baseOffset = 0;
         return lowerTMemLdStFromInfo(loc, rewriter, *encodingInfoOr, pred,
                                      llvmElemTy, vals, tmemBase, redOp,
                                      useAbs,

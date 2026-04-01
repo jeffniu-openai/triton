@@ -4341,3 +4341,32 @@ Open after this slice:
     - fresh-cache exact nodes:
       - `...tf32x3...` -> `1 passed`
       - `...chain-dot-ieee-bfloat16...` -> `1 passed`
+
+- 2026-04-01: fixed the GB200 `python/test/unit/language/test_matmul.py::test_simple_matmul` epilogue-subtile regressions for explicit TMEM-linear accumulators
+  - exact failing nodes before the fix:
+    - `test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]`
+    - `test_simple_matmul[True-True-4-1-128-128-16-4-float32-tensorfloat32]`
+  - failure pattern:
+    - `EPILOGUE_SUBTILE=True` materializes two `ttng.tmem_subslice` views (`N=0` / `N=64`) and loads each half separately
+    - TF32 loaded the left half correctly but duplicated it into the right half
+    - packed f16 needed the old packed-aware query path; using the same direct-origin remap path as TF32 broke the right half again
+  - root cause:
+    - raw `ttng.tmem_subslice` ld/st query lowering was conflating two cases
+    - 32-bit views need the direct translated-origin remap so the raw-query `baseOffset` survives into lowering for the second half-tile
+    - packed subword views still need the packed-aware fallback query construction so the raw query preserves the packed TMEM column structure before lowering
+  - fix:
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      - keep the new direct-origin remap for `ttng.tmem_subslice`, but only on 32-bit-and-up element types
+      - route packed subword `ttng.tmem_subslice` views through the packed-aware resized-layout fallback
+      - keep `ttng.tmem_subslice` raw-query ordering preferring the standalone type before the raw memdesc type for subword layouts
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+      - preserve raw-query `baseOffset` for `ttng.tmem_subslice` so the translated right-half origin is not dropped during direct ld/st lowering
+  - evidence:
+    - TF32 PTX before the fix emitted the second `ttng.tmem_load` from the same effective base as the first half, so the right output half was an exact duplicate of the left
+    - after preserving the raw-query base offset, TF32 passed, but packed f16 regressed until the fast direct-origin remap was restricted to 32-bit-and-up layouts
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. TRITON_DISABLE_LINE_INFO=1 PROTON_SKIP_PC_SAMPLING_TEST=1 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float32-tensorfloat32]'`
+      -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. TRITON_DISABLE_LINE_INFO=1 PROTON_SKIP_PC_SAMPLING_TEST=1 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]'`
+      -> `1 passed`

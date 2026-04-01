@@ -2275,3 +2275,23 @@ rejection, not rescue
 - Fresh-cache validation after the fix:
   - exact `tf32x3` node -> pass
   - exact `chain-dot-ieee-bfloat16` node -> pass
+
+## 2026-04-01: GB200 unit-suite `test_simple_matmul` epilogue-subtile regressions
+
+- The next GB200 split/group unit batch uncovered another real regression in direct TMEM lowering outside the TMEM runtime matrix:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]`
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float32-tensorfloat32]`
+- Both cases use `EPILOGUE_SUBTILE=True`, which lowers the accumulator epilogue through two `ttng.tmem_subslice` views (`N=0` and `N=64`) followed by two direct `ttng.tmem_load`s.
+- Failure signatures:
+  - TF32: left half matched, right half was an exact duplicate of the left
+  - packed f16: after the TF32 fix alone, the right half no longer duplicated the left but still read the wrong packed window
+- Root cause split:
+  - 32-bit `ttng.tmem_subslice` raw queries need the translated `baseOffset` preserved into lowering; zeroing it drops the `N=64` shift and duplicates the left half
+  - packed subword `ttng.tmem_subslice` views cannot reuse the same direct-origin remap path, because they still need the packed-aware fallback query construction to preserve packed column semantics before lowering
+- Current rule:
+  - preserve raw-query `baseOffset` for `ttng.tmem_subslice` during direct ld/st lowering
+  - use the new direct translated-origin remap only for 32-bit-and-up `ttng.tmem_subslice` element types
+  - keep subword `ttng.tmem_subslice` on the packed-aware resized-layout fallback and on the standalone-before-raw query ordering
+- Validation checkpoint:
+  - exact GB200 TF32 node -> pass
+  - exact GB200 f16 node -> pass
