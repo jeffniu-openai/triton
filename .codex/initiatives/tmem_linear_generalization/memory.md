@@ -2427,3 +2427,40 @@ rejection, not rescue
   - matching TF32 control stays green
   - the previously fixed persistent ragged `triton_kernels` MMAv5 repro still passes
   - full lit remains `248 passed, 2 unsupported`
+
+## 2026-04-01: GB200 CI-equivalent sweep checkpoint after `f70f9aeb6`
+
+- Running the post-commit GB200 validation as split GPU microbatches over `CUDA_VISIBLE_DEVICES=0..3` using `/tmp/run_split_batches.sh`.
+- Completed so far:
+  - rebuild: `TRITON_BUILD_WITH_CCACHE=true make -j96`
+  - C++ unit tests: `240 passed`
+  - full lit: `248 passed, 2 unsupported`
+  - `python/test/unit` main shard: all `32` split groups passed
+  - `python/test/unit/test_debug.py`: `95 passed`
+  - plugin/custom-op unit slices: all green
+- Current in-flight target:
+  - `python/triton_kernels/tests` split `32` ways across the `4` GPUs; first wave passed and later waves are still running.
+
+## 2026-04-01: GB200 sweep progress after `triton_kernels` and the rest of `test-unit`
+
+- Additional completed targets:
+  - `python/triton_kernels/tests`: all `32` split groups green; aggregated totals from the per-group logs are `2013 passed, 3444 skipped`
+  - `python/tutorials/06-fused-attention.py`: all `16` split groups green; selected cases are skipped on this node
+  - `python/test/unit/instrumentation/test_gpuhello.py`: `1 passed`
+- Current in-flight target:
+  - `python/test/gluon/` + `python/tutorials/gluon/` split `32` ways across the `4` GPUs.
+
+## 2026-04-01: GB200 `python/test/gluon` blocker fix
+
+- Restored the historical TMEM source shorthand: `tensor_memory_descriptor.slice(start, length)` now defaults to slicing the trailing dimension again. Explicit `dim=` still uses generic `ttg.memdesc_subslice` semantics.
+- Exact TMEM memdesc IR types now survive Gluon view reconstruction and warp-specialize block-arg deserialization:
+  - semantic view builders (`slice/index/trans/reshape/reinterpret`) cache `handle.get_type()` on TMEM descriptor types
+  - `tensor_memory_descriptor_type._unflatten_ir` now restores the exact handle type instead of rebuilding a nominally equivalent TMEM type
+- This fixes the `tt.call` operand mismatch that appeared in the GB200 `test_consan` aliasing kernel after the public slicing path moved to generic `ttg.memdesc_subslice`.
+- `BufferRegionAnalysis` now handles generic TMEM `ttg.memdesc_subslice` correctly:
+  - use `ttng::getTMemViewOffset(...)` for tensor-memory subslices
+  - if a generic shared-memory subslice cannot be inverted exactly, conservatively keep the parent region instead of asserting
+- Validation checkpoint:
+  - the direct `DISABLE_SUBPROCESS=1` repro is back to the original expected device-side assert (`Buffer being accessed has outstanding reads`)
+  - the wrapped `test_aliasing_tensor_visibility_outstanding_read[1ctas-True]` passes again
+  - the stale `test_tensor_memory` frontend expectation was updated to the restored trailing-dimension TMEM shorthand

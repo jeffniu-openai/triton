@@ -4524,3 +4524,48 @@ Open after this slice:
     - persistent ragged `triton_kernels` control -> `1 passed`
       - `python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-128-768-512-1024-ragged-float16-float16-None-10-1-False-False-None-False-False-False-True-None]`
     - full lit -> `248 passed, 2 unsupported`
+
+- 2026-04-01: started the post-commit GB200 CI-equivalent sweep from `f70f9aeb6`
+  - intent:
+    - rerun the GB200 CI surface in split GPU microbatches (`--splits/--group`) across `CUDA_VISIBLE_DEVICES=0..3` so failures stop early and logs stay localized
+  - validated so far:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `ninja -C build/cmake.linux-aarch64-cpython-3.12 check-triton-unit-tests` -> `240 passed`
+    - `ninja -C build/cmake.linux-aarch64-cpython-3.12 check-triton-lit-tests` -> `248 passed, 2 unsupported`
+    - `python/test/unit` main shard (split 32-way, excluding `plugins/*` and `test_debug.py`) -> all `32/32` groups passed
+    - `python/test/unit/test_debug.py` -> `95 passed`
+    - plugin/custom-op unit slices:
+      - `python/test/unit/plugins/test_plugin.py` -> `1 passed`
+      - `python/test/unit/plugins/test_dialect_plugin.py` -> `1 passed`
+      - `python/test/unit/plugins/custom_ops.py` -> `1 passed`
+  - in flight:
+    - `python/triton_kernels/tests` under `/tmp/run_split_batches.sh gb200-triton-kernels 32 python/triton_kernels/tests`
+    - first wave (`groups 1-4`) passed; later waves are still running
+
+- 2026-04-01: GB200 CI-equivalent sweep checkpoint after completing `triton_kernels` and the remainder of `test-unit`
+  - completed since the earlier checkpoint:
+    - `python/triton_kernels/tests` split `32` ways across `CUDA_VISIBLE_DEVICES=0..3` -> all `32/32` groups green
+      - aggregated group-log totals: `2013 passed, 3444 skipped`
+    - `python/tutorials/06-fused-attention.py` split `16` ways -> all groups green (`384 skipped` total on this node)
+    - `python/test/unit/instrumentation/test_gpuhello.py` -> `1 passed`
+  - currently in flight:
+    - `python/test/gluon/` + `python/tutorials/gluon/` split `32` ways across the `4` GPUs
+
+- 2026-04-01: fixed the first GB200 `python/test/gluon` blocker before resuming the split sweep
+  - failure:
+    - `python/test/gluon/test_consan.py::test_aliasing_tensor_visibility_outstanding_read[1ctas-True]` failed in two stages during the staged `gb200-gluon` run
+    - first, TMEM `slice(start, length)` no longer preserved the historical trailing-dimension shorthand and compiled the aliasing view as `128x256` instead of `128x128`
+    - after restoring that shorthand, `warp_specialize` still rebuilt TMEM descriptor arguments through generic Python types and generated `tt.call` signatures that no longer matched the exact `ttg.memdesc_subslice` handle types
+    - once that was fixed, the concurrency sanitizer still asserted in `BufferRegion.cpp` because generic `ttg.memdesc_subslice` on TMEM was routed through a shared-memory-only byte-offset inversion path
+  - fix:
+    - restored the public TMEM shorthand so `tensor_memory_descriptor.slice(start, length)` defaults to slicing the trailing dimension while explicit `dim=` keeps generic `memdesc_subslice` behavior
+    - preserved exact TMEM memdesc IR types through Gluon semantic view construction (`slice/index/trans/reshape/reinterpret`) and through `tensor_memory_descriptor_type._unflatten_ir`, so `warp_specialize` block arguments and outlined helper calls keep the exact handle type instead of rebuilding an equivalent-but-distinct memdesc type
+    - taught `BufferRegionAnalysis` to treat generic TMEM `ttg.memdesc_subslice` like TMEM views: use `ttng::getTMemViewOffset(...)` for exact offsets, and conservatively inherit the parent region when a generic shared-memory subslice cannot be inverted exactly instead of asserting
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - direct repro (expected device-side assert) -> reproduced the original outstanding-read failure again
+      - `CUDA_VISIBLE_DEVICES=0 DISABLE_SUBPROCESS=1 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_consan.py::test_aliasing_tensor_visibility_outstanding_read[1ctas-True]'`
+    - wrapped test -> `1 passed`
+      - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_consan.py::test_aliasing_tensor_visibility_outstanding_read[1ctas-True]'`
+    - stale frontend expectation updated for the restored TMEM slice shorthand
+      - `EXPECTTEST_ACCEPT=1 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_frontend.py::test_tensor_memory`

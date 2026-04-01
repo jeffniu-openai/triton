@@ -479,6 +479,10 @@ class GluonSemantic(TritonSemantic[TensorTy]):
             )
         raise TypeError(f"expected a shared or tensor memory descriptor but got {type(mem_desc)}")
 
+    def _preserve_memdesc_ir_type(self, desc_ty, handle):
+        if hasattr(desc_ty, "ir_type"):
+            desc_ty.ir_type = handle.get_type()
+
     def memdesc_slice(self, mem_desc, start, length, dim):
         _check(isinstance(start, int), lambda: f"expected 'start' to be an int but got {start}")
         _check(isinstance(length, int), lambda: f"expected 'length' to be an int but got {length}")
@@ -493,6 +497,7 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         layout = builder.get_gluon_layout_from_memdesc(handle)
         alloc_shape = mem_desc.type.alloc_shape
         ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
+        self._preserve_memdesc_ir_type(ty, handle)
         return desc_val(handle, **ty.__dict__)
 
     def memdesc_index(self, mem_desc, index):
@@ -506,10 +511,11 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         handle = builder.create_memdesc_index(mem_desc.handle, index)
         layout = builder.get_gluon_layout_from_memdesc(handle)
         ty = desc_ty(mem_desc.dtype, shape, layout, alloc_shape)
+        self._preserve_memdesc_ir_type(ty, handle)
         return desc_val(handle, **ty.__dict__)
 
     def memdesc_trans(self, mem_desc, order):
-        _, desc_val, _, _ = self._memdesc_constructors(mem_desc)
+        desc_ty, desc_val, _, _ = self._memdesc_constructors(mem_desc)
         _check(_is_int_list(order), lambda: f"all elements of 'order' must be integers but got {order}")
         _check(
             len(order) == len(mem_desc.shape),
@@ -522,10 +528,12 @@ class GluonSemantic(TritonSemantic[TensorTy]):
 
         handle = self.builder.create_memdesc_trans(mem_desc.handle, order)
         layout = self.builder.get_gluon_layout_from_memdesc(handle)
-        return desc_val(handle, element_ty=mem_desc.dtype, shape=shape, alloc_shape=new_alloc_shape, layout=layout)
+        ty = desc_ty(mem_desc.dtype, shape, layout, new_alloc_shape)
+        self._preserve_memdesc_ir_type(ty, handle)
+        return desc_val(handle, **ty.__dict__)
 
     def memdesc_reshape(self, mem_desc, shape):
-        _, desc_val, _, _ = self._memdesc_constructors(mem_desc)
+        desc_ty, desc_val, _, _ = self._memdesc_constructors(mem_desc)
         _check(_is_int_list(shape), lambda: f"all elements of 'shape' must be integers but got {shape}")
         _check(
             math.prod(shape) == math.prod(mem_desc.shape),
@@ -538,14 +546,9 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         alloc_shape = mem_desc.type.alloc_shape
         prefix_len = len(alloc_shape) - mem_desc.rank
         new_alloc_shape = alloc_shape[:prefix_len] + list(shape)
-
-        return desc_val(
-            handle,
-            element_ty=mem_desc.dtype,
-            shape=shape,
-            alloc_shape=new_alloc_shape,
-            layout=layout,
-        )
+        ty = desc_ty(mem_desc.dtype, shape, layout, new_alloc_shape)
+        self._preserve_memdesc_ir_type(ty, handle)
+        return desc_val(handle, **ty.__dict__)
 
     def memdesc_reinterpret(self, mem_desc, dtype, shape, layout):
         desc_ty, desc_val, allowed_layouts, allowed_layout_names = self._memdesc_constructors(mem_desc)
@@ -554,6 +557,7 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         _check(isinstance(layout, allowed_layouts), lambda: f"expected 'layout' to be {allowed_layout_names} but got {layout}")
         ty = desc_ty(dtype, shape, layout, shape)
         handle = self.builder.create_memdesc_reinterpret(ty.to_ir(self.builder), mem_desc.handle)
+        self._preserve_memdesc_ir_type(ty, handle)
         return desc_val(handle, **ty.__dict__)
 
     def wrap_tensor(self, x, scalar_ty, ret_shape, layout):

@@ -109,11 +109,16 @@ bool isUsedAsTensorMemory(Value v) {
          isa_and_nonnull<ttng::TensorMemorySpaceAttr>(type.getMemorySpace());
 }
 
-uint32_t getMemDescSubsliceByteOffset(ttg::MemDescSubsliceOp op) {
+std::optional<uint32_t> getMemDescSubsliceOffset(ttg::MemDescSubsliceOp op) {
   auto srcTy = op.getSrc().getType();
   auto offsets = op.getOffsets();
   if (offsets.empty())
     return 0;
+
+  if (isa<ttng::TensorMemorySpaceAttr>(srcTy.getMemorySpace())) {
+    SmallVector<int32_t> tmemOffsets(offsets.begin(), offsets.end());
+    return ttng::getTMemViewOffset(srcTy, tmemOffsets);
+  }
 
   Attribute encoding = srcTy.getEncoding();
   mlir::triton::LinearLayout layout;
@@ -136,10 +141,20 @@ uint32_t getMemDescSubsliceByteOffset(ttg::MemDescSubsliceOp op) {
   StringAttr blockDim = StringAttr::get(ctx, "block");
   mlir::triton::LinearLayout inverse = layout.invert();
   auto mapped = inverse.apply(logicalOffsets);
-  assert(mapped.size() == 2 && mapped[0].first == offsetDim &&
-         mapped[1].first == blockDim && mapped[1].second == 0 &&
-         "expected offset and zero block dimensions after inversion");
-  uint64_t elementOffset = static_cast<uint32_t>(mapped[0].second);
+  uint64_t elementOffset = 0;
+  bool sawOffset = false;
+  for (auto [dim, value] : mapped) {
+    if (dim == offsetDim) {
+      elementOffset = static_cast<uint32_t>(value);
+      sawOffset = true;
+      continue;
+    }
+    if (dim == blockDim && value == 0)
+      continue;
+    return std::nullopt;
+  }
+  if (!sawOffset)
+    return std::nullopt;
 
   uint64_t elementSizeBytes =
       srcTy.getElementType().getIntOrFloatBitWidth() / 8;
@@ -263,10 +278,17 @@ LogicalResult BufferRegionAnalysis::visitOperation(
   if (auto memdescSubsliceOp = dyn_cast<ttg::MemDescSubsliceOp>(op)) {
     RegionInfo in = operands[0]->getValue();
     uint32_t subBufferSize = getMemDescSize(memdescSubsliceOp.getType());
-    uint32_t relativeOffset = getMemDescSubsliceByteOffset(memdescSubsliceOp);
-    for (auto &region : in.regions) {
-      regionInfo.regions.insert(
-          {region.baseOffset + relativeOffset, subBufferSize});
+    if (auto relativeOffset = getMemDescSubsliceOffset(memdescSubsliceOp)) {
+      for (auto &region : in.regions) {
+        regionInfo.regions.insert(
+            {region.baseOffset + *relativeOffset, subBufferSize});
+      }
+    } else {
+      // Keep the full parent region when the analysis cannot invert the
+      // subslice mapping exactly; this is conservative for hazard checking.
+      for (auto &region : in.regions) {
+        regionInfo.regions.insert(region);
+      }
     }
     for (auto *r : results) {
       propagateIfChanged(r, r->join(regionInfo));

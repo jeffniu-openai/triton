@@ -247,14 +247,17 @@ def _unwrap_tmem_layout_arg(x):
 
 class tensor_memory_descriptor_type(base_type):
 
-    def __init__(self, element_ty, shape, layout, alloc_shape):
+    def __init__(self, element_ty, shape, layout, alloc_shape, ir_type=None):
         self.element_ty = _unwrap_if_constexpr(element_ty)
         self.shape = _unwrap_if_constexpr(shape)
         self.layout = _unwrap_if_constexpr(layout)
         self.alloc_shape = _unwrap_if_constexpr(alloc_shape)
+        self.ir_type = ir_type
         assert isinstance(self.layout, (TensorMemoryLayout, TensorMemoryLinearLayout, TensorMemoryScalesLayout))
 
     def to_ir(self, builder: GluonOpBuilder) -> None:
+        if self.ir_type is not None:
+            return self.ir_type
         return builder.get_tensor_mem_desc_ty(
             self.element_ty.to_ir(builder),
             self.shape,
@@ -263,7 +266,14 @@ class tensor_memory_descriptor_type(base_type):
         )
 
     def _unflatten_ir(self, handles: List[ir.Value], cursor: int) -> Tuple[tensor_memory_descriptor, int]:
-        value = tensor_memory_descriptor(handles[cursor], self.element_ty, self.shape, self.layout, self.alloc_shape)
+        value = tensor_memory_descriptor(
+            handles[cursor],
+            self.element_ty,
+            self.shape,
+            self.layout,
+            self.alloc_shape,
+            ir_type=handles[cursor].get_type(),
+        )
         return value, cursor + 1
 
     def _flatten_ir_types(self, builder: GluonOpBuilder, out: List[ir.type]) -> None:
@@ -324,9 +334,9 @@ class tensor_memory_descriptor(base_value):
     Represents a tensor memory descriptor handle for Tensor Core Gen5 operations.
     """
 
-    def __init__(self, handle, element_ty, shape, layout, alloc_shape):
+    def __init__(self, handle, element_ty, shape, layout, alloc_shape, ir_type=None):
         self.handle = handle
-        self.type = tensor_memory_descriptor_type(element_ty, shape, layout, alloc_shape)
+        self.type = tensor_memory_descriptor_type(element_ty, shape, layout, alloc_shape, ir_type=ir_type)
 
     def _set_name(self, builder: ir.builder, name: str) -> None:
         self.handle.set_loc(builder.create_name_loc(name, self.handle.get_loc()))
@@ -505,14 +515,15 @@ class tensor_memory_descriptor(base_value):
         _semantic.builder.create_tmem_store(self.handle, value.handle, pred.handle)
 
     @builtin
-    def slice(self, start, length, dim=0, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
+    def slice(self, start, length, dim=None, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
         """
         Create a subview of tensor memory by slicing along a given dimension.
 
         Args:
             start (int): The starting index of the slice.
             length (int): The length of the slice.
-            dim (int): The dimension to slice (default: 0).
+            dim (Optional[int]): The dimension to slice. When omitted, preserve
+                the historical TMEM shorthand and slice the trailing dimension.
 
         Returns:
             tensor_memory_descriptor: Descriptor for the sliced subview.
@@ -520,6 +531,8 @@ class tensor_memory_descriptor(base_value):
         start = _unwrap_if_constexpr(start)
         length = _unwrap_if_constexpr(length)
         dim = _unwrap_if_constexpr(dim)
+        if dim is None:
+            dim = self.rank - 1
         return _semantic.memdesc_slice(self, start, length, dim)
 
     @builtin
