@@ -2357,3 +2357,29 @@ rejection, not rescue
   - the tf32 `64x512x32` GB200 unit-matmul node is green again
   - the earlier f16 GB200 control nodes remain green
   - `make test-lit` stayed green after the fix
+
+## 2026-04-01: whole-root explicit TMEM-linear M64 subword ld/st rescue must preserve the raw zero-col-basis layout for lowering
+
+- Another GB200 unit-matmul regression surfaced while resuming the sharded `python/test/unit` sweep:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float16-float16]`
+- The first M64 rescue change fixed the scalarization problem but still produced wrong code for the `f16` case.
+- PTX symptom after the first fix:
+  - current tree recovered the wide `32x32b.x128` direct TMEM store/load again
+  - but it emitted the bare 32-bit form (`tcgen05.{st,ld}.sync.aligned.32x32b.x128.b32`) instead of the correct subword form from `/tmp/triton-origin-main`:
+    - store: `unpack::16b`
+    - load: `pack::16b`
+- Root cause:
+  - the legacy-anchored M64 helper in `computeTMemLdStEncodingInfoImpl(...)` was using the same stripped whole-root layout for two different purposes:
+    - exact legacy-family equivalence matching
+    - actual ld/st lowering
+  - for subword TMEM layouts those are not the same thing
+  - removing zero `col` bases is useful for recognizing that an explicit TMEM-linear layout is equivalent to a legacy `blockM=64` family, but it destroys the spacing information that `lowerTMemLdSt(...)` relies on to select `pack::16b` / `unpack::16b`
+  - the helper also copied a `getExpectedTMemLoadValueCount(...)` sanity check that is intentionally defined only for 32-bit ld/st paths, so it will always fail on subword cases
+- Current rule:
+  - for whole-root explicit TMEM-linear M64 rescue paths, use the stripped layout only to answer “is this exactly legacy-equivalent?”
+  - use the raw storage layout to build the direct lowering transform
+  - keep the `getExpectedTMemLoadValueCount(...)` post-check restricted to `bitwidth == 32`
+- Validation checkpoint:
+  - the GB200 `f16` `64x512x32` unit matmul passes again
+  - the earlier tf32 `64x512x32` control also stays green
+  - PTX now restores the origin-style wide subword forms with `pack::16b` / `unpack::16b`

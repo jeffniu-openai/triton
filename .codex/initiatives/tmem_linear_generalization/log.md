@@ -4450,3 +4450,24 @@ Open after this slice:
     - paired controls stay green:
       - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-256-128-32-4-float16-float16]`
       - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]`
+
+- 2026-04-01: fixed GB200 f16 matmul `64x512x32` whole-root M64 ld/st subword regression on top of `0fb4fd519`
+  - failing node:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float16-float16]`
+  - symptom before fix:
+    - `515903 / 524288` mismatches after the first M64 rescue change
+    - PTX had recovered the wide `tcgen05.st.sync.aligned.32x32b.x128` / `tcgen05.ld.sync.aligned.32x32b.x128` path, but it emitted the bare 32-bit form instead of the required `unpack::16b` / `pack::16b` suffixes used by `/tmp/triton-origin-main`
+  - root cause:
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+    - the whole-root legacy-anchored M64 rescue was using a stripped TMEM-linear layout (with zero `col` bases removed) both to recognize the exact legacy-equivalent family and to build the direct ld/st lowering transform
+    - that is fine for family equivalence matching, but wrong for lowering subword TMEM layouts: the stripped layout hides the raw zero-column-basis spacing that `lowerTMemLdSt(...)` uses to select `pack::16b` / `unpack::16b` semantics
+    - the helper also inherited a 32-bit-only post-check (`getExpectedTMemLoadValueCount`) that rejects all subword cases by construction
+  - fix:
+    - split the helper into two layout views:
+      - raw whole-root storage layout from `toLinearLayout(memTy.getShape(), memTy.getEncoding())` for the actual direct lowering transform
+      - stripped family-equivalence layout only for exact legacy-family recognition
+    - keep the `getExpectedTMemLoadValueCount(...)` sanity gate only for `bitwidth == 32`
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float16-float16]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float32-tensorfloat32]` -> `1 passed`

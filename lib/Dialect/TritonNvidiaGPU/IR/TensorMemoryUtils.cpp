@@ -3695,17 +3695,16 @@ computeTMemLdStEncodingInfoImpl(
       return std::nullopt;
     }
 
-    auto analysisLayout =
-        squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
-            memLayout));
-    if (bitwidth < 32 && analysisLayout.hasInDim(kCol))
-      analysisLayout = analysisLayout.removeZeroBasesAlongDim(kCol);
-    if (!analysisLayout.hasInDim(kRow) || !analysisLayout.hasInDim(kCol))
+    auto legacyLayout =
+        squeezeTrivialBlock(toLinearLayout(memTy.getShape(), memTy.getEncoding()));
+    auto legacyFamilyLayout = legacyLayout;
+    if (bitwidth < 32 && legacyFamilyLayout.hasInDim(kCol))
+      legacyFamilyLayout = legacyFamilyLayout.removeZeroBasesAlongDim(kCol);
+    if (!legacyLayout.hasInDim(kRow) || !legacyLayout.hasInDim(kCol))
       return std::nullopt;
-    if (analysisLayout.hasInDim(kBlock) &&
-        analysisLayout.getInDimSize(kBlock) > 1)
+    if (legacyLayout.hasInDim(kBlock) && legacyLayout.getInDimSize(kBlock) > 1)
       return std::nullopt;
-    if (analysisLayout.getInDimSizeLog2(kRow) != 7)
+    if (legacyLayout.getInDimSizeLog2(kRow) != 7)
       return std::nullopt;
 
     auto twoCTAs = getTensorMemoryTwoCTAs(memTy);
@@ -3720,12 +3719,10 @@ computeTMemLdStEncodingInfoImpl(
             /*error=*/nullptr);
         if (!maybeCanonical)
           continue;
-        auto canonicalLayout =
-            squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
-                maybeCanonical->getLinearLayout()));
+        auto canonicalLayout = squeezeTrivialBlock(maybeCanonical->getLinearLayout());
         if (bitwidth < 32 && canonicalLayout.hasInDim(kCol))
           canonicalLayout = canonicalLayout.removeZeroBasesAlongDim(kCol);
-        if (canonicalLayout == analysisLayout) {
+        if (canonicalLayout == legacyFamilyLayout) {
           matchesExactLegacyLikeFamily = true;
           break;
         }
@@ -3735,11 +3732,11 @@ computeTMemLdStEncodingInfoImpl(
     }
     if (!matchesExactLegacyLikeFamily)
       return std::nullopt;
-    if (!(regLayout.getBasis(kWarp, 0) == analysisLayout.getBasis(kRow, 5) &&
-          regLayout.getBasis(kWarp, 1) == analysisLayout.getBasis(kRow, 6))) {
+    if (!(regLayout.getBasis(kWarp, 0) == legacyLayout.getBasis(kRow, 5) &&
+          regLayout.getBasis(kWarp, 1) == legacyLayout.getBasis(kRow, 6))) {
       return std::nullopt;
     }
-    auto legacyCvt = regLayout.invertAndCompose(analysisLayout);
+    auto legacyCvt = regLayout.invertAndCompose(legacyLayout);
     legacyCvt = squeezeTrivialBlock(std::move(legacyCvt));
     bool legacyHasBlockIn = legacyCvt.hasInDim(kBlock);
     bool legacyHasBlockOut = legacyCvt.hasOutDim(kBlock);
@@ -3761,12 +3758,15 @@ computeTMemLdStEncodingInfoImpl(
                               /*warpRow0=*/32, /*warpRow1=*/64,
                               /*rowSpan=*/128,
                               /*preferI16x32bx2=*/false);
-    if (failed(info))
+    if (failed(info)) {
       return std::nullopt;
-    auto expectedValueCount = getExpectedTMemLoadValueCount(*info, bitwidth);
-    if (failed(expectedValueCount) ||
-        *expectedValueCount != regLayout.getInDimSize(kReg)) {
-      return std::nullopt;
+    }
+    if (bitwidth == 32) {
+      auto expectedValueCount = getExpectedTMemLoadValueCount(*info, bitwidth);
+      if (failed(expectedValueCount) ||
+          *expectedValueCount != regLayout.getInDimSize(kReg)) {
+        return std::nullopt;
+      }
     }
     return *info;
   };
