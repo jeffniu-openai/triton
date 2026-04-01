@@ -2312,3 +2312,7 @@ rejection, not rescue
 - Validation checkpoint:
   - exact GB200 `64x128x32` f16 epilogue-subtile node passes again
   - direct PTX repro shows `16x256b.x8.unpack::16b` / `16x256b.x8.pack::16b` restored
+
+- Revalidation note (2026-04-01):
+  - the exact GB200 `64x128x32` `f16` epilogue-subtile matmul node is green on clean committed HEAD `69c7822a8`
+  - the temporary opcode-shape experiments were a dead end and were discarded; the current tree is back at the committed checkpoint before the full GB200 CI-equivalent sweep

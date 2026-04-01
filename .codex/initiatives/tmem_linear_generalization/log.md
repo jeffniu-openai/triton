@@ -4391,3 +4391,13 @@ Open after this slice:
     - direct repro now emits:
       - `tcgen05.st.sync.aligned.16x256b.x8.unpack::16b.b32`
       - `tcgen05.ld.sync.aligned.16x256b.x8.pack::16b.b32`
+
+- 2026-04-01: revalidated the committed GB200 TMEM checkpoint on clean HEAD `69c7822a8`
+  - discarded the dead-end opcode-override experiments; no source changes beyond the committed checkpoint remain in the worktree
+  - confirmed the exact GB200 matmul node still expected from the initiative note is green on the clean tree:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]` -> `1 passed`
+    - paired control `python/test/unit/language/test_matmul.py::test_simple_matmul[False-True-4-1-64-128-32-4-float16-float16]` -> `1 passed`
+  - targeted adjacent smoke:
+    - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir` -> `1 passed`
+    - `python/test/gluon/test_core.py -k 'linear_m64_16x256b_64x128 and test_tmem_linear_m64_roundtrip_direct_shapes'` -> `1 passed`
+    - `python/test/gluon/test_core.py::test_tmem_packed_f16_roundtrip_atom_shapes` -> `1 passed`
