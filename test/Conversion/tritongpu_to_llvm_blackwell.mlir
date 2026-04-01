@@ -1462,8 +1462,7 @@ module attributes {"ttg.target" = "cuda:100", "ttg.num-warps" = 4 : i32} {
 #tmem_linear_half = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100"} {
   // CHECK-LABEL: @tensor_memory_ld_dynamic_multibuffer_subslices
-  // CHECK-COUNT-1: tcgen05.ld.sync.aligned.32x32b.x64.b32 {{.*}} [{{.*}} + 0]
-  // CHECK-COUNT-1: tcgen05.ld.sync.aligned.32x32b.x64.b32 {{.*}} [{{.*}} + 64]
+  // CHECK-COUNT-2: tcgen05.ld.sync.aligned.32x32b.x128.b32 {{.*}} [{{.*}} + 0]
   tt.func private @tensor_memory_ld_dynamic_multibuffer_subslices(%arg0: !ttg.memdesc<2x128x256xf32, #tmem_linear_multibuffer, #ttng.tensor_memory, mutable>, %idx: i32) -> tensor<128x128xf32, #blocked_tmem_dynamic_subslice> {
     %view = ttg.memdesc_index %arg0[%idx] : !ttg.memdesc<2x128x256xf32, #tmem_linear_multibuffer, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x256xf32, #tmem_linear_multibuffer, #ttng.tensor_memory, mutable>
     %lhs_desc = ttng.tmem_subslice %view {N = 0 : i32} : !ttg.memdesc<128x256xf32, #tmem_linear_multibuffer, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear_half, #ttng.tensor_memory, mutable, 128x256>
