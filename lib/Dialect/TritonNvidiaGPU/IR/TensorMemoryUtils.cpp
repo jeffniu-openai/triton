@@ -3684,9 +3684,9 @@ computeTMemLdStEncodingInfoImpl(
 
   auto tryLegacyAnchoredCanonicalM64 = [&]()
       -> std::optional<TMemLdStEncodingInfo> {
-    if (rowPlanOverride || bitwidth != 32 || logicalRows != 64 ||
-        logicalCols < 1 || !llvm::isPowerOf2_64(logicalCols) ||
-        !regLayout.hasInDim(kWarp) || regLayout.getInDimSizeLog2(kWarp) < 2) {
+    if (rowPlanOverride || logicalRows != 64 || logicalCols < 1 ||
+        !llvm::isPowerOf2_64(logicalCols) || !regLayout.hasInDim(kWarp) ||
+        regLayout.getInDimSizeLog2(kWarp) < 2) {
       return std::nullopt;
     }
     std::string rawError;
@@ -3695,6 +3695,8 @@ computeTMemLdStEncodingInfoImpl(
     if (!maybeRawLayout)
       return std::nullopt;
     auto rawLayout = squeezeTrivialBlock(*maybeRawLayout);
+    if (bitwidth < 32 && rawLayout.hasInDim(kCol))
+      rawLayout = rawLayout.removeZeroBasesAlongDim(kCol);
     if (!rawLayout.hasInDim(kRow) || !rawLayout.hasInDim(kCol))
       return std::nullopt;
     if (rawLayout.hasInDim(kBlock) && rawLayout.getInDimSize(kBlock) > 1)
@@ -3954,6 +3956,10 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   LinearLayout memLayout = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
       return squeezeTrivialBlock(toLinearLayout(memTy));
+    if (memTy.getShape() == memTy.getAllocShape()) {
+      return squeezeTrivialBlock(
+          toLinearLayout(memTy.getShape(), memTy.getEncoding()));
+    }
 
     std::string analysisError;
     auto maybeAnalysisLayout = getTMemViewAnalysisLinearLayout(

@@ -2019,6 +2019,8 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   auto ll = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
       return toLinearLayout(memType);
+    if (!rowPlanOverride && memType.getShape() == memType.getAllocShape())
+      return toLinearLayout(memType.getShape(), memType.getEncoding());
     std::string error;
     SmallVector<int64_t> layoutShape(memType.getShape().begin(),
                                      memType.getShape().end());

@@ -2295,3 +2295,20 @@ rejection, not rescue
 - Validation checkpoint:
   - exact GB200 TF32 node -> pass
   - exact GB200 f16 node -> pass
+
+
+## 2026-04-01: whole-root TMEM descriptors must bypass view-analysis normalization for direct ld/st selection
+
+- Another GB200 unit-matmul regression surfaced outside the TMEM runtime matrix:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]`
+- With `TRITON_PREFER_TMEM_16x256_LAYOUT=1`, current HEAD `69c7822a8` was selecting `16x128b` for the `EPILOGUE_SUBTILE=True` accumulator load/store path, while `/tmp/triton-origin-main` still selected the correct `16x256b.x8.unpack/pack` path.
+- The key behavioral difference was not in TTGIR result layout or in PTX opcode spelling. It was earlier:
+  - current direct ld/st selection/planning was routing even whole-root TMEM descriptors (`shape == allocShape`) through `getTMemViewAnalysisLinearLayout(...)` + `normalizeTensorMemoryLinearLayoutForAnalysis(...)`
+  - origin/main still used the raw storage mapping via `toLinearLayout(shape, encoding)` for whole descriptors
+- For true descriptor views and higher-rank slices, the analysis-layout path is still required. But for whole descriptors it is too lossy for legacy-equivalent M64 `f16` whole-tile selection and rejects the working `16x256b` direct path.
+- Current rule:
+  - whole non-scales descriptors (`shape == allocShape`) use the raw storage layout for direct ld/st layout selection and encoding-info planning
+  - descriptor views continue to use the generalized TMEM-view analysis layout path
+- Validation checkpoint:
+  - exact GB200 `64x128x32` f16 epilogue-subtile node passes again
+  - direct PTX repro shows `16x256b.x8.unpack::16b` / `16x256b.x8.pack::16b` restored

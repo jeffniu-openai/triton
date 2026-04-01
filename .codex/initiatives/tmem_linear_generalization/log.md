@@ -4370,3 +4370,24 @@ Open after this slice:
       -> `1 passed`
     - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. TRITON_DISABLE_LINE_INFO=1 PROTON_SKIP_PC_SAMPLING_TEST=1 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-128-128-16-4-float16-float16]'`
       -> `1 passed`
+
+- 2026-04-01: root-TMEM direct ld/st raw-layout fast path for GB200 `16x256b` epilogue subtiles
+  - symptom:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]` failed on current HEAD `69c7822a8` with `TRITON_PREFER_TMEM_16x256_LAYOUT=1` because PTX fell back to `16x128b` instead of the expected `16x256b`
+    - `/tmp/triton-origin-main` still passed the same node and emitted `tcgen05.st/ld.sync.aligned.16x256b.x8.{unpack,pack}::16b.b32`
+  - root cause:
+    - the newer direct ld/st helpers were routing even whole-root TMEM descriptors (`shape == allocShape`) through the generalized TMEM-view analysis layout path
+    - that normalized whole `64x128 f16` M64 accumulator descriptor no longer matched the legacy-equivalent `16x256b` whole-tile direct path, so selection fell back to `16x128b`
+    - origin/main still uses the raw storage layout (`toLinearLayout(shape, encoding)`) for whole descriptors, which preserves the working `16x256b.x8.unpack/pack` lowering
+  - fix:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+      - in `getDistributedLayoutForTmemLdSt(memType, atom, numWarps, rowPlanOverride)`, restore a raw-storage-layout fast path for non-scales whole descriptors when `shape == allocShape` and no row-plan override is active
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+      - in `computeTMemLdStEncodingInfo(regTy, memTy, ...)`, restore the same raw-storage-layout fast path for non-scales whole descriptors before falling back to the generalized TMEM-view analysis layout path
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]'`
+      -> `1 passed`
+    - direct repro now emits:
+      - `tcgen05.st.sync.aligned.16x256b.x8.unpack::16b.b32`
+      - `tcgen05.ld.sync.aligned.16x256b.x8.pack::16b.b32`
