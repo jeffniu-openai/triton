@@ -4638,3 +4638,25 @@ Open after this slice:
   - validation:
     - `TRITON_BUILD_WITH_CCACHE=true make -j96`
     - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]'` -> `1 passed`
+
+- 2026-04-01: fixed the remaining GB200 Blackwell `TRITON_PREFER_TMEM_16x256_LAYOUT=1` matmul regressions in the physical-support ld/st path
+  - failures:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-512-64-32-2-float16-float16]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-512-64-32-2-float16-float8e5]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-8-1-256-128-32-4-float32-tensorfloat32]`
+    - all three passed on `/tmp/triton-origin-main` and failed locally only because PTX missed the expected native `16x256b` ld/st path
+  - root cause:
+    - the current TMEM optimizer was legitimately lowering these tall/narrow accumulators through `getTMemLdStPhysicalSupportPlan(...)`, i.e. `512x64 -> reinterpret 128x256` and `256x128 -> reinterpret 128x256`
+    - inside that support-plan chooser, atom probing still ran in `I32x32b, I16x256b, I16x128b, I16x64b` order, so the support path succeeded on `32x32b.x128` before it ever considered `I16x256b`
+    - as a result, `TRITON_PREFER_TMEM_16x256_LAYOUT=1` had no effect once a store/load went through the physical-support rewrite
+  - fix:
+    - keep the corrected legacy `M64/I16x256b` basis in `Dialect.cpp`
+    - in `TensorMemoryUtils.cpp`, honor `TRITON_PREFER_TMEM_16x256_LAYOUT` inside `getTMemLdStPhysicalSupportPlan(...)` by probing support atoms in `I16x256b, I32x32b, I16x128b, I16x64b` order
+    - this preserves the generalized physical-support rewrite while restoring the native `16x256b` PTX family for exact Blackwell matmul cases that want it
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:python/test/unit/language:. TRITON_PREFER_TMEM_16x256_LAYOUT=1 python3 -m pytest -s --tb=short -x \
+      'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-512-64-32-2-float16-float16]' \
+      'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-512-64-32-2-float16-float8e5]' \
+      'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-8-1-256-128-32-4-float32-tensorfloat32]'`
+      -> `3 passed`

@@ -2531,3 +2531,19 @@ rejection, not rescue
 - Result:
   - handle-aware and type-only TMEM load layout selection agree again on plain `64x32xf32` / `64x64xf32` MMA accumulators
   - the GB200 `test_mma_shared_inputs[...]acc_dtype4` repro passes again
+
+## 2026-04-01: GB200 Blackwell preferred `16x256b` matmul support through physical-support ld/st rewrites
+
+- The remaining GB200 Blackwell matmul regressions with `TRITON_PREFER_TMEM_16x256_LAYOUT=1` were not a pure `getDefaultLayoutForTmemLdSt(...)` problem.
+- TTGIR showed that the affected cases were going through `OptimizeTMemLayouts` physical-support rewriting:
+  - current failing path: `ttng.tmem_alloc !ttg.memdesc<512x64xf16, #tmem_linear>` then `ttg.memdesc_reinterpret -> !ttg.memdesc<128x256xf16, ...>` and `ttng.tmem_store/load` on the support view
+  - origin passing path: direct `ttng.tmem_store/load` on the exact family and PTX `tcgen05.{st,ld}.sync.aligned.16x256b...`
+- The support rewrite itself is acceptable; the bug was atom selection inside `getTMemLdStPhysicalSupportPlan(...)`.
+- Root cause:
+  - support-plan probing still preferred `I32x32b` over `I16x256b`
+  - therefore any shape that reached the support rewrite ignored `TRITON_PREFER_TMEM_16x256_LAYOUT`, even when the support view was exactly `128x256`
+- Fix:
+  - preserve the corrected legacy `M64/I16x256b` selector basis in `Dialect.cpp`
+  - reorder support-plan atom probing under `TRITON_PREFER_TMEM_16x256_LAYOUT` to try `I16x256b` before `I32x32b`
+- Result:
+  - tall/narrow exact Blackwell matmul accumulator/store-load cases that rewrite to a `128x256` physical support tile now emit native `16x256b` PTX again instead of stopping at `32x32b.x128`

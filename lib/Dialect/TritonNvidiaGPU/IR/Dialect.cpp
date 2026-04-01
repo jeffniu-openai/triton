@@ -1418,13 +1418,18 @@ getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n
       return std::nullopt;
     // Keep the legacy M64 family for x256 so the direct ld/st matcher reaches
     // the native 16x256b path instead of degrading to x128.
-    laneBases = {{0, 4}, {0, 8}, {1, 0}, {2, 0}, {4, 0}};
-    regBases = {{0, 1}, {0, 2}, {8, 0}};
-    for (int64_t col = 16; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
+    laneBases = {{0, 2}, {0, 4}, {1, 0}, {2, 0}, {4, 0}};
+    regBases = {{0, 1}, {8, 0}};
+    for (int64_t col = 8; col <= (numWarps == 4 ? n / 2 : n / 4); col <<= 1)
       regBases.push_back({0, static_cast<int32_t>(col)});
     warpBases = {{16, 0}, {32, 0}};
-    if (numWarps == 8)
-      warpBases.push_back({0, static_cast<int32_t>(n / 2)});
+    if (numWarps == 8) {
+      // The legacy 8-warp x256 family only shards N across the extra warp bit
+      // once there is at least one full 8-column packet to place there. For
+      // narrow N, keep the third warp basis zero instead of synthesizing an
+      // invalid partial split.
+      warpBases.push_back({0, static_cast<int32_t>(n >= 16 ? n / 2 : 0)});
+    }
     break;
   case TMemAccessAtom::I16x32bx2:
     return std::nullopt;
@@ -2079,6 +2084,17 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     }
     return std::nullopt;
   }
+  if (!rowPlanOverride && memType.getShape() == memType.getAllocShape()) {
+    if (planMMAv5ExactFamily(memType.getShape(), memType.getEncoding(),
+                             {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u,
+                              512u})) {
+      if (auto legacyLike = getDistributedLayoutForTmemLdStLegacyAnchored(
+              ll, atom, numWarps, bitwidth)) {
+        if (isTMemLdStSelectionLayoutValid(memType, *legacyLike))
+          return legacyLike;
+      }
+    }
+  }
   if (!rowPlanOverride) {
     auto tryCanonicalContiguousM64 =
         [&](const LinearLayout &candidate) -> std::optional<LinearLayout> {
@@ -2208,24 +2224,52 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
   bool prefer16x256 =
       triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
   if (prefer16x256) {
-    std::string error;
-    if (auto maybeLayout = getTMemViewAnalysisLinearLayout(
-            memType.getShape(), memType.getEncoding(), &error)) {
-      auto stripped = stripZeroBasesForTmemLdStSelection(
-          normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout));
-      if (matchesCanonicalContiguousM64LinearView(stripped)) {
-        auto kCol = StringAttr::get(ctx, "col");
-        if (auto canonical = getCanonicalContiguousM64Layout(
-                ctx, TMemAccessAtom::I16x256b, stripped.getInDimSize(kCol),
-                numWarps)) {
-          return LinearEncodingAttr::get(ctx, std::move(*canonical));
-        }
-        TMemLdStRowPlan legacyM64Plan{/*warpRow0=*/32, /*warpRow1=*/64,
-                                      /*rowSpan=*/128};
-        if (auto layout = getDistributedLayoutForTmemLdSt(
-                memType, TMemAccessAtom::I16x256b, numWarps, legacyM64Plan)) {
-          return LinearEncodingAttr::get(ctx, std::move(*layout));
-        }
+    auto tryLegacyPreferred =
+        [&](const LinearLayout &layout)
+        -> std::optional<DistributedEncodingTrait> {
+      if (auto preferred = getDistributedLayoutForTmemLdStLegacyAnchored(
+              layout, TMemAccessAtom::I16x256b, numWarps,
+              memType.getElementTypeBitWidth());
+          preferred && isTMemLdStSelectionLayoutValid(memType, *preferred)) {
+        return LinearEncodingAttr::get(ctx, std::move(*preferred));
+      }
+      return std::nullopt;
+    };
+    auto tryCanonicalPreferredM64 =
+        [&](const LinearLayout &layout) -> std::optional<DistributedEncodingTrait> {
+      auto stripped = stripZeroBasesForTmemLdStSelection(layout);
+      if (!matchesCanonicalContiguousM64LinearView(stripped))
+        return std::nullopt;
+      auto kCol = StringAttr::get(ctx, "col");
+      if (auto canonical = getCanonicalContiguousM64Layout(
+              ctx, TMemAccessAtom::I16x256b, stripped.getInDimSize(kCol),
+              numWarps);
+          canonical && isTMemLdStSelectionLayoutValid(memType, *canonical)) {
+        return LinearEncodingAttr::get(ctx, std::move(*canonical));
+      }
+      TMemLdStRowPlan legacyM64Plan{/*warpRow0=*/32, /*warpRow1=*/64,
+                                    /*rowSpan=*/128};
+      if (auto preferred = getDistributedLayoutForTmemLdSt(
+              memType, TMemAccessAtom::I16x256b, numWarps, legacyM64Plan)) {
+        return LinearEncodingAttr::get(ctx, std::move(*preferred));
+      }
+      return std::nullopt;
+    };
+    if (!isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding())) {
+      std::string error;
+      if (auto maybeLayout = getTMemViewAnalysisLinearLayout(
+              memType.getShape(), memType.getEncoding(), &error)) {
+        auto normalized =
+            normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
+        if (auto preferred = tryCanonicalPreferredM64(normalized))
+          return *preferred;
+      }
+      auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+      if (auto preferred = tryCanonicalPreferredM64(raw))
+        return *preferred;
+      if (memType.getShape() == memType.getAllocShape()) {
+        if (auto preferred = tryLegacyPreferred(raw))
+          return *preferred;
       }
     }
     auto layout = getDistributedLayoutForTmemLdSt(
@@ -2510,9 +2554,21 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
   };
 
   int bitwidth = memType.getElementTypeBitWidth();
-  for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
-                    TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
-                    TMemAccessAtom::I16x32bx2}) {
+  bool prefer16x256 =
+      triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
+  SmallVector<TMemAccessAtom> atoms =
+      prefer16x256
+          ? SmallVector<TMemAccessAtom>{TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b,
+                                        TMemAccessAtom::I16x32bx2}
+          : SmallVector<TMemAccessAtom>{TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b,
+                                        TMemAccessAtom::I16x32bx2};
+  for (auto atom : atoms) {
     std::optional<LinearLayout> ll;
     if (isScales) {
       ll = getDistributedLayoutForTmemLdStLegacyAnchored(memLL, atom, numWarps,
@@ -2586,9 +2642,21 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   if (memLL.getNumOutDims() == 0)
     return layouts;
   int bitwidth = memType.getElementTypeBitWidth();
-  for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
-                    TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b,
-                    TMemAccessAtom::I16x32bx2}) {
+  bool prefer16x256 =
+      triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
+  SmallVector<TMemAccessAtom> atoms =
+      prefer16x256
+          ? SmallVector<TMemAccessAtom>{TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b,
+                                        TMemAccessAtom::I16x32bx2}
+          : SmallVector<TMemAccessAtom>{TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b,
+                                        TMemAccessAtom::I16x32bx2};
+  for (auto atom : atoms) {
     std::optional<LinearLayout> ll;
     if (isScales) {
       ll = getDistributedLayoutForTmemLdStLegacyAnchored(memLL, atom, numWarps,

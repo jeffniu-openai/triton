@@ -2,6 +2,7 @@
 
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Tools/Sys/GetEnv.hpp"
 #include "triton/Tools/LayoutUtils.h"
 #include "third_party/f2reduce/f2reduce.h"
 #include <algorithm>
@@ -4110,14 +4111,14 @@ computeTMemLdStEncodingInfoImpl(
     return info;
   }
 
-  auto tryLegacyAnchoredCanonicalM64 = [&]()
+  auto tryLegacyAnchoredExactFamily = [&]()
       -> std::optional<TMemLdStEncodingInfo> {
     bool hasCompatibleRowPlan =
         !rowPlanOverride ||
         (rowPlanOverride->warpRow0 == 32 && rowPlanOverride->warpRow1 == 64 &&
          rowPlanOverride->rowSpan == 128 && rowPlanOverride->baseOffset == 0);
     if (!hasCompatibleRowPlan || memTy.getShape() != memTy.getAllocShape() ||
-        logicalRows != 64 || logicalCols < 1 ||
+        logicalRows < 64 || logicalCols < 1 ||
         !llvm::isPowerOf2_64(logicalCols) || !regLayout.hasInDim(kWarp) ||
         regLayout.getInDimSizeLog2(kWarp) < 2) {
       return std::nullopt;
@@ -4139,21 +4140,27 @@ computeTMemLdStEncodingInfoImpl(
     if (!twoCTAs)
       return std::nullopt;
     bool matchesExactLegacyLikeFamily = false;
-    for (unsigned blockN : {32u, 64u, 128u, 256u, 512u}) {
-      for (unsigned colStride : {1u, 2u, 4u}) {
-        auto maybeCanonical = getCanonicalTMemLinearEncoding(
-            memTy.getShape(), /*blockM=*/64u, blockN, colStride,
-            gpu::getCGALayout(memTy.getEncoding()), *twoCTAs,
-            /*error=*/nullptr);
-        if (!maybeCanonical)
-          continue;
-        auto canonicalLayout = squeezeTrivialBlock(maybeCanonical->getLinearLayout());
-        if (bitwidth < 32 && canonicalLayout.hasInDim(kCol))
-          canonicalLayout = canonicalLayout.removeZeroBasesAlongDim(kCol);
-        if (canonicalLayout == legacyFamilyLayout) {
-          matchesExactLegacyLikeFamily = true;
-          break;
+    for (unsigned blockM : {64u, 128u}) {
+      for (unsigned blockN : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u,
+                              512u}) {
+        for (unsigned colStride : {1u, 2u, 4u}) {
+          auto maybeCanonical = getCanonicalTMemLinearEncoding(
+              memTy.getShape(), blockM, blockN, colStride,
+              gpu::getCGALayout(memTy.getEncoding()), *twoCTAs,
+              /*error=*/nullptr);
+          if (!maybeCanonical)
+            continue;
+          auto canonicalLayout =
+              squeezeTrivialBlock(maybeCanonical->getLinearLayout());
+          if (bitwidth < 32 && canonicalLayout.hasInDim(kCol))
+            canonicalLayout = canonicalLayout.removeZeroBasesAlongDim(kCol);
+          if (canonicalLayout == legacyFamilyLayout) {
+            matchesExactLegacyLikeFamily = true;
+            break;
+          }
         }
+        if (matchesExactLegacyLikeFamily)
+          break;
       }
       if (matchesExactLegacyLikeFamily)
         break;
@@ -4198,7 +4205,7 @@ computeTMemLdStEncodingInfoImpl(
     }
     return *info;
   };
-  if (auto info = tryLegacyAnchoredCanonicalM64())
+  if (auto info = tryLegacyAnchoredExactFamily())
     return *info;
 
   auto rowPlan = getTMemLdStRowPlanForType(memTy);
@@ -4645,8 +4652,19 @@ getTMemLdStPhysicalSupportPlan(MemDescType memTy, unsigned numWarps,
                        *maybeSupportEncoding, memTy.getMemorySpace(),
                        memTy.getMutableMemory(), supportShape);
 
-  for (auto atom : {TMemAccessAtom::I32x32b, TMemAccessAtom::I16x256b,
-                    TMemAccessAtom::I16x128b, TMemAccessAtom::I16x64b}) {
+  bool prefer16x256 =
+      triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
+  SmallVector<TMemAccessAtom> atoms =
+      prefer16x256
+          ? SmallVector<TMemAccessAtom>{TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b}
+          : SmallVector<TMemAccessAtom>{TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b};
+  for (auto atom : atoms) {
     auto maybeLayout =
         getDistributedLayoutForTmemLdSt(supportMemTy, atom, numWarps);
     if (!maybeLayout)
