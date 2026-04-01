@@ -21,8 +21,28 @@ using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
     Value tmemBase, bool useRawWordColumns) {
-  auto ll =
-      ttng::normalizeTensorMemoryLinearLayoutForAnalysis(toLinearLayout(memTy));
+  auto ll = toLinearLayout(memTy);
+  if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
+    auto rank =
+        static_cast<size_t>(cast<LayoutEncodingTrait>(memTy.getEncoding())
+                                .getRank());
+    auto shape = memTy.getShape().take_back(rank);
+    auto allocShape = memTy.getAllocShape().take_back(rank);
+    auto cga = gpu::getCGALayout(memTy.getEncoding());
+    if (shape == allocShape) {
+      if (auto accInfo = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
+        auto legacy = ttng::TensorMemoryEncodingAttr::get(
+            loc.getContext(), accInfo->mmaSizeM, accInfo->mmaSizeN,
+            accInfo->colStride, cga, accInfo->twoCTAs);
+        ll = toLinearLayout(shape, legacy);
+      } else if (auto lhsInfo = ttng::getMMAv5LhsLayoutInfo(memTy)) {
+        auto legacy = ttng::TensorMemoryEncodingAttr::get(
+            loc.getContext(), lhsInfo->mmaSizeM, lhsInfo->mmaSizeN,
+            lhsInfo->colStride, cga, lhsInfo->twoCTAs);
+        ll = toLinearLayout(shape, legacy);
+      }
+    }
+  }
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);

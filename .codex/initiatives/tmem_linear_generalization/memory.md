@@ -2255,3 +2255,23 @@ rejection, not rescue
     -> aggregate `1873 passed, 119 skipped`
   - focused `triton_kernels` nvfp4 persistent slice
     -> `1 passed, 1 skipped`
+
+
+## 2026-04-01: GB200 unit-suite MMAv5 `test_dot` regression
+
+- The first full `python/test/unit` GB200 microbatch uncovered a real compiler regression outside the TMEM runtime matrix:
+  - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+  - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-chain-dot-ieee-bfloat16-float32-1-None]`
+- Origin/main passed those nodes. The current tree failed with ~49.5% mismatches.
+- Root cause was not the MMA opcode count itself; it was the interaction between canonical explicit M64 TMEM-linear layouts and direct TMEM lowering:
+  - canonical M64 register-layout selection had drifted to the narrower split-N `x16` path for ordinary 4-warp 64x64 accumulators
+  - after restoring `x32`, initialized `ttng.tmem_alloc %src` still used the type-only ld/st query path, which collapsed the explicit TMEM-linear M64 allocation to a standalone `64x64` query instead of the real `128x64` backing/support form
+- The TMEM query trace made the second issue explicit:
+  - good path: raw query/support form `row size 128`, `warpBase0=2097152`, `warpBase1=4194304`
+  - bad path: standalone `queryType 64x64`, `warpBase0=1048576`, `warpBase1=2097152`
+- Fixes:
+  - `Dialect.cpp`: keep canonical 4-warp M64 on the full `x32` path
+  - `TensorMemoryToLLVM.cpp`: initialized allocs must pass the actual memdesc SSA value to `lowerTMemLdStFromTypes(...)`, not `Value()`, so direct lowering can use the same backing/support query logic as `tmem_store` / `tmem_load`
+- Fresh-cache validation after the fix:
+  - exact `tf32x3` node -> pass
+  - exact `chain-dot-ieee-bfloat16` node -> pass

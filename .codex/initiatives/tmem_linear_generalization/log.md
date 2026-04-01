@@ -4321,3 +4321,23 @@ Open after this slice:
         -> `1 passed`
       - `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -x 'python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-16-1000-704-800-batched-nvfp4_e2m1-nvfp4_e2m1-bfloat16-10-1-True-True-None-False-False-False-True-None]' 'python/triton_kernels/tests/test_matmul.py::test_op[None-True-False-False-False-None-16-1024-1024-1024-batched-nvfp4_e2m1-nvfp4_e2m1-bfloat16-10-1-False-True-None-False-False-False-True-None]'`
         -> `1 passed, 1 skipped`
+
+- 2026-04-01: fixed the GB200 `python/test/unit/language/test_core.py::test_dot` MMAv5 regression that showed up once the unit suite was split across GPUs
+  - exact failing nodes before the fix:
+    - `test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `test_dot[1-64-64-64-4-False-False-chain-dot-ieee-bfloat16-float32-1-None]`
+  - the regression had two parts:
+    - canonical 4-warp M64 register-layout selection in `Dialect.cpp` had drifted to the split-N `x16` path (`laneSplitCol = n/4`) instead of the full `x32` path the pre-generalization code used for ordinary 64x64 MMAv5 accumulators
+    - initialized `ttng.tmem_alloc %src` lowering in `TensorMemoryToLLVM.cpp` was still taking the type-only ld/st query path, which collapsed canonical M64 TMEM-linear allocations to a `64x64` standalone query (`warpBase0=2^20`, `warpBase1=2^21`) instead of the real backing-row support form (`128x64`, `warpBase0=2^21`, `warpBase1=2^22`)
+  - symptoms and evidence:
+    - origin/main passed those exact nodes, current tree failed with ~49.5% mismatches
+    - PTX diff showed current code emitting `tcgen05.{st,ld}.16x32bx2.x16.b32` for the accumulator path until the canonical-M64 fix restored `x32`
+    - TMEM query trace then showed the remaining mismatch: plain `tmem_store` / `tmem_load` on the memdesc value used the raw `128x64` support query, while initialized allocs still used the narrower `queryType 64x64` path
+  - fix:
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`: restore the canonical 4-warp M64 `x32` register-layout selection (`laneSplitCol = n/2`)
+    - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`: pass `op.getResult()` into `lowerTMemLdStFromTypes(...)` for initialized allocs so the lowering can reuse the real memdesc query/support path
+    - kept the MMAv5/TMEM legacy-equivalent bridge in `MMAv5.cpp` and the matching canonical-M64 direct-ld/st bridge in `TensorMemoryUtils.cpp`, since they keep explicit TMEM-linear M64 layouts on the same physical addressing model as the old legacy sugar
+  - validation:
+    - fresh-cache exact nodes:
+      - `...tf32x3...` -> `1 passed`
+      - `...chain-dot-ieee-bfloat16...` -> `1 passed`

@@ -1370,7 +1370,10 @@ getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n
   case TMemAccessAtom::I32x32b:
     laneBases = {{1, 0}, {2, 0}, {4, 0}, {8, 0}};
     if (numWarps == 4) {
-      int64_t laneSplitCol = n >= 4 ? n / 4 : 0;
+      // Keep the canonical 4-warp M64 layout on the full x32 register path.
+      // Using n/4 here collapses ordinary 64x64 MMAv5 accumulators to the
+      // narrower split-N x16 ld/st path and regresses numerical results.
+      int64_t laneSplitCol = n >= 2 ? n / 2 : 0;
       laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
       for (int64_t col = 1; col < n; col <<= 1) {
         if (col == laneSplitCol)

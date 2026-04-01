@@ -1032,11 +1032,11 @@ struct TensorMemoryAllocOpConversion
       SmallVector<Value> srcValues =
           unpackLLElements(loc, adaptor.getSrc(), rewriter);
       Value ptr = b.inttoptr(base.getType(), allocAddress);
-      // A fresh tmem_alloc result is not a descriptor view; use the direct
-      // memdesc type query path here so legacy-equivalent initialized allocs
-      // lower identically to the pre-generalization codegen.
+      // Initialized allocs still need the real memdesc-value query path so
+      // TMEM-linear allocations keep their backing-row support form instead of
+      // collapsing to a narrower standalone query.
       if (failed(lowerTMemLdStFromTypes(loc, rewriter, regTy, memTy,
-                                        /*memDescValue=*/Value(),
+                                        /*memDescValue=*/op.getResult(),
                                         ptr, maxnreg, b.i1_val(true),
                                         llvmElemTy, srcValues)))
         return failure();

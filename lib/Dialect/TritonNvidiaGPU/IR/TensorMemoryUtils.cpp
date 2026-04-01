@@ -3492,6 +3492,78 @@ computeTMemLdStEncodingInfoImpl(
 
     return info;
   }
+
+  auto tryLegacyAnchoredCanonicalM64 = [&]()
+      -> std::optional<TMemLdStEncodingInfo> {
+    if (rowPlanOverride || bitwidth != 32 || logicalRows != 64 ||
+        logicalCols < 1 || !llvm::isPowerOf2_64(logicalCols) ||
+        !regLayout.hasInDim(kWarp) || regLayout.getInDimSizeLog2(kWarp) < 2) {
+      return std::nullopt;
+    }
+    std::string rawError;
+    auto maybeRawLayout = getTMemViewAnalysisLinearLayout(
+        memTy.getShape(), memTy.getEncoding(), &rawError);
+    if (!maybeRawLayout)
+      return std::nullopt;
+    auto rawLayout = squeezeTrivialBlock(*maybeRawLayout);
+    if (!rawLayout.hasInDim(kRow) || !rawLayout.hasInDim(kCol))
+      return std::nullopt;
+    if (rawLayout.hasInDim(kBlock) && rawLayout.getInDimSize(kBlock) > 1)
+      return std::nullopt;
+    if (rawLayout.getInDimSizeLog2(kRow) != 7 ||
+        rawLayout.getInDimSize(kCol) != logicalCols)
+      return std::nullopt;
+    for (unsigned bit = 0; bit < 4; ++bit) {
+      if (rawLayout.getBasis(kRow, bit) != ArrayRef<int32_t>{1 << bit, 0})
+        return std::nullopt;
+    }
+    if (rawLayout.getBasis(kRow, 4) != ArrayRef<int32_t>{0, 0} ||
+        rawLayout.getBasis(kRow, 5) != ArrayRef<int32_t>{16, 0} ||
+        rawLayout.getBasis(kRow, 6) != ArrayRef<int32_t>{32, 0}) {
+      return std::nullopt;
+    }
+    for (unsigned bit = 0; (1ll << bit) < logicalCols; ++bit) {
+      if (rawLayout.getBasis(kCol, bit) != ArrayRef<int32_t>{0, 1 << bit})
+        return std::nullopt;
+    }
+    if (!(regLayout.getBasis(kWarp, 0) == rawLayout.getBasis(kRow, 5) &&
+          regLayout.getBasis(kWarp, 1) == rawLayout.getBasis(kRow, 6))) {
+      return std::nullopt;
+    }
+    auto legacyCvt = regLayout.invertAndCompose(rawLayout);
+    legacyCvt = squeezeTrivialBlock(std::move(legacyCvt));
+    bool legacyHasBlockIn = legacyCvt.hasInDim(kBlock);
+    bool legacyHasBlockOut = legacyCvt.hasOutDim(kBlock);
+    if (legacyHasBlockIn != legacyHasBlockOut)
+      return std::nullopt;
+    if (legacyHasBlockIn) {
+      auto maybeSublayout = legacyCvt.quotient({kBlock});
+      if (!maybeSublayout)
+        return std::nullopt;
+      legacyCvt = *maybeSublayout;
+    }
+    auto legacyCvtBases = legacyCvt.getBases();
+    legacyCvtBases[kWarp][0] = {32, 0};
+    legacyCvtBases[kWarp][1] = {64, 0};
+    legacyCvt = LinearLayout(std::move(legacyCvtBases), legacyCvt.getOutDims(),
+                             /*isSurjective=*/legacyCvt.isSurjective());
+    auto info = lowerTMemLdSt(legacyCvt, maxnreg, bitwidth,
+                              /*emitError=*/{}, /*unpacked=*/false,
+                              /*warpRow0=*/32, /*warpRow1=*/64,
+                              /*rowSpan=*/128,
+                              /*preferI16x32bx2=*/false);
+    if (failed(info))
+      return std::nullopt;
+    auto expectedValueCount = getExpectedTMemLoadValueCount(*info, bitwidth);
+    if (failed(expectedValueCount) ||
+        *expectedValueCount != regLayout.getInDimSize(kReg)) {
+      return std::nullopt;
+    }
+    return *info;
+  };
+  if (auto info = tryLegacyAnchoredCanonicalM64())
+    return *info;
+
   auto rowPlan = getTMemLdStRowPlanForType(memTy);
   auto memLayoutSupportsOverride = [&]() {
     if (!rowPlanOverride)
