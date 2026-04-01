@@ -2336,3 +2336,24 @@ rejection, not rescue
   - `64x128x32` and `256x128x32` GB200 `f16` epilogue-subtile unit matmuls both pass again
   - PTX for the `256x128` case now restores the `+128` MMAv5 slice offsets
   - `make test-lit` is green again after updating the one stale Blackwell conversion CHECK from `+64` to `+32`
+
+
+## 2026-04-01: whole-root explicit TMEM-linear M64 accumulator stores must match the analysis/support layout, not the raw encoding form
+
+- Another GB200 unit-matmul regression surfaced during the broader unit-test sweep:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float32-tensorfloat32]`
+- The regression was not in MMAv5 proper. It was in the initial whole-root `ttng.tmem_store` that zeroes the accumulator memdesc before the async MMAv5 loop.
+- PTX symptom:
+  - current tree scalarized the init into many `tcgen05.st.sync.aligned.32x32b.x1.b32`
+  - `/tmp/triton-origin-main` kept the direct wide `32x32b.x64.b32` path
+- Root cause:
+  - `computeTMemLdStEncodingInfoImpl(...)` still had a legacy-anchored M64 rescue path for explicit TMEM-linear descriptors, but that rescue was trying to rediscover the family from the raw encoding form.
+  - For the `64x512` explicit linear accumulator, the raw encoding exposes the compact physical span (`256` physical TMEM columns with a row bit spilling into the second output dim), while the direct ld/st planner is already working from the normalized analysis/support layout.
+  - That meant the rescue path never recognized the exact legacy-equivalent family and the direct whole-root store fell back to scalar `I32x32b.x1` selection.
+- Current rule:
+  - whole-root non-view M64 rescue should compare against the normalized analysis/support layout that direct ld/st is actually lowering, not against the raw explicit encoding bits
+  - the rescue remains limited to whole-root descriptors (`shape == allocShape`) and only for the standard `32/64` within `128` row-plan override, so descriptor views still go through the generalized view-analysis path
+- Validation checkpoint:
+  - the tf32 `64x512x32` GB200 unit-matmul node is green again
+  - the earlier f16 GB200 control nodes remain green
+  - `make test-lit` stayed green after the fix

@@ -4428,3 +4428,25 @@ Open after this slice:
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-256-128-32-4-float16-float16]` -> `1 passed`
     - resumed GB200-style `python/test/unit` shards:
       - groups `13..16` across GPUs `0..3` -> all passed
+
+- 2026-04-01: fixed GB200 tf32 matmul `64x512x32` direct accumulator-init regression on top of `69c7822a8`
+  - failing node:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float32-tensorfloat32]`
+  - symptom before fix:
+    - `510572 / 524288` mismatches
+    - current PTX scalarized the initial `ttng.tmem_store` into many `tcgen05.st.sync.aligned.32x32b.x1.b32` messages, while `/tmp/triton-origin-main` kept the wide `32x32b.x64.b32` path
+  - root cause:
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
+    - the legacy-anchored M64 direct ld/st rescue path was still trying to re-identify explicit TMEM-linear accumulator layouts from the raw encoding form; for the `64x512` linear accumulator that raw form exposed only the compact physical column span and never matched the actual normalized analysis/support layout used by the raw-query planner
+    - because of that mismatch, the whole-root direct `tmem_store` path fell back to the generic `I32x32b.x1` selection even though the descriptor is exactly legacy-equivalent and should lower directly
+  - fix:
+    - keep the legacy-anchored M64 fast path, but match against the normalized direct-ld/st analysis layout already being lowered (`normalizeTensorMemoryLinearLayoutForAnalysis(memLayout)`) instead of reconstructing the family from the raw encoding bits
+    - allow the fast path for the standard `warpRow0=32`, `warpRow1=64`, `rowSpan=128`, `baseOffset=0` row-plan override used by whole-root M64 descriptors
+    - restrict the rescue to whole-root descriptors (`shape == allocShape`), so generalized descriptor-view lowering still goes through the view-analysis path
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `make test-lit` -> `248 passed, 2 unsupported`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-1-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
+    - paired controls stay green:
+      - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-256-128-32-4-float16-float16]`
+      - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]`

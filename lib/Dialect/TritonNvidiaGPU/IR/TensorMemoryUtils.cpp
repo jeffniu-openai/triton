@@ -3684,44 +3684,62 @@ computeTMemLdStEncodingInfoImpl(
 
   auto tryLegacyAnchoredCanonicalM64 = [&]()
       -> std::optional<TMemLdStEncodingInfo> {
-    if (rowPlanOverride || logicalRows != 64 || logicalCols < 1 ||
+    bool hasCompatibleRowPlan =
+        !rowPlanOverride ||
+        (rowPlanOverride->warpRow0 == 32 && rowPlanOverride->warpRow1 == 64 &&
+         rowPlanOverride->rowSpan == 128 && rowPlanOverride->baseOffset == 0);
+    if (!hasCompatibleRowPlan || memTy.getShape() != memTy.getAllocShape() ||
+        logicalRows != 64 || logicalCols < 1 ||
         !llvm::isPowerOf2_64(logicalCols) || !regLayout.hasInDim(kWarp) ||
         regLayout.getInDimSizeLog2(kWarp) < 2) {
       return std::nullopt;
     }
-    std::string rawError;
-    auto maybeRawLayout = getTMemViewAnalysisLinearLayout(
-        memTy.getShape(), memTy.getEncoding(), &rawError);
-    if (!maybeRawLayout)
+
+    auto analysisLayout =
+        squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+            memLayout));
+    if (bitwidth < 32 && analysisLayout.hasInDim(kCol))
+      analysisLayout = analysisLayout.removeZeroBasesAlongDim(kCol);
+    if (!analysisLayout.hasInDim(kRow) || !analysisLayout.hasInDim(kCol))
       return std::nullopt;
-    auto rawLayout = squeezeTrivialBlock(*maybeRawLayout);
-    if (bitwidth < 32 && rawLayout.hasInDim(kCol))
-      rawLayout = rawLayout.removeZeroBasesAlongDim(kCol);
-    if (!rawLayout.hasInDim(kRow) || !rawLayout.hasInDim(kCol))
+    if (analysisLayout.hasInDim(kBlock) &&
+        analysisLayout.getInDimSize(kBlock) > 1)
       return std::nullopt;
-    if (rawLayout.hasInDim(kBlock) && rawLayout.getInDimSize(kBlock) > 1)
+    if (analysisLayout.getInDimSizeLog2(kRow) != 7)
       return std::nullopt;
-    if (rawLayout.getInDimSizeLog2(kRow) != 7 ||
-        rawLayout.getInDimSize(kCol) != logicalCols)
+
+    auto twoCTAs = getTensorMemoryTwoCTAs(memTy);
+    if (!twoCTAs)
       return std::nullopt;
-    for (unsigned bit = 0; bit < 4; ++bit) {
-      if (rawLayout.getBasis(kRow, bit) != ArrayRef<int32_t>{1 << bit, 0})
-        return std::nullopt;
+    bool matchesExactLegacyLikeFamily = false;
+    for (unsigned blockN : {32u, 64u, 128u, 256u, 512u}) {
+      for (unsigned colStride : {1u, 2u, 4u}) {
+        auto maybeCanonical = getCanonicalTMemLinearEncoding(
+            memTy.getShape(), /*blockM=*/64u, blockN, colStride,
+            gpu::getCGALayout(memTy.getEncoding()), *twoCTAs,
+            /*error=*/nullptr);
+        if (!maybeCanonical)
+          continue;
+        auto canonicalLayout =
+            squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+                maybeCanonical->getLinearLayout()));
+        if (bitwidth < 32 && canonicalLayout.hasInDim(kCol))
+          canonicalLayout = canonicalLayout.removeZeroBasesAlongDim(kCol);
+        if (canonicalLayout == analysisLayout) {
+          matchesExactLegacyLikeFamily = true;
+          break;
+        }
+      }
+      if (matchesExactLegacyLikeFamily)
+        break;
     }
-    if (rawLayout.getBasis(kRow, 4) != ArrayRef<int32_t>{0, 0} ||
-        rawLayout.getBasis(kRow, 5) != ArrayRef<int32_t>{16, 0} ||
-        rawLayout.getBasis(kRow, 6) != ArrayRef<int32_t>{32, 0}) {
+    if (!matchesExactLegacyLikeFamily)
+      return std::nullopt;
+    if (!(regLayout.getBasis(kWarp, 0) == analysisLayout.getBasis(kRow, 5) &&
+          regLayout.getBasis(kWarp, 1) == analysisLayout.getBasis(kRow, 6))) {
       return std::nullopt;
     }
-    for (unsigned bit = 0; (1ll << bit) < logicalCols; ++bit) {
-      if (rawLayout.getBasis(kCol, bit) != ArrayRef<int32_t>{0, 1 << bit})
-        return std::nullopt;
-    }
-    if (!(regLayout.getBasis(kWarp, 0) == rawLayout.getBasis(kRow, 5) &&
-          regLayout.getBasis(kWarp, 1) == rawLayout.getBasis(kRow, 6))) {
-      return std::nullopt;
-    }
-    auto legacyCvt = regLayout.invertAndCompose(rawLayout);
+    auto legacyCvt = regLayout.invertAndCompose(analysisLayout);
     legacyCvt = squeezeTrivialBlock(std::move(legacyCvt));
     bool legacyHasBlockIn = legacyCvt.hasInDim(kBlock);
     bool legacyHasBlockOut = legacyCvt.hasOutDim(kBlock);
