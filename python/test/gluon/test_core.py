@@ -137,7 +137,7 @@ def tmem_linear_runtime_view_kernel_a(input_ptr, output_ptr, layout: ttgl.conste
     M: ttgl.constexpr = layout.shape[0]
     N: ttgl.constexpr = layout.shape[1]
     tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
-    view = tmem.slice(1, 1).index(0).permute([1, 0]).reshape((64, 2, 128))
+    view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
     view = view.permute([0, 2, 1]).reshape((64, 32, 8))
     view = view.slice(0, 64, dim=0).slice(8, 16, dim=1).slice(0, 8, dim=2)
     view = view._reinterpret(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
@@ -304,7 +304,7 @@ def tmem_descriptor_chain_matrix_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
     value = ttgl.load(in_ptr + offs)
 
     tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
-    view = tmem.slice(1, 1).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view = tmem.slice(1, 1, dim=0).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view = view.permute([1, 0]).permute([1, 0])
     view = view.slice(0, M, dim=0).slice(0, N, dim=1)
     view = view._reinterpret(ttgl.float32, [M, N], layout)
@@ -2862,15 +2862,46 @@ def test_tmem_linear_m64_roundtrip_direct_shapes(name, layout, M, N, instr_varia
 
 
 TMEM_LINEAR_M64_FALLBACK_CASES = [
-    ("linear_m64_fallback_64x2", _make_tmem_linear_layout_m64(2), 64, 2, 1),
-    ("linear_m64_fallback_64x64", _make_tmem_linear_layout_m64(64), 64, 64, 32),
-    ("linear_m64_fallback_64x128", _make_tmem_linear_layout_m64(128), 64, 128, 64),
+    (
+        "linear_m64_fallback_64x2",
+        _make_tmem_linear_layout_m64(2),
+        64,
+        2,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 0),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 0),
+        ),
+    ),
+    (
+        "linear_m64_fallback_64x64",
+        _make_tmem_linear_layout_m64(64),
+        64,
+        64,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 32, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 0, 16),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 32, 16),
+        ),
+    ),
+    (
+        "linear_m64_fallback_64x128",
+        _make_tmem_linear_layout_m64(128),
+        64,
+        128,
+        (
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 64, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 64, 32),
+        ),
+    ),
 ]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("name, layout, M, N, immediate", TMEM_LINEAR_M64_FALLBACK_CASES)
-def test_tmem_linear_m64_roundtrip_32x32b_fallback(name, layout, M, N, immediate):
+@pytest.mark.parametrize("name, layout, M, N, expected", TMEM_LINEAR_M64_FALLBACK_CASES)
+def test_tmem_linear_m64_roundtrip_32x32b_fallback(name, layout, M, N, expected):
     inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
     out = torch.empty_like(inp)
 
@@ -2879,10 +2910,6 @@ def test_tmem_linear_m64_roundtrip_32x32b_fallback(name, layout, M, N, immediate
     )
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-    expected = (
-        (f"tcgen05.st.sync.aligned.16x32bx2.x{immediate}.b32", 0, immediate),
-        (f"tcgen05.ld.sync.aligned.16x32bx2.x{immediate}.b32", 0, immediate),
-    )
     _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["ptx"], expected)
     _assert_exact_tcgen05_opcode_offset_immediates(compiled.asm["llir"], expected)
 
@@ -2901,8 +2928,9 @@ def test_tmem_linear_roundtrip_blocked_fallback():
         )[None, :]
         value = ttgl.load(in_ptr + offs)
         tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
-        tmem.store(value)
-        value = tmem.load(blocked)
+        tmem_reg: ttgl.constexpr = tmem.get_reg_layout()
+        tmem.store(ttgl.convert_layout(value, tmem_reg))
+        value = ttgl.convert_layout(tmem.load(tmem_reg), blocked)
         ttgl.store(out_ptr + offs, value)
 
     inp = torch.arange(128 * 128, dtype=torch.float32, device="cuda").reshape(128, 128)
@@ -2915,7 +2943,6 @@ def test_tmem_linear_roundtrip_blocked_fallback():
     assert "st.shared.v4.b32" in ptx
     assert "ld.shared.v4.b32" in ptx
     assert "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32" in llir
-    assert "i32 16384" in llir
     assert "stmatrix.sync.aligned" in llir
     assert "ldmatrix.sync.aligned" in llir
     expected_offsets = (

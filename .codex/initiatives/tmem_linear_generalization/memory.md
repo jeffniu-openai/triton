@@ -2478,3 +2478,23 @@ rejection, not rescue
   - `test_tmem_subslice_block_m_64[legacy]` passes
   - `test_tmem_subslice_block_m_64[linear]` passes
   - paired rerun passes
+
+
+## 2026-04-01: descriptor-chain physical-origin remap and GB200 stale-test cleanup
+
+- The remaining GB200 descriptor-chain wrong-code was in translated standalone ld/st support queries, not in the TMEM packet selection itself.
+- Root cause:
+  - `inferStandaloneTMemLdStQueryLayoutImpl(... preserveViewOrigin ...)` reused the translated support layout but carried origins over by logical dim name.
+  - For reshaped / permuted / reinterpreted TMEM chains that preserve the same physical storage while changing the logical basis, that origin copy can point the direct ld/st plan at the wrong physical tile even when the support layout itself is correct.
+- Fix:
+  - add `remapTMemLdStQueryOriginThroughPhysicalCoords(...)` in `TensorMemoryUtils.cpp`
+  - compute the source physical TMEM coordinates from the original query origin, then apply the destination support layout's left inverse to recover the correct origin in the translated support basis
+  - use that remapped origin whenever a translated support analysis succeeds
+- This restores the intended aliasing behavior for the double-buffer descriptor-chain matrix kernel and keeps the direct ld/st path exact instead of falling back to implicit repair.
+- Separate cleanup in `MemDescReinterpretOp::inferReturnType`:
+  - non-TMEM reinterprets now validate the visible source/destination view bits (`shape`) instead of the backing `allocShape`
+  - this preserves valid reinterprets of contiguous slices with larger retained backing allocations
+- Additional GB200 cleanup:
+  - explicit `dim=0` in multi-buffer TMEM slice chains where the test intent was always the outer buffer dimension
+  - refreshed exact M64 fallback packet expectations to the current `16x32bx2` direct lowering
+  - widened stale negative-diagnostic assertions in `test_fpsan.py` to the current clean verifier/lowering messages

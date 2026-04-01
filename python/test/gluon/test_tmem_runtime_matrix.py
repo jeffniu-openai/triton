@@ -469,7 +469,7 @@ def tmem_ldst_descriptor_chain_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
     value = ttgl.load(in_ptr + offs)
 
     tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
-    view = tmem.slice(1, 1).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view = tmem.slice(1, 1, dim=0).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view = view.permute([1, 0]).permute([1, 0])
     view = view.slice(0, M, dim=0).slice(0, N, dim=1)
     view = view._reinterpret(ttgl.float32, [M, N], layout)

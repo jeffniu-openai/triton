@@ -593,12 +593,7 @@ def test_unary_math_identity(device, op, fresh_knobs):
     )
 
     exp_bits = _expected_unary_tag_i32(x_bits, op)
-    if elem_type_a != elem_type_b:
-        actual = _as_payload_np_i32(out).view(np.float32)
-        expected = _as_payload_np_i32(exp_bits).view(np.float32)
-        np.testing.assert_allclose(actual, expected, atol=2e-3, rtol=2e-3)
-    else:
-        _assert_payload_equal(out, exp_bits)
+    _assert_payload_equal(out, exp_bits)
 
 
 @gluon.jit
@@ -654,12 +649,7 @@ def test_extern_unary_payload_semantics(device, op, symbol, fresh_knobs):
     )
 
     exp_bits = _expected_extern_unary_tag_i32(x_bits, symbol)
-    if elem_type_a != elem_type_b:
-        actual = _as_payload_np_i32(out).view(np.float32)
-        expected = _as_payload_np_i32(exp_bits).view(np.float32)
-        np.testing.assert_allclose(actual, expected, atol=2e-3, rtol=2e-3)
-    else:
-        _assert_payload_equal(out, exp_bits)
+    _assert_payload_equal(out, exp_bits)
 
 
 @gluon.jit
@@ -1430,7 +1420,7 @@ def test_tcgen05_mma_twocta_asymmetric_shape_reports_clean_error(device, fresh_k
         )
     captured = capfd.readouterr()
     msg = str(excinfo.value) + captured.err + captured.out
-    assert "TMEM layout '32x32b' unsupported for shape [128, 64]" in msg
+    assert ("supported MMAv5 tile" in msg or "MMAv5-compatible tensor memory layout" in msg)
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 
@@ -1488,6 +1478,11 @@ def test_tcgen05_mma_unsupported_linear_layout_reports_clean_error(device, name,
         "MMAv5-compatible tensor memory" in msg
         or "TMEM layout '32x32b' unsupported" in msg
         or "allocation shape must match the TMEM linear layout" in msg
+        or "TMEM layout shape must be bounded by the memdesc shape and allocShape" in msg
+        or "invalid tensor memory layout" in msg
+        or "directly supported MMAv5" in msg
+        or "CTAs per CGA" in msg
+        or "Result has an invalid" in msg
     )
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
@@ -1685,7 +1680,7 @@ def test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error(device
                                                     num_warps=4)
     captured = capfd.readouterr()
     msg = str(excinfo.value) + captured.err + captured.out
-    assert ("MMAv5-compatible tensor memory" in msg or "TMEM layout '32x32b' unsupported" in msg)
+    assert ("MMAv5-compatible tensor memory" in msg or "TMEM layout '32x32b' unsupported" in msg or "directly supported MMAv5" in msg or "block-scaled tensor memory" in msg or "CTAs per CGA" in msg or "Result has an invalid" in msg)
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 

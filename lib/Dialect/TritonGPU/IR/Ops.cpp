@@ -808,9 +808,12 @@ LogicalResult MemDescReinterpretOp::inferReturnType(
       (srcEncoding && triton::nvidia_gpu::isTensorMemoryEncoding(srcEncoding)) ||
       (dstEncoding && triton::nvidia_gpu::isTensorMemoryEncoding(dstEncoding));
   if (!involvesTMem) {
+    // Reinterpret preserves the bits visible through the source view. Subviews
+    // may retain a larger backing allocShape, so validating against allocShape
+    // would reject valid reinterprets of contiguous slices.
     int64_t srcBits =
-        product<int64_t>(srcTy.getAllocShape()) * srcTy.getElementTypeBitWidth();
-    int64_t dstBits = product<int64_t>(dstAllocShape) *
+        product<int64_t>(srcTy.getShape()) * srcTy.getElementTypeBitWidth();
+    int64_t dstBits = product<int64_t>(dstShape) *
                       getElementTypeOrSelf(dstElementType)
                           .getIntOrFloatBitWidth();
     if (srcBits != dstBits) {

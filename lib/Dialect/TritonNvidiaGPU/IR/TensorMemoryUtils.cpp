@@ -626,6 +626,31 @@ remapTMemLdStQueryOrigin(const TMemLdStQueryLayout &srcQuery,
   return origin;
 }
 
+static FailureOr<SmallVector<int32_t>>
+remapTMemLdStQueryOriginThroughPhysicalCoords(
+    const TMemLdStQueryLayout &srcQuery, const LinearLayout &dstLayout,
+    std::string *error) {
+  auto maybeDstInv = computeLeftInverseLayout(dstLayout, error);
+  if (failed(maybeDstInv))
+    return failure();
+
+  auto srcLogicalDims = llvm::to_vector(srcQuery.layout.getInDimNames());
+  SmallVector<std::pair<StringAttr, int32_t>> srcOriginCoords;
+  srcOriginCoords.reserve(srcLogicalDims.size());
+  for (auto [dim, value] : llvm::zip_equal(srcLogicalDims, srcQuery.origin))
+    srcOriginCoords.push_back({dim, value});
+
+  auto physCoords = srcQuery.layout.apply(
+      makeFullLinearLayoutCoords(srcLogicalDims, srcOriginCoords));
+  auto dstCoords = maybeDstInv->apply(physCoords);
+
+  SmallVector<int32_t> dstOrigin;
+  dstOrigin.reserve(dstLayout.getNumInDims());
+  for (StringAttr dim : dstLayout.getInDimNames())
+    dstOrigin.push_back(lookupLinearLayoutCoord(dstCoords, dim));
+  return dstOrigin;
+}
+
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
                                       ArrayRef<int32_t> offsets) {
   assert(shape.size() == offsets.size());
@@ -1429,10 +1454,12 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
                                   error);
     if (!maybeAnalysis)
       return failure();
-    return TMemLdStQueryLayout{
-        maybeAnalysis->layout, maybeAnalysis->twoCTAs,
-        remapTMemLdStQueryOrigin(*srcQuery, maybeAnalysis->layout,
-                                 /*deltaCoords=*/{})};
+    auto remappedOrigin = remapTMemLdStQueryOriginThroughPhysicalCoords(
+        *srcQuery, maybeAnalysis->layout, error);
+    if (failed(remappedOrigin))
+      return failure();
+    return TMemLdStQueryLayout{maybeAnalysis->layout, maybeAnalysis->twoCTAs,
+                               *remappedOrigin};
   };
   if (auto trans = memDesc.getDefiningOp<gpu::MemDescTransOp>())
     return preserveViewOrigin(trans.getSrc());

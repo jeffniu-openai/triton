@@ -4584,3 +4584,22 @@ Open after this slice:
     - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]'` -> `1 passed`
     - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[linear]'` -> `1 passed`
     - paired rerun -> `2 passed`
+
+
+- 2026-04-01: fixed the remaining GB200 stale-test fallout and TMEM descriptor-chain alias bug before the full suite rerun
+  - failures/fallout:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[...]` still miscompiled the double-buffer alias chain after the earlier GB200 checkpoint because standalone ld/st query-origin preservation copied logical prefix offsets instead of remapping through the physical TMEM coordinates of the translated support view
+    - `MemDescReinterpretOp` still validated non-TMEM reinterpret bitcounts against backing `allocShape`, which rejected valid contiguous slice reinterprets in `test_slice_reinterpret`
+    - several `test_core.py` / runtime-matrix / FPSAN checks were stale after the tighter TMEM fallback planning and broader verifier diagnostics
+  - fix:
+    - added a physical-coordinate remap helper in `TensorMemoryUtils.cpp` and switched translated support-query origin preservation to remap through the destination layout's left inverse instead of copying logical origins dimension-by-dimension
+    - changed non-TMEM `ttg.memdesc_reinterpret` bitcount validation in `Ops.cpp` to compare the visible source/destination view shapes rather than backing allocShapes
+    - updated Gluon TMEM descriptor-chain tests to use explicit `dim=0` when slicing the outer multibuffer dimension
+    - refreshed the M64 fallback opcode expectations to the exact `16x32bx2` packets emitted by the current direct planner, removed the last blocked-layout test's dependence on implicit repair, and widened stale FPSAN error-string checks to the current clean verifier diagnostics
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_identity_32x32b_4w-layout10-128-128-32x32b-4-32x32b]` -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_core.py::test_slice_reinterpret python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix` -> `27 passed`
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes python/test/gluon/test_core.py::test_tmem_linear_m64_roundtrip_32x32b_fallback` -> `17 passed`
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_core.py::test_tmem_linear_roundtrip_blocked_fallback` -> `1 passed`
+    - targeted FPSAN reruns for the updated unsupported-layout diagnostics -> all passing
