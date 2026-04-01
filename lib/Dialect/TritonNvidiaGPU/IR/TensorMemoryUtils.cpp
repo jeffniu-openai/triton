@@ -1514,10 +1514,12 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
 
   auto *ctx = memTy.getContext();
   auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
   auto kBlock = StringAttr::get(ctx, "block");
   if (!maybeLayout->hasInDim(kRow))
     return std::nullopt;
   int64_t logicalRows = memTy.getShape()[memTy.getRank() - 2];
+  int64_t logicalCols = memTy.getShape()[memTy.getRank() - 1];
   unsigned rowBits = maybeLayout->getInDimSizeLog2(kRow);
   auto isZeroRowBasis = [&](unsigned idx) {
     return idx < rowBits &&
@@ -1574,7 +1576,10 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   // Classifying those layouts from the raw row-basis count alone widens them to
   // the 128-row warpx2 family and breaks direct ld/st selection. For logical
   // M64 tiles, derive the row plan from the active row bases instead.
-  if (logicalRows == 64 && activeRowBits == 6) {
+  if (logicalRows == 64 && activeRowBits == 6 &&
+      activeLayout.hasInDim(kCol) &&
+      (logicalCols > activeLayout.getInDimSize(kCol) ||
+       (!memTy.getAllocShape().empty() && memTy.getAllocShape().back() > logicalCols))) {
     return planFromRowBits(activeRowBits, isZeroActiveRowBasis);
   }
   return planFromRowBits(rowBits, isZeroRowBasis);
@@ -1659,7 +1664,15 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
   if (isa<TensorMemoryScalesEncodingAttr>(encoding))
     return backingPlan;
 
-  if (preferBackingTMemLdStQueryTypes(memDesc))
+  auto preferQueryPlanForM64SplitNSubview = [&]() {
+    return queryPlan && queryPlan->rowSpan == 64 && queryTy.getRank() == 2 &&
+           queryTy.getElementTypeBitWidth() == 32 && queryTy.getShape()[0] == 64 &&
+           !queryTy.getAllocShape().empty() &&
+           queryTy.getAllocShape().back() > queryTy.getShape()[1];
+  };
+
+  if (preferBackingTMemLdStQueryTypes(memDesc) &&
+      !preferQueryPlanForM64SplitNSubview())
     return backingPlan;
 
   auto layoutRank =
@@ -1671,6 +1684,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
       getCanonicalTMemLinearEncoding(queryTy, /*error=*/nullptr)) {
     return queryPlan;
   }
+  if (preferQueryPlanForM64SplitNSubview())
+    return queryPlan;
   return backingPlan;
 }
 

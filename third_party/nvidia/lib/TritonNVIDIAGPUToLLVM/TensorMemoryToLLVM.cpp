@@ -687,11 +687,11 @@ lowerTMemLdStFromTypes(
                                std::optional<TMemLdStRowPlan> supportRowPlan)
         -> FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>> {
       if (!supportRowPlan)
-        supportRowPlan = getTMemLdStRowPlan(supportQuery.layout);
-      if (!supportRowPlan)
         supportRowPlan = getTMemLdStRowPlanForQuery(memDescValue, memTy);
       if (!supportRowPlan)
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
+      if (!supportRowPlan)
+        supportRowPlan = getTMemLdStRowPlan(supportQuery.layout);
       std::string supportDetails;
       auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
         llvm::raw_string_ostream os(supportDetails);

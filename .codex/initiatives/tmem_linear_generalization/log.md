@@ -4603,3 +4603,21 @@ Open after this slice:
     - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes python/test/gluon/test_core.py::test_tmem_linear_m64_roundtrip_32x32b_fallback` -> `17 passed`
     - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_core.py::test_tmem_linear_roundtrip_blocked_fallback` -> `1 passed`
     - targeted FPSAN reruns for the updated unsupported-layout diagnostics -> all passing
+
+
+- 2026-04-01: fixed the remaining TMEM split-N descriptor-view store/load mismatch before the GB200 suite rerun
+  - failure:
+    - `python/test/gluon/test_fpsan.py::test_tmem_index_subslice` still failed after the row-plan/query fix even though the offending `64x32` TMEM subview was finally using `rowPlan=64`
+    - traced lowering showed the same `ttg.memdesc_subslice` view lowering to different packet families on the two sides:
+      - store: `tcgen05.st.sync.aligned.32x32b.x32.b32`
+      - load: `tcgen05.ld.sync.aligned.16x32bx2.x8.b32` twice
+    - the user-level explicit `sub.get_reg_layout("32x32b_splitn")` was being stripped on the store side by the generic `tmem_store(convert_layout) -> tmem_store` canonicalization, so the store silently fell back to the blocked source layout while the load kept the split-N linear layout
+  - fix:
+    - tighten `CanonicalizeConvertFromTMEMStore` in `lib/Dialect/TritonGPU/IR/Ops.cpp` so it does not erase explicit `convert_layout` ops when the TMEM destination is a view-like memdesc (`memdesc_subslice/index/reshape/reinterpret/trans` or internal `ttng.tmem_subslice`)
+    - this preserves the explicit direct TMEM register layout on descriptor views and keeps store/load on the same packet family for the split-N subview case
+    - separately updated `test/Conversion/relayout_tritongpu.mlir` to the new preferred 64x64 TMEM store layout after comparing current output against `/tmp/triton-origin-main`; the test intent stayed the same (direct TMEM-compatible relayout), but the register/lane split moved to the new leaf-64 preference
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_fpsan.py::test_tmem_index_subslice` -> `1 passed`
+    - full lit: `248 passed, 2 unsupported`
+    - focused FPSAN smoke: `python/test/gluon/test_fpsan.py -k 'tmem_index_subslice or tmem_reduction'` -> `1 passed, 85 deselected`

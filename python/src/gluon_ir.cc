@@ -1325,6 +1325,29 @@ void init_gluon_ir(py::module &&m) {
           return layout;
         }
 
+        std::string analysisError;
+        if (auto maybeLayout =
+                ttng::getTMemViewAnalysisLinearLayout(shape, layoutAttr,
+                                                      &analysisError)) {
+          auto twoCTAs =
+              ttng::getTensorMemoryTwoCTAs(layoutAttr).value_or(false);
+          if (auto maybeEncoding =
+                  ttng::tryMakeTMemViewEncoding(ctx, *maybeLayout, twoCTAs,
+                                               &analysisError)) {
+            auto canonicalTy = builder.getChecked<ttg::MemDescType>(
+                shape, elementType, *maybeEncoding,
+                ttng::TensorMemorySpaceAttr::get(ctx),
+                /*mutableMemory=*/true, allocShape);
+            if (py::object layout = firstLegalLayoutForType(
+                    canonicalTy,
+                    ttng::getTmemCompatibleLayouts(canonicalTy, numWarps),
+                    atom);
+                !layout.is_none()) {
+              return layout;
+            }
+          }
+        }
+
         auto layout =
             ttng::getDistributedLayoutForTmemLdSt(memDescTy, atom, numWarps);
         if (!layout)
@@ -1414,11 +1437,15 @@ void init_gluon_ir(py::module &&m) {
                 ttng::TMemAccessAtom actualAtom) {
               if (!desiredAtom || actualAtom == *desiredAtom)
                 return true;
-              return *desiredAtom == ttng::TMemAccessAtom::I32x32b &&
-                     actualAtom == ttng::TMemAccessAtom::I16x32bx2 &&
-                     queryTy.getRank() == 2 &&
-                     queryTy.getElementTypeBitWidth() == 32 &&
-                     queryTy.getShape()[0] == 64;
+              if (queryTy.getRank() == 2 &&
+                  queryTy.getElementTypeBitWidth() == 32 &&
+                  queryTy.getShape()[0] == 64) {
+                return (*desiredAtom == ttng::TMemAccessAtom::I32x32b &&
+                        actualAtom == ttng::TMemAccessAtom::I16x32bx2) ||
+                       (*desiredAtom == ttng::TMemAccessAtom::I16x32bx2 &&
+                        actualAtom == ttng::TMemAccessAtom::I32x32b);
+              }
+              return false;
             };
         auto normalizeRegLayoutForAttr =
             [&](tt::LinearLayout layout) -> std::optional<tt::LinearLayout> {
@@ -2072,17 +2099,23 @@ void init_gluon_ir(py::module &&m) {
           // alternate layout that lowers to different repeat/immediate pairs.
           if (atomName == "auto" && memDescTy.getRank() == 2 &&
               memDescTy.getShape()[0] == 64) {
-            if (!isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
-                                 ttg::MemDescReshapeOp, ttg::MemDescTransOp,
-                                 ttg::MemDescReinterpretOp>(
-                    memDesc.getDefiningOp())) {
-              py::object canonicalM64Layout = firstLegalLayoutForType(
-                  memDescTy, ttng::getTmemCompatibleLayouts(memDescTy, numWarps),
-                  std::nullopt);
-              if (!canonicalM64Layout.is_none()) {
+            bool isViewLikeMemDesc =
+                isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
+                                ttg::MemDescReshapeOp, ttg::MemDescTransOp,
+                                ttg::MemDescReinterpretOp>(
+                    memDesc.getDefiningOp());
+            if (!isViewLikeMemDesc) {
+              // Leaf 64-row TMEM descriptors are directly codegenable through
+              // 32x32b, while the split-N 16x32bx2 family is only needed for
+              // explicit split-N requests and view-like descriptors. Prefer the
+              // 32x32b direct layout here so tmem.load()/store() roundtrip
+              // matches the user-visible legacy M64 descriptor semantics.
+              py::object wideLayout = findDirectLayoutForMemDesc(
+                  memDesc, ttng::TMemAccessAtom::I32x32b);
+              if (!wideLayout.is_none()) {
                 if (debug)
                   llvm::errs() << debugLog.str();
-                return canonicalM64Layout;
+                return wideLayout;
               }
             }
             py::object splitNLayout = findDirectLayoutForMemDesc(

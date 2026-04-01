@@ -18,6 +18,72 @@ def _is_int_list(value):
     return isinstance(value, Sequence) and all(isinstance(i, int) for i in value)
 
 
+def _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape, alloc_shape, layout, num_warps, requested_variant,
+                                     is_scales_layout):
+    N = shape[1]
+    half_n_basis = [0, N // 2]
+    if not layout_obj.reg_bases:
+        # Small split-N shapes can place the second half entirely on a lane
+        # basis. Materialize the equivalent register basis explicitly so the
+        # frontend exposes the same splitn layout shape that lowering uses.
+        _check(layout_obj.lane_bases and layout_obj.lane_bases[-1] == half_n_basis,
+               lambda: "splitn with 1 register requires the last lane basis "
+               f"to be [0, N / 2], but got layout {layout_obj}")
+        layout_obj.reg_bases.append(half_n_basis)
+        layout_obj.lane_bases[-1] = [0, 0]
+    elif layout_obj.reg_bases[-1] != half_n_basis:
+        if half_n_basis in layout_obj.reg_bases:
+            idx = layout_obj.reg_bases.index(half_n_basis)
+            layout_obj.reg_bases[-1], layout_obj.reg_bases[idx] = (
+                layout_obj.reg_bases[idx],
+                layout_obj.reg_bases[-1],
+            )
+            return layout_obj
+
+        bitwidth = element_ty.primitive_bitwidth
+        num_reg = 2**len(layout_obj.reg_bases)
+        if (is_scales_layout and requested_variant == "16x32bx2" and
+                num_reg <= 32 // bitwidth):
+            # Narrow scales tiles can still lower through the same
+            # broadcasted register layout selected by the default
+            # 32x32b path, which TensorMemoryToLLVM later lowers to
+            # repeated 16x32bx2.x1 messages. Reuse that layout instead of
+            # rejecting an otherwise codegenable case.
+            return _compute_tmem_reg_layout(
+                element_ty,
+                shape,
+                alloc_shape,
+                layout,
+                num_warps,
+                "32x32b",
+            )
+        _check(
+            num_reg > 32 // bitwidth, lambda: "To be able to `tmem.load` into `tl.split` you need to have more "
+            f"than {32 // bitwidth} {bitwidth}-bit registers, as you need to use "
+            "the instruction 32x32b.x1 twice. You can always load into "
+            "instr_variant=\"32x32b\" and then convert_layout to this layout otherwise.")
+
+        reg_bases = layout_obj.reg_bases
+        for bases_str in ("lane_bases", "warp_bases"):
+            bases = getattr(layout_obj, bases_str)
+            for i, basis in enumerate(bases):
+                # the first 4 warps have their own address space
+                if bases_str == "warp_bases" and i < 2:
+                    continue
+                if basis == half_n_basis:
+                    reg_bases[-1], bases[i] = bases[i], reg_bases[-1]
+                    return layout_obj
+        _check(
+            False,
+            lambda: "splitn requires a [0, N / 2] basis in registers, lanes, "
+            "or non-anchor warp bases, but none was found after TMEM "
+            f"layout inference. reg={layout_obj.reg_bases}, "
+            f"lane={layout_obj.lane_bases}, warp={layout_obj.warp_bases}, "
+            f"shape={shape}",
+        )
+    return layout_obj
+
+
 def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, instr_variant):
     _check(isinstance(instr_variant, str), lambda: "instr_variant must be a string")
     _check(instr_variant in ("auto", "32x32b", "16x64b", "16x128b", "16x256b", "16x32bx2", "32x32b_splitn"),
@@ -89,67 +155,16 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
              "and insert convert_layout explicitly")
 
     if splitn:
-        N = shape[1]
-        half_n_basis = [0, N // 2]
-        if not layout_obj.reg_bases:
-            # Small split-N shapes can place the second half entirely on a lane
-            # basis. Materialize the equivalent register basis explicitly so the
-            # frontend exposes the same splitn layout shape that lowering uses.
-            _check(layout_obj.lane_bases and layout_obj.lane_bases[-1] == half_n_basis,
-                   lambda: "splitn with 1 register requires the last lane basis "
-                   f"to be [0, N / 2], but got layout {layout_obj}")
-            layout_obj.reg_bases.append(half_n_basis)
-            layout_obj.lane_bases[-1] = [0, 0]
-        elif layout_obj.reg_bases[-1] != half_n_basis:
-            if half_n_basis in layout_obj.reg_bases:
-                idx = layout_obj.reg_bases.index(half_n_basis)
-                layout_obj.reg_bases[-1], layout_obj.reg_bases[idx] = (
-                    layout_obj.reg_bases[idx],
-                    layout_obj.reg_bases[-1],
-                )
-                return layout_obj
-
-            bitwidth = element_ty.primitive_bitwidth
-            num_reg = 2**len(layout_obj.reg_bases)
-            if (is_scales_layout and requested_variant == "16x32bx2" and
-                    num_reg <= 32 // bitwidth):
-                # Narrow scales tiles can still lower through the same
-                # broadcasted register layout selected by the default
-                # 32x32b path, which TensorMemoryToLLVM later lowers to
-                # repeated 16x32bx2.x1 messages. Reuse that layout instead of
-                # rejecting an otherwise codegenable case.
-                return _compute_tmem_reg_layout(
-                    element_ty,
-                    shape,
-                    alloc_shape,
-                    layout,
-                    num_warps,
-                    "32x32b",
-                )
-            _check(
-                num_reg > 32 // bitwidth, lambda: "To be able to `tmem.load` into `tl.split` you need to have more "
-                f"than {32 // bitwidth} {bitwidth}-bit registers, as you need to use "
-                "the instruction 32x32b.x1 twice. You can always load into "
-                "instr_variant=\"32x32b\" and then convert_layout to this layout otherwise.")
-
-            reg_bases = layout_obj.reg_bases
-            for bases_str in ("lane_bases", "warp_bases"):
-                bases = getattr(layout_obj, bases_str)
-                for i, basis in enumerate(bases):
-                    # the first 4 warps have their own address space
-                    if bases_str == "warp_bases" and i < 2:
-                        continue
-                    if basis == half_n_basis:
-                        reg_bases[-1], bases[i] = bases[i], reg_bases[-1]
-                        return layout_obj
-            _check(
-                False,
-                lambda: "splitn requires a [0, N / 2] basis in registers, lanes, "
-                "or non-anchor warp bases, but none was found after TMEM "
-                f"layout inference. reg={layout_obj.reg_bases}, "
-                f"lane={layout_obj.lane_bases}, warp={layout_obj.warp_bases}, "
-                f"shape={shape}",
-            )
+        layout_obj = _finalize_splitn_tmem_reg_layout(
+            layout_obj,
+            element_ty,
+            shape,
+            alloc_shape,
+            layout,
+            num_warps,
+            requested_variant,
+            is_scales_layout,
+        )
     if is_scales_layout and has_zero_reg_basis(layout_obj):
         if requested_variant == "32x32b":
             try:

@@ -6,7 +6,7 @@ from triton.experimental import gluon
 from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
-from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout
+from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout, _finalize_splitn_tmem_reg_layout
 
 from . import tma
 from . import clc
@@ -383,10 +383,7 @@ class tensor_memory_descriptor(base_value):
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
-        splitn_direct_fallback = (
-            requested_variant in ("32x32b_splitn", "16x32bx2")
-            and list(self.shape) == list(self.type.alloc_shape)
-        )
+        splitn_direct_fallback = requested_variant in ("32x32b_splitn", "16x32bx2")
         layout = None
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
@@ -403,6 +400,17 @@ class tensor_memory_descriptor(base_value):
                 self.layout,
                 num_warps,
                 requested_variant,
+            )
+        if layout is not None and requested_variant in ("32x32b_splitn", "16x32bx2"):
+            layout = _finalize_splitn_tmem_reg_layout(
+                layout,
+                self.dtype,
+                list(self.shape),
+                list(self.type.alloc_shape),
+                self.layout,
+                num_warps,
+                requested_variant,
+                isinstance(self.layout, TensorMemoryScalesLayout),
             )
         if isinstance(self.layout, TensorMemoryScalesLayout):
             layout = _strip_zero_reg_bases_from_layout(layout)

@@ -2498,3 +2498,19 @@ rejection, not rescue
   - explicit `dim=0` in multi-buffer TMEM slice chains where the test intent was always the outer buffer dimension
   - refreshed exact M64 fallback packet expectations to the current `16x32bx2` direct lowering
   - widened stale negative-diagnostic assertions in `test_fpsan.py` to the current clean verifier/lowering messages
+
+
+## 2026-04-01: explicit split-N TMEM store layout must survive descriptor-view canonicalization
+
+- After the `rowPlan=64` subview query fix, the remaining `test_tmem_index_subslice` wrong-code was no longer a TMEM base-offset/row-anchor issue.
+- Root cause:
+  - the `64x32` TMEM descriptor view itself lowered with the correct direct query plan, but the generic `tmem_store(convert_layout) -> tmem_store` canonicalization in `lib/Dialect/TritonGPU/IR/Ops.cpp` erased the user-requested split-N register layout before lowering.
+  - that left the store on the blocked source layout while the load still used the split-N linear layout, producing a packet-family mismatch on the same TMEM subview (`32x32b` store vs `16x32bx2` load).
+- Fix:
+  - keep that canonicalization for plain/root TMEM stores, but disable it for view-like TMEM destinations (`memdesc_subslice`, `memdesc_index`, `memdesc_reshape`, `memdesc_reinterpret`, `memdesc_trans`, and internal `ttng.tmem_subslice`).
+  - this preserves explicit user-visible TMEM register layouts on descriptor views, which is required by the project rule that direct user layouts must either lower faithfully or be rejected, not silently rewritten.
+- Validation checkpoint:
+  - `python/test/gluon/test_fpsan.py::test_tmem_index_subslice` passes again
+  - full lit is back to `248 passed, 2 unsupported`
+- Related stale test update:
+  - `test/Conversion/relayout_tritongpu.mlir` now expects the current preferred 64x64 TMEM store relayout after comparing its output against the `origin/main` checkout in `/tmp/triton-origin-main`; the file still checks that relayout produces a direct TMEM-compatible store layout, only the register/lane split changed.

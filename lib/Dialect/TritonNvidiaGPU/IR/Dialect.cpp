@@ -1254,6 +1254,10 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll) {
   auto kRow = StringAttr::get(ctx, "row");
   if (!ll.hasInDim(kRow))
     return std::nullopt;
+  auto stripped = ll.removeZeroBasesAlongDim(kRow);
+  if (stripped.hasInDim(kRow) &&
+      stripped.getInDimSizeLog2(kRow) < ll.getInDimSizeLog2(kRow))
+    return getTMemLdStRowPlan(stripped);
   unsigned rowBits = ll.getInDimSizeLog2(kRow);
   auto isZeroRowBasis = [&](unsigned idx) {
     return idx < rowBits && llvm::all_of(ll.getBasis(kRow, idx), [](int32_t v) {

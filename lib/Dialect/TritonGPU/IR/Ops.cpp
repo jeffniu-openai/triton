@@ -115,6 +115,14 @@ struct CanonicalizeConvertFromTMEMStore
     if (!convert)
       return failure();
 
+    // TMEM descriptor views can require a specific direct register layout to
+    // preserve the intended TMEM packet family. Do not erase an explicit
+    // convert_layout on the store source for view-like TMEM destinations.
+    if (isa_and_nonnull<MemDescSubsliceOp, MemDescIndexOp, MemDescReshapeOp,
+                        MemDescReinterpretOp, MemDescTransOp,
+                        nvidia_gpu::TMEMSubSliceOp>(op.getDst().getDefiningOp()))
+      return failure();
+
     // bail for incompatible layouts
     auto cvtSrcType = convert.getSrc().getType();
     if (!nvidia_gpu::isDistributedLayoutTMemCompatible(

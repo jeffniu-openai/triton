@@ -1123,11 +1123,11 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   auto trySupportQuery = [&](const TMemLdStQueryLayout &supportQuery,
                              std::optional<TMemLdStRowPlan> rowPlan) {
     if (!rowPlan)
-      rowPlan = getTMemLdStRowPlan(supportQuery.layout);
-    if (!rowPlan)
       rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
     if (!rowPlan)
       rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlan(supportQuery.layout);
     return succeeded(computeTMemLdStEncodingInfo(type, memdesc, supportQuery,
                                                  maxnreg, /*emitError=*/{},
                                                  rowPlan));
@@ -1193,11 +1193,11 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
             getTMemLdStSubviewSupportPlan(memdescValue, &supportError)) {
       auto rowPlan = supportPlan->rowPlan;
       if (!rowPlan)
-        rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
-      if (!rowPlan)
         rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
       if (!rowPlan)
         rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+      if (!rowPlan)
+        rowPlan = getTMemLdStRowPlan(supportPlan->query.layout);
       (void)computeTMemLdStEncodingInfo(type, memdesc, supportPlan->query,
                                         maxnreg,
                                         [&]() {
@@ -1208,11 +1208,11 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     if (!disallowSupportRescueFor32x32Subview) {
       if (auto supportQuery =
               getTMemLdStSupportQueryLayout(memdescValue, &supportError)) {
-        auto rowPlan = getTMemLdStRowPlan(supportQuery->layout);
-        if (!rowPlan)
-          rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+        auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
         if (!rowPlan)
           rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+        if (!rowPlan)
+          rowPlan = getTMemLdStRowPlan(supportQuery->layout);
         (void)computeTMemLdStEncodingInfo(type, memdesc, *supportQuery, maxnreg,
                                           [&]() {
                                             return mlir::emitError(op->getLoc());
