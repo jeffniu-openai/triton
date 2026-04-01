@@ -1571,15 +1571,13 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
       logicalRows > activeLayout.getInDimSize(kRow)) {
     return planFromRowBits(activeRowBits, isZeroActiveRowBasis);
   }
-  // After relaxing TMEM-linear verification to admit sparse/non-surjective
-  // layouts, the 64-row split-N families now carry one explicit zero row basis.
-  // Classifying those layouts from the raw row-basis count alone widens them to
-  // the 128-row warpx2 family and breaks direct ld/st selection. For logical
-  // M64 tiles, derive the row plan from the active row bases instead.
-  if (logicalRows == 64 && activeRowBits == 6 &&
-      activeLayout.hasInDim(kCol) &&
-      (logicalCols > activeLayout.getInDimSize(kCol) ||
-       (!memTy.getAllocShape().empty() && memTy.getAllocShape().back() > logicalCols))) {
+  // Legacy and sparse/non-surjective logical M64 TMEM encodings can carry
+  // an explicit zero row basis in the raw linear form. Classifying those
+  // layouts from the raw row-basis count alone widens them to the 128-row
+  // family and breaks direct ld/st layout selection for plain 64xN MMA
+  // accumulators as well as split-N variants. For logical M64 tiles, derive
+  // the row plan from the active row bases instead.
+  if (logicalRows == 64 && activeRowBits == 6) {
     return planFromRowBits(activeRowBits, isZeroActiveRowBasis);
   }
   return planFromRowBits(rowBits, isZeroRowBasis);

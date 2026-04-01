@@ -2047,6 +2047,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   if (ll.getNumOutDims() == 0)
     return std::nullopt;
   auto bitwidth = memType.getElementTypeBitWidth();
+  auto stripped = stripZeroBasesForTmemLdStSelection(ll);
   if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
       !rowPlanOverride) {
     if (auto layout = getDistributedLayoutForTmemLdStLegacyAnchored(
@@ -2064,15 +2065,51 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     }
     return std::nullopt;
   }
-  if (!rowPlanOverride && bitwidth == 32 &&
-      matchesCanonicalContiguousM64LinearView(ll)) {
-    auto *ctx = memType.getContext();
-    auto kCol = StringAttr::get(ctx, "col");
-    if (auto canonical = getCanonicalContiguousM64Layout(ctx, atom,
-                                                         ll.getInDimSize(kCol),
-                                                         numWarps);
-        canonical && isTMemLdStSelectionLayoutValid(memType, *canonical)) {
+  if (!rowPlanOverride && bitwidth == 32) {
+    auto tryCanonicalContiguousM64 =
+        [&](const LinearLayout &candidate) -> std::optional<LinearLayout> {
+      if (!matchesCanonicalContiguousM64LinearView(candidate))
+        return std::nullopt;
+      auto *ctx = memType.getContext();
+      auto kCol = StringAttr::get(ctx, "col");
+      if (auto canonical = getCanonicalContiguousM64Layout(
+              ctx, atom, candidate.getInDimSize(kCol), numWarps);
+          canonical && isTMemLdStSelectionLayoutValid(memType, *canonical)) {
+        return canonical;
+      }
+      return std::nullopt;
+    };
+    if (auto canonical = tryCanonicalContiguousM64(ll))
       return canonical;
+    if (stripped != ll) {
+      auto strippedRowPlan =
+          isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding())
+              ? getTMemLdStRowPlanForType(memType)
+              : getTMemLdStRowPlan(stripped);
+      // Legacy M64 leaves encode the unused half-tile as a zero row basis.
+      // Validate the stripped canonical M64 layout against the stripped row
+      // anchors before falling back to the raw generic planner; otherwise the
+      // raw 128-row form wins and 64x32 MMAv5 accumulators degrade to the
+      // scalar 32x32b.x1 readback path.
+      if (strippedRowPlan &&
+          matchesCanonicalContiguousM64LinearView(stripped)) {
+        auto *ctx = memType.getContext();
+        auto kCol = StringAttr::get(ctx, "col");
+        if (auto canonical = getCanonicalContiguousM64Layout(
+                ctx, atom, stripped.getInDimSize(kCol), numWarps);
+            canonical) {
+          auto attr = LinearEncodingAttr::get(memType.getContext(), *canonical);
+          auto regTy = RankedTensorType::get(memType.getShape(),
+                                             memType.getElementType(), attr);
+          if (succeeded(computeTMemLdStEncodingInfo(
+                  regTy, memType, stripped, /*maxnreg=*/256,
+                  /*emitError=*/{}, strippedRowPlan))) {
+            return canonical;
+          }
+        }
+      }
+      if (auto canonical = tryCanonicalContiguousM64(stripped))
+        return canonical;
     }
   }
   auto rowPlan = rowPlanOverride;
@@ -2090,7 +2127,6 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     return layout;
   }
 
-  auto stripped = stripZeroBasesForTmemLdStSelection(ll);
   if (stripped == ll)
     return std::nullopt;
   auto strippedRowPlan = rowPlanOverride;
@@ -2113,8 +2149,8 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
       auto regTy = RankedTensorType::get(memType.getShape(),
                                          memType.getElementType(), attr);
       if (succeeded(computeTMemLdStEncodingInfo(
-              regTy, memType, /*maxnreg=*/256, /*emitError=*/{},
-              strippedRowPlan))) {
+              regTy, memType, stripped, /*maxnreg=*/256,
+              /*emitError=*/{}, strippedRowPlan))) {
         return canonical;
       }
     }

@@ -4621,3 +4621,20 @@ Open after this slice:
     - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x python/test/gluon/test_fpsan.py::test_tmem_index_subslice` -> `1 passed`
     - full lit: `248 passed, 2 unsupported`
     - focused FPSAN smoke: `python/test/gluon/test_fpsan.py -k 'tmem_index_subslice or tmem_reduction'` -> `1 passed, 85 deselected`
+
+- 2026-04-01: fixed the GB200 MMAv5 shared-input `64x32xf32` accumulator readback regression
+  - failure:
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]` regressed relative to `/tmp/triton-origin-main`
+    - origin lowered the final `ttng.tmem_load %acc_tmem` on the `64x32xf32` legacy accumulator through the canonical M64 split readback path (`tcgen05.ld.sync.aligned.16x32bx2.x16.b32`)
+    - current head instead typed the same load as a scalar `32x32b.x1` layout and emitted 32 separate `tcgen05.ld.sync.aligned.32x32b.x1.b32` packets, producing large numerical errors in the MMA shared-input kernel
+  - root cause:
+    - the type-only TMEM layout search was already selecting the canonical M64 layout, but the handle-aware `compute_tmem_reg_layout_from_memdesc(...)` path revalidated candidates with `getTMemLdStRowPlanForQuery(...)`
+    - for plain legacy `blockM=64` leaves, `getTMemLdStRowPlanForType(...)` still classified the raw zero-row-basis legacy form from its 7 raw row bits and returned the widened 128-row plan
+    - that row plan made the handle-aware path prefer the raw generic `32x32b.x1` candidate over the canonical stripped M64 layout even though the descriptor type itself reported the correct `64x32` register layout
+  - fix:
+    - in `TensorMemoryUtils.cpp`, derive the TMEM ld/st row plan from the active row bases for all logical `M=64` layouts with `activeRowBits == 6`, not only the split-N special case
+    - in `Dialect.cpp`, keep the stripped canonical M64 selection ahead of the raw generic planner and validate stripped canonical candidates against the stripped query layout overload of `computeTMemLdStEncodingInfo(...)`
+    - this makes the handle-aware reg-layout query agree with the type-only TMEM-compatible layout search again for plain `64x32` / `64x64` MMA accumulators
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]'` -> `1 passed`

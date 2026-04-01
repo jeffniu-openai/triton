@@ -2514,3 +2514,20 @@ rejection, not rescue
   - full lit is back to `248 passed, 2 unsupported`
 - Related stale test update:
   - `test/Conversion/relayout_tritongpu.mlir` now expects the current preferred 64x64 TMEM store relayout after comparing its output against the `origin/main` checkout in `/tmp/triton-origin-main`; the file still checks that relayout produces a direct TMEM-compatible store layout, only the register/lane split changed.
+
+## 2026-04-01: GB200 MMAv5 shared-input `64x32xf32` accumulator readback regression
+
+- The remaining GB200 MMAv5 failure was not in shared A/B descriptor synthesis or in the MMAv5 opcode family itself.
+- Root cause was a split between the type-only and handle-aware TMEM reg-layout queries for plain legacy `blockM=64, blockN=32, colStride=1` accumulators:
+  - type-only `tensor_memory_descriptor_type.get_reg_layout(num_warps=4, instr_variant="auto")` already returned the canonical M64 `64x32` layout
+  - handle-aware `tensor_memory_descriptor.get_reg_layout(...)` still revalidated candidates with `getTMemLdStRowPlanForQuery(...)`, which classified the raw zero-row-basis legacy leaf as a widened 128-row family and therefore accepted the raw scalar `32x32b.x1` readback layout first
+- Symptom:
+  - fresh TTGIR/PTX for the failing `test_mma_shared_inputs` node showed
+    - bad current path: `#linear<{register=[[0,1],[0,2],[0,4],[0,8],[0,16]], lane=[[1,0],[2,0],[4,0],[8,0],[16,0]], warp=[[32,0],[64,0]]}>` and 32 scalar `tcgen05.ld.sync.aligned.32x32b.x1.b32` loads
+    - passing origin path: canonical split M64 layout and `tcgen05.ld.sync.aligned.16x32bx2.x16.b32`
+- Fix:
+  - broaden `getTMemLdStRowPlanForType(...)` so logical `M=64` leaves derive their row plan from the active row bases (`activeRowBits == 6`) instead of the raw 7-bit legacy encoding
+  - when `Dialect.cpp` validates stripped canonical M64 candidates, use the stripped-query overload of `computeTMemLdStEncodingInfo(...)` so the validator sees the same `64`-row TMEM view as the selector
+- Result:
+  - handle-aware and type-only TMEM load layout selection agree again on plain `64x32xf32` / `64x64xf32` MMA accumulators
+  - the GB200 `test_mma_shared_inputs[...]acc_dtype4` repro passes again
