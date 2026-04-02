@@ -1914,7 +1914,9 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
   auto kLane = StringAttr::get(ctx, "lane");
   auto kWarp = StringAttr::get(ctx, "warp");
   bool instr32Rows = atom == TMemAccessAtom::I32x32b;
-  bool layout16Rows = ll.getInDimSize(rowColDims[0]) <= 16;
+  bool layout16Rows =
+      ll.getInDimSize(rowColDims[0]) <= 16 ||
+      ll.getBasis(rowColDims[0], llvm::Log2_32(16)) == ArrayRef{0, 0};
 
   auto compInput = tile;
   if (hasBlockDim)
@@ -2256,6 +2258,11 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
       return std::nullopt;
     };
     if (!isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding())) {
+      auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+      if (memType.getShape() == memType.getAllocShape()) {
+        if (auto preferred = tryLegacyPreferred(raw))
+          return *preferred;
+      }
       std::string error;
       if (auto maybeLayout = getTMemViewAnalysisLinearLayout(
               memType.getShape(), memType.getEncoding(), &error)) {
@@ -2264,13 +2271,8 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
         if (auto preferred = tryCanonicalPreferredM64(normalized))
           return *preferred;
       }
-      auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
       if (auto preferred = tryCanonicalPreferredM64(raw))
         return *preferred;
-      if (memType.getShape() == memType.getAllocShape()) {
-        if (auto preferred = tryLegacyPreferred(raw))
-          return *preferred;
-      }
     }
     auto layout = getDistributedLayoutForTmemLdSt(
         memType, TMemAccessAtom::I16x256b, numWarps);

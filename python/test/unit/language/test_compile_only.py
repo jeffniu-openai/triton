@@ -55,24 +55,22 @@ def test_compile_only_dot() -> None:
     assert re.search(pattern, str(ttgir)), "The TTGIR does not match the expected pattern."
 
     ptx = k.asm["ptx"]
-    pattern = (r"mov\.b32\s+%r\d+, global_smem;"
-               r"(.|\n)*"
-               r"tcgen05\.alloc\.cta_group::1\.sync\.aligned\.shared::cta\.b32 \[%r\d+], 64"
-               r"(.|\n)*"
-               r"tcgen05\.relinquish_alloc_permit\.cta_group::1\.sync\.aligned"
-               r"(.|\n)*"
-               r"tcgen05\.st\.sync\.aligned\.16x32bx2\.x(?:16|32)\.b32"
-               r"(.|\n)*"
-               r"tcgen05\.mma\.cta_group::1.kind::f16"
-               r"(.|\n)*"
-               r"tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64"
-               r"(.|\n)*"
-               r"mbarrier.try_wait.parity.shared::cta.b64"
-               r"(.|\n)*"
-               r"tcgen05\.ld\.sync\.aligned\.16x32bx2\.x(?:16|32)\.b32"
-               r"(.|\n)*"
-               r"tcgen05.wait::ld.sync.aligned")
-    assert re.search(pattern, str(ptx)), "The PTX does not match the expected pattern."
+    patterns = [
+        r"mov\.b32\s+%r\d+, global_smem;",
+        r"tcgen05\.alloc\.cta_group::1\.sync\.aligned\.shared::cta\.b32 \[%r\d+], 64",
+        r"tcgen05\.relinquish_alloc_permit\.cta_group::1\.sync\.aligned",
+        r"tcgen05\.st\.sync\.aligned\.16x32bx2\.x(?:16|32|64)\.b32",
+        r"tcgen05\.mma\.cta_group::1.kind::f16",
+        r"tcgen05.commit\.cta_group::1\.mbarrier::arrive::one\.shared::cluster\.b64",
+        r"mbarrier.try_wait.parity\.shared::cta\.b64",
+        r"tcgen05\.ld\.sync\.aligned\.16x32bx2\.x(?:16|32|64)\.b32",
+        r"tcgen05.wait::ld\.sync\.aligned",
+    ]
+    pos = 0
+    for pattern in patterns:
+        match = re.search(pattern, ptx[pos:])
+        assert match, f"The PTX does not match the expected pattern: {pattern}"
+        pos += match.end()
     assert k.asm["cubin"] != b""
 
 

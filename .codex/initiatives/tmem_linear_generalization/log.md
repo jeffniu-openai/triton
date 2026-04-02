@@ -4660,3 +4660,24 @@ Open after this slice:
       'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-512-64-32-2-float16-float8e5]' \
       'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-8-1-256-128-32-4-float32-tensorfloat32]'`
       -> `3 passed`
+
+- 2026-04-02: restored the GB200 preferred-`16x256b` exact-family `64x128xf16` path and updated the stale compile-only PTX check
+  - failures:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]` failed locally with `TRITON_PREFER_TMEM_16x256_LAYOUT=1` because PTX no longer contained `16x256b`
+    - the compile-only smoke `python/test/unit/language/test_compile_only.py::test_compile_only_dot` also failed, but only because its PTX regex still required the older exact `x16|x32` packet counts
+  - before/after comparison:
+    - on `/tmp/triton-origin-main`, the `64x128xf16` node still lowered the accumulator through legacy `#ttng.tensor_memory_encoding<blockM = 64, blockN = 128, colStride = 2>` and emitted `tcgen05.{st,ld}.sync.aligned.16x256b...`
+    - on the current tree before the fix, the same node selected canonical `#ttng.tensor_memory_linear`, produced a different register layout, and missed the `16x256b` path entirely
+  - root cause:
+    - in `Dialect.cpp`, `getDefaultLayoutForTmemLdSt(...)` still probed the normalized canonical M64 view before the exact-family legacy-anchored selector, so full exact tiles no longer matched the origin/main register layout under `TRITON_PREFER_TMEM_16x256_LAYOUT`
+    - inside `getDistributedLayoutForTmemLdStLegacyAnchored(...)`, `layout16Rows` had been widened to depend on the logical row size (`<= 16`) instead of the actual zero row basis at `row=16`; for legacy `M64` leaves this added a dead register basis and turned `ttng.tmem_load` into an unsupported broadcasted TMEM view
+    - the compile-only PTX check was simply stale: both origin/main and current emit the same ordered tcgen alloc/store/mma/commit/wait/load sequence, but packet counts may now be `x64`
+  - fixes:
+    - in `Dialect.cpp`, try the exact-family legacy-anchored preferred selector before the normalized canonical M64 fallback for full-shape TMEM leaves
+    - in `getDistributedLayoutForTmemLdStLegacyAnchored(...)`, restore the legacy `layout16Rows` detection based on the zero basis at `row=16` (while still allowing true `<=16` row tiles)
+    - in `python/test/unit/language/test_compile_only.py`, replace the brittle single PTX regex with ordered sequential checks and accept `x16|x32|x64` on the direct ld/st packets
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]'` -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float32-tensorfloat32]'` -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_compile_only.py::test_compile_only_dot'` -> `1 passed`

@@ -2547,3 +2547,22 @@ rejection, not rescue
   - reorder support-plan atom probing under `TRITON_PREFER_TMEM_16x256_LAYOUT` to try `I16x256b` before `I32x32b`
 - Result:
   - tall/narrow exact Blackwell matmul accumulator/store-load cases that rewrite to a `128x256` physical support tile now emit native `16x256b` PTX again instead of stopping at `32x32b.x128`
+
+## 2026-04-02: GB200 preferred `16x256b` exact-family `64x128xf16` fix and compile-only stale PTX check
+
+- The remaining GB200 unit failure after the earlier physical-support `16x256b` fixes was the exact-family `64x128xf16` matmul node with `TRITON_PREFER_TMEM_16x256_LAYOUT=1`.
+- Real before/after comparison against `/tmp/triton-origin-main` showed:
+  - origin/main still lowered the accumulator through legacy `#ttng.tensor_memory_encoding<blockM = 64, blockN = 128, colStride = 2>` and emitted `tcgen05.{st,ld}.sync.aligned.16x256b...`
+  - the current tree instead selected canonical `#ttng.tensor_memory_linear`, produced a different register layout, and missed the `16x256b` PTX family
+- Root cause was twofold in `Dialect.cpp`:
+  - `getDefaultLayoutForTmemLdSt(...)` still tried the normalized canonical M64 preference before the exact-family legacy-anchored selector, so full exact leaves diverged from origin/main under `TRITON_PREFER_TMEM_16x256_LAYOUT`
+  - `getDistributedLayoutForTmemLdStLegacyAnchored(...)` had changed `layout16Rows` from the old zero-row-basis test (`basis(row,16) == 0`) to a pure logical-size test (`rows <= 16`); for legacy `M64` leaves that incorrectly added a dead register basis, and direct `ttng.tmem_load` then failed with `unsupported broadcasted TMEM lowering for this view`
+- Fix:
+  - prefer the exact-family legacy-anchored selector before the normalized canonical M64 selector for full-shape TMEM leaves
+  - restore the legacy `layout16Rows` zero-basis detection while still allowing true `<=16` row tiles
+- Result:
+  - the `64x128xf16` exact-family preferred path is back to the origin/main register layout and `16x256b` PTX family
+  - the earlier repaired `64x128xtf32` preferred path still passes
+- Related stale test cleanup:
+  - `python/test/unit/language/test_compile_only.py::test_compile_only_dot` was not a real regression; current and origin emit the same ordered tcgen alloc/store/mma/commit/wait/load sequence, but current direct ld/st packet counts can be `x64`
+  - the test now checks the PTX sequence incrementally and accepts `x16|x32|x64`
