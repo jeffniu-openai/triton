@@ -188,7 +188,6 @@ tt.func public @tmem_load_reduce(%arg0: !ttg.memdesc<128x64xf32, #tmem, #ttng.te
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
 #smem = #ttg.shared_memory
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 64, colStride = 1>
-// CHECK{LITERAL}: #linear = #ttg.linear<{register = [[0, 1], [8, 0], [0, 8], [0, 16], [0, 32], [16, 0]], lane = [[0, 2], [0, 4], [1, 0], [2, 0], [4, 0]], warp = [[32, 0], [64, 0]], block = []}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   // CHECK-LABEL: @test_tmem_store_dist_layout
   tt.func public @test_tmem_store_dist_layout(%arg0: f32, %arg1: !ttg.memdesc<64x128xf16, #shared, #smem, mutable>, %arg2: !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable>) {
@@ -198,9 +197,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %2 = arith.extf %1 : tensor<64x128xf16, #blocked> to tensor<64x128xf32, #blocked>
     %3 = arith.mulf %2, %0 : tensor<64x128xf32, #blocked>
     %4 = tt.trans %3 {order = array<i32: 1, 0>} : tensor<64x128xf32, #blocked> -> tensor<128x64xf32, #blocked1>
-    // CHECK: %[[C:.+]] = ttg.convert_layout %{{.+}} : tensor<128x64xf32, #{{.+}}> -> tensor<128x64xf32, #linear>
-    // CHECK-NOT: ttg.convert_layout
-    // CHECK: ttng.tmem_store %[[C]], %{{.+}}, %{{.+}} : tensor<128x64xf32, #linear> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable>
+    // CHECK: %[[DIST:.+]] = tt.trans %{{.+}} {order = array<i32: 1, 0>} : tensor<64x128xf32, #blocked> -> tensor<128x64xf32, #blocked1>
+    // CHECK-NEXT: ttng.tmem_store %[[DIST]], %{{.+}}, %{{.+}} : tensor<128x64xf32, #blocked1> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable>
     ttng.tmem_store %4, %arg2, %true : tensor<128x64xf32, #blocked1> -> !ttg.memdesc<128x64xf32, #tmem, #ttng.tensor_memory, mutable>
     tt.return
   }
