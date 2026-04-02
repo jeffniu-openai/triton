@@ -2225,6 +2225,32 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
   auto *ctx = memType.getContext();
   bool prefer16x256 =
       triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
+  if (!isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
+      memType.getShape() == memType.getAllocShape() &&
+      planMMAv5ExactFamily(memType.getShape(), memType.getEncoding(),
+                           {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u,
+                            512u})) {
+    auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+    SmallVector<TMemAccessAtom> atoms =
+        prefer16x256
+            ? SmallVector<TMemAccessAtom>{TMemAccessAtom::I16x256b,
+                                          TMemAccessAtom::I32x32b,
+                                          TMemAccessAtom::I16x128b,
+                                          TMemAccessAtom::I16x64b,
+                                          TMemAccessAtom::I16x32bx2}
+            : SmallVector<TMemAccessAtom>{TMemAccessAtom::I32x32b,
+                                          TMemAccessAtom::I16x256b,
+                                          TMemAccessAtom::I16x128b,
+                                          TMemAccessAtom::I16x64b,
+                                          TMemAccessAtom::I16x32bx2};
+    for (auto atom : atoms) {
+      if (auto preferred = getDistributedLayoutForTmemLdStLegacyAnchored(
+              raw, atom, numWarps, memType.getElementTypeBitWidth());
+          preferred && isTMemLdStSelectionLayoutValid(memType, *preferred)) {
+        return LinearEncodingAttr::get(ctx, std::move(*preferred));
+      }
+    }
+  }
   if (prefer16x256) {
     auto tryLegacyPreferred =
         [&](const LinearLayout &layout)
@@ -2554,7 +2580,6 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
     return succeeded(
         computeTMemLdStEncodingInfo(candidateType, memType, /*maxnreg=*/256));
   };
-
   int bitwidth = memType.getElementTypeBitWidth();
   bool prefer16x256 =
       triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");

@@ -2566,3 +2566,25 @@ rejection, not rescue
 - Related stale test cleanup:
   - `python/test/unit/language/test_compile_only.py::test_compile_only_dot` was not a real regression; current and origin emit the same ordered tcgen alloc/store/mma/commit/wait/load sequence, but current direct ld/st packet counts can be `x64`
   - the test now checks the PTX sequence incrementally and accepts `x16|x32|x64`
+
+## 2026-04-01: GB200 persistent-attention warp-specialization TMEM OOR regression
+
+- Symptom:
+  - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-False-2-128-128-8192-8192]` failed only on the current tree with `OutOfResources: shared memory, Required: 262336, Hardware limit: 232448`
+  - `/tmp/triton-origin-main` compiled the same node with `230076` shared bytes and passed
+- TTGIR / pass-dump comparison:
+  - before `triton-nvidia-optimize-tmem-layouts`, current still matched origin on the relevant accumulator loop: `ttng.tmem_load ... -> tensor<128x128xf32, #linear>` and `ttng.tmem_store ... tensor<128x128xf16, #linear>`
+  - after `triton-nvidia-optimize-tmem-layouts`, current retuned that loop-carried accumulator load to `tensor<128x128xf32, #linear1>` and propagated `#linear1` through the softmax/update path
+  - origin/main never took that retune and stayed on the `#linear` path
+- Root cause:
+  - `TMemLoadReducePattern` in `OptimizeTMemLayouts.cpp` was designed to pick a reduction-friendly layout for 8-warp TMEM loads consumed by reductions along `N`
+  - in persistent attention, that same TMEM load is also written back to TMEM after the reduction/elementwise update
+  - the relayout was therefore not profitable: it forced the value onto the `#linear1` family, then required later `#linear1 -> #linear` conversions for the TMEM store path, and those conversions/lowerings inflated shared memory enough to exceed GB200's limit
+- Fix:
+  - make `TMemLoadReducePattern` bail out when the forward slice from the load hits a later `ttng.tmem_store`
+  - keep the exact-family full-tile default TMEM ld/st selector on the legacy-anchored layout for exact MMAv5 leaves (`getDefaultLayoutForTmemLdSt(...)`) so the accumulator path stays aligned with origin/main expectations
+  - preserve explicit `convert_layout` on `ttng.tmem_store` when it converts into the preferred TMEM store layout instead of folding it away just because the source layout is also direct-compatible
+- Result:
+  - persistent attention returns to the origin-like `#linear` accumulator path
+  - warmup shared memory is back down to `230592` bytes
+  - the GB200 persistent warp-specialization repro passes again

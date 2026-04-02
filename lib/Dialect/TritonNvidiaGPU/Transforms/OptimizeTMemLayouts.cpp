@@ -675,7 +675,12 @@ public:
     if (numWarps != 8)
       return failure();
     bool foundReductionAlongN = false;
+    bool storesBackToTMem = false;
     auto filter = [&](Operation *op) {
+      if (isa<TMEMStoreOp>(op)) {
+        storesBackToTMem = true;
+        return false;
+      }
       if (isa<ttg::ConvertLayoutOp>(op) || op->hasTrait<OpTrait::Elementwise>())
         return true;
       if (auto reduce = dyn_cast<triton::ReduceOp>(op)) {
@@ -687,7 +692,7 @@ public:
     fwdOpt.filter = filter;
     SetVector<mlir::Operation *> fwdSlices;
     getForwardSlice(tmemLoadOp.getResult(), &fwdSlices, fwdOpt);
-    if (!foundReductionAlongN)
+    if (!foundReductionAlongN || storesBackToTMem)
       return failure();
     // Try to split along M dimension but follow the restrictions of TMEM:
     // warp0 get M = 0, warp 1 gets M = 32, warp 2 gets M = 64, warp 3 gets
@@ -724,6 +729,21 @@ public:
     auto tmemEnc = tmemStoreOp.getDst().getType().getEncoding();
     if (!triton::nvidia_gpu::isTensorMemoryEncoding(tmemEnc) ||
         isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(tmemEnc))
+      return failure();
+    auto isLocalLoadLike = [&](Value value) {
+      while (Operation *def = value.getDefiningOp()) {
+        if (isa<gpu::LocalLoadOp>(def))
+          return true;
+        if (isa<ttg::ConvertLayoutOp, triton::ReshapeOp, triton::TransOp,
+                triton::ExpandDimsOp>(def)) {
+          value = def->getOperand(0);
+          continue;
+        }
+        return false;
+      }
+      return false;
+    };
+    if (!isLocalLoadLike(tmemStoreOp.getSrc()))
       return failure();
     int numWarps = ttg::lookupNumWarps(tmemStoreOp);
     // Compute the alternative layout.

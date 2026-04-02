@@ -4681,3 +4681,21 @@ Open after this slice:
     - `CUDA_VISIBLE_DEVICES=0 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float16-float16]'` -> `1 passed`
     - `CUDA_VISIBLE_DEVICES=0 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_matmul.py::test_simple_matmul[True-True-4-1-64-128-32-4-float32-tensorfloat32]'` -> `1 passed`
     - `CUDA_VISIBLE_DEVICES=0 python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_compile_only.py::test_compile_only_dot'` -> `1 passed`
+
+- 2026-04-01: fixed the GB200 persistent-attention warp-specialization TMEM OOR regression
+  - failing node:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-False-2-128-128-8192-8192]`
+    - current tree required `262336` bytes of shared memory and failed launch metadata init with `OutOfResources`; `/tmp/triton-origin-main` required `230076` bytes and passed
+  - root cause:
+    - the first divergence from origin/main appeared in `triton-nvidia-optimize-tmem-layouts`, not in LLVM lowering
+    - `TMemLoadReducePattern` retuned the loop-carried `ttng.tmem_load` accumulator tile from `tensor<128x128xf32, #linear>` to `tensor<128x128xf32, #linear1>` because it saw a reduction along `N`
+    - that load value is later written back to TMEM in the persistent attention loop, so the reduction-friendly relayout was not a pure win; it forced the softmax/update path onto `#linear1`, introduced `#linear1 -> #linear` store conversions, and ultimately lowered through the larger shared-memory scratch path
+    - a follow-on canonicalizer fold (`tmem_store(cvt) -> tmem_store`) was masking part of the path, but the real regression started earlier in `OptimizeTMemLayouts`
+  - fixes:
+    - in `OptimizeTMemLayouts.cpp`, make `TMemLoadReducePattern` bail out when the forward slice from the `ttng.tmem_load` feeds a later `ttng.tmem_store`; keep the reduction-friendly relayout only for true reduction-only consumers
+    - in `Dialect.cpp`, make `getDefaultLayoutForTmemLdSt(...)` prefer the exact-family legacy-anchored full-tile layout for exact MMAv5 TMEM leaves even without the `TRITON_PREFER_TMEM_16x256_LAYOUT` env knob
+    - in `TritonGPU/IR/Ops.cpp`, keep an explicit `convert_layout` feeding `ttng.tmem_store` when it targets the preferred TMEM store layout instead of erasing it solely because the pre-convert layout is also compatible
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - warmup repro: shared memory dropped from `262336` to `230592` bytes, and the bad `#linear1` accumulator load/store path disappeared from TTGIR
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-False-2-128-128-8192-8192]'` -> `1 passed`

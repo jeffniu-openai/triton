@@ -123,10 +123,25 @@ struct CanonicalizeConvertFromTMEMStore
                         nvidia_gpu::TMEMSubSliceOp>(op.getDst().getDefiningOp()))
       return failure();
 
+    auto srcType = cast<RankedTensorType>(convert.getSrc().getType());
+    auto convertType = cast<RankedTensorType>(convert.getType());
+    auto layoutsEqual = [&](RankedTensorType type, Attribute lhs,
+                            Attribute rhs) {
+      return cast<DialectInferLayoutInterface>(&lhs.getDialect())
+          ->verifyLayoutsAreEqual(type.getShape(), lhs, rhs, {})
+          .succeeded();
+    };
+
+    auto preferredEncoding = nvidia_gpu::getDefaultLayoutForTmemLdSt(
+        op.getDst().getType(), lookupNumWarps(op));
+    if (layoutsEqual(convertType, convertType.getEncoding(), preferredEncoding) &&
+        !layoutsEqual(srcType, srcType.getEncoding(), preferredEncoding)) {
+      return failure();
+    }
+
     // bail for incompatible layouts
-    auto cvtSrcType = convert.getSrc().getType();
     if (!nvidia_gpu::isDistributedLayoutTMemCompatible(
-            op.getOperation(), cvtSrcType, op.getDst().getType())) {
+            op.getOperation(), srcType, op.getDst().getType())) {
       return failure();
     }
 
