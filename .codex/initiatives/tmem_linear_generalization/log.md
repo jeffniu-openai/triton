@@ -4699,3 +4699,41 @@ Open after this slice:
     - `TRITON_BUILD_WITH_CCACHE=true make -j96`
     - warmup repro: shared memory dropped from `262336` to `230592` bytes, and the bad `#linear1` accumulator load/store path disappeared from TTGIR
     - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short -x 'python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-False-2-128-128-8192-8192]'` -> `1 passed`
+
+
+- 2026-04-06: fixed the packed sparse `I16x32bx2` half-row TMEM subslice bug on the direct ld/st support-query path
+  - failing repros:
+    - reduced repro `/tmp/repro_zero_only.py` (`64x128xf32` linear TMEM tile, zeroing only the sliced half-row view) mismatched `2048` elements
+    - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[linear]` failed
+  - narrowed root cause:
+    - the reinterpret-based packed sparse support helper in `TensorMemoryUtils.cpp` recovered the right `I16x32bx2` packet family, but its external warp anchors were still wrong for views whose packed TMEM support layout carries a hidden zero `row=16` basis
+    - using the stripped support layout for anchor selection produced `(16, 32)` row anchors and broke the `warp1/warp3` halves; using the raw unstripped support layout produced `(0, 16)` and broke the back half of the tile instead
+    - PTX/repro mapping showed the packed support path itself was otherwise correct: after the anchor-only experiments, the remaining mismatches were confined to the row blocks selected by `warpBaseOffset0/1`
+  - fix:
+    - keep anchor discovery on the raw packed support layout so the hidden zero row basis is visible
+    - when the first recovered anchor basis is zero but the next one is non-zero, skip that hidden half-row basis for the second external anchor and lift it to the next non-zero logical row bit (`warpRow1 * 2`)
+    - this yields the correct packed sparse anchor pair `(0, 32)` rows for the `64x64` support-query `I16x32bx2` path
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `PYTHONPATH=python:. TRITON_CACHE_DIR=/tmp/triton_cache_packed_sparse_i16_anchorbasis2 python3 /tmp/repro_zero_only_map.py` -> `mismatch 0`
+    - `PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[linear]` -> `1 passed`
+
+- 2026-04-06: Bounded the remaining `block_m_64` reinterpret/store wrong-code bucket further. Disabling the `getDistributedLayoutForTmemLdSt(...)` split-N fast path for the 16->32 unpacked recursion did not change either the explicit `p_tmem.get_reg_layout(instr_variant="32x32b")` rejection or the runtime `mismatch 2048` pattern in `/tmp/repro_zero_only_map_p_layout.py`. Fresh debug shows the stronger root cause: the auto-layout path picks a valid public reg layout `#ttg.linear<{register=[[0,1],[0,2],[0,4],[0,8],[0,16],[0,32]], lane=[[1,0],[2,0],[4,0],[8,0],[0,64]], warp=[[16,0],[32,0]], block=[]}>`, but `computeTMemLdStEncodingInfo(...)` still classifies that layout as atom=4 (`I16x32bx2`) for the sparse reinterpret support view instead of `I32x32b`. So the remaining bug is in `TensorMemoryUtils.cpp` atom selection / packed-support lowering, not just in `Dialect.cpp` family construction.
+
+- 2026-04-06: aligned legacy `blockM=64` / expanded-`N` TMEM sugar with the row-zero-lift support form used by direct ld/st reinterpret lowering
+  - symptom:
+    - legacy `TensorMemoryLayout((64, 64), col_stride=1)` allocs for shape `64x128` still misaligned/faulted in the `p_tmem` reinterpret/store bucket even after the packed sparse support fixes
+    - minimal repro `/tmp/repro_block_m64_p_zero_only_legacy.py` faulted with `CUDA misaligned address`, while the equivalent explicit linear layout passed
+  - root cause:
+    - the legacy canonicalizer in `Dialect.cpp` still expanded `blockM=64` / `shape[1] > blockN` through the old interleaved basis `row=16 -> (0, blockN)`
+    - direct ld/st reinterpret support rescue in `TensorMemoryUtils.cpp` already normalizes the same user-visible view to the row-zero-lift form (`row=16 -> (0, 0)` with the extra `col` bit)
+    - allocator/runtime therefore reserved/anchored the backing TMEM as `nRow=128, nCol=64` (`tcgen05.alloc ... 64`) while the actual direct store lowering addressed it as the row-zero-lift `64x128` support form
+  - fix:
+    - changed `buildCanonicalLegacyLikeTMemLinearLayout(...)` so non-twoCTA `blockM=64` legacy sugar keeps `N` expansion in the column dimension instead of reusing the hidden `row=16` basis
+    - this makes legacy sugar canonicalize to the same full linear form already used by the direct ld/st support-query rescue path
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=python:. python3 /tmp/repro_block_m64_p_zero_only_legacy.py` -> `ok`
+    - `CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]` -> `1 passed`
+    - `make test-lit` -> `248 passed, 2 unsupported`
+    - `make test-cpp` -> `240/240 passed`

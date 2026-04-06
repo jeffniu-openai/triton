@@ -41,40 +41,73 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
-static bool useLocalHalfRowSupportWarpAnchors(
-    MemDescType memTy, const TMemLdStQueryLayout &supportQuery);
-
 static bool preserveTMemLdStSupportQueryBaseOffset(
     MemDescType memTy, const TMemLdStQueryLayout &supportQuery) {
-  if (useLocalHalfRowSupportWarpAnchors(memTy, supportQuery))
-    return false;
+  (void)memTy;
   return llvm::any_of(supportQuery.origin,
                       [](int32_t value) { return value != 0; });
 }
 
-static bool useLocalHalfRowSupportWarpAnchors(
-    MemDescType memTy, const TMemLdStQueryLayout &supportQuery) {
-  if (memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
-      memTy.getShape()[0] != 64 || memTy.getShape()[1] != 64)
-    return false;
-  auto normalizedQuery =
-      normalizeTensorMemoryLinearLayoutForAnalysis(supportQuery.layout);
-  auto *ctx = memTy.getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
-  if (!normalizedQuery.hasInDim(kRow) || !normalizedQuery.hasInDim(kCol))
-    return false;
-  if (normalizedQuery.getInDimSize(kRow) != 128 ||
-      normalizedQuery.getInDimSize(kCol) != 64)
-    return false;
-  auto inDims = llvm::to_vector(supportQuery.layout.getInDimNames());
-  auto getOrigin = [&](StringAttr dim) -> int32_t {
-    auto it = llvm::find(inDims, dim);
-    if (it == inDims.end())
-      return 0;
-    return supportQuery.origin[std::distance(inDims.begin(), it)];
+static uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
+  if (!memDescValue)
+    return 0;
+
+  auto recurse = [&](Value src) {
+    return getAlreadyAdjustedTMemSubviewBaseOffset(src);
   };
-  return getOrigin(kRow) == 64 && getOrigin(kCol) == 0;
+
+  if (auto reinterpret = dyn_cast_if_present<triton::gpu::MemDescReinterpretOp>(
+          memDescValue.getDefiningOp())) {
+    return recurse(reinterpret.getSrc());
+  }
+
+  if (auto reshape = dyn_cast_if_present<triton::gpu::MemDescReshapeOp>(
+          memDescValue.getDefiningOp())) {
+    return recurse(reshape.getSrc());
+  }
+
+  if (auto trans = dyn_cast_if_present<triton::gpu::MemDescTransOp>(
+          memDescValue.getDefiningOp())) {
+    return recurse(trans.getSrc());
+  }
+
+  if (auto subslice = dyn_cast_if_present<triton::gpu::MemDescSubsliceOp>(
+          memDescValue.getDefiningOp())) {
+    auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+    auto dstTy = dyn_cast<MemDescType>(subslice.getType());
+    if (!srcTy || !dstTy || srcTy.getRank() != 2 || dstTy.getRank() != 2 ||
+        !isTensorMemoryEncoding(srcTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()))
+      return 0;
+    SmallVector<int32_t> offsets(subslice.getOffsets().begin(),
+                                 subslice.getOffsets().end());
+    return recurse(subslice.getSrc()) +
+           triton::nvidia_gpu::getTMemViewOffset(srcTy, offsets);
+  }
+
+  if (auto subslice = dyn_cast_if_present<TMEMSubSliceOp>(
+          memDescValue.getDefiningOp())) {
+    auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+    if (!srcTy)
+      return 0;
+    return recurse(subslice.getSrc()) + getTMemSubSliceOffset(srcTy, subslice.getN());
+  }
+
+  if (auto index = dyn_cast_if_present<triton::gpu::MemDescIndexOp>(
+          memDescValue.getDefiningOp())) {
+    auto srcTy = dyn_cast<MemDescType>(index.getSrc().getType());
+    if (!srcTy)
+      return 0;
+    APInt indexValue;
+    if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)))
+      return 0;
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = indexValue.getSExtValue();
+    return recurse(index.getSrc()) +
+           triton::nvidia_gpu::getTMemViewOffset(srcTy, offsets);
+  }
+
+  return 0;
 }
 
 static LinearLayout getTMemCopyAddressLayout(MemDescType memDescType,
@@ -444,6 +477,7 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
     Value pred, int valsPerMessage, bool unpacked,
     std::optional<uint32_t> secondHalfOffset, uint32_t baseOffset,
     uint32_t warpBaseOffset0, uint32_t warpBaseOffset1,
+    ArrayRef<int32_t> packetOffsets,
     std::optional<TMEMLoadReduceModifier> redOp, bool useAbs, bool useNaN) {
   auto *ctx = rewriter.getContext();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
@@ -478,12 +512,38 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
     }
     return true;
   };
+  auto regColBasesAreContiguous = [&]() {
+    if (!reps.hasInDim(kReg) || !reps.hasOutDim(kCol))
+      return false;
+    for (unsigned idx = 0; idx < reps.getInDimSizeLog2(kReg); ++idx) {
+      if (reps.getBasis(kReg, idx, kCol) != (1 << idx))
+        return false;
+      for (StringAttr outDim : reps.getOutDimNames()) {
+        if (outDim == kCol)
+          continue;
+        if (reps.getBasis(kReg, idx, outDim) != 0)
+          return false;
+      }
+    }
+    return true;
+  };
   bool recoverScalar32x32ColSteps =
       atom == TMemAccessAtom::I32x32b && valsPerMessage == 1 &&
       reps.hasOutDim(kCol) && reps.getOutDimSize(kCol) > 1 &&
       reps.hasInDim(kReg) &&
       reps.getInDimSize(kReg) == reps.getOutDimSize(kCol) &&
       allRegBasesZero();
+  bool recoverScalarI16x32bx2ColSteps =
+      atom == TMemAccessAtom::I16x32bx2 && unpacked && valsPerMessage == 1 &&
+      reps.hasOutDim(kCol) && reps.getOutDimSize(kCol) > 1 &&
+      reps.hasInDim(kReg) &&
+      reps.getOutDimSize(kCol) == 2 * reps.getInDimSize(kReg);
+  bool recoverPackedI16x32bx2X2ColSteps =
+      atom == TMemAccessAtom::I16x32bx2 && unpacked && valsPerMessage == 2 &&
+      reps.hasOutDim(kCol) && reps.getOutDimSize(kCol) > 1 &&
+      reps.hasInDim(kReg) &&
+      reps.getOutDimSize(kCol) == 2 * reps.getInDimSize(kReg) &&
+      regColBasesAreContiguous();
 
   Value warpId = WarpIdOp::create(rewriter, loc);
   // The first warp-group anchors are part of the lowering plan and may map to
@@ -513,17 +573,37 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
   }
 
   SmallVector<Value> resultVals, redvalVals;
+  if (!packetOffsets.empty()) {
+    assert(static_cast<int>(packetOffsets.size()) ==
+               reps.getInDimSize(kReg) / valsPerMessage &&
+           "packetOffsets must match the lowered TMEM message count");
+  }
   for (int i = 0; i < reps.getInDimSize(kReg); i += valsPerMessage) {
-    auto [row, col] =
-        getRowCol(reps.apply({{kReg, i}, {kLane, 0}, {kWarp, 0}}));
-    if (recoverScalar32x32ColSteps)
-      // Scalarized 32x32b.x1 packets cover one 32-bit TMEM column per
-      // message. PTX col immediates for `.b32` packets are byte-addressed, so
-      // recovered support/query reps whose register bases collapsed to zero
-      // still need a 4-byte stride per scalar packet.
-      col = i * 4;
-    // Encode row into the base address and pass col as an immediate colOffset.
-    int staticOffset = col | (row << 16);
+    int staticOffset = 0;
+    if (!packetOffsets.empty()) {
+      staticOffset = packetOffsets[i / valsPerMessage];
+    } else {
+      auto [row, col] =
+          getRowCol(reps.apply({{kReg, i}, {kLane, 0}, {kWarp, 0}}));
+      if (recoverScalar32x32ColSteps)
+        // Scalarized 32x32b.x1 packets cover one 32-bit TMEM column per
+        // message. PTX col immediates for `.b32` packets are byte-addressed,
+        // so recovered support/query reps whose register bases collapsed to
+        // zero still need a 4-byte stride per scalar packet.
+        col = i * 4;
+      if (recoverScalarI16x32bx2ColSteps)
+        // Scalarized unpacked 16x32bx2.x1 packets advance in packed-dword
+        // column steps.
+        col = i * 4;
+      if (recoverPackedI16x32bx2X2ColSteps)
+        // Recovered unpacked 16x32bx2.x2 paths step by packed-dword message
+        // index, not by the raw two-register chunk index returned by the
+        // quotient reps.
+        col = i * 2;
+      // Encode row into the base address and pass col as an immediate
+      // colOffset.
+      staticOffset = col | (row << 16);
+    }
     if (isStore) {
       auto chunk = to_vector(vals.slice(i, valsPerMessage));
       createTensorMemoryStore(loc, tmemBase, /*colOffset=*/staticOffset, chunk,
@@ -622,7 +702,8 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
       lowerTMemLdSt(loc, rewriter, info.reps, inVals, info.atom, llvmElemTy,
                     tmemBase, pred, info.numRegsPerMessage, info.unpacked,
                     info.secondHalfOffset, info.baseOffset, info.warpBaseOffset0,
-                    info.warpBaseOffset1, redOp, useAbs, useNaN);
+                    info.warpBaseOffset1, info.packetOffsets, redOp, useAbs,
+                    useNaN);
   if (!isStore) {
     outVals = info.perm.inverse().apply(outVals);
   }
@@ -678,6 +759,44 @@ lowerTMemLdStFromTypes(
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
+  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
+    if (!layout.hasInDim(dim))
+      return false;
+    unsigned dimBits = layout.getInDimSizeLog2(dim);
+    for (unsigned idx = 0; idx < dimBits; ++idx) {
+      if (llvm::all_of(layout.getBasis(dim, idx),
+                       [](int32_t value) { return value == 0; })) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto kRow = StringAttr::get(rewriter.getContext(), "row");
+  auto kCol = StringAttr::get(rewriter.getContext(), "col");
+  bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
+    if (!memDescValue ||
+        !isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
+            memDescValue.getDefiningOp()) ||
+        memTy.getRank() != 2)
+      return false;
+    auto memLayout = toLinearLayout(memTy);
+    int bitwidth = memTy.getElementTypeBitWidth();
+    int64_t logicalRows = memTy.getShape()[0];
+    int64_t logicalCols = memTy.getShape()[1];
+    auto activeMemLayout = memLayout;
+    if (activeMemLayout.hasInDim(kRow))
+      activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
+    int64_t activePhysicalRows =
+        activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
+                                       : logicalRows;
+    int64_t physicalCols =
+        memLayout.hasInDim(kCol) ? memLayout.getInDimSize(kCol) / (32 / bitwidth)
+                                 : logicalCols;
+    return bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
+           !hasZeroBasisAlong(memLayout, kCol) &&
+           logicalRows == activePhysicalRows &&
+           logicalCols == physicalCols * 2;
+  }();
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
   if (memDescValue) {
@@ -725,18 +844,18 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(encodingInfoOr)) {
         auto &encodingInfo = *encodingInfoOr;
+        uint32_t alreadyAdjustedBase =
+            getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
         if (!preserveTMemLdStSupportQueryBaseOffset(memTy, supportQuery))
           encodingInfo.baseOffset = 0;
-        if (encodingInfo.atom == TMemAccessAtom::I16x32bx2 &&
-            useLocalHalfRowSupportWarpAnchors(memTy, supportQuery)) {
-          encodingInfo.warpBaseOffset0 = static_cast<uint32_t>(16) << 16;
-          encodingInfo.warpBaseOffset1 = static_cast<uint32_t>(32) << 16;
-          encodingInfo.warpRow0 = 16;
-          encodingInfo.warpRow1 = 32;
-        }
-        return lowerTMemLdStFromInfo(loc, rewriter, encodingInfo, pred,
-                                     llvmElemTy, vals, tmemBase, redOp,
-                                     useAbs, useNaN);
+        if (alreadyAdjustedBase != 0)
+          encodingInfo.baseOffset =
+              encodingInfo.baseOffset > alreadyAdjustedBase
+                  ? encodingInfo.baseOffset - alreadyAdjustedBase
+                  : 0;
+        return lowerTMemLdStFromInfo(
+            loc, rewriter, encodingInfo, pred, llvmElemTy, vals, tmemBase,
+            redOp, useAbs, useNaN);
       }
       return failure();
     };
@@ -813,19 +932,19 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(rawEncodingInfoOr)) {
         auto &encodingInfoOr = rawEncodingInfoOr;
-        bool baseAlreadyAdjusted = isa_and_nonnull<TMEMSubSliceOp,
-                                                   triton::gpu::MemDescIndexOp>(
-            memDescValue.getDefiningOp());
-        // ttng.tmem_subslice and ttg.memdesc_index lower their TMEM view
-        // translation into the base pointer value itself. Do not re-apply the
-        // raw-query origin as a second baseOffset or N-half views collapse onto
-        // the wrong physical tile window.
-        if (baseAlreadyAdjusted)
-          encodingInfoOr->baseOffset = 0;
-        return lowerTMemLdStFromInfo(loc, rewriter, *encodingInfoOr, pred,
-                                     llvmElemTy, vals, tmemBase, redOp,
-                                     useAbs,
-                                     useNaN);
+        uint32_t alreadyAdjustedBase =
+            getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
+        // Subview ops that already advanced the TMEM base pointer should only
+        // keep the portion of the raw-query baseOffset that remains relative
+        // to the lowered base, rather than re-applying the full view origin.
+        if (alreadyAdjustedBase != 0)
+          encodingInfoOr->baseOffset =
+              encodingInfoOr->baseOffset > alreadyAdjustedBase
+                  ? encodingInfoOr->baseOffset - alreadyAdjustedBase
+                  : 0;
+        return lowerTMemLdStFromInfo(
+            loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
+            redOp, useAbs, useNaN);
       }
     } else if (debugQuerySelection && !rawError.empty()) {
       llvm::errs() << "[tmem-ldst] rawQuery fail: " << rawError << "\n";
@@ -833,7 +952,8 @@ lowerTMemLdStFromTypes(
   }
   std::optional<MemDescType> firstQueryTy;
   std::optional<TMemLdStRowPlan> firstQueryRowPlan;
-  for (MemDescType queryTy : queryTypes) {
+  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret)
+    for (MemDescType queryTy : queryTypes) {
     auto rowPlan = disallowSupportRescueFor32x32Subview
                        ? std::optional<TMemLdStRowPlan>{}
                        : (memDescValue ? getTMemLdStRowPlanForQuery(memDescValue,
@@ -888,10 +1008,9 @@ lowerTMemLdStFromTypes(
           encodingInfoOr->numRegsPerMessage = 1;
         }
       }
-      return lowerTMemLdStFromInfo(loc, rewriter, *encodingInfoOr, pred,
-                                   llvmElemTy, vals, tmemBase, redOp,
-                                   useAbs,
-                                   useNaN);
+      return lowerTMemLdStFromInfo(
+          loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
+          redOp, useAbs, useNaN);
     }
   }
   if (rawQueryLayout) {

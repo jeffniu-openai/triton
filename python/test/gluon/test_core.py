@@ -2011,7 +2011,8 @@ def test_tmem_subslice_block_m_64(layout_kind):
         o_tmem.store(s)
 
         p_tmem = s_tmem.slice(0, N // 2, dim=1)._reinterpret(ttgl.float16, [BLOCK_M, N], tmem_layout)
-        p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=layout))
+        p_layout: ttgl.constexpr = p_tmem.get_reg_layout()
+        p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=p_layout))
 
         d1_tmem_layout: ttgl.constexpr = n2_layout
 
@@ -2065,6 +2066,38 @@ def test_tmem_subslice_block_m_64(layout_kind):
     out_ref[:, 36:38] = 4.0
 
     torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
+def test_tmem_subslice_block_m_64_parent_layout_reports_clean_error(layout_kind, capfd):
+
+    full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
+
+    @gluon.jit
+    def kernel(s_ptr, out_ptr):
+        BLOCK_M: ttgl.constexpr = 64
+        N: ttgl.constexpr = 128
+        tmem_layout: ttgl.constexpr = full_layout
+        s_tmem = allocate_tensor_memory(ttgl.float32, (BLOCK_M, N), layout=tmem_layout)
+        layout: ttgl.constexpr = s_tmem.get_reg_layout()
+        offsets = ttgl.arange(0, BLOCK_M)[:, None] * N + ttgl.arange(0, N)[None, :]
+        offsets = ttgl.set_auto_layout(offsets, layout)
+        s = ttgl.load(s_ptr + offsets)
+        s_tmem.store(s)
+        p_tmem = s_tmem.slice(0, N // 2, dim=1)._reinterpret(ttgl.float16, [BLOCK_M, N], tmem_layout)
+        p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=layout))
+        ttgl.store(out_ptr + offsets, s_tmem.load())
+
+    torch.manual_seed(0)
+    s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
+    out_tri = torch.empty_like(s)
+    with pytest.raises(Exception) as err:
+        kernel[(1, )](s, out_tri)
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "source has no supported register layout" in text
+    assert "Use the descriptor's own get_reg_layout() result" in text or "register layout image is not contained" in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

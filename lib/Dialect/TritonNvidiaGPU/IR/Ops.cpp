@@ -1110,6 +1110,20 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       diag.attachNote() << unsupportedDescriptorViewError;
     return diag;
   }
+  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
+    if (!layout.hasInDim(dim))
+      return false;
+    unsigned dimBits = layout.getInDimSizeLog2(dim);
+    for (unsigned idx = 0; idx < dimBits; ++idx) {
+      if (llvm::all_of(layout.getBasis(dim, idx),
+                       [](int32_t value) { return value == 0; })) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto kRow = StringAttr::get(op->getContext(), "row");
+  auto kCol = StringAttr::get(op->getContext(), "col");
   bool isViewLikeMemDesc =
       isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp, gpu::MemDescSubsliceOp,
                       gpu::MemDescReshapeOp, gpu::MemDescTransOp,
@@ -1117,6 +1131,28 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   bool disallowSupportRescueFor32x32Subview =
       isViewLikeMemDesc && memdesc.getRank() == 2 && memdesc.getShape()[0] == 32 &&
       memdesc.getShape()[1] == 32;
+  bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
+    if (!isa_and_nonnull<gpu::MemDescReinterpretOp>(memdescValue.getDefiningOp()) ||
+        memdesc.getRank() != 2)
+      return false;
+    auto memLayout = toLinearLayout(memdesc);
+    int bitwidth = memdesc.getElementTypeBitWidth();
+    int64_t logicalRows = memdesc.getShape()[0];
+    int64_t logicalCols = memdesc.getShape()[1];
+    auto activeMemLayout = memLayout;
+    if (activeMemLayout.hasInDim(kRow))
+      activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
+    int64_t activePhysicalRows =
+        activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
+                                       : logicalRows;
+    int64_t physicalCols =
+        memLayout.hasInDim(kCol) ? memLayout.getInDimSize(kCol) / (32 / bitwidth)
+                                 : logicalCols;
+    return bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
+           !hasZeroBasisAlong(memLayout, kCol) &&
+           logicalRows == activePhysicalRows &&
+           logicalCols == physicalCols * 2;
+  }();
 
   auto maxnreg = getContextualMaxNReg(op);
   std::string supportQueryError;
@@ -1160,7 +1196,8 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     }
   }
   auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
-  for (MemDescType queryTy : queryTypes) {
+  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret)
+    for (MemDescType queryTy : queryTypes) {
     auto rowPlan = disallowSupportRescueFor32x32Subview
                        ? std::optional<TMemLdStRowPlan>{}
                        : getTMemLdStRowPlanForQuery(memdescValue, queryTy);
@@ -1237,7 +1274,8 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
                                           rowPlan);
       }
     }
-    if (requestedLayoutDetails.empty()) {
+    if (requestedLayoutDetails.empty() &&
+        !disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
       for (MemDescType queryTy : queryTypes) {
         auto rowPlan = disallowSupportRescueFor32x32Subview
                            ? std::optional<TMemLdStRowPlan>{}

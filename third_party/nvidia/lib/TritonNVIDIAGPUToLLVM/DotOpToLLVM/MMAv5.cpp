@@ -2,6 +2,7 @@
 #include "MMAHelpers.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "Utility.h"
+#include <cstdlib>
 #include "mlir/Support/LLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
 
@@ -259,6 +260,19 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
   }
 
   return b.int_val(32, desc.descriptor);
+}
+
+static int overrideScaleFactorSubIdx(const char *envName, int defaultId) {
+  const char *env = std::getenv(envName);
+  if (!env)
+    return defaultId;
+  StringRef mapping(env);
+  if (mapping.size() != 4 || defaultId < 0 || defaultId >= 4)
+    return defaultId;
+  char mapped = mapping[defaultId];
+  if (mapped < '0' || mapped > '3')
+    return defaultId;
+  return mapped - '0';
 }
 
 //===----------------------------------------------------------------------===//
@@ -767,9 +781,13 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
         baseScaleA, tb.i32_val((m + wordIdx * numRepM) * numColPerScaleBlockA));
     Value scaleB = tb.add(
         baseScaleB, tb.i32_val((n + wordIdx * numRepN) * numColPerScaleBlockB));
+    int scaleSubIdxA =
+        overrideScaleFactorSubIdx("TRITON_MMAV5_SCALE_ID_MAP_A", subWordIdx);
+    int scaleSubIdxB =
+        overrideScaleFactorSubIdx("TRITON_MMAV5_SCALE_ID_MAP_B", subWordIdx);
     Value instDescriptor = createScaleInstDescriptor(
         rewriter, op, twoCTAs ? desc.mmaSizeM * 2 : desc.mmaSizeM,
-        desc.mmaSizeN, desc.transA, desc.transB, subWordIdx, subWordIdx,
+        desc.mmaSizeN, desc.transA, desc.transB, scaleSubIdxA, scaleSubIdxB,
         mxfpInstKind);
     createScaledGen5MMA(rewriter, loc, op, a, b, accAddress, scaleA, scaleB,
                         pred, instDescriptor, useInitAcc, desc.aInTmem,

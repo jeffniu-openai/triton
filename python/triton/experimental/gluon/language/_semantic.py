@@ -18,8 +18,19 @@ def _is_int_list(value):
     return isinstance(value, Sequence) and all(isinstance(i, int) for i in value)
 
 
+def _clone_distributed_linear_layout(layout_obj):
+    return DistributedLinearLayout(
+        reg_bases=[list(basis) for basis in layout_obj.reg_bases],
+        lane_bases=[list(basis) for basis in layout_obj.lane_bases],
+        warp_bases=[list(basis) for basis in layout_obj.warp_bases],
+        block_bases=[list(basis) for basis in layout_obj.block_bases],
+        shape=list(layout_obj.shape),
+    )
+
+
 def _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape, alloc_shape, layout, num_warps, requested_variant,
                                      is_scales_layout):
+    layout_obj = _clone_distributed_linear_layout(layout_obj)
     N = shape[1]
     half_n_basis = [0, N // 2]
     if not layout_obj.reg_bases:
@@ -42,21 +53,6 @@ def _finalize_splitn_tmem_reg_layout(layout_obj, element_ty, shape, alloc_shape,
 
         bitwidth = element_ty.primitive_bitwidth
         num_reg = 2**len(layout_obj.reg_bases)
-        if (is_scales_layout and requested_variant == "16x32bx2" and
-                num_reg <= 32 // bitwidth):
-            # Narrow scales tiles can still lower through the same
-            # broadcasted register layout selected by the default
-            # 32x32b path, which TensorMemoryToLLVM later lowers to
-            # repeated 16x32bx2.x1 messages. Reuse that layout instead of
-            # rejecting an otherwise codegenable case.
-            return _compute_tmem_reg_layout(
-                element_ty,
-                shape,
-                alloc_shape,
-                layout,
-                num_warps,
-                "32x32b",
-            )
         _check(
             num_reg > 32 // bitwidth, lambda: "To be able to `tmem.load` into `tl.split` you need to have more "
             f"than {32 // bitwidth} {bitwidth}-bit registers, as you need to use "

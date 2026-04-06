@@ -173,10 +173,9 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
     auto bases = tile.getBases();
     if (shapePerCTA[0] > blockM) {
       bases[kRow].push_back({64, 0});
-    } else if (shapePerCTA[1] > effectiveBlockN) {
-      bases[kRow].push_back({0, static_cast<int32_t>(effectiveBlockN)});
     } else {
-      // Empty half-tile when the allocation shape does not use this row group.
+      // Keep N expansion in the column dimension so legacy sugar canonicalizes
+      // to the same row-zero-lift support form used by generic TMEM views.
       bases[kRow].push_back({0, 0});
     }
     bases[kRow].push_back({16, 0});
@@ -1543,7 +1542,8 @@ getTMemLdStSplitNLayout(const LinearLayout &ll, unsigned numWarps,
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
                                 unsigned numWarps, int bitwidth,
-                                const TMemLdStRowPlan &rowPlan) {
+                                const TMemLdStRowPlan &rowPlan,
+                                bool allowSplitNFastPath) {
   bool debugSupportLayoutGen =
       std::getenv("TRITON_DEBUG_TMEM_SUPPORT_LAYOUT_GEN") != nullptr;
   auto tryLayout = [&](const LinearLayout &candidateLL) -> std::optional<LinearLayout> {
@@ -1572,12 +1572,14 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
               .getLinearLayout();
       if (auto maybePerCTA = divideRight(candidateLL, blockOnly)) {
         if (auto perCTA = getDistributedLayoutForTmemLdSt(
-                *maybePerCTA, atom, numWarps, bitwidth, rowPlan)) {
+                *maybePerCTA, atom, numWarps, bitwidth, rowPlan,
+                allowSplitNFastPath)) {
           return *perCTA * blockOnly;
         }
       }
     }
-    if (bitwidth == 32 && atom == TMemAccessAtom::I32x32b) {
+    if (allowSplitNFastPath && bitwidth == 32 &&
+        atom == TMemAccessAtom::I32x32b) {
       if (auto splitN = getTMemLdStSplitNLayout(candidateLL, numWarps, rowPlan))
         return splitN;
     }
@@ -1596,6 +1598,25 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     // This code is dual to the one in lowerTMemLdSt
     if (bitwidth != 32) {
       auto kReg = StringAttr::get(ctx, "register");
+      if (auto maybeQuot = divideLeft(
+              candidateLL,
+              LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
+                  LinearLayout::identity1D(2, rowColDims[1], dims[1]));
+          bitwidth == 16 && maybeQuot) {
+        // Unpacked 16-bit reinterpret queries should recurse into the generic
+        // 32-bit I32x32b builder. Letting the split-N fast path win here can
+        // synthesize the wrong family for the recovered support layout.
+        auto ret =
+            getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32,
+                                            rowPlan,
+                                            /*allowSplitNFastPath=*/false);
+        if (!ret)
+          return ret;
+        auto castbbitwidth =
+            LinearLayout::zeros1D(1, kReg, dims[1], 32 / bitwidth) *
+            LinearLayout::identity1D(2, kReg, dims[1]);
+        return castbbitwidth * ret.value();
+      }
       LinearLayout quot;
       int bestContig = 1;
       for (int contig = 1; bitwidth * contig <= 32; contig *= 2) {
@@ -1610,7 +1631,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
 
       if (bestContig > 1) {
         auto ret = getDistributedLayoutForTmemLdSt(
-            quot, atom, numWarps, bitwidth * bestContig, rowPlan);
+            quot, atom, numWarps, bitwidth * bestContig, rowPlan,
+            allowSplitNFastPath && !(bitwidth == 16 &&
+                                     atom == TMemAccessAtom::I32x32b));
         if (!ret)
           return ret;
         auto castbbitwidth =
@@ -1618,25 +1641,16 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
         return castbbitwidth * ret.value();
       }
       if (auto maybeQuot = divideLeft(
-              candidateLL,
-              LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
-                  LinearLayout::identity1D(2, rowColDims[1], dims[1]));
-          bitwidth == 16 && maybeQuot) {
-        auto ret =
-            getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32,
-                                            rowPlan);
-        if (!ret)
-          return ret;
-        auto castbbitwidth = LinearLayout::identity1D(2, kReg, dims[1]);
-        return castbbitwidth * ret.value();
-      } else if (auto maybeQuot = divideLeft(
                      candidateLL, LinearLayout::zeros1D(
                                       32 / bitwidth, rowColDims[1], dims[1]))) {
-        return getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32,
-                                               rowPlan);
+        return getDistributedLayoutForTmemLdSt(
+            *maybeQuot, atom, numWarps, 32, rowPlan,
+            allowSplitNFastPath && !(bitwidth == 16 &&
+                                     atom == TMemAccessAtom::I32x32b));
       } else if (candidateLL.getInDimSize(rowColDims[1]) == 1) {
         return getDistributedLayoutForTmemLdSt(candidateLL, atom, numWarps, 32,
-                                               rowPlan);
+                                               rowPlan,
+                                               allowSplitNFastPath);
       } else {
         return std::nullopt;
       }
@@ -1870,14 +1884,6 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
       bestContig = contig;
     }
 
-    if (bestContig > 1) {
-      auto ret = getDistributedLayoutForTmemLdStLegacyAnchored(
-          quot, atom, numWarps, bitwidth * bestContig);
-      if (!ret)
-        return ret;
-      auto castbbitwidth = LinearLayout::identity1D(bestContig, kReg, dims[1]);
-      return castbbitwidth * ret.value();
-    }
     if (auto maybeQuot = divideLeft(
             ll, LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
                     LinearLayout::identity1D(2, rowColDims[1], dims[1]));
@@ -1886,9 +1892,20 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
           *maybeQuot, atom, numWarps, 32);
       if (!ret)
         return ret;
-      auto castbbitwidth = LinearLayout::identity1D(2, kReg, dims[1]);
+      auto castbbitwidth =
+          LinearLayout::zeros1D(1, kReg, dims[1], 32 / bitwidth) *
+          LinearLayout::identity1D(2, kReg, dims[1]);
       return castbbitwidth * ret.value();
-    } else if (auto maybeQuot =
+    }
+    if (bestContig > 1) {
+      auto ret = getDistributedLayoutForTmemLdStLegacyAnchored(
+          quot, atom, numWarps, bitwidth * bestContig);
+      if (!ret)
+        return ret;
+      auto castbbitwidth = LinearLayout::identity1D(bestContig, kReg, dims[1]);
+      return castbbitwidth * ret.value();
+    }
+    if (auto maybeQuot =
                    divideLeft(ll, LinearLayout::zeros1D(
                                       32 / bitwidth, rowColDims[1], dims[1]))) {
       return getDistributedLayoutForTmemLdStLegacyAnchored(*maybeQuot, atom,
@@ -2033,13 +2050,12 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   assert(numWarps >= 4 && llvm::isPowerOf2_32(numWarps) &&
          "numWarps must be a power of 2 and >= 4");
   auto isValidLayout = [&](const LinearLayout &layout) {
-    if (!rowPlanOverride)
-      return isTMemLdStSelectionLayoutValid(memType, layout);
     auto attr = LinearEncodingAttr::get(memType.getContext(), layout);
     auto regTy =
         RankedTensorType::get(memType.getShape(), memType.getElementType(), attr);
-    return succeeded(computeTMemLdStEncodingInfo(
-        regTy, memType, /*maxnreg=*/256, /*emitError=*/{}, rowPlanOverride));
+    auto info = computeTMemLdStEncodingInfo(regTy, memType, /*maxnreg=*/256,
+                                            /*emitError=*/{}, rowPlanOverride);
+    return succeeded(info) && info->atom == atom;
   };
   auto ll = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
@@ -2081,7 +2097,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     if (stripped != ll) {
       auto layout = getDistributedLayoutForTmemLdStLegacyAnchored(
           stripped, atom, numWarps, bitwidth);
-      if (layout && isTMemLdStSelectionLayoutValid(memType, *layout))
+      if (layout && isValidLayout(*layout))
         return layout;
     }
     return std::nullopt;
@@ -2092,7 +2108,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                               512u})) {
       if (auto legacyLike = getDistributedLayoutForTmemLdStLegacyAnchored(
               ll, atom, numWarps, bitwidth)) {
-        if (isTMemLdStSelectionLayoutValid(memType, *legacyLike))
+        if (isValidLayout(*legacyLike))
           return legacyLike;
       }
     }

@@ -3292,10 +3292,11 @@ TEST_F(LinearLayoutConversionsTest, TensorMemory_blockM_64) {
       {d0, d1});
   expected3 *= LinearLayout::identity1D(1, kBlock, d0);
   EXPECT_EQ(toLinearLayout({256, 128}, enc), expected3);
-  // Fits N in basis the 5th basis if shape[0] == 64
+  // Keeps N expansion in the column dimension for blockM=64 legacy sugar.
   LinearLayout expected4 = LinearLayout(
-      {{kRow, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 64}, {16, 0}, {32, 0}}},
-       {kCol, {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {0, 32}, {0, 128}}}},
+      {{kRow, {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 0}, {16, 0}, {32, 0}}},
+       {kCol,
+        {{0, 1}, {0, 2}, {0, 4}, {0, 8}, {0, 16}, {0, 32}, {0, 64}, {0, 128}}}},
       {d0, d1});
   expected4 *= LinearLayout::identity1D(1, kBlock, d0);
   EXPECT_EQ(toLinearLayout({64, 256}, enc), expected4);

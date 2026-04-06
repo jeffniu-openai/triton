@@ -1459,6 +1459,28 @@ void init_gluon_ir(py::module &&m) {
                                              layout.isSurjective(),
                                              /*error=*/nullptr);
         };
+        auto createLinearRegAttr = [&](tt::LinearLayout layout)
+            -> std::optional<ttg::LinearEncodingAttr> {
+          std::string verifyDetails;
+          llvm::raw_string_ostream os(verifyDetails);
+          ScopedDiagnosticHandler handler(
+              ctx, [&](Diagnostic &diag) { printDiagStr(os, diag); });
+          if (failed(ttg::LinearEncodingAttr::verifyInvariants(
+                  [&]() { return mlir::emitError(mlir::UnknownLoc::get(ctx)); },
+                  layout))) {
+            if (debug) {
+              debugLog << "[tmem-reg-layout] invalid linear layout:\n"
+                       << layout.toString() << "\n";
+              if (!verifyDetails.empty())
+                debugLog << "[tmem-reg-layout] invalid linear attr: "
+                         << verifyDetails;
+            }
+            if (traceToFile && !verifyDetails.empty())
+              appendTrace(Twine("invalid linear attr: ") + verifyDetails);
+            return std::nullopt;
+          }
+          return ttg::LinearEncodingAttr::get(ctx, std::move(layout));
+        };
 
         auto getCompatibleLayouts = [&](Value queryMemDesc,
                                        ttg::MemDescType queryTy) {
@@ -1477,9 +1499,10 @@ void init_gluon_ir(py::module &&m) {
                 normalizeRegLayoutForAttr(std::move(layout));
             if (!normalizedLayout)
               return;
-            auto attr =
-                ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
-            addAttr(attr);
+            auto attr = createLinearRegAttr(std::move(*normalizedLayout));
+            if (!attr)
+              return;
+            addAttr(*attr);
           };
 
           if (rowPlan) {
@@ -1625,9 +1648,10 @@ void init_gluon_ir(py::module &&m) {
                 normalizeRegLayoutForAttr(std::move(reshapedRegLayout));
             if (!normalizedLayout)
               return py::none();
-            auto attr =
-                ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
-            return layoutToGluon(attr);
+            auto attr = createLinearRegAttr(std::move(*normalizedLayout));
+            if (!attr)
+              return py::none();
+            return layoutToGluon(*attr);
           }
           return layoutToGluon(maybePlan->regTy.getEncoding());
         };
@@ -1731,10 +1755,11 @@ void init_gluon_ir(py::module &&m) {
                 normalizeRegLayoutForAttr(std::move(*reshapedLayout));
             if (!normalizedLayout)
               return py::none();
-            auto attr =
-                ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+            auto attr = createLinearRegAttr(std::move(*normalizedLayout));
+            if (!attr)
+              return py::none();
             auto regTy = RankedTensorType::get(
-                queryTy.getShape(), queryTy.getElementType(), attr);
+                queryTy.getShape(), queryTy.getElementType(), *attr);
             std::string rawDetails;
             auto maybeInfo = [&]() -> FailureOr<ttng::TMemLdStEncodingInfo> {
               llvm::raw_string_ostream os(rawDetails);
@@ -1747,7 +1772,7 @@ void init_gluon_ir(py::module &&m) {
             }();
             if (debug) {
               debugLog << "[tmem-reg-layout] raw candidate="
-                       << cast<Attribute>(attr) << " -> "
+                       << cast<Attribute>(*attr) << " -> "
                        << (succeeded(maybeInfo)
                                ? ("ok atom=" +
                                   llvm::Twine(static_cast<int>(maybeInfo->atom)))
@@ -1768,7 +1793,7 @@ void init_gluon_ir(py::module &&m) {
               appendTrace(Twine("firstLegalLayoutForRawQuery atomName=") +
                           atomName + " matchedAtom=" +
                           Twine(static_cast<int>(maybeInfo->atom)));
-              return layoutToGluon(attr);
+              return layoutToGluon(*attr);
             }
             return py::none();
           };
@@ -1891,11 +1916,17 @@ void init_gluon_ir(py::module &&m) {
                               " normalize-failed");
                 return py::none();
               }
-              auto attr =
-                  ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+              auto attr = createLinearRegAttr(std::move(*normalizedLayout));
+              if (!attr) {
+                if (traceToFile)
+                  appendTrace(Twine("supportQuery atomName=") + atomName +
+                              " tryAtom=" + Twine(static_cast<int>(atom)) +
+                              " invalid-linear-attr");
+                return py::none();
+              }
               auto regTy = RankedTensorType::get(
                   queryMemDescTy.getShape(), queryMemDescTy.getElementType(),
-                  attr);
+                  *attr);
               std::string supportDetails;
               auto maybeInfo = [&]() -> FailureOr<ttng::TMemLdStEncodingInfo> {
                 llvm::raw_string_ostream os(supportDetails);
@@ -1918,7 +1949,7 @@ void init_gluon_ir(py::module &&m) {
               if (succeeded(maybeInfo) &&
                   matchesDesiredAtom(queryMemDescTy, desiredAtom,
                                      maybeInfo->atom)) {
-                return layoutToGluon(attr);
+                return layoutToGluon(*attr);
               }
               return py::none();
             };
@@ -2040,13 +2071,14 @@ void init_gluon_ir(py::module &&m) {
                   normalizeRegLayoutForAttr(std::move(*maybeLayout));
               if (!normalizedLayout)
                 return py::none();
-              auto attr =
-                  ttg::LinearEncodingAttr::get(ctx, std::move(*normalizedLayout));
+              auto attr = createLinearRegAttr(std::move(*normalizedLayout));
+              if (!attr)
+                return py::none();
               auto regTy = RankedTensorType::get(
-                  memDescTy.getShape(), memDescTy.getElementType(), attr);
+                  memDescTy.getShape(), memDescTy.getElementType(), *attr);
               if (succeeded(ttng::computeTMemLdStEncodingInfo(
                       regTy, memDescTy, /*maxnreg=*/256))) {
-                return layoutToGluon(attr);
+                return layoutToGluon(*attr);
               }
             }
           } else {
@@ -2093,39 +2125,6 @@ void init_gluon_ir(py::module &&m) {
 
         py::object layout = findDirectLayoutForMemDesc(memDesc, maybeAtom);
         if (!layout.is_none()) {
-          // For 64-row TMEM views, keep auto-selection aligned with the direct
-          // 16x32bx2 family. That preserves the split-N-capable register layout
-          // used by the explicit 16x32bx2 / 32x32b_splitn paths instead of an
-          // alternate layout that lowers to different repeat/immediate pairs.
-          if (atomName == "auto" && memDescTy.getRank() == 2 &&
-              memDescTy.getShape()[0] == 64) {
-            bool isViewLikeMemDesc =
-                isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
-                                ttg::MemDescReshapeOp, ttg::MemDescTransOp,
-                                ttg::MemDescReinterpretOp>(
-                    memDesc.getDefiningOp());
-            if (!isViewLikeMemDesc) {
-              // Leaf 64-row TMEM descriptors are directly codegenable through
-              // 32x32b, while the split-N 16x32bx2 family is only needed for
-              // explicit split-N requests and view-like descriptors. Prefer the
-              // 32x32b direct layout here so tmem.load()/store() roundtrip
-              // matches the user-visible legacy M64 descriptor semantics.
-              py::object wideLayout = findDirectLayoutForMemDesc(
-                  memDesc, ttng::TMemAccessAtom::I32x32b);
-              if (!wideLayout.is_none()) {
-                if (debug)
-                  llvm::errs() << debugLog.str();
-                return wideLayout;
-              }
-            }
-            py::object splitNLayout = findDirectLayoutForMemDesc(
-                memDesc, ttng::TMemAccessAtom::I16x32bx2);
-            if (!splitNLayout.is_none()) {
-              if (debug)
-                llvm::errs() << debugLog.str();
-              return splitNLayout;
-            }
-          }
           if (debug)
             llvm::errs() << debugLog.str();
           return layout;

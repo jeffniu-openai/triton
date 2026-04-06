@@ -260,7 +260,8 @@ std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(const LinearLayout &memLayout,
                                 TMemAccessAtom atom, unsigned numWarps,
                                 int bitwidth,
-                                const TMemLdStRowPlan &rowPlan);
+                                const TMemLdStRowPlan &rowPlan,
+                                bool allowSplitNFastPath = true);
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll);
 

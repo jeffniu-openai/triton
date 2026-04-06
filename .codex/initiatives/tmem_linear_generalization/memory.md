@@ -2588,3 +2588,38 @@ rejection, not rescue
   - persistent attention returns to the origin-like `#linear` accumulator path
   - warmup shared memory is back down to `230592` bytes
   - the GB200 persistent warp-specialization repro passes again
+
+
+## 2026-04-06: packed sparse `I16x32bx2` TMEM half-row support-query anchor fix
+
+- Symptom:
+  - reduced repro `/tmp/repro_zero_only.py` and `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[linear]` still failed after the earlier packed sparse support recovery work
+  - the direct path had converged to the correct `I16x32bx2` family, but runtime still wrote the wrong row blocks
+- Debugging result:
+  - the remaining bug was not packet count or second-half offset anymore; it was the external warp anchor pair used for the recovered packed support query
+  - for the packed `64x64` support view, the raw layout still contains a hidden zero `row=16` basis
+  - stripped-layout anchor selection gave `(16, 32)` rows and broke the `warp1/warp3` halves
+  - raw unstripped anchor selection gave `(0, 16)` rows and broke the back half of the tile
+  - the correct external anchors are `(0, 32)`: warp parity already consumes the hidden zero `row=16` half internally, so the second external anchor must jump to the next non-zero row bit rather than the immediately following logical bit
+- Fix:
+  - in the packed sparse `I16x32bx2` helper in `TensorMemoryUtils.cpp`, keep anchor basis selection on the raw packed support layout
+  - if the first recovered anchor basis is all zero and the next recovered basis is non-zero, retarget the second external anchor to `warpRow1 * 2`
+- Result:
+  - reduced repro mismatch drops from `2048` to `0`
+  - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[linear]` passes again
+
+- 2026-04-06: Bounded the remaining `block_m_64` reinterpret/store wrong-code bucket further. Disabling the `getDistributedLayoutForTmemLdSt(...)` split-N fast path for the 16->32 unpacked recursion did not change either the explicit `p_tmem.get_reg_layout(instr_variant="32x32b")` rejection or the runtime `mismatch 2048` pattern in `/tmp/repro_zero_only_map_p_layout.py`. Fresh debug shows the stronger root cause: the auto-layout path picks a valid public reg layout `#ttg.linear<{register=[[0,1],[0,2],[0,4],[0,8],[0,16],[0,32]], lane=[[1,0],[2,0],[4,0],[8,0],[0,64]], warp=[[16,0],[32,0]], block=[]}>`, but `computeTMemLdStEncodingInfo(...)` still classifies that layout as atom=4 (`I16x32bx2`) for the sparse reinterpret support view instead of `I32x32b`. So the remaining bug is in `TensorMemoryUtils.cpp` atom selection / packed-support lowering, not just in `Dialect.cpp` family construction.
+
+## 2026-04-06: legacy M64 expanded-N TMEM sugar now canonicalizes to the row-zero-lift support form
+
+- Problem:
+  - legacy `TensorMemoryLayout((64, 64), col_stride=1)` on shape `64x128` still lowered through the old interleaved M64 canonical form (`row=16 -> (0, 64)`)
+  - direct ld/st reinterpret support rescue for the same user-visible view already used the row-zero-lift form (`row=16 -> (0, 0)`, extra `col=64` basis)
+  - that mismatch was enough to make the minimal legacy `p_tmem` reinterpret/store kernel fault even though the later store PTX matched the explicit-linear case
+- Diagnostic proof:
+  - with temporary allocator tracing, the legacy alloc reported `nRow=128, nCol=64`, `tmem_size=64`, and `tcgen05.alloc ... 64`
+  - the equivalent explicit linear alloc reported `nRow=64, nCol=128`, `tmem_size=128`, and `tcgen05.alloc ... 128`
+  - `TRITON_DEBUG_TMEM_QUERY=1` showed the reinterpret support path was already rescuing the legacy subslice to the row-zero-lift `64x64 -> 64x128` support layouts, so allocation and lowering were using different physical decompositions for the same legacy sugar
+- Resolution:
+  - canonical legacy M64 layouts with `shape[0] == 64` and expanded `N` now keep the hidden `row=16` basis zero and let the extra `N` growth stay in the column dimension
+  - this aligns legacy sugar with the direct-support linear analysis/lowering model and fixes the legacy `block_m_64` reinterpret/store bucket without adding hidden rematerialization or layout repair

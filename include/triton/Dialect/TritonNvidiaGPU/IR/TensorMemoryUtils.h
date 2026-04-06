@@ -51,6 +51,7 @@ struct TMemLdStEncodingInfo {
   bool unpacked = false;
   unsigned vec = 1;
   bool padding = false;
+  llvm::SmallVector<int32_t> packetOffsets = {};
 };
 
 struct TMemLdStPhysicalSupportPlan {

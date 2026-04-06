@@ -1859,26 +1859,34 @@ SCALES_LDST_VARIANT_CASES = [
     (128, 32, 4, "32x32b", _expected_ldst_ops("16x32bx2.x32.b32", [0])),
     (128, 32, 8, "32x32b", _expected_ldst_ops("32x32b.x16.b32", [0])),
     (16, 4, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
-    (16, 8, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (64, 8, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
     (64, 16, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x2.b32", [0, 4])),
     (64, 32, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x4.b32", [0, 8])),
     (128, 8, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x2.b32", [0, 4])),
     (128, 16, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x4.b32", [0, 8])),
     (128, 32, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x8.b32", [0, 16])),
-    (16, 8, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
-    (16, 16, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2, 4, 6])),
-    (16, 16, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (16, 8, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 16, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (16, 16, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (32, 8, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
     (32, 8, 8, "32x32b", _expected_ldst_ops("32x32b.x1.b32", [0])),
-    (16, 8, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
-    (16, 16, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
-    (16, 16, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 8, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (16, 16, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 4])),
+    (16, 16, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 4])),
     (32, 16, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2, 4, 6])),
     (32, 4, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
 ]
 
-SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = []
+SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
+    (
+        16,
+        8,
+        8,
+        "16x32bx2",
+        "To be able to `tmem.load` into `tl.split` you need to have more than 4 8-bit registers",
+        False,
+    ),
+]
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),
