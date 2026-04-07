@@ -4127,6 +4127,10 @@ computeTMemLdStEncodingInfoImpl(
       !hasZeroBasisAlong(originalMemLayout, kCol) &&
       logicalRows == originalActivePhysicalRows &&
       logicalCols == originalPhysicalCols * 2;
+  bool isRowZeroM64ReinterpretView =
+      bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
+      !hasZeroBasisAlong(memLayout, kCol) && logicalRows == physicalRows &&
+      logicalCols == physicalCols * 2;
   auto getRawLinearRegLayout = [&]() -> std::optional<LinearLayout> {
     auto linear = dyn_cast_if_present<LinearEncodingAttr>(regTy.getEncoding());
     if (!linear)
@@ -4432,7 +4436,8 @@ computeTMemLdStEncodingInfoImpl(
     auto info = lowerTMemLdSt(packedCvt, /*maxnreg=*/2, /*bitwidth=*/32,
                               /*emitError=*/{}, /*unpacked=*/false,
                               packedWarpBasis0, packedWarpBasis1,
-                              packedRowSpan);
+                              packedRowSpan,
+                              /*preferI16x32bx2=*/isRowZeroM64ReinterpretView);
     if (failed(info)) {
       if (debugQuery) {
         llvm::errs() << "[tmem-ldst] packed16 support skip: rowSpan="
@@ -4483,7 +4488,8 @@ computeTMemLdStEncodingInfoImpl(
     bool isPackedRowZeroLiftedView =
         hasZeroBasisAlong(packedMemLayout, kRow) &&
         !hasZeroBasisAlong(packedMemLayout, kCol);
-    if (isPackedRowZeroLiftedView && info->atom != TMemAccessAtom::I32x32b) {
+    if (isPackedRowZeroLiftedView && info->atom != TMemAccessAtom::I32x32b &&
+        !isRowZeroM64ReinterpretView) {
       if (debugQuery) {
         llvm::errs() << "[tmem-ldst] packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering\n";
       }
@@ -5046,7 +5052,9 @@ computeTMemLdStEncodingInfoImpl(
   }
   bool isUnsupportedRowZeroLiftedReinterpretPlan =
       isOriginalRowZeroLiftedReinterpret &&
-      !(info->atom == TMemAccessAtom::I32x32b && info->unpacked);
+      !(info->atom == TMemAccessAtom::I32x32b && info->unpacked) &&
+      !(isRowZeroM64ReinterpretView &&
+        info->atom == TMemAccessAtom::I16x32bx2);
   if (isUnsupportedRowZeroLiftedReinterpretPlan) {
     if (emitError) {
       emitError() << "Failed to lower TMEM load/store: row-zero lifted TMEM reinterpret views "
@@ -5059,11 +5067,10 @@ computeTMemLdStEncodingInfoImpl(
     warpBasis0.assign(expectedWarp0Basis->begin(), expectedWarp0Basis->end());
     warpBasis1.assign(expectedWarp1Basis->begin(), expectedWarp1Basis->end());
   }
-  bool isRowZeroM64ReinterpretView =
-      bitwidth == 16 && info->atom == TMemAccessAtom::I16x32bx2 &&
-      logicalRows == physicalRows && logicalCols == physicalCols * 2 &&
-      hasZeroBasisAlong(memLayout, kRow) && !hasZeroBasisAlong(memLayout, kCol);
-  if (isRowZeroM64ReinterpretView && info->secondHalfOffset)
+  bool isI16RowZeroM64ReinterpretView =
+      isRowZeroM64ReinterpretView &&
+      info->atom == TMemAccessAtom::I16x32bx2;
+  if (isI16RowZeroM64ReinterpretView && info->secondHalfOffset)
     info->secondHalfOffset = *info->secondHalfOffset * 2;
   info->warpBaseOffset0 = packTMemBasisOffset(warpBasis0);
   info->warpBaseOffset1 = packTMemBasisOffset(warpBasis1);

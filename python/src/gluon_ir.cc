@@ -1848,6 +1848,28 @@ void init_gluon_ir(py::module &&m) {
           bool disableTypeOnlyFallback =
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;
+          auto hasZeroBasisAlong = [&](const tt::LinearLayout &layout,
+                                      StringAttr dim) {
+            if (!layout.hasInDim(dim))
+              return false;
+            for (unsigned idx = 0; idx < layout.getInDimSizeLog2(dim); ++idx) {
+              if (llvm::all_of(layout.getBasis(dim, idx),
+                               [](int32_t value) { return value == 0; })) {
+                return true;
+              }
+            }
+            return false;
+          };
+          auto tryTypeOnlyM64SplitNLayout = [&]() -> py::object {
+            if (queryMemDescTy.getRank() != 2 || queryMemDescTy.getShape()[0] != 64 ||
+                queryMemDescTy.getElementTypeBitWidth() != 16 || numWarps != 4 ||
+                isa<ttng::TensorMemoryScalesEncodingAttr>(queryMemDescTy.getEncoding()))
+              return py::none();
+            return firstLegalLayoutForType(
+                queryMemDescTy,
+                ttng::getTmemCompatibleLayouts(queryMemDescTy, numWarps),
+                ttng::TMemAccessAtom::I16x32bx2);
+          };
           std::string supportError;
           auto trySupportLayout =
               [&](const ttng::TMemLdStQueryLayout &supportQuery,
@@ -1982,6 +2004,13 @@ void init_gluon_ir(py::module &&m) {
               debugLog << "[tmem-reg-layout] reshaped support query failed\n";
             return py::none();
           };
+          if (!desiredAtom || *desiredAtom == ttng::TMemAccessAtom::I16x32bx2) {
+            py::object layout = tryTypeOnlyM64SplitNLayout();
+            if (!layout.is_none()) {
+              appendTrace("findDirectLayoutForMemDesc typeOnlyM64SplitN");
+              return layout;
+            }
+          }
           if (auto supportPlan =
                   ttng::getTMemLdStSubviewSupportPlan(queryMemDesc,
                                                       &supportError)) {
