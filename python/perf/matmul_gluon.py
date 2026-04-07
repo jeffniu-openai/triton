@@ -329,6 +329,7 @@ def matmul_epilogue_partition(
         ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.stride_y_n
         gl.store(ptrs, out, mask=mask)
 
+
 @gluon.jit(repr=lambda _: "spo_p_matmul_es8_gather_ws")
 def _p_matmul(
     YPtr,
