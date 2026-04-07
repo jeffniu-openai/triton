@@ -45,7 +45,6 @@ def matmul(
     b_mx_scales = precision_config.b_mx_scale
 
     assert a.ndim == 2
-    assert b.ndim == 2
     print(f"{a.shape=}")
     print(f"{b.shape=}")
     K = a.shape[-1]
