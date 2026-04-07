@@ -260,9 +260,7 @@ def matmul_epilogue_partition(
     useful_grid_m = p.useful_grid_m
     num_blocks = useful_grid_m * grid_n
 
-    acc_reg_layout: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.float32, (BLOCK_N, BLOCK_M), p.acc_bufs.type.layout, gl.num_warps()
-    )
+    acc_reg_layout: gl.constexpr = p.acc_bufs.index(0).get_reg_layout()
 
     num_warps: gl.constexpr = gl.num_warps()
     warps_n: gl.constexpr = 2 if num_warps >= 4 and BLOCK_N >= 256 else 1
@@ -381,9 +379,7 @@ def _p_matmul(
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
     scale_k: gl.constexpr = BLOCK_K // 32
     a_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
-    a_scale_reg_layout: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.uint8, (BLOCK_M, scale_k), scale_layout, gl.num_warps()
-    )
+    a_scale_reg_layout: gl.constexpr = a_scale_tmem.get_reg_layout()
     a_scale_tmem.store(gl.full((BLOCK_M, scale_k), 127, dtype=gl.uint8, layout=a_scale_reg_layout))
 
     # Use a slightly larger slice of the Blackwell shared-memory budget for

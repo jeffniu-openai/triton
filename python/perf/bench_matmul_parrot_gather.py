@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
+import sys
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import torch
 from triton.testing import do_bench_cudagraph
@@ -25,6 +28,9 @@ from triton_kernels.topk import topk
 DEFAULT_PEAK_FP8_TFLOPS = 5_000.0
 DEFAULT_PEAK_MEM_TBPS = 8.0
 DEFAULT_BENCH_BACKEND = "do_bench_cudagraph"
+DEFAULT_KERNEL_MODE = "both"
+ORIGINAL_KERNEL_NAME = "original"
+GLUON_KERNEL_NAME = "gluon"
 
 
 @dataclass(frozen=True)
@@ -89,6 +95,7 @@ class BenchMetrics:
 
 @dataclass(frozen=True)
 class BenchResult:
+    kernel_name: str
     case: Case
     local_rank: int
     n_expts_local: int
@@ -101,6 +108,24 @@ class BenchResult:
     peak_mem_tbps: float
     metrics: BenchMetrics
     expected_slice_size: int | None
+
+
+@dataclass(frozen=True)
+class PreparedCase:
+    case: Case
+    local_rank: int
+    n_expts_local: int
+    x: torch.Tensor
+    w: Tensor
+    w_scale: Tensor
+    bias: torch.Tensor
+    ragged_batch_metadata: RaggedTensorMetadata
+    gather_indx: torch.Tensor
+    fused_activation: FusedActivation
+    x_scale: torch.Tensor
+    y_scale: torch.Tensor
+    out_shape: tuple[int, int, int]
+    out_dtype: torch.dtype
 
 
 LARGE_BATCH_SIZES = (
@@ -119,6 +144,36 @@ PARAMS = [
     Params(288, 8, 4, (5120, 10240), LARGE_BATCH_SIZES, False),
     Params(64, 1, 4, (1280, 2560), PARROT_BATCH_SIZES, True),
 ]
+
+
+KernelFn = Callable[..., torch.Tensor]
+
+
+@lru_cache(maxsize=1)
+def load_matmul_gluon_module():
+    module_name = "_bench_matmul_parrot_gather_matmul_gluon"
+    module_path = Path(__file__).with_name("matmul_gluon.py")
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def resolve_kernel(kernel_name: str) -> KernelFn:
+    if kernel_name == ORIGINAL_KERNEL_NAME:
+        return matmul
+    if kernel_name == GLUON_KERNEL_NAME:
+        return load_matmul_gluon_module().matmul_ogs
+    raise ValueError(f"Unknown kernel {kernel_name}")
+
+
+def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
+    if kernel_mode == DEFAULT_KERNEL_MODE:
+        return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME)
+    return (kernel_mode,)
 
 
 def alloc_randn(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torch.Tensor:
@@ -217,16 +272,12 @@ def make_cases(case_family: str, min_batch_size: int | None, max_batch_size: int
     return cases
 
 
-def benchmark_case(
+def prepare_case(
     case: Case,
     device: str,
-    warmup: int,
-    rep: int,
     seed: int,
     local_rank_override: int | None,
-    peak_fp8_tflops: float,
-    peak_mem_tbps: float,
-) -> BenchResult:
+) -> PreparedCase:
     torch.manual_seed(seed)
 
     if local_rank_override is None:
@@ -263,37 +314,84 @@ def benchmark_case(
     x_scale = normalize_flex_scale(rand_scale(0.5))
     y_scale = normalize_flex_scale(rand_scale(3.5))
 
-    precision_config = PrecisionConfig(
-        flexpoint_saturate_inf=True,
-        b_mx_scale=w_scale,
-        b_microblock_size=MXFP_BLOCK_SIZE.value,
+    return PreparedCase(
+        case=case,
+        local_rank=local_rank,
+        n_expts_local=n_expts_local,
+        x=x,
+        w=w,
+        w_scale=w_scale,
+        bias=bias,
+        ragged_batch_metadata=ragged_batch_metadata,
+        gather_indx=gather_indx,
+        fused_activation=fused_activation,
+        x_scale=x_scale,
+        y_scale=y_scale,
+        out_shape=(1, case.batch_size * case.n_expts_act, case.n // fused_activation.specs.reduction_n),
         out_dtype=torch.float8_e4m3fn,
+    )
+
+
+def make_precision_config(prepared: PreparedCase) -> PrecisionConfig:
+    return PrecisionConfig(
+        flexpoint_saturate_inf=True,
+        b_mx_scale=prepared.w_scale,
+        b_microblock_size=MXFP_BLOCK_SIZE.value,
+        out_dtype=prepared.out_dtype,
         flex_ctx=FlexCtx(
-            lhs_data=InFlexData(dtype=torch.float8_e4m3fn, scale=x_scale),
+            lhs_data=InFlexData(dtype=prepared.out_dtype, scale=prepared.x_scale),
             rhs_data=InFlexData(),
-            out_data=OutFlexData(dtype=torch.float8_e4m3fn, expected_scale=y_scale),
+            out_data=OutFlexData(dtype=prepared.out_dtype, expected_scale=prepared.y_scale),
         ),
     )
 
-    out = torch.zeros(
-        (1, case.batch_size * case.n_expts_act, case.n // fused_activation.specs.reduction_n),
-        dtype=torch.float8_e4m3fn,
-        device=device,
-    )
+
+def make_output_buffer(prepared: PreparedCase) -> torch.Tensor:
+    return torch.zeros(prepared.out_shape, dtype=prepared.out_dtype, device=prepared.x.device)
+
+
+def normalize_output_tensor(y: torch.Tensor) -> torch.Tensor:
+    return y.squeeze(0) if y.ndim == 3 and y.shape[0] == 1 else y
+
+
+def make_kernel_run(prepared: PreparedCase, kernel_name: str) -> tuple[Callable[[], torch.Tensor], torch.Tensor, PrecisionConfig]:
+    kernel = resolve_kernel(kernel_name)
+    precision_config = make_precision_config(prepared)
+    out = make_output_buffer(prepared)
 
     def run() -> torch.Tensor:
-        return matmul(
-            a=x,
-            b=w,  # type: ignore[arg-type]
-            bias=bias,
-            a_ragged_metadata=ragged_batch_metadata,
-            gather_indx=gather_indx,
+        return kernel(
+            a=prepared.x,
+            b=prepared.w,  # type: ignore[arg-type]
+            bias=prepared.bias,
+            a_ragged_metadata=prepared.ragged_batch_metadata,
+            gather_indx=prepared.gather_indx,
             precision_config=precision_config,
             c=out,
-            fused_activation=fused_activation,
+            fused_activation=prepared.fused_activation,
         )
 
-    y = run()
+    return run, out, precision_config
+
+
+def run_case_once(prepared: PreparedCase, kernel_name: str) -> tuple[torch.Tensor, PrecisionConfig]:
+    run, out, precision_config = make_kernel_run(prepared, kernel_name)
+    y = normalize_output_tensor(run())
+    if y.dtype != out.dtype:
+        raise RuntimeError(f"Expected output dtype {out.dtype}, got {y.dtype}")
+    return y, precision_config
+
+
+def benchmark_prepared_case(
+    prepared: PreparedCase,
+    kernel_name: str,
+    warmup: int,
+    rep: int,
+    peak_fp8_tflops: float,
+    peak_mem_tbps: float,
+) -> BenchResult:
+    run, out, _precision_config = make_kernel_run(prepared, kernel_name)
+    y = normalize_output_tensor(run())
     if y.dtype != out.dtype:
         raise RuntimeError(f"Expected output dtype {out.dtype}, got {y.dtype}")
 
@@ -301,16 +399,17 @@ def benchmark_case(
     # timing to remove per-iteration host launch overhead.
     _ = warmup
     runtime_ms = float(do_bench_cudagraph(run, rep=rep))
-    metrics = compute_matmul_proton_metrics(x, w, out, ragged_batch_metadata, n=case.n, k=case.k)
+    metrics = compute_matmul_proton_metrics(prepared.x, prepared.w, out, prepared.ragged_batch_metadata, n=prepared.case.n, k=prepared.case.k)
     tflops = metrics.flops / runtime_ms / 1e9
     tbps = metrics.bytes / runtime_ms / 1e9
     pct_peak_fp8_tflops = 100.0 * tflops / peak_fp8_tflops
     pct_peak_mem_tbps = 100.0 * tbps / peak_mem_tbps
 
     return BenchResult(
-        case=case,
-        local_rank=local_rank,
-        n_expts_local=n_expts_local,
+        kernel_name=kernel_name,
+        case=prepared.case,
+        local_rank=prepared.local_rank,
+        n_expts_local=prepared.n_expts_local,
         runtime_ms=runtime_ms,
         tflops=tflops,
         tbps=tbps,
@@ -319,20 +418,45 @@ def benchmark_case(
         peak_fp8_tflops=peak_fp8_tflops,
         peak_mem_tbps=peak_mem_tbps,
         metrics=metrics,
-        expected_slice_size=ragged_batch_metadata.expected_slice_size,
+        expected_slice_size=prepared.ragged_batch_metadata.expected_slice_size,
     )
+
+
+def benchmark_case(
+    case: Case,
+    kernel_name: str,
+    device: str,
+    warmup: int,
+    rep: int,
+    seed: int,
+    local_rank_override: int | None,
+    peak_fp8_tflops: float,
+    peak_mem_tbps: float,
+) -> BenchResult:
+    prepared = prepare_case(case, device=device, seed=seed, local_rank_override=local_rank_override)
+    return benchmark_prepared_case(prepared, kernel_name, warmup, rep, peak_fp8_tflops, peak_mem_tbps)
 
 
 def format_result(result: BenchResult) -> str:
     case = result.case
     kind = "parrot" if case.is_parrot_gather else "non-parrot"
     return (
-        f"{case.case_id:>34} | kind={kind:>11} | rank={result.local_rank:>2} | "
+        f"{case.case_id:>34} | kernel={result.kernel_name:>8} | kind={kind:>11} | rank={result.local_rank:>2} | "
         f"E_local={result.n_expts_local:>3} | tokens={result.metrics.n_tokens:>6} | "
         f"nonzero_expts={result.metrics.n_nonzero_experts:>3} | "
         f"ms={result.runtime_ms:>8.4f} | TFLOP/s={result.tflops:>8.2f} | "
         f"TB/s={result.tbps:>6.2f} | fp8_roof={result.pct_peak_fp8_tflops:>6.2f}% | "
         f"hbm_roof={result.pct_peak_mem_tbps:>6.2f}%"
+    )
+
+
+def format_comparison(original: BenchResult, gluon: BenchResult) -> str:
+    speedup = original.runtime_ms / gluon.runtime_ms
+    return (
+        f"compare | speedup(gluon/original)={speedup:>6.3f}x | "
+        f"delta_ms={gluon.runtime_ms - original.runtime_ms:+8.4f} | "
+        f"delta_TFLOP/s={gluon.tflops - original.tflops:+8.2f} | "
+        f"delta_TB/s={gluon.tbps - original.tbps:+6.2f}"
     )
 
 
@@ -342,6 +466,7 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
         writer = csv.writer(f)
         writer.writerow(
             [
+                "kernel_name",
                 "case_id",
                 "case_family",
                 "batch_size",
@@ -371,6 +496,7 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
             case = result.case
             writer.writerow(
                 [
+                    result.kernel_name,
                     case.case_id,
                     "parrot" if case.is_parrot_gather else "non-parrot",
                     case.batch_size,
@@ -400,9 +526,10 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Benchmark triton_kernels.matmul on the parrot-gather workload grid derived from the reference test."
+        description="Benchmark triton_kernels.matmul and the specialized matmul_ogs kernel on the parrot-gather workload grid derived from the reference test."
     )
     parser.add_argument("--case-family", choices=("all", "non-parrot", "parrot"), default="all")
+    parser.add_argument("--kernel", choices=(ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, DEFAULT_KERNEL_MODE), default=DEFAULT_KERNEL_MODE)
     parser.add_argument("--min-batch-size", type=int, default=None)
     parser.add_argument("--max-batch-size", type=int, default=None)
     parser.add_argument("--limit", type=int, default=None)
@@ -434,18 +561,22 @@ def main() -> None:
 
     results: list[BenchResult] = []
     for idx, case in enumerate(cases, start=1):
-        result = benchmark_case(
-            case,
-            device=args.device,
-            warmup=args.warmup,
-            rep=args.rep,
-            seed=args.seed,
-            local_rank_override=args.local_rank,
-            peak_fp8_tflops=args.peak_fp8_tflops,
-            peak_mem_tbps=args.peak_mem_tbps,
-        )
-        results.append(result)
-        print(f"[{idx:>3}/{len(cases):>3}] {format_result(result)}")
+        prepared = prepare_case(case, device=args.device, seed=args.seed, local_rank_override=args.local_rank)
+        case_results: dict[str, BenchResult] = {}
+        for kernel_name in iter_kernel_names(args.kernel):
+            result = benchmark_prepared_case(
+                prepared,
+                kernel_name,
+                warmup=args.warmup,
+                rep=args.rep,
+                peak_fp8_tflops=args.peak_fp8_tflops,
+                peak_mem_tbps=args.peak_mem_tbps,
+            )
+            case_results[kernel_name] = result
+            results.append(result)
+            print(f"[{idx:>3}/{len(cases):>3}] {format_result(result)}")
+        if ORIGINAL_KERNEL_NAME in case_results and GLUON_KERNEL_NAME in case_results:
+            print(f"      {format_comparison(case_results[ORIGINAL_KERNEL_NAME], case_results[GLUON_KERNEL_NAME])}")
 
     if args.csv_out is not None:
         write_csv(args.csv_out, results)

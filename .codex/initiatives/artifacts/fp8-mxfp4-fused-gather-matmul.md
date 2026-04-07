@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-07T00:52:05Z
+updated: 2026-04-07T04:19:21Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -127,7 +127,7 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
 - [x] Add a local benchmark driver that reproduces the reference workload shapes and routing pattern.
   - Artifact: `python/perf/bench_matmul_parrot_gather.py`
   - Dependencies: Local editable installs for `triton` and `triton_kernels`
-  - Notes: Uses only local `triton_kernels` code plus proton-matching flops/bytes accounting, emits `% peak FP8` and `% peak HBM bandwidth` with overridable GB300 roofline constants, and now times with `do_bench_cudagraph` to remove eager host-launch overhead.
+  - Notes: Uses only local `triton_kernels` code plus proton-matching flops/bytes accounting, emits `% peak FP8` and `% peak HBM bandwidth` with overridable GB300 roofline constants, times with `do_bench_cudagraph`, and can compare the baseline kernel against `python/perf/matmul_gluon.py::matmul_ogs` on the same prepared inputs.
 - [ ] Capture current baseline performance and launch choices for the target cases.
   - Artifact: Baseline report in persistent memory
   - Dependencies: Benchmark matrix
@@ -191,6 +191,12 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `python -m py_compile python/perf/bench_matmul_parrot_gather.py`; `python python/perf/bench_matmul_parrot_gather.py --case-family non-parrot --limit 45 --rep 100 --csv-out /root/.codex/memories/triton-fp8-mxfp4-fused-gather/raw/es8_E256_batch_sweep_cudagraph_roofline_2026-04-07.csv`
   - Learnings: Removing eager host-launch overhead changes the shape of the curve materially at small and medium batch sizes; `bs=1` improves by about `20.9x` (`0.2989 -> 0.0143 ms`) and `bs=1024` by about `1.84x`, but the large-batch regime is nearly unchanged to slightly worse; peak HBM utilization shifts to `70.72%` at `bs=128` (`5.66 TB/s`) while peak FP8 utilization is `54.21%` at `bs=32768` (`2710.50 TFLOP/s`); the device-side cliff still appears at `bs=15360 -> 16384`
   - Plan updates: Treat the cudagraph sweep as the preferred baseline when comparing specialized kernel device-side performance, and keep the eager sweep only as a reference for end-to-end launch overhead
+
+- `2026-04-07` Completed: Hooked the specialized Gluon kernel into the benchmark and added a correctness harness
+  - Artifact: `python/perf/bench_matmul_parrot_gather.py`, `python/perf/matmul_gluon.py`, `python/triton_kernels/tests/test_matmul.py`
+  - Validation: `make`; `python -m py_compile python/perf/matmul_gluon.py python/perf/bench_matmul_parrot_gather.py python/triton_kernels/tests/test_matmul.py`; `python python/perf/bench_matmul_parrot_gather.py --case-family non-parrot --limit 1 --kernel both --rep 20`; `pytest -s --tb=short python/triton_kernels/tests/test_matmul.py::test_matmul_ogs_matches_matmul[bs1_E256_es8_B5120x10240] python/triton_kernels/tests/test_matmul.py::test_matmul_ogs_matches_matmul[bs1_E64_es1_B1280x2560_parrot]`; `pytest -s --tb=short python/triton_kernels/tests/test_matmul.py::test_matmul_ogs_matches_matmul[bs14336_E256_es8_B5120x10240]`
+  - Learnings: The benchmark can now emit side-by-side timing for the baseline and specialized kernels using identical prepared inputs and one CSV row per kernel; on this checkout the pushed Gluon kernel needed a small API update from `blackwell.get_tmem_reg_layout(...)` to descriptor `.get_reg_layout()` to compile against the local Triton version; the specialized kernel is already faster than baseline on the smallest `E256/es8` smoke case (`1.48x` at `bs=1`)
+  - Plan updates: Use the comparison mode for future performance sweeps while keeping the new pytest harness, which compares outputs in float32 with the existing fp8 x mxfp4 tolerance (`maxtol=3e-2`), as the correctness gate for specialized-kernel edits
 
 ## Next Up
 
