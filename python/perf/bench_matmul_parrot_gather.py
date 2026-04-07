@@ -160,7 +160,7 @@ PARAMS = [
 ]
 
 
-KernelFn = Callable[..., torch.Tensor | None]
+KernelFn = Callable[..., torch.Tensor]
 
 
 def resolve_kernel(kernel_name: str) -> KernelFn:
@@ -407,8 +407,7 @@ def make_kernel_run(prepared: PreparedCase, kernel_name: str) -> tuple[Callable[
     )
 
     def run() -> torch.Tensor:
-        y = kernel(**kernel_kwargs)
-        return out if y is None else y
+        return kernel(**kernel_kwargs)
 
     return run, out, precision_config
 
