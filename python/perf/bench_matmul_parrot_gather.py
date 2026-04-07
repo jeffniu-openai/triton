@@ -16,9 +16,11 @@ from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mx
 from triton_kernels.swiglu import swiglu_fn
 from triton_kernels.tensor import FP4, RaggedTensorMetadata, Tensor, convert_layout, make_ragged_tensor_metadata, wrap_torch_tensor
 from triton_kernels.tensor_details.layout import make_default_matmul_mxfp4_w_layout, make_default_matmul_mxfp4_w_scale_layout
+from triton_kernels.testing import assert_close
 from triton_kernels.topk import topk
 
 from .matmul_gluon import matmul_ogs
+from .matmul_ws import matmul as matmul_ws
 
 # Default roofline constants for a single NVIDIA GB300 GPU.
 # FP8 peak is inferred from the official GB300 NVL72 rack spec: 720 PFLOP/s
@@ -28,8 +30,10 @@ DEFAULT_PEAK_FP8_TFLOPS = 5_000.0
 DEFAULT_PEAK_MEM_TBPS = 8.0
 DEFAULT_BENCH_BACKEND = "do_bench_cudagraph"
 DEFAULT_KERNEL_MODE = "both"
+ALL_KERNEL_MODE = "all"
 ORIGINAL_KERNEL_NAME = "original"
 GLUON_KERNEL_NAME = "gluon"
+WS_KERNEL_NAME = "ws"
 
 
 @dataclass(frozen=True)
@@ -107,6 +111,17 @@ class BenchResult:
     peak_mem_tbps: float
     metrics: BenchMetrics
     expected_slice_size: int | None
+    validated: bool = False
+    validation_reference_kernel: str | None = None
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    kernel_name: str
+    case: Case
+    local_rank: int
+    n_expts_local: int
+    validation_reference_kernel: str
 
 
 @dataclass(frozen=True)
@@ -145,7 +160,7 @@ PARAMS = [
 ]
 
 
-KernelFn = Callable[..., torch.Tensor]
+KernelFn = Callable[..., torch.Tensor | None]
 
 
 def resolve_kernel(kernel_name: str) -> KernelFn:
@@ -153,12 +168,16 @@ def resolve_kernel(kernel_name: str) -> KernelFn:
         return matmul
     if kernel_name == GLUON_KERNEL_NAME:
         return matmul_ogs
+    if kernel_name == WS_KERNEL_NAME:
+        return matmul_ws
     raise ValueError(f"Unknown kernel {kernel_name}")
 
 
 def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
     if kernel_mode == DEFAULT_KERNEL_MODE:
         return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME)
+    if kernel_mode == ALL_KERNEL_MODE:
+        return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, WS_KERNEL_NAME)
     return (kernel_mode,)
 
 
@@ -340,22 +359,56 @@ def normalize_output_tensor(y: torch.Tensor) -> torch.Tensor:
     return y.squeeze(0) if y.ndim == 3 and y.shape[0] == 1 else y
 
 
+def validate_case_outputs(
+    case: Case,
+    kernel_name: str,
+    candidate: tuple[torch.Tensor, PrecisionConfig],
+    reference_kernel_name: str,
+    reference: tuple[torch.Tensor, PrecisionConfig],
+) -> None:
+    ref_y, ref_precision = reference
+    cand_y, cand_precision = candidate
+    assert_close(
+        ref_y.to(torch.float32),
+        cand_y.to(torch.float32),
+        maxtol=3e-2,
+        rmstol=None,
+        description=f"{case.case_id}:{kernel_name}_vs_{reference_kernel_name}",
+        verbose=False,
+    )
+
+    ref_scale = ref_precision.flex_ctx.out_data.actual_scale
+    cand_scale = cand_precision.flex_ctx.out_data.actual_scale
+    if ref_scale is not None or cand_scale is not None:
+        assert ref_scale is not None and cand_scale is not None
+        assert_close(
+            ref_scale.to(torch.float32),
+            cand_scale.to(torch.float32),
+            maxtol=1e-10,
+            rmstol=1e-10,
+            description=f"{case.case_id}:{kernel_name}_scale_vs_{reference_kernel_name}",
+            verbose=False,
+        )
+
+
 def make_kernel_run(prepared: PreparedCase, kernel_name: str) -> tuple[Callable[[], torch.Tensor], torch.Tensor, PrecisionConfig]:
     kernel = resolve_kernel(kernel_name)
     precision_config = make_precision_config(prepared)
     out = make_output_buffer(prepared)
+    kernel_kwargs = dict(
+        a=prepared.x,
+        b=prepared.w,  # type: ignore[arg-type]
+        bias=prepared.bias,
+        a_ragged_metadata=prepared.ragged_batch_metadata,
+        gather_indx=prepared.gather_indx,
+        precision_config=precision_config,
+        c=out,
+        fused_activation=prepared.fused_activation,
+    )
 
     def run() -> torch.Tensor:
-        return kernel(
-            a=prepared.x,
-            b=prepared.w,  # type: ignore[arg-type]
-            bias=prepared.bias,
-            a_ragged_metadata=prepared.ragged_batch_metadata,
-            gather_indx=prepared.gather_indx,
-            precision_config=precision_config,
-            c=out,
-            fused_activation=prepared.fused_activation,
-        )
+        y = kernel(**kernel_kwargs)
+        return out if y is None else y
 
     return run, out, precision_config
 
@@ -375,11 +428,18 @@ def benchmark_prepared_case(
     rep: int,
     peak_fp8_tflops: float,
     peak_mem_tbps: float,
+    validation_reference: tuple[str, tuple[torch.Tensor, PrecisionConfig]] | None = None,
 ) -> BenchResult:
-    run, out, _precision_config = make_kernel_run(prepared, kernel_name)
+    run, out, precision_config = make_kernel_run(prepared, kernel_name)
     y = normalize_output_tensor(run())
     if y.dtype != out.dtype:
         raise RuntimeError(f"Expected output dtype {out.dtype}, got {y.dtype}")
+    validated = False
+    validation_reference_kernel = None
+    if validation_reference is not None:
+        validation_reference_kernel, reference_output = validation_reference
+        validate_case_outputs(prepared.case, kernel_name, (y, precision_config), validation_reference_kernel, reference_output)
+        validated = True
 
     # Retain the warmup CLI argument for compatibility, but use CUDA-graph replay
     # timing to remove per-iteration host launch overhead.
@@ -405,6 +465,25 @@ def benchmark_prepared_case(
         peak_mem_tbps=peak_mem_tbps,
         metrics=metrics,
         expected_slice_size=prepared.ragged_batch_metadata.expected_slice_size,
+        validated=validated,
+        validation_reference_kernel=validation_reference_kernel,
+    )
+
+
+def validate_prepared_case(
+    prepared: PreparedCase,
+    kernel_name: str,
+    validation_reference: tuple[str, tuple[torch.Tensor, PrecisionConfig]],
+) -> ValidationResult:
+    validation_reference_kernel, reference_output = validation_reference
+    candidate_output = run_case_once(prepared, kernel_name)
+    validate_case_outputs(prepared.case, kernel_name, candidate_output, validation_reference_kernel, reference_output)
+    return ValidationResult(
+        kernel_name=kernel_name,
+        case=prepared.case,
+        local_rank=prepared.local_rank,
+        n_expts_local=prepared.n_expts_local,
+        validation_reference_kernel=validation_reference_kernel,
     )
 
 
@@ -426,23 +505,33 @@ def benchmark_case(
 def format_result(result: BenchResult) -> str:
     case = result.case
     kind = "parrot" if case.is_parrot_gather else "non-parrot"
+    validation = f" | validate=ok({result.validation_reference_kernel})" if result.validated else ""
     return (
         f"{case.case_id:>34} | kernel={result.kernel_name:>8} | kind={kind:>11} | rank={result.local_rank:>2} | "
         f"E_local={result.n_expts_local:>3} | tokens={result.metrics.n_tokens:>6} | "
         f"nonzero_expts={result.metrics.n_nonzero_experts:>3} | "
         f"ms={result.runtime_ms:>8.4f} | TFLOP/s={result.tflops:>8.2f} | "
         f"TB/s={result.tbps:>6.2f} | fp8_roof={result.pct_peak_fp8_tflops:>6.2f}% | "
-        f"hbm_roof={result.pct_peak_mem_tbps:>6.2f}%"
+        f"hbm_roof={result.pct_peak_mem_tbps:>6.2f}%{validation}"
     )
 
 
-def format_comparison(original: BenchResult, gluon: BenchResult) -> str:
-    speedup = original.runtime_ms / gluon.runtime_ms
+def format_comparison(reference: BenchResult, candidate: BenchResult) -> str:
+    speedup = reference.runtime_ms / candidate.runtime_ms
     return (
-        f"compare | speedup(gluon/original)={speedup:>6.3f}x | "
-        f"delta_ms={gluon.runtime_ms - original.runtime_ms:+8.4f} | "
-        f"delta_TFLOP/s={gluon.tflops - original.tflops:+8.2f} | "
-        f"delta_TB/s={gluon.tbps - original.tbps:+6.2f}"
+        f"compare | speedup({candidate.kernel_name}/{reference.kernel_name})={speedup:>6.3f}x | "
+        f"delta_ms={candidate.runtime_ms - reference.runtime_ms:+8.4f} | "
+        f"delta_TFLOP/s={candidate.tflops - reference.tflops:+8.2f} | "
+        f"delta_TB/s={candidate.tbps - reference.tbps:+6.2f}"
+    )
+
+
+def format_validation(result: ValidationResult) -> str:
+    case = result.case
+    kind = "parrot" if case.is_parrot_gather else "non-parrot"
+    return (
+        f"{case.case_id:>34} | kernel={result.kernel_name:>8} | kind={kind:>11} | rank={result.local_rank:>2} | "
+        f"E_local={result.n_expts_local:>3} | validate=ok({result.validation_reference_kernel})"
     )
 
 
@@ -470,6 +559,8 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
                 "tflops",
                 "tbps",
                 "bench_backend",
+                "validated",
+                "validation_reference_kernel",
                 "pct_peak_fp8_tflops",
                 "pct_peak_mem_tbps",
                 "peak_fp8_tflops",
@@ -500,6 +591,8 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
                     f"{result.tflops:.8f}",
                     f"{result.tbps:.8f}",
                     DEFAULT_BENCH_BACKEND,
+                    str(result.validated).lower(),
+                    result.validation_reference_kernel or "",
                     f"{result.pct_peak_fp8_tflops:.8f}",
                     f"{result.pct_peak_mem_tbps:.8f}",
                     f"{result.peak_fp8_tflops:.8f}",
@@ -512,15 +605,21 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Benchmark triton_kernels.matmul and the specialized matmul_ogs kernel on the parrot-gather workload grid derived from the reference test."
+        description="Benchmark triton_kernels.matmul and specialized kernel entrypoints on the parrot-gather workload grid derived from the reference test."
     )
     parser.add_argument("--case-family", choices=("all", "non-parrot", "parrot"), default="all")
-    parser.add_argument("--kernel", choices=(ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, DEFAULT_KERNEL_MODE), default=DEFAULT_KERNEL_MODE)
+    parser.add_argument(
+        "--kernel",
+        choices=(ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, WS_KERNEL_NAME, DEFAULT_KERNEL_MODE, ALL_KERNEL_MODE),
+        default=DEFAULT_KERNEL_MODE,
+    )
     parser.add_argument("--min-batch-size", type=int, default=None)
     parser.add_argument("--max-batch-size", type=int, default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=25)
     parser.add_argument("--rep", type=int, default=100)
+    parser.add_argument("--validate", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--validate-only", action="store_true", help="Run correctness validation only, without cudagraph timing.")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--local-rank", type=int, default=None)
@@ -540,16 +639,35 @@ def main() -> None:
         raise ValueError(f"--peak-fp8-tflops must be > 0, got {args.peak_fp8_tflops}")
     if args.peak_mem_tbps <= 0:
         raise ValueError(f"--peak-mem-tbps must be > 0, got {args.peak_mem_tbps}")
+    if args.validate_only:
+        args.validate = True
+    if args.validate_only and args.csv_out is not None:
+        raise ValueError("--csv-out is not supported with --validate-only")
 
     cases = make_cases(args.case_family, args.min_batch_size, args.max_batch_size, args.limit)
     if not cases:
         raise ValueError("No cases matched the requested filters")
+    kernel_names = iter_kernel_names(args.kernel)
+    if args.validate_only and not any(kernel_name != ORIGINAL_KERNEL_NAME for kernel_name in kernel_names):
+        raise ValueError("--validate-only requires at least one non-original kernel")
 
     results: list[BenchResult] = []
     for idx, case in enumerate(cases, start=1):
         prepared = prepare_case(case, device=args.device, seed=args.seed, local_rank_override=args.local_rank)
+        validation_reference = None
+        if args.validate and any(kernel_name != ORIGINAL_KERNEL_NAME for kernel_name in kernel_names):
+            validation_reference = (ORIGINAL_KERNEL_NAME, run_case_once(prepared, ORIGINAL_KERNEL_NAME))
+        if args.validate_only:
+            assert validation_reference is not None
+            for kernel_name in kernel_names:
+                if kernel_name == ORIGINAL_KERNEL_NAME:
+                    continue
+                validation = validate_prepared_case(prepared, kernel_name, validation_reference)
+                print(f"[{idx:>3}/{len(cases):>3}] {format_validation(validation)}")
+            continue
+
         case_results: dict[str, BenchResult] = {}
-        for kernel_name in iter_kernel_names(args.kernel):
+        for kernel_name in kernel_names:
             result = benchmark_prepared_case(
                 prepared,
                 kernel_name,
@@ -557,12 +675,17 @@ def main() -> None:
                 rep=args.rep,
                 peak_fp8_tflops=args.peak_fp8_tflops,
                 peak_mem_tbps=args.peak_mem_tbps,
+                validation_reference=validation_reference if validation_reference is not None and kernel_name != ORIGINAL_KERNEL_NAME else None,
             )
             case_results[kernel_name] = result
             results.append(result)
             print(f"[{idx:>3}/{len(cases):>3}] {format_result(result)}")
-        if ORIGINAL_KERNEL_NAME in case_results and GLUON_KERNEL_NAME in case_results:
-            print(f"      {format_comparison(case_results[ORIGINAL_KERNEL_NAME], case_results[GLUON_KERNEL_NAME])}")
+        if ORIGINAL_KERNEL_NAME in case_results:
+            for kernel_name in kernel_names:
+                if kernel_name == ORIGINAL_KERNEL_NAME:
+                    continue
+                if kernel_name in case_results:
+                    print(f"      {format_comparison(case_results[ORIGINAL_KERNEL_NAME], case_results[kernel_name])}")
 
     if args.csv_out is not None:
         write_csv(args.csv_out, results)
