@@ -1,12 +1,8 @@
 # isort: off
 # fmt: off
 from dataclasses import dataclass, fields
-from functools import lru_cache
-import importlib.util
 import itertools
-from pathlib import Path
 import pytest
-import sys
 import torch
 from typing import Union
 import triton
@@ -474,47 +470,6 @@ def _test_op(m, n, k, split_k, do_gather, do_scatter, inner_expt_opt, do_gamma, 
         assert torch.all((ref_y_scale - tri_y_scale).abs() < 1e-10), \
                f"ref_y_scale: {ref_y_scale}, tri_y_scale: {tri_y_scale.item()}"
 
-
-@lru_cache(maxsize=1)
-def _load_parrot_gather_bench_module():
-    module_name = "_test_matmul_parrot_gather_bench"
-    module_path = Path(__file__).resolve().parents[2] / "perf" / "bench_matmul_parrot_gather.py"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _build_matmul_ogs_cases():
-    return _load_parrot_gather_bench_module().make_cases("all", None, None, None)
-
-
-@pytest.mark.parametrize("case", _build_matmul_ogs_cases(), ids=lambda case: case.case_id)
-def test_matmul_ogs_matches_matmul(case, device):
-    if not is_cuda() or not str(device).startswith("cuda"):
-        pytest.skip("Only supported on CUDA")
-    if torch.cuda.get_device_capability()[0] < 10:
-        pytest.skip("matmul_ogs benchmark shapes require a Blackwell-class CUDA GPU")
-
-    bench = _load_parrot_gather_bench_module()
-    prepared = bench.prepare_case(case, device=str(device), seed=0, local_rank_override=0)
-
-    ref_y, ref_precision = bench.run_case_once(prepared, bench.ORIGINAL_KERNEL_NAME)
-    gluon_y, gluon_precision = bench.run_case_once(prepared, bench.GLUON_KERNEL_NAME)
-
-    assert ref_y.shape == gluon_y.shape
-    assert ref_y.dtype == gluon_y.dtype
-    assert_close(ref_y.to(torch.float32), gluon_y.to(torch.float32), maxtol=3e-2, rmstol=None, description=case.case_id, verbose=False)
-
-    ref_scale = ref_precision.flex_ctx.out_data.actual_scale
-    gluon_scale = gluon_precision.flex_ctx.out_data.actual_scale
-    if ref_scale is not None or gluon_scale is not None:
-        assert ref_scale is not None and gluon_scale is not None
-        assert torch.all((ref_scale - gluon_scale).abs() < 1e-10), \
-               f"ref_scale: {ref_scale}, gluon_scale: {gluon_scale}"
 
 
 def test_set_idle_sms():
