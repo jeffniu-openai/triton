@@ -781,6 +781,7 @@ lowerTMemLdStFromTypes(
   };
   auto kRow = StringAttr::get(rewriter.getContext(), "row");
   auto kCol = StringAttr::get(rewriter.getContext(), "col");
+  auto kBlock = StringAttr::get(rewriter.getContext(), "block");
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
     if (!memDescValue ||
         !isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
@@ -818,16 +819,13 @@ lowerTMemLdStFromTypes(
     });
     if (!hasMMAUsers)
       return std::nullopt;
-    if (isa<triton::nvidia_gpu::TensorMemoryEncodingAttr>(memTy.getEncoding())) {
+    auto memLayout = toLinearLayout(memTy);
+    if (memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1) {
       return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
                              /*rowSpan=*/128};
     }
-    auto memLayout = toLinearLayout(memTy);
-    if (hasZeroBasisAlong(memLayout, kRow) && !hasZeroBasisAlong(memLayout, kCol)) {
-      return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
-                             /*rowSpan=*/128};
-    }
-    return std::nullopt;
+    return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+                           /*rowSpan=*/128};
   }();
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
