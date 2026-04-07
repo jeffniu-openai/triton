@@ -66,6 +66,27 @@ public:
         lhs.getType().getShape(), lhs.getType().getElementType(),
         *canonicalATMemEncoding, tensorMemorySpace,
         /*mutableMemory=*/false);
+    auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
+      if (!layout.hasInDim(dim))
+        return false;
+      unsigned dimBits = layout.getInDimSizeLog2(dim);
+      for (unsigned idx = 0; idx < dimBits; ++idx) {
+        if (llvm::all_of(layout.getBasis(dim, idx),
+                         [](int32_t value) { return value == 0; }))
+          return true;
+      }
+      return false;
+    };
+    auto lhsMemLayout = toLinearLayout(lhsMemDescType);
+    auto kRow = StringAttr::get(context, "row");
+    auto kCol = StringAttr::get(context, "col");
+    bool isPackedM64Promotion =
+        elemBitWidth == 16 && lhsMemDescType.getRank() == 2 &&
+        lhsMemDescType.getShape()[0] == 64 &&
+        hasZeroBasisAlong(lhsMemLayout, kRow) &&
+        !hasZeroBasisAlong(lhsMemLayout, kCol);
+    if (isPackedM64Promotion)
+      return failure();
     bool layoutTmemCompatible =
         isDistributedLayoutTMemCompatible(tcGen5MMAOp, srcType, lhsMemDescType);
     Attribute newLayout = srcLayout;

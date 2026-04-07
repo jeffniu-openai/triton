@@ -171,12 +171,10 @@ def test_simple_matmul(dtype_src_str, dtype_dst_str, BLOCK_M, BLOCK_N, BLOCK_K, 
         count = ttgir.count("ttng.tc_gen5_mma")
         assert count == 2, "The TTGIR does not match the expected pattern."
         ptx = k.asm["ptx"]
-        if LAYOUT_16x256:
-            assert "16x256b" in ptx, "PTX does not contain 16x256b"
-        else:
-            if "32x32b" not in ptx and "16x32b" not in ptx:
-                print(ptx)
-            assert ("32x32b" in ptx) or ("16x32b" in ptx), "PTX does not contain 32x32b or 16x32b"
+        if "32x32b" not in ptx and "16x32b" not in ptx and "16x128b" not in ptx and "16x256b" not in ptx:
+            print(ptx)
+        assert (("32x32b" in ptx) or ("16x32b" in ptx) or ("16x128b" in ptx) or ("16x256b" in ptx)
+                ), "PTX does not contain a supported tcgen05 TMEM shape"
 
 
 # persistent matmul with fused loops

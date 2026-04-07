@@ -567,15 +567,6 @@ public:
     // consistent CTA mode, disabling 2CTA mode for now. To re-enable,
     // change the line below to: bool useTwoCTAs = canUseTwoCTAs(dotOp);
     bool useTwoCTAs = false;
-    if (useTwoCTAs) {
-      b = splitBOperand(b, rewriter);
-    }
-    // TF32 transpose is only supported with 128 swizzle mode with 32B
-    // atomicity. As we currently don't support this layout we disallow
-    // transpose for TF32 inputs.
-    bool allowTranspose = !dotOp.getA().getType().getElementType().isF32();
-    a = getSharedMemoryMMAOperand(a, rewriter, 0, allowTranspose);
-    b = getSharedMemoryMMAOperand(b, rewriter, 1, allowTranspose);
     MLIRContext *context = dotOp->getContext();
     auto instrShape = mmaVersionToInstrShape(
         versionMajor, retShapePerCTA, oldAType.getElementType(), numWarps);
@@ -595,6 +586,15 @@ public:
     auto newDistributedEncoding =
         nvidia_gpu::getDefaultLayoutForTmemLdSt(accMemDescType, numWarps);
     auto newAccType = oldRetType.cloneWithEncoding(newDistributedEncoding);
+    if (useTwoCTAs) {
+      b = splitBOperand(b, rewriter);
+    }
+    // TF32 transpose is only supported with 128 swizzle mode with 32B
+    // atomicity. As we currently don't support this layout we disallow
+    // transpose for TF32 inputs.
+    bool allowTranspose = !dotOp.getA().getType().getElementType().isF32();
+    a = getSharedMemoryMMAOperand(a, rewriter, 0, allowTranspose);
+    b = getSharedMemoryMMAOperand(b, rewriter, 1, allowTranspose);
     Value cvtAcc =
         ConvertLayoutOp::create(rewriter, loc, newAccType, dotOp.getOperand(2));
     auto tokType = rewriter.getType<AsyncTokenType>();
@@ -820,18 +820,6 @@ public:
     // https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-packing-formats-mxf8f6f4-smem
     bool isMMAv5Fp4PaddedLhs = IsAMixedPrecFp4 || !dotOp.getLhsKPack();
     bool isMMAv5Fp4PaddedRhs = IsBMixedPrecFp4 || !dotOp.getRhsKPack();
-    // For mixed-precision fp4 operands, set allowTranspose = false, to force
-    // the packed axis, K, to be contiguous in SMEM
-    a = getSharedMemoryMMAOperand(a, rewriter, 0,
-                                  /*allowTranspose=*/!isAFP4,
-                                  /*isMMAv5Fp4Padded=*/isMMAv5Fp4PaddedLhs,
-                                  /*forceTranspose=*/!dotOp.getLhsKPack(),
-                                  dotOp);
-    b = getSharedMemoryMMAOperand(b, rewriter, 1,
-                                  /*allowTranspose=*/!isBFP4,
-                                  /*isMMAv5Fp4Padded=*/isMMAv5Fp4PaddedRhs,
-                                  /*forceTranspose=*/!dotOp.getRhsKPack(),
-                                  dotOp);
 
     MLIRContext *context = dotOp->getContext();
     unsigned m = 128;
@@ -880,6 +868,19 @@ public:
         oldScaleAType.cloneWithEncoding(scaleALayout);
     RankedTensorType newScaleBType =
         oldScaleBType.cloneWithEncoding(scaleBLayout);
+
+    // For mixed-precision fp4 operands, set allowTranspose = false, to force
+    // the packed axis, K, to be contiguous in SMEM.
+    a = getSharedMemoryMMAOperand(a, rewriter, 0,
+                                  /*allowTranspose=*/!isAFP4,
+                                  /*isMMAv5Fp4Padded=*/isMMAv5Fp4PaddedLhs,
+                                  /*forceTranspose=*/!dotOp.getLhsKPack(),
+                                  dotOp);
+    b = getSharedMemoryMMAOperand(b, rewriter, 1,
+                                  /*allowTranspose=*/!isBFP4,
+                                  /*isMMAv5Fp4Padded=*/isMMAv5Fp4PaddedRhs,
+                                  /*forceTranspose=*/!dotOp.getRhsKPack(),
+                                  dotOp);
 
     auto lhsScale = addSmemStageToScaleLoad(dotOp.getAScale(), rewriter);
     auto rhsScale = addSmemStageToScaleLoad(dotOp.getBScale(), rewriter);
@@ -985,7 +986,13 @@ static void transposeDotOp(DotScaledOp dotOp) {
   dotOp.erase();
 }
 
-static void transposeDots(ModuleOp m) {
+static void transposeDots(ModuleOp m, int computeCapability) {
+  // MMAv5 rhs-only scaled-dot transpose can steer one-scale fp8 cases into a
+  // raw packed-16 TMEM alloc/store path whose warp-interleaved half-column
+  // layout is not directly representable by tcgen05.st. Keep the original
+  // operand order on these targets until the backend grows a dedicated lowering.
+  if (computeCapability >= 100 && computeCapability < 120)
+    return;
   // TODO: extend to regular dot when it is profitable. For instance when we may
   // want to use rhs from register for mmav3.
   SmallVector<DotScaledOp> toTranspose;
@@ -1016,7 +1023,7 @@ public:
     // We could do this generically if we manage to improve the heuristics
     // reverted in these two PRs https://github.com/triton-lang/triton/pull/5834
     // https://github.com/triton-lang/triton/pull/5837
-    transposeDots(m);
+    transposeDots(m, computeCapability);
 
     mlir::RewritePatternSet patterns(context);
     constexpr int benefitDefault = 1;

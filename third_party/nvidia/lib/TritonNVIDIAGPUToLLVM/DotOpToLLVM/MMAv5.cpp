@@ -2,9 +2,9 @@
 #include "MMAHelpers.h"
 #include "PatternTritonGPUOpToLLVM.h"
 #include "Utility.h"
-#include <cstdlib>
 #include "mlir/Support/LLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 
 using namespace mlir;
 using namespace mlir::triton;
@@ -22,7 +22,58 @@ using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
     Value tmemBase, bool useRawWordColumns) {
-  auto ll = toLinearLayout(memTy);
+  auto ll = [&]() {
+    auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
+    auto shape = memTy.getShape().take_back(rank);
+    auto allocShape = memTy.getAllocShape().take_back(rank);
+    if (shape == allocShape) {
+      auto cga = gpu::getCGALayout(memTy.getEncoding());
+      auto tryPlannedCanonicalLayout = [&](unsigned mmaSizeM, unsigned mmaSizeN,
+                                           unsigned colStride,
+                                           bool twoCTAs)
+          -> std::optional<LinearLayout> {
+        if (auto maybeCanonical = ttng::getCanonicalTMemLinearEncoding(
+                shape, mmaSizeM, mmaSizeN, colStride, cga, twoCTAs,
+                /*error=*/nullptr)) {
+          return maybeCanonical->getLinearLayout();
+        }
+        return std::nullopt;
+      };
+      if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
+        if (auto maybeLayout = tryPlannedCanonicalLayout(
+                info->mmaSizeM, info->mmaSizeN, info->colStride,
+                info->twoCTAs)) {
+          return *maybeLayout;
+        }
+      }
+      if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
+        if (auto maybeLayout = tryPlannedCanonicalLayout(
+                info->mmaSizeM, info->mmaSizeN, info->colStride,
+                info->twoCTAs)) {
+          return *maybeLayout;
+        }
+      }
+      if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
+        if (auto maybeLayout = tryPlannedCanonicalLayout(
+                info->mmaSizeM, info->mmaSizeN, info->colStride,
+                info->twoCTAs)) {
+          return *maybeLayout;
+        }
+      }
+    }
+    std::string layoutError;
+    if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
+            memTy.getShape(), memTy.getEncoding(), &layoutError)) {
+      return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+          *maybeAnalysis);
+    }
+    if (auto maybeCanonical =
+            ttng::getCanonicalTMemLinearEncoding(memTy, &layoutError)) {
+      return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+          maybeCanonical->getLinearLayout());
+    }
+    return toLinearLayout(memTy);
+  }();
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);

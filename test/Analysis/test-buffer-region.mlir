@@ -138,14 +138,14 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.shar
     %tm = ttng.tmem_alloc {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32} : () -> !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
     %view = ttg.memdesc_index %tm[%c1] : !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
     %sub1 = ttng.tmem_subslice %view {N = 64 : i32} : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
-    // expected-remark @below {{Buffers: [0, 128], [128, 128]}}
+    // expected-remark @below {{Buffers: [0, 256], [256, 256]}}
     ttng.tmem_load %view : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> tensor<128x128xf32>
-    // expected-remark @below {{Buffers: [64, 128], [192, 128]}}
+    // expected-remark @below {{Buffers: [64, 128], [320, 128]}}
     ttng.tmem_load %sub1 : !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128> -> tensor<128x64xf32>
     tt.return
   }
 
-  // expected-remark @below {{All Tensor Regions: [0, 128], [64, 128], [128, 128], [192, 128]}}
+  // expected-remark @below {{All Tensor Regions: [0, 256], [64, 128], [256, 256], [320, 128]}}
   tt.func private @print_all_regions() attributes {test.print_all_used_regions} {
     tt.return
   }
@@ -203,12 +203,12 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32, ttg.shar
   tt.func public @tensor_memory_subslice_interleaved() {
     %tm = ttng.tmem_alloc {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32} : () -> !ttg.memdesc<64x128xf32, #tmem, #ttng.tensor_memory, mutable>
     %sub = ttng.tmem_subslice %tm {N = 32 : i32} : !ttg.memdesc<64x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x32xf32, #tmem, #ttng.tensor_memory, mutable, 64x128>
-    // expected-remark @below {{Buffers: [32, 32]}}
+    // expected-remark @below {{Buffers: [1048576, 32]}}
     ttng.tmem_load %sub : !ttg.memdesc<64x32xf32, #tmem, #ttng.tensor_memory, mutable, 64x128> -> tensor<64x32xf32>
     tt.return
   }
 
-  // expected-remark @below {{All Tensor Regions: [32, 32]}}
+  // expected-remark @below {{All Tensor Regions: [1048576, 32]}}
   tt.func private @print_all_regions() attributes {test.print_all_used_regions} {
     tt.return
   }
