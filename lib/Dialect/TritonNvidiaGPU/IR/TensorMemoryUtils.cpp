@@ -4209,31 +4209,9 @@ computeTMemLdStEncodingInfoImpl(
       bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
       !hasZeroBasisAlong(memLayout, kCol) && logicalRows == physicalRows &&
       logicalCols == physicalCols * 2;
-  auto getRawLinearRegLayout = [&]() -> std::optional<LinearLayout> {
-    auto linear = dyn_cast_if_present<LinearEncodingAttr>(regTy.getEncoding());
-    if (!linear)
-      return std::nullopt;
-    auto raw = linear.getLinearLayout();
-    auto outDimNames = standardOutDimNames(ctx, raw.getNumOutDims());
-    SmallVector<std::pair<StringAttr, int32_t>> outDims;
-    outDims.reserve(raw.getNumOutDims());
-    for (auto [idx, size] : llvm::enumerate(raw.getOutDimSizes()))
-      outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
-    auto maybeRaw = LinearLayout::tryCreate(raw.getBases(), std::move(outDims),
-                                            raw.isSurjective(),
-                                            /*error=*/nullptr);
-    if (!maybeRaw)
-      return std::nullopt;
-    return squeezeTrivialBlock(std::move(*maybeRaw));
-  };
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding());
   LinearLayout regLayout =
-      isScales
-          ? squeezeTrivialBlock(toLinearLayout(regTy))
-          : ((physicalRows > logicalRows || physicalCols > logicalCols)
-                 ? getRawLinearRegLayout().value_or(
-                       squeezeTrivialBlock(toLinearLayout(regTy)))
-                 : squeezeTrivialBlock(toLinearLayout(regTy)));
+      squeezeTrivialBlock(toLinearEncoding(regTy).getLinearLayout());
   auto tryBuildPackedI16SparseSupportLayout = [&]()
       -> std::optional<LinearLayout> {
     auto activeMemLayout = memLayout;

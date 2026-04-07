@@ -2709,3 +2709,15 @@ rejection, not rescue
   - both families can still lower through the same packed `atom=4` direct ld/st family, so atom choice alone does not identify the right physical TMEM anchor family
   - the important distinction is the root memdesc itself: explicit zero-row-basis linear accumulators still need the backing `32/64` anchor family that the older TMA/block-pointer kernels expected, while legacy-sugar root accumulators want the `16/32` lifted family that fixes `test_simple_matmul`
 - The implementation therefore chooses the raw widening override in `TensorMemoryToLLVM.cpp` from the root accumulator memdesc family and lets `TensorMemoryUtils.cpp` accept either lifted `128`-row override for the zero-row-basis `64xNxf32` accumulator case.
+
+
+## 2026-04-07: TMEM scales alloc lowering must keep broadcasted register structure until `lowerTMemLdSt(...)`
+
+- The GB200-equivalent `mxfp` failure was not another generic TMEM ld/st issue and not a regression from the global `LayoutUtils.cpp` helper anymore.
+- The actual failing path was `ttng.tmem_alloc` into `#ttng.tensor_memory_scales_encoding<>` during `tcgen05.mma_scaled` lowering.
+- `TMEMAllocOpConversion` passes the full unpacked register value list into `lowerTMemLdStFromTypes(...)`; if `computeTMemLdStEncodingInfoImpl(...)` strips broadcasted register bits from `regLayout` before calling `lowerTMemLdSt(...)`, the returned `info.perm` is defined on the reduced register domain, but the lowering still sees the full source value list and aborts in `ColumnAction::apply(ValueRange)`.
+- The right ownership boundary is:
+  - `computeTMemLdStEncodingInfoImpl(...)` should keep the raw linear register layout for the query
+  - `lowerTMemLdSt(...)` should detect and record broadcasted-register structure in `info.broadcast`
+  - `TensorMemoryToLLVM.cpp` should then remove/broadcast values through the existing `info.broadcast` handling in `lowerTMemLdStFromInfo(...)`
+- With that split restored, the earlier TMEM ld/st raw-linear fix remains valid and the `mxfp` scaled-matmul kernels lower cleanly again.

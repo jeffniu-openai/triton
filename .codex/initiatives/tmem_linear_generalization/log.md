@@ -4845,3 +4845,28 @@ Open after this slice:
     - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[shape3-8]` -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
     - `TRITON_PREFER_TMEM_16x256_LAYOUT=1 python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
+
+
+- 2026-04-07: fix TMEM scales `mxfp` regression without re-breaking descriptor ld/st
+  - GB200-equivalent `python/test/unit` split shard 18 exposed a fresh regression in
+    - `python/test/unit/language/test_matmul.py::test_mxfp[0-4-1-128-16-256]`
+    - `python/test/unit/language/test_matmul.py::test_mxfp[0-4-3-128-16-256]`
+  - symptom:
+    - `ConvertTritonGPUToLLVM` aborted in `ColumnAction::apply(ValueRange)`
+    - reproducer stack pinned the crash to `TensorMemoryToLLVM.cpp:707` while lowering `ttng.tmem_alloc` for `#ttng.tensor_memory_scales_encoding<>`
+  - root cause:
+    - the broad fallback fix kept the correct raw linear register layout for TMEM ld/st, but `computeTMemLdStEncodingInfoImpl(...)` still eagerly stripped broadcasted register bits from `regLayout`
+    - that is safe for some direct ld/st queries, but it is wrong for TMEM scales alloc lowering because `lowerTMemLdSt(...)` needs to see the original broadcasted register structure and record it in `info.broadcast`
+    - once the broadcasted bits were erased too early, `info.perm` still expected the reduced register domain while `TMEMAllocOpConversion` passed the full unpacked source register list, tripping the `ColumnAction::apply` size assert
+  - fix:
+    - keep the raw linear-register query switch in `computeTMemLdStEncodingInfoImpl(...)`
+    - remove the local `actionRemoveBroadcastedRegs(regLayout).apply(regLayout)` pre-pass there
+    - let `lowerTMemLdSt(...)` own broadcast handling again via `info.broadcast`
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `/tmp/fpsan_store_only_probe.py` -> `ok`
+    - `/tmp/fpsan_load_only_probe.py` -> `ok`
+    - `python/test/gluon/test_fpsan.py::test_tmem_index_subslice` -> `1 passed`
+    - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_view_load_reports_clean_error` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_mxfp[0-4-1-128-16-256]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_mxfp[0-4-3-128-16-256]` -> `1 passed`

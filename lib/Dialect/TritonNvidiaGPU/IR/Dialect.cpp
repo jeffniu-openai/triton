@@ -2157,8 +2157,8 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                 std::optional<TMemLdStRowPlan> rowPlanOverride) {
   assert(memType.getMemorySpace() ==
          TensorMemorySpaceAttr::get(memType.getContext()));
-  assert(numWarps >= 4 && llvm::isPowerOf2_32(numWarps) &&
-         "numWarps must be a power of 2 and >= 4");
+  if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
+    return std::nullopt;
   auto isValidLayout = [&](const LinearLayout &layout) {
     auto attr = tryGetLinearEncodingAttr(memType.getContext(), layout);
     if (!attr)

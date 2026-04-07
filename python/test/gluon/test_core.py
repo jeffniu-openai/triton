@@ -4893,7 +4893,7 @@ def test_tmem_reduction_linear_legacy_block_equiv_layout(red_op, use_abs, propag
             _make_tmem_linear_layout_block(128, 64),
             128,
             64,
-            "TMEM layout '32x32b' unsupported for descriptor view",
+            "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA.",
         ),
     ],
 )
