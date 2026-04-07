@@ -12,7 +12,7 @@ def matmul(
     b_ragged_metadata: RaggedTensorMetadata | None = None,
     gather_indx: torch.Tensor | None = None,
     scatter_indx: torch.Tensor | None = None,
-    pc: PrecisionConfig | None = None,
+    precision_config: PrecisionConfig | None = None,
     betas: torch.Tensor | None = None,
     gammas: torch.Tensor | None = None,
     out_alpha: float | None = None,
@@ -27,7 +27,7 @@ def matmul(
     assert bias is not None
     assert gather_indx is not None
     assert scatter_indx is None
-    assert pc is not None
+    assert precision_config is not None
     assert betas is None
     assert gammas is None
     assert out_alpha is None
@@ -42,9 +42,11 @@ def matmul(
     reduction_n = specs.reduction_n
     swiglu_alpha, swiglu_limit = fused_activation.fn_args
 
-    b_mx_scales = pc.b_mx_scale
+    b_mx_scales = precision_config.b_mx_scale
 
     assert a.ndim == 2
     assert b.ndim == 2
+    print(f"{a.shape=}")
+    print(f"{b.shape=}")
     K = a.shape[-1]
     _, N = b.shape[-2:]
