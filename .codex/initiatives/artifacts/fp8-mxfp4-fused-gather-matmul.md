@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-07T08:32:16Z
+updated: 2026-04-07T08:40:43Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -202,6 +202,11 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `make`; `python -m py_compile python/perf/test_matmul_parrot_gather.py`; `pytest -s --tb=short python/perf/test_matmul_parrot_gather.py`
   - Learnings: The test now reuses the benchmark module's case list, kernel iteration, and input preparation directly, so the perf-side correctness path stays aligned with the benchmarked workload instead of growing its own test scaffolding
   - Plan updates: Keep future perf-side correctness changes expressed in terms of benchmark helpers first, then add only the minimal comparison logic needed by pytest
+- `2026-04-07` Completed: Replaced perf-side dynamic module loading with normal relative imports
+  - Artifact: `python/perf/__init__.py`, `python/perf/bench_matmul_parrot_gather.py`, `python/perf/test_matmul_parrot_gather.py`
+  - Validation: `python -m py_compile python/perf/__init__.py python/perf/bench_matmul_parrot_gather.py python/perf/test_matmul_parrot_gather.py`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --rep 20`; `pytest -s --tb=short python/perf/test_matmul_parrot_gather.py::test_matmul_ogs_matches_matmul[bs1_E256_es8_B5120x10240]`
+  - Learnings: The perf benchmark and test modules now import each other with plain relative imports and a local `python/perf` package marker instead of `importlib` path loading; the repo root `python` directory works as a namespace package here, so a top-level `python/__init__.py` is unnecessary; benchmark execution should use module mode (`python -m python.perf.bench_matmul_parrot_gather ...`) so the relative imports resolve cleanly
+  - Plan updates: Keep import-only changes on narrow validation by default: module importability, one benchmark smoke, and one targeted pytest case are enough unless the packaging change actually touches execution semantics
 
 ## Next Up
 

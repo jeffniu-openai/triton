@@ -1,29 +1,10 @@
-from functools import lru_cache
-import importlib.util
-from pathlib import Path
-import sys
-
 import pytest
 import torch
 
+from . import bench_matmul_parrot_gather as BENCH
 from triton_kernels.target_info import is_cuda
 from triton_kernels.testing import assert_close
 
-
-@lru_cache(maxsize=1)
-def _load_parrot_gather_bench_module():
-    module_name = "_test_matmul_parrot_gather_bench"
-    module_path = Path(__file__).with_name("bench_matmul_parrot_gather.py")
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-BENCH = _load_parrot_gather_bench_module()
 KERNEL_NAMES = BENCH.iter_kernel_names(BENCH.DEFAULT_KERNEL_MODE)
 CASES = BENCH.make_cases("all", None, None, None)
 

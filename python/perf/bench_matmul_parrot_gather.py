@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import importlib.util
-import sys
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -20,6 +17,8 @@ from triton_kernels.swiglu import swiglu_fn
 from triton_kernels.tensor import FP4, RaggedTensorMetadata, Tensor, convert_layout, make_ragged_tensor_metadata, wrap_torch_tensor
 from triton_kernels.tensor_details.layout import make_default_matmul_mxfp4_w_layout, make_default_matmul_mxfp4_w_scale_layout
 from triton_kernels.topk import topk
+
+from .matmul_gluon import matmul_ogs
 
 # Default roofline constants for a single NVIDIA GB300 GPU.
 # FP8 peak is inferred from the official GB300 NVL72 rack spec: 720 PFLOP/s
@@ -149,24 +148,11 @@ PARAMS = [
 KernelFn = Callable[..., torch.Tensor]
 
 
-@lru_cache(maxsize=1)
-def load_matmul_gluon_module():
-    module_name = "_bench_matmul_parrot_gather_matmul_gluon"
-    module_path = Path(__file__).with_name("matmul_gluon.py")
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def resolve_kernel(kernel_name: str) -> KernelFn:
     if kernel_name == ORIGINAL_KERNEL_NAME:
         return matmul
     if kernel_name == GLUON_KERNEL_NAME:
-        return load_matmul_gluon_module().matmul_ogs
+        return matmul_ogs
     raise ValueError(f"Unknown kernel {kernel_name}")
 
 
