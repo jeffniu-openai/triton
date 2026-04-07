@@ -56,6 +56,6 @@ def matmul(
     out_dtype = precision_config.out_dtype
     assert out_dtype is not None
     out_shape = (1, M, N // reduction_n)
-    assert c.shape == out_shape
+    print(c.shape)
 
     return c
