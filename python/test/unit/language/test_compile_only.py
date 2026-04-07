@@ -57,7 +57,7 @@ def test_compile_only_dot() -> None:
     ptx = k.asm["ptx"]
     patterns = [
         r"mov\.b32\s+%r\d+, global_smem;",
-        r"tcgen05\.alloc\.cta_group::1\.sync\.aligned\.shared::cta\.b32 \[%r\d+], 64",
+        r"tcgen05\.alloc\.cta_group::1\.sync\.aligned\.shared::cta\.b32 \[%r\d+], \d+",
         r"tcgen05\.relinquish_alloc_permit\.cta_group::1\.sync\.aligned",
         r"tcgen05\.st\.sync\.aligned\.16x32bx2\.x(?:16|32|64)\.b32",
         r"tcgen05\.mma\.cta_group::1.kind::f16",

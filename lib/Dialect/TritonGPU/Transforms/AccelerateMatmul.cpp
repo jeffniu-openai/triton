@@ -19,6 +19,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Tools/LayoutUtils.h"
+#include "triton/Tools/Sys/GetEnv.hpp"
 #include "triton/Tools/StrUtil.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -37,6 +38,10 @@ static bool isUnsupportedMMAv5Int8Dot(int computeCapability, DotOp op) {
   auto bElemTy = op.getB().getType().getElementType();
   return aElemTy.isInteger(8) && bElemTy.isInteger(8);
 }
+
+static DistributedEncodingTrait
+replaceCGALayout(DistributedEncodingTrait layout,
+                 const triton::gpu::CGAEncodingAttr &newCGALayout);
 
 // Get the highest version supported for the hardware and the dot.
 static int getMMAVersionSafe(int computeCapability, DotOp op) {
@@ -496,6 +501,23 @@ replaceCGALayout(DistributedEncodingTrait layout,
   }
 }
 
+static DistributedEncodingTrait
+getDefaultMMAv5AccumulatorLayout(gpu::MemDescType memType, unsigned numWarps) {
+  auto *ctx = memType.getContext();
+  bool prefer16x256 =
+      ::mlir::triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
+  if (prefer16x256) {
+    if (auto layout = nvidia_gpu::getDistributedLayoutForTmemLdSt(
+            memType, triton::nvidia_gpu::TMemAccessAtom::I16x256b, numWarps)) {
+      return LinearEncodingAttr::get(ctx, std::move(*layout));
+    }
+  }
+  auto layout = nvidia_gpu::getDistributedLayoutForTmemLdSt(
+      memType, triton::nvidia_gpu::TMemAccessAtom::I32x32b, numWarps);
+  assert(layout && "expected MMAv5 accumulator TMEM layout to have a direct ld/st encoding");
+  return LinearEncodingAttr::get(ctx, std::move(*layout));
+}
+
 static Value splitBOperand(Value b, mlir::PatternRewriter &rewriter) {
   OpBuilder::InsertionGuard g(rewriter);
   MLIRContext *ctx = b.getContext();
@@ -572,19 +594,30 @@ public:
         versionMajor, retShapePerCTA, oldAType.getElementType(), numWarps);
     auto bitwidth = oldRetType.getElementType().getIntOrFloatBitWidth();
     unsigned colStride = 32 / bitwidth;
-    auto accEncoding = triton::nvidia_gpu::getCanonicalTMemLinearEncoding(
-        oldRetType.getShape(), instrShape[0], instrShape[1], colStride,
-        CGALayout, useTwoCTAs);
-    if (!accEncoding)
-      return failure();
+    Attribute accEncoding;
+    if (getNumCTAs(oldRetType.getEncoding()) > 1) {
+      accEncoding = triton::nvidia_gpu::TensorMemoryEncodingAttr::get(
+          context, instrShape[0], instrShape[1], colStride, CGALayout,
+          useTwoCTAs);
+    } else {
+      auto maybeAccEncoding = triton::nvidia_gpu::getCanonicalTMemLinearEncoding(
+          oldRetType.getShape(), instrShape[0], instrShape[1], colStride,
+          CGALayout, useTwoCTAs);
+      if (!maybeAccEncoding)
+        return failure();
+      accEncoding = *maybeAccEncoding;
+    }
     Attribute tensorMemorySpace =
         triton::nvidia_gpu::TensorMemorySpaceAttr::get(context);
     MemDescType accMemDescType =
         MemDescType::get(oldRetType.getShape(), oldRetType.getElementType(),
-                         *accEncoding, tensorMemorySpace,
+                         accEncoding, tensorMemorySpace,
                          /*mutableMemory=*/true);
-    auto newDistributedEncoding =
-        nvidia_gpu::getDefaultLayoutForTmemLdSt(accMemDescType, numWarps);
+    auto newDistributedEncoding = getNumCTAs(oldRetType.getEncoding()) > 1
+                                      ? getDefaultMMAv5AccumulatorLayout(
+                                            accMemDescType, numWarps)
+                                      : nvidia_gpu::getDefaultLayoutForTmemLdSt(
+                                            accMemDescType, numWarps);
     auto newAccType = oldRetType.cloneWithEncoding(newDistributedEncoding);
     if (useTwoCTAs) {
       b = splitBOperand(b, rewriter);
@@ -827,18 +860,28 @@ public:
 
     auto bitwidth = oldRetType.getElementType().getIntOrFloatBitWidth();
     unsigned colStride = 32 / bitwidth;
-    auto accEncoding = triton::nvidia_gpu::getCanonicalTMemLinearEncoding(
-        oldRetType.getShape(), m, n, colStride, CGALayout, false);
-    if (!accEncoding)
-      return failure();
+    Attribute accEncoding;
+    if (getNumCTAs(oldRetType.getEncoding()) > 1) {
+      accEncoding = triton::nvidia_gpu::TensorMemoryEncodingAttr::get(
+          context, m, n, colStride, CGALayout, /*twoCTAs=*/false);
+    } else {
+      auto maybeAccEncoding = triton::nvidia_gpu::getCanonicalTMemLinearEncoding(
+          oldRetType.getShape(), m, n, colStride, CGALayout, false);
+      if (!maybeAccEncoding)
+        return failure();
+      accEncoding = *maybeAccEncoding;
+    }
     Attribute tensorMemorySpace =
         triton::nvidia_gpu::TensorMemorySpaceAttr::get(context);
     MemDescType accMemDescType =
         MemDescType::get(oldRetType.getShape(), oldRetType.getElementType(),
-                         *accEncoding, tensorMemorySpace,
+                         accEncoding, tensorMemorySpace,
                          /*mutableMemory=*/true);
-    auto newDistributedEncoding =
-        nvidia_gpu::getDefaultLayoutForTmemLdSt(accMemDescType, numWarps);
+    auto newDistributedEncoding = getNumCTAs(oldRetType.getEncoding()) > 1
+                                      ? getDefaultMMAv5AccumulatorLayout(
+                                            accMemDescType, numWarps)
+                                      : nvidia_gpu::getDefaultLayoutForTmemLdSt(
+                                            accMemDescType, numWarps);
     auto newAccType = oldRetType.cloneWithEncoding(newDistributedEncoding);
     Value cvtAcc =
         ConvertLayoutOp::create(rewriter, loc, newAccType, dotOp.getOperand(2));

@@ -1049,7 +1049,6 @@ tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
   auto kCol = S("col");
   auto dims = standardOutDimNames(ctx, 2);
   auto cgaLayout = encoding.getCGALayout();
-  auto cgaLL = cgaLayout.getLinearLayout();
   bool isM64TwoCTA = encoding.getBlockM() == 64 && encoding.getTwoCTAs();
 
   auto shapePerCTA = getShapePerCTA(cgaLayout.getCTASplitNum(), shape);
@@ -1135,7 +1134,23 @@ tensorMemoryToLinearLayout(ArrayRef<int64_t> shape,
   // Broadcast the remaining dimensions in order [0, 1]
   tile = tile * LinearLayout::identity1D(repsM, kCol, dims[0]) *
          LinearLayout::identity1D(repsN, kCol, dims[1]);
-  tile *= cgaLL;
+  auto bases = tile.getBases();
+  auto kBlock = S("block");
+  auto &blockBases = bases[kBlock];
+  for (ArrayRef<int32_t> basis :
+       cgaLayout.getLinearLayout().getBases().lookup(kBlock)) {
+    std::vector<int32_t> scaledBasis(basis.begin(), basis.end());
+    for (size_t i = 0; i < scaledBasis.size(); ++i)
+      scaledBasis[i] *= static_cast<int32_t>(shapePerCTA[i]);
+    blockBases.emplace_back(std::move(scaledBasis));
+  }
+  std::string layoutError;
+  auto maybeTile = LinearLayout::tryCreate(
+      std::move(bases), standardOutDimPairs(ctx, shape),
+      /*requireSurjective=*/true, &layoutError);
+  if (!maybeTile)
+    return setError(layoutError);
+  tile = *maybeTile;
   auto expectedElems = std::accumulate(shape.begin(), shape.end(), int64_t{1},
                                        std::multiplies<int64_t>());
   auto actualElems = static_cast<int64_t>(tile.getTotalOutDimSize());

@@ -4163,6 +4163,8 @@ computeTMemLdStEncodingInfoImpl(
     bool hasZeroColBasis = hasZeroBasisAlong(memLayout, kCol);
     bool hasNonTrivialBlock =
         memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1;
+    if (hasNonTrivialBlock)
+      return std::nullopt;
     bool isRowZeroLiftedReinterpret =
         hasZeroBasisAlong(memLayout, kRow) && !hasZeroColBasis &&
         logicalRows == activePhysicalRows && logicalCols == physicalCols * 2;
@@ -4743,6 +4745,8 @@ computeTMemLdStEncodingInfoImpl(
     if (!twoCTAs)
       return std::nullopt;
     std::optional<LinearLayout> matchedCanonicalLayout;
+    std::optional<unsigned> matchedColStride;
+    bool matchedExactCanonicalLayout = false;
     for (unsigned blockM : {64u, 128u}) {
       for (unsigned blockN : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u,
                               512u}) {
@@ -4755,18 +4759,24 @@ computeTMemLdStEncodingInfoImpl(
             continue;
           auto canonicalLayout =
               squeezeTrivialBlock(maybeCanonical->getLinearLayout());
+          if (canonicalLayout == legacyLayout) {
+            matchedCanonicalLayout = canonicalLayout;
+            matchedColStride = colStride;
+            matchedExactCanonicalLayout = true;
+            break;
+          }
           auto compareLayout = canonicalLayout;
           if (bitwidth < 32 && compareLayout.hasInDim(kCol))
             compareLayout = compareLayout.removeZeroBasesAlongDim(kCol);
-          if (compareLayout == legacyFamilyLayout) {
+          if (!matchedCanonicalLayout && compareLayout == legacyFamilyLayout) {
             matchedCanonicalLayout = canonicalLayout;
-            break;
+            matchedColStride = colStride;
           }
         }
-        if (matchedCanonicalLayout)
+        if (matchedExactCanonicalLayout)
           break;
       }
-      if (matchedCanonicalLayout)
+      if (matchedExactCanonicalLayout)
         break;
     }
     if (!matchedCanonicalLayout)
@@ -4809,9 +4819,9 @@ computeTMemLdStEncodingInfoImpl(
         return std::nullopt;
       }
     }
-    if (auto legacyEncoding = dyn_cast<TensorMemoryEncodingAttr>(memTy.getEncoding());
-        bitwidth == 16 && legacyEncoding && legacyEncoding.getColStride() == 2 &&
-        info->atom == TMemAccessAtom::I32x32b) {
+    if (matchedColStride && bitwidth == 16 && *matchedColStride > 1 &&
+        (info->atom == TMemAccessAtom::I32x32b ||
+         info->atom == TMemAccessAtom::I16x256b)) {
       info->unpacked = true;
     }
     return *info;
@@ -4942,11 +4952,51 @@ computeTMemLdStEncodingInfoImpl(
       info->numRegsPerMessage = 1;
     }
   }
-  auto legacyEncoding = dyn_cast<TensorMemoryEncodingAttr>(memTy.getEncoding());
+  auto getLegacyLikeColStride = [&]() -> std::optional<unsigned> {
+    if (auto legacyEncoding = dyn_cast<TensorMemoryEncodingAttr>(memTy.getEncoding()))
+      return legacyEncoding.getColStride();
+    if (bitwidth != 16 || memTy.getShape() != memTy.getAllocShape())
+      return std::nullopt;
+
+    auto twoCTAs = getTensorMemoryTwoCTAs(memTy);
+    if (!twoCTAs)
+      return std::nullopt;
+
+    auto legacyLayout =
+        squeezeTrivialBlock(toLinearLayout(memTy.getShape(), memTy.getEncoding()));
+    auto legacyFamilyLayout = legacyLayout;
+    if (legacyFamilyLayout.hasInDim(kCol))
+      legacyFamilyLayout = legacyFamilyLayout.removeZeroBasesAlongDim(kCol);
+
+    std::optional<unsigned> fallbackColStride;
+    for (unsigned blockM : {64u, 128u}) {
+      for (unsigned blockN : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u,
+                              512u}) {
+        for (unsigned colStride : {1u, 2u, 4u}) {
+          auto maybeCanonical = getCanonicalTMemLinearEncoding(
+              memTy.getShape(), blockM, blockN, colStride,
+              gpu::getCGALayout(memTy.getEncoding()), *twoCTAs,
+              /*error=*/nullptr);
+          if (!maybeCanonical)
+            continue;
+          auto canonicalLayout =
+              squeezeTrivialBlock(maybeCanonical->getLinearLayout());
+          if (canonicalLayout == legacyLayout)
+            return colStride;
+          auto compareLayout = canonicalLayout;
+          if (compareLayout.hasInDim(kCol))
+            compareLayout = compareLayout.removeZeroBasesAlongDim(kCol);
+          if (!fallbackColStride && compareLayout == legacyFamilyLayout)
+            fallbackColStride = colStride;
+        }
+      }
+    }
+    return fallbackColStride;
+  };
+  auto legacyLikeColStride = getLegacyLikeColStride();
   bool isLegacyUnpackedFullShape =
-      legacyEncoding && bitwidth == 16 && legacyEncoding.getColStride() == 2 &&
-      memTy.getShape() == memTy.getAllocShape() &&
-      info->atom == TMemAccessAtom::I32x32b;
+      legacyLikeColStride && *legacyLikeColStride > 1 && bitwidth == 16 &&
+      memTy.getShape() == memTy.getAllocShape();
   if (isLegacyUnpackedFullShape)
     info->unpacked = true;
   if (debug) {
@@ -5262,6 +5312,19 @@ getTMemLdStPhysicalSupportPlan(MemDescType memTy, unsigned numWarps,
                                       &error);
   if (!maybeMemLayout || !maybeMemLayout->hasInDim(kRow) ||
       !maybeMemLayout->hasInDim(kCol))
+    return std::nullopt;
+
+  auto supportsDirectAtom = [&](TMemAccessAtom atom) {
+    auto maybeLayout = getDistributedLayoutForTmemLdSt(memTy, atom, numWarps);
+    if (!maybeLayout)
+      return false;
+    auto regTy = RankedTensorType::get(
+        memTy.getShape(), memTy.getElementType(),
+        LinearEncodingAttr::get(ctx, std::move(*maybeLayout)));
+    auto info = computeTMemLdStEncodingInfo(regTy, memTy, maxnreg);
+    return succeeded(info) && info->atom == atom;
+  };
+  if (supportsDirectAtom(TMemAccessAtom::I16x256b))
     return std::nullopt;
 
   int bitwidth = memTy.getElementTypeBitWidth();

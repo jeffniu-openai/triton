@@ -128,6 +128,36 @@ static int64_t getShapeProduct(ArrayRef<int64_t> shape) {
 }
 
 static std::optional<LinearLayout>
+applyCGALayoutToLegacyLikeTMemTile(LinearLayout tile, ArrayRef<int64_t> shape,
+                                   ArrayRef<int64_t> shapePerCTA,
+                                   gpu::CGAEncodingAttr cgaLayout,
+                                   std::string *error = nullptr) {
+  auto setError = [&](const Twine &msg) {
+    if (error)
+      *error = msg.str();
+    return std::nullopt;
+  };
+  auto *ctx = cgaLayout.getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto bases = tile.getBases();
+  auto &blockBases = bases[kBlock];
+  for (ArrayRef<int32_t> basis :
+       cgaLayout.getLinearLayout().getBases().lookup(kBlock)) {
+    std::vector<int32_t> scaledBasis(basis.begin(), basis.end());
+    for (size_t i = 0; i < scaledBasis.size(); ++i)
+      scaledBasis[i] *= static_cast<int32_t>(shapePerCTA[i]);
+    blockBases.emplace_back(std::move(scaledBasis));
+  }
+  std::string layoutError;
+  auto maybeLayout = LinearLayout::tryCreate(
+      std::move(bases), standardOutDimPairs(ctx, shape),
+      /*requireSurjective=*/true, &layoutError);
+  if (!maybeLayout)
+    return setError(layoutError);
+  return *maybeLayout;
+}
+
+static std::optional<LinearLayout>
 buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
                                          unsigned blockM, unsigned blockN,
                                          unsigned colStride,
@@ -156,7 +186,6 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   auto dims = standardOutDimNames(ctx, 2);
-  auto cgaLL = cgaLayout.getLinearLayout();
   bool isM64TwoCTA = blockM == 64 && twoCTAs;
 
   auto shapePerCTA = getShapePerCTA(cgaLayout.getCTASplitNum(), shape);
@@ -235,7 +264,12 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
   // Broadcast the remaining dimensions in order [0, 1].
   tile = tile * LinearLayout::identity1D(repsM, kCol, dims[0]) *
          LinearLayout::identity1D(repsN, kCol, dims[1]);
-  tile *= cgaLL;
+  auto maybeFullTile =
+      applyCGALayoutToLegacyLikeTMemTile(tile, shape, shapePerCTA, cgaLayout,
+                                         error);
+  if (!maybeFullTile)
+    return std::nullopt;
+  tile = *maybeFullTile;
   auto expectedElems = getShapeProduct(shape);
   auto actualElems = static_cast<int64_t>(tile.getTotalOutDimSize());
   if (actualElems != expectedElems) {
