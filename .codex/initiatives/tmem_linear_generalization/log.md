@@ -4870,3 +4870,17 @@ Open after this slice:
     - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_view_load_reports_clean_error` -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_mxfp[0-4-1-128-16-256]` -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_mxfp[0-4-3-128-16-256]` -> `1 passed`
+
+
+## 2026-04-07 GB200 CI-equivalent sweep blocker
+- Commit under test: `b639073a7` (`Fix TMEM query regressions from GB200 sweep`).
+- Validated before GPU-driver failure: `check-triton-lit-tests` green (`248 passed, 2 unsupported`), `check-triton-unit-tests` green (`240/240 passed`), `test-unit` equivalent green including `python/test/unit`, `test_debug.py`, `python/triton_kernels/tests/`, fused attention tutorial, instrumentation, and plugin tests.
+- `test-gluon` split sweep progressed cleanly through groups `1-16/32`.
+- First failure at `gluon-main` group `17/32`: `python/test/gluon/test_core.py::test_mma_shared_inputs[...]` failed during `torch.randn(..., device='cuda')` setup with `RuntimeError: CUDA error: CUDA-capable device(s) is/are busy or unavailable`.
+- Isolated rerun of group `17/32` on `CUDA_VISIBLE_DEVICES=0` reproduced mass `device busy or unavailable` failures before Triton kernel execution.
+- Isolated single-test rerun of representative `test_mma_shared_inputs[...]` on `CUDA_VISIBLE_DEVICES=1` entered uninterruptible sleep (`STAT=D`) instead of failing at the same point.
+- Concurrent minimal Torch CUDA probe also hung.
+- `dmesg` at the same time shows repeated NVRM/NVLink driver errors: `knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!` and `knvlinkDiscoverPostRxDetLinks_GH100: Getting peer0's postRxDetLinkMask failed!`.
+- Conclusion: current blocker is machine/driver state, not a new confirmed Triton regression in TMEM codegen. Resume remaining GB200-equivalent GPU targets only after GPU/NVLink health is restored.
+
+- After killing the stray probe and wedged pytest processes, `timeout 20s nvidia-smi --query-gpu=...` still timed out. GPU control path remained unhealthy, so the GB200-equivalent GPU sweep could not be completed further in this session.
