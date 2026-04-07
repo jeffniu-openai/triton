@@ -53,7 +53,9 @@ def matmul(
     M, K = a.shape
     E, K, N = b.shape
 
-    print(f"{M=}")
-    print(f"{K=}")
-    print(f"{E=}")
-    print(f"{N=}")
+    out_dtype = precision_config.out_dtype
+    assert out_dtype is not None
+    out_shape = (1, M, N // reduction_n)
+    assert c.shape == out_shape
+
+    return c
