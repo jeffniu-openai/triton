@@ -4922,10 +4922,12 @@ computeTMemLdStEncodingInfoImpl(
            memLayout.getInDimSize(kRow) == rowPlanOverride->rowSpan;
   };
   bool allowLiftedM64AccumulatorOverride =
-      rowPlanOverride && rowPlanOverride->rowSpan == 128 &&
-      rowPlanOverride->warpRow0 == 16 && rowPlanOverride->warpRow1 == 32 &&
-      bitwidth == 32 && logicalRows == 64 && memLayout.hasInDim(kRow) &&
-      memLayout.getInDimSize(kRow) == 64 && hasZeroBasisAlong(memLayout, kRow);
+      rowPlanOverride && rowPlanOverride->rowSpan == 128 && bitwidth == 32 &&
+      logicalRows == 64 && memLayout.hasInDim(kRow) &&
+      memLayout.getInDimSize(kRow) == 64 && hasZeroBasisAlong(memLayout, kRow) &&
+      !hasZeroBasisAlong(memLayout, kCol) &&
+      ((rowPlanOverride->warpRow0 == 16 && rowPlanOverride->warpRow1 == 32) ||
+       (rowPlanOverride->warpRow0 == 32 && rowPlanOverride->warpRow1 == 64));
   if (rowPlanOverride &&
       (!rowPlan || rowPlanOverride->rowSpan == rowPlan->rowSpan ||
        memLayoutSupportsOverride() || allowLiftedM64AccumulatorOverride))

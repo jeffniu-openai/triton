@@ -4825,3 +4825,23 @@ Open after this slice:
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-2-64-128-32-4-float32-tensorfloat32]` -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float16-float16]` -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-2-64-512-32-2-float16-float16]` -> `1 passed`
+
+
+- 2026-04-07: split the raw root `M=64` MMAv5 accumulator override by actual memdesc family
+  - the first committed `16/32 @ 128` root-accumulator fix was still too coarse: it fixed the `python/test/unit/language/test_matmul.py::test_simple_matmul[...]` bucket, but a full `python/test/unit` split rerun immediately re-broke
+    - `python/test/unit/cuda/test_tma_store_gemm.py::test_tma_load_store[...]`
+    - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[...]`
+  - fresh `TRITON_DEBUG_TMEM_QUERY=1` traces showed the missing distinction:
+    - TMA / block-pointer repros lower root MMAv5 accumulators as explicit zero-row-basis linear memdescs like `!ttg.memdesc<64x64xf32, #ttng.tensor_memory_linear<...>>`
+    - the `test_simple_matmul` repro lowers its root accumulator through legacy `#ttng.tensor_memory_encoding<blockM=64, blockN=256, ...>` sugar (or the `16x256b`-preferred variant), not the explicit zero-row-basis linear family
+    - both still hit raw `atom=4` / packed root ld/st, so atom selection alone is not enough to choose the right row anchors
+  - stable split:
+    - legacy `TensorMemoryEncodingAttr` root MMAv5 accumulators keep the `16/32 @ 128` widened raw row plan
+    - explicit zero-row-basis linear root MMAv5 accumulators use the older `32/64 @ 128` widened raw row plan
+    - `TensorMemoryUtils.cpp` now accepts both widened override families for the lifted zero-row-basis `64xNxf32` accumulator case
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `python/test/unit/cuda/test_tma_store_gemm.py::test_tma_load_store[64-64-16-1-4-False-True-False]` -> `1 passed`
+    - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[shape3-8]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
+    - `TRITON_PREFER_TMEM_16x256_LAYOUT=1 python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float32-tensorfloat32]` -> `1 passed`

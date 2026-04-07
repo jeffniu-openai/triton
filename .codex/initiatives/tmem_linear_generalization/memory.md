@@ -2698,3 +2698,14 @@ rejection, not rescue
 - Effect:
   - the forced `16x256b` Blackwell root-accumulator path now lowers correct `tcgen05.{st,ld}` around MMA
   - the user-facing packed `linear_m64_*` descriptor-chain families stay green because the override does not leak into ordinary query/reg-layout selection
+
+
+## 2026-04-07: final root `M=64` MMAv5 accumulator split is by memdesc family, not by MMA use alone
+
+- The durable rule is now:
+  - legacy/root MMAv5 accumulator memdescs that still use `TensorMemoryEncodingAttr` sugar keep the lifted raw row anchors `16/32 @ 128`
+  - explicit zero-row-basis linear root MMAv5 accumulator memdescs use the lifted raw row anchors `32/64 @ 128`
+- Why the earlier single-family fix failed:
+  - both families can still lower through the same packed `atom=4` direct ld/st family, so atom choice alone does not identify the right physical TMEM anchor family
+  - the important distinction is the root memdesc itself: explicit zero-row-basis linear accumulators still need the backing `32/64` anchor family that the older TMA/block-pointer kernels expected, while legacy-sugar root accumulators want the `16/32` lifted family that fixes `test_simple_matmul`
+- The implementation therefore chooses the raw widening override in `TensorMemoryToLLVM.cpp` from the root accumulator memdesc family and lets `TensorMemoryUtils.cpp` accept either lifted `128`-row override for the zero-row-basis `64xNxf32` accumulator case.
