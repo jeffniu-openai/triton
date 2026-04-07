@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-07T00:38:43Z
+updated: 2026-04-07T00:52:05Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -127,7 +127,7 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
 - [x] Add a local benchmark driver that reproduces the reference workload shapes and routing pattern.
   - Artifact: `python/perf/bench_matmul_parrot_gather.py`
   - Dependencies: Local editable installs for `triton` and `triton_kernels`
-  - Notes: Uses only local `triton_kernels` code plus proton-matching flops/bytes accounting, and now emits `% peak FP8` and `% peak HBM bandwidth` with overridable GB300 roofline constants.
+  - Notes: Uses only local `triton_kernels` code plus proton-matching flops/bytes accounting, emits `% peak FP8` and `% peak HBM bandwidth` with overridable GB300 roofline constants, and now times with `do_bench_cudagraph` to remove eager host-launch overhead.
 - [ ] Capture current baseline performance and launch choices for the target cases.
   - Artifact: Baseline report in persistent memory
   - Dependencies: Benchmark matrix
@@ -186,10 +186,15 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `python -m py_compile python/perf/bench_matmul_parrot_gather.py`; `python python/perf/bench_matmul_parrot_gather.py --case-family non-parrot --limit 45 --csv-out /root/.codex/memories/triton-fp8-mxfp4-fused-gather/raw/es8_E256_batch_sweep_roofline_2026-04-07.csv`
   - Learnings: The latest canonical sweep peaks at `56.16%` of the assumed dense FP8 roofline (`2808.21 TFLOP/s` at `bs=32768`) and `40.13%` of the assumed HBM roofline (`3.21 TB/s` at `bs=8192`); `bs=14336` reaches `50.17%` FP8 roofline while still sustaining `38.22%` HBM roofline; the efficiency cliff remains at `bs=15360 -> 16384`
   - Plan updates: Use the roofline-enabled CSV as the baseline source of truth and capture launch flags on both sides of the `bs=14336 -> 16384` transition
+- `2026-04-07` Completed: Switched the benchmark to `do_bench_cudagraph` and re-ran the full `E256/es8` sweep
+  - Artifact: `python/perf/bench_matmul_parrot_gather.py`, `/root/.codex/memories/triton-fp8-mxfp4-fused-gather/raw/es8_E256_batch_sweep_cudagraph_roofline_2026-04-07.csv`
+  - Validation: `python -m py_compile python/perf/bench_matmul_parrot_gather.py`; `python python/perf/bench_matmul_parrot_gather.py --case-family non-parrot --limit 45 --rep 100 --csv-out /root/.codex/memories/triton-fp8-mxfp4-fused-gather/raw/es8_E256_batch_sweep_cudagraph_roofline_2026-04-07.csv`
+  - Learnings: Removing eager host-launch overhead changes the shape of the curve materially at small and medium batch sizes; `bs=1` improves by about `20.9x` (`0.2989 -> 0.0143 ms`) and `bs=1024` by about `1.84x`, but the large-batch regime is nearly unchanged to slightly worse; peak HBM utilization shifts to `70.72%` at `bs=128` (`5.66 TB/s`) while peak FP8 utilization is `54.21%` at `bs=32768` (`2710.50 TFLOP/s`); the device-side cliff still appears at `bs=15360 -> 16384`
+  - Plan updates: Treat the cudagraph sweep as the preferred baseline when comparing specialized kernel device-side performance, and keep the eager sweep only as a reference for end-to-end launch overhead
 
 ## Next Up
 
-- [ ] Capture launch flags around the `E256/es8` efficiency cliff and run the remaining non-parrot baseline families (`E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`)
+- [ ] Capture launch flags around the `E256/es8` device-side efficiency cliff under cudagraph benchmarking and run the remaining non-parrot baseline families (`E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`)
 
 ## Open Questions
 

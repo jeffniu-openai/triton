@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 import torch
-from triton.testing import do_bench
+from triton.testing import do_bench_cudagraph
 
 from triton_kernels.distributed import make_expt_dict_uniform
 from triton_kernels.matmul import FlexCtx, FnSpecs, FusedActivation, PrecisionConfig, matmul
@@ -24,6 +24,7 @@ from triton_kernels.topk import topk
 # HBM peak is aligned with NVIDIA's published "up to 8 TB/s" bandwidth for B300.
 DEFAULT_PEAK_FP8_TFLOPS = 5_000.0
 DEFAULT_PEAK_MEM_TBPS = 8.0
+DEFAULT_BENCH_BACKEND = "do_bench_cudagraph"
 
 
 @dataclass(frozen=True)
@@ -296,7 +297,10 @@ def benchmark_case(
     if y.dtype != out.dtype:
         raise RuntimeError(f"Expected output dtype {out.dtype}, got {y.dtype}")
 
-    runtime_ms = float(do_bench(run, warmup=warmup, rep=rep))
+    # Retain the warmup CLI argument for compatibility, but use CUDA-graph replay
+    # timing to remove per-iteration host launch overhead.
+    _ = warmup
+    runtime_ms = float(do_bench_cudagraph(run, rep=rep))
     metrics = compute_matmul_proton_metrics(x, w, out, ragged_batch_metadata, n=case.n, k=case.k)
     tflops = metrics.flops / runtime_ms / 1e9
     tbps = metrics.bytes / runtime_ms / 1e9
@@ -354,6 +358,7 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
                 "runtime_ms",
                 "tflops",
                 "tbps",
+                "bench_backend",
                 "pct_peak_fp8_tflops",
                 "pct_peak_mem_tbps",
                 "peak_fp8_tflops",
@@ -382,6 +387,7 @@ def write_csv(path: Path, results: list[BenchResult]) -> None:
                     f"{result.runtime_ms:.8f}",
                     f"{result.tflops:.8f}",
                     f"{result.tbps:.8f}",
+                    DEFAULT_BENCH_BACKEND,
                     f"{result.pct_peak_fp8_tflops:.8f}",
                     f"{result.pct_peak_mem_tbps:.8f}",
                     f"{result.peak_fp8_tflops:.8f}",
