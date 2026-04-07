@@ -23,8 +23,9 @@ def _load_parrot_gather_bench_module():
     return module
 
 
-def _build_matmul_ogs_cases():
-    return _load_parrot_gather_bench_module().make_cases("all", None, None, None)
+BENCH = _load_parrot_gather_bench_module()
+KERNEL_NAMES = BENCH.iter_kernel_names(BENCH.DEFAULT_KERNEL_MODE)
+CASES = BENCH.make_cases("all", None, None, None)
 
 
 def _get_test_device() -> str:
@@ -36,16 +37,16 @@ def _get_test_device() -> str:
     return f"cuda:{device_index}"
 
 
-@pytest.mark.parametrize("case", _build_matmul_ogs_cases(), ids=lambda case: case.case_id)
+def _run_case_outputs(case):
+    prepared = BENCH.prepare_case(case, device=_get_test_device(), seed=0, local_rank_override=0)
+    return {kernel_name: BENCH.run_case_once(prepared, kernel_name) for kernel_name in KERNEL_NAMES}
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda case: case.case_id)
 def test_matmul_ogs_matches_matmul(case):
-    bench = _load_parrot_gather_bench_module()
-    prepared = bench.prepare_case(case, device=_get_test_device(), seed=0, local_rank_override=0)
-
-    ref_y, ref_precision = bench.run_case_once(prepared, bench.ORIGINAL_KERNEL_NAME)
-    gluon_y, gluon_precision = bench.run_case_once(prepared, bench.GLUON_KERNEL_NAME)
-
-    assert ref_y.shape == gluon_y.shape
-    assert ref_y.dtype == gluon_y.dtype
+    outputs = _run_case_outputs(case)
+    ref_y, ref_precision = outputs[BENCH.ORIGINAL_KERNEL_NAME]
+    gluon_y, gluon_precision = outputs[BENCH.GLUON_KERNEL_NAME]
     assert_close(
         ref_y.to(torch.float32),
         gluon_y.to(torch.float32),

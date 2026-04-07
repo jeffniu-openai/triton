@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-07T04:31:27Z
+updated: 2026-04-07T08:32:16Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -197,6 +197,11 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `make`; `python -m py_compile python/perf/matmul_gluon.py python/perf/bench_matmul_parrot_gather.py python/perf/test_matmul_parrot_gather.py`; `python python/perf/bench_matmul_parrot_gather.py --case-family non-parrot --limit 1 --kernel both --rep 20`; `pytest -s --tb=short python/perf/test_matmul_parrot_gather.py::test_matmul_ogs_matches_matmul[bs1_E256_es8_B5120x10240] python/perf/test_matmul_parrot_gather.py::test_matmul_ogs_matches_matmul[bs1_E64_es1_B1280x2560_parrot]`; `pytest -s --tb=short python/perf/test_matmul_parrot_gather.py::test_matmul_ogs_matches_matmul[bs14336_E256_es8_B5120x10240]`
   - Learnings: The benchmark can now emit side-by-side timing for the baseline and specialized kernels using identical prepared inputs and one CSV row per kernel; on this checkout the pushed Gluon kernel needed a small API update from `blackwell.get_tmem_reg_layout(...)` to descriptor `.get_reg_layout()` to compile against the local Triton version; the specialized kernel is already faster than baseline on the smallest `E256/es8` smoke case (`1.48x` at `bs=1`); the specialized-kernel correctness harness lives in `python/perf` so the perf workspace stays self-contained
   - Plan updates: Use the comparison mode for future performance sweeps while keeping the new perf-side pytest harness, which compares outputs in float32 with the existing fp8 x mxfp4 tolerance (`maxtol=3e-2`) and uses `assert_close` for output-scale checks, as the correctness gate for specialized-kernel edits
+- `2026-04-07` Completed: Refactored the perf-side correctness harness to mirror benchmark case execution
+  - Artifact: `python/perf/test_matmul_parrot_gather.py`
+  - Validation: `make`; `python -m py_compile python/perf/test_matmul_parrot_gather.py`; `pytest -s --tb=short python/perf/test_matmul_parrot_gather.py`
+  - Learnings: The test now reuses the benchmark module's case list, kernel iteration, and input preparation directly, so the perf-side correctness path stays aligned with the benchmarked workload instead of growing its own test scaffolding
+  - Plan updates: Keep future perf-side correctness changes expressed in terms of benchmark helpers first, then add only the minimal comparison logic needed by pytest
 
 ## Next Up
 
