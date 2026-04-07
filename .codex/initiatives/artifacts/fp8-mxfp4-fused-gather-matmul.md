@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-07T08:52:50Z
+updated: 2026-04-07T09:03:36Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -212,6 +212,11 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `python -m py_compile python/perf/bench_matmul_parrot_gather.py python/perf/matmul_ws.py`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --rep 20`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --validate-only`
   - Learnings: The benchmark now treats baseline `triton_kernels.matmul` as the reference and can validate specialized kernels inline during timed runs; `--validate-only` runs the same correctness path without paying the cudagraph timing loop; `both` stays `original+gluon` so the perf pytest surface remains stable, while `all` adds the incomplete `ws` entrypoint for benchmark-side experimentation only
   - Plan updates: Keep `ws` benchmark-only until its entrypoint is complete enough for real timing, and use the new validate-only mode for fast correctness checks while iterating on specialized kernels
+- `2026-04-07` Completed: Tightened the benchmark kernel contract to require strict `matmul`-compatible APIs
+  - Artifact: `python/perf/bench_matmul_parrot_gather.py`
+  - Validation: `python -m py_compile python/perf/bench_matmul_parrot_gather.py`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --rep 20`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --validate-only`
+  - Learnings: The benchmark no longer carries a `None`-return fallback or a per-kernel call adapter; all specialized kernels are now expected to accept the same kwargs as `triton_kernels.matmul` and return the output tensor directly, which keeps the benchmark path simpler and avoids masking API drift
+  - Plan updates: Keep future specialized kernel entrypoints aligned to the baseline `matmul` call contract so benchmark integration stays declarative rather than per-kernel special-cased
 
 ## Next Up
 
