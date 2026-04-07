@@ -625,6 +625,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--peak-fp8-tflops", type=float, default=DEFAULT_PEAK_FP8_TFLOPS)
     parser.add_argument("--peak-mem-tbps", type=float, default=DEFAULT_PEAK_MEM_TBPS)
     parser.add_argument("--csv-out", type=Path, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
     return parser.parse_args()
 
 
@@ -643,6 +644,9 @@ def main() -> None:
     if args.validate_only and args.csv_out is not None:
         raise ValueError("--csv-out is not supported with --validate-only")
 
+    if args.batch_size is not None:
+        args.min_batch_size = args.batch_size
+        args.max_batch_size = args.batch_size
     cases = make_cases(args.case_family, args.min_batch_size, args.max_batch_size, args.limit)
     if not cases:
         raise ValueError("No cases matched the requested filters")
