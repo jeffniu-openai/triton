@@ -4921,9 +4921,14 @@ computeTMemLdStEncodingInfoImpl(
     return memLayout.hasInDim(kRow) &&
            memLayout.getInDimSize(kRow) == rowPlanOverride->rowSpan;
   };
+  bool allowLiftedM64AccumulatorOverride =
+      rowPlanOverride && rowPlanOverride->rowSpan == 128 &&
+      rowPlanOverride->warpRow0 == 16 && rowPlanOverride->warpRow1 == 32 &&
+      bitwidth == 32 && logicalRows == 64 && memLayout.hasInDim(kRow) &&
+      memLayout.getInDimSize(kRow) == 64 && hasZeroBasisAlong(memLayout, kRow);
   if (rowPlanOverride &&
       (!rowPlan || rowPlanOverride->rowSpan == rowPlan->rowSpan ||
-       memLayoutSupportsOverride()))
+       memLayoutSupportsOverride() || allowLiftedM64AccumulatorOverride))
     rowPlan = rowPlanOverride;
   if (debug) {
     llvm::errs() << "[halfrows-info] regLayout:\n"
@@ -5166,7 +5171,7 @@ computeTMemLdStEncodingInfoImpl(
       bitwidth == 32 && logicalRows == 64 && logicalCols == physicalCols &&
       physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
       !hasZeroBasisAlong(originalMemLayout, kCol);
-  if (isI32RowZeroM64DirectView &&
+  if (isI32RowZeroM64DirectView && info->atom == TMemAccessAtom::I32x32b &&
       info->warpBaseOffset0 == (32u << 16) &&
       info->warpBaseOffset1 == (64u << 16)) {
     info->warpBaseOffset0 = halvePackedTMemRowOffset(info->warpBaseOffset0);

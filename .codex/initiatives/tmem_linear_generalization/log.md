@@ -4793,3 +4793,35 @@ Open after this slice:
     - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[shape3-8]` -> `1 passed`
     - `python/test/gluon/test_core.py -k 'tmem_descriptor_chain_matrix'` -> `26 passed`
     - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]` -> `1 passed`
+
+
+- 2026-04-07: finalized the root `64xNxf32` MMAv5 accumulator ld/st fix for the Blackwell `16x256b` preference path
+  - after the broader GB200-equivalent `python/test/unit` rerun, the remaining reproducible wrong-code bucket collapsed to `python/test/unit/language/test_matmul.py::test_simple_matmul[...]` cases with
+    - `M=64`
+    - `out_dtype=float32`
+    - Blackwell MMAv5 lowering
+    - `TRITON_PREFER_TMEM_16x256_LAYOUT=1` or a nearby root-accumulator layout family
+  - root cause:
+    - the remaining bad cases were not MMAv5 instruction selection failures; they were generic `ttng.tmem_store` / `ttng.tmem_load` around a root `ttng.tmem_alloc` accumulator after MMA
+    - the preferred `16x256b` root accumulator layout is a lifted sparse / zero-row-basis `64xNxf32` TMEM view
+    - raw lowering must still use the widened lifted anchor family for that backing tile, but the stable widened anchors are `warpRow0=16`, `warpRow1=32`, `rowSpan=128`, not the earlier over-broad `32/64 @ 128` experiment
+    - `TensorMemoryToLLVM.cpp` therefore needs to widen only raw root `ttng.tmem_alloc` accumulators that are actually used by `tcgen05_mma` / `tcgen05.mma_scaled`, and `TensorMemoryUtils.cpp` must explicitly accept that lifted `16/32 @ 128` override for the zero-row-basis `64xNxf32` accumulator family
+    - the `I32x32b` row-zero M64 base-offset halving special-case also has to stay scoped to the real `I32x32b` path, otherwise the recovered packed `16x256b` / `16x32bx2` families are overcorrected again
+  - fix:
+    - in `lowerTMemLdStFromTypes(...)`, replace the older row-zero-root heuristic with a narrower MMAv5-accumulator check:
+      - raw root `ttng.tmem_alloc`
+      - rank-2
+      - element bitwidth `32`
+      - logical `M=64`
+      - actual `TCGen5MMAOp` / `TCGen5MMAScaledOp` users
+    - thread the widened raw/query row-plan override as `{warpRow0=16, warpRow1=32, rowSpan=128}`
+    - in `computeTMemLdStEncodingInfoImpl(...)`, allow exactly that lifted override for `64xNxf32` zero-row-basis accumulator layouts even though the nominal input row span is still `64`
+    - keep the `isI32RowZeroM64DirectView` warp-base halving rewrite gated on `atom == I32x32b`
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-2-64-512-32-2-float32-tensorfloat32]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-128-32-4-float32-tensorfloat32]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-2-64-128-32-4-float32-tensorfloat32]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-512-32-2-float16-float16]` -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-2-64-512-32-2-float16-float16]` -> `1 passed`

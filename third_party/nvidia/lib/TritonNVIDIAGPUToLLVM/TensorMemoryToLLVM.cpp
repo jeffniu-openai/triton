@@ -805,16 +805,16 @@ lowerTMemLdStFromTypes(
            logicalRows == activePhysicalRows &&
            logicalCols == physicalCols * 2;
   }();
-  bool preferWidenedRootRowPlanForRowZeroM64Alloc = [&]() {
-    if (!memDescValue ||
-        !isa_and_nonnull<triton::nvidia_gpu::TMEMAllocOp>(
-            memDescValue.getDefiningOp()) ||
-        memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+  bool preferWidenedRootRowPlanForM64AccumulatorAlloc = [&]() {
+    auto alloc = dyn_cast_if_present<triton::nvidia_gpu::TMEMAllocOp>(
+        memDescValue ? memDescValue.getDefiningOp() : nullptr);
+    if (!alloc || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
         memTy.getShape()[0] != 64)
       return false;
-    auto memLayout = toLinearLayout(memTy);
-    return hasZeroBasisAlong(memLayout, kRow) &&
-           !hasZeroBasisAlong(memLayout, kCol);
+    return llvm::any_of(memDescValue.getUsers(), [](Operation *user) {
+      return isa<triton::nvidia_gpu::TCGen5MMAOp,
+                 triton::nvidia_gpu::TCGen5MMAScaledOp>(user);
+    });
   }();
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
@@ -920,8 +920,8 @@ lowerTMemLdStFromTypes(
                        : getBackingTMemLdStRowPlan(memDescValue);
       if (!rawRowPlan && !disallowSupportRescueFor32x32Subview)
         rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
-      if (preferWidenedRootRowPlanForRowZeroM64Alloc) {
-        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+      if (preferWidenedRootRowPlanForM64AccumulatorAlloc) {
+        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
                                      /*rowSpan=*/128};
       }
       if (!disallowSupportRescueFor32x32Subview &&
@@ -998,6 +998,9 @@ lowerTMemLdStFromTypes(
                        : (memDescValue ? getTMemLdStRowPlanForQuery(memDescValue,
                                                                     queryTy)
                                        : getTMemLdStRowPlanForType(queryTy));
+    if (preferWidenedRootRowPlanForM64AccumulatorAlloc)
+      rowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                                /*rowSpan=*/128};
     if (debugQuerySelection) {
       llvm::errs() << "[tmem-ldst] queryTy=" << queryTy << " rowPlan="
                    << (rowPlan ? llvm::Twine(rowPlan->rowSpan).str()

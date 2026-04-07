@@ -2684,3 +2684,17 @@ rejection, not rescue
   - origin ld/st around MMA base the TMEM address on the widened `32/64` anchors
   - current failing path used `16/32` anchors instead
 - A broad storage-row-plan change fixed the unit repros but broke plain `linear_m64_*` descriptor-chain tests, so the durable fix is narrower: only raw lowering of root row-zero `64xNxf32` `ttng.tmem_alloc` accumulators is widened back to the `128`-row anchor family. Query planners stay unchanged.
+
+
+## 2026-04-07: final stable form of the Blackwell root `64xNxf32` MMAv5 accumulator fix
+
+- The earlier widened-root experiment identified the right class of failure but used the wrong anchor family. The stable fix for the preferred sparse/root `M=64` accumulator layout is **not** `32/64 @ 128`; it is the lifted anchor family `warpRow0=16`, `warpRow1=32`, `rowSpan=128`.
+- Why that works:
+  - the root accumulator still has logical `M=64`, so query/reg-layout selection for user-visible descriptor ld/st should continue to look like the active-row `64`-row family
+  - but the physical backing accumulator tile used by MMAv5 spans the lifted `128`-row support form, and the sparse/root row basis means raw lowering must be allowed to keep that lifted support tile even though the nominal input row span is `64`
+- The durable implementation split is therefore:
+  - `TensorMemoryToLLVM.cpp`: only widen raw root `ttng.tmem_alloc` accumulators that are actually consumed by `tcgen05_mma` / `tcgen05.mma_scaled`
+  - `TensorMemoryUtils.cpp`: explicitly accept the lifted `16/32 @ 128` override for `64xNxf32` zero-row-basis accumulator layouts and keep the old M64 `I32x32b` base-offset halving rewrite gated to the real `I32x32b` path
+- Effect:
+  - the forced `16x256b` Blackwell root-accumulator path now lowers correct `tcgen05.{st,ld}` around MMA
+  - the user-facing packed `linear_m64_*` descriptor-chain families stay green because the override does not leak into ordinary query/reg-layout selection
