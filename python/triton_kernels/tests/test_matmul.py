@@ -471,7 +471,6 @@ def _test_op(m, n, k, split_k, do_gather, do_scatter, inner_expt_opt, do_gamma, 
                f"ref_y_scale: {ref_y_scale}, tri_y_scale: {tri_y_scale.item()}"
 
 
-
 def test_set_idle_sms():
     if not is_cuda():
         pytest.skip("Only supported on CUDA")
