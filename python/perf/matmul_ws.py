@@ -44,8 +44,16 @@ def matmul(
 
     b_mx_scales = precision_config.b_mx_scale
 
+    # d_model = 5120
+    # d_out = 10240
+    #
+    # a: [batch_size, d_model]
+    # b: [n_expts_tot / n_expt_shards, d_model, d_out)
     assert a.ndim == 2
-    print(f"{a.shape=}")
-    print(f"{b.shape=}")
-    K = a.shape[-1]
-    _, N = b.shape[-2:]
+    M, K = a.shape
+    E, K, N = b.shape
+
+    print(f"{M=}")
+    print(f"{K=}")
+    print(f"{E=}")
+    print(f"{N=}")
