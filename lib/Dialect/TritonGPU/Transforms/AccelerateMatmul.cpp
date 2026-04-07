@@ -503,20 +503,9 @@ replaceCGALayout(DistributedEncodingTrait layout,
 
 static DistributedEncodingTrait
 getDefaultMMAv5AccumulatorLayout(gpu::MemDescType memType, unsigned numWarps) {
-  auto *ctx = memType.getContext();
-  bool prefer16x256 =
-      ::mlir::triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
-  if (prefer16x256) {
-    if (auto layout = nvidia_gpu::getDistributedLayoutForTmemLdSt(
-            memType, triton::nvidia_gpu::TMemAccessAtom::I16x256b, numWarps)) {
-      return LinearEncodingAttr::get(ctx, std::move(*layout));
-    }
-  }
-  auto layout = nvidia_gpu::getDistributedLayoutForTmemLdSt(
-      memType, triton::nvidia_gpu::TMemAccessAtom::I32x32b, numWarps);
-  assert(layout && "expected MMAv5 accumulator TMEM layout to have a direct ld/st encoding");
-  return LinearEncodingAttr::get(ctx, std::move(*layout));
+  return nvidia_gpu::getDefaultLayoutForTmemLdSt(memType, numWarps);
 }
+
 
 static Value splitBOperand(Value b, mlir::PatternRewriter &rewriter) {
   OpBuilder::InsertionGuard g(rewriter);

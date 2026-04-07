@@ -314,14 +314,10 @@ allocateTMem(Operation *parentOp,
     if (auto mmaOp = dyn_cast<MMAv5OpInterface>(op)) {
       auto aTMemInfo = getMMAv5LhsLayoutInfo(mmaOp.getA().getType());
       if (aTMemInfo) {
-        auto accInfo = getMMAv5AccumulatorLayoutInfo(mmaOp.getAccumulator().getType());
         TMemAllocation allocSize = getTmemAllocSizes(mmaOp.getA().getType());
-        if (allocSize.numRows == 64 || aTMemInfo->mmaSizeM == 64 ||
-            (accInfo && accInfo->mmaSizeM == 64)) {
+        if (allocSize.numRows == 64) {
           // HW restriction, the A alloc and accumulator needs to be in the same
-          // rows. This also applies to interleaved blockM=64 layouts that span
-          // 128 physical rows: they still need a consistent row anchor between
-          // the LHS and accumulator allocations.
+          // rows.
           SmallVector<Operation *> lhsAllocs = getAlloc(mmaOp.getA());
           SmallVector<Operation *> accAllocs = getAlloc(mmaOp.getAccumulator());
           for (Operation *lhsAlloc : lhsAllocs)

@@ -2623,3 +2623,24 @@ rejection, not rescue
 - Resolution:
   - canonical legacy M64 layouts with `shape[0] == 64` and expanded `N` now keep the hidden `row=16` basis zero and let the extra `N` growth stay in the column dimension
   - this aligns legacy sugar with the direct-support linear analysis/lowering model and fixes the legacy `block_m_64` reinterpret/store bucket without adding hidden rematerialization or layout repair
+
+
+## 2026-04-06: GB200 warp-specialization TMEM allocation metadata regression
+
+- Symptom:
+  - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-128-8192-8192]` failed on the generalized tree with `OutOfResources: tensor memory, Required: 640, Hardware limit: 512`
+  - the exact same nodeid passed on `origin/main`
+- Diagnostic proof:
+  - current and `origin/main` TTGIR matched structurally for the failing attention kernel; the only meaningful difference was canonical `#ttng.tensor_memory_linear` attrs on current versus legacy `#ttng.tensor_memory_encoding` sugar on `origin/main`
+  - the allocs themselves were the same logical TMEM tiles (`128x64xf32` accumulator plus `128x128xf32` / `128x128xf16` temporaries)
+  - therefore the regression had to be in TMEM size accounting, not in the generated MMAv5 or ld/st IR
+- Root cause:
+  - `getTmemAllocSizes(...)` had been widened to use `planMMAv5AccumulatorFamily(...)` / `planMMAv5ScaledAccumulatorFamily(...)` for canonical linear encodings and to replace the physical TMEM column count with `instrShapeN / preferredColStride`
+  - that widened planner is appropriate when selecting a supported MMAv5 instruction family, but it is not the same thing as the backing TMEM storage footprint
+  - for equivalent legacy-sugar and canonical-linear TMEM allocs, this inflated `ttg.tensor_memory_size` even though the physical allocs were unchanged
+- Fix:
+  - TMEM allocation metadata sizing now comes from the physical linear-layout extents directly (`ll.getInDimSize(row/col)`) for both legacy-sugar and canonical-linear encodings
+  - MMAv5 family planners remain in place for verifier/codegen matching, but no longer participate in `getTmemAllocSizes(...)`
+- Result:
+  - the exact GB200 attention-forward repro drops back to the origin-like TMEM budget and passes again
+  - canonical linear TMEM encodings no longer pay a larger allocator budget than the equivalent legacy sugar

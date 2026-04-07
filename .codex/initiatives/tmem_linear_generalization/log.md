@@ -4737,3 +4737,20 @@ Open after this slice:
     - `CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]` -> `1 passed`
     - `make test-lit` -> `248 passed, 2 unsupported`
     - `make test-cpp` -> `240/240 passed`
+
+- 2026-04-06: fixed the GB200 warp-specialization TMEM OOR regression after the linear-generalization sweep
+  - failing repro:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. python3 -m pytest -s --tb=short --maxfail=1 "python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-128-8192-8192]"` failed with `OutOfResources: tensor memory, Required: 640, Hardware limit: 512`
+    - the same exact nodeid passed on `origin/main`
+  - root cause:
+    - `getTmemAllocSizes(...)` in `Dialect.cpp` was overriding the physical TMEM column count for canonical linear encodings with the widest MMAv5 family planner result (`instrShapeN`)
+    - that planner result is correct for instruction-family matching but incorrect for allocation-size accounting; equivalent legacy-sugar and canonical-linear TMEM allocs therefore got different `ttg.tensor_memory_size` values
+    - the exact attention-forward TTGIR matched `origin/main` structurally (`128x64xf32` and `128x128xf16/f32` allocs) and differed only in legacy sugar vs canonical `#ttng.tensor_memory_linear`, confirming the regression was accounting-only
+  - fix:
+    - `getTmemAllocSizes(...)` now uses the physical linear-layout row/column extents directly, matching the old legacy-sugar behavior for storage accounting
+    - kept the widened MMAv5 family planning for verifier/codegen selection, but removed it from TMEM allocation metadata sizing
+    - also restored `AccelerateMatmul.cpp` to use `getDefaultLayoutForTmemLdSt(...)` for default MMAv5 accumulator layouts so GB200 unit matmul coverage follows the same direct-layout policy as `origin/main`
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - exact repro above -> `1 passed`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-8-2-64-128-32-4-float32-tensorfloat32]` and `...[True-False-4-2-128-128-16-4-float16-float16]` no longer regress on the current tree
