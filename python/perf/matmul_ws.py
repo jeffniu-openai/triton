@@ -38,7 +38,7 @@ def matmul(
     assert c_acc_in is None
 
     specs = fused_activation.specs
-    assert specs.naem == "swiglu"
+    assert specs.name == "swiglu"
     reduction_n = specs.reduction_n
     swiglu_alpha, swiglu_limit = fused_activation.fn_args
 
