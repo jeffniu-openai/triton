@@ -1284,13 +1284,48 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
     return *maybeAnalysis;
   }
 
+  if (preserveNonCanonicalView && !hasExplicitViewProducer &&
+      isa<TensorMemoryLinearEncodingAttr>(encoding)) {
+    auto rawLayout = toLinearLayout(memDescTy);
+    if (rawLayout != maybeAnalysis->layout) {
+      auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
+      if (!maybeTwoCTAs) {
+        if (error)
+          *error = "expected tensor memory layout encoding";
+        return failure();
+      }
+      return TMemLdStQueryLayout{
+          rawLayout, *maybeTwoCTAs,
+          SmallVector<int32_t>(rawLayout.getNumInDims(), 0)};
+    }
+  }
+
   auto *ctx = memDesc.getContext();
   if (auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>()) {
     auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
         subslice.getSrc(), preserveNonCanonicalView, error);
-    if (failed(srcQuery))
+    if (failed(srcQuery)) {
+      if (debug && error && !error->empty()) {
+        llvm::errs() << "[tmem-ldst] memdesc_subslice srcQuery fail src="
+                     << cast<MemDescType>(subslice.getSrc().getType())
+                     << " dst=" << memDescTy << " offsets=";
+        for (auto off : subslice.getOffsets())
+          llvm::errs() << " " << off;
+        llvm::errs() << " err=" << *error << "\n";
+      }
       return failure();
+    }
     auto srcTy = cast<MemDescType>(subslice.getSrc().getType());
+    if (srcTy.getRank() == memDescTy.getRank() &&
+        llvm::equal(srcTy.getShape(), memDescTy.getShape()) &&
+        llvm::all_of(subslice.getOffsets(),
+                     [](int64_t offset) { return offset == 0; })) {
+      if (debug) {
+        llvm::errs() << "[tmem-ldst] memdesc_subslice identity src=" << srcTy
+                     << " dst=" << memDescTy << "\n";
+      }
+      return *srcQuery;
+    }
     auto tmemSpace = TensorMemorySpaceAttr::get(memDesc.getContext());
     if (srcTy.getMemorySpace() == tmemSpace && memDescTy.getMemorySpace() == tmemSpace &&
         srcTy.getRank() == 2 && memDescTy.getRank() == 2 &&
@@ -1442,8 +1477,13 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
   if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
     auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
         index.getSrc(), preserveNonCanonicalView, error);
-    if (failed(srcQuery))
+    if (failed(srcQuery)) {
+      if (debug && error && !error->empty())
+        llvm::errs() << "[tmem-ldst] memdesc_index srcQuery fail src="
+                     << cast<MemDescType>(index.getSrc().getType())
+                     << " dst=" << memDescTy << " err=" << *error << "\n";
       return failure();
+    }
     auto srcTy = cast<MemDescType>(index.getSrc().getType());
     APInt indexValue;
     std::optional<int32_t> leadingIndex;
@@ -1456,8 +1496,13 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
   if (auto reshape = memDesc.getDefiningOp<gpu::MemDescReshapeOp>()) {
     auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
         reshape.getSrc(), preserveNonCanonicalView, error);
-    if (failed(srcQuery))
+    if (failed(srcQuery)) {
+      if (debug && error && !error->empty())
+        llvm::errs() << "[tmem-ldst] memdesc_reshape srcQuery fail src="
+                     << cast<MemDescType>(reshape.getSrc().getType())
+                     << " dst=" << memDescTy << " err=" << *error << "\n";
       return failure();
+    }
     auto srcTy = cast<MemDescType>(reshape.getSrc().getType());
     return inferTMemReshapeQueryLayout(srcTy.getShape(), *srcQuery,
                                        memDescTy.getShape(), ctx, error);
@@ -1465,17 +1510,50 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
   auto preserveViewOrigin = [&](Value src) -> FailureOr<TMemLdStQueryLayout> {
     auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
         src, preserveNonCanonicalView, error);
-    if (failed(srcQuery))
+    if (failed(srcQuery)) {
+      if (debug && error && !error->empty())
+        llvm::errs() << "[tmem-ldst] preserveViewOrigin srcQuery fail src="
+                     << cast<MemDescType>(src.getType()) << " dst=" << memDescTy
+                     << " err=" << *error << "\n";
       return failure();
+    }
     auto maybeAnalysis =
         getTMemViewAnalysisLayout(memDescTy.getShape(), memDescTy.getEncoding(),
                                   error);
-    if (!maybeAnalysis)
+    if (!maybeAnalysis) {
+      if (debug && error && !error->empty())
+        llvm::errs() << "[tmem-ldst] preserveViewOrigin analysis fail dst="
+                     << memDescTy << " err=" << *error << "\n";
       return failure();
+    }
     auto remappedOrigin = remapTMemLdStQueryOriginThroughPhysicalCoords(
         *srcQuery, maybeAnalysis->layout, error);
-    if (failed(remappedOrigin))
+    if (failed(remappedOrigin)) {
+      auto normalizedSrcLayout =
+          normalizeTensorMemoryLinearLayoutForAnalysis(srcQuery->layout);
+      auto normalizedDstLayout =
+          normalizeTensorMemoryLinearLayoutForAnalysis(maybeAnalysis->layout);
+      auto normalizedSrcQuery = TMemLdStQueryLayout{
+          normalizedSrcLayout, srcQuery->twoCTAs,
+          remapTMemLdStQueryOrigin(*srcQuery, normalizedSrcLayout,
+                                   /*deltaCoords=*/{})};
+      auto normalizedOrigin = remapTMemLdStQueryOriginThroughPhysicalCoords(
+          normalizedSrcQuery, normalizedDstLayout, error);
+      if (succeeded(normalizedOrigin)) {
+        if (debug) {
+          llvm::errs() << "[tmem-ldst] preserveViewOrigin normalized remap src="
+                       << cast<MemDescType>(src.getType()) << " dst=" << memDescTy
+                       << "\n";
+        }
+        return TMemLdStQueryLayout{normalizedDstLayout, maybeAnalysis->twoCTAs,
+                                   *normalizedOrigin};
+      }
+      if (debug && error && !error->empty())
+        llvm::errs() << "[tmem-ldst] preserveViewOrigin remap fail src="
+                     << cast<MemDescType>(src.getType()) << " dst=" << memDescTy
+                     << " err=" << *error << "\n";
       return failure();
+    }
     return TMemLdStQueryLayout{maybeAnalysis->layout, maybeAnalysis->twoCTAs,
                                *remappedOrigin};
   };
@@ -4383,7 +4461,7 @@ computeTMemLdStEncodingInfoImpl(
     };
     auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
     auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);
-    auto basisAllZero = [](const SmallVector<int32_t> &basis) {
+    auto basisAllZero = [](const auto &basis) {
       return llvm::all_of(basis, [](int32_t value) { return value == 0; });
     };
     if (expectedWarp0Basis && expectedWarp1Basis &&
@@ -5070,13 +5148,32 @@ computeTMemLdStEncodingInfoImpl(
   bool isI16RowZeroM64ReinterpretView =
       isRowZeroM64ReinterpretView &&
       info->atom == TMemAccessAtom::I16x32bx2;
-  if (isI16RowZeroM64ReinterpretView && info->secondHalfOffset)
+  if (isI16RowZeroM64ReinterpretView && info->secondHalfOffset &&
+      regLayout.hasInDim(kWarp) && regLayout.getInDimSize(kWarp) <= 4)
     info->secondHalfOffset = *info->secondHalfOffset * 2;
   info->warpBaseOffset0 = packTMemBasisOffset(warpBasis0);
   info->warpBaseOffset1 = packTMemBasisOffset(warpBasis1);
   info->warpRow0 = warpBasis0.empty() ? 0 : warpBasis0.front();
   info->warpRow1 = warpBasis1.empty() ? 0 : warpBasis1.front();
   info->baseOffset = rowPlan->baseOffset;
+
+  auto halvePackedTMemRowOffset = [](uint32_t packedOffset) {
+    uint32_t row = packedOffset >> 16;
+    uint32_t col = packedOffset & 0xffffu;
+    return ((row / 2) << 16) | col;
+  };
+  bool isI32RowZeroM64DirectView =
+      bitwidth == 32 && logicalRows == 64 && logicalCols == physicalCols &&
+      physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
+      !hasZeroBasisAlong(originalMemLayout, kCol);
+  if (isI32RowZeroM64DirectView &&
+      info->warpBaseOffset0 == (32u << 16) &&
+      info->warpBaseOffset1 == (64u << 16)) {
+    info->warpBaseOffset0 = halvePackedTMemRowOffset(info->warpBaseOffset0);
+    info->warpBaseOffset1 = halvePackedTMemRowOffset(info->warpBaseOffset1);
+    info->warpRow0 /= 2;
+    info->warpRow1 /= 2;
+  }
 
   auto regInputDim = *regLayout.getInDimNames().begin();
   if (bitwidth == 32) {

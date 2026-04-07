@@ -4754,3 +4754,42 @@ Open after this slice:
     - `TRITON_BUILD_WITH_CCACHE=true make -j96`
     - exact repro above -> `1 passed`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-8-2-64-128-32-4-float32-tensorfloat32]` and `...[True-False-4-2-128-128-16-4-float16-float16]` no longer regress on the current tree
+
+- 2026-04-07: fixed the remaining `linear_m64_32x32b_8w` TMEM descriptor-chain wrong-code on the packed `16x32bx2.x32` direct path
+  - failing repro before the fix:
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short --maxfail=1 'python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_8w-layout5-64-128-32x32b-8-16x32bx2]'`
+    - first failed as `misaligned address`; after recovering the raw packed query path it still failed numerically with `4096/8192` mismatches, then `2048/8192` after removing a lowering-side warp-group col squash
+  - root cause:
+    - the MLIR-side direct `I16x32bx2.x32` plan for the row-zero `64x128xf32` reinterpret already carried the required recovered warp-group TMEM band bit (`warp=4 -> col 32`)
+    - `lowerTMemLdSt(...)` in `TensorMemoryToLLVM.cpp` was explicitly zeroing that recovered higher-warp col contribution for the packed path, and the later `secondHalfOffset: 64 -> 32` special cases in `TensorMemoryUtils.cpp` were compensating for that older broken lowering
+    - once the warp-group col contribution is preserved, the natural packed `secondHalfOffset=64` is the correct direct lowering again
+  - fix:
+    - removed the lowering-side overcorrection that zeroed the recovered `warp=4 -> col 32` contribution in `lowerTMemLdSt(...)`
+    - removed the `>4 warps` row-zero M64 packed-support `secondHalfOffset` halving / `64 -> 32` rewrites in `TensorMemoryUtils.cpp`
+    - kept the raw query-layout recovery and raw `rowPlan=64` selection for the reinterpret path; that remains necessary to stay on the packed `16x32bx2.x32` direct path instead of regressing to scalar `32x32b.x1`
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - exact isolated repro above -> `1 passed`
+    - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -k 'tmem_descriptor_chain_matrix' python/test/gluon/test_core.py` -> `26 passed`
+
+- 2026-04-07: narrowed the remaining Blackwell MMAv5 root-accumulator wrong-code fix to raw lowering only
+  - failures after the stale-lit / GB200 rerun were no longer in generic user-visible TMEM descriptor ld/st; the remaining repros were internal MMAv5 accumulator leaves in
+    - `python/test/unit/cuda/test_tma_store_gemm.py::test_tma_load_store[64-128-32-1-4-False-True-False]`
+    - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[shape3-8]`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]`
+  - fresh `TRITON_DEBUG_TMEM_QUERY=1` / `TRITON_DEBUG_TMEM_HALFROWS=1` traces showed those kernels all lower raw root `ttng.tmem_alloc` row-zero `M=64` TMEM accumulators through `atom=I16x32bx2` with the active-row `rowPlan=64` (`warpRow0=16`, `warpRow1=32`)
+  - that active-row plan is still correct for user-facing reg-layout selection and descriptor-view ld/st, but it does not match the physical TMEM row anchoring MMAv5 uses for the backing accumulator tile
+  - origin/current LLIR comparison on the TMA repro confirmed the divergence:
+    - origin: store/load TMEM base uses the widened row anchors (`shl 21`, mask `6291456`)
+    - current failing path: store/load TMEM base used the narrower active-row anchors (`shl 20`, mask `3145728`)
+  - broadening the backing row-plan helper to always use the widened storage view fixed the GB200 unit repros but regressed the plain `linear_m64_*` descriptor-chain matrix, so that approach was reverted
+  - final fix:
+    - keep `getTMemLdStRowPlanForType(...)` and the generic query/backing helpers unchanged
+    - in `TensorMemoryToLLVM.cpp`, detect only the raw root `ttng.tmem_alloc` row-zero `64xNxf32` accumulator leaves (`hasZeroBasisAlong(row) && !hasZeroBasisAlong(col)`) and override the raw lowering row plan to `{warpRow0=32, warpRow1=64, rowSpan=128}`
+    - leave descriptor-view/query selection on the active-row `64`-row path
+  - validation:
+    - `TRITON_BUILD_WITH_CCACHE=true make -j96`
+    - `python/test/unit/cuda/test_tma_store_gemm.py::test_tma_load_store[64-128-32-1-4-False-True-False]` -> `1 passed`
+    - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[shape3-8]` -> `1 passed`
+    - `python/test/gluon/test_core.py -k 'tmem_descriptor_chain_matrix'` -> `26 passed`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]` -> `1 passed`

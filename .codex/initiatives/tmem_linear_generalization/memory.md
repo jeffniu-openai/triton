@@ -2644,3 +2644,43 @@ rejection, not rescue
 - Result:
   - the exact GB200 attention-forward repro drops back to the origin-like TMEM budget and passes again
   - canonical linear TMEM encodings no longer pay a larger allocator budget than the equivalent legacy sugar
+
+## 2026-04-07: row-zero M64 packed `16x32bx2.x32` descriptor-chain fix
+
+- Symptom:
+  - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_8w-layout5-64-128-32x32b-8-16x32bx2]` was the last remaining wrong-code bucket in the packed direct ld/st path
+  - after the packed raw-query recovery landed, the crash was gone but the output still duplicated/misplaced 32-column bands
+- Diagnostic proof:
+  - the recovered MLIR-side direct plan reported `atom=I16x32bx2`, `rowPlan=64`, and `reps` with exactly one higher-warp recovered band bit: `warp=4 -> (row 0, col 32)`
+  - generated LLIR showed the packed PTX path still using one `16x32bx2.x32` message, but the lowering-side address assembly had been suppressing that recovered higher-warp col contribution and later forcing `secondHalfOffset` from `64` down to `32`
+  - removing only the lowering-side col squash reduced the mismatch bucket from `4096/8192` to `2048/8192`, proving the remaining bug was the stale `64 -> 32` special-case rather than the raw packed plan itself
+- Root cause:
+  - two compensating hacks had accumulated while recovering the packed path:
+    - LLVM lowering zeroed the recovered higher-warp col band contribution for the packed row-zero M64 path
+    - TMEM ld/st analysis then rewrote `secondHalfOffset=64` to `32` for the same `>4 warp` row-zero M64 packed-support family
+  - once the warp-group band contribution is preserved in lowering, those `64 -> 32` rewrites are wrong and skip the logical `cols 32:64` band
+- Fix:
+  - preserve the recovered higher-warp col contribution in `lowerTMemLdSt(...)`
+  - keep `secondHalfOffset=64` for the `>4 warp` row-zero M64 packed-support direct path
+  - keep the raw packed query-layout / raw `rowPlan=64` recovery intact so the path still selects `tcgen05.{ld,st}.sync.aligned.16x32bx2.x32.b32`
+- Result:
+  - the isolated `linear_m64_32x32b_8w` descriptor-chain repro now passes directly
+  - the whole `tmem_descriptor_chain_matrix` family is green again (`26 passed`)
+
+## 2026-04-07: raw root row-zero `M=64` MMAv5 accumulators need widened ld/st anchors
+
+- The remaining post-GB200 rerun wrong-code bucket was not a generic TMEM descriptor problem anymore. User-visible `linear_m64_*` descriptor-chain ld/st still passed, but internal MMAv5 accumulator kernels failed at exactly the first half-row boundary (`row 16`).
+- Repros:
+  - `python/test/unit/cuda/test_tma_store_gemm.py::test_tma_load_store[64-128-32-1-4-False-True-False]`
+  - `python/test/unit/language/test_block_pointer.py::test_block_ptr_matmul_no_scf[shape3-8]`
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-64-128-warps2-16-False-True-acc_dtype4]`
+- Debug traces showed a common lowering shape:
+  - raw root `ttng.tmem_alloc`
+  - row-zero `#ttng.tensor_memory_linear` / legacy-equivalent `blockM=64` accumulator encodings
+  - `computeTMemLdStEncodingInfo(...)` choosing `atom=I16x32bx2`
+  - active-row `rowPlan=64` (`warpRow0=16`, `warpRow1=32`)
+- That active-row plan is still right for query/reg-layout selection, which is why user-facing descriptor ld/st continued to pass. But it is too small for the physical backing accumulator tile MMAv5 writes into.
+- Origin/current LLIR comparison on the TMA repro made the mismatch concrete:
+  - origin ld/st around MMA base the TMEM address on the widened `32/64` anchors
+  - current failing path used `16/32` anchors instead
+- A broad storage-row-plan change fixed the unit repros but broke plain `linear_m64_*` descriptor-chain tests, so the durable fix is narrower: only raw lowering of root row-zero `64xNxf32` `ttng.tmem_alloc` accumulators is widened back to the `128`-row anchor family. Query planners stay unchanged.

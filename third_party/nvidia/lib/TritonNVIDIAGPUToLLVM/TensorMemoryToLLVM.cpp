@@ -564,9 +564,15 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
   // The block offset is already added to the tmemBase
   // Add warp groups to tmemBase
   if (reps.getInDimSize(kWarp) > 4) {
+    // The explicit warp-base anchors above already cover the low two warp bits
+    // (the first four warps in each warp-group). Only add the higher warp
+    // group contribution here; otherwise packed TMEM paths can reapply the
+    // in-group row anchor and misaddress transformed support/query reps.
+    Value warpGroupId =
+        b.shl(b.lshr(warpId, b.i32_val(2)), b.i32_val(2));
     auto rowCol = applyLinearLayout(
         loc, rewriter, reps,
-        {{kReg, b.i32_val(0)}, {kLane, b.i32_val(0)}, {kWarp, warpId}});
+        {{kReg, b.i32_val(0)}, {kLane, b.i32_val(0)}, {kWarp, warpGroupId}});
     auto [row, col] = getRowCol(rowCol);
     tmemBase = b.add(tmemBase,
                      b.or_(b.shl(row, b.i32_val(16)), col, /*disjoint*/ true));
@@ -593,13 +599,15 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
         col = i * 4;
       if (recoverScalarI16x32bx2ColSteps)
         // Scalarized unpacked 16x32bx2.x1 packets advance in packed-dword
-        // column steps.
-        col = i * 4;
+        // column steps, but transformed descriptor-query reps can still carry
+        // higher-order TMEM band bits in the raw column coordinate. Preserve
+        // those bits and only add the intra-band packet stride.
+        col += i * 4;
       if (recoverPackedI16x32bx2X2ColSteps)
-        // Recovered unpacked 16x32bx2.x2 paths step by packed-dword message
-        // index, not by the raw two-register chunk index returned by the
-        // quotient reps.
-        col = i * 2;
+        // Recovered unpacked 16x32bx2.x2 paths advance by packed-dword
+        // message index. Preserve any raw TMEM band bits from the query reps
+        // and only repair the intra-band stride.
+        col += (i / valsPerMessage) * 2;
       // Encode row into the base address and pass col as an immediate
       // colOffset.
       staticOffset = col | (row << 16);
@@ -797,6 +805,17 @@ lowerTMemLdStFromTypes(
            logicalRows == activePhysicalRows &&
            logicalCols == physicalCols * 2;
   }();
+  bool preferWidenedRootRowPlanForRowZeroM64Alloc = [&]() {
+    if (!memDescValue ||
+        !isa_and_nonnull<triton::nvidia_gpu::TMEMAllocOp>(
+            memDescValue.getDefiningOp()) ||
+        memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+        memTy.getShape()[0] != 64)
+      return false;
+    auto memLayout = toLinearLayout(memTy);
+    return hasZeroBasisAlong(memLayout, kRow) &&
+           !hasZeroBasisAlong(memLayout, kCol);
+  }();
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
   if (memDescValue) {
@@ -882,16 +901,36 @@ lowerTMemLdStFromTypes(
             memDescValue, /*preserveNonCanonicalView=*/true, &rawError);
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
+      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
+          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
+          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
+        rawQueryLayout->layout = toLinearLayout(memTy);
+      }
       MemDescType rawMemTy = memTy;
-      if (auto maybeStandaloneTy =
-              inferStandaloneTMemViewType(memDescValue, /*error=*/nullptr);
-          succeeded(maybeStandaloneTy))
-        rawMemTy = *maybeStandaloneTy;
+      if (!(isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
+            memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
+            memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128)) {
+        if (auto maybeStandaloneTy =
+                inferStandaloneTMemRegLayoutQueryType(memDescValue, /*error=*/nullptr);
+            succeeded(maybeStandaloneTy))
+          rawMemTy = *maybeStandaloneTy;
+      }
       rawRowPlan = disallowSupportRescueFor32x32Subview
                        ? std::optional<TMemLdStRowPlan>{}
-                       : getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
+                       : getBackingTMemLdStRowPlan(memDescValue);
       if (!rawRowPlan && !disallowSupportRescueFor32x32Subview)
-        rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
+        rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
+      if (preferWidenedRootRowPlanForRowZeroM64Alloc) {
+        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+                                     /*rowSpan=*/128};
+      }
+      if (!disallowSupportRescueFor32x32Subview &&
+          isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
+          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
+          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
+        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                                     /*rowSpan=*/64};
+      }
       if (debugQuerySelection) {
         llvm::errs() << "[tmem-ldst] raw memTy=" << memTy << " rawRowPlan="
                      << (rawRowPlan ? llvm::Twine(rawRowPlan->rowSpan).str()
@@ -904,7 +943,7 @@ lowerTMemLdStFromTypes(
         ScopedDiagnosticHandler handler(
             rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
         return computeTMemLdStEncodingInfo(
-            regTy, rawMemTy, *rawQuery, maxnreg,
+            regTy, rawMemTy, *rawQueryLayout, maxnreg,
             debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
             rawRowPlan);
       }();
