@@ -11,6 +11,14 @@ import triton.experimental.gluon.language.nvidia.blackwell as blackwell
 import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.extra.cuda.libdevice as libdevice
+from triton.language.core import _aggregate as aggregate
+
+
+@gluon.jit
+def advance(idx: gl.tensor, phase: gl.tensor, num_bufs: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
+    next = idx + 1
+    wrap = next == num_bufs
+    return gl.where(wrap, 0, next), gl.where(wrap, phase ^ 1, phase)
 
 
 @gluon.jit
@@ -32,14 +40,14 @@ def xcd_swizzle(block_id, grid_m, GRID_N: gl.constexpr, XCD_SWIZZLE: gl.constexp
 
 @gluon.jit
 def apply_block_schedule(
-    block_id,
-    grid_m,
+    block_id: gl.tensor,
+    grid_m: gl.tensor,
     GRID_N: gl.constexpr,
-    slice_offsets,
-    block_schedule,
+    slice_offsets: gl.tensor,
+    block_schedule: gl.tensor,
     XCD_SWIZZLE: gl.constexpr,
     N_MAJOR: gl.constexpr,
-):
+) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
     block_id = xcd_swizzle(block_id, grid_m, GRID_N, XCD_SWIZZLE)
 
     pid_mn = block_id % (grid_m * GRID_N)
@@ -78,27 +86,269 @@ def swiglu(input, ALPHA: gl.constexpr, LIMIT: gl.constexpr):
     return gl.fma(s, linear, s)
 
 
+@aggregate
+class PartitionArgs:
+    x_desc: tma.tensor_descriptor
+    w_desc: tma.tensor_descriptor
+    scale_desc: tma.tensor_descriptor
+    out_desc: tma.tensor_descriptor
+    x_scale_ptr: gl.tensor | gl.constexpr
+    w_scale_ptr: gl.tensor | gl.constexpr
+    out_scale_ptr: gl.tensor
+
+    out_ptr: gl.tensor
+    bias_ptr: gl.tensor
+    bias_stride: gl.tensor
+    gather_indx_ptr: gl.tensor
+    x_slice_sizes: gl.tensor
+    x_slice_offs: gl.tensor
+    x_block_offs: gl.tensor
+    x_block_schedule: gl.tensor
+
+    x_bufs: gl.shared_memory_descriptor
+    x_empty_bars: gl.shared_memory_descriptor
+    x_ready_bars: gl.shared_memory_descriptor
+    x_num_bufs: gl.constexpr
+
+    w_bufs: gl.shared_memory_descriptor
+    w_scale_bufs: gl.shared_memory_descriptor
+    w_empty_bars: gl.shared_memory_descriptor
+    w_ready_bars: gl.shared_memory_descriptor
+    w_num_bufs: gl.constexpr
+
+    x_scale_tmem: blackwell.tensor_memory_descriptor
+    w_scale_tmem: blackwell.tensor_memory_descriptor
+    acc_bufs: blackwell.tensor_memory_descriptor
+    acc_empty_bars: gl.shared_memory_descriptor
+    acc_ready_bars: gl.shared_memory_descriptor
+    acc_num_bufs: gl.constexpr
+
+    grid_m: gl.tensor
+    GRID_N: gl.constexpr
+    K_TILES: gl.constexpr
+    SCALE_FLAT_N: gl.constexpr
+    SCALE_BLOCK_N_DIV: gl.constexpr
+    num_blocks: gl.tensor
+
+    NUM_SMS: gl.constexpr
+    XCD_SWIZZLE: gl.constexpr
+    N_MAJOR: gl.constexpr
+    BLOCK_M: gl.constexpr
+    BLOCK_N: gl.constexpr
+    BLOCK_K: gl.constexpr
+    SCALE_SIZE_OUTER: gl.constexpr
+    SCALE_SIZE_INNER: gl.constexpr
+    MXFP_BLOCK_SIZE: gl.constexpr
+    PACKED_BLOCK_K: gl.constexpr
+
+    SWIGLU_ALPHA: gl.constexpr
+    SWIGLU_LIMIT: gl.constexpr
+    REDUCTION_N: gl.constexpr
+    FLEXPOINT_SATURATE_INF: gl.constexpr
+
+    @gluon.jit
+    def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
+        return apply_block_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            slice_offsets=self.x_slice_offs,
+            block_schedule=self.x_block_schedule,
+            XCD_SWIZZLE=self.XCD_SWIZZLE,
+            N_MAJOR=self.N_MAJOR,
+        )
+
+
+@gluon.jit
+def load_activations(p: PartitionArgs):
+    OFFS_LAYOUT: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0]),
+    )
+    TILE_X_BYTES: gl.constexpr = p.x_desc.block_type.nbytes * p.BLOCK_M
+
+    idx = 0
+    phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=OFFS_LAYOUT)
+        mask_m = offs_m < shape_m
+        offs_x_m = gl.load(
+            p.gather_indx_ptr + slice_offset + offs_m,
+            mask=mask_m,
+            other=0,
+        )
+
+        for ki in range(p.K_TILES):
+            off_k_x = ki * p.BLOCK_K
+
+            empty_bar = p.x_empty_bars.index(idx)
+            ready_bar = p.x_ready_bars.index(idx)
+            x_buf = p.x_bufs.index(idx)
+
+            mbarrier.wait(empty_bar, phase)
+            mbarrier.expect(ready_bar, TILE_X_BYTES)
+            tma.async_gather(p.x_desc, offs_x_m, off_k_x, ready_bar, x_buf)
+
+            idx, phase = advance(idx, phase, p.x_num_bufs)
+
+
+@gluon.jit
+def load_weights(p: PartitionArgs):
+    TILE_W_BYTES: gl.constexpr = p.w_desc.block_type.nbytes
+    TILE_SCALE_BYTES: gl.constexpr = p.scale_desc.block_type.nbytes
+    BYTES_PER_STAGE: gl.constexpr = TILE_W_BYTES + TILE_SCALE_BYTES
+
+    idx = 0
+    phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_n = pid_n * p.BLOCK_N
+
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+        for ki in range(p.K_TILES):
+            off_k_w = ki * p.PACKED_BLOCK_K
+            off_k_scale = off_k_w // 64
+
+            w_empty_bar = p.w_empty_bars.index(idx)
+            w_ready_bar = p.w_ready_bars.index(idx)
+            w_buf = p.w_bufs.index(idx)
+            scale_buf = p.w_scale_bufs.index(idx)
+
+            mbarrier.wait(w_empty_bar, phase)
+            mbarrier.expect(w_ready_bar, BYTES_PER_STAGE)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, off_n, off_k_w], w_ready_bar, w_buf)
+            tma.async_copy_global_to_shared(p.scale_desc, [0, scale_idx, off_k_scale, 0, 0], w_ready_bar, scale_buf)
+
+            idx, phase = advance(idx, phase, p.w_num_bufs)
+
+
+@gluon.jit
+def mma_partition(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 1
+    w_idx = 0
+    w_phase = 1
+    mma_index = 0
+    mma_phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        acc_empty_bar = p.acc_empty_bars.index(mma_index)
+        acc_ready_bar = p.acc_ready_bars.index(mma_index)
+        acc_buf = p.acc_bufs.index(mma_index)
+        mbarrier.wait(acc_empty_bar, mma_phase)
+
+        use_acc = False
+        for ki in range(p.K_TILES):
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+            mbarrier.wait(w_ready_bar, w_phase)
+
+            blackwell.tcgen05_copy(
+                unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
+                p.w_scale_tmem,
+            )
+
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_ready_bar, x_phase)
+
+            blackwell.tcgen05_mma_scaled(
+                w_buf.reshape((w_buf.shape[1], w_buf.shape[2])),
+                x_buf.permute((1, 0)),
+                acc_buf,
+                p.w_scale_tmem,
+                p.x_scale_tmem,
+                a_type="e2m1",
+                b_type="e4m3",
+                use_acc=use_acc,
+            )
+            blackwell.tcgen05_commit(x_empty_bar)
+            blackwell.tcgen05_commit(w_empty_bar)
+
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
+            use_acc = True
+
+        blackwell.tcgen05_commit(acc_ready_bar)
+
+
+@gluon.jit
+def epilogue_partition(p: PartitionArgs):
+    idx = 0
+    phase = 1
+
+    x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
+    w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
+    acc_scale = x_scale * w_scale
+    out_recip = 1.0 / gl.load(p.out_scale_ptr)
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        off_n = pid_n * p.BLOCK_N
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+
+        offs_bias_n = off_n + gl.arange(0, p.BLOCK_N)
+        bias = gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n)
+
+        acc_empty_bar = p.acc_empty_bars.index(idx)
+        acc_ready_bar = p.acc_ready_bars.index(idx)
+        acc_buf = p.acc_bufs.index(idx)
+        mbarrier.wait(acc_ready_bar, phase)
+        acc = acc_buf.load()
+        mbarrier.arrive(acc_empty_bar)
+
+        acc = gl.fma(acc.permute((1, 0)), acc_scale, gl.expand_dims(bias, axis=0))
+
+        split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps(), 1], [1, 0])
+        acc = gl.convert_layout(acc, split_layout)
+
+        out = swiglu(acc, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+        out_off_n = pid_n * p.BLOCK_N // p.REDUCTION_N
+        out = out * out_recip
+        if p.FLEXPOINT_SATURATE_INF:
+            INF: gl.constexpr = 448.0
+            out = gl.clamp(out, -INF, INF)
+        out = out.to(p.out_desc.dtype)
+
+        offs_m = off_m + gl.arange(0, p.BLOCK_M)
+        offs_n = out_off_n + gl.arange(0, p.BLOCK_N // p.REDUCTION_N)
+        mask = gl.expand_dims(offs_m < shape_m, 1)
+        ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
+        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+        gl.store(ptrs, out, mask=mask)
+
+
 @gluon.jit
 def ws_matmul_kernel(
-    x_desc,
-    w_desc,
-    scale_desc,
-    out_desc,
-    out_ptr,
+    x_desc: tma.tensor_descriptor,
+    w_desc: tma.tensor_descriptor,
+    scale_desc: tma.tensor_descriptor,
+    out_desc: tma.tensor_descriptor,
+    out_ptr: gl.tensor,
     #
-    bias_ptr,
-    bias_stride,
+    bias_ptr: gl.tensor,
+    bias_stride: gl.tensor,
     #
-    gather_indx_ptr,
+    gather_indx_ptr: gl.tensor,
     #
-    x_slice_sizes,
-    x_slice_offs,
-    x_block_offs,
-    x_block_schedule,
+    x_slice_sizes: gl.tensor,
+    x_slice_offs: gl.tensor,
+    x_block_offs: gl.tensor,
+    x_block_schedule: gl.tensor,
     #
-    x_scale_ptr,
-    w_scale_ptr,
-    out_scale_ptr,
+    x_scale_ptr: gl.tensor,
+    w_scale_ptr: gl.tensor,
+    out_scale_ptr: gl.tensor,
     #
     M: gl.constexpr,
     N: gl.constexpr,
@@ -122,10 +372,6 @@ def ws_matmul_kernel(
 ):
     PACKED_BLOCK_K: gl.constexpr = w_desc.block_type.shape[2]
 
-    x_scale = 1.0 if x_scale_ptr is None else gl.load(x_scale_ptr)
-    w_scale = 1.0 if w_scale_ptr is None else gl.load(w_scale_ptr)
-    acc_scale = x_scale * w_scale
-
     grid_m = gl.load(x_block_offs + NUM_SLICES)
     GRID_N: gl.constexpr = triton.cdiv(N, BLOCK_N)
     K_TILES: gl.constexpr = triton.cdiv(K, BLOCK_K)
@@ -133,113 +379,133 @@ def ws_matmul_kernel(
     SCALE_BLOCK_N_DIV: gl.constexpr = BLOCK_N // SCALE_SIZE_OUTER
     num_blocks = grid_m * GRID_N
 
-    x_offsets_layout: gl.constexpr = gl.SliceLayout(0, gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0]))
-
-    x_buf = gl.allocate_shared_memory(x_desc.dtype, [BLOCK_M, x_desc.block_type.shape[1]], x_desc.layout)
-    w_buf = gl.allocate_shared_memory(w_desc.dtype, w_desc.block_type.shape, w_desc.layout)
-    scale_buf = gl.allocate_shared_memory(scale_desc.dtype, scale_desc.block_type.shape, scale_desc.layout)
-
+    # X and W are swapped.
     SCALE_K: gl.constexpr = BLOCK_K // MXFP_BLOCK_SIZE
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
-    # X and W are swapped.
     acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([BLOCK_N, BLOCK_M], col_stride=1)
+
+    x_num_bufs: gl.constexpr = 2
+    x_bufs = gl.allocate_shared_memory(
+        x_desc.dtype,
+        [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
+        x_desc.layout,
+    )
+    x_empty_bars = gl.allocate_shared_memory(gl.int64, [x_num_bufs, 1], mbarrier.MBarrierLayout())
+    x_ready_bars = gl.allocate_shared_memory(gl.int64, [x_num_bufs, 1], mbarrier.MBarrierLayout())
+    for i in gl.static_range(x_num_bufs):
+        mbarrier.init(x_empty_bars.index(i), count=1)
+        mbarrier.init(x_ready_bars.index(i), count=1)
+
+    w_num_bufs: gl.constexpr = 4
+    w_bufs = gl.allocate_shared_memory(
+        w_desc.dtype,
+        [w_num_bufs] + w_desc.block_type.shape,
+        w_desc.layout,
+    )
+    w_scale_bufs = gl.allocate_shared_memory(
+        scale_desc.dtype,
+        [w_num_bufs] + scale_desc.block_type.shape,
+        scale_desc.layout,
+    )
+    w_empty_bars = gl.allocate_shared_memory(gl.int64, [w_num_bufs, 1], mbarrier.MBarrierLayout())
+    w_ready_bars = gl.allocate_shared_memory(gl.int64, [w_num_bufs, 1], mbarrier.MBarrierLayout())
+    for i in gl.static_range(w_num_bufs):
+        mbarrier.init(w_empty_bars.index(i), count=1)
+        mbarrier.init(w_ready_bars.index(i), count=1)
+
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, SCALE_K], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, SCALE_K], scale_layout)
-    acc_tmem = blackwell.allocate_tensor_memory(gl.float32, [BLOCK_N, BLOCK_M], acc_layout)
+
+    acc_num_bufs: gl.constexpr = 2
+    acc_tmem = blackwell.allocate_tensor_memory(gl.float32, [acc_num_bufs, BLOCK_N, BLOCK_M], acc_layout)
+    acc_empty_bars = gl.allocate_shared_memory(gl.int64, [acc_num_bufs, 1], mbarrier.MBarrierLayout())
+    acc_ready_bars = gl.allocate_shared_memory(gl.int64, [acc_num_bufs, 1], mbarrier.MBarrierLayout())
+    for i in gl.static_range(acc_num_bufs):
+        mbarrier.init(acc_empty_bars.index(i), count=1)
+        mbarrier.init(acc_ready_bars.index(i), count=1)
 
     x_scale_tmem.store(gl.full((BLOCK_M, SCALE_K), 127, dtype=gl.uint8, layout=x_scale_tmem.get_reg_layout()))
 
-    bar = gl.allocate_shared_memory(gl.int64, [1], mbarrier.MBarrierLayout())
-    mbarrier.init(bar, count=1)
-    phase = 0
+    p = PartitionArgs(
+        x_desc=x_desc,
+        w_desc=w_desc,
+        scale_desc=scale_desc,
+        out_desc=out_desc,
+        x_scale_ptr=x_scale_ptr,
+        w_scale_ptr=w_scale_ptr,
+        out_scale_ptr=out_scale_ptr,
+        #
+        out_ptr=out_ptr,
+        bias_ptr=bias_ptr,
+        bias_stride=bias_stride,
+        gather_indx_ptr=gather_indx_ptr,
+        x_slice_sizes=x_slice_sizes,
+        x_slice_offs=x_slice_offs,
+        x_block_offs=x_block_offs,
+        x_block_schedule=x_block_schedule,
+        #
+        x_bufs=x_bufs,
+        x_empty_bars=x_empty_bars,
+        x_ready_bars=x_ready_bars,
+        x_num_bufs=x_num_bufs,
+        #
+        w_bufs=w_bufs,
+        w_scale_bufs=w_scale_bufs,
+        w_empty_bars=w_empty_bars,
+        w_ready_bars=w_ready_bars,
+        w_num_bufs=w_num_bufs,
+        #
+        x_scale_tmem=x_scale_tmem,
+        w_scale_tmem=w_scale_tmem,
+        acc_bufs=acc_tmem,
+        acc_empty_bars=acc_empty_bars,
+        acc_ready_bars=acc_ready_bars,
+        acc_num_bufs=acc_num_bufs,
+        #
+        grid_m=grid_m,
+        GRID_N=GRID_N,
+        K_TILES=K_TILES,
+        SCALE_FLAT_N=SCALE_FLAT_N,
+        SCALE_BLOCK_N_DIV=SCALE_BLOCK_N_DIV,
+        num_blocks=num_blocks,
+        #
+        NUM_SMS=NUM_SMS,
+        XCD_SWIZZLE=XCD_SWIZZLE,
+        N_MAJOR=False,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+        SCALE_SIZE_OUTER=SCALE_SIZE_OUTER,
+        SCALE_SIZE_INNER=SCALE_SIZE_INNER,
+        MXFP_BLOCK_SIZE=MXFP_BLOCK_SIZE,
+        PACKED_BLOCK_K=PACKED_BLOCK_K,
+        #
+        SWIGLU_ALPHA=SWIGLU_ALPHA,
+        SWIGLU_LIMIT=SWIGLU_LIMIT,
+        REDUCTION_N=REDUCTION_N,
+        FLEXPOINT_SATURATE_INF=FLEXPOINT_SATURATE_INF,
+    )
 
-    out_recip = 1.0 / gl.load(out_scale_ptr)
+    gl.warp_specialize(
+        [
+            (epilogue_partition, (p,)),
+            (load_activations, (p,)),
+            (load_weights, (p,)),
+            (mma_partition, (p,)),
+        ],
+        [4, 1, 1],
+        [96, 24, 24],
+    )
 
-    start_block_id = gl.program_id(0)
-    for block_id in range(start_block_id, num_blocks, NUM_SMS):
-        pid_m, pid_n, slice_idx, slice_offset = apply_block_schedule(
-            block_id=block_id,
-            grid_m=grid_m,
-            GRID_N=GRID_N,
-            slice_offsets=x_slice_offs,
-            block_schedule=x_block_schedule,
-            XCD_SWIZZLE=XCD_SWIZZLE,
-            N_MAJOR=False,
-        )
-
-        off_m = pid_m * BLOCK_M
-        off_n = pid_n * BLOCK_N
-        shape_m = gl.load(x_slice_sizes + slice_idx)
-
-        offs_m = off_m + gl.arange(0, BLOCK_M, layout=x_offsets_layout)
-        mask_m = offs_m < shape_m
-        offs_x_m = gl.load(
-            gather_indx_ptr + slice_offset + offs_m,
-            mask=mask_m,
-            other=0,
-        )
-
-        scale_idx = slice_idx * SCALE_FLAT_N + pid_n * SCALE_BLOCK_N_DIV
-        use_acc = False
-        for ki in range(K_TILES):
-            off_k_x = ki * BLOCK_K
-            off_k_w = ki * PACKED_BLOCK_K
-            off_k_scale = off_k_w // 64
-
-            BYTES_PER_STAGE: gl.constexpr = (
-                x_desc.block_type.nbytes * BLOCK_M + w_desc.block_type.nbytes + scale_desc.block_type.nbytes
-            )
-            mbarrier.expect(bar, BYTES_PER_STAGE)
-            tma.async_gather(x_desc, offs_x_m, off_k_x, bar, x_buf)
-            tma.async_copy_global_to_shared(w_desc, [slice_idx, off_n, off_k_w], bar, w_buf)
-            tma.async_copy_global_to_shared(scale_desc, [0, scale_idx, off_k_scale, 0, 0], bar, scale_buf)
-            mbarrier.wait(bar, phase)
-            phase ^= 1
-
-            blackwell.tcgen05_copy(
-                unswizzle_mx_scale(scale_buf, SCALE_SIZE_OUTER, SCALE_SIZE_INNER, MXFP_BLOCK_SIZE), w_scale_tmem
-            )
-            blackwell.tcgen05_mma_scaled(
-                w_buf.reshape((w_buf.shape[1], w_buf.shape[2])),
-                x_buf.permute((1, 0)),
-                acc_tmem,
-                w_scale_tmem,
-                x_scale_tmem,
-                a_type="e2m1",
-                b_type="e4m3",
-                use_acc=use_acc,
-            )
-            blackwell.tcgen05_commit(bar)
-
-            mbarrier.wait(bar, phase)
-            phase ^= 1
-            use_acc = True
-
-        offs_bias_n = off_n + gl.arange(0, BLOCK_N)
-        bias = gl.load(bias_ptr + slice_idx * bias_stride + offs_bias_n)
-
-        acc = acc_tmem.load()
-        acc = gl.fma(acc.permute((1, 0)), acc_scale, gl.expand_dims(bias, axis=0))
-
-        split_layout: gl.constexpr = gl.BlockedLayout(
-            [1, 2], [1, 32], [gl.num_warps(), 1], [1, 0]
-        )
-        acc = gl.convert_layout(acc, split_layout)
-
-        out = swiglu(acc, SWIGLU_ALPHA, SWIGLU_LIMIT)
-        out_off_n = pid_n * BLOCK_N // REDUCTION_N
-        out = out * out_recip
-        if FLEXPOINT_SATURATE_INF:
-            INF: gl.constexpr = 448.0
-            out = gl.clamp(out, -INF, INF)
-        out = out.to(out_desc.dtype)
-
-        offs_m = off_m + gl.arange(0, BLOCK_M)
-        offs_n = out_off_n + gl.arange(0, BLOCK_N // REDUCTION_N)
-        mask = gl.expand_dims(offs_m < shape_m, 1)
-        ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * out_desc.strides[0]
-        ptrs = ptrs + gl.expand_dims(offs_n, 0) * out_desc.strides[1]
-        gl.store(ptrs, out, mask=mask)
+    for i in gl.static_range(x_num_bufs):
+        mbarrier.invalidate(x_empty_bars.index(i))
+        mbarrier.invalidate(x_ready_bars.index(i))
+    for i in gl.static_range(w_num_bufs):
+        mbarrier.invalidate(w_empty_bars.index(i))
+        mbarrier.invalidate(w_ready_bars.index(i))
+    for i in gl.static_range(acc_num_bufs):
+        mbarrier.invalidate(acc_empty_bars.index(i))
+        mbarrier.invalidate(acc_ready_bars.index(i))
 
 
 def get_operand_layout(t: Tensor, block_shape: list[int]):

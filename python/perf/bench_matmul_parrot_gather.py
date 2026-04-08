@@ -14,8 +14,18 @@ from triton_kernels.matmul import FlexCtx, FnSpecs, FusedActivation, PrecisionCo
 from triton_kernels.numerics import InFlexData, OutFlexData
 from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mxfp
 from triton_kernels.swiglu import swiglu_fn
-from triton_kernels.tensor import FP4, RaggedTensorMetadata, Tensor, convert_layout, make_ragged_tensor_metadata, wrap_torch_tensor
-from triton_kernels.tensor_details.layout import make_default_matmul_mxfp4_w_layout, make_default_matmul_mxfp4_w_scale_layout
+from triton_kernels.tensor import (
+    FP4,
+    RaggedTensorMetadata,
+    Tensor,
+    convert_layout,
+    make_ragged_tensor_metadata,
+    wrap_torch_tensor,
+)
+from triton_kernels.tensor_details.layout import (
+    make_default_matmul_mxfp4_w_layout,
+    make_default_matmul_mxfp4_w_scale_layout,
+)
 from triton_kernels.testing import assert_close
 from triton_kernels.topk import topk
 
@@ -143,9 +153,51 @@ class PreparedCase:
 
 
 LARGE_BATCH_SIZES = (
-    1, 2, 4, 8, 16, 32, 64, 96, 128, 256, 384, 512, 640, 768, 896, 1024, 1280, 1536, 1792, 2048, 2304, 2560,
-    2816, 3072, 3328, 3584, 3840, 4096, 5120, 6144, 7168, 8192, 9216, 10240, 11264, 12288, 13312, 14336, 15360,
-    16384, 20480, 24576, 28672, 32768, 33792,
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    96,
+    128,
+    256,
+    384,
+    512,
+    640,
+    768,
+    896,
+    1024,
+    1280,
+    1536,
+    1792,
+    2048,
+    2304,
+    2560,
+    2816,
+    3072,
+    3328,
+    3584,
+    3840,
+    4096,
+    5120,
+    6144,
+    7168,
+    8192,
+    9216,
+    10240,
+    11264,
+    12288,
+    13312,
+    14336,
+    15360,
+    16384,
+    20480,
+    24576,
+    28672,
+    32768,
+    33792,
 )
 
 PARROT_BATCH_SIZES = (1, 2, 4, 8, 16, 32, 64, 96, 128)
@@ -178,7 +230,7 @@ def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
         return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME)
     if kernel_mode == ALL_KERNEL_MODE:
         return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, WS_KERNEL_NAME)
-    return (kernel_mode,)
+    return tuple(kernel_mode.split(","))
 
 
 def alloc_randn(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torch.Tensor:
@@ -256,10 +308,17 @@ def compute_matmul_proton_metrics(
     n_x_bytes = n_tokens * x_data.shape[-1] * x_data.element_size()
     n_y_bytes = n_tokens * y_data.shape[-1] * y_data.element_size()
     n_w_bytes = (w_data.numel() * w_data.element_size() // slice_sizes.numel()) * n_nonzero_experts
-    return BenchMetrics(n_tokens=n_tokens, n_nonzero_experts=n_nonzero_experts, flops=flops, bytes=int(n_x_bytes + n_y_bytes + n_w_bytes))
+    return BenchMetrics(
+        n_tokens=n_tokens,
+        n_nonzero_experts=n_nonzero_experts,
+        flops=flops,
+        bytes=int(n_x_bytes + n_y_bytes + n_w_bytes),
+    )
 
 
-def make_cases(case_family: str, min_batch_size: int | None, max_batch_size: int | None, limit: int | None) -> list[Case]:
+def make_cases(
+    case_family: str, min_batch_size: int | None, max_batch_size: int | None, limit: int | None
+) -> list[Case]:
     cases: list[Case] = []
     for param in PARAMS:
         if case_family == "parrot" and not param.is_parrot_gather:
@@ -315,7 +374,11 @@ def prepare_case(
         (swiglu_alpha, swiglu_limit),
     )
 
-    rand_scale = (lambda s: torch.rand((1,), device=device) + s) if case.is_parrot_gather else (lambda s: torch.rand((), device=device) + s)
+    rand_scale = (
+        (lambda s: torch.rand((1,), device=device) + s)
+        if case.is_parrot_gather
+        else (lambda s: torch.rand((), device=device) + s)
+    )
     x_scale = normalize_flex_scale(rand_scale(0.5))
     y_scale = normalize_flex_scale(rand_scale(3.5))
 
@@ -391,7 +454,9 @@ def validate_case_outputs(
         )
 
 
-def make_kernel_run(prepared: PreparedCase, kernel_name: str) -> tuple[Callable[[], torch.Tensor], torch.Tensor, PrecisionConfig]:
+def make_kernel_run(
+    prepared: PreparedCase, kernel_name: str
+) -> tuple[Callable[[], torch.Tensor], torch.Tensor, PrecisionConfig]:
     kernel = resolve_kernel(kernel_name)
     precision_config = make_precision_config(prepared)
     out = make_output_buffer(prepared)
@@ -437,14 +502,18 @@ def benchmark_prepared_case(
     validation_reference_kernel = None
     if validation_reference is not None:
         validation_reference_kernel, reference_output = validation_reference
-        validate_case_outputs(prepared.case, kernel_name, (y, precision_config), validation_reference_kernel, reference_output)
+        validate_case_outputs(
+            prepared.case, kernel_name, (y, precision_config), validation_reference_kernel, reference_output
+        )
         validated = True
 
     # Retain the warmup CLI argument for compatibility, but use CUDA-graph replay
     # timing to remove per-iteration host launch overhead.
     _ = warmup
     runtime_ms = float(do_bench_cudagraph(run, rep=rep))
-    metrics = compute_matmul_proton_metrics(prepared.x, prepared.w, out, prepared.ragged_batch_metadata, n=prepared.case.n, k=prepared.case.k)
+    metrics = compute_matmul_proton_metrics(
+        prepared.x, prepared.w, out, prepared.ragged_batch_metadata, n=prepared.case.n, k=prepared.case.k
+    )
     tflops = metrics.flops / runtime_ms / 1e9
     tbps = metrics.bytes / runtime_ms / 1e9
     pct_peak_fp8_tflops = 100.0 * tflops / peak_fp8_tflops
@@ -501,17 +570,32 @@ def benchmark_case(
     return benchmark_prepared_case(prepared, kernel_name, warmup, rep, peak_fp8_tflops, peak_mem_tbps)
 
 
+def format_progress(idx: int, total: int) -> str:
+    width = max(3, len(str(total)))
+    return f"[{idx:>{width}}/{total:>{width}}]"
+
+
+def format_result_header(total: int) -> str:
+    progress_width = len(format_progress(total, total))
+    return (
+        f"{'progress':>{progress_width}} | {'case':>34} | {'kernel':>8} | {'kind':>11} | {'rank':>4} | "
+        f"{'E_local':>7} | {'tokens':>6} | {'nonzero_expts':>13} | "
+        f"{'ms':>8} | {'TFLOP/s':>8} | {'TB/s':>6} | {'fp8_roof':>9} | "
+        f"{'hbm_roof':>9} | validate"
+    )
+
+
 def format_result(result: BenchResult) -> str:
     case = result.case
     kind = "parrot" if case.is_parrot_gather else "non-parrot"
-    validation = f" | validate=ok({result.validation_reference_kernel})" if result.validated else ""
+    validation = f"ok({result.validation_reference_kernel})" if result.validated else ""
     return (
-        f"{case.case_id:>34} | kernel={result.kernel_name:>8} | kind={kind:>11} | rank={result.local_rank:>2} | "
-        f"E_local={result.n_expts_local:>3} | tokens={result.metrics.n_tokens:>6} | "
-        f"nonzero_expts={result.metrics.n_nonzero_experts:>3} | "
-        f"ms={result.runtime_ms:>8.4f} | TFLOP/s={result.tflops:>8.2f} | "
-        f"TB/s={result.tbps:>6.2f} | fp8_roof={result.pct_peak_fp8_tflops:>6.2f}% | "
-        f"hbm_roof={result.pct_peak_mem_tbps:>6.2f}%{validation}"
+        f"{case.case_id:>34} | {result.kernel_name:>8} | {kind:>11} | {result.local_rank:>4} | "
+        f"{result.n_expts_local:>7} | {result.metrics.n_tokens:>6} | "
+        f"{result.metrics.n_nonzero_experts:>13} | "
+        f"{result.runtime_ms:>8.4f} | {result.tflops:>8.2f} | "
+        f"{result.tbps:>6.2f} | {result.pct_peak_fp8_tflops:>8.2f}% | "
+        f"{result.pct_peak_mem_tbps:>8.2f}% | {validation}"
     )
 
 
@@ -529,8 +613,16 @@ def format_validation(result: ValidationResult) -> str:
     case = result.case
     kind = "parrot" if case.is_parrot_gather else "non-parrot"
     return (
-        f"{case.case_id:>34} | kernel={result.kernel_name:>8} | kind={kind:>11} | rank={result.local_rank:>2} | "
-        f"E_local={result.n_expts_local:>3} | validate=ok({result.validation_reference_kernel})"
+        f"{case.case_id:>34} | {result.kernel_name:>8} | {kind:>11} | {result.local_rank:>4} | "
+        f"{result.n_expts_local:>7} | ok({result.validation_reference_kernel})"
+    )
+
+
+def format_validation_header(total: int) -> str:
+    progress_width = len(format_progress(total, total))
+    return (
+        f"{'progress':>{progress_width}} | {'case':>34} | {'kernel':>8} | {'kind':>11} | {'rank':>4} | "
+        f"{'E_local':>7} | validate"
     )
 
 
@@ -607,18 +699,16 @@ def parse_args() -> argparse.Namespace:
         description="Benchmark triton_kernels.matmul and specialized kernel entrypoints on the parrot-gather workload grid derived from the reference test."
     )
     parser.add_argument("--case-family", choices=("all", "non-parrot", "parrot"), default="all")
-    parser.add_argument(
-        "--kernel",
-        choices=(ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, WS_KERNEL_NAME, DEFAULT_KERNEL_MODE, ALL_KERNEL_MODE),
-        default=DEFAULT_KERNEL_MODE,
-    )
+    parser.add_argument("--kernel", default=DEFAULT_KERNEL_MODE)
     parser.add_argument("--min-batch-size", type=int, default=None)
     parser.add_argument("--max-batch-size", type=int, default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=25)
     parser.add_argument("--rep", type=int, default=100)
     parser.add_argument("--validate", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--validate-only", action="store_true", help="Run correctness validation only, without cudagraph timing.")
+    parser.add_argument(
+        "--validate-only", action="store_true", help="Run correctness validation only, without cudagraph timing."
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--local-rank", type=int, default=None)
@@ -655,6 +745,10 @@ def main() -> None:
         raise ValueError("--validate-only requires at least one non-original kernel")
 
     results: list[BenchResult] = []
+    if args.validate_only:
+        print(format_validation_header(len(cases)))
+    else:
+        print(format_result_header(len(cases)))
     for idx, case in enumerate(cases, start=1):
         prepared = prepare_case(case, device=args.device, seed=args.seed, local_rank_override=args.local_rank)
         validation_reference = None
@@ -666,7 +760,7 @@ def main() -> None:
                 if kernel_name == ORIGINAL_KERNEL_NAME:
                     continue
                 validation = validate_prepared_case(prepared, kernel_name, validation_reference)
-                print(f"[{idx:>3}/{len(cases):>3}] {format_validation(validation)}")
+                print(f"{format_progress(idx, len(cases))} | {format_validation(validation)}")
             continue
 
         case_results: dict[str, BenchResult] = {}
@@ -678,17 +772,23 @@ def main() -> None:
                 rep=args.rep,
                 peak_fp8_tflops=args.peak_fp8_tflops,
                 peak_mem_tbps=args.peak_mem_tbps,
-                validation_reference=validation_reference if validation_reference is not None and kernel_name != ORIGINAL_KERNEL_NAME else None,
+                validation_reference=validation_reference
+                if validation_reference is not None and kernel_name != ORIGINAL_KERNEL_NAME
+                else None,
             )
             case_results[kernel_name] = result
             results.append(result)
-            print(f"[{idx:>3}/{len(cases):>3}] {format_result(result)}")
+            print(f"{format_progress(idx, len(cases))} | {format_result(result)}")
         if ORIGINAL_KERNEL_NAME in case_results:
             for kernel_name in kernel_names:
                 if kernel_name == ORIGINAL_KERNEL_NAME:
                     continue
                 if kernel_name in case_results:
-                    print(f"      {format_comparison(case_results[ORIGINAL_KERNEL_NAME], case_results[kernel_name])}")
+                    progress_indent = " " * len(format_progress(idx, len(cases)))
+                    print(
+                        f"{progress_indent} | "
+                        f"{format_comparison(case_results[ORIGINAL_KERNEL_NAME], case_results[kernel_name])}"
+                    )
 
     if args.csv_out is not None:
         write_csv(args.csv_out, results)
