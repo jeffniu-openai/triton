@@ -180,7 +180,7 @@ def load_activations(p: PartitionArgs):
         offs_x_m = gl.load(
             p.gather_indx_ptr + slice_offset + offs_m,
             mask=mask_m,
-            other=0,
+            other=p.x_desc.shape[0],
         )
 
         for ki in range(p.K_TILES):
@@ -309,10 +309,9 @@ def epilogue_partition(p: PartitionArgs):
         mbarrier.arrive(acc_empty_bar)
         idx, phase = advance(idx, phase, p.acc_num_bufs)
 
-        acc = gl.fma(acc.permute((1, 0)), acc_scale, gl.expand_dims(bias, axis=0))
-
-        split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps(), 1], [1, 0])
-        acc = gl.convert_layout(acc, split_layout)
+        split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps() // 2, 2], [1, 0])
+        acc = gl.convert_layout(acc.permute((1, 0)), split_layout)
+        acc = gl.fma(acc, acc_scale, gl.expand_dims(bias, axis=0))
 
         out = swiglu(acc, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
         out_off_n = pid_n * p.BLOCK_N // p.REDUCTION_N
@@ -398,7 +397,7 @@ def ws_matmul_kernel(
         mbarrier.init(x_empty_bars.index(i), count=1)
         mbarrier.init(x_ready_bars.index(i), count=1)
 
-    w_num_bufs: gl.constexpr = 5
+    w_num_bufs: gl.constexpr = 4
     w_bufs = gl.allocate_shared_memory(
         w_desc.dtype,
         [w_num_bufs] + w_desc.block_type.shape,
@@ -623,7 +622,7 @@ def matmul(
     M = gather_indx.shape[0]
 
     # Heuristics.
-    BLOCK_M = 64
+    BLOCK_M = 128
     BLOCK_N = 256
     BLOCK_K = 128
     MXFP_BLOCK_SIZE = 32
