@@ -231,9 +231,9 @@ def load_weights(p: PartitionArgs):
 @gluon.jit
 def mma_partition(p: PartitionArgs):
     x_idx = 0
-    x_phase = 1
+    x_phase = 0
     w_idx = 0
-    w_phase = 1
+    w_phase = 0
     mma_index = 0
     mma_phase = 1
 
@@ -279,12 +279,13 @@ def mma_partition(p: PartitionArgs):
             use_acc = True
 
         blackwell.tcgen05_commit(acc_ready_bar)
+        mma_index, mma_phase = advance(mma_index, mma_phase, p.acc_num_bufs)
 
 
 @gluon.jit
 def epilogue_partition(p: PartitionArgs):
     idx = 0
-    phase = 1
+    phase = 0
 
     x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
     w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
@@ -306,6 +307,7 @@ def epilogue_partition(p: PartitionArgs):
         mbarrier.wait(acc_ready_bar, phase)
         acc = acc_buf.load()
         mbarrier.arrive(acc_empty_bar)
+        idx, phase = advance(idx, phase, p.acc_num_bufs)
 
         acc = gl.fma(acc.permute((1, 0)), acc_scale, gl.expand_dims(bias, axis=0))
 
