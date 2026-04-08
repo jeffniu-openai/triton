@@ -384,9 +384,9 @@ def ws_matmul_kernel(
     # X and W are swapped.
     SCALE_K: gl.constexpr = BLOCK_K // MXFP_BLOCK_SIZE
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
-    acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([BLOCK_N, BLOCK_M], col_stride=1)
+    acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([128, BLOCK_M], col_stride=1)
 
-    x_num_bufs: gl.constexpr = 3
+    x_num_bufs: gl.constexpr = 4
     x_bufs = gl.allocate_shared_memory(
         x_desc.dtype,
         [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
@@ -418,7 +418,7 @@ def ws_matmul_kernel(
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, SCALE_K], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, SCALE_K], scale_layout)
 
-    acc_num_bufs: gl.constexpr = 3
+    acc_num_bufs: gl.constexpr = 1
     acc_tmem = blackwell.allocate_tensor_memory(gl.float32, [acc_num_bufs, BLOCK_N, BLOCK_M], acc_layout)
     acc_empty_bars = gl.allocate_shared_memory(gl.int64, [acc_num_bufs, 1], mbarrier.MBarrierLayout())
     acc_ready_bars = gl.allocate_shared_memory(gl.int64, [acc_num_bufs, 1], mbarrier.MBarrierLayout())
@@ -623,9 +623,9 @@ def matmul(
     M = gather_indx.shape[0]
 
     # Heuristics.
-    BLOCK_M = 32
-    BLOCK_N = 128
-    BLOCK_K = 256
+    BLOCK_M = 64
+    BLOCK_N = 256
+    BLOCK_K = 128
     MXFP_BLOCK_SIZE = 32
     SCALE_SIZE_OUTER = 128
     SCALE_SIZE_INNER = 4
