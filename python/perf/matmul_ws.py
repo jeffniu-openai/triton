@@ -694,7 +694,7 @@ def matmul(
         SCALE_SIZE_INNER=SCALE_SIZE_INNER,
         MXFP_BLOCK_SIZE=MXFP_BLOCK_SIZE,
         #
-        num_warps=4,
+        num_warps=8,
     )
 
     return c.unsqueeze(0)
