@@ -152,7 +152,6 @@ def ws_matmul_kernel(
     bar = gl.allocate_shared_memory(gl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
     phase = 0
-    use_acc = False
 
     out_recip = 1.0 / gl.load(out_scale_ptr)
 
@@ -181,7 +180,7 @@ def ws_matmul_kernel(
         )
 
         scale_idx = slice_idx * SCALE_FLAT_N + pid_n * SCALE_BLOCK_N_DIV
-
+        use_acc = False
         for ki in range(K_TILES):
             off_k_x = ki * BLOCK_K
             off_k_w = ki * PACKED_BLOCK_K
@@ -430,7 +429,5 @@ def matmul(
         #
         num_warps=4,
     )
-
-    torch.cuda.synchronize()
 
     return c.unsqueeze(0)

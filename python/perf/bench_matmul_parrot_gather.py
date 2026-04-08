@@ -646,6 +646,7 @@ def main() -> None:
 
     if args.batch_size is not None:
         args.min_batch_size = args.batch_size
+        args.max_batch_size = args.batch_size
     cases = make_cases(args.case_family, args.min_batch_size, args.max_batch_size, args.limit)
     if not cases:
         raise ValueError("No cases matched the requested filters")
