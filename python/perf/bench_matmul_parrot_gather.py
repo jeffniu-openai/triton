@@ -30,6 +30,7 @@ from triton_kernels.testing import assert_close
 from triton_kernels.topk import topk
 
 from .matmul_gluon import matmul_ogs
+from .matmul_gluon_optimized import matmul_ogs as matmul_ogs_optimized
 from .matmul_ws import matmul as matmul_ws
 
 # Default roofline constants for a single NVIDIA GB300 GPU.
@@ -43,7 +44,9 @@ DEFAULT_KERNEL_MODE = "both"
 ALL_KERNEL_MODE = "all"
 ORIGINAL_KERNEL_NAME = "original"
 GLUON_KERNEL_NAME = "gluon"
+GLUON_OPTIMIZED_KERNEL_NAME = "gluon_optimized"
 WS_KERNEL_NAME = "ws"
+KERNEL_NAME_COLUMN_WIDTH = max(len("kernel"), len(GLUON_OPTIMIZED_KERNEL_NAME))
 
 
 @dataclass(frozen=True)
@@ -220,6 +223,8 @@ def resolve_kernel(kernel_name: str) -> KernelFn:
         return matmul
     if kernel_name == GLUON_KERNEL_NAME:
         return matmul_ogs
+    if kernel_name == GLUON_OPTIMIZED_KERNEL_NAME:
+        return matmul_ogs_optimized
     if kernel_name == WS_KERNEL_NAME:
         return matmul_ws
     raise ValueError(f"Unknown kernel {kernel_name}")
@@ -229,7 +234,7 @@ def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
     if kernel_mode == DEFAULT_KERNEL_MODE:
         return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME)
     if kernel_mode == ALL_KERNEL_MODE:
-        return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, WS_KERNEL_NAME)
+        return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, GLUON_OPTIMIZED_KERNEL_NAME, WS_KERNEL_NAME)
     return tuple(kernel_mode.split(","))
 
 
@@ -578,7 +583,8 @@ def format_progress(idx: int, total: int) -> str:
 def format_result_header(total: int) -> str:
     progress_width = len(format_progress(total, total))
     return (
-        f"{'progress':>{progress_width}} | {'case':>34} | {'kernel':>8} | {'kind':>11} | {'rank':>4} | "
+        f"{'progress':>{progress_width}} | {'case':>34} | {'kernel':>{KERNEL_NAME_COLUMN_WIDTH}} | "
+        f"{'kind':>11} | {'rank':>4} | "
         f"{'E_local':>7} | {'tokens':>6} | {'nonzero_expts':>13} | "
         f"{'ms':>8} | {'TFLOP/s':>8} | {'TB/s':>6} | {'fp8_roof':>9} | "
         f"{'hbm_roof':>9} | validate"
@@ -590,7 +596,8 @@ def format_result(result: BenchResult) -> str:
     kind = "parrot" if case.is_parrot_gather else "non-parrot"
     validation = f"ok({result.validation_reference_kernel})" if result.validated else ""
     return (
-        f"{case.case_id:>34} | {result.kernel_name:>8} | {kind:>11} | {result.local_rank:>4} | "
+        f"{case.case_id:>34} | {result.kernel_name:>{KERNEL_NAME_COLUMN_WIDTH}} | "
+        f"{kind:>11} | {result.local_rank:>4} | "
         f"{result.n_expts_local:>7} | {result.metrics.n_tokens:>6} | "
         f"{result.metrics.n_nonzero_experts:>13} | "
         f"{result.runtime_ms:>8.4f} | {result.tflops:>8.2f} | "
@@ -613,7 +620,8 @@ def format_validation(result: ValidationResult) -> str:
     case = result.case
     kind = "parrot" if case.is_parrot_gather else "non-parrot"
     return (
-        f"{case.case_id:>34} | {result.kernel_name:>8} | {kind:>11} | {result.local_rank:>4} | "
+        f"{case.case_id:>34} | {result.kernel_name:>{KERNEL_NAME_COLUMN_WIDTH}} | "
+        f"{kind:>11} | {result.local_rank:>4} | "
         f"{result.n_expts_local:>7} | ok({result.validation_reference_kernel})"
     )
 
@@ -621,7 +629,8 @@ def format_validation(result: ValidationResult) -> str:
 def format_validation_header(total: int) -> str:
     progress_width = len(format_progress(total, total))
     return (
-        f"{'progress':>{progress_width}} | {'case':>34} | {'kernel':>8} | {'kind':>11} | {'rank':>4} | "
+        f"{'progress':>{progress_width}} | {'case':>34} | {'kernel':>{KERNEL_NAME_COLUMN_WIDTH}} | "
+        f"{'kind':>11} | {'rank':>4} | "
         f"{'E_local':>7} | validate"
     )
 
