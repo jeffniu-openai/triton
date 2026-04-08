@@ -274,9 +274,7 @@ def matmul_epilogue_partition(
     useful_grid_m = p.useful_grid_m
     num_blocks = useful_grid_m * grid_n
 
-    acc_reg_layout: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.float32, (BLOCK_N, BLOCK_M), p.acc_bufs.type.layout, gl.num_warps()
-    )
+    acc_reg_layout: gl.constexpr = p.acc_bufs.index(0).get_reg_layout()
 
     num_warps: gl.constexpr = gl.num_warps()
     warps_n: gl.constexpr = 2 if num_warps >= 4 and BLOCK_N >= 256 else 1
@@ -398,9 +396,7 @@ def _p_matmul(
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
     scale_k: gl.constexpr = BLOCK_K // 32
     a_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
-    a_scale_reg_layout: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.uint8, (BLOCK_M, scale_k), scale_layout, gl.num_warps()
-    )
+    a_scale_reg_layout: gl.constexpr = a_scale_tmem.get_reg_layout()
     a_scale_tmem.store(gl.full((BLOCK_M, scale_k), 127, dtype=gl.uint8, layout=a_scale_reg_layout))
 
     # Use a slightly larger slice of the Blackwell shared-memory budget for
@@ -640,9 +636,7 @@ def _p_matmul_simple(
     scale_k: gl.constexpr = BLOCK_K // 32
     a_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
     b_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], scale_layout)
-    a_scale_reg_layout: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.uint8, (BLOCK_M, scale_k), scale_layout, gl.num_warps()
-    )
+    a_scale_reg_layout: gl.constexpr = a_scale_tmem.get_reg_layout()
     a_scale_tmem.store(gl.full((BLOCK_M, scale_k), 127, dtype=gl.uint8, layout=a_scale_reg_layout))
 
     # Precompute the gathered X row indices for this M tile.
@@ -687,9 +681,7 @@ def _p_matmul_simple(
         phase = phase ^ 1
 
     # Epilogue: load accumulator to registers, add bias, swiglu, scale and store.
-    acc_reg_layout: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.float32, (BLOCK_N, BLOCK_M), acc_layout, gl.num_warps()
-    )
+    acc_reg_layout: gl.constexpr = acc_tmem.get_reg_layout()
     acc = acc_tmem.load(acc_reg_layout)
 
     num_warps: gl.constexpr = gl.num_warps()
@@ -1704,9 +1696,7 @@ def pair_epilogue_partition(
     BLOCK_N: gl.constexpr = gl.constexpr(p.acc0_bufs.type.shape[1])
     useful_pairs = gl.load(p.pair_count)
     num_blocks = useful_pairs * grid_n
-    acc_layout0: gl.constexpr = blackwell.get_tmem_reg_layout(
-        gl.float32, (BLOCK_N, BLOCK_M), p.acc0_bufs.type.layout, gl.num_warps()
-    )
+    acc_layout0: gl.constexpr = p.acc0_bufs.index(0).get_reg_layout()
     split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps(), 1], [1, 0])
     bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
     out_recip = (1.0 / gl.load(p.YExpectedScale)) if p.YExpectedScale is not None else 1.0
@@ -1799,7 +1789,7 @@ def _p_matmul_pair(
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
     scale_k: gl.constexpr = 128 // 32
     a_scale = blackwell.allocate_tensor_memory(gl.uint8, [128, scale_k], scale_layout)
-    a_layout: gl.constexpr = blackwell.get_tmem_reg_layout(gl.uint8, (128, scale_k), scale_layout, gl.num_warps())
+    a_layout: gl.constexpr = a_scale.get_reg_layout()
     a_scale.store(gl.full((128, scale_k), dtype=gl.uint8, value=127, layout=a_layout))
     BLOCK_N: gl.constexpr = gl.constexpr(W.block_type.shape[1])
     b_scale = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], scale_layout)
