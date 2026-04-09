@@ -8,11 +8,16 @@ import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 import triton.experimental.gluon.language.nvidia.blackwell as blackwell
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
+from triton.experimental.gluon.language.nvidia.hopper import tma as hopper_tma
+from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
+from triton.tools.ragged_tma import create_ragged_descriptor
 
 from triton_kernels.matmul import Epilogue, FusedActivation, FusedComm, PrecisionConfig
 from triton_kernels.tensor import RaggedTensorMetadata, Tensor
 
 from . import matmul_ws as ws_base
+
+EPILOGUE_SUBTILE_M = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +28,27 @@ class KernelConfig:
     xcd_swizzle: int = 1
     n_major: bool = False
     num_warps: int = 8
+
+
+@gluon.jit
+def to_ragged_indices(slice_off, slice_size, row):
+    billion: gl.constexpr = 0x40000000
+    return billion, slice_off + slice_size, billion - slice_size + row
+
+
+@gluon.jit
+def store_output_subtile_ragged(
+    out_desc,
+    out_sub,
+    slice_offset,
+    shape_m,
+    row_off,
+    out_off_n,
+):
+    subtile_m: gl.constexpr = out_desc.block_shape[2]
+    subtile_n: gl.constexpr = out_desc.block_shape[3]
+    c0, c1, c2 = to_ragged_indices(slice_offset, shape_m, row_off)
+    hopper_tma.descriptor_store(out_desc, [c0, c1, c2, out_off_n], gl.reshape(out_sub, (1, 1, subtile_m, subtile_n)))
 
 
 @gluon.jit
@@ -40,6 +66,14 @@ def epilogue_partition_optimized(p: ws_base.PartitionArgs):
     warps_n: gl.constexpr = 2 if num_warps >= 4 and p.BLOCK_N >= 256 else 1
     split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [num_warps // warps_n, warps_n], [1, 0])
     bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
+    use_ragged_tma_store: gl.constexpr = len(p.out_desc.block_shape) == 4
+    block_n_div_act: gl.constexpr = p.BLOCK_N // p.REDUCTION_N
+    if use_ragged_tma_store:
+        subtile_m: gl.constexpr = p.out_desc.block_shape[2]
+        subtile_n: gl.constexpr = p.out_desc.block_shape[3]
+        subtile_factor_m: gl.constexpr = p.BLOCK_M // subtile_m
+        gl.static_assert(subtile_n == block_n_div_act)
+        gl.static_assert((subtile_factor_m == 1) | (subtile_factor_m == 2))
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
@@ -70,14 +104,42 @@ def epilogue_partition_optimized(p: ws_base.PartitionArgs):
             out = gl.clamp(out, -448.0, 448.0)
         out = out.to(p.out_desc.dtype)
 
-        layout: gl.constexpr = out.type.layout
-        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, layout))
-        offs_n = out_off_n + gl.arange(0, p.BLOCK_N // p.REDUCTION_N, layout=gl.SliceLayout(0, layout))
-        mask = gl.expand_dims(offs_m < shape_m, 1)
-        ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
-        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-        gl.store(ptrs, out, mask=mask)
-
+        if use_ragged_tma_store:
+            if subtile_factor_m == 1:
+                store_output_subtile_ragged(
+                    p.out_desc,
+                    out,
+                    slice_offset,
+                    shape_m,
+                    off_m,
+                    out_off_n,
+                )
+            else:
+                out0, out1 = gl.split(gl.reshape(out, (subtile_factor_m, subtile_m, block_n_div_act)).permute((1, 2, 0)))
+                store_output_subtile_ragged(
+                    p.out_desc,
+                    out0,
+                    slice_offset,
+                    shape_m,
+                    off_m,
+                    out_off_n,
+                )
+                store_output_subtile_ragged(
+                    p.out_desc,
+                    out1,
+                    slice_offset,
+                    shape_m,
+                    off_m + subtile_m,
+                    out_off_n,
+                )
+        else:
+            layout: gl.constexpr = out.type.layout
+            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, layout))
+            offs_n = out_off_n + gl.arange(0, block_n_div_act, layout=gl.SliceLayout(0, layout))
+            mask = gl.expand_dims(offs_m < shape_m, 1)
+            ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
+            ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+            gl.store(ptrs, out, mask=mask)
 
 @gluon.jit
 def ws_matmul_kernel_optimized(
@@ -289,6 +351,13 @@ def _select_launch_grid(
     return max(1, min(sms, num_tiles))
 
 
+def make_ragged_output_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ...], ragged_dim: int = 0):
+    ptr = t if isinstance(t, torch.Tensor) else t.storage.data
+    host_desc = create_ragged_descriptor(ptr, list(block_shape), ragged_dim=ragged_dim)
+    layout = ws_base.get_operand_layout(t, host_desc.block_shape)
+    return TensorDescriptor(host_desc.base, host_desc.shape, host_desc.strides, host_desc.block_shape, layout)
+
+
 def matmul(
     a: torch.Tensor | Tensor,
     b: torch.Tensor | Tensor,
@@ -378,7 +447,10 @@ def matmul(
             256,
         ],
     )
-    out_desc = ws_base.make_operand_descriptor(c, [config.block_m, config.block_n])
+    out_desc = make_ragged_output_descriptor(
+        c,
+        [min(config.block_m, EPILOGUE_SUBTILE_M), config.block_n // reduction_n],
+    )
 
     ws_matmul_kernel_optimized[grid](
         x_desc=x_desc,

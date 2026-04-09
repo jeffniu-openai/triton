@@ -13,6 +13,7 @@ __all__ = [
     "async_copy_global_to_shared",
     "async_copy_global_to_shared_im2col",
     "async_copy_shared_to_global",
+    "descriptor_store",
     "store_wait",
 ]
 
@@ -262,6 +263,18 @@ def async_copy_shared_to_global(tensor_desc, coord, src, _semantic=None):
                               _semantic=_semantic)
     coord = _semantic._convert_to_ir_values(coord, require_i64=False)
     _semantic.builder.create_async_tma_copy_local_to_global(tensor_desc.handle, coord, src.handle)
+
+
+@builtin
+def descriptor_store(tensor_desc, coord, value, _semantic=None):
+    if _semantic.builder.options.enable_iisan:
+        _emit_alignment_check(tensor_desc, coord, "descriptor_store", "innermost coordinate", _semantic=_semantic)
+    assert value.shape == tensor_desc.block_shape, (
+        f"source shape {value.shape} does not match descriptor block shape {tensor_desc.block_shape}"
+    )
+    assert value.dtype == tensor_desc.dtype, f"source dtype {value.dtype} does not match descriptor dtype {tensor_desc.dtype}"
+    coord = _semantic._convert_to_ir_values(coord, require_i64=False)
+    _semantic.builder.create_descriptor_store(tensor_desc.handle, value.handle, coord)
 
 
 @builtin
