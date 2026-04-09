@@ -39,6 +39,7 @@ class KernelConfig:
     epilogue_row_subtile_factor: int = 8
     epilogue_n_fragment_factor: int = 1
     epilogue_schedule: int = 1
+    epilogue_warps_n: int = 0
     epilogue_store_helper: bool = True
     epilogue_store_helper_depth: int = 2
     load_activation_regs: int = 112
@@ -54,12 +55,14 @@ class KernelConfig:
     use_wide_packed_store64: bool = False
     use_packed_out_scale: bool = True
     use_linear_acc_epilogue: bool = False
+    delay_acc_bias_in_fragment: bool = False
     use_helper_packed_out_buffer: bool = False
     use_helper_swiglu: bool = False
 
 
 EPILOGUE_SCHEDULE_DIRECT = 0
 EPILOGUE_SCHEDULE_WAVEFRONT = 1
+EPILOGUE_SCHEDULE_PHASED = 2
 EPILOGUE_STORE_HELPER_DISABLED = 0
 EPILOGUE_STORE_HELPER_ENABLED = 1
 
@@ -490,6 +493,51 @@ def _prepare_swiglu_fragment_from_packed(acc_packed, limit):
 
 
 @gluon.jit
+def _apply_acc_scale_and_bias_packed(acc_packed, acc_scale, bias_packed):
+    bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
+    return float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
+
+
+@gluon.jit
+def _pack_fragment_values(values, USE_LINEAR_FRAGMENT_PACK: gl.constexpr):
+    if USE_LINEAR_FRAGMENT_PACK:
+        return (
+            _pack_last_dim_adjacent_linear(values)
+            if values.shape[0] == 128
+            else _pack_last_dim_fragment_blocked(values)
+        )
+    return float2.pack(values, axis=1)
+
+
+@gluon.jit
+def _prepare_swiglu_fragment_state_from_packed(acc_packed, limit, USE_LINEAR_FRAGMENT_PACK: gl.constexpr):
+    gelu, linear = _prepare_swiglu_fragment_from_packed(acc_packed, limit)
+    linear_packed = _pack_fragment_values(linear, USE_LINEAR_FRAGMENT_PACK)
+    return gelu, linear_packed
+
+
+@gluon.jit
+def _activate_swiglu_fragment_packed(gelu, alpha, USE_LINEAR_FRAGMENT_PACK: gl.constexpr):
+    den = 1.0 + libdevice.exp(-alpha * gelu)
+    activated = gelu / den
+    return _pack_fragment_values(activated, USE_LINEAR_FRAGMENT_PACK)
+
+
+@gluon.jit
+def _compose_swiglu_output_packed(
+    activated_packed,
+    linear_packed,
+    USE_PACKED_FINAL_FMA: gl.constexpr,
+    USE_LINEAR_FRAGMENT_PACK: gl.constexpr,
+):
+    if USE_PACKED_FINAL_FMA:
+        return float2.fma(activated_packed, linear_packed, activated_packed)
+    activated = float2.unpack(activated_packed, axis=1)
+    linear = float2.unpack(linear_packed, axis=1)
+    return _pack_fragment_values(gl.fma(activated, linear, activated), USE_LINEAR_FRAGMENT_PACK)
+
+
+@gluon.jit
 def _finish_swiglu_fragment_packed(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl.constexpr):
     den = 1.0 + libdevice.exp(-alpha * gelu)
     activated = gelu / den
@@ -504,23 +552,11 @@ def _finish_swiglu_fragment_packed(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl
 def _finish_swiglu_fragment_packed_linear(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl.constexpr):
     den = 1.0 + libdevice.exp(-alpha * gelu)
     activated = gelu / den
-    activated_packed = (
-        _pack_last_dim_adjacent_linear(activated)
-        if gelu.shape[0] == 128
-        else _pack_last_dim_fragment_blocked(activated)
-    )
+    activated_packed = _pack_fragment_values(activated, USE_LINEAR_FRAGMENT_PACK=True)
     if USE_PACKED_FINAL_FMA:
-        linear_packed = (
-            _pack_last_dim_adjacent_linear(linear)
-            if gelu.shape[0] == 128
-            else _pack_last_dim_fragment_blocked(linear)
-        )
+        linear_packed = _pack_fragment_values(linear, USE_LINEAR_FRAGMENT_PACK=True)
         return float2.fma(activated_packed, linear_packed, activated_packed)
-    return (
-        _pack_last_dim_adjacent_linear(gl.fma(activated, linear, activated))
-        if gelu.shape[0] == 128
-        else _pack_last_dim_fragment_blocked(gl.fma(activated, linear, activated))
-    )
+    return _pack_fragment_values(gl.fma(activated, linear, activated), USE_LINEAR_FRAGMENT_PACK=True)
 
 
 @gluon.jit
@@ -845,6 +881,8 @@ def _store_packed_out_fragment(
 def _epilogue_from_acc_packed(
     p: ws_base.PartitionArgs,
     acc_packed,
+    acc_scale,
+    bias_packed,
     out_recip,
     off_m,
     out_off_n,
@@ -862,6 +900,7 @@ def _epilogue_from_acc_packed(
     USE_PACKED_OUT_SCALE: gl.constexpr,
     USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
     USE_LINEAR_FRAGMENT_PACK: gl.constexpr,
+    APPLY_ACC_BIAS_IN_FRAGMENT: gl.constexpr,
 ):
     gl.static_assert(not USE_EXP2_SIGMOID, "ws_optimized epilogue requires exact SwiGLU math")
     gl.static_assert(
@@ -997,13 +1036,111 @@ def _epilogue_from_acc_packed(
         acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
     else:
         acc_packed_subtiles = (acc_packed,)
+    if EPILOGUE_SCHEDULE == 2 and EPILOGUE_ROW_SUBTILE_FACTOR > 1 and EPILOGUE_N_FRAGMENT_FACTOR == 1:
+        prepared_gelu, prepared_linear_packed = _prepare_swiglu_fragment_state_from_packed(
+            _apply_acc_scale_and_bias_packed(acc_packed_subtiles[0], acc_scale, bias_packed)
+            if APPLY_ACC_BIAS_IN_FRAGMENT
+            else acc_packed_subtiles[0],
+            p.SWIGLU_LIMIT,
+            USE_LINEAR_FRAGMENT_PACK,
+        )
+        activated_packed = _activate_swiglu_fragment_packed(
+            prepared_gelu,
+            p.SWIGLU_ALPHA,
+            USE_LINEAR_FRAGMENT_PACK,
+        )
+        ready_out_packed = acc_packed_subtiles[0]
+        for frag_idx in gl.static_range(1, EPILOGUE_ROW_SUBTILE_FACTOR):
+            cur_acc_packed = (
+                _apply_acc_scale_and_bias_packed(acc_packed_subtiles[frag_idx], acc_scale, bias_packed)
+                if APPLY_ACC_BIAS_IN_FRAGMENT
+                else acc_packed_subtiles[frag_idx]
+            )
+            cur_gelu, cur_linear_packed = _prepare_swiglu_fragment_state_from_packed(
+                cur_acc_packed,
+                p.SWIGLU_LIMIT,
+                USE_LINEAR_FRAGMENT_PACK,
+            )
+            next_ready_out_packed = _compose_swiglu_output_packed(
+                activated_packed,
+                prepared_linear_packed,
+                USE_PACKED_FINAL_FMA,
+                USE_LINEAR_FRAGMENT_PACK,
+            )
+            next_activated_packed = _activate_swiglu_fragment_packed(
+                cur_gelu,
+                p.SWIGLU_ALPHA,
+                USE_LINEAR_FRAGMENT_PACK,
+            )
+            if frag_idx > 1:
+                prev_off_m = off_m + (frag_idx - 2) * FRAG_ROWS
+                _store_packed_out_fragment(
+                    p,
+                    ready_out_packed,
+                    out_recip,
+                    prev_off_m,
+                    out_off_n,
+                    shape_m,
+                    slice_offset,
+                    USE_PACKED_FP8_STORE,
+                    USE_BLOCKED_PACKED_STORE,
+                    USE_WIDE_PACKED_STORE32,
+                    USE_WIDE_PACKED_STORE64,
+                    USE_PACKED_OUT_SCALE,
+                )
+            ready_out_packed = next_ready_out_packed
+            activated_packed = next_activated_packed
+            prepared_linear_packed = cur_linear_packed
+
+        penultimate_off_m = off_m + (EPILOGUE_ROW_SUBTILE_FACTOR - 2) * FRAG_ROWS
+        _store_packed_out_fragment(
+            p,
+            ready_out_packed,
+            out_recip,
+            penultimate_off_m,
+            out_off_n,
+            shape_m,
+            slice_offset,
+            USE_PACKED_FP8_STORE,
+            USE_BLOCKED_PACKED_STORE,
+            USE_WIDE_PACKED_STORE32,
+            USE_WIDE_PACKED_STORE64,
+            USE_PACKED_OUT_SCALE,
+        )
+        last_out_packed = _compose_swiglu_output_packed(
+            activated_packed,
+            prepared_linear_packed,
+            USE_PACKED_FINAL_FMA,
+            USE_LINEAR_FRAGMENT_PACK,
+        )
+        last_off_m = off_m + (EPILOGUE_ROW_SUBTILE_FACTOR - 1) * FRAG_ROWS
+        _store_packed_out_fragment(
+            p,
+            last_out_packed,
+            out_recip,
+            last_off_m,
+            out_off_n,
+            shape_m,
+            slice_offset,
+            USE_PACKED_FP8_STORE,
+            USE_BLOCKED_PACKED_STORE,
+            USE_WIDE_PACKED_STORE32,
+            USE_WIDE_PACKED_STORE64,
+            USE_PACKED_OUT_SCALE,
+        )
+        return
 
     if EPILOGUE_ROW_SUBTILE_FACTOR == 1 or EPILOGUE_N_FRAGMENT_FACTOR != 1 or EPILOGUE_SCHEDULE != 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
             frag_off_m = off_m + frag_idx * FRAG_ROWS
+            frag_acc_packed = (
+                _apply_acc_scale_and_bias_packed(acc_packed_subtiles[frag_idx], acc_scale, bias_packed)
+                if APPLY_ACC_BIAS_IN_FRAGMENT
+                else acc_packed_subtiles[frag_idx]
+            )
             if EPILOGUE_N_FRAGMENT_FACTOR == 1:
                 gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
-                    acc_packed_subtiles[frag_idx],
+                    frag_acc_packed,
                     p.SWIGLU_LIMIT,
                 )
                 out_packed_frag = _finish_swiglu_fragment_packed(
@@ -1032,7 +1169,7 @@ def _epilogue_from_acc_packed(
                     USE_PACKED_OUT_SCALE,
                 )
             else:
-                acc_n0, acc_n1 = _split_packed_last_dim_in_half_fragment(acc_packed_subtiles[frag_idx])
+                acc_n0, acc_n1 = _split_packed_last_dim_in_half_fragment(frag_acc_packed)
                 gelu_frag0, linear_frag0 = _prepare_swiglu_fragment_from_packed(
                     acc_n0,
                     p.SWIGLU_LIMIT,
@@ -1094,12 +1231,20 @@ def _epilogue_from_acc_packed(
         return
 
     prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
-        acc_packed_subtiles[0], p.SWIGLU_LIMIT
+        _apply_acc_scale_and_bias_packed(acc_packed_subtiles[0], acc_scale, bias_packed)
+        if APPLY_ACC_BIAS_IN_FRAGMENT
+        else acc_packed_subtiles[0],
+        p.SWIGLU_LIMIT,
     )
     ready_out_packed = acc_packed_subtiles[0]
     for frag_idx in gl.static_range(1, EPILOGUE_ROW_SUBTILE_FACTOR):
+        cur_acc_packed = (
+            _apply_acc_scale_and_bias_packed(acc_packed_subtiles[frag_idx], acc_scale, bias_packed)
+            if APPLY_ACC_BIAS_IN_FRAGMENT
+            else acc_packed_subtiles[frag_idx]
+        )
         cur_gelu, cur_linear = _prepare_swiglu_fragment_from_packed(
-            acc_packed_subtiles[frag_idx],
+            cur_acc_packed,
             p.SWIGLU_LIMIT,
         )
         next_ready_out_packed = _finish_swiglu_fragment_packed(
@@ -1332,6 +1477,8 @@ def _epilogue_enqueue_raw_acc_packed_for_helper(
 def _epilogue_enqueue_from_acc_packed(
     p: ws_base.PartitionArgs,
     acc_packed,
+    acc_scale,
+    bias_packed,
     out_recip,
     off_m,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
@@ -1346,6 +1493,7 @@ def _epilogue_enqueue_from_acc_packed(
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
     STORE_HELPER_DEPTH: gl.constexpr,
     USE_LINEAR_FRAGMENT_PACK: gl.constexpr,
+    APPLY_ACC_BIAS_IN_FRAGMENT: gl.constexpr,
 ):
     gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     if EPILOGUE_ROW_SUBTILE_FACTOR == 32:
@@ -1475,9 +1623,96 @@ def _epilogue_enqueue_from_acc_packed(
         acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
 
     gl.static_assert(EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
+    if EPILOGUE_SCHEDULE == 2 and EPILOGUE_ROW_SUBTILE_FACTOR > 1:
+        prepared_gelu, prepared_linear_packed = _prepare_swiglu_fragment_state_from_packed(
+            _apply_acc_scale_and_bias_packed(acc_packed_subtiles[0], acc_scale, bias_packed)
+            if APPLY_ACC_BIAS_IN_FRAGMENT
+            else acc_packed_subtiles[0],
+            p.SWIGLU_LIMIT,
+            USE_LINEAR_FRAGMENT_PACK,
+        )
+        activated_packed = _activate_swiglu_fragment_packed(
+            prepared_gelu,
+            p.SWIGLU_ALPHA,
+            USE_LINEAR_FRAGMENT_PACK,
+        )
+        ready_out_packed = acc_packed_subtiles[0]
+        for frag_idx in gl.static_range(1, EPILOGUE_ROW_SUBTILE_FACTOR):
+            cur_acc_packed = (
+                _apply_acc_scale_and_bias_packed(acc_packed_subtiles[frag_idx], acc_scale, bias_packed)
+                if APPLY_ACC_BIAS_IN_FRAGMENT
+                else acc_packed_subtiles[frag_idx]
+            )
+            cur_gelu, cur_linear_packed = _prepare_swiglu_fragment_state_from_packed(
+                cur_acc_packed,
+                p.SWIGLU_LIMIT,
+                USE_LINEAR_FRAGMENT_PACK,
+            )
+            next_ready_out_packed = _compose_swiglu_output_packed(
+                activated_packed,
+                prepared_linear_packed,
+                USE_PACKED_FINAL_FMA,
+                USE_LINEAR_FRAGMENT_PACK,
+            )
+            next_activated_packed = _activate_swiglu_fragment_packed(
+                cur_gelu,
+                p.SWIGLU_ALPHA,
+                USE_LINEAR_FRAGMENT_PACK,
+            )
+            if frag_idx > 1:
+                store_idx, store_phase = _enqueue_store_helper_out_fragment(
+                    ready_out_packed,
+                    out_recip,
+                    store_bufs,
+                    store_empty_bars,
+                    store_ready_bars,
+                    store_idx,
+                    store_phase,
+                    USE_HELPER_PACKED_OUT_BUFFER,
+                    STORE_HELPER_DEPTH,
+                )
+            ready_out_packed = next_ready_out_packed
+            activated_packed = next_activated_packed
+            prepared_linear_packed = cur_linear_packed
+
+        store_idx, store_phase = _enqueue_store_helper_out_fragment(
+            ready_out_packed,
+            out_recip,
+            store_bufs,
+            store_empty_bars,
+            store_ready_bars,
+            store_idx,
+            store_phase,
+            USE_HELPER_PACKED_OUT_BUFFER,
+            STORE_HELPER_DEPTH,
+        )
+        last_out_packed = _compose_swiglu_output_packed(
+            activated_packed,
+            prepared_linear_packed,
+            USE_PACKED_FINAL_FMA,
+            USE_LINEAR_FRAGMENT_PACK,
+        )
+        store_idx, store_phase = _enqueue_store_helper_out_fragment(
+            last_out_packed,
+            out_recip,
+            store_bufs,
+            store_empty_bars,
+            store_ready_bars,
+            store_idx,
+            store_phase,
+            USE_HELPER_PACKED_OUT_BUFFER,
+            STORE_HELPER_DEPTH,
+        )
+        return store_idx, store_phase
+
     if EPILOGUE_SCHEDULE != 1 or EPILOGUE_ROW_SUBTILE_FACTOR == 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
-            acc_n_frags = (acc_packed_subtiles[frag_idx],)
+            frag_acc_packed = (
+                _apply_acc_scale_and_bias_packed(acc_packed_subtiles[frag_idx], acc_scale, bias_packed)
+                if APPLY_ACC_BIAS_IN_FRAGMENT
+                else acc_packed_subtiles[frag_idx]
+            )
+            acc_n_frags = (frag_acc_packed,)
             for nfrag_idx in gl.static_range(EPILOGUE_N_FRAGMENT_FACTOR):
                 gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
                     acc_n_frags[nfrag_idx],
@@ -1508,13 +1743,20 @@ def _epilogue_enqueue_from_acc_packed(
         return store_idx, store_phase
 
     prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
-        acc_packed_subtiles[0],
+        _apply_acc_scale_and_bias_packed(acc_packed_subtiles[0], acc_scale, bias_packed)
+        if APPLY_ACC_BIAS_IN_FRAGMENT
+        else acc_packed_subtiles[0],
         p.SWIGLU_LIMIT,
     )
     ready_out_packed = acc_packed_subtiles[0]
     for frag_idx in gl.static_range(1, EPILOGUE_ROW_SUBTILE_FACTOR):
+        cur_acc_packed = (
+            _apply_acc_scale_and_bias_packed(acc_packed_subtiles[frag_idx], acc_scale, bias_packed)
+            if APPLY_ACC_BIAS_IN_FRAGMENT
+            else acc_packed_subtiles[frag_idx]
+        )
         cur_gelu, cur_linear = _prepare_swiglu_fragment_from_packed(
-            acc_packed_subtiles[frag_idx],
+            cur_acc_packed,
             p.SWIGLU_LIMIT,
         )
         next_ready_out_packed = _finish_swiglu_fragment_packed(
@@ -1632,6 +1874,10 @@ def epilogue_store_partition_optimized(
                         USE_PACKED_FINAL_FMA,
                     )
                     packed_fp8 = _pack_fp8_out_fragment(out_packed, out_recip)
+                    # Normalize helper-owned packed FP8 into the same fragment
+                    # layout that the working store-only helper path uses
+                    # before attempting wider global stores.
+                    packed_fp8 = gl.convert_layout(packed_fp8, STORE_LAYOUT)
                     _store_packed_out(
                         p,
                         packed_fp8,
@@ -1686,6 +1932,7 @@ def epilogue_partition_optimized(
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
     EPILOGUE_SCHEDULE: gl.constexpr,
+    EPILOGUE_WARPS_N: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
@@ -1694,6 +1941,7 @@ def epilogue_partition_optimized(
     USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
     USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
+    DELAY_ACC_BIAS_IN_FRAGMENT: gl.constexpr,
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
     USE_HELPER_SWIGLU: gl.constexpr,
     USE_EPILOGUE_STORE_HELPER: gl.constexpr,
@@ -1711,7 +1959,10 @@ def epilogue_partition_optimized(
 
     num_warps: gl.constexpr = gl.num_warps()
     SUBTILE_COUNT: gl.constexpr = p.BLOCK_N // EPILOGUE_SUBTILE_N
-    warps_n: gl.constexpr = 2 if num_warps >= 8 and p.BLOCK_N >= 256 else 1
+    auto_warps_n: gl.constexpr = 2 if num_warps >= 4 and p.BLOCK_N >= 256 else 1
+    warps_n: gl.constexpr = EPILOGUE_WARPS_N if EPILOGUE_WARPS_N > 0 else auto_warps_n
+    gl.static_assert(warps_n >= 1, "epilogue warps_n must be positive")
+    gl.static_assert(num_warps % warps_n == 0, "epilogue warps_n must divide num_warps")
     split_layout: gl.constexpr = gl.BlockedLayout(
         [1, EPILOGUE_N_ELEMS],
         [1, 32],
@@ -1719,6 +1970,9 @@ def epilogue_partition_optimized(
         [1, 0],
     )
     bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
+    apply_acc_bias_in_fragment: gl.constexpr = (
+        DELAY_ACC_BIAS_IN_FRAGMENT and SUBTILE_COUNT == 1 and not USE_HELPER_SWIGLU
+    )
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
@@ -1745,7 +1999,8 @@ def epilogue_partition_optimized(
             acc_packed = float2.pack(acc, axis=1)
         bias_packed = _pack_last_dim_in_half(bias)
         bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
-        acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
+        if not apply_acc_bias_in_fragment:
+            acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
         if SUBTILE_COUNT == 1:
             acc_packed_subtiles = (acc_packed,)
         elif SUBTILE_COUNT == 2:
@@ -1785,27 +2040,32 @@ def epilogue_partition_optimized(
                     )
                 else:
                     store_idx, store_phase = _epilogue_enqueue_from_acc_packed(
-                        p,
-                        acc_packed_subtiles[subtile_idx],
-                        out_recip,
-                        off_m,
-                        EPILOGUE_ROW_SUBTILE_FACTOR,
-                        EPILOGUE_N_FRAGMENT_FACTOR,
-                        EPILOGUE_SCHEDULE,
+                    p,
+                    acc_packed_subtiles[subtile_idx],
+                    acc_scale,
+                    bias_packed,
+                    out_recip,
+                    off_m,
+                    EPILOGUE_ROW_SUBTILE_FACTOR,
+                    EPILOGUE_N_FRAGMENT_FACTOR,
+                    EPILOGUE_SCHEDULE,
                         USE_PACKED_FINAL_FMA,
                         store_bufs,
                         store_empty_bars,
                         store_ready_bars,
                         store_idx,
                         store_phase,
-                        USE_HELPER_PACKED_OUT_BUFFER,
-                        STORE_HELPER_DEPTH,
-                        use_linear_fragment_pack,
-                    )
+                    USE_HELPER_PACKED_OUT_BUFFER,
+                    STORE_HELPER_DEPTH,
+                    use_linear_fragment_pack,
+                    apply_acc_bias_in_fragment,
+                )
             else:
                 _epilogue_from_acc_packed(
                     p,
                     acc_packed_subtiles[subtile_idx],
+                    acc_scale,
+                    bias_packed,
                     out_recip,
                     off_m,
                     out_off_n,
@@ -1823,6 +2083,7 @@ def epilogue_partition_optimized(
                     USE_PACKED_OUT_SCALE,
                     USE_LINEAR_ACC_EPILOGUE,
                     use_linear_fragment_pack,
+                    apply_acc_bias_in_fragment,
                 )
 
 @gluon.jit
@@ -1880,6 +2141,7 @@ def ws_matmul_kernel_optimized(
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
     EPILOGUE_SCHEDULE: gl.constexpr,
+    EPILOGUE_WARPS_N: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
@@ -1888,6 +2150,7 @@ def ws_matmul_kernel_optimized(
     USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
     USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
+    DELAY_ACC_BIAS_IN_FRAGMENT: gl.constexpr,
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
     USE_HELPER_SWIGLU: gl.constexpr,
     USE_EPILOGUE_STORE_HELPER: gl.constexpr,
@@ -2069,6 +2332,7 @@ def ws_matmul_kernel_optimized(
                         EPILOGUE_ROW_SUBTILE_FACTOR,
                         EPILOGUE_N_FRAGMENT_FACTOR,
                         EPILOGUE_SCHEDULE,
+                        EPILOGUE_WARPS_N,
                         USE_EXP2_SIGMOID,
                         USE_PACKED_FINAL_FMA,
                         USE_PACKED_FP8_STORE,
@@ -2077,6 +2341,7 @@ def ws_matmul_kernel_optimized(
                         USE_WIDE_PACKED_STORE64,
                         USE_PACKED_OUT_SCALE,
                         USE_LINEAR_ACC_EPILOGUE,
+                        DELAY_ACC_BIAS_IN_FRAGMENT,
                         USE_HELPER_PACKED_OUT_BUFFER,
                         USE_HELPER_SWIGLU,
                         USE_EPILOGUE_STORE_HELPER,
@@ -2125,6 +2390,7 @@ def ws_matmul_kernel_optimized(
                         EPILOGUE_ROW_SUBTILE_FACTOR,
                         EPILOGUE_N_FRAGMENT_FACTOR,
                         EPILOGUE_SCHEDULE,
+                        EPILOGUE_WARPS_N,
                         USE_EXP2_SIGMOID,
                         USE_PACKED_FINAL_FMA,
                         USE_PACKED_FP8_STORE,
@@ -2133,6 +2399,7 @@ def ws_matmul_kernel_optimized(
                         USE_WIDE_PACKED_STORE64,
                         USE_PACKED_OUT_SCALE,
                         USE_LINEAR_ACC_EPILOGUE,
+                        DELAY_ACC_BIAS_IN_FRAGMENT,
                         USE_HELPER_PACKED_OUT_BUFFER,
                         USE_HELPER_SWIGLU,
                         USE_EPILOGUE_STORE_HELPER,
@@ -2212,6 +2479,12 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
                 defaults.epilogue_schedule,
             )
         ),
+        epilogue_warps_n=int(
+            os.environ.get(
+                "TRITON_WS_EPILOGUE_WARPS_N",
+                defaults.epilogue_warps_n,
+            )
+        ),
         epilogue_store_helper=os.environ.get(
             "TRITON_WS_USE_EPILOGUE_STORE_HELPER",
             "1" if defaults.epilogue_store_helper else "0",
@@ -2258,6 +2531,11 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
         == "1",
         use_linear_acc_epilogue=os.environ.get(
             "TRITON_WS_USE_LINEAR_ACC_EPILOGUE", "1" if defaults.use_linear_acc_epilogue else "0"
+        )
+        == "1",
+        delay_acc_bias_in_fragment=os.environ.get(
+            "TRITON_WS_DELAY_ACC_BIAS_IN_FRAGMENT",
+            "1" if defaults.delay_acc_bias_in_fragment else "0",
         )
         == "1",
         use_helper_packed_out_buffer=os.environ.get(
@@ -2358,7 +2636,14 @@ def matmul(
     assert config.epilogue_row_subtile_factor in (1, 2, 4, 8, 16, 32)
     assert config.block_m % config.epilogue_row_subtile_factor == 0
     assert config.epilogue_n_fragment_factor in (1, 2)
-    assert config.epilogue_schedule in (EPILOGUE_SCHEDULE_DIRECT, EPILOGUE_SCHEDULE_WAVEFRONT)
+    assert config.epilogue_schedule in (
+        EPILOGUE_SCHEDULE_DIRECT,
+        EPILOGUE_SCHEDULE_WAVEFRONT,
+        EPILOGUE_SCHEDULE_PHASED,
+    )
+    assert config.epilogue_warps_n >= 0
+    if config.epilogue_warps_n:
+        assert config.num_warps % config.epilogue_warps_n == 0
     assert config.load_activation_warps >= 1
     assert config.load_weight_warps >= 1
     assert config.mma_warps >= 1
@@ -2473,6 +2758,7 @@ def matmul(
         EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
         EPILOGUE_N_FRAGMENT_FACTOR=config.epilogue_n_fragment_factor,
         EPILOGUE_SCHEDULE=config.epilogue_schedule,
+        EPILOGUE_WARPS_N=config.epilogue_warps_n,
         USE_EXP2_SIGMOID=config.use_exp2_sigmoid,
         USE_PACKED_FINAL_FMA=config.use_packed_final_fma,
         USE_PACKED_FP8_STORE=config.use_packed_fp8_store,
@@ -2481,6 +2767,7 @@ def matmul(
         USE_WIDE_PACKED_STORE64=config.use_wide_packed_store64,
         USE_PACKED_OUT_SCALE=config.use_packed_out_scale,
         USE_LINEAR_ACC_EPILOGUE=config.use_linear_acc_epilogue,
+        DELAY_ACC_BIAS_IN_FRAGMENT=config.delay_acc_bias_in_fragment,
         USE_HELPER_PACKED_OUT_BUFFER=config.use_helper_packed_out_buffer,
         USE_HELPER_SWIGLU=config.use_helper_swiglu,
         USE_EPILOGUE_STORE_HELPER=config.epilogue_store_helper,
