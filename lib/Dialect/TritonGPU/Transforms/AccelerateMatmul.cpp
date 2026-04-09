@@ -91,21 +91,11 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
 static void annotateMMAv5AccumulatorRootRowPlan(
     triton::nvidia_gpu::TMEMAllocOp alloc) {
   auto memTy = dyn_cast<MemDescType>(alloc.getType());
-  if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
-      memTy.getShape()[0] != 64) {
+  if (!memTy) {
     return;
   }
-  auto kBlock = StringAttr::get(alloc.getContext(), "block");
-  auto memLayout = toLinearLayout(memTy);
-  auto plan =
-      memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1
-          ? triton::nvidia_gpu::TMemLdStRowPlan{/*warpRow0=*/16,
-                                                /*warpRow1=*/32,
-                                                /*rowSpan=*/128}
-          : triton::nvidia_gpu::TMemLdStRowPlan{/*warpRow0=*/32,
-                                                /*warpRow1=*/64,
-                                                /*rowSpan=*/128};
-  triton::nvidia_gpu::setExplicitTMemLdStRowPlan(alloc, plan);
+  if (auto plan = triton::nvidia_gpu::getMMAv5AccumulatorRootRowPlan(memTy))
+    triton::nvidia_gpu::setExplicitTMemLdStRowPlan(alloc, *plan);
 }
 
 SmallVector<unsigned> warpsPerTileV2(DotOpInterface dotOp,

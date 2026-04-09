@@ -1700,6 +1700,22 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   return planFromRowBits(rowBits, isZeroRowBasis);
 }
 
+std::optional<TMemLdStRowPlan>
+getMMAv5AccumulatorRootRowPlan(MemDescType memTy) {
+  if (memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+      memTy.getShape()[0] != 64) {
+    return std::nullopt;
+  }
+  auto kBlock = StringAttr::get(memTy.getContext(), "block");
+  auto memLayout = toLinearLayout(memTy);
+  if (memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1) {
+    return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                           /*rowSpan=*/128};
+  }
+  return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
+                         /*rowSpan=*/128};
+}
+
 void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan) {
   SmallVector<int32_t, 4> rawPlan = {plan.warpRow0, plan.warpRow1,
                                      plan.rowSpan,

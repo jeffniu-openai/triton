@@ -79,6 +79,54 @@ static void printDiagStr(llvm::raw_ostream &os, const Diagnostic &diag) {
     printDiagStr(os, note);
 }
 
+static ttng::TMEMAllocOp getBackingTMemAlloc(Value memDesc) {
+  Value cur = memDesc;
+  while (cur) {
+    if (auto alloc = dyn_cast_if_present<ttng::TMEMAllocOp>(cur.getDefiningOp()))
+      return alloc;
+    Operation *def = cur.getDefiningOp();
+    if (!def)
+      break;
+    if (auto op = dyn_cast<ttg::MemDescIndexOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<ttg::MemDescSubsliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<ttng::TMEMSubSliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<ttg::MemDescReshapeOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<ttg::MemDescReinterpretOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<ttg::MemDescTransOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    break;
+  }
+  return {};
+}
+
+static void annotateMMAv5AccumulatorRootRowPlan(Value acc) {
+  auto alloc = getBackingTMemAlloc(acc);
+  if (!alloc)
+    return;
+  auto memTy = dyn_cast<ttg::MemDescType>(alloc.getType());
+  if (!memTy)
+    return;
+  if (auto plan = ttng::getMMAv5AccumulatorRootRowPlan(memTy))
+    ttng::setExplicitTMemLdStRowPlan(alloc, *plan);
+}
+
 struct GluonOpBuilder : public TritonOpBuilder {
   using TritonOpBuilder::TritonOpBuilder;
   // Construct an attribute or type while calling its verifier. Error messages
@@ -995,11 +1043,12 @@ void init_gluon_ir(py::module &&m) {
            })
       .def("create_tcgen05_mma",
            [](GluonOpBuilder &self, Value a, Value b, Value acc, Value useAcc,
-              Value pred, std::vector<Value> &mbarriers,
-              std::vector<Value> &mbarrier_preds, bool two_ctas,
-              bool multicast) {
+             Value pred, std::vector<Value> &mbarriers,
+             std::vector<Value> &mbarrier_preds, bool two_ctas,
+             bool multicast) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
+             annotateMMAv5AccumulatorRootRowPlan(acc);
              self.create<ttng::TCGen5MMAOp>(tokType, a, b, acc, accDep, useAcc,
                                             pred, two_ctas, multicast,
                                             mbarriers, mbarrier_preds,
@@ -1013,6 +1062,7 @@ void init_gluon_ir(py::module &&m) {
               bool two_ctas) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
+             annotateMMAv5AccumulatorRootRowPlan(acc);
              self.create<ttng::TCGen5MMAScaledOp>(
                  tokType, a, b, acc, accDep, aScale, bScale, aType, bType,
                  useAcc, pred, mbarriers, mbarrier_preds, two_ctas,
