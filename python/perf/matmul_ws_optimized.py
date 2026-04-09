@@ -30,35 +30,70 @@ class KernelConfig:
     num_warps: int = 8
     x_num_bufs: int = 5
     w_num_bufs: int = 4
-    load_activation_warps: int = 4
-    load_weight_warps: int = 1
-    mma_warps: int = 1
-    store_helper_warps: int = 2
     epilogue_n_elems: int = 4
     epilogue_subtile_n: int = 256
     epilogue_row_subtile_factor: int = 1
-    epilogue_n_fragment_factor: int = 1
     epilogue_schedule: int = 0
-    epilogue_store_helper: bool = False
-    epilogue_store_helper_depth: int = 2
-    load_activation_regs: int = 96
-    load_weight_regs: int = 64
-    mma_regs: int = 24
-    store_helper_regs: int = 32
     acc_instr_variant: str = "32x32b"
     use_exp2_sigmoid: bool = False
     use_packed_final_fma: bool = False
     use_packed_fp8_store: bool = True
     use_blocked_packed_store: bool = False
     use_packed_out_scale: bool = True
-    use_linear_acc_epilogue: bool = False
-    use_helper_packed_out_buffer: bool = False
 
 
 EPILOGUE_SCHEDULE_DIRECT = 0
 EPILOGUE_SCHEDULE_WAVEFRONT = 1
-EPILOGUE_STORE_HELPER_DISABLED = 0
-EPILOGUE_STORE_HELPER_ENABLED = 1
+
+
+@gluon.jit
+def _rcp_approx_f32(x):
+    return tl_core.inline_asm_elementwise(
+        "{ rcp.approx.ftz.f32 $0, $1; }",
+        "=f,f",
+        [x],
+        dtype=tl_core.float32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@gluon.jit
+def _swiglu_pairs_rcp(gelu, linear, alpha, limit):
+    gelu = gelu.to(gl.float32)
+    linear = linear.to(gl.float32)
+    gelu = gl.minimum(gelu, limit)
+    linear = tl_core.clamp(linear, -limit, limit)
+    den = 1.0 + libdevice.fast_expf(-alpha * gelu)
+    recip = _rcp_approx_f32(den)
+    activated = gelu * recip
+    return gl.fma(activated, linear, activated)
+
+
+@gluon.jit
+def _swiglu_pairs_rcp_packed(gelu, linear, alpha, limit):
+    gelu = gelu.to(gl.float32)
+    linear = linear.to(gl.float32)
+    gelu = gl.minimum(gelu, limit)
+    linear = tl_core.clamp(linear, -limit, limit)
+    den = 1.0 + libdevice.fast_expf(-alpha * gelu)
+    recip = _rcp_approx_f32(den)
+    activated = gelu * recip
+    activated_packed = float2.pack(activated, axis=1)
+    linear_packed = float2.pack(linear, axis=1)
+    return float2.fma(activated_packed, linear_packed, activated_packed)
+
+
+@gluon.jit
+def _swiglu_pairs_exp2(gelu, linear, alpha, limit):
+    gelu = gelu.to(gl.float32)
+    linear = linear.to(gl.float32)
+    gelu = gl.minimum(gelu, limit)
+    linear = tl_core.clamp(linear, -limit, limit)
+    t = (-alpha * gelu) * 1.4426950408889634
+    exp_term = libdevice.exp2(t)
+    activated = gelu * libdevice.rcp_rn(1.0 + exp_term)
+    return gl.fma(activated, linear, activated)
 
 
 @gluon.jit
@@ -175,12 +210,6 @@ def _split_packed_last_dim_in_half(values):
 
 
 @gluon.jit
-def _split_packed_last_dim_in_half_fragment(values):
-    lhs, rhs = gl.split(values.value.reshape((values.value.shape[0], 2, values.value.shape[1] // 2)).permute((0, 2, 1)))
-    return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
-
-
-@gluon.jit
 def _split_first_dim_in_half(values):
     return gl.split(values.reshape((2, values.shape[0] // 2, values.shape[1])).permute((1, 2, 0)))
 
@@ -201,89 +230,14 @@ def _prepare_swiglu_fragment_from_packed(acc_packed, limit):
 
 @gluon.jit
 def _finish_swiglu_fragment_packed(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl.constexpr):
-    den = 1.0 + libdevice.exp(-alpha * gelu)
-    activated = gelu / den
+    den = 1.0 + libdevice.fast_expf(-alpha * gelu)
+    recip = _rcp_approx_f32(den)
+    activated = gelu * recip
     activated_packed = float2.pack(activated, axis=1)
     if USE_PACKED_FINAL_FMA:
         linear_packed = float2.pack(linear, axis=1)
         return float2.fma(activated_packed, linear_packed, activated_packed)
     return float2.pack(gl.fma(activated, linear, activated), axis=1)
-
-
-@gluon.jit
-def _pack_fp8_out_fragment(out_packed, out_recip):
-    scaled_out_packed = out_packed * float2.full_like(out_packed, out_recip)
-    return _pack_e4m3x2(scaled_out_packed)
-
-
-@gluon.jit
-def _split_acc_packed_rows(acc_packed, row_subtile_factor: gl.constexpr):
-    if row_subtile_factor == 8:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        return (
-            eighth000,
-            eighth001,
-            eighth010,
-            eighth011,
-            eighth100,
-            eighth101,
-            eighth110,
-            eighth111,
-        )
-    if row_subtile_factor == 4:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        return (quarter00, quarter01, quarter10, quarter11)
-    if row_subtile_factor == 2:
-        return _split_first_dim_in_half_packed(acc_packed)
-    return (acc_packed,)
-
-
-@gluon.constexpr_function
-def _store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.constexpr):
-    return gl.BlockedLayout(
-        [frag_rows // helper_num_warps, 2],
-        [1, 32],
-        [helper_num_warps, 1],
-        [1, 0],
-    )
-
-
-@gluon.jit
-def _enqueue_packed_fp8_fragment(
-    out_packed,
-    out_recip,
-    store_buf0,
-    store_buf1,
-    store_empty_bars,
-    store_ready_bars,
-    store_idx,
-    store_phase,
-    USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
-    STORE_HELPER_DEPTH: gl.constexpr,
-):
-    payload = out_packed.value if USE_HELPER_PACKED_OUT_BUFFER else _pack_fp8_out_fragment(out_packed, out_recip)
-    gl.static_assert(STORE_HELPER_DEPTH == 2, "store helper depth must be 2")
-    if store_idx == 0:
-        empty_bar = store_empty_bars.index(0)
-        ready_bar = store_ready_bars.index(0)
-        mbarrier.wait(empty_bar, store_phase)
-        store_buf0.store(payload)
-        mbarrier.arrive(ready_bar)
-    else:
-        empty_bar = store_empty_bars.index(1)
-        ready_bar = store_ready_bars.index(1)
-        mbarrier.wait(empty_bar, store_phase)
-        store_buf1.store(payload)
-        mbarrier.arrive(ready_bar)
-    return ws_base.advance(store_idx, store_phase, STORE_HELPER_DEPTH)
 
 
 @gluon.jit
@@ -402,7 +356,6 @@ def _epilogue_from_acc_packed(
     shape_m,
     slice_offset,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
     EPILOGUE_SCHEDULE: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
@@ -410,114 +363,9 @@ def _epilogue_from_acc_packed(
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
 ):
-    gl.static_assert(not USE_EXP2_SIGMOID, "ws_optimized epilogue requires exact SwiGLU math")
-    gl.static_assert(
-        EPILOGUE_N_FRAGMENT_FACTOR == 1 or EPILOGUE_N_FRAGMENT_FACTOR == 2,
-        "unsupported N fragment factor",
-    )
     FRAG_ROWS: gl.constexpr = p.BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
-    HALF_OUT_N: gl.constexpr = p.BLOCK_N // p.REDUCTION_N // 2
-    if EPILOGUE_ROW_SUBTILE_FACTOR == 32:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        thirtysecond00000, thirtysecond00001 = _split_first_dim_in_half_packed(sixteenth0000)
-        thirtysecond00010, thirtysecond00011 = _split_first_dim_in_half_packed(sixteenth0001)
-        thirtysecond00100, thirtysecond00101 = _split_first_dim_in_half_packed(sixteenth0010)
-        thirtysecond00110, thirtysecond00111 = _split_first_dim_in_half_packed(sixteenth0011)
-        thirtysecond01000, thirtysecond01001 = _split_first_dim_in_half_packed(sixteenth0100)
-        thirtysecond01010, thirtysecond01011 = _split_first_dim_in_half_packed(sixteenth0101)
-        thirtysecond01100, thirtysecond01101 = _split_first_dim_in_half_packed(sixteenth0110)
-        thirtysecond01110, thirtysecond01111 = _split_first_dim_in_half_packed(sixteenth0111)
-        thirtysecond10000, thirtysecond10001 = _split_first_dim_in_half_packed(sixteenth1000)
-        thirtysecond10010, thirtysecond10011 = _split_first_dim_in_half_packed(sixteenth1001)
-        thirtysecond10100, thirtysecond10101 = _split_first_dim_in_half_packed(sixteenth1010)
-        thirtysecond10110, thirtysecond10111 = _split_first_dim_in_half_packed(sixteenth1011)
-        thirtysecond11000, thirtysecond11001 = _split_first_dim_in_half_packed(sixteenth1100)
-        thirtysecond11010, thirtysecond11011 = _split_first_dim_in_half_packed(sixteenth1101)
-        thirtysecond11100, thirtysecond11101 = _split_first_dim_in_half_packed(sixteenth1110)
-        thirtysecond11110, thirtysecond11111 = _split_first_dim_in_half_packed(sixteenth1111)
-        acc_packed_subtiles = (
-            thirtysecond00000,
-            thirtysecond00001,
-            thirtysecond00010,
-            thirtysecond00011,
-            thirtysecond00100,
-            thirtysecond00101,
-            thirtysecond00110,
-            thirtysecond00111,
-            thirtysecond01000,
-            thirtysecond01001,
-            thirtysecond01010,
-            thirtysecond01011,
-            thirtysecond01100,
-            thirtysecond01101,
-            thirtysecond01110,
-            thirtysecond01111,
-            thirtysecond10000,
-            thirtysecond10001,
-            thirtysecond10010,
-            thirtysecond10011,
-            thirtysecond10100,
-            thirtysecond10101,
-            thirtysecond10110,
-            thirtysecond10111,
-            thirtysecond11000,
-            thirtysecond11001,
-            thirtysecond11010,
-            thirtysecond11011,
-            thirtysecond11100,
-            thirtysecond11101,
-            thirtysecond11110,
-            thirtysecond11111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 16:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        acc_packed_subtiles = (
-            sixteenth0000,
-            sixteenth0001,
-            sixteenth0010,
-            sixteenth0011,
-            sixteenth0100,
-            sixteenth0101,
-            sixteenth0110,
-            sixteenth0111,
-            sixteenth1000,
-            sixteenth1001,
-            sixteenth1010,
-            sixteenth1011,
-            sixteenth1100,
-            sixteenth1101,
-            sixteenth1110,
-            sixteenth1111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 8:
+
+    if EPILOGUE_ROW_SUBTILE_FACTOR == 8:
         half0, half1 = _split_first_dim_in_half_packed(acc_packed)
         quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
         quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
@@ -545,10 +393,25 @@ def _epilogue_from_acc_packed(
     else:
         acc_packed_subtiles = (acc_packed,)
 
-    if EPILOGUE_ROW_SUBTILE_FACTOR == 1 or EPILOGUE_N_FRAGMENT_FACTOR != 1 or EPILOGUE_SCHEDULE != 1:
+    if USE_EXP2_SIGMOID or EPILOGUE_ROW_SUBTILE_FACTOR == 1 or EPILOGUE_SCHEDULE != 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
             frag_off_m = off_m + frag_idx * FRAG_ROWS
-            if EPILOGUE_N_FRAGMENT_FACTOR == 1:
+            if USE_EXP2_SIGMOID:
+                gelu_frag, linear_frag = float2.unpack2(acc_packed_subtiles[frag_idx])
+                out_frag = _swiglu_pairs_exp2(gelu_frag, linear_frag, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+                _store_scalar_out_fragment(
+                    p,
+                    out_frag,
+                    out_recip,
+                    frag_off_m,
+                    out_off_n,
+                    shape_m,
+                    slice_offset,
+                    USE_PACKED_FP8_STORE,
+                    USE_BLOCKED_PACKED_STORE,
+                    USE_PACKED_OUT_SCALE,
+                )
+            else:
                 gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
                     acc_packed_subtiles[frag_idx],
                     p.SWIGLU_LIMIT,
@@ -565,52 +428,6 @@ def _epilogue_from_acc_packed(
                     out_recip,
                     frag_off_m,
                     out_off_n,
-                    shape_m,
-                    slice_offset,
-                    USE_PACKED_FP8_STORE,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_PACKED_OUT_SCALE,
-                )
-            else:
-                acc_n0, acc_n1 = _split_packed_last_dim_in_half_fragment(acc_packed_subtiles[frag_idx])
-                gelu_frag0, linear_frag0 = _prepare_swiglu_fragment_from_packed(
-                    acc_n0,
-                    p.SWIGLU_LIMIT,
-                )
-                out_packed_frag0 = _finish_swiglu_fragment_packed(
-                    gelu_frag0,
-                    linear_frag0,
-                    p.SWIGLU_ALPHA,
-                    USE_PACKED_FINAL_FMA,
-                )
-                _store_packed_out_fragment(
-                    p,
-                    out_packed_frag0,
-                    out_recip,
-                    frag_off_m,
-                    out_off_n,
-                    shape_m,
-                    slice_offset,
-                    USE_PACKED_FP8_STORE,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_PACKED_OUT_SCALE,
-                )
-                gelu_frag1, linear_frag1 = _prepare_swiglu_fragment_from_packed(
-                    acc_n1,
-                    p.SWIGLU_LIMIT,
-                )
-                out_packed_frag1 = _finish_swiglu_fragment_packed(
-                    gelu_frag1,
-                    linear_frag1,
-                    p.SWIGLU_ALPHA,
-                    USE_PACKED_FINAL_FMA,
-                )
-                _store_packed_out_fragment(
-                    p,
-                    out_packed_frag1,
-                    out_recip,
-                    frag_off_m,
-                    out_off_n + HALF_OUT_N,
                     shape_m,
                     slice_offset,
                     USE_PACKED_FP8_STORE,
@@ -687,277 +504,20 @@ def _epilogue_from_acc_packed(
 
 
 @gluon.jit
-def _epilogue_enqueue_from_acc_packed(
-    p: ws_base.PartitionArgs,
-    acc_packed,
-    out_recip,
-    off_m,
-    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
-    USE_PACKED_FINAL_FMA: gl.constexpr,
-    store_buf0,
-    store_buf1,
-    store_empty_bars,
-    store_ready_bars,
-    store_idx,
-    store_phase,
-    USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
-    STORE_HELPER_DEPTH: gl.constexpr,
-):
-    gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    gl.static_assert(EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
-    FRAG_ROWS: gl.constexpr = p.BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
-    if EPILOGUE_ROW_SUBTILE_FACTOR == 32:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        thirtysecond00000, thirtysecond00001 = _split_first_dim_in_half_packed(sixteenth0000)
-        thirtysecond00010, thirtysecond00011 = _split_first_dim_in_half_packed(sixteenth0001)
-        thirtysecond00100, thirtysecond00101 = _split_first_dim_in_half_packed(sixteenth0010)
-        thirtysecond00110, thirtysecond00111 = _split_first_dim_in_half_packed(sixteenth0011)
-        thirtysecond01000, thirtysecond01001 = _split_first_dim_in_half_packed(sixteenth0100)
-        thirtysecond01010, thirtysecond01011 = _split_first_dim_in_half_packed(sixteenth0101)
-        thirtysecond01100, thirtysecond01101 = _split_first_dim_in_half_packed(sixteenth0110)
-        thirtysecond01110, thirtysecond01111 = _split_first_dim_in_half_packed(sixteenth0111)
-        thirtysecond10000, thirtysecond10001 = _split_first_dim_in_half_packed(sixteenth1000)
-        thirtysecond10010, thirtysecond10011 = _split_first_dim_in_half_packed(sixteenth1001)
-        thirtysecond10100, thirtysecond10101 = _split_first_dim_in_half_packed(sixteenth1010)
-        thirtysecond10110, thirtysecond10111 = _split_first_dim_in_half_packed(sixteenth1011)
-        thirtysecond11000, thirtysecond11001 = _split_first_dim_in_half_packed(sixteenth1100)
-        thirtysecond11010, thirtysecond11011 = _split_first_dim_in_half_packed(sixteenth1101)
-        thirtysecond11100, thirtysecond11101 = _split_first_dim_in_half_packed(sixteenth1110)
-        thirtysecond11110, thirtysecond11111 = _split_first_dim_in_half_packed(sixteenth1111)
-        acc_packed_subtiles = (
-            thirtysecond00000,
-            thirtysecond00001,
-            thirtysecond00010,
-            thirtysecond00011,
-            thirtysecond00100,
-            thirtysecond00101,
-            thirtysecond00110,
-            thirtysecond00111,
-            thirtysecond01000,
-            thirtysecond01001,
-            thirtysecond01010,
-            thirtysecond01011,
-            thirtysecond01100,
-            thirtysecond01101,
-            thirtysecond01110,
-            thirtysecond01111,
-            thirtysecond10000,
-            thirtysecond10001,
-            thirtysecond10010,
-            thirtysecond10011,
-            thirtysecond10100,
-            thirtysecond10101,
-            thirtysecond10110,
-            thirtysecond10111,
-            thirtysecond11000,
-            thirtysecond11001,
-            thirtysecond11010,
-            thirtysecond11011,
-            thirtysecond11100,
-            thirtysecond11101,
-            thirtysecond11110,
-            thirtysecond11111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 16:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        acc_packed_subtiles = (
-            sixteenth0000,
-            sixteenth0001,
-            sixteenth0010,
-            sixteenth0011,
-            sixteenth0100,
-            sixteenth0101,
-            sixteenth0110,
-            sixteenth0111,
-            sixteenth1000,
-            sixteenth1001,
-            sixteenth1010,
-            sixteenth1011,
-            sixteenth1100,
-            sixteenth1101,
-            sixteenth1110,
-            sixteenth1111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 8:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        acc_packed_subtiles = (
-            eighth000,
-            eighth001,
-            eighth010,
-            eighth011,
-            eighth100,
-            eighth101,
-            eighth110,
-            eighth111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 4:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        acc_packed_subtiles = (quarter00, quarter01, quarter10, quarter11)
-    else:
-        acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
-    for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
-        frag_off_m = off_m + frag_idx * FRAG_ROWS
-        gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
-            acc_packed_subtiles[frag_idx],
-            p.SWIGLU_LIMIT,
-        )
-        out_packed_frag = _finish_swiglu_fragment_packed(
-            gelu_frag,
-            linear_frag,
-            p.SWIGLU_ALPHA,
-            USE_PACKED_FINAL_FMA,
-        )
-        store_idx, store_phase = _enqueue_packed_fp8_fragment(
-            out_packed_frag,
-            out_recip,
-            store_buf0,
-            store_buf1,
-            store_empty_bars,
-            store_ready_bars,
-            store_idx,
-            store_phase,
-            USE_HELPER_PACKED_OUT_BUFFER,
-            STORE_HELPER_DEPTH,
-        )
-    return store_idx, store_phase
-
-
-@gluon.jit
-def epilogue_store_partition_optimized(
-    p: ws_base.PartitionArgs,
-    store_buf0,
-    store_buf1,
-    store_empty_bars,
-    store_ready_bars,
-    EPILOGUE_SUBTILE_N: gl.constexpr,
-    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    USE_BLOCKED_PACKED_STORE: gl.constexpr,
-    USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
-    STORE_HELPER_DEPTH: gl.constexpr,
-):
-    gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    FRAG_ROWS: gl.constexpr = p.BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
-    STORE_LAYOUT: gl.constexpr = _store_helper_fragment_layout(FRAG_ROWS, gl.num_warps())
-    SUBTILE_COUNT: gl.constexpr = p.BLOCK_N // EPILOGUE_SUBTILE_N
-    gl.static_assert(STORE_HELPER_DEPTH == 2, "store helper depth must be 2")
-
-    store_idx = 0
-    store_phase = 0
-    out_recip = 1.0 / gl.load(p.out_scale_ptr) if USE_HELPER_PACKED_OUT_BUFFER else 0.0
-    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
-        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
-        off_m = pid_m * p.BLOCK_M
-        shape_m = gl.load(p.x_slice_sizes + slice_idx)
-
-        for subtile_idx in gl.static_range(SUBTILE_COUNT):
-            subtile_off_n = subtile_idx * EPILOGUE_SUBTILE_N
-            out_off_n = (pid_n * p.BLOCK_N + subtile_off_n) // p.REDUCTION_N
-            for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
-                frag_off_m = off_m + frag_idx * FRAG_ROWS
-                if store_idx == 0:
-                    ready_bar = store_ready_bars.index(0)
-                    empty_bar = store_empty_bars.index(0)
-                    mbarrier.wait(ready_bar, store_phase)
-                    packed_fp8 = (
-                        _pack_fp8_out_fragment(float2.Float2Tensor(store_buf0.load(STORE_LAYOUT)), out_recip)
-                        if USE_HELPER_PACKED_OUT_BUFFER
-                        else store_buf0.load(STORE_LAYOUT)
-                    )
-                    _store_packed_out(
-                        p,
-                        packed_fp8,
-                        frag_off_m,
-                        out_off_n,
-                        shape_m,
-                        slice_offset,
-                        USE_BLOCKED_PACKED_STORE,
-                    )
-                    mbarrier.arrive(empty_bar)
-                else:
-                    ready_bar = store_ready_bars.index(1)
-                    empty_bar = store_empty_bars.index(1)
-                    mbarrier.wait(ready_bar, store_phase)
-                    packed_fp8 = (
-                        _pack_fp8_out_fragment(float2.Float2Tensor(store_buf1.load(STORE_LAYOUT)), out_recip)
-                        if USE_HELPER_PACKED_OUT_BUFFER
-                        else store_buf1.load(STORE_LAYOUT)
-                    )
-                    _store_packed_out(
-                        p,
-                        packed_fp8,
-                        frag_off_m,
-                        out_off_n,
-                        shape_m,
-                        slice_offset,
-                        USE_BLOCKED_PACKED_STORE,
-                    )
-                    mbarrier.arrive(empty_bar)
-                store_idx, store_phase = ws_base.advance(store_idx, store_phase, STORE_HELPER_DEPTH)
-
-
-@gluon.jit
 def epilogue_partition_optimized(
     p: ws_base.PartitionArgs,
-    store_buf0,
-    store_buf1,
-    store_empty_bars,
-    store_ready_bars,
     EPILOGUE_N_ELEMS: gl.constexpr,
     EPILOGUE_SUBTILE_N: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
     EPILOGUE_SCHEDULE: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
-    USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
-    USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
-    USE_EPILOGUE_STORE_HELPER: gl.constexpr,
-    STORE_HELPER_DEPTH: gl.constexpr,
 ):
     idx = 0
     phase = 0
-    store_idx = 0
-    store_phase = 1
 
     x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
     w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
@@ -966,7 +526,7 @@ def epilogue_partition_optimized(
 
     num_warps: gl.constexpr = gl.num_warps()
     SUBTILE_COUNT: gl.constexpr = p.BLOCK_N // EPILOGUE_SUBTILE_N
-    warps_n: gl.constexpr = 2 if num_warps >= 8 and p.BLOCK_N >= 256 else 1
+    warps_n: gl.constexpr = 2 if num_warps >= 4 and p.BLOCK_N >= 256 else 1
     split_layout: gl.constexpr = gl.BlockedLayout(
         [1, EPILOGUE_N_ELEMS],
         [1, 32],
@@ -992,12 +552,8 @@ def epilogue_partition_optimized(
             gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
             split_layout,
         )
-        acc_regs = acc_buf.load().permute((1, 0))
-        if USE_LINEAR_ACC_EPILOGUE:
-            acc_packed = float2.pack(acc_regs, axis=1)
-        else:
-            acc = gl.convert_layout(acc_regs, split_layout)
-            acc_packed = float2.pack(acc, axis=1)
+        acc = gl.convert_layout(acc_buf.load().permute((1, 0)), split_layout)
+        acc_packed = float2.pack(acc, axis=1)
         bias_packed = float2.pack(bias, axis=1)
         bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
         acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
@@ -1014,42 +570,22 @@ def epilogue_partition_optimized(
         for subtile_idx in gl.static_range(SUBTILE_COUNT):
             subtile_off_n = subtile_idx * EPILOGUE_SUBTILE_N
             out_off_n = (pid_n * p.BLOCK_N + subtile_off_n) // p.REDUCTION_N
-            if USE_EPILOGUE_STORE_HELPER:
-                store_idx, store_phase = _epilogue_enqueue_from_acc_packed(
-                    p,
-                    acc_packed_subtiles[subtile_idx],
-                    out_recip,
-                    off_m,
-                    EPILOGUE_ROW_SUBTILE_FACTOR,
-                    EPILOGUE_N_FRAGMENT_FACTOR,
-                    USE_PACKED_FINAL_FMA,
-                    store_buf0,
-                    store_buf1,
-                    store_empty_bars,
-                    store_ready_bars,
-                    store_idx,
-                    store_phase,
-                    USE_HELPER_PACKED_OUT_BUFFER,
-                    STORE_HELPER_DEPTH,
-                )
-            else:
-                _epilogue_from_acc_packed(
-                    p,
-                    acc_packed_subtiles[subtile_idx],
-                    out_recip,
-                    off_m,
-                    out_off_n,
-                    shape_m,
-                    slice_offset,
-                    EPILOGUE_ROW_SUBTILE_FACTOR,
-                    EPILOGUE_N_FRAGMENT_FACTOR,
-                    EPILOGUE_SCHEDULE,
-                    USE_EXP2_SIGMOID,
-                    USE_PACKED_FINAL_FMA,
-                    USE_PACKED_FP8_STORE,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_PACKED_OUT_SCALE,
-                )
+            _epilogue_from_acc_packed(
+                p,
+                acc_packed_subtiles[subtile_idx],
+                out_recip,
+                off_m,
+                out_off_n,
+                shape_m,
+                slice_offset,
+                EPILOGUE_ROW_SUBTILE_FACTOR,
+                EPILOGUE_SCHEDULE,
+                USE_EXP2_SIGMOID,
+                USE_PACKED_FINAL_FMA,
+                USE_PACKED_FP8_STORE,
+                USE_BLOCKED_PACKED_STORE,
+                USE_PACKED_OUT_SCALE,
+            )
 
 @gluon.jit
 def ws_matmul_kernel_optimized(
@@ -1092,28 +628,15 @@ def ws_matmul_kernel_optimized(
     NUM_SMS: gl.constexpr,
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
-    LOAD_ACTIVATION_WARPS: gl.constexpr,
-    LOAD_WEIGHT_WARPS: gl.constexpr,
-    MMA_WARPS: gl.constexpr,
-    STORE_HELPER_WARPS: gl.constexpr,
-    LOAD_ACTIVATION_REGS: gl.constexpr,
-    LOAD_WEIGHT_REGS: gl.constexpr,
-    MMA_REGS: gl.constexpr,
-    STORE_HELPER_REGS: gl.constexpr,
     EPILOGUE_N_ELEMS: gl.constexpr,
     EPILOGUE_SUBTILE_N: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
     EPILOGUE_SCHEDULE: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
-    USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
-    USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
-    USE_EPILOGUE_STORE_HELPER: gl.constexpr,
-    EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -1170,46 +693,6 @@ def ws_matmul_kernel_optimized(
     for i in gl.static_range(acc_num_bufs):
         mbarrier.init(acc_empty_bars.index(i), count=1)
         mbarrier.init(acc_ready_bars.index(i), count=1)
-
-    if USE_EPILOGUE_STORE_HELPER:
-        gl.static_assert(not USE_EXP2_SIGMOID, "store helper requires exact SwiGLU math")
-        gl.static_assert(USE_PACKED_FP8_STORE, "store helper requires packed FP8 stores")
-        gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-        gl.static_assert(EPILOGUE_STORE_HELPER_DEPTH == 2, "store helper depth must be 2")
-        FRAG_ROWS: gl.constexpr = BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
-        OUT_PACKED_N: gl.constexpr = BLOCK_N // REDUCTION_N // 2
-        STORE_BUF_DTYPE: gl.constexpr = gl.int64 if USE_HELPER_PACKED_OUT_BUFFER else gl.int16
-        store_buf0 = gl.allocate_shared_memory(
-            STORE_BUF_DTYPE,
-            [FRAG_ROWS, OUT_PACKED_N],
-            gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
-        )
-        store_buf1 = gl.allocate_shared_memory(
-            STORE_BUF_DTYPE,
-            [FRAG_ROWS, OUT_PACKED_N],
-            gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
-        )
-        store_empty_bars = gl.allocate_shared_memory(
-            gl.int64,
-            [EPILOGUE_STORE_HELPER_DEPTH, 1],
-            mbarrier.MBarrierLayout(),
-        )
-        store_ready_bars = gl.allocate_shared_memory(
-            gl.int64,
-            [EPILOGUE_STORE_HELPER_DEPTH, 1],
-            mbarrier.MBarrierLayout(),
-        )
-        for i in gl.static_range(EPILOGUE_STORE_HELPER_DEPTH):
-            mbarrier.init(store_empty_bars.index(i), count=1)
-            mbarrier.init(store_ready_bars.index(i), count=1)
-    else:
-        STORE_BUF_DTYPE: gl.constexpr = gl.int64 if USE_HELPER_PACKED_OUT_BUFFER else gl.int16
-        store_buf0 = gl.allocate_shared_memory(STORE_BUF_DTYPE, [1, 1], gl.SwizzledSharedLayout(1, 1, 1, [1, 0]))
-        store_buf1 = gl.allocate_shared_memory(STORE_BUF_DTYPE, [1, 1], gl.SwizzledSharedLayout(1, 1, 1, [1, 0]))
-        store_empty_bars = gl.allocate_shared_memory(gl.int64, [1, 1], mbarrier.MBarrierLayout())
-        store_ready_bars = gl.allocate_shared_memory(gl.int64, [1, 1], mbarrier.MBarrierLayout())
-        mbarrier.init(store_empty_bars.index(0), count=1)
-        mbarrier.init(store_ready_bars.index(0), count=1)
 
     x_scale_tmem.store(gl.full((BLOCK_M, SCALE_K), 127, dtype=gl.uint8, layout=x_scale_tmem.get_reg_layout()))
 
@@ -1276,89 +759,30 @@ def ws_matmul_kernel_optimized(
     # Keep the baseline partitioning, but loosen the weight-loader register
     # budget. This is the only small tactical change that improved the target
     # E256/es8 bucket on this branch.
-    if USE_EPILOGUE_STORE_HELPER:
-        gl.warp_specialize(
-            [
+    gl.warp_specialize(
+        [
+            (
+                epilogue_partition_optimized,
                 (
-                    epilogue_partition_optimized,
-                    (
-                        p,
-                        store_buf0,
-                        store_buf1,
-                        store_empty_bars,
-                        store_ready_bars,
-                        EPILOGUE_N_ELEMS,
-                        EPILOGUE_SUBTILE_N,
-                        EPILOGUE_ROW_SUBTILE_FACTOR,
-                        EPILOGUE_N_FRAGMENT_FACTOR,
-                        EPILOGUE_SCHEDULE,
-                        USE_EXP2_SIGMOID,
-                        USE_PACKED_FINAL_FMA,
-                        USE_PACKED_FP8_STORE,
-                        USE_BLOCKED_PACKED_STORE,
-                        USE_PACKED_OUT_SCALE,
-                        USE_LINEAR_ACC_EPILOGUE,
-                        USE_HELPER_PACKED_OUT_BUFFER,
-                        USE_EPILOGUE_STORE_HELPER,
-                        EPILOGUE_STORE_HELPER_DEPTH,
-                    ),
+                    p,
+                    EPILOGUE_N_ELEMS,
+                    EPILOGUE_SUBTILE_N,
+                    EPILOGUE_ROW_SUBTILE_FACTOR,
+                    EPILOGUE_SCHEDULE,
+                    USE_EXP2_SIGMOID,
+                    USE_PACKED_FINAL_FMA,
+                    USE_PACKED_FP8_STORE,
+                    USE_BLOCKED_PACKED_STORE,
+                    USE_PACKED_OUT_SCALE,
                 ),
-                (
-                    epilogue_store_partition_optimized,
-                    (
-                        p,
-                        store_buf0,
-                        store_buf1,
-                        store_empty_bars,
-                        store_ready_bars,
-                        EPILOGUE_SUBTILE_N,
-                        EPILOGUE_ROW_SUBTILE_FACTOR,
-                        USE_BLOCKED_PACKED_STORE,
-                        USE_HELPER_PACKED_OUT_BUFFER,
-                        EPILOGUE_STORE_HELPER_DEPTH,
-                    ),
-                ),
-                (ws_base.load_activations, (p,)),
-                (ws_base.load_weights, (p,)),
-                (ws_base.mma_partition, (p,)),
-            ],
-            [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
-            [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
-        )
-    else:
-        gl.warp_specialize(
-            [
-                (
-                    epilogue_partition_optimized,
-                    (
-                        p,
-                        store_buf0,
-                        store_buf1,
-                        store_empty_bars,
-                        store_ready_bars,
-                        EPILOGUE_N_ELEMS,
-                        EPILOGUE_SUBTILE_N,
-                        EPILOGUE_ROW_SUBTILE_FACTOR,
-                        EPILOGUE_N_FRAGMENT_FACTOR,
-                        EPILOGUE_SCHEDULE,
-                        USE_EXP2_SIGMOID,
-                        USE_PACKED_FINAL_FMA,
-                        USE_PACKED_FP8_STORE,
-                        USE_BLOCKED_PACKED_STORE,
-                        USE_PACKED_OUT_SCALE,
-                        USE_LINEAR_ACC_EPILOGUE,
-                        USE_HELPER_PACKED_OUT_BUFFER,
-                        USE_EPILOGUE_STORE_HELPER,
-                        EPILOGUE_STORE_HELPER_DEPTH,
-                    ),
-                ),
-                (ws_base.load_activations, (p,)),
-                (ws_base.load_weights, (p,)),
-                (ws_base.mma_partition, (p,)),
-            ],
-            [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
-            [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
-        )
+            ),
+            (ws_base.load_activations, (p,)),
+            (ws_base.load_weights, (p,)),
+            (ws_base.mma_partition, (p,)),
+        ],
+        [4, 1, 1],
+        [96, 64, 24],
+    )
 
     for i in gl.static_range(x_num_bufs):
         mbarrier.invalidate(x_empty_bars.index(i))
@@ -1369,13 +793,6 @@ def ws_matmul_kernel_optimized(
     for i in gl.static_range(acc_num_bufs):
         mbarrier.invalidate(acc_empty_bars.index(i))
         mbarrier.invalidate(acc_ready_bars.index(i))
-    if USE_EPILOGUE_STORE_HELPER:
-        for i in gl.static_range(EPILOGUE_STORE_HELPER_DEPTH):
-            mbarrier.invalidate(store_empty_bars.index(i))
-            mbarrier.invalidate(store_ready_bars.index(i))
-    else:
-        mbarrier.invalidate(store_empty_bars.index(0))
-        mbarrier.invalidate(store_ready_bars.index(0))
 
 
 def _row_count(m_rows: int, expected_slice_size: int | None, n_slices: int) -> int:
@@ -1390,19 +807,8 @@ def _row_count(m_rows: int, expected_slice_size: int | None, n_slices: int) -> i
 def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices: int) -> tuple[KernelConfig, int]:
     defaults = KernelConfig()
     cfg = KernelConfig(
-        num_warps=defaults.num_warps,
         x_num_bufs=int(os.environ.get("TRITON_WS_X_NUM_BUFS", defaults.x_num_bufs)),
         w_num_bufs=int(os.environ.get("TRITON_WS_W_NUM_BUFS", defaults.w_num_bufs)),
-        load_activation_warps=int(
-            os.environ.get("TRITON_WS_LOAD_ACTIVATION_WARPS", defaults.load_activation_warps)
-        ),
-        load_weight_warps=int(
-            os.environ.get("TRITON_WS_LOAD_WEIGHT_WARPS", defaults.load_weight_warps)
-        ),
-        mma_warps=int(os.environ.get("TRITON_WS_MMA_WARPS", defaults.mma_warps)),
-        store_helper_warps=int(
-            os.environ.get("TRITON_WS_STORE_HELPER_WARPS", defaults.store_helper_warps)
-        ),
         epilogue_n_elems=int(os.environ.get("TRITON_WS_EPILOGUE_N_ELEMS", defaults.epilogue_n_elems)),
         epilogue_subtile_n=int(
             os.environ.get("TRITON_WS_EPILOGUE_SUBTILE_N", defaults.epilogue_subtile_n)
@@ -1413,32 +819,16 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
                 defaults.epilogue_row_subtile_factor,
             )
         ),
-        epilogue_n_fragment_factor=int(
-            os.environ.get(
-                "TRITON_WS_EPILOGUE_N_FRAGMENT_FACTOR",
-                defaults.epilogue_n_fragment_factor,
-            )
-        ),
         epilogue_schedule=int(
             os.environ.get(
                 "TRITON_WS_EPILOGUE_SCHEDULE",
                 defaults.epilogue_schedule,
             )
         ),
-        epilogue_store_helper=os.environ.get(
-            "TRITON_WS_USE_EPILOGUE_STORE_HELPER",
-            "1" if defaults.epilogue_store_helper else "0",
+        use_exp2_sigmoid=os.environ.get(
+            "TRITON_WS_USE_EXP2_SIGMOID", "1" if defaults.use_exp2_sigmoid else "0"
         )
         == "1",
-        epilogue_store_helper_depth=defaults.epilogue_store_helper_depth,
-        load_activation_regs=int(
-            os.environ.get("TRITON_WS_LOAD_ACTIVATION_REGS", defaults.load_activation_regs)
-        ),
-        load_weight_regs=int(os.environ.get("TRITON_WS_LOAD_WEIGHT_REGS", defaults.load_weight_regs)),
-        mma_regs=int(os.environ.get("TRITON_WS_MMA_REGS", defaults.mma_regs)),
-        store_helper_regs=int(
-            os.environ.get("TRITON_WS_STORE_HELPER_REGS", defaults.store_helper_regs)
-        ),
         use_packed_final_fma=os.environ.get(
             "TRITON_WS_USE_PACKED_FINAL_FMA", "1" if defaults.use_packed_final_fma else "0"
         )
@@ -1453,15 +843,6 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
         == "1",
         use_packed_out_scale=os.environ.get(
             "TRITON_WS_USE_PACKED_OUT_SCALE", "1" if defaults.use_packed_out_scale else "0"
-        )
-        == "1",
-        use_linear_acc_epilogue=os.environ.get(
-            "TRITON_WS_USE_LINEAR_ACC_EPILOGUE", "1" if defaults.use_linear_acc_epilogue else "0"
-        )
-        == "1",
-        use_helper_packed_out_buffer=os.environ.get(
-            "TRITON_WS_USE_HELPER_PACKED_OUT_BUFFER",
-            "1" if defaults.use_helper_packed_out_buffer else "0",
         )
         == "1",
     )
@@ -1546,38 +927,12 @@ def matmul(
     assert config.block_n % config.epilogue_subtile_n == 0
     assert config.epilogue_subtile_n % reduction_n == 0
     assert config.block_n // config.epilogue_subtile_n == 1
-    assert config.num_warps == 8
-    assert config.epilogue_row_subtile_factor in (1, 2, 4, 8, 16, 32)
+    assert config.epilogue_row_subtile_factor in (1, 2, 4, 8)
     assert config.block_m % config.epilogue_row_subtile_factor == 0
-    assert config.epilogue_n_fragment_factor in (1, 2)
-    assert config.epilogue_schedule in (EPILOGUE_SCHEDULE_DIRECT, EPILOGUE_SCHEDULE_WAVEFRONT)
-    assert config.load_activation_warps >= 1
-    assert config.load_weight_warps >= 1
-    assert config.mma_warps >= 1
-    assert config.load_activation_regs >= 1
-    assert config.load_weight_regs >= 1
-    assert config.mma_regs >= 1
-    assert not config.use_exp2_sigmoid
-    assert config.epilogue_store_helper_depth == 2
-    if config.epilogue_store_helper:
-        assert config.store_helper_warps >= 1
-        assert config.store_helper_regs >= 1
-        assert (
-            config.store_helper_warps
-            + config.load_activation_warps
-            + config.load_weight_warps
-            + config.mma_warps
-            <= config.num_warps
-        )
-        assert config.use_packed_fp8_store
-        assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
-        assert config.epilogue_n_fragment_factor == 1
-        if config.use_helper_packed_out_buffer:
-            assert config.epilogue_store_helper_depth == 2
-            assert config.use_packed_out_scale
-    else:
-        assert config.load_activation_warps + config.load_weight_warps + config.mma_warps <= config.num_warps
-        assert not config.use_helper_packed_out_buffer
+    assert config.epilogue_schedule in (
+        EPILOGUE_SCHEDULE_DIRECT,
+        EPILOGUE_SCHEDULE_WAVEFRONT,
+    )
     mxfp_block_size = 32
     scale_size_outer = 128
     scale_size_inner = 4
@@ -1650,28 +1005,15 @@ def matmul(
         NUM_SMS=launch_grid,
         X_NUM_BUFS=config.x_num_bufs,
         W_NUM_BUFS=config.w_num_bufs,
-        LOAD_ACTIVATION_WARPS=config.load_activation_warps,
-        LOAD_WEIGHT_WARPS=config.load_weight_warps,
-        MMA_WARPS=config.mma_warps,
-        STORE_HELPER_WARPS=config.store_helper_warps,
-        LOAD_ACTIVATION_REGS=config.load_activation_regs,
-        LOAD_WEIGHT_REGS=config.load_weight_regs,
-        MMA_REGS=config.mma_regs,
-        STORE_HELPER_REGS=config.store_helper_regs,
         EPILOGUE_N_ELEMS=config.epilogue_n_elems,
         EPILOGUE_SUBTILE_N=config.epilogue_subtile_n,
         EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
-        EPILOGUE_N_FRAGMENT_FACTOR=config.epilogue_n_fragment_factor,
         EPILOGUE_SCHEDULE=config.epilogue_schedule,
         USE_EXP2_SIGMOID=config.use_exp2_sigmoid,
         USE_PACKED_FINAL_FMA=config.use_packed_final_fma,
         USE_PACKED_FP8_STORE=config.use_packed_fp8_store,
         USE_BLOCKED_PACKED_STORE=config.use_blocked_packed_store,
         USE_PACKED_OUT_SCALE=config.use_packed_out_scale,
-        USE_LINEAR_ACC_EPILOGUE=config.use_linear_acc_epilogue,
-        USE_HELPER_PACKED_OUT_BUFFER=config.use_helper_packed_out_buffer,
-        USE_EPILOGUE_STORE_HELPER=config.epilogue_store_helper,
-        EPILOGUE_STORE_HELPER_DEPTH=config.epilogue_store_helper_depth,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
         MXFP_BLOCK_SIZE=mxfp_block_size,
