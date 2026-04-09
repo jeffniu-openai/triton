@@ -59,6 +59,8 @@ class KernelConfig:
 
 EPILOGUE_SCHEDULE_DIRECT = 0
 EPILOGUE_SCHEDULE_WAVEFRONT = 1
+
+
 @gluon.jit
 def _pack_e4m3x2(values):
     return tl_core.inline_asm_elementwise(
@@ -290,36 +292,6 @@ def _pack_fp8_out_fragment(out_packed, out_recip):
     return _pack_e4m3x2(scaled_out_packed)
 
 
-@gluon.jit
-def _split_acc_packed_rows(acc_packed, row_subtile_factor: gl.constexpr):
-    if row_subtile_factor == 8:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        return (
-            eighth000,
-            eighth001,
-            eighth010,
-            eighth011,
-            eighth100,
-            eighth101,
-            eighth110,
-            eighth111,
-        )
-    if row_subtile_factor == 4:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        return (quarter00, quarter01, quarter10, quarter11)
-    if row_subtile_factor == 2:
-        return _split_first_dim_in_half_packed(acc_packed)
-    return (acc_packed,)
-
-
 @gluon.constexpr_function
 def _store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.constexpr):
     return gl.BlockedLayout(
@@ -389,44 +361,6 @@ def _store_packed_out_fragments(
     out_frag = float2.unpack(scaled_out_packed if USE_PACKED_OUT_SCALE else out_packed, axis=1)
     if not USE_PACKED_OUT_SCALE:
         out_frag = out_frag * out_recip
-    if p.FLEXPOINT_SATURATE_INF:
-        out_frag = tl_core.clamp(out_frag, -448.0, 448.0)
-    _store_out(p, out_frag.to(p.out_desc.dtype), off_m, out_off_n, shape_m, slice_offset)
-
-
-@gluon.jit
-def _store_scalar_out_fragment(
-    p: ws_base.PartitionArgs,
-    out_frag,
-    out_recip,
-    off_m,
-    out_off_n,
-    shape_m,
-    slice_offset,
-    USE_PACKED_FP8_STORE: gl.constexpr,
-    USE_BLOCKED_PACKED_STORE: gl.constexpr,
-    USE_WIDE_PACKED_STORE32: gl.constexpr,
-    USE_WIDE_PACKED_STORE64: gl.constexpr,
-    USE_PACKED_OUT_SCALE: gl.constexpr,
-):
-    if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
-        _store_packed_out_fragments(
-            p,
-            float2.pack(out_frag, axis=1),
-            out_recip,
-            off_m,
-            out_off_n,
-            shape_m,
-            slice_offset,
-            USE_PACKED_FP8_STORE,
-            USE_BLOCKED_PACKED_STORE,
-            USE_WIDE_PACKED_STORE32,
-            USE_WIDE_PACKED_STORE64,
-            USE_PACKED_OUT_SCALE,
-        )
-        return
-
-    out_frag = out_frag * out_recip
     if p.FLEXPOINT_SATURATE_INF:
         out_frag = tl_core.clamp(out_frag, -448.0, 448.0)
     _store_out(p, out_frag.to(p.out_desc.dtype), off_m, out_off_n, shape_m, slice_offset)

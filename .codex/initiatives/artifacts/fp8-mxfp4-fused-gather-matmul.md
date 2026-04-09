@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-09T18:16:04Z
+updated: 2026-04-09T18:35:41Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -338,6 +338,11 @@ Correctness for exact-math epilogue work can no longer treat `original` as the o
   - Validation: `make` in `/root/code/triton`; `python -m py_compile python/perf/matmul_ws_optimized.py`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100 --validation-reference exact`
   - Learnings: The large majority of the current file growth after the exact helper-wavefront promotion was experiment scaffolding rather than durable performance logic. Restoring `python/perf/matmul_ws_optimized.py` to the earlier exact helper-wavefront checkpoint (`4597609c5b`) removes about `1.1k` lines of phased-schedule, alternate-layout, helper-mode, and fragment-probe code while preserving the current winning path: row-8 helper-wavefront epilogue, packed `f32x2` math, packed `b32` FP8 stores, `x_num_bufs=5`, `w_num_bufs=4`, `store_helper_warps=2`, and the current register budgets. On the same exact-reference target benchmark after the cleanup, `ws=0.3510 ms`, `ws_optimized=0.3450 ms`, and `gluon_optimized=0.3458 ms`, so the cleaned file slightly outperformed the pre-cleanup `HEAD` result and kept the kernel ahead of `gluon_optimized` within the usual noise band. The only follow-up code cleanup done on top of the rollback was deleting dead `row_count`/launch-grid plumbing that no longer affected launch selection.
   - Plan updates: Treat the restored exact helper-wavefront checkpoint as the new readable baseline for future work. If more tuning resumes later, add new experiments on top of this cleaned version rather than reviving the older phased/direct sweep scaffolding.
+- `2026-04-09` Completed: Removed the remaining truly dead helpers from the cleaned `ws_optimized` baseline and rechecked the exact target bucket
+  - Artifact: `python/perf/matmul_ws_optimized.py`
+  - Validation: `make` in `/root/code/triton`; `python -m py_compile python/perf/matmul_ws_optimized.py`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100 --validation-reference exact`
+  - Learnings: After the larger rollback cleanup, the only provably dead helpers left in `python/perf/matmul_ws_optimized.py` were `_split_acc_packed_rows(...)` and `_store_scalar_out_fragment(...)`; neither had any callers in the file, and removing them does not shrink the still-supported tuning surface. The exact target rerun after that trim came back `ws=0.3514 ms`, `ws_optimized=0.3448 ms`, and `gluon_optimized=0.3454 ms`, so the file stays cleanly ahead of `gluon_optimized` within the normal same-GPU noise band.
+  - Plan updates: Keep future cleanup passes limited to helpers or knobs with zero callers or no legal call path on this branch. Treat the remaining default-off env knobs as live surface unless a later pass intentionally removes support for them.
 
 ## Next Up
 
