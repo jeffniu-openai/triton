@@ -234,6 +234,9 @@ def override_env(mapping: dict[str, str]) -> Iterator[None]:
 def build_configs(args: argparse.Namespace) -> list[SweepConfig]:
     configs: list[SweepConfig] = []
     seen: set[SweepConfig] = set()
+    max_partition_warps = args.max_partition_warps
+    if max_partition_warps <= 0:
+        raise ValueError(f"--max-partition-warps must be > 0, got {max_partition_warps}")
     for num_warps in parse_range(args.num_warps):
         for x_num_bufs in parse_range(args.x_num_bufs):
             for w_num_bufs in parse_range(args.w_num_bufs):
@@ -265,12 +268,9 @@ def build_configs(args: argparse.Namespace) -> list[SweepConfig]:
                                                                     + mma_warps
                                                                     + (store_helper_warps if store_helper else 0)
                                                                 )
-                                                                if store_helper:
-                                                                    if row_factor == 1:
-                                                                        continue
-                                                                    if total_warps > num_warps:
-                                                                        continue
-                                                                elif load_activation_warps + load_weight_warps + mma_warps > num_warps:
+                                                                if store_helper and row_factor == 1:
+                                                                    continue
+                                                                if total_warps > max_partition_warps:
                                                                     continue
                                                                 for load_activation_regs in parse_range(args.load_activation_regs):
                                                                     for load_weight_regs in parse_range(args.load_weight_regs):
@@ -655,6 +655,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--rep", type=int, default=12)
     parser.add_argument("--top", type=int, default=12)
+    parser.add_argument("--max-partition-warps", type=int, default=12)
     parser.add_argument("--num-warps", type=str, default="8")
     parser.add_argument("--x-num-bufs", type=str, default="5")
     parser.add_argument("--w-num-bufs", type=str, default="4")
