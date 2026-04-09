@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-07T09:03:36Z
+updated: 2026-04-09T01:43:21Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -138,7 +138,7 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
 - [ ] Identify the dominant bottleneck in the persistent fused-gather path.
   - Artifact: Investigation note with candidate bottlenecks and evidence
   - Dependencies: Baseline report
-  - Notes: Focus on gather load path, scale handling, shared-memory pressure, and scheduling.
+  - Notes: Focus on gather load path, scale handling, shared-memory pressure, and scheduling. Partial result on `bs=16384, E256/es8`: `ws` and `gluon_optimized` launch the same `512`-thread / `152`-CTA shape with `128` registers per thread, but `ws` trails on tensor/memory utilization and shows materially higher `mio_throttle` and `long_scoreboard` stalls, pointing at producer/consumer scheduling inside the separate activation-vs-weight partitions rather than a simple occupancy shortfall.
 - [ ] Implement the first round of host-side or kernel-side tuning changes.
   - Artifact: Code change plus targeted correctness coverage
   - Dependencies: Bottleneck analysis
@@ -217,10 +217,16 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `python -m py_compile python/perf/bench_matmul_parrot_gather.py`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --rep 20`; `python -m python.perf.bench_matmul_parrot_gather --case-family non-parrot --limit 1 --kernel both --validate-only`
   - Learnings: The benchmark no longer carries a `None`-return fallback or a per-kernel call adapter; all specialized kernels are now expected to accept the same kwargs as `triton_kernels.matmul` and return the output tensor directly, which keeps the benchmark path simpler and avoids masking API drift
   - Plan updates: Keep future specialized kernel entrypoints aligned to the baseline `matmul` call contract so benchmark integration stays declarative rather than per-kernel special-cased
+- `2026-04-09` Completed: Synced the pushed WS sources, added a benchmark-isolated `ws_optimized` fork, and ran the first bounded tuning loop on the 16K `E256/es8` case
+  - Artifact: `python/perf/matmul_ws.py`, `python/perf/matmul_ws_optimized.py`, `python/perf/bench_matmul_parrot_gather.py`, `/tmp/ws_vs_gluon_opt_16384.ncu-rep`
+  - Validation: `make`; `python -m py_compile python/perf/matmul_ws_optimized.py python/perf/bench_matmul_parrot_gather.py`; `python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel original,gluon,gluon_optimized,ws --limit 1`; `USE_IR_LOC=ttgir ncu -o /tmp/ws_vs_gluon_opt_16384 -f --import-source on --set full -k '::regex:.*matmul.*' python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,gluon_optimized --limit 1 --validate-only`; `python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1`
+  - Learnings: On the refreshed branch, `gluon_optimized` runs at about `0.3390 ms` while `ws` is about `0.3496 ms` on the target bucket. The best bounded `ws_optimized` variant so far keeps the baseline launch/scheduling shape and only raises the weight-loader register budget, reaching about `0.3480 ms`; attempts to add another weight-loader warp, cap the persistent grid at `128`, enable `XCD_SWIZZLE=2`, switch to `N_MAJOR`, or rebalance staging buffers all regressed or overflowed shared memory. The NCU capture confirms the gap is still dominated by higher `mio_throttle` and `long_scoreboard` stalls inside the WS producer pipeline rather than by register spill or CTA under-occupancy.
+  - Plan updates: Keep `ws_optimized` as the sandbox for further tactical experiments, but treat the remaining `~2.7%` gap to `gluon_optimized` as evidence that a larger partition/layout change may be required if small heuristic nudges stop moving the result.
 
 ## Next Up
 
 - [ ] Capture launch flags around the `E256/es8` device-side efficiency cliff under cudagraph benchmarking and run the remaining non-parrot baseline families (`E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`)
+- [ ] Decide whether to keep spending time on bounded WS heuristic tuning or switch to a larger design change, given that the current best `ws_optimized` tweak only improves `0.3496 -> 0.3480 ms` while `gluon_optimized` remains at `~0.3390 ms`
 
 ## Open Questions
 

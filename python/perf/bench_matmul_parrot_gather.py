@@ -32,6 +32,7 @@ from triton_kernels.topk import topk
 from .matmul_gluon import matmul_ogs
 from .matmul_gluon_optimized import matmul_ogs as matmul_ogs_optimized
 from .matmul_ws import matmul as matmul_ws
+from .matmul_ws_optimized import matmul as matmul_ws_optimized
 
 # Default roofline constants for a single NVIDIA GB300 GPU.
 # FP8 peak is inferred from the official GB300 NVL72 rack spec: 720 PFLOP/s
@@ -46,7 +47,12 @@ ORIGINAL_KERNEL_NAME = "original"
 GLUON_KERNEL_NAME = "gluon"
 GLUON_OPTIMIZED_KERNEL_NAME = "gluon_optimized"
 WS_KERNEL_NAME = "ws"
-KERNEL_NAME_COLUMN_WIDTH = max(len("kernel"), len(GLUON_OPTIMIZED_KERNEL_NAME))
+WS_OPTIMIZED_KERNEL_NAME = "ws_optimized"
+KERNEL_NAME_COLUMN_WIDTH = max(
+    len("kernel"),
+    len(GLUON_OPTIMIZED_KERNEL_NAME),
+    len(WS_OPTIMIZED_KERNEL_NAME),
+)
 
 
 @dataclass(frozen=True)
@@ -227,6 +233,8 @@ def resolve_kernel(kernel_name: str) -> KernelFn:
         return matmul_ogs_optimized
     if kernel_name == WS_KERNEL_NAME:
         return matmul_ws
+    if kernel_name == WS_OPTIMIZED_KERNEL_NAME:
+        return matmul_ws_optimized
     raise ValueError(f"Unknown kernel {kernel_name}")
 
 
@@ -234,7 +242,13 @@ def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
     if kernel_mode == DEFAULT_KERNEL_MODE:
         return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME)
     if kernel_mode == ALL_KERNEL_MODE:
-        return (ORIGINAL_KERNEL_NAME, GLUON_KERNEL_NAME, GLUON_OPTIMIZED_KERNEL_NAME, WS_KERNEL_NAME)
+        return (
+            ORIGINAL_KERNEL_NAME,
+            GLUON_KERNEL_NAME,
+            GLUON_OPTIMIZED_KERNEL_NAME,
+            WS_KERNEL_NAME,
+            WS_OPTIMIZED_KERNEL_NAME,
+        )
     return tuple(kernel_mode.split(","))
 
 
