@@ -41,15 +41,17 @@ class KernelConfig:
     epilogue_schedule: int = 1
     epilogue_store_helper: bool = True
     epilogue_store_helper_depth: int = 2
-    load_activation_regs: int = 104
+    load_activation_regs: int = 112
     load_weight_regs: int = 48
     mma_regs: int = 24
-    store_helper_regs: int = 24
+    store_helper_regs: int = 16
     acc_instr_variant: str = "32x32b"
     use_exp2_sigmoid: bool = False
     use_packed_final_fma: bool = True
     use_packed_fp8_store: bool = True
     use_blocked_packed_store: bool = False
+    use_wide_packed_store32: bool = True
+    use_wide_packed_store64: bool = False
     use_packed_out_scale: bool = True
     use_linear_acc_epilogue: bool = False
     use_helper_packed_out_buffer: bool = False
@@ -80,6 +82,51 @@ def _pack_e4m3x2(values):
 
 
 @gluon.jit
+def _pack_u16x2(x0, x1):
+    return tl_core.inline_asm_elementwise(
+        """
+        mov.b32 $0, { $1, $2 };
+        """,
+        "=r,h,h",
+        [x0, x1],
+        dtype=tl_core.int32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@gluon.jit
+def _pack_u32x2(x0, x1):
+    return tl_core.inline_asm_elementwise(
+        """
+        mov.b64 $0, { $1, $2 };
+        """,
+        "=l,r,r",
+        [x0, x1],
+        dtype=tl_core.int64,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@gluon.jit
+def _pack_packed_fp8x4(values):
+    lhs, rhs = gl.split(values.reshape((values.shape[0], values.shape[1] // 2, 2)))
+    return _pack_u16x2(lhs, rhs)
+
+
+@gluon.jit
+def _pack_packed_fp8x8(values):
+    packed_out32 = _pack_packed_fp8x4(values)
+    packed_out32 = gl.convert_layout(
+        packed_out32,
+        gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps(), 1], [1, 0]),
+    )
+    lhs, rhs = gl.split(packed_out32.reshape((packed_out32.shape[0], packed_out32.shape[1] // 2, 2)))
+    return _pack_u32x2(lhs, rhs)
+
+
+@gluon.jit
 def _store_packed_out(
     p,
     packed_out,
@@ -88,6 +135,8 @@ def _store_packed_out(
     shape_m,
     slice_offset,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
 ):
     if USE_BLOCKED_PACKED_STORE:
         # Default-off store relayout probe. It still lowers to b16 stores on
@@ -96,6 +145,29 @@ def _store_packed_out(
             packed_out,
             gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps(), 1], [1, 0]),
         )
+    if USE_WIDE_PACKED_STORE64:
+        packed_out64 = _pack_packed_fp8x8(packed_out)
+        out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int64), bitcast=True)
+        packed64_layout: gl.constexpr = packed_out64.type.layout
+        offs_m = off_m + gl.arange(0, packed_out64.shape[0], layout=gl.SliceLayout(1, packed64_layout))
+        offs_n = out_off_n // 8 + gl.arange(0, packed_out64.shape[1], layout=gl.SliceLayout(0, packed64_layout))
+        mask = gl.expand_dims(offs_m < shape_m, 1)
+        ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 8)
+        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+        gl.store(ptrs, packed_out64, mask=mask)
+        return
+    if USE_WIDE_PACKED_STORE32:
+        packed_out32 = _pack_packed_fp8x4(packed_out)
+        out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True)
+        packed32_layout: gl.constexpr = packed_out32.type.layout
+        offs_m = off_m + gl.arange(0, packed_out32.shape[0], layout=gl.SliceLayout(1, packed32_layout))
+        offs_n = out_off_n // 4 + gl.arange(0, packed_out32.shape[1], layout=gl.SliceLayout(0, packed32_layout))
+        mask = gl.expand_dims(offs_m < shape_m, 1)
+        ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 4)
+        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+        gl.store(ptrs, packed_out32, mask=mask)
+        return
+
     out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int16), bitcast=True)
     packed_layout: gl.constexpr = packed_out.type.layout
     offs_m = off_m + gl.arange(0, packed_out.shape[0], layout=gl.SliceLayout(1, packed_layout))
@@ -172,6 +244,12 @@ def _to_distributed_linear_layout(layout: gl.constexpr):
 def _split_packed_last_dim_in_half(values):
     lhs, rhs = _split_last_dim_in_half(values.value)
     return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
+
+
+@gluon.jit
+def _pack_last_dim_in_half(values):
+    lhs, rhs = values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1)).split()
+    return float2.pack2(lhs, rhs)
 
 
 @gluon.jit
@@ -260,8 +338,7 @@ def _store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.
 def _enqueue_packed_fp8_fragment(
     out_packed,
     out_recip,
-    store_buf0,
-    store_buf1,
+    store_bufs,
     store_empty_bars,
     store_ready_bars,
     store_idx,
@@ -270,19 +347,12 @@ def _enqueue_packed_fp8_fragment(
     STORE_HELPER_DEPTH: gl.constexpr,
 ):
     payload = out_packed.value if USE_HELPER_PACKED_OUT_BUFFER else _pack_fp8_out_fragment(out_packed, out_recip)
-    gl.static_assert(STORE_HELPER_DEPTH == 2, "store helper depth must be 2")
-    if store_idx == 0:
-        empty_bar = store_empty_bars.index(0)
-        ready_bar = store_ready_bars.index(0)
-        mbarrier.wait(empty_bar, store_phase)
-        store_buf0.store(payload)
-        mbarrier.arrive(ready_bar)
-    else:
-        empty_bar = store_empty_bars.index(1)
-        ready_bar = store_ready_bars.index(1)
-        mbarrier.wait(empty_bar, store_phase)
-        store_buf1.store(payload)
-        mbarrier.arrive(ready_bar)
+    gl.static_assert(STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
+    empty_bar = store_empty_bars.index(store_idx)
+    ready_bar = store_ready_bars.index(store_idx)
+    mbarrier.wait(empty_bar, store_phase)
+    store_bufs.index(store_idx).store(payload)
+    mbarrier.arrive(ready_bar)
     return ws_base.advance(store_idx, store_phase, STORE_HELPER_DEPTH)
 
 
@@ -297,6 +367,8 @@ def _store_packed_out_fragments(
     slice_offset,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
 ):
     scaled_out_packed = out_packed
@@ -313,6 +385,8 @@ def _store_packed_out_fragments(
             shape_m,
             slice_offset,
             USE_BLOCKED_PACKED_STORE,
+            USE_WIDE_PACKED_STORE32,
+            USE_WIDE_PACKED_STORE64,
         )
         return
 
@@ -335,6 +409,8 @@ def _store_scalar_out_fragment(
     slice_offset,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
 ):
     if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
@@ -348,6 +424,8 @@ def _store_scalar_out_fragment(
             slice_offset,
             USE_PACKED_FP8_STORE,
             USE_BLOCKED_PACKED_STORE,
+            USE_WIDE_PACKED_STORE32,
+            USE_WIDE_PACKED_STORE64,
             USE_PACKED_OUT_SCALE,
         )
         return
@@ -369,6 +447,8 @@ def _store_packed_out_fragment(
     slice_offset,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
 ):
     if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
@@ -382,6 +462,8 @@ def _store_packed_out_fragment(
             slice_offset,
             USE_PACKED_FP8_STORE,
             USE_BLOCKED_PACKED_STORE,
+            USE_WIDE_PACKED_STORE32,
+            USE_WIDE_PACKED_STORE64,
             USE_PACKED_OUT_SCALE,
         )
         return
@@ -408,6 +490,8 @@ def _epilogue_from_acc_packed(
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
 ):
     gl.static_assert(not USE_EXP2_SIGMOID, "ws_optimized epilogue requires exact SwiGLU math")
@@ -569,6 +653,8 @@ def _epilogue_from_acc_packed(
                     slice_offset,
                     USE_PACKED_FP8_STORE,
                     USE_BLOCKED_PACKED_STORE,
+                    USE_WIDE_PACKED_STORE32,
+                    USE_WIDE_PACKED_STORE64,
                     USE_PACKED_OUT_SCALE,
                 )
             else:
@@ -593,6 +679,8 @@ def _epilogue_from_acc_packed(
                     slice_offset,
                     USE_PACKED_FP8_STORE,
                     USE_BLOCKED_PACKED_STORE,
+                    USE_WIDE_PACKED_STORE32,
+                    USE_WIDE_PACKED_STORE64,
                     USE_PACKED_OUT_SCALE,
                 )
                 gelu_frag1, linear_frag1 = _prepare_swiglu_fragment_from_packed(
@@ -615,6 +703,8 @@ def _epilogue_from_acc_packed(
                     slice_offset,
                     USE_PACKED_FP8_STORE,
                     USE_BLOCKED_PACKED_STORE,
+                    USE_WIDE_PACKED_STORE32,
+                    USE_WIDE_PACKED_STORE64,
                     USE_PACKED_OUT_SCALE,
                 )
         return
@@ -646,6 +736,8 @@ def _epilogue_from_acc_packed(
                 slice_offset,
                 USE_PACKED_FP8_STORE,
                 USE_BLOCKED_PACKED_STORE,
+                USE_WIDE_PACKED_STORE32,
+                USE_WIDE_PACKED_STORE64,
                 USE_PACKED_OUT_SCALE,
             )
         ready_out_packed = next_ready_out_packed
@@ -663,6 +755,8 @@ def _epilogue_from_acc_packed(
         slice_offset,
         USE_PACKED_FP8_STORE,
         USE_BLOCKED_PACKED_STORE,
+        USE_WIDE_PACKED_STORE32,
+        USE_WIDE_PACKED_STORE64,
         USE_PACKED_OUT_SCALE,
     )
     last_out_packed = _finish_swiglu_fragment_packed(
@@ -682,6 +776,8 @@ def _epilogue_from_acc_packed(
         slice_offset,
         USE_PACKED_FP8_STORE,
         USE_BLOCKED_PACKED_STORE,
+        USE_WIDE_PACKED_STORE32,
+        USE_WIDE_PACKED_STORE64,
         USE_PACKED_OUT_SCALE,
     )
 
@@ -694,9 +790,9 @@ def _epilogue_enqueue_from_acc_packed(
     off_m,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
+    EPILOGUE_SCHEDULE: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
-    store_buf0,
-    store_buf1,
+    store_bufs,
     store_empty_bars,
     store_ready_bars,
     store_idx,
@@ -832,43 +928,105 @@ def _epilogue_enqueue_from_acc_packed(
         acc_packed_subtiles = (quarter00, quarter01, quarter10, quarter11)
     else:
         acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
-    for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
-        frag_off_m = off_m + frag_idx * FRAG_ROWS
-        gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
+    if EPILOGUE_SCHEDULE != 1 or EPILOGUE_ROW_SUBTILE_FACTOR == 1:
+        for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
+            gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
+                acc_packed_subtiles[frag_idx],
+                p.SWIGLU_LIMIT,
+            )
+            out_packed_frag = _finish_swiglu_fragment_packed(
+                gelu_frag,
+                linear_frag,
+                p.SWIGLU_ALPHA,
+                USE_PACKED_FINAL_FMA,
+            )
+            store_idx, store_phase = _enqueue_packed_fp8_fragment(
+                out_packed_frag,
+                out_recip,
+                store_bufs,
+                store_empty_bars,
+                store_ready_bars,
+                store_idx,
+                store_phase,
+                USE_HELPER_PACKED_OUT_BUFFER,
+                STORE_HELPER_DEPTH,
+            )
+        return store_idx, store_phase
+
+    prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
+        acc_packed_subtiles[0],
+        p.SWIGLU_LIMIT,
+    )
+    ready_out_packed = acc_packed_subtiles[0]
+    for frag_idx in gl.static_range(1, EPILOGUE_ROW_SUBTILE_FACTOR):
+        cur_gelu, cur_linear = _prepare_swiglu_fragment_from_packed(
             acc_packed_subtiles[frag_idx],
             p.SWIGLU_LIMIT,
         )
-        out_packed_frag = _finish_swiglu_fragment_packed(
-            gelu_frag,
-            linear_frag,
+        next_ready_out_packed = _finish_swiglu_fragment_packed(
+            prepared_gelu,
+            prepared_linear,
             p.SWIGLU_ALPHA,
             USE_PACKED_FINAL_FMA,
         )
-        store_idx, store_phase = _enqueue_packed_fp8_fragment(
-            out_packed_frag,
-            out_recip,
-            store_buf0,
-            store_buf1,
-            store_empty_bars,
-            store_ready_bars,
-            store_idx,
-            store_phase,
-            USE_HELPER_PACKED_OUT_BUFFER,
-            STORE_HELPER_DEPTH,
-        )
+        if frag_idx > 1:
+            store_idx, store_phase = _enqueue_packed_fp8_fragment(
+                ready_out_packed,
+                out_recip,
+                store_bufs,
+                store_empty_bars,
+                store_ready_bars,
+                store_idx,
+                store_phase,
+                USE_HELPER_PACKED_OUT_BUFFER,
+                STORE_HELPER_DEPTH,
+            )
+        ready_out_packed = next_ready_out_packed
+        prepared_gelu = cur_gelu
+        prepared_linear = cur_linear
+
+    store_idx, store_phase = _enqueue_packed_fp8_fragment(
+        ready_out_packed,
+        out_recip,
+        store_bufs,
+        store_empty_bars,
+        store_ready_bars,
+        store_idx,
+        store_phase,
+        USE_HELPER_PACKED_OUT_BUFFER,
+        STORE_HELPER_DEPTH,
+    )
+    last_out_packed = _finish_swiglu_fragment_packed(
+        prepared_gelu,
+        prepared_linear,
+        p.SWIGLU_ALPHA,
+        USE_PACKED_FINAL_FMA,
+    )
+    store_idx, store_phase = _enqueue_packed_fp8_fragment(
+        last_out_packed,
+        out_recip,
+        store_bufs,
+        store_empty_bars,
+        store_ready_bars,
+        store_idx,
+        store_phase,
+        USE_HELPER_PACKED_OUT_BUFFER,
+        STORE_HELPER_DEPTH,
+    )
     return store_idx, store_phase
 
 
 @gluon.jit
 def epilogue_store_partition_optimized(
     p: ws_base.PartitionArgs,
-    store_buf0,
-    store_buf1,
+    store_bufs,
     store_empty_bars,
     store_ready_bars,
     EPILOGUE_SUBTILE_N: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
     STORE_HELPER_DEPTH: gl.constexpr,
 ):
@@ -876,7 +1034,7 @@ def epilogue_store_partition_optimized(
     FRAG_ROWS: gl.constexpr = p.BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
     STORE_LAYOUT: gl.constexpr = _store_helper_fragment_layout(FRAG_ROWS, gl.num_warps())
     SUBTILE_COUNT: gl.constexpr = p.BLOCK_N // EPILOGUE_SUBTILE_N
-    gl.static_assert(STORE_HELPER_DEPTH == 2, "store helper depth must be 2")
+    gl.static_assert(STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
 
     store_idx = 0
     store_phase = 0
@@ -891,52 +1049,34 @@ def epilogue_store_partition_optimized(
             out_off_n = (pid_n * p.BLOCK_N + subtile_off_n) // p.REDUCTION_N
             for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
                 frag_off_m = off_m + frag_idx * FRAG_ROWS
-                if store_idx == 0:
-                    ready_bar = store_ready_bars.index(0)
-                    empty_bar = store_empty_bars.index(0)
-                    mbarrier.wait(ready_bar, store_phase)
-                    packed_fp8 = (
-                        _pack_fp8_out_fragment(float2.Float2Tensor(store_buf0.load(STORE_LAYOUT)), out_recip)
-                        if USE_HELPER_PACKED_OUT_BUFFER
-                        else store_buf0.load(STORE_LAYOUT)
-                    )
-                    _store_packed_out(
-                        p,
-                        packed_fp8,
-                        frag_off_m,
-                        out_off_n,
-                        shape_m,
-                        slice_offset,
-                        USE_BLOCKED_PACKED_STORE,
-                    )
-                    mbarrier.arrive(empty_bar)
-                else:
-                    ready_bar = store_ready_bars.index(1)
-                    empty_bar = store_empty_bars.index(1)
-                    mbarrier.wait(ready_bar, store_phase)
-                    packed_fp8 = (
-                        _pack_fp8_out_fragment(float2.Float2Tensor(store_buf1.load(STORE_LAYOUT)), out_recip)
-                        if USE_HELPER_PACKED_OUT_BUFFER
-                        else store_buf1.load(STORE_LAYOUT)
-                    )
-                    _store_packed_out(
-                        p,
-                        packed_fp8,
-                        frag_off_m,
-                        out_off_n,
-                        shape_m,
-                        slice_offset,
-                        USE_BLOCKED_PACKED_STORE,
-                    )
-                    mbarrier.arrive(empty_bar)
+                ready_bar = store_ready_bars.index(store_idx)
+                empty_bar = store_empty_bars.index(store_idx)
+                mbarrier.wait(ready_bar, store_phase)
+                store_buf = store_bufs.index(store_idx)
+                packed_fp8 = (
+                    _pack_fp8_out_fragment(float2.Float2Tensor(store_buf.load(STORE_LAYOUT)), out_recip)
+                    if USE_HELPER_PACKED_OUT_BUFFER
+                    else store_buf.load(STORE_LAYOUT)
+                )
+                _store_packed_out(
+                    p,
+                    packed_fp8,
+                    frag_off_m,
+                    out_off_n,
+                    shape_m,
+                    slice_offset,
+                    USE_BLOCKED_PACKED_STORE,
+                    USE_WIDE_PACKED_STORE32,
+                    USE_WIDE_PACKED_STORE64,
+                )
+                mbarrier.arrive(empty_bar)
                 store_idx, store_phase = ws_base.advance(store_idx, store_phase, STORE_HELPER_DEPTH)
 
 
 @gluon.jit
 def epilogue_partition_optimized(
     p: ws_base.PartitionArgs,
-    store_buf0,
-    store_buf1,
+    store_bufs,
     store_empty_bars,
     store_ready_bars,
     EPILOGUE_N_ELEMS: gl.constexpr,
@@ -948,6 +1088,8 @@ def epilogue_partition_optimized(
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
     USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
@@ -994,7 +1136,7 @@ def epilogue_partition_optimized(
         )
         acc_regs = acc_buf.load().permute((1, 0))
         if USE_LINEAR_ACC_EPILOGUE:
-            acc_packed = float2.pack(acc_regs, axis=1)
+            acc_packed = _pack_last_dim_in_half(acc_regs)
         else:
             acc = gl.convert_layout(acc_regs, split_layout)
             acc_packed = float2.pack(acc, axis=1)
@@ -1022,9 +1164,9 @@ def epilogue_partition_optimized(
                     off_m,
                     EPILOGUE_ROW_SUBTILE_FACTOR,
                     EPILOGUE_N_FRAGMENT_FACTOR,
+                    EPILOGUE_SCHEDULE,
                     USE_PACKED_FINAL_FMA,
-                    store_buf0,
-                    store_buf1,
+                    store_bufs,
                     store_empty_bars,
                     store_ready_bars,
                     store_idx,
@@ -1046,10 +1188,12 @@ def epilogue_partition_optimized(
                     EPILOGUE_SCHEDULE,
                     USE_EXP2_SIGMOID,
                     USE_PACKED_FINAL_FMA,
-                    USE_PACKED_FP8_STORE,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_PACKED_OUT_SCALE,
-                )
+                        USE_PACKED_FP8_STORE,
+                        USE_BLOCKED_PACKED_STORE,
+                        USE_WIDE_PACKED_STORE32,
+                        USE_WIDE_PACKED_STORE64,
+                        USE_PACKED_OUT_SCALE,
+                    )
 
 @gluon.jit
 def ws_matmul_kernel_optimized(
@@ -1109,6 +1253,8 @@ def ws_matmul_kernel_optimized(
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
     USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
     USE_PACKED_OUT_SCALE: gl.constexpr,
     USE_LINEAR_ACC_EPILOGUE: gl.constexpr,
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
@@ -1175,18 +1321,13 @@ def ws_matmul_kernel_optimized(
         gl.static_assert(not USE_EXP2_SIGMOID, "store helper requires exact SwiGLU math")
         gl.static_assert(USE_PACKED_FP8_STORE, "store helper requires packed FP8 stores")
         gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-        gl.static_assert(EPILOGUE_STORE_HELPER_DEPTH == 2, "store helper depth must be 2")
+        gl.static_assert(EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
         FRAG_ROWS: gl.constexpr = BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
         OUT_PACKED_N: gl.constexpr = BLOCK_N // REDUCTION_N // 2
         STORE_BUF_DTYPE: gl.constexpr = gl.int64 if USE_HELPER_PACKED_OUT_BUFFER else gl.int16
-        store_buf0 = gl.allocate_shared_memory(
+        store_bufs = gl.allocate_shared_memory(
             STORE_BUF_DTYPE,
-            [FRAG_ROWS, OUT_PACKED_N],
-            gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
-        )
-        store_buf1 = gl.allocate_shared_memory(
-            STORE_BUF_DTYPE,
-            [FRAG_ROWS, OUT_PACKED_N],
+            [EPILOGUE_STORE_HELPER_DEPTH, FRAG_ROWS, OUT_PACKED_N],
             gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
         )
         store_empty_bars = gl.allocate_shared_memory(
@@ -1204,8 +1345,7 @@ def ws_matmul_kernel_optimized(
             mbarrier.init(store_ready_bars.index(i), count=1)
     else:
         STORE_BUF_DTYPE: gl.constexpr = gl.int64 if USE_HELPER_PACKED_OUT_BUFFER else gl.int16
-        store_buf0 = gl.allocate_shared_memory(STORE_BUF_DTYPE, [1, 1], gl.SwizzledSharedLayout(1, 1, 1, [1, 0]))
-        store_buf1 = gl.allocate_shared_memory(STORE_BUF_DTYPE, [1, 1], gl.SwizzledSharedLayout(1, 1, 1, [1, 0]))
+        store_bufs = gl.allocate_shared_memory(STORE_BUF_DTYPE, [1, 1, 1], gl.SwizzledSharedLayout(1, 1, 1, [1, 0]))
         store_empty_bars = gl.allocate_shared_memory(gl.int64, [1, 1], mbarrier.MBarrierLayout())
         store_ready_bars = gl.allocate_shared_memory(gl.int64, [1, 1], mbarrier.MBarrierLayout())
         mbarrier.init(store_empty_bars.index(0), count=1)
@@ -1283,8 +1423,7 @@ def ws_matmul_kernel_optimized(
                     epilogue_partition_optimized,
                     (
                         p,
-                        store_buf0,
-                        store_buf1,
+                        store_bufs,
                         store_empty_bars,
                         store_ready_bars,
                         EPILOGUE_N_ELEMS,
@@ -1296,6 +1435,8 @@ def ws_matmul_kernel_optimized(
                         USE_PACKED_FINAL_FMA,
                         USE_PACKED_FP8_STORE,
                         USE_BLOCKED_PACKED_STORE,
+                        USE_WIDE_PACKED_STORE32,
+                        USE_WIDE_PACKED_STORE64,
                         USE_PACKED_OUT_SCALE,
                         USE_LINEAR_ACC_EPILOGUE,
                         USE_HELPER_PACKED_OUT_BUFFER,
@@ -1307,13 +1448,14 @@ def ws_matmul_kernel_optimized(
                     epilogue_store_partition_optimized,
                     (
                         p,
-                        store_buf0,
-                        store_buf1,
+                        store_bufs,
                         store_empty_bars,
                         store_ready_bars,
                         EPILOGUE_SUBTILE_N,
                         EPILOGUE_ROW_SUBTILE_FACTOR,
                         USE_BLOCKED_PACKED_STORE,
+                        USE_WIDE_PACKED_STORE32,
+                        USE_WIDE_PACKED_STORE64,
                         USE_HELPER_PACKED_OUT_BUFFER,
                         EPILOGUE_STORE_HELPER_DEPTH,
                     ),
@@ -1332,8 +1474,7 @@ def ws_matmul_kernel_optimized(
                     epilogue_partition_optimized,
                     (
                         p,
-                        store_buf0,
-                        store_buf1,
+                        store_bufs,
                         store_empty_bars,
                         store_ready_bars,
                         EPILOGUE_N_ELEMS,
@@ -1345,6 +1486,8 @@ def ws_matmul_kernel_optimized(
                         USE_PACKED_FINAL_FMA,
                         USE_PACKED_FP8_STORE,
                         USE_BLOCKED_PACKED_STORE,
+                        USE_WIDE_PACKED_STORE32,
+                        USE_WIDE_PACKED_STORE64,
                         USE_PACKED_OUT_SCALE,
                         USE_LINEAR_ACC_EPILOGUE,
                         USE_HELPER_PACKED_OUT_BUFFER,
@@ -1430,7 +1573,12 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
             "1" if defaults.epilogue_store_helper else "0",
         )
         == "1",
-        epilogue_store_helper_depth=defaults.epilogue_store_helper_depth,
+        epilogue_store_helper_depth=int(
+            os.environ.get(
+                "TRITON_WS_EPILOGUE_STORE_HELPER_DEPTH",
+                defaults.epilogue_store_helper_depth,
+            )
+        ),
         load_activation_regs=int(
             os.environ.get("TRITON_WS_LOAD_ACTIVATION_REGS", defaults.load_activation_regs)
         ),
@@ -1449,6 +1597,14 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
         == "1",
         use_blocked_packed_store=os.environ.get(
             "TRITON_WS_USE_BLOCKED_PACKED_STORE", "1" if defaults.use_blocked_packed_store else "0"
+        )
+        == "1",
+        use_wide_packed_store32=os.environ.get(
+            "TRITON_WS_USE_WIDE_PACKED_STORE32", "1" if defaults.use_wide_packed_store32 else "0"
+        )
+        == "1",
+        use_wide_packed_store64=os.environ.get(
+            "TRITON_WS_USE_WIDE_PACKED_STORE64", "1" if defaults.use_wide_packed_store64 else "0"
         )
         == "1",
         use_packed_out_scale=os.environ.get(
@@ -1558,7 +1714,8 @@ def matmul(
     assert config.load_weight_regs >= 1
     assert config.mma_regs >= 1
     assert not config.use_exp2_sigmoid
-    assert config.epilogue_store_helper_depth == 2
+    assert config.epilogue_store_helper_depth in (2, 3, 4)
+    assert not (config.use_wide_packed_store32 and config.use_wide_packed_store64)
     if config.epilogue_store_helper:
         assert config.store_helper_warps >= 1
         assert config.store_helper_regs >= 1
@@ -1573,7 +1730,6 @@ def matmul(
         assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
         assert config.epilogue_n_fragment_factor == 1
         if config.use_helper_packed_out_buffer:
-            assert config.epilogue_store_helper_depth == 2
             assert config.use_packed_out_scale
     else:
         assert config.load_activation_warps + config.load_weight_warps + config.mma_warps <= config.num_warps
@@ -1667,6 +1823,8 @@ def matmul(
         USE_PACKED_FINAL_FMA=config.use_packed_final_fma,
         USE_PACKED_FP8_STORE=config.use_packed_fp8_store,
         USE_BLOCKED_PACKED_STORE=config.use_blocked_packed_store,
+        USE_WIDE_PACKED_STORE32=config.use_wide_packed_store32,
+        USE_WIDE_PACKED_STORE64=config.use_wide_packed_store64,
         USE_PACKED_OUT_SCALE=config.use_packed_out_scale,
         USE_LINEAR_ACC_EPILOGUE=config.use_linear_acc_epilogue,
         USE_HELPER_PACKED_OUT_BUFFER=config.use_helper_packed_out_buffer,

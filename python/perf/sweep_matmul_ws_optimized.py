@@ -54,11 +54,15 @@ class SweepConfig:
     row_factor: int
     packed_final_fma: bool
     store_helper: bool
+    linear_acc_epilogue: bool
+    helper_packed_out_buffer: bool
+    wide_store_mode: str
     schedule: str
     load_activation_warps: int
     load_weight_warps: int
     mma_warps: int
     store_helper_warps: int
+    store_helper_depth: int
     load_activation_regs: int
     load_weight_regs: int
     mma_regs: int
@@ -72,11 +76,15 @@ class SweepConfig:
             f"row={self.row_factor}",
             f"pfma={int(self.packed_final_fma)}",
             f"helper={int(self.store_helper)}",
+            f"linear={int(self.linear_acc_epilogue)}",
+            f"helperbuf={int(self.helper_packed_out_buffer)}",
+            f"wide={self.wide_store_mode}",
             f"sched={self.schedule}",
             f"aw={self.load_activation_warps}",
             f"ww={self.load_weight_warps}",
             f"mw={self.mma_warps}",
             f"srw={self.store_helper_warps}",
+            f"srd={self.store_helper_depth}",
             f"ar={self.load_activation_regs}",
             f"wr={self.load_weight_regs}",
             f"mr={self.mma_regs}",
@@ -91,11 +99,16 @@ class SweepConfig:
             "TRITON_WS_EPILOGUE_ROW_SUBTILE_FACTOR": str(self.row_factor),
             "TRITON_WS_USE_PACKED_FINAL_FMA": "1" if self.packed_final_fma else "0",
             "TRITON_WS_USE_EPILOGUE_STORE_HELPER": "1" if self.store_helper else "0",
+            "TRITON_WS_USE_LINEAR_ACC_EPILOGUE": "1" if self.linear_acc_epilogue else "0",
+            "TRITON_WS_USE_HELPER_PACKED_OUT_BUFFER": "1" if self.helper_packed_out_buffer else "0",
+            "TRITON_WS_USE_WIDE_PACKED_STORE32": "1" if self.wide_store_mode == "32" else "0",
+            "TRITON_WS_USE_WIDE_PACKED_STORE64": "1" if self.wide_store_mode == "64" else "0",
             "TRITON_WS_EPILOGUE_SCHEDULE": str(SCHEDULES[self.schedule]),
             "TRITON_WS_LOAD_ACTIVATION_WARPS": str(self.load_activation_warps),
             "TRITON_WS_LOAD_WEIGHT_WARPS": str(self.load_weight_warps),
             "TRITON_WS_MMA_WARPS": str(self.mma_warps),
             "TRITON_WS_STORE_HELPER_WARPS": str(self.store_helper_warps),
+            "TRITON_WS_EPILOGUE_STORE_HELPER_DEPTH": str(self.store_helper_depth),
             "TRITON_WS_LOAD_ACTIVATION_REGS": str(self.load_activation_regs),
             "TRITON_WS_LOAD_WEIGHT_REGS": str(self.load_weight_regs),
             "TRITON_WS_MMA_REGS": str(self.mma_regs),
@@ -171,6 +184,21 @@ def parse_schedule_values(spec: str) -> list[str]:
     return values
 
 
+def parse_wide_store_modes(spec: str) -> list[str]:
+    allowed = {"none", "32", "64"}
+    values = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if part not in allowed:
+            raise ValueError(f"Unknown wide-store mode {part!r}; expected one of {sorted(allowed)}")
+        values.append(part)
+    if not values:
+        raise ValueError("Wide-store mode spec produced no values")
+    return values
+
+
 def parse_gpu_list(spec: str) -> list[int]:
     values = [int(part.strip()) for part in spec.split(",") if part.strip()]
     if not values:
@@ -208,54 +236,66 @@ def build_configs(args: argparse.Namespace) -> list[SweepConfig]:
             for row_factor in parse_range(args.row_factors):
                 for packed_final_fma in parse_bool_values(args.packed_final_fma):
                     for store_helper in parse_bool_values(args.store_helper):
-                        for schedule in parse_schedule_values(args.schedules):
-                            if store_helper:
-                                store_helper_warp_values = parse_range(args.store_helper_warps)
-                                store_helper_reg_values = parse_range(args.store_helper_regs)
-                            else:
-                                store_helper_warp_values = [2]
-                                store_helper_reg_values = [32]
-                            for load_activation_warps in parse_range(args.load_activation_warps):
-                                for load_weight_warps in parse_range(args.load_weight_warps):
-                                    for mma_warps in parse_range(args.mma_warps):
-                                        for store_helper_warps in store_helper_warp_values:
-                                            if store_helper:
-                                                if row_factor == 1:
-                                                    continue
-                                                if (
-                                                    store_helper_warps
-                                                    + load_activation_warps
-                                                    + load_weight_warps
-                                                    + mma_warps
-                                                    > 8
-                                                ):
-                                                    continue
-                                            elif load_activation_warps + load_weight_warps + mma_warps > 8:
-                                                continue
-                                            for load_activation_regs in parse_range(args.load_activation_regs):
-                                                for load_weight_regs in parse_range(args.load_weight_regs):
-                                                    for mma_regs in parse_range(args.mma_regs):
-                                                        for store_helper_regs in store_helper_reg_values:
-                                                            config = SweepConfig(
-                                                                x_num_bufs=x_num_bufs,
-                                                                w_num_bufs=w_num_bufs,
-                                                                row_factor=row_factor,
-                                                                packed_final_fma=packed_final_fma,
-                                                                store_helper=store_helper,
-                                                                schedule=schedule,
-                                                                load_activation_warps=load_activation_warps,
-                                                                load_weight_warps=load_weight_warps,
-                                                                mma_warps=mma_warps,
-                                                                store_helper_warps=store_helper_warps,
-                                                                load_activation_regs=load_activation_regs,
-                                                                load_weight_regs=load_weight_regs,
-                                                                mma_regs=mma_regs,
-                                                                store_helper_regs=store_helper_regs,
-                                                            )
-                                                            if config in seen:
+                        for linear_acc_epilogue in parse_bool_values(args.linear_acc_epilogue):
+                            for helper_packed_out_buffer in parse_bool_values(args.helper_packed_out_buffer):
+                                if helper_packed_out_buffer and not store_helper:
+                                    continue
+                                for wide_store_mode in parse_wide_store_modes(args.wide_store_modes):
+                                    for schedule in parse_schedule_values(args.schedules):
+                                        if store_helper:
+                                            store_helper_warp_values = parse_range(args.store_helper_warps)
+                                            store_helper_depth_values = parse_range(args.store_helper_depths)
+                                            store_helper_reg_values = parse_range(args.store_helper_regs)
+                                        else:
+                                            store_helper_warp_values = [2]
+                                            store_helper_depth_values = [2]
+                                            store_helper_reg_values = [32]
+                                        for load_activation_warps in parse_range(args.load_activation_warps):
+                                            for load_weight_warps in parse_range(args.load_weight_warps):
+                                                for mma_warps in parse_range(args.mma_warps):
+                                                    for store_helper_warps in store_helper_warp_values:
+                                                        for store_helper_depth in store_helper_depth_values:
+                                                            if store_helper:
+                                                                if row_factor == 1:
+                                                                    continue
+                                                                if (
+                                                                    store_helper_warps
+                                                                    + load_activation_warps
+                                                                    + load_weight_warps
+                                                                    + mma_warps
+                                                                    > 8
+                                                                ):
+                                                                    continue
+                                                            elif load_activation_warps + load_weight_warps + mma_warps > 8:
                                                                 continue
-                                                            seen.add(config)
-                                                            configs.append(config)
+                                                            for load_activation_regs in parse_range(args.load_activation_regs):
+                                                                for load_weight_regs in parse_range(args.load_weight_regs):
+                                                                    for mma_regs in parse_range(args.mma_regs):
+                                                                        for store_helper_regs in store_helper_reg_values:
+                                                                            config = SweepConfig(
+                                                                                x_num_bufs=x_num_bufs,
+                                                                                w_num_bufs=w_num_bufs,
+                                                                                row_factor=row_factor,
+                                                                                packed_final_fma=packed_final_fma,
+                                                                                store_helper=store_helper,
+                                                                                linear_acc_epilogue=linear_acc_epilogue,
+                                                                                helper_packed_out_buffer=helper_packed_out_buffer,
+                                                                                wide_store_mode=wide_store_mode,
+                                                                                schedule=schedule,
+                                                                                load_activation_warps=load_activation_warps,
+                                                                                load_weight_warps=load_weight_warps,
+                                                                                mma_warps=mma_warps,
+                                                                                store_helper_warps=store_helper_warps,
+                                                                                store_helper_depth=store_helper_depth,
+                                                                                load_activation_regs=load_activation_regs,
+                                                                                load_weight_regs=load_weight_regs,
+                                                                                mma_regs=mma_regs,
+                                                                                store_helper_regs=store_helper_regs,
+                                                                            )
+                                                                            if config in seen:
+                                                                                continue
+                                                                            seen.add(config)
+                                                                            configs.append(config)
     return configs
 
 
@@ -276,6 +316,7 @@ def benchmark_kernel(
     prepared: bench.PreparedCase,
     kernel_name: str,
     rep: int,
+    validation_reference: tuple[str, tuple[Any, Any]] | None,
 ) -> bench.BenchResult:
     return bench.benchmark_prepared_case(
         prepared,
@@ -284,6 +325,7 @@ def benchmark_kernel(
         rep=rep,
         peak_fp8_tflops=bench.DEFAULT_PEAK_FP8_TFLOPS,
         peak_mem_tbps=bench.DEFAULT_PEAK_MEM_TBPS,
+        validation_reference=validation_reference,
     )
 
 
@@ -293,10 +335,16 @@ def benchmark_config(
     config: SweepConfig,
     rep: int,
     baseline: WorkerBaseline,
+    validation_reference: tuple[str, tuple[Any, Any]] | None,
 ) -> SweepResult:
     with override_env(config.env()):
         try:
-            result = benchmark_kernel(prepared, bench.WS_OPTIMIZED_KERNEL_NAME, rep=rep)
+            result = benchmark_kernel(
+                prepared,
+                bench.WS_OPTIMIZED_KERNEL_NAME,
+                rep=rep,
+                validation_reference=validation_reference,
+            )
         except Exception as exc:
             status, message, required, limit = classify_error(exc)
             return SweepResult(
@@ -331,17 +379,42 @@ def run_worker(
     rep: int,
     seed: int,
     local_rank: int,
+    validate: bool,
+    validation_reference_name: str,
 ) -> dict[str, Any]:
     case = select_case(batch_size=batch_size, n_expts_tot=n_expts_tot, n_expts_shards=n_expts_shards)
     prepared = bench.prepare_case(case, device="cuda", seed=seed, local_rank_override=local_rank)
-    ws_baseline = benchmark_kernel(prepared, bench.WS_OPTIMIZED_KERNEL_NAME, rep=rep)
-    gluon_baseline = benchmark_kernel(prepared, bench.GLUON_OPTIMIZED_KERNEL_NAME, rep=rep)
+    validation_reference = (
+        bench.build_validation_reference(prepared, validation_reference_name) if validate else None
+    )
+    ws_baseline = benchmark_kernel(
+        prepared,
+        bench.WS_OPTIMIZED_KERNEL_NAME,
+        rep=rep,
+        validation_reference=validation_reference,
+    )
+    gluon_baseline = benchmark_kernel(
+        prepared,
+        bench.GLUON_OPTIMIZED_KERNEL_NAME,
+        rep=rep,
+        validation_reference=validation_reference,
+    )
     baseline = WorkerBaseline(
         gpu=gpu,
         ws_optimized_ms=ws_baseline.runtime_ms,
         gluon_optimized_ms=gluon_baseline.runtime_ms,
     )
-    results = [benchmark_config(prepared, gpu=gpu, config=config, rep=rep, baseline=baseline) for config in configs]
+    results = [
+        benchmark_config(
+            prepared,
+            gpu=gpu,
+            config=config,
+            rep=rep,
+            baseline=baseline,
+            validation_reference=validation_reference,
+        )
+        for config in configs
+    ]
     return {
         "gpu": gpu,
         "case_id": case.case_id,
@@ -379,11 +452,15 @@ def write_csv(path: Path, baselines: dict[int, WorkerBaseline], results: list[Sw
                 "row_factor",
                 "packed_final_fma",
                 "store_helper",
+                "linear_acc_epilogue",
+                "helper_packed_out_buffer",
+                "wide_store_mode",
                 "schedule",
                 "load_activation_warps",
                 "load_weight_warps",
                 "mma_warps",
                 "store_helper_warps",
+                "store_helper_depth",
                 "load_activation_regs",
                 "load_weight_regs",
                 "mma_regs",
@@ -411,11 +488,15 @@ def write_csv(path: Path, baselines: dict[int, WorkerBaseline], results: list[Sw
                     result.config.row_factor,
                     int(result.config.packed_final_fma),
                     int(result.config.store_helper),
+                    int(result.config.linear_acc_epilogue),
+                    int(result.config.helper_packed_out_buffer),
+                    result.config.wide_store_mode,
                     result.config.schedule,
                     result.config.load_activation_warps,
                     result.config.load_weight_warps,
                     result.config.mma_warps,
                     result.config.store_helper_warps,
+                    result.config.store_helper_depth,
                     result.config.load_activation_regs,
                     result.config.load_weight_regs,
                     result.config.mma_regs,
@@ -495,7 +576,13 @@ def run_driver(args: argparse.Namespace) -> None:
                 str(args.seed),
                 "--local-rank",
                 str(args.local_rank),
+                "--validation-reference",
+                args.validation_reference,
             ]
+            if args.validate:
+                cmd.append("--validate")
+            else:
+                cmd.append("--no-validate")
             procs.append(subprocess.Popen(cmd, env=env, text=True))
 
         for proc in procs:
@@ -539,6 +626,8 @@ def run_worker_cli(args: argparse.Namespace) -> None:
         rep=args.rep,
         seed=args.seed,
         local_rank=args.local_rank,
+        validate=args.validate,
+        validation_reference_name=args.validation_reference,
     )
     Path(args.worker_output_json).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -564,15 +653,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--row-factors", type=str, default="8,16")
     parser.add_argument("--packed-final-fma", type=str, default="1")
     parser.add_argument("--store-helper", type=str, default="0,1")
+    parser.add_argument("--linear-acc-epilogue", type=str, default="0,1")
+    parser.add_argument("--helper-packed-out-buffer", type=str, default="0,1")
+    parser.add_argument("--wide-store-modes", type=str, default="none,32,64")
     parser.add_argument("--schedules", type=str, default="direct")
     parser.add_argument("--load-activation-warps", type=str, default="4,5")
     parser.add_argument("--load-weight-warps", type=str, default="1,2")
     parser.add_argument("--mma-warps", type=str, default="1")
     parser.add_argument("--store-helper-warps", type=str, default="2")
+    parser.add_argument("--store-helper-depths", type=str, default="2")
     parser.add_argument("--load-activation-regs", type=str, default="96,112")
     parser.add_argument("--load-weight-regs", type=str, default="48,64,80")
     parser.add_argument("--mma-regs", type=str, default="24")
     parser.add_argument("--store-helper-regs", type=str, default="24,32")
+    parser.add_argument("--validate", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--validation-reference",
+        choices=(bench.ORIGINAL_KERNEL_NAME, bench.EXACT_REFERENCE_NAME),
+        default=bench.EXACT_REFERENCE_NAME,
+    )
     parser.add_argument("--csv-out", type=Path, default=None)
     return parser.parse_args()
 
