@@ -4965,3 +4965,23 @@ Open after this slice:
   - the newer isolated-worktree support-query cleanup itself had not yet been
     built or tested in that session and should have been assumed non-buildable
     until the stale Gluon callsite and malformed debug strings were fixed.
+
+## 2026-04-09 resumed managed-session refresh
+- Re-resumed the paused managed-checkout Codex session and asked only for a
+  status handoff; then stopped interacting with it again.
+- The managed session's remembered hack inventory still matches the current
+  initiative backlog:
+  - direct `32x32` support rescue / scalarization
+  - `64x128xf32` reinterpret rescue
+  - packed row-zero-lifted `TMemLdStEncodingInfo` fixups
+  - `warpx2` family-specific planner cleanup
+- That session confirmed its last known validated checkpoint was still the
+  already-landed `ttng.tmem_ldst_row_plan` cleanup slice and its associated
+  targeted build / lit / GPU pytest coverage.
+- The isolated worktree has since moved beyond the specific malformed-debug-
+  string snapshot remembered by that session. The active local work now needs
+  to finish reconciling the support-query / subview cleanup with the broader
+  initiative goal: keep all physically codegen-legal TMEM layouts positive,
+  use clean negatives only for impossible ISA cases, and choose among multiple
+  legal codegen paths with performance-oriented heuristics rather than
+  hard-coded exclusions.
