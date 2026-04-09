@@ -1,9 +1,13 @@
 import copy
+import importlib.util
+import itertools
 import math
+from pathlib import Path
+import sys
+
+import pytest
 import torch
 import triton
-import pytest
-import itertools
 
 from triton.language.core import _aggregate as aggregate
 
@@ -24,6 +28,28 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
 )
 from triton.experimental.gluon.language.nvidia.blackwell.float2 import Float2Tensor
 
+
+def _load_pipeline_utils():
+    module_name = "triton_examples_gluon_pipeline_utils"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+
+    path = Path(__file__).with_name("_pipeline_utils.py")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_pipeline_utils = _load_pipeline_utils()
+
+SharedMemoryChannel = _pipeline_utils.SharedMemoryChannel
+TensorMemoryChannel = _pipeline_utils.TensorMemoryChannel
+get_desc_channel = _pipeline_utils.get_desc_channel
+issue_async_tma_load = _pipeline_utils.issue_async_tma_load
+
 # ===-----------------------------------------------------------------------===#
 # Layout Utilities
 # ===-----------------------------------------------------------------------===#
@@ -38,137 +64,72 @@ def get_mma_instr_shape(shape, element_ty):
 
 
 # ===-----------------------------------------------------------------------===#
-# Data Abstractions
-# ===-----------------------------------------------------------------------===#
-
-
-@aggregate
-class BarrierCounter:
-    index: gl.tensor
-    phase: gl.tensor
-    num_barriers: gl.constexpr
-
-    @gluon.must_use_result
-    @gluon.jit
-    def increment(self):
-        if self.num_barriers == 1:
-            return BarrierCounter(gl.to_tensor(0), self.phase ^ 1, self.num_barriers)
-        next_index = self.index + 1
-        rollover = next_index == self.num_barriers
-        index = gl.where(rollover, 0, next_index)
-        phase = gl.where(rollover, self.phase ^ 1, self.phase)
-        return BarrierCounter(index, phase, self.num_barriers)
-
-
-def Channel(T, alloc_fn):
-
-    @aggregate
-    class ChannelType:
-        mem: T
-        ready_bars: gl.shared_memory_descriptor
-        empty_bars: gl.shared_memory_descriptor
-        num_buffers: gl.constexpr
-        num_consumers: gl.constexpr
-
-        @gluon.jit
-        def alloc(shape: gl.constexpr, dtype: gl.constexpr, layout: gl.constexpr, num_buffers: gl.constexpr,
-                  num_consumers: gl.constexpr = 1):
-            mem = alloc_fn(dtype, [num_buffers] + shape, layout)
-            ready_bars = gl.allocate_shared_memory(gl.int64, [num_buffers, 1], mbarrier.MBarrierLayout())
-            empty_bars = gl.allocate_shared_memory(gl.int64, [num_buffers, 1], mbarrier.MBarrierLayout())
-            for i in gl.static_range(num_buffers):
-                mbarrier.init(ready_bars.index(i), count=1)
-                mbarrier.init(empty_bars.index(i), count=num_consumers)
-                mbarrier.arrive(empty_bars.index(i), count=num_consumers)
-            return ChannelType(mem, ready_bars, empty_bars, num_buffers, num_consumers)
-
-        @gluon.jit
-        def acquire_producer(self, counter):
-            index, phase = counter.index, counter.phase
-            mem = self.mem.index(index)
-            ready_bar = self.ready_bars.index(index)
-            empty_bar = self.empty_bars.index(index)
-
-            mbarrier.wait(empty_bar, phase)
-            return mem, ready_bar
-
-        @gluon.jit
-        def acquire_consumer(self, counter):
-            index, phase = counter.index, counter.phase
-            mem = self.mem.index(index)
-            ready_bar = self.ready_bars.index(index)
-            empty_bar = self.empty_bars.index(index)
-
-            mbarrier.wait(ready_bar, phase)
-            return mem, empty_bar
-
-        @gluon.jit
-        def create_counter(self):
-            return BarrierCounter(gl.to_tensor(0), gl.to_tensor(0), self.num_buffers)
-
-        @gluon.jit
-        def create_producer(self):
-            return Producer(self, self.create_counter())
-
-        @gluon.jit
-        def create_consumer(self):
-            return Consumer(self, self.create_counter())
-
-        @gluon.jit
-        def release(self):
-            if isinstance(self.mem, gl.shared_memory_descriptor):
-                self.mem._keep_alive()
-            for i in gl.static_range(self.num_buffers):
-                mbarrier.invalidate(self.ready_bars.index(i))
-                mbarrier.invalidate(self.empty_bars.index(i))
-
-    @aggregate
-    class Producer:
-        channel: ChannelType
-        counter: BarrierCounter
-
-        @gluon.jit
-        def acquire(self):
-            mem, ready_bar = self.channel.acquire_producer(self.counter)
-            next = Producer(self.channel, self.counter.increment())
-            return mem, ready_bar, next
-
-    @aggregate
-    class Consumer:
-        channel: ChannelType
-        counter: BarrierCounter
-
-        @gluon.jit
-        def acquire(self):
-            mem, empty_bar = self.channel.acquire_consumer(self.counter)
-            next = Consumer(self.channel, self.counter.increment())
-            return mem, empty_bar, next
-
-    return ChannelType, Producer, Consumer
-
-
-SharedMemoryChannel, SharedMemoryProducer, SharedMemoryConsumer = Channel(gl.shared_memory_descriptor,
-                                                                          gl.allocate_shared_memory)
-TensorMemoryChannel, TensorMemoryProducer, TensorMemoryConsumer = Channel(tensor_memory_descriptor,
-                                                                          allocate_tensor_memory)
-
-
-@gluon.jit
-def get_desc_channel(desc, num_buffers: gl.constexpr, num_consumers: gl.constexpr = 1):
-    shape: gl.constexpr = desc.block_type.shape
-    layout: gl.constexpr = desc.layout
-    return SharedMemoryChannel.alloc(shape, desc.dtype, layout, num_buffers, num_consumers)
-
-
-@gluon.jit
-def issue_async_tma_load(smem, bar, desc, offset):
-    mbarrier.expect(bar, desc.block_type.nbytes)
-    tma.async_copy_global_to_shared(desc, [offset, 0], bar, smem)
-
-
-# ===-----------------------------------------------------------------------===#
 # Gluon Attention
 # ===-----------------------------------------------------------------------===#
+
+
+@gluon.constexpr_function
+def _get_split_n_layout(layout: gl.constexpr, SPLIT_FACTOR: gl.constexpr = 2):
+    assert isinstance(layout, gl.DistributedLinearLayout), "split_n requires a distributed layout"
+    assert SPLIT_FACTOR == 1 or SPLIT_FACTOR == 2, "split_n requires a split factor of 1 or 2"
+    if SPLIT_FACTOR == 1:
+        return layout
+    else:
+        target = [0, layout.shape[1] // 2]  # [0, 2^{m-1}]
+        last_reg_idx = len(layout.reg_bases) - 1
+        reg_last = layout.reg_bases[last_reg_idx]
+
+        if reg_last == target:
+            return layout
+
+        ret = copy.deepcopy(layout)
+
+        # Find [0, 2^{m-1}] across lists and swap it with last reg
+        for L in (ret.reg_bases, ret.lane_bases, ret.warp_bases, ret.block_bases):
+            for i, b in enumerate(L):
+                if b == target:
+                    L[i], ret.reg_bases[last_reg_idx] = reg_last, target
+                    return ret
+        assert False, f"split_n requires having a basis {target}. Got\n{layout}"
+
+
+@gluon.jit
+def _split_n(x, SPLIT_FACTOR: gl.constexpr = 2):
+    if SPLIT_FACTOR == 1:
+        return (x, )
+    else:
+        layout: gl.constexpr = _get_split_n_layout(x.type.layout)
+        x0, x1 = x.reshape([x.shape[0], 2, x.shape[1] // 2]).permute(0, 2, 1).split()
+        x0 = gl.convert_layout(x0, layout, assert_trivial=True)
+        x1 = gl.convert_layout(x1, layout, assert_trivial=True)
+        return _split_n(x0, SPLIT_FACTOR // 2) + _split_n(x1, SPLIT_FACTOR // 2)
+
+
+@gluon.constexpr_function
+def _get_join_n_layout(layout, SPLIT_FACTOR: gl.constexpr = 2):
+    assert isinstance(layout, gl.DistributedLinearLayout), "join_n requires a Linear layout"
+    shape = list(layout.shape)
+    regs = [[0, shape[1] * (1 << i)] for i in range(int(math.log2(SPLIT_FACTOR)))]
+    shape[1] *= SPLIT_FACTOR
+    return gl.DistributedLinearLayout(
+        layout.reg_bases + regs,
+        layout.lane_bases,
+        layout.warp_bases,
+        layout.block_bases,
+        shape,
+    )
+
+
+@gluon.jit
+def _join_n(xs):
+    if len(xs) == 1:
+        return xs[0]
+    else:
+        x0 = _join_n(xs[:len(xs) // 2])
+        x1 = _join_n(xs[len(xs) // 2:])
+        layout: gl.constexpr = _get_join_n_layout(x0.type.layout)
+        x = gl.join(x0, x1).permute(0, 2, 1).reshape([x0.shape[0], x0.shape[1] * 2])
+        return gl.convert_layout(x, layout, assert_trivial=True)
 
 
 @aggregate
@@ -364,70 +325,6 @@ def _borrow_s_for_epilogue(config, s_tmem):
     m_i_tmem = m_i_tmem._reinterpret(gl.float32, [config.SPLIT_M, 1], layout)
     l_i_tmem = l_i_tmem._reinterpret(gl.float32, [config.SPLIT_M, 1], layout)
     return m_i_tmem, l_i_tmem
-
-
-@gluon.constexpr_function
-def _get_split_n_layout(layout: gl.constexpr, SPLIT_FACTOR: gl.constexpr = 2):
-    assert isinstance(layout, gl.DistributedLinearLayout), "split_n requires a distributed layout"
-    assert SPLIT_FACTOR == 1 or SPLIT_FACTOR == 2, "split_n requires a split factor of 1 or 2"
-    if SPLIT_FACTOR == 1:
-        return layout
-    else:
-        target = [0, layout.shape[1] // 2]  # [0, 2^{m-1}]
-        last_reg_idx = len(layout.reg_bases) - 1
-        reg_last = layout.reg_bases[last_reg_idx]
-
-        if reg_last == target:
-            return layout
-
-        ret = copy.deepcopy(layout)
-
-        # Find [0, 2^{m-1}] across lists and swap it with last reg
-        for L in (ret.reg_bases, ret.lane_bases, ret.warp_bases, ret.block_bases):
-            for i, b in enumerate(L):
-                if b == target:
-                    L[i], ret.reg_bases[last_reg_idx] = reg_last, target
-                    return ret
-        assert False, f"split_n requires having a basis {target}. Got\n{layout}"
-
-
-@gluon.jit
-def _split_n(x, SPLIT_FACTOR: gl.constexpr = 2):
-    if SPLIT_FACTOR == 1:
-        return (x, )
-    else:
-        layout: gl.constexpr = _get_split_n_layout(x.type.layout)
-        x0, x1 = x.reshape([x.shape[0], 2, x.shape[1] // 2]).permute(0, 2, 1).split()
-        x0 = gl.convert_layout(x0, layout, assert_trivial=True)
-        x1 = gl.convert_layout(x1, layout, assert_trivial=True)
-        return _split_n(x0, SPLIT_FACTOR // 2) + _split_n(x1, SPLIT_FACTOR // 2)
-
-
-@gluon.constexpr_function
-def _get_join_n_layout(layout, SPLIT_FACTOR: gl.constexpr = 2):
-    assert isinstance(layout, gl.DistributedLinearLayout), "join_n requires a Linear layout"
-    shape = list(layout.shape)
-    regs = [[0, shape[1] * (1 << i)] for i in range(int(math.log2(SPLIT_FACTOR)))]
-    shape[1] *= SPLIT_FACTOR
-    return gl.DistributedLinearLayout(
-        layout.reg_bases + regs,
-        layout.lane_bases,
-        layout.warp_bases,
-        layout.block_bases,
-        shape,
-    )
-
-
-@gluon.jit
-def _join_n(xs):
-    if len(xs) == 1:
-        return xs[0]
-    else:
-        x0 = _join_n(xs[:len(xs) // 2])
-        x1 = _join_n(xs[len(xs) // 2:])
-        layout: gl.constexpr = _get_join_n_layout(x0.type.layout)
-        x = gl.join(x0, x1).permute(0, 2, 1).reshape([x0.shape[0], x0.shape[1] * 2])
-        return gl.convert_layout(x, layout, assert_trivial=True)
 
 
 @gluon.jit
