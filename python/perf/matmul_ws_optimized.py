@@ -10,7 +10,7 @@ def _load_ws_optimized_example():
     if module_name in sys.modules:
         return sys.modules[module_name]
 
-    path = Path(__file__).resolve().parent.parent / "examples" / "gluon" / "05-matmul-ws-optimized.py"
+    path = Path(__file__).resolve().parent.parent / "examples" / "gluon" / "05-moe-bmm1-fused-gather.py"
     spec = importlib.util.spec_from_file_location(module_name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
