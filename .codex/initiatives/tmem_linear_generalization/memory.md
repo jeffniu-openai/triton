@@ -2867,3 +2867,27 @@ rejection, not rescue
   - mixed-file broad sweeps on this node are currently noisy because GPU 0 showed unrelated `test_mma_shared_inputs[...]` NaN failures in `python/test/gluon/test_core.py`; do not treat that bucket as TMEM initiative signal until rerun independently.
 - Next step:
   - repair 64-row direct ld/st anchor selection/validation for row-permuted layouts, then rerun the row/col-permuted split-N sweep and a clean matrix-only shard sweep.
+
+## 2026-04-09: `f16` MMAv5 root accumulators were missing the explicit M64 row-plan contract
+
+- Healthy-GPU reruns showed the `test_mma_shared_inputs` bucket was not a fresh tcgen05 arithmetic regression.
+- Exact repros:
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps1-16-False-False-acc_dtype1]`
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps2-16-False-False-acc_dtype1]`
+- Root cause:
+  - `annotateMMAv5AccumulatorRootRowPlan(acc)` was already in the Gluon tcgen05 builder path, but `getMMAv5AccumulatorRootRowPlan(...)` only returned a plan for `bitwidth == 32`.
+  - Raw `64x{64,32}xf16` root accumulators therefore never got the explicit `ttng.tmem_ldst_row_plan` attribute, so ld/st lowering fell back to the active-row `16/32 @ 64` family.
+  - The bad TTGIR/PTX signature was:
+    - no `ttng.tmem_ldst_row_plan` on the root `ttng.tmem_alloc`
+    - `tcgen05.ld.sync.aligned.16x32bx2.x1.pack::16b.b32`
+    - narrow TMEM base math (`shl 20`, mask `3145728`)
+  - Runtime symptom on the `64x64xf16` repro: rows `16-31` and most of `48-63` came back as zeros (`2001 / 4096` mismatches).
+- Fix:
+  - broaden `getMMAv5AccumulatorRootRowPlan(...)` to all rank-2 `M=64` MMAv5 accumulators, independent of element bitwidth.
+- Result:
+  - fresh `64x64xf16` / `64x32xf16` TTGIR now carries `ttng.tmem_ldst_row_plan = [32, 64, 128, 0]`.
+  - fresh repaired PTX uses the widened `shl 21` / mask `6291456` TMEM base path and vectorizes back to `16x32bx2.x8.pack::16b.b32` for the `64x64xf16` case.
+  - the exact previously failing `warps1` and `warps2` `test_mma_shared_inputs` nodeids now pass again, and the earlier `test_tma_load_store[64-128-32-1-4-False-True-False]` unit repro stays green.
+- Important separation:
+  - this fix does not change the remaining `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]` launch failure.
+  - keep that one as the separate `M=64` row/col-permuted direct-ld/st anchor-selection bug.

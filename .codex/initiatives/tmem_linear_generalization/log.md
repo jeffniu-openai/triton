@@ -5199,3 +5199,36 @@ Open after this slice:
   - this points at a row-anchor selection/validation bug: the current direct-ld/st path is effectively deriving warp anchors from permuted row-basis position instead of solving for the logical 64-row anchor family (`16,32`) in linear-layout space.
 - Recommended next step:
   - fix the 64-row direct ld/st anchor selection/validation path so it chooses (or rejects against) logical row anchors in linear-layout coordinates rather than basis-order position, then rerun the exact `splitn_rowcol_permuted_layout_sweep` bucket and the interrupted matrix-only shard.
+
+## 2026-04-09 MMAv5 `f16` root-accumulator row-plan fix; split-N permuted ld/st bug remains separate
+- The `test_mma_shared_inputs` failures on the healthy local GPUs reduced to a producer-side row-plan omission, not a new generic tcgen05 arithmetic bug.
+- Exact failing repros before the fix:
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps1-16-False-False-acc_dtype1]`
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps2-16-False-False-acc_dtype1]`
+- Root cause:
+  - `python/src/gluon_ir.cc` already calls `annotateMMAv5AccumulatorRootRowPlan(acc)` before `ttng.tc_gen5_mma`, but `getMMAv5AccumulatorRootRowPlan(...)` in `TensorMemoryUtils.cpp` only returned a plan for `bitwidth == 32`.
+  - As a result, raw `64x{64,32}xf16` MMA accumulators never received the explicit `ttng.tmem_ldst_row_plan` contract, fell back to the active-row `16/32 @ 64` family, and lowered through the narrow `shl 20` / mask `3145728` TMEM base path.
+  - Exact failing TTGIR/PTX shape before the fix:
+    - no `ttng.tmem_ldst_row_plan` attribute on the `ttng.tmem_alloc`
+    - `tcgen05.ld.sync.aligned.16x32bx2.x1.pack::16b.b32`
+    - runtime numerics zeroed the `row 16-31` and `48-63` bands (`2001 / 4096` mismatches on the `64x64xf16` repro)
+- Fix:
+  - broaden `getMMAv5AccumulatorRootRowPlan(...)` to all rank-2 `M=64` MMAv5 accumulators instead of gating it to 32-bit element types.
+  - This restores the producer-owned explicit row-plan metadata for the `f16` accumulator family as well.
+- Post-fix evidence:
+  - fresh TTGIR now shows `ttng.tmem_alloc {ttng.tmem_ldst_row_plan = array<i32: 32, 64, 128, 0>}` for both `64x64xf16` and `64x32xf16` root accumulators.
+  - fresh PTX for the repaired `64x64xf16` repro now uses the widened `shl 21` / mask `6291456` TMEM base math and `tcgen05.ld.sync.aligned.16x32bx2.x8.pack::16b.b32`.
+- Validation:
+  - `make -j8`
+  - `CUDA_VISIBLE_DEVICES=0 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps1-16-False-False-acc_dtype1]`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=1 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps2-16-False-False-acc_dtype1]`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=2 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps1-16-False-False-acc_dtype2]`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=0 ... pytest -s --tb=short -vv python/test/unit/cuda/test_tma_store_gemm.py::test_tma_load_store[64-128-32-1-4-False-True-False]`
+    - `1 passed`
+- Remaining separate live bug after this checkpoint:
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - still fails at launch with `Triton Error [CUDA]: misaligned address`
+    - unchanged by the row-plan producer fix, so keep it classified as the separate `M=64` permuted direct-ld/st anchor-selection bug.

@@ -1702,8 +1702,11 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
 
 std::optional<TMemLdStRowPlan>
 getMMAv5AccumulatorRootRowPlan(MemDescType memTy) {
-  if (memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
-      memTy.getShape()[0] != 64) {
+  // Raw MMAv5 accumulator ld/st needs the backing-tile row anchors for every
+  // M=64 accumulator family, not just f32. The tcgen05 f16 accumulator path
+  // uses the same physical tile contract and must carry the same explicit
+  // producer-owned row-plan metadata.
+  if (memTy.getRank() != 2 || memTy.getShape()[0] != 64) {
     return std::nullopt;
   }
   auto kBlock = StringAttr::get(memTy.getContext(), "block");
