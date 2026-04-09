@@ -588,19 +588,34 @@ def make_kernel_run(
     kernel = resolve_kernel(kernel_name)
     precision_config = make_precision_config(prepared)
     out = make_output_buffer(prepared)
-    kernel_kwargs = dict(
-        a=prepared.x,
-        b=prepared.w,  # type: ignore[arg-type]
-        bias=prepared.bias,
-        a_ragged_metadata=prepared.ragged_batch_metadata,
-        gather_indx=prepared.gather_indx,
-        precision_config=precision_config,
-        c=out,
-        fused_activation=prepared.fused_activation,
-    )
+    if kernel_name == WS_OPTIMIZED_KERNEL_NAME:
 
-    def run() -> torch.Tensor:
-        return kernel(**kernel_kwargs)
+        def run() -> torch.Tensor:
+            return matmul_ws_optimized(
+                a=prepared.x,
+                b=prepared.w,  # type: ignore[arg-type]
+                bias=prepared.bias,
+                a_ragged_metadata=prepared.ragged_batch_metadata,
+                gather_indx=prepared.gather_indx,
+                precision_config=precision_config,
+                c=out,
+                fused_activation=prepared.fused_activation,
+            )
+
+    else:
+        kernel_kwargs = dict(
+            a=prepared.x,
+            b=prepared.w,  # type: ignore[arg-type]
+            bias=prepared.bias,
+            a_ragged_metadata=prepared.ragged_batch_metadata,
+            gather_indx=prepared.gather_indx,
+            precision_config=precision_config,
+            c=out,
+            fused_activation=prepared.fused_activation,
+        )
+
+        def run() -> torch.Tensor:
+            return kernel(**kernel_kwargs)
 
     return run, out, precision_config
 
