@@ -538,12 +538,6 @@ def _pack_fp8_out_fragment(out_packed, out_recip):
     return _pack_e4m3x2(scaled_out_packed)
 
 
-@gluon.jit
-def _apply_swiglu_fragment_packed(acc_packed, alpha, limit):
-    gelu, linear = _prepare_swiglu_fragment_from_packed(acc_packed, limit)
-    return _finish_swiglu_fragment_packed(gelu, linear, alpha)
-
-
 @gluon.constexpr_function
 def _store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.constexpr):
     return gl.BlockedLayout(
@@ -693,7 +687,6 @@ def epilogue_partition_optimized(p: PartitionArgs):
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
-        off_m = pid_m * p.BLOCK_M
         off_n = pid_n * p.BLOCK_N
 
         acc_empty_bar = p.acc_empty_bars.index(idx)
