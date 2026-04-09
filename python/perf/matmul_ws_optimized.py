@@ -124,6 +124,17 @@ def _pack_packed_fp8x8(values):
 
 
 @gluon.jit
+def _store_strided_2d(ptr, values, off_m, off_n, shape_m, slice_offset, stride_m, stride_n):
+    layout: gl.constexpr = values.type.layout
+    offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
+    offs_n = off_n + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
+    mask = gl.expand_dims(offs_m < shape_m, 1)
+    ptrs = ptr + gl.expand_dims(slice_offset + offs_m, 1) * stride_m
+    ptrs = ptrs + gl.expand_dims(offs_n, 0) * stride_n
+    gl.store(ptrs, values, mask=mask)
+
+
+@gluon.jit
 def _store_packed_out(
     p,
     packed_out,
@@ -143,46 +154,59 @@ def _store_packed_out(
             gl.BlockedLayout([1, 2], [1, 32], [gl.num_warps(), 1], [1, 0]),
         )
     if USE_WIDE_PACKED_STORE64:
-        packed_out64 = _pack_packed_fp8x8(packed_out)
-        out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int64), bitcast=True)
-        packed64_layout: gl.constexpr = packed_out64.type.layout
-        offs_m = off_m + gl.arange(0, packed_out64.shape[0], layout=gl.SliceLayout(1, packed64_layout))
-        offs_n = out_off_n // 8 + gl.arange(0, packed_out64.shape[1], layout=gl.SliceLayout(0, packed64_layout))
-        mask = gl.expand_dims(offs_m < shape_m, 1)
-        ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 8)
-        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-        gl.store(ptrs, packed_out64, mask=mask)
+        _store_strided_2d(
+            p.out_ptr.cast(gl.pointer_type(gl.int64), bitcast=True),
+            _pack_packed_fp8x8(packed_out),
+            off_m,
+            out_off_n // 8,
+            shape_m,
+            slice_offset,
+            p.out_desc.strides[0] // 8,
+            p.out_desc.strides[1],
+        )
         return
     if USE_WIDE_PACKED_STORE32:
-        packed_out32 = _pack_packed_fp8x4(packed_out)
-        out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True)
-        packed32_layout: gl.constexpr = packed_out32.type.layout
-        offs_m = off_m + gl.arange(0, packed_out32.shape[0], layout=gl.SliceLayout(1, packed32_layout))
-        offs_n = out_off_n // 4 + gl.arange(0, packed_out32.shape[1], layout=gl.SliceLayout(0, packed32_layout))
-        mask = gl.expand_dims(offs_m < shape_m, 1)
-        ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 4)
-        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-        gl.store(ptrs, packed_out32, mask=mask)
+        _store_strided_2d(
+            p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True),
+            _pack_packed_fp8x4(packed_out),
+            off_m,
+            out_off_n // 4,
+            shape_m,
+            slice_offset,
+            p.out_desc.strides[0] // 4,
+            p.out_desc.strides[1],
+        )
         return
 
-    out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int16), bitcast=True)
-    packed_layout: gl.constexpr = packed_out.type.layout
-    offs_m = off_m + gl.arange(0, packed_out.shape[0], layout=gl.SliceLayout(1, packed_layout))
-    offs_n = out_off_n // 2 + gl.arange(0, packed_out.shape[1], layout=gl.SliceLayout(0, packed_layout))
-    mask = gl.expand_dims(offs_m < shape_m, 1)
-    ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 2)
-    ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-    gl.store(ptrs, packed_out, mask=mask)
+    _store_strided_2d(
+        p.out_ptr.cast(gl.pointer_type(gl.int16), bitcast=True),
+        packed_out,
+        off_m,
+        out_off_n // 2,
+        shape_m,
+        slice_offset,
+        p.out_desc.strides[0] // 2,
+        p.out_desc.strides[1],
+    )
 
 
 @gluon.jit
 def _store_out(p, out, off_m, out_off_n, shape_m, slice_offset):
-    offs_m = off_m + gl.arange(0, out.shape[0], layout=gl.SliceLayout(1, out.type.layout))
-    offs_n = out_off_n + gl.arange(0, out.shape[1], layout=gl.SliceLayout(0, out.type.layout))
-    mask = gl.expand_dims(offs_m < shape_m, 1)
-    ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
-    ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-    gl.store(ptrs, out, mask=mask)
+    _store_strided_2d(
+        p.out_ptr,
+        out,
+        off_m,
+        out_off_n,
+        shape_m,
+        slice_offset,
+        p.out_desc.strides[0],
+        p.out_desc.strides[1],
+    )
+
+
+@gluon.jit
+def _reshape_last_dim_for_pair_ops(values):
+    return values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1))
 
 
 @gluon.jit
@@ -191,12 +215,12 @@ def _split_last_dim_in_half(values):
     if isinstance(layout, gl.DistributedLinearLayout) or (
         isinstance(layout, gl.SliceLayout) and isinstance(layout.parent, gl.DistributedLinearLayout)
     ):
-        lhs, rhs = values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1)).split()
+        lhs, rhs = _reshape_last_dim_for_pair_ops(values).split()
         split_layout: gl.constexpr = _get_split_last_dim_layout(lhs.type.layout)
         lhs = gl.convert_layout(lhs, split_layout, assert_trivial=True)
         rhs = gl.convert_layout(rhs, split_layout, assert_trivial=True)
         return lhs, rhs
-    return gl.split(values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1)))
+    return gl.split(_reshape_last_dim_for_pair_ops(values))
 
 
 @gluon.constexpr_function
@@ -245,13 +269,13 @@ def _split_packed_last_dim_in_half(values):
 
 @gluon.jit
 def _pack_last_dim_in_half(values):
-    lhs, rhs = values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1)).split()
+    lhs, rhs = _reshape_last_dim_for_pair_ops(values).split()
     return float2.pack2(lhs, rhs)
 
 
 @gluon.jit
 def _split_packed_last_dim_in_half_fragment(values):
-    lhs, rhs = gl.split(values.value.reshape((values.value.shape[0], 2, values.value.shape[1] // 2)).permute((0, 2, 1)))
+    lhs, rhs = gl.split(_reshape_last_dim_for_pair_ops(values.value))
     return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
 
 
@@ -268,9 +292,10 @@ def _split_first_dim_in_half_packed(values):
 
 @gluon.jit
 def _split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
+    if subtile_factor == 1:
+        return (values,)
     gl.static_assert(
-        subtile_factor == 1
-        or subtile_factor == 2
+        subtile_factor == 2
         or subtile_factor == 4
         or subtile_factor == 8
         or subtile_factor == 16
@@ -286,6 +311,15 @@ def _split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
                 next_subtiles += (lhs, rhs)
             subtiles = next_subtiles
     return subtiles
+
+
+@gluon.jit
+def _split_packed_last_dim_fragment_subtiles(values, subtile_factor: gl.constexpr):
+    if subtile_factor == 1:
+        return (values,)
+
+    lhs, rhs = _split_packed_last_dim_in_half_fragment(values)
+    return (lhs, rhs)
 
 
 @gluon.jit
@@ -311,6 +345,12 @@ def _finish_swiglu_fragment_packed(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl
 def _pack_fp8_out_fragment(out_packed, out_recip):
     scaled_out_packed = out_packed * float2.full_like(out_packed, out_recip)
     return _pack_e4m3x2(scaled_out_packed)
+
+
+@gluon.jit
+def _apply_swiglu_fragment_packed(acc_packed, alpha, limit, USE_PACKED_FINAL_FMA: gl.constexpr):
+    gelu, linear = _prepare_swiglu_fragment_from_packed(acc_packed, limit)
+    return _finish_swiglu_fragment_packed(gelu, linear, alpha, USE_PACKED_FINAL_FMA)
 
 
 @gluon.constexpr_function
@@ -426,6 +466,77 @@ def _store_packed_out_fragment(
 
 
 @gluon.jit
+def _store_finished_fragment(
+    p: ws_base.PartitionArgs,
+    acc_packed_frag,
+    out_recip,
+    off_m,
+    out_off_n,
+    shape_m,
+    slice_offset,
+    USE_PACKED_FINAL_FMA: gl.constexpr,
+    USE_PACKED_FP8_STORE: gl.constexpr,
+    USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_WIDE_PACKED_STORE32: gl.constexpr,
+    USE_WIDE_PACKED_STORE64: gl.constexpr,
+    USE_PACKED_OUT_SCALE: gl.constexpr,
+):
+    out_packed_frag = _apply_swiglu_fragment_packed(
+        acc_packed_frag,
+        p.SWIGLU_ALPHA,
+        p.SWIGLU_LIMIT,
+        USE_PACKED_FINAL_FMA,
+    )
+    _store_packed_out_fragment(
+        p,
+        out_packed_frag,
+        out_recip,
+        off_m,
+        out_off_n,
+        shape_m,
+        slice_offset,
+        USE_PACKED_FP8_STORE,
+        USE_BLOCKED_PACKED_STORE,
+        USE_WIDE_PACKED_STORE32,
+        USE_WIDE_PACKED_STORE64,
+        USE_PACKED_OUT_SCALE,
+    )
+
+
+@gluon.jit
+def _enqueue_finished_fragment(
+    p: ws_base.PartitionArgs,
+    acc_packed_frag,
+    out_recip,
+    store_bufs,
+    store_empty_bars,
+    store_ready_bars,
+    store_idx,
+    store_phase,
+    USE_PACKED_FINAL_FMA: gl.constexpr,
+    USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
+    STORE_HELPER_DEPTH: gl.constexpr,
+):
+    out_packed_frag = _apply_swiglu_fragment_packed(
+        acc_packed_frag,
+        p.SWIGLU_ALPHA,
+        p.SWIGLU_LIMIT,
+        USE_PACKED_FINAL_FMA,
+    )
+    return _enqueue_packed_fp8_fragment(
+        out_packed_frag,
+        out_recip,
+        store_bufs,
+        store_empty_bars,
+        store_ready_bars,
+        store_idx,
+        store_phase,
+        USE_HELPER_PACKED_OUT_BUFFER,
+        STORE_HELPER_DEPTH,
+    )
+
+
+@gluon.jit
 def _epilogue_from_acc_packed(
     p: ws_base.PartitionArgs,
     acc_packed,
@@ -457,75 +568,20 @@ def _epilogue_from_acc_packed(
     if EPILOGUE_ROW_SUBTILE_FACTOR == 1 or EPILOGUE_N_FRAGMENT_FACTOR != 1 or EPILOGUE_SCHEDULE != 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
             frag_off_m = off_m + frag_idx * FRAG_ROWS
-            if EPILOGUE_N_FRAGMENT_FACTOR == 1:
-                gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
-                    acc_packed_subtiles[frag_idx],
-                    p.SWIGLU_LIMIT,
-                )
-                out_packed_frag = _finish_swiglu_fragment_packed(
-                    gelu_frag,
-                    linear_frag,
-                    p.SWIGLU_ALPHA,
-                    USE_PACKED_FINAL_FMA,
-                )
-                _store_packed_out_fragment(
+            n_subtiles = _split_packed_last_dim_fragment_subtiles(
+                acc_packed_subtiles[frag_idx],
+                EPILOGUE_N_FRAGMENT_FACTOR,
+            )
+            for n_frag_idx in gl.static_range(EPILOGUE_N_FRAGMENT_FACTOR):
+                _store_finished_fragment(
                     p,
-                    out_packed_frag,
+                    n_subtiles[n_frag_idx],
                     out_recip,
                     frag_off_m,
-                    out_off_n,
+                    out_off_n + n_frag_idx * HALF_OUT_N,
                     shape_m,
                     slice_offset,
-                    USE_PACKED_FP8_STORE,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_WIDE_PACKED_STORE32,
-                    USE_WIDE_PACKED_STORE64,
-                    USE_PACKED_OUT_SCALE,
-                )
-            else:
-                acc_n0, acc_n1 = _split_packed_last_dim_in_half_fragment(acc_packed_subtiles[frag_idx])
-                gelu_frag0, linear_frag0 = _prepare_swiglu_fragment_from_packed(
-                    acc_n0,
-                    p.SWIGLU_LIMIT,
-                )
-                out_packed_frag0 = _finish_swiglu_fragment_packed(
-                    gelu_frag0,
-                    linear_frag0,
-                    p.SWIGLU_ALPHA,
                     USE_PACKED_FINAL_FMA,
-                )
-                _store_packed_out_fragment(
-                    p,
-                    out_packed_frag0,
-                    out_recip,
-                    frag_off_m,
-                    out_off_n,
-                    shape_m,
-                    slice_offset,
-                    USE_PACKED_FP8_STORE,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_WIDE_PACKED_STORE32,
-                    USE_WIDE_PACKED_STORE64,
-                    USE_PACKED_OUT_SCALE,
-                )
-                gelu_frag1, linear_frag1 = _prepare_swiglu_fragment_from_packed(
-                    acc_n1,
-                    p.SWIGLU_LIMIT,
-                )
-                out_packed_frag1 = _finish_swiglu_fragment_packed(
-                    gelu_frag1,
-                    linear_frag1,
-                    p.SWIGLU_ALPHA,
-                    USE_PACKED_FINAL_FMA,
-                )
-                _store_packed_out_fragment(
-                    p,
-                    out_packed_frag1,
-                    out_recip,
-                    frag_off_m,
-                    out_off_n + HALF_OUT_N,
-                    shape_m,
-                    slice_offset,
                     USE_PACKED_FP8_STORE,
                     USE_BLOCKED_PACKED_STORE,
                     USE_WIDE_PACKED_STORE32,
@@ -631,24 +687,16 @@ def _epilogue_enqueue_from_acc_packed(
     acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, EPILOGUE_ROW_SUBTILE_FACTOR)
     if EPILOGUE_SCHEDULE != 1 or EPILOGUE_ROW_SUBTILE_FACTOR == 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
-            gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
+            store_idx, store_phase = _enqueue_finished_fragment(
+                p,
                 acc_packed_subtiles[frag_idx],
-                p.SWIGLU_LIMIT,
-            )
-            out_packed_frag = _finish_swiglu_fragment_packed(
-                gelu_frag,
-                linear_frag,
-                p.SWIGLU_ALPHA,
-                USE_PACKED_FINAL_FMA,
-            )
-            store_idx, store_phase = _enqueue_packed_fp8_fragment(
-                out_packed_frag,
                 out_recip,
                 store_bufs,
                 store_empty_bars,
                 store_ready_bars,
                 store_idx,
                 store_phase,
+                USE_PACKED_FINAL_FMA,
                 USE_HELPER_PACKED_OUT_BUFFER,
                 STORE_HELPER_DEPTH,
             )
