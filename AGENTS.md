@@ -15,6 +15,12 @@
 - After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
 - Keep commits scoped so they can be understood and reverted independently.
 - When debugging compiler or codegen bugs, identify and fix the core linear-layout, planner, or lowering issue rather than layering patchwork or ad-hoc special cases. Use targeted probes to find the real abstraction mismatch first, then implement the general fix and update tests to match correct behavior.
+- For TMEM reinterpret lowering in particular, prefer exact linear-layout arithmetic end-to-end:
+  - derive support layouts, origins, row anchors, packet offsets, and query families from `LinearLayout` compose/invert/pseudoinvert algebra;
+  - assume there is a sane algebraic lowering for reinterpret/view composition and keep pushing toward it, because once the arithmetic is right the implementation tends to stop producing whole classes of bugs;
+  - expect the arithmetic to be tricky, but treat that as a reason to solve the math cleanly rather than to accumulate one-off rewrites;
+  - treat special-case row/col rewrites as a temporary smell to remove, not a durable design; and
+  - keep clean negatives only for cases the ISA cannot realize after the layout arithmetic is done correctly.
 - For multi-session initiatives, keep a dated handoff document in the initiative folder and update it at every meaningful checkpoint and before any likely context rollover. Record the current branch/HEAD, dirty files, exact repros run, what passed or failed, the current root-cause hypothesis, and the next concrete steps so the next session is not dependent on context compaction alone.
 
 ## Python Sweep Best Practices

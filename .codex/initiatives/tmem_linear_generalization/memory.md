@@ -38,6 +38,21 @@
   only for ISA-impossible cases; if a formerly negative layout now codegens and
   runs correctly, update the test to positive rather than preserving the
   rejection.
+- TMEM reinterpret lowering should be defined by linear-layout arithmetic, not
+  by accumulating view-specific rescue rules:
+  - derive reinterpret support layouts, origin remaps, row anchors, packet
+    offsets, and atom-family selection from exact `LinearLayout`
+    compose/invert/pseudoinvert arithmetic wherever possible;
+  - assume there is a sane algebraic lowering for reinterpret/view composition
+    and keep pushing toward it, because once the arithmetic is right most of
+    the bug surface disappears;
+  - the arithmetic can be subtle, but that is a reason to solve the linear
+    algebra cleanly rather than to accrete case-by-case rewrites;
+  - if that algebra is correct, most reinterpret bugs disappear and most
+    special cases become unnecessary; and
+  - explicit negatives should remain only for layouts whose image cannot be
+    realized by the PTX instruction families after the arithmetic is done
+    correctly.
 - On this arm64 devbox, full `make` currently needs
   `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13`
   to unblock the unrelated GSan runtime build.
