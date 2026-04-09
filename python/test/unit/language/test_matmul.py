@@ -290,6 +290,8 @@ def test_simple_persistent_matmul(BLOCK_M, BLOCK_N, BLOCK_K, NUM_WARPS, DISALLOW
         ttgir = k.asm["ttgir"]
         pattern = "ttng.tc_gen5_mma"
         assert ttgir.count(pattern) > 0, "Expect peeled mmav5 operations."
+        if BLOCK_M == 64:
+            assert "ttng.tmem_ldst_row_plan" in ttgir
 
 
 @triton.jit

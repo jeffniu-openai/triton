@@ -781,7 +781,6 @@ lowerTMemLdStFromTypes(
   };
   auto kRow = StringAttr::get(rewriter.getContext(), "row");
   auto kCol = StringAttr::get(rewriter.getContext(), "col");
-  auto kBlock = StringAttr::get(rewriter.getContext(), "block");
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
     if (!memDescValue ||
         !isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
@@ -805,27 +804,6 @@ lowerTMemLdStFromTypes(
            !hasZeroBasisAlong(memLayout, kCol) &&
            logicalRows == activePhysicalRows &&
            logicalCols == physicalCols * 2;
-  }();
-  auto preferredRootRowPlanForM64AccumulatorAlloc = [&]()
-      -> std::optional<TMemLdStRowPlan> {
-    auto alloc = dyn_cast_if_present<triton::nvidia_gpu::TMEMAllocOp>(
-        memDescValue ? memDescValue.getDefiningOp() : nullptr);
-    if (!alloc || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
-        memTy.getShape()[0] != 64)
-      return std::nullopt;
-    bool hasMMAUsers = llvm::any_of(memDescValue.getUsers(), [](Operation *user) {
-      return isa<triton::nvidia_gpu::TCGen5MMAOp,
-                 triton::nvidia_gpu::TCGen5MMAScaledOp>(user);
-    });
-    if (!hasMMAUsers)
-      return std::nullopt;
-    auto memLayout = toLinearLayout(memTy);
-    if (memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1) {
-      return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
-                             /*rowSpan=*/128};
-    }
-    return TMemLdStRowPlan{/*warpRow0=*/32, /*warpRow1=*/64,
-                           /*rowSpan=*/128};
   }();
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
@@ -931,8 +909,6 @@ lowerTMemLdStFromTypes(
                        : getBackingTMemLdStRowPlan(memDescValue);
       if (!rawRowPlan && !disallowSupportRescueFor32x32Subview)
         rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
-      if (preferredRootRowPlanForM64AccumulatorAlloc)
-        rawRowPlan = *preferredRootRowPlanForM64AccumulatorAlloc;
       if (!disallowSupportRescueFor32x32Subview &&
           isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
           memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
@@ -1007,8 +983,6 @@ lowerTMemLdStFromTypes(
                        : (memDescValue ? getTMemLdStRowPlanForQuery(memDescValue,
                                                                     queryTy)
                                        : getTMemLdStRowPlanForType(queryTy));
-    if (preferredRootRowPlanForM64AccumulatorAlloc)
-      rowPlan = *preferredRootRowPlanForM64AccumulatorAlloc;
     if (debugQuerySelection) {
       llvm::errs() << "[tmem-ldst] queryTy=" << queryTy << " rowPlan="
                    << (rowPlan ? llvm::Twine(rowPlan->rowSpan).str()

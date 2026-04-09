@@ -4,6 +4,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 
 using namespace mlir;
 namespace tt = mlir::triton;
@@ -311,7 +312,9 @@ ttng::TMEMAllocOp ttng::createTMemAlloc(OpBuilder &builder,
   Type accMemDescType = triton::gpu::MemDescType::get(
       shape, oldRetType.getElementType(), oldRetType.getEncoding(),
       oldRetType.getMemorySpace(), /*mutableMemory=*/true);
-  return ttng::TMEMAllocOp::create(
+  auto newAlloc = ttng::TMEMAllocOp::create(
       builder, oldTMemAllocOp.getLoc(), accMemDescType,
       builder.getType<gpu::AsyncTokenType>(), /*src=*/Value());
+  ttng::copyExplicitTMemLdStRowPlan(newAlloc, oldTMemAllocOp);
+  return newAlloc;
 }

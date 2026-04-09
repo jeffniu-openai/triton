@@ -1,5 +1,6 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 
+#include "mlir/IR/BuiltinAttributes.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
@@ -18,6 +19,22 @@ namespace {
 
 constexpr int maxRegisters = 256;
 constexpr int largestTmemLoadStore = 128;
+constexpr StringLiteral kExplicitTMemLdStRowPlanAttrName =
+    "ttng.tmem_ldst_row_plan";
+
+static std::optional<TMemLdStRowPlan>
+getExplicitTMemLdStRowPlan(Value memDesc) {
+  auto alloc = dyn_cast_if_present<TMEMAllocOp>(memDesc.getDefiningOp());
+  if (!alloc)
+    return std::nullopt;
+  auto attr = alloc->getAttrOfType<DenseI32ArrayAttr>(
+      kExplicitTMemLdStRowPlanAttrName);
+  if (!attr || attr.size() != 4)
+    return std::nullopt;
+  return TMemLdStRowPlan{/*warpRow0=*/attr[0], /*warpRow1=*/attr[1],
+                         /*rowSpan=*/attr[2],
+                         /*baseOffset=*/static_cast<uint32_t>(attr[3])};
+}
 
 static int getMatrixRankForLayout(std::unique_ptr<uint64_t[]> matrix, int numRows,
                                   int numCols) {
@@ -1683,6 +1700,19 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   return planFromRowBits(rowBits, isZeroRowBasis);
 }
 
+void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan) {
+  SmallVector<int32_t, 4> rawPlan = {plan.warpRow0, plan.warpRow1,
+                                     plan.rowSpan,
+                                     static_cast<int32_t>(plan.baseOffset)};
+  op->setAttr(kExplicitTMemLdStRowPlanAttrName,
+              DenseI32ArrayAttr::get(op.getContext(), rawPlan));
+}
+
+void copyExplicitTMemLdStRowPlan(TMEMAllocOp dst, TMEMAllocOp src) {
+  if (Attribute attr = src->getAttr(kExplicitTMemLdStRowPlanAttrName))
+    dst->setAttr(kExplicitTMemLdStRowPlanAttrName, attr);
+}
+
 std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc) {
   std::optional<TMemLdStRowPlan> best;
   auto consider = [&](Value value) {
@@ -1698,6 +1728,8 @@ std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc) {
 
   Value cur = memDesc;
   while (cur) {
+    if (auto explicitPlan = getExplicitTMemLdStRowPlan(cur))
+      return explicitPlan;
     consider(cur);
     Operation *def = cur.getDefiningOp();
     if (!def)

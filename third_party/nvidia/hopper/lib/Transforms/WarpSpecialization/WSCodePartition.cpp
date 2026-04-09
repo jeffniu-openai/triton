@@ -19,6 +19,7 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/TritonGPUConversion.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h"
 #include <unordered_set>
 
@@ -704,8 +705,10 @@ static ttng::TMEMAllocOp createTMemAlloc(OpBuilder &builder,
   Type accMemDescType = triton::gpu::MemDescType::get(
       shape, oldRetType.getElementType(), oldRetType.getEncoding(),
       oldRetType.getMemorySpace(), /*mutableMemory=*/true);
-  return ttng::TMEMAllocOp::create(builder, oldTMemAllocOp.getLoc(),
-                                   accMemDescType, nullptr);
+  auto newAlloc = ttng::TMEMAllocOp::create(
+      builder, oldTMemAllocOp.getLoc(), accMemDescType, nullptr);
+  ttng::copyExplicitTMemLdStRowPlan(newAlloc, oldTMemAllocOp);
+  return newAlloc;
 }
 
 // Create a buffer array for each producer op, if the producer is in a ForOp,

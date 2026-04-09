@@ -18,6 +18,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/DecomposeScaledBlocked.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
 #include "triton/Tools/StrUtil.h"
@@ -85,6 +86,26 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
     }
   }
   return 0;
+}
+
+static void annotateMMAv5AccumulatorRootRowPlan(
+    triton::nvidia_gpu::TMEMAllocOp alloc) {
+  auto memTy = dyn_cast<MemDescType>(alloc.getType());
+  if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+      memTy.getShape()[0] != 64) {
+    return;
+  }
+  auto kBlock = StringAttr::get(alloc.getContext(), "block");
+  auto memLayout = toLinearLayout(memTy);
+  auto plan =
+      memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1
+          ? triton::nvidia_gpu::TMemLdStRowPlan{/*warpRow0=*/16,
+                                                /*warpRow1=*/32,
+                                                /*rowSpan=*/128}
+          : triton::nvidia_gpu::TMemLdStRowPlan{/*warpRow0=*/32,
+                                                /*warpRow1=*/64,
+                                                /*rowSpan=*/128};
+  triton::nvidia_gpu::setExplicitTMemLdStRowPlan(alloc, plan);
 }
 
 SmallVector<unsigned> warpsPerTileV2(DotOpInterface dotOp,
@@ -622,6 +643,7 @@ public:
     auto tokType = rewriter.getType<AsyncTokenType>();
     auto acc = triton::nvidia_gpu::TMEMAllocOp::create(
         rewriter, loc, accMemDescType, tokType, cvtAcc);
+    annotateMMAv5AccumulatorRootRowPlan(acc);
     auto vTrue = arith::ConstantIntOp::create(rewriter, dotOp.getLoc(), 1, 1);
     auto mma = triton::nvidia_gpu::TCGen5MMAOp::create(
         rewriter, loc, tokType, a, b, acc, acc.getToken(), /*useD=*/vTrue,
@@ -877,6 +899,7 @@ public:
     auto tokType = rewriter.getType<AsyncTokenType>();
     auto acc = triton::nvidia_gpu::TMEMAllocOp::create(
         rewriter, loc, accMemDescType, tokType, cvtAcc);
+    annotateMMAv5AccumulatorRootRowPlan(acc);
 
     RankedTensorType oldScaleAType = dotOp.getAScale().getType();
     RankedTensorType oldScaleBType = dotOp.getBScale().getType();

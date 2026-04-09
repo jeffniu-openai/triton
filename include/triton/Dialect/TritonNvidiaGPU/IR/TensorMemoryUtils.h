@@ -96,6 +96,10 @@ struct TMemCopyPlan {
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
 
+void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan);
+
+void copyExplicitTMemLdStRowPlan(TMEMAllocOp dst, TMEMAllocOp src);
+
 std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc);
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
