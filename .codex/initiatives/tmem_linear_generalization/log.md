@@ -5132,3 +5132,38 @@ Open after this slice:
     - `734 passed, 72 skipped`
 - Additional observation from the shard:
   - a `.kind::i8` PTXAS rejection for `sm_103a` still prints under `-s` from an earlier `mma_kernel` test path, but it is not a current failing nodeid in group `23/32`; treat it as separate follow-up noise unless it starts failing a test directly.
+
+## 2026-04-09 higher-rank boundary refresh: OOR and CTA/CGA expectations corrected, remaining failures triaged
+- Rebuilt on the now-healthy local GB300 node and reran the higher-rank / exotic TMEM runtime-matrix buckets that were still ambiguous after the resumed 32-way sweep.
+- Test-matrix updates in `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - `block_single_cta` exotic descriptor-view negatives now assert the real clean diagnostic (`Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA.`) instead of the older unsupported-view wording.
+  - lifted higher-rank `index`, `multidim_slice`, and `dim0_slice` positives now stop at `n in {64, 128}`; new `n=256` tests assert the real TMEM capacity boundary (`out of resource: tensor memory`, `Required: 1024`, `Hardware limit: 512`) for one-CTA layouts and `block_two_ctas`.
+  - two-CTA `mmav5_twocta` lifted `dim0_slice` stays in the existing clean CTA/CGA mismatch bucket; it is not part of the OOR frontier because compilation fails earlier with `Layout has 1 CTAs per CGA, but the context requires 2 CTAs per CGA.`
+- Remaining live failures after the test-only refresh are real implementation bugs, not stale expectations:
+  - `test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout`
+    - for `n in {64, 128}` the kernel now compiles and runs instead of failing cleanly, but the output is wrong.
+    - direct probe on `identity`, `n=128`, `variant=32x32b` reproduced `max_abs = 13.0` with `8192` wrong elements; the lowering emits `16x32bx2.x32.b32` packets at offsets `0` and `64`, which does not implement the logical lower-half view semantics.
+    - `n=256` is a separate real OOR boundary (`Required: 1024`, `Hardware limit: 512`).
+  - `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported[scrambled_cols-<lambda>]`
+    - the compiler now admits the view, but a direct positive probe is wrong-code (`max_abs = 11.0`, `5120` wrong elements).
+    - the emitted sequence decomposes the view into many `32x32b.x1.b32` packets at scalar offsets `0..31`, which does not preserve the scrambled-column physical mapping.
+  - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - still fails at launch with `Triton Error [CUDA]: misaligned address` under `CUDA_LAUNCH_BLOCKING=1`; this remains a separate runtime/lowering bug.
+- Recommended next implementation order:
+  - treat the current commit as a bounded test/triage checkpoint.
+  - next, tighten or repair the view-like fallback path in `compute_tmem_reg_layout_from_memdesc(...)` so surrogate query-type fallback does not over-admit wrong-code descriptor views (`scrambled_cols` and the generic lifted half-row bucket).
+  - after that, return to the true half-row packet-decomposition fix rather than papering over it with new permanent negatives.
+  - keep the split-N permuted `M=64` misaligned-address issue as a separate lowering/reg-layout bug after the view-like descriptor work.
+- Validation for this checkpoint:
+  - `make -j8`
+  - `HOME=/tmp/triton-home-checkpoint-g0 TRITON_CACHE_DIR=/tmp/triton-cache-checkpoint-g0 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index_reports_tmem_oor python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_report_tmem_oor python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_tmem_oor`
+    - `44 passed`
+  - `HOME=/tmp/triton-home-checkpoint-g2 TRITON_CACHE_DIR=/tmp/triton-cache-checkpoint-g2 CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_tmem_oor python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_report_tmem_oor python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_positive_lifted_layout python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_reports_tmem_oor python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_mmav5_descriptor_higher_rank_reports_clean_error`
+    - `40 passed`
+  - exact triage repros kept as evidence for the remaining live bugs:
+    - `HOME=/tmp/triton-home-iso-halfrows-g1 TRITON_CACHE_DIR=/tmp/triton-cache-iso-halfrows-g1 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout`
+      - `12 failed` (`8` wrong-code admissions at `n in {64,128}`, `4` real OORs at `n=256`)
+    - `HOME=/tmp/triton-home-iso-scrambled-g3 TRITON_CACHE_DIR=/tmp/triton-cache-iso-scrambled-g3 CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported[scrambled_cols-<lambda>]`
+      - `1 failed` (`did not raise`, later confirmed wrong-code by direct probe)
+    - `HOME=/tmp/triton-home-iso-splitn-20260409 TRITON_CACHE_DIR=/tmp/triton-cache-iso-splitn-20260409 CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+      - `1 failed` (`Triton Error [CUDA]: misaligned address`)

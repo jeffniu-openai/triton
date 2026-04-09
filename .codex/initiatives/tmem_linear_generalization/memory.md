@@ -2833,3 +2833,17 @@ rejection, not rescue
 - Current `block_m_64` parent-layout reinterpret boundary:
   - legacy `TensorMemoryLayout((64, 64), col_stride=1)` parent-layout stores into the packed `float16` reinterpret subview are now positive and lower directly.
   - the row-zero-lifted `_make_tmem_linear_layout_m64(128)` parent-layout case is still clean-negative; it needs the packed `32x32b.unpack::16b` direct path and cannot yet accept the parent TMEM register layout directly.
+
+## 2026-04-09 higher-rank validation refresh: live bug buckets after expectation cleanup
+- The higher-rank runtime-matrix expectations now match the real current boundaries:
+  - lifted one-CTA `index`, `multidim_slice`, and `dim0_slice` cases are positive for `n in {64, 128}` and real TMEM OOR at `n=256` (`Required: 1024`, `Hardware limit: 512`).
+  - lifted two-CTA `block_two_ctas` `dim0_slice` is the same OOR boundary at `n=256`.
+  - lifted two-CTA `mmav5_twocta` `dim0_slice` is still a clean CTA/CGA mismatch (`Layout has 1 CTAs per CGA, but the context requires 2 CTAs per CGA.`), not part of the OOR bucket.
+- Remaining live implementation bugs on healthy local GPUs:
+  - identity lifted higher-rank half-row views are wrong-code at `n=64/128` (`max_abs 13.0`, `8192` wrong elements in the direct probe) and OOR at `n=256`; current lowering emits `16x32bx2.x32.b32` packets at offsets `0` and `64` instead of a correct lower-half decomposition.
+  - `scrambled_cols` multidim slice is wrong-code (`max_abs 11.0`, `5120` wrong elements); current lowering decomposes it into many `32x32b.x1.b32` packets at scalar offsets `0..31`, which loses the scrambled-column physical mapping.
+  - split-N row/col permuted `rotate1-identity-2-32x32b_splitn` still faults at launch with `Triton Error [CUDA]: misaligned address`.
+- Recommended next implementation order:
+  1. tighten or repair the view-like fallback path in `compute_tmem_reg_layout_from_memdesc(...)` so surrogate query-type fallback cannot over-admit wrong-code descriptor views.
+  2. return to the real half-row packet-decomposition fix once the fallback path is no longer masking it.
+  3. debug the separate split-N permuted reg-layout / lowering misalignment after the view-like descriptor work.

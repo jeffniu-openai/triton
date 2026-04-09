@@ -354,6 +354,17 @@ def _assert_clean_unsupported_descriptor_view(text: str, expected_text: str):
     assert "reshape or permute so TMEM columns stay contiguous" not in text
 
 
+def _assert_clean_cta_per_cga_mismatch(text: str, layout_ctas: int, required_ctas: int):
+    assert "Result has an invalid layout:" in text
+    assert f"Layout has {layout_ctas} CTAs per CGA, but the context requires {required_ctas} CTAs per CGA." in text
+
+
+def _assert_clean_tmem_oor(text: str, required: int, hardware_limit: int):
+    assert "out of resource: tensor memory" in text
+    assert f"Required: {required}" in text
+    assert f"Hardware limit: {hardware_limit}" in text
+
+
 def _extract_tcgen05_mma_opcodes(asm: str):
     pattern = re.compile(r"(tcgen05\.mma\.cta_group::\d+\.kind::[^\s;\"]+)")
     return pattern.findall(asm)
@@ -1594,22 +1605,34 @@ LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
 
 LDST_HIGHER_RANK_INDEX_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_SLICE_CASES = [
-    (layout_name, n, variant) for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256),
-                                                                      LDST_EXPLICIT_VARIANTS)
+    (layout_name, n, variant)
+    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
-    (layout_name, n, variant) for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256),
-                                                                      LDST_EXPLICIT_VARIANTS)
+    (layout_name, n, variant)
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_HIGHER_RANK_OOR_CASES = [
+    (layout_name, variant) for layout_name, variant in product(LDST_LAYOUTS.keys(), LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_TWOCTA_HIGHER_RANK_OOR_CASES = [
+    (layout_name, variant) for layout_name, variant in product(LDST_TWOCTA_LAYOUTS.keys(), LDST_EXPLICIT_VARIANTS)
+]
+
+LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
+    ("block_two_ctas", variant) for variant in LDST_EXPLICIT_VARIANTS
 ]
 
 LDST_HIGHER_RANK_POSITIVE_CASES = [
@@ -1619,7 +1642,7 @@ LDST_HIGHER_RANK_POSITIVE_CASES = [
 
 LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
     ("identity", n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for n, variant in product((64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for n, variant in product((64, 128), LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES = []
@@ -1631,7 +1654,7 @@ LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
     ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for n, variant in product((64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for n, variant in product((64, 128), LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
@@ -2085,19 +2108,20 @@ def test_tmem_runtime_matrix_ldst_exotic_linear_layouts(layout_name, n, variant,
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant", LDST_EXOTIC_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported(layout_name, n, variant):
+def test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported(layout_name, n, variant, capfd):
     m = 128
     layout = LDST_EXOTIC_UNSUPPORTED_LAYOUTS[layout_name](n)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(CompilationError) as excinfo:
+    with pytest.raises(Exception) as excinfo:
         tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
 
-    msg = str(excinfo.value)
-    _assert_clean_unsupported_descriptor_view(msg, variant)
-    assert "PassManager::run failed" not in msg
-    assert "Assertion" not in msg
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    _assert_clean_cta_per_cga_mismatch(text, layout_ctas=2, required_ctas=1)
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2381,6 +2405,40 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(layout_name, n, var
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,variant", LDST_HIGHER_RANK_OOR_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index_reports_tmem_oor(layout_name, variant):
+    m = 128
+    n = 256
+    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+
+    text = str(excinfo.value)
+    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,variant", LDST_HIGHER_RANK_OOR_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_report_tmem_oor(layout_name, variant):
+    m = 128
+    n = 256
+    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+
+    text = str(excinfo.value)
+    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape,expected_half_shape", LDST_TWOCTA_HIGHER_RANK_INDEX_CASES)
 def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(layout_name, n, variant, expected_shape,
                                                                       expected_half_shape):
@@ -2441,6 +2499,44 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(layout_name,
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,variant", LDST_TWOCTA_HIGHER_RANK_OOR_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_tmem_oor(layout_name, variant):
+    m = 256
+    n = 256
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+
+    text = str(excinfo.value)
+    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,variant", LDST_TWOCTA_HIGHER_RANK_OOR_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_report_tmem_oor(layout_name, variant):
+    m = 256
+    n = 256
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+
+    text = str(excinfo.value)
+    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape,expected_half_shape",
                          LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES)
 def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout(
@@ -2464,6 +2560,25 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lif
     assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
     assert f"tcgen05.st.sync.aligned.{expected_half_shape}" in observed_opcodes
     assert f"tcgen05.ld.sync.aligned.{expected_half_shape}" in observed_opcodes
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,variant", LDST_HIGHER_RANK_OOR_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_tmem_oor(layout_name, variant):
+    m = 128
+    n = 256
+    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+        tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4
+        )
+
+    text = str(excinfo.value)
+    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2637,6 +2752,25 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_posit
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,variant", LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_reports_tmem_oor(layout_name, variant):
+    m = 256
+    n = 256
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
+        tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+
+    text = str(excinfo.value)
+    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES)
 def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout(
     layout_name, n, variant, expected_shape
@@ -2674,7 +2808,7 @@ def test_tmem_runtime_matrix_ldst_twocta_mmav5_descriptor_higher_rank_reports_cl
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "Layout has 1 CTAs per CGA, but the context requires 2 CTAs per CGA." in text
+    _assert_clean_cta_per_cga_mismatch(text, layout_ctas=1, required_ctas=2)
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
