@@ -1,5 +1,11 @@
 # Working on Triton
 
+## Repo Workflow
+- Keep the `jeffniu-openai` remote configured to `https://github.com/jeffniu-openai/triton.git`.
+- This machine is unstable, so make frequent incremental and modular commits while working.
+- Write detailed commit messages and bodies. Include rationale, scope, and any relevant benchmark or profiling logs so the git history itself serves as initiative documentation.
+- When you make a commit, push the current branch to the matching branch on `jeffniu-openai` and keep that remote branch up to date.
+
 ## Build and Testing Guidelines
 - Before running any tests, run `make` in the triton directory to rebuild triton.
 - For compiler changes, add tests in `python/test/` (pytest) or test (lit). Keep GPU-only tests in `python/test/unit/` or `python/test/gluon/`, name them `test_<feature>_<condition>`, and avoid creating new test files unless requested.
