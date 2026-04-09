@@ -216,6 +216,25 @@ makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
   return result;
 }
 
+static std::optional<SmallVector<int32_t>>
+getLogicalRowAnchorBasis(const LinearLayout &layout, StringAttr rowDim,
+                         int32_t logicalRow) {
+  if (logicalRow == 0)
+    return SmallVector<int32_t>(layout.getNumOutDims(), 0);
+  if (!layout.hasInDim(rowDim))
+    return std::nullopt;
+
+  // Row bases can be permuted or interleaved with explicit zero-lift bases, so
+  // the basis position is not a stable encoding of the physical row anchor.
+  // TMEM row bases are still emitted as 2D [row, col] output vectors, so match
+  // the anchor by its row coordinate contribution instead.
+  for (ArrayRef<int32_t> basis : layout.getBases().lookup(rowDim)) {
+    if (!basis.empty() && basis.front() == logicalRow)
+      return SmallVector<int32_t>(basis.begin(), basis.end());
+  }
+  return std::nullopt;
+}
+
 static FailureOr<LinearLayout>
 computeLeftInverseLayout(const LinearLayout &layout, std::string *error) {
   if (!layout.isInjective()) {
@@ -2636,18 +2655,8 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
     return std::nullopt;
   }
 
-  auto anchorMemLayout = *maybeMemLayout;
-  if (anchorMemLayout.hasInDim(kRow))
-    anchorMemLayout = anchorMemLayout.removeZeroBasesAlongDim(kRow);
-  auto hasRowAnchor = [&](int32_t logicalRow) {
-    if (logicalRow == 0)
-      return true;
-    if (!llvm::isPowerOf2_32(static_cast<uint32_t>(logicalRow)))
-      return false;
-    return llvm::Log2_32(static_cast<uint32_t>(logicalRow)) <
-           anchorMemLayout.getInDimSizeLog2(kRow);
-  };
-  if (hasRowAnchor(rowPlan->warpRow0) && hasRowAnchor(rowPlan->warpRow1))
+  if (getLogicalRowAnchorBasis(*maybeMemLayout, kRow, rowPlan->warpRow0) &&
+      getLogicalRowAnchorBasis(*maybeMemLayout, kRow, rowPlan->warpRow1))
     return std::nullopt;
 
   return std::string(
@@ -4432,23 +4441,10 @@ computeTMemLdStEncodingInfoImpl(
         packedRegLayout.getInDimSizeLog2(kWarp) < 2)
       return std::nullopt;
 
-    auto anchorBasisLayout = packedMemLayout;
     auto anchorMemLayout = packedMemLayout;
-    if (anchorMemLayout.hasInDim(kRow))
-      anchorMemLayout = anchorMemLayout.removeZeroBasesAlongDim(kRow);
     auto getRowAnchorBasis = [&](int32_t logicalRow)
         -> std::optional<SmallVector<int32_t>> {
-      if (logicalRow == 0) {
-        return SmallVector<int32_t>(anchorBasisLayout.getNumOutDims(), 0);
-      }
-      if (llvm::isPowerOf2_32(static_cast<uint32_t>(logicalRow)) &&
-          llvm::Log2_32(static_cast<uint32_t>(logicalRow)) <
-              anchorBasisLayout.getInDimSizeLog2(kRow)) {
-        auto basis = anchorBasisLayout.getBasis(
-            kRow, llvm::Log2_32(static_cast<uint32_t>(logicalRow)));
-        return SmallVector<int32_t>(basis.begin(), basis.end());
-      }
-      return std::nullopt;
+      return getLogicalRowAnchorBasis(anchorMemLayout, kRow, logicalRow);
     };
     auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
     auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);
@@ -4962,22 +4958,9 @@ computeTMemLdStEncodingInfoImpl(
     return (static_cast<uint32_t>(basis[0]) << 16) |
            static_cast<uint32_t>(basis[1]);
   };
-  auto anchorMemLayout = memLayout;
-  if (anchorMemLayout.hasInDim(kRow))
-    anchorMemLayout = anchorMemLayout.removeZeroBasesAlongDim(kRow);
   auto getRowAnchorBasis = [&](int32_t logicalRow)
       -> std::optional<SmallVector<int32_t>> {
-    if (logicalRow == 0) {
-      return SmallVector<int32_t>(anchorMemLayout.getNumOutDims(), 0);
-    }
-    if (llvm::isPowerOf2_32(static_cast<uint32_t>(logicalRow)) &&
-        llvm::Log2_32(static_cast<uint32_t>(logicalRow)) <
-            anchorMemLayout.getInDimSizeLog2(kRow)) {
-      auto basis = anchorMemLayout.getBasis(
-          kRow, llvm::Log2_32(static_cast<uint32_t>(logicalRow)));
-      return SmallVector<int32_t>(basis.begin(), basis.end());
-    }
-    return std::nullopt;
+    return getLogicalRowAnchorBasis(memLayout, kRow, logicalRow);
   };
   auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
   auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);

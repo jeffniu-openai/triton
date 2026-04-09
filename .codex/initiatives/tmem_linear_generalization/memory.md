@@ -2891,3 +2891,22 @@ rejection, not rescue
 - Important separation:
   - this fix does not change the remaining `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]` launch failure.
   - keep that one as the separate `M=64` row/col-permuted direct-ld/st anchor-selection bug.
+
+## 2026-04-09: logical row-anchor matching must use TMEM row-coordinate contribution, not basis index
+
+- The live split-N row/col-permuted `M=64` direct ld/st failure was the expected consequence of treating row anchors as if `basis_index == log2(logical_row)`.
+- Correct invariant:
+  - row bases may be permuted and may include explicit zero-lift entries, so basis position is not stable.
+  - the direct ld/st planner and its clean-negative descriptor-view diagnostics both need to identify row anchors by the row-coordinate contribution of the TMEM row basis family.
+- Implementation shape that stayed correct:
+  - centralize the lookup in `getLogicalRowAnchorBasis(...)` in `TensorMemoryUtils.cpp`
+  - use that helper in packed support-query planning, the main `computeTMemLdStEncodingInfoImpl(...)`, and the unsupported descriptor-view row-anchor reason
+  - keep matching against the row coordinate stored in the TMEM `[row, col]` basis vector (`basis.front()`)
+- Important failed sub-attempt:
+  - trying to rediscover the row coordinate through `LinearLayout` output-dimension names caused immediate false clean rejections on valid positives (`test_mma_shared_inputs`, split-N row/col-permuted ld/st, descriptor-composition row/col-permuted ld/st)
+  - do not use `getOutDimNames()` as the source of truth for this TMEM row-anchor lookup
+- Current status after the fix:
+  - exact and broad split-N row/col-permuted runtime-matrix sweeps are green again
+  - the minimal tcgen05 MMA `M=64` bucket stays green
+  - the clean-negative multidim-slice `scrambled_cols` case stays green
+- Remaining initiative work is no longer the split-N permuted row-anchor bucket; it is the separate half-row ld/st packet-decomposition bug plus the broader GB300-equivalent rerun.

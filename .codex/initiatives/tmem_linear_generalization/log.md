@@ -5232,3 +5232,36 @@ Open after this slice:
   - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
     - still fails at launch with `Triton Error [CUDA]: misaligned address`
     - unchanged by the row-plan producer fix, so keep it classified as the separate `M=64` permuted direct-ld/st anchor-selection bug.
+
+## 2026-04-09 centralize logical row-anchor matching; close the split-N permuted `M=64` bucket
+- The remaining live local TMEM failure after the MMAv5 `f16` checkpoint was the `M=64` row/col-permuted direct ld/st anchor-selection bug.
+- Root cause:
+  - direct ld/st support and lowering were still treating the row-anchor family as if row-basis position matched `log2(logicalRow)`.
+  - that assumption is false once the row bases are permuted or interleaved with explicit zero-lift bases; on the `rotate1/identity/n=2` repro, the logical `16,32` family was being read back as `32,1`.
+- Fix shape:
+  - factor `getLogicalRowAnchorBasis(...)` in `TensorMemoryUtils.cpp` and use it for:
+    - direct packed-support query planning
+    - main `computeTMemLdStEncodingInfoImpl(...)` row-anchor matching
+    - unsupported descriptor-view row-anchor diagnostics
+  - the helper matches row anchors by the row-coordinate contribution of each TMEM row basis, not by basis index.
+  - important implementation note: a follow-on attempt to recover the row coordinate from `LinearLayout` output-dimension names was wrong and immediately regressed valid `test_mma_shared_inputs` / split-N / descriptor-view positives; the stable invariant here is that TMEM row bases are emitted as `[row, col]` output vectors, so the row coordinate is still `basis.front()`.
+- Durable outcome:
+  - positive lowering and clean-negative descriptor-view diagnostics now use the same row-anchor materialization rule.
+  - the split-N row/col-permuted `M=64` bucket is green again without reintroducing Gluon-only rescue logic or new permanent negatives.
+- Final validation for this checkpoint:
+  - `make -j8`
+  - `HOME=/tmp/triton-home-mma-postrefactor2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-postrefactor2 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps1-16-False-False-acc_dtype1]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-splitn-postrefactor2 TRITON_CACHE_DIR=/tmp/triton-cache-splitn-postrefactor2 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-desc-rowcol-postrefactor2 TRITON_CACHE_DIR=/tmp/triton-cache-desc-rowcol-postrefactor2 CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep[rotate1-identity-64-32x32b-32x32b.x64.b32]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-multidim-neg TRITON_CACHE_DIR=/tmp/triton-cache-multidim-neg CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -vv 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported[scrambled_cols-<lambda>]'`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-mma-minimal-final TRITON_CACHE_DIR=/tmp/triton-cache-mma-minimal-final CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv <30 exact nodeids from python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-...]`
+    - `30 passed`
+  - `HOME=/tmp/triton-home-splitn-rowcol-final TRITON_CACHE_DIR=/tmp/triton-cache-splitn-rowcol-final CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py -k test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep`
+    - `224 passed, 1566 deselected`
+- Remaining initiative work after this checkpoint:
+  - the separate half-row ld/st packet-decomposition correctness bucket
+  - resuming the broader GB300-equivalent validation on the now-healthy machine
