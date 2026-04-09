@@ -444,8 +444,29 @@ def _pack_last_dim_adjacent_linear(values):
 
 
 @gluon.jit
+def _fragment_pair_blocked_layout(rows: gl.constexpr):
+    return gl.BlockedLayout(
+        [rows // gl.num_warps(), 2],
+        [1, 32],
+        [gl.num_warps(), 1],
+        [1, 0],
+    )
+
+
+@gluon.jit
+def _pack_last_dim_fragment_blocked(values):
+    pack_layout: gl.constexpr = _fragment_pair_blocked_layout(values.shape[0])
+    values = gl.convert_layout(values, pack_layout)
+    return float2.pack(values, axis=1)
+
+
+@gluon.jit
 def _split_packed_last_dim_in_half_fragment(values):
-    lhs, rhs = gl.split(values.value.reshape((values.value.shape[0], 2, values.value.shape[1] // 2)).permute((0, 2, 1)))
+    split_layout: gl.constexpr = _fragment_pair_blocked_layout(values.value.shape[0])
+    split_values = gl.convert_layout(values.value, split_layout)
+    lhs, rhs = gl.split(
+        split_values.reshape((split_values.shape[0], 2, split_values.shape[1] // 2)).permute((0, 2, 1))
+    )
     return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
 
 
@@ -483,11 +504,23 @@ def _finish_swiglu_fragment_packed(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl
 def _finish_swiglu_fragment_packed_linear(gelu, linear, alpha, USE_PACKED_FINAL_FMA: gl.constexpr):
     den = 1.0 + libdevice.exp(-alpha * gelu)
     activated = gelu / den
-    activated_packed = _pack_last_dim_adjacent_linear(activated)
+    activated_packed = (
+        _pack_last_dim_adjacent_linear(activated)
+        if gelu.shape[0] == 128
+        else _pack_last_dim_fragment_blocked(activated)
+    )
     if USE_PACKED_FINAL_FMA:
-        linear_packed = _pack_last_dim_adjacent_linear(linear)
+        linear_packed = (
+            _pack_last_dim_adjacent_linear(linear)
+            if gelu.shape[0] == 128
+            else _pack_last_dim_fragment_blocked(linear)
+        )
         return float2.fma(activated_packed, linear_packed, activated_packed)
-    return _pack_last_dim_adjacent_linear(gl.fma(activated, linear, activated))
+    return (
+        _pack_last_dim_adjacent_linear(gl.fma(activated, linear, activated))
+        if gelu.shape[0] == 128
+        else _pack_last_dim_fragment_blocked(gl.fma(activated, linear, activated))
+    )
 
 
 @gluon.jit
@@ -1315,7 +1348,6 @@ def _epilogue_enqueue_from_acc_packed(
     USE_LINEAR_FRAGMENT_PACK: gl.constexpr,
 ):
     gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    gl.static_assert(EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
     if EPILOGUE_ROW_SUBTILE_FACTOR == 32:
         half0, half1 = _split_first_dim_in_half_packed(acc_packed)
         quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
@@ -1442,34 +1474,37 @@ def _epilogue_enqueue_from_acc_packed(
     else:
         acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
 
+    gl.static_assert(EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
     if EPILOGUE_SCHEDULE != 1 or EPILOGUE_ROW_SUBTILE_FACTOR == 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
-            gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
-                acc_packed_subtiles[frag_idx],
-                p.SWIGLU_LIMIT,
-            )
-            out_packed_frag = _finish_swiglu_fragment_packed(
-                gelu_frag,
-                linear_frag,
-                p.SWIGLU_ALPHA,
-                USE_PACKED_FINAL_FMA,
-            ) if not USE_LINEAR_FRAGMENT_PACK else _finish_swiglu_fragment_packed_linear(
-                gelu_frag,
-                linear_frag,
-                p.SWIGLU_ALPHA,
-                USE_PACKED_FINAL_FMA,
-            )
-            store_idx, store_phase = _enqueue_store_helper_out_fragment(
-                out_packed_frag,
-                out_recip,
-                store_bufs,
-                store_empty_bars,
-                store_ready_bars,
-                store_idx,
-                store_phase,
-                USE_HELPER_PACKED_OUT_BUFFER,
-                STORE_HELPER_DEPTH,
-            )
+            acc_n_frags = (acc_packed_subtiles[frag_idx],)
+            for nfrag_idx in gl.static_range(EPILOGUE_N_FRAGMENT_FACTOR):
+                gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
+                    acc_n_frags[nfrag_idx],
+                    p.SWIGLU_LIMIT,
+                )
+                out_packed_frag = _finish_swiglu_fragment_packed(
+                    gelu_frag,
+                    linear_frag,
+                    p.SWIGLU_ALPHA,
+                    USE_PACKED_FINAL_FMA,
+                ) if not USE_LINEAR_FRAGMENT_PACK else _finish_swiglu_fragment_packed_linear(
+                    gelu_frag,
+                    linear_frag,
+                    p.SWIGLU_ALPHA,
+                    USE_PACKED_FINAL_FMA,
+                )
+                store_idx, store_phase = _enqueue_store_helper_out_fragment(
+                    out_packed_frag,
+                    out_recip,
+                    store_bufs,
+                    store_empty_bars,
+                    store_ready_bars,
+                    store_idx,
+                    store_phase,
+                    USE_HELPER_PACKED_OUT_BUFFER,
+                    STORE_HELPER_DEPTH,
+                )
         return store_idx, store_phase
 
     prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
@@ -2311,12 +2346,9 @@ def matmul(
         expected_slice_size=a_ragged_metadata.expected_slice_size,
         n_slices=a_ragged_metadata.n_slices,
     )
-    # Keep the current full-width-N epilogue invariant. The smaller subtile
-    # experiments in this file are still exploratory and are not promoted as a
-    # supported config surface yet.
     assert config.block_n % config.epilogue_subtile_n == 0
     assert config.epilogue_subtile_n % reduction_n == 0
-    assert config.block_n // config.epilogue_subtile_n == 1
+    assert config.block_n // config.epilogue_subtile_n in (1, 2, 4)
     # In Gluon warp-specialized kernels, num_warps is the default-partition
     # size. Worker partitions add their own warps on top, so we only need the
     # parent region to satisfy the backend's power-of-two and WS multiple-of-4
