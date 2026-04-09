@@ -37,16 +37,11 @@ class KernelConfig:
     epilogue_subtile_n: int = 256
     epilogue_row_subtile_factor: int = 8
     epilogue_n_fragment_factor: int = 1
-    epilogue_schedule: int = 1
     epilogue_store_helper_depth: int = 2
     load_activation_regs: int = 112
     load_weight_regs: int = 48
     mma_regs: int = 24
     store_helper_regs: int = 16
-
-
-EPILOGUE_SCHEDULE_DIRECT = 0
-EPILOGUE_SCHEDULE_WAVEFRONT = 1
 
 
 @aggregate
@@ -59,7 +54,6 @@ class PartitionArgs:
     EPILOGUE_SUBTILE_N: gl.constexpr
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr
     EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr
-    EPILOGUE_SCHEDULE: gl.constexpr
     EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr
 
     @gluon.jit
@@ -293,28 +287,6 @@ def _enqueue_packed_fp8_fragment(
 
 
 @gluon.jit
-def _enqueue_finished_fragment(
-    p: PartitionArgs,
-    acc_packed_frag,
-    out_recip,
-    store_idx,
-    store_phase,
-):
-    out_packed_frag = _apply_swiglu_fragment_packed(
-        acc_packed_frag,
-        p.ws.SWIGLU_ALPHA,
-        p.ws.SWIGLU_LIMIT,
-    )
-    return _enqueue_packed_fp8_fragment(
-        p,
-        out_packed_frag,
-        out_recip,
-        store_idx,
-        store_phase,
-    )
-
-
-@gluon.jit
 def _epilogue_enqueue_from_acc_packed(
     p: PartitionArgs,
     acc_packed,
@@ -326,16 +298,6 @@ def _epilogue_enqueue_from_acc_packed(
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     gl.static_assert(p.EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
     acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
-    if p.EPILOGUE_SCHEDULE != 1 or p.EPILOGUE_ROW_SUBTILE_FACTOR == 1:
-        for frag_idx in gl.static_range(p.EPILOGUE_ROW_SUBTILE_FACTOR):
-            store_idx, store_phase = _enqueue_finished_fragment(
-                p,
-                acc_packed_subtiles[frag_idx],
-                out_recip,
-                store_idx,
-                store_phase,
-            )
-        return store_idx, store_phase
 
     prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
         acc_packed_subtiles[0],
@@ -541,7 +503,6 @@ def ws_matmul_kernel_optimized(
     EPILOGUE_SUBTILE_N: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
-    EPILOGUE_SCHEDULE: gl.constexpr,
     EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
@@ -693,7 +654,6 @@ def ws_matmul_kernel_optimized(
         EPILOGUE_SUBTILE_N=EPILOGUE_SUBTILE_N,
         EPILOGUE_ROW_SUBTILE_FACTOR=EPILOGUE_ROW_SUBTILE_FACTOR,
         EPILOGUE_N_FRAGMENT_FACTOR=EPILOGUE_N_FRAGMENT_FACTOR,
-        EPILOGUE_SCHEDULE=EPILOGUE_SCHEDULE,
         EPILOGUE_STORE_HELPER_DEPTH=EPILOGUE_STORE_HELPER_DEPTH,
     )
 
@@ -797,10 +757,9 @@ def matmul(
     assert config.epilogue_subtile_n % reduction_n == 0
     assert config.block_n // config.epilogue_subtile_n == 1
     assert config.num_warps == 8
-    assert config.epilogue_row_subtile_factor in (1, 2, 4, 8, 16, 32)
+    assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
     assert config.block_m % config.epilogue_row_subtile_factor == 0
     assert config.epilogue_n_fragment_factor in (1, 2)
-    assert config.epilogue_schedule in (EPILOGUE_SCHEDULE_DIRECT, EPILOGUE_SCHEDULE_WAVEFRONT)
     assert config.load_activation_warps >= 1
     assert config.load_weight_warps >= 1
     assert config.mma_warps >= 1
@@ -817,7 +776,6 @@ def matmul(
         + config.mma_warps
         <= config.num_warps
     )
-    assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
     assert config.epilogue_n_fragment_factor == 1
     mxfp_block_size = 32
     scale_size_outer = 128
@@ -899,7 +857,6 @@ def matmul(
         EPILOGUE_SUBTILE_N=config.epilogue_subtile_n,
         EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
         EPILOGUE_N_FRAGMENT_FACTOR=config.epilogue_n_fragment_factor,
-        EPILOGUE_SCHEDULE=config.epilogue_schedule,
         EPILOGUE_STORE_HELPER_DEPTH=config.epilogue_store_helper_depth,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
