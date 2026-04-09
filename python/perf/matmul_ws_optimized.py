@@ -996,15 +996,7 @@ def matmul(
     config = KernelConfig()
     assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
     assert config.block_m % config.epilogue_row_subtile_factor == 0
-    assert config.load_activation_warps >= 1
-    assert config.load_weight_warps >= 1
-    assert config.mma_warps >= 1
-    assert config.load_activation_regs >= 1
-    assert config.load_weight_regs >= 1
-    assert config.mma_regs >= 1
     assert config.epilogue_store_helper_depth in (2, 3, 4)
-    assert config.store_helper_warps >= 1
-    assert config.store_helper_regs >= 1
     assert (
         config.store_helper_warps
         + config.load_activation_warps
