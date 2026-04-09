@@ -133,18 +133,13 @@ class KernelConfig:
     block_m: int = 128
     block_n: int = 256
     block_k: int = 128
-    xcd_swizzle: int = 1
-    num_warps: int = 8
     x_num_bufs: int = 5
     w_num_bufs: int = 4
     load_activation_warps: int = 4
     load_weight_warps: int = 1
     mma_warps: int = 1
     store_helper_warps: int = 2
-    epilogue_n_elems: int = 4
-    epilogue_subtile_n: int = 256
     epilogue_row_subtile_factor: int = 8
-    epilogue_n_fragment_factor: int = 1
     epilogue_store_helper_depth: int = 2
     load_activation_regs: int = 112
     load_weight_regs: int = 48
@@ -216,10 +211,7 @@ class PartitionArgs:
     REDUCTION_N: gl.constexpr
     FLEXPOINT_SATURATE_INF: gl.constexpr
 
-    EPILOGUE_N_ELEMS: gl.constexpr
-    EPILOGUE_SUBTILE_N: gl.constexpr
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr
-    EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr
     EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr
 
     @gluon.jit
@@ -504,8 +496,6 @@ def _split_first_dim_in_half_packed(values):
 
 @gluon.jit
 def _split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
-    if subtile_factor == 1:
-        return (values,)
     gl.static_assert(
         subtile_factor == 2
         or subtile_factor == 4
@@ -591,7 +581,6 @@ def _epilogue_enqueue_from_acc_packed(
     store_phase,
 ):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    gl.static_assert(p.EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
     acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
 
     prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
@@ -648,7 +637,7 @@ def epilogue_store_partition_optimized(p: PartitionArgs):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
     store_layout: gl.constexpr = _store_helper_fragment_layout(frag_rows, gl.num_warps())
-    subtile_count: gl.constexpr = p.BLOCK_N // p.EPILOGUE_SUBTILE_N
+    subtile_count: gl.constexpr = 1
     gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
 
     store_idx = 0
@@ -659,7 +648,7 @@ def epilogue_store_partition_optimized(p: PartitionArgs):
         shape_m = gl.load(p.x_slice_sizes + slice_idx)
 
         for subtile_idx in gl.static_range(subtile_count):
-            subtile_off_n = subtile_idx * p.EPILOGUE_SUBTILE_N
+            subtile_off_n = subtile_idx * p.BLOCK_N
             out_off_n = (pid_n * p.BLOCK_N + subtile_off_n) // p.REDUCTION_N
             for frag_idx in gl.static_range(p.EPILOGUE_ROW_SUBTILE_FACTOR):
                 frag_off_m = off_m + frag_idx * frag_rows
@@ -692,10 +681,10 @@ def epilogue_partition_optimized(p: PartitionArgs):
     out_recip = 1.0 / gl.load(p.out_scale_ptr)
 
     num_warps: gl.constexpr = gl.num_warps()
-    subtile_count: gl.constexpr = p.BLOCK_N // p.EPILOGUE_SUBTILE_N
+    subtile_count: gl.constexpr = 1
     warps_n: gl.constexpr = 2 if num_warps >= 8 and p.BLOCK_N >= 256 else 1
     split_layout: gl.constexpr = gl.BlockedLayout(
-        [1, p.EPILOGUE_N_ELEMS],
+        [1, 4],
         [1, 32],
         [num_warps // warps_n, warps_n],
         [1, 0],
@@ -794,10 +783,7 @@ def ws_matmul_kernel_optimized(
     LOAD_WEIGHT_REGS: gl.constexpr,
     MMA_REGS: gl.constexpr,
     STORE_HELPER_REGS: gl.constexpr,
-    EPILOGUE_N_ELEMS: gl.constexpr,
-    EPILOGUE_SUBTILE_N: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    EPILOGUE_N_FRAGMENT_FACTOR: gl.constexpr,
     EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
@@ -944,10 +930,7 @@ def ws_matmul_kernel_optimized(
         REDUCTION_N=REDUCTION_N,
         FLEXPOINT_SATURATE_INF=FLEXPOINT_SATURATE_INF,
         #
-        EPILOGUE_N_ELEMS=EPILOGUE_N_ELEMS,
-        EPILOGUE_SUBTILE_N=EPILOGUE_SUBTILE_N,
         EPILOGUE_ROW_SUBTILE_FACTOR=EPILOGUE_ROW_SUBTILE_FACTOR,
-        EPILOGUE_N_FRAGMENT_FACTOR=EPILOGUE_N_FRAGMENT_FACTOR,
         EPILOGUE_STORE_HELPER_DEPTH=EPILOGUE_STORE_HELPER_DEPTH,
     )
 
@@ -1041,13 +1024,8 @@ def matmul(
     m = gather_indx.shape[0]
 
     config = KernelConfig()
-    assert config.block_n % config.epilogue_subtile_n == 0
-    assert config.epilogue_subtile_n % reduction_n == 0
-    assert config.block_n // config.epilogue_subtile_n == 1
-    assert config.num_warps == 8
     assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
     assert config.block_m % config.epilogue_row_subtile_factor == 0
-    assert config.epilogue_n_fragment_factor in (1, 2)
     assert config.load_activation_warps >= 1
     assert config.load_weight_warps >= 1
     assert config.mma_warps >= 1
@@ -1062,9 +1040,8 @@ def matmul(
         + config.load_activation_warps
         + config.load_weight_warps
         + config.mma_warps
-        <= config.num_warps
+        <= 8
     )
-    assert config.epilogue_n_fragment_factor == 1
 
     mxfp_block_size = 32
     scale_size_outer = 128
@@ -1130,7 +1107,7 @@ def matmul(
         BLOCK_M=config.block_m,
         BLOCK_N=config.block_n,
         BLOCK_K=config.block_k,
-        XCD_SWIZZLE=config.xcd_swizzle,
+        XCD_SWIZZLE=1,
         NUM_SMS=launch_grid,
         X_NUM_BUFS=config.x_num_bufs,
         W_NUM_BUFS=config.w_num_bufs,
@@ -1142,16 +1119,13 @@ def matmul(
         LOAD_WEIGHT_REGS=config.load_weight_regs,
         MMA_REGS=config.mma_regs,
         STORE_HELPER_REGS=config.store_helper_regs,
-        EPILOGUE_N_ELEMS=config.epilogue_n_elems,
-        EPILOGUE_SUBTILE_N=config.epilogue_subtile_n,
         EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
-        EPILOGUE_N_FRAGMENT_FACTOR=config.epilogue_n_fragment_factor,
         EPILOGUE_STORE_HELPER_DEPTH=config.epilogue_store_helper_depth,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
         MXFP_BLOCK_SIZE=mxfp_block_size,
         #
-        num_warps=config.num_warps,
+        num_warps=8,
     )
 
     return c.unsqueeze(0)
