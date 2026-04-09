@@ -110,6 +110,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
 
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
 
+uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);
+
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemRegLayoutQueryType(Value memDesc,
                                       std::string *error = nullptr);
@@ -120,7 +122,7 @@ inferStandaloneTMemLdStQueryLayout(Value memDesc,
                                    std::string *error = nullptr);
 
 std::optional<TMemLdStSupportQueryPlan>
-getTMemLdStSubviewSupportPlan(Value memDesc, std::string *error = nullptr);
+getTMemLdStSupportQueryPlan(Value memDesc, std::string *error = nullptr);
 
 std::optional<TMemLdStQueryLayout> getTMemLdStSupportQueryLayout(
     Value memDesc, std::string *error = nullptr);

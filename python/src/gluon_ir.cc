@@ -1891,10 +1891,6 @@ void init_gluon_ir(py::module &&m) {
                               ttg::MemDescReshapeOp, ttg::MemDescTransOp,
                               ttg::MemDescReinterpretOp>(
                   queryMemDesc.getDefiningOp());
-          bool disallowSupportRescueFor32x32Subview =
-              isViewLikeMemDesc && queryMemDescTy.getRank() == 2 &&
-              queryMemDescTy.getShape()[0] == 32 &&
-              queryMemDescTy.getShape()[1] == 32;
           bool disableTypeOnlyFallback =
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;
@@ -2062,24 +2058,15 @@ void init_gluon_ir(py::module &&m) {
             }
           }
           if (auto supportPlan =
-                  ttng::getTMemLdStSubviewSupportPlan(queryMemDesc,
-                                                      &supportError)) {
+                  ttng::getTMemLdStSupportQueryPlan(queryMemDesc,
+                                                    &supportError)) {
             py::object layout =
                 trySupportLayout(supportPlan->query, supportPlan->rowPlan);
             if (!layout.is_none())
               return layout;
-          }
-          if (!disallowSupportRescueFor32x32Subview) {
-            if (auto supportQuery =
-                    ttng::getTMemLdStSupportQueryLayout(queryMemDesc,
-                                                       &supportError)) {
-              py::object layout = trySupportLayout(*supportQuery, std::nullopt);
-              if (!layout.is_none())
-                return layout;
-            } else if (debug && !supportError.empty()) {
-              debugLog << "[tmem-reg-layout] reshaped support query unavailable: "
-                       << supportError << "\n";
-            }
+          } else if (debug && !supportError.empty()) {
+            debugLog << "[tmem-reg-layout] support query unavailable: "
+                     << supportError << "\n";
           }
           if (auto rawQueryLayout = inferRawQueryLayout(queryMemDesc)) {
             py::object layout = firstLegalLayoutForRawQuery(
@@ -2097,23 +2084,17 @@ void init_gluon_ir(py::module &&m) {
             return py::none();
           }
           py::object supportFallback = py::none();
-          if (!disallowSupportRescueFor32x32Subview) {
-            supportFallback = physicalSupportLayout(queryMemDesc, desiredAtom);
-            if (!supportFallback.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
-              return supportFallback;
-            }
+          supportFallback = physicalSupportLayout(queryMemDesc, desiredAtom);
+          if (!supportFallback.is_none()) {
+            appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
+            return supportFallback;
           }
           auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
           for (ttg::MemDescType queryTy : queryTypes) {
             py::object layout = py::none();
-            if (disallowSupportRescueFor32x32Subview) {
-              auto directLayouts = ttng::getTmemCompatibleLayouts(queryTy, numWarps);
-              layout = firstLegalLayoutForType(queryTy, directLayouts, desiredAtom);
-            } else {
-              auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);
-              layout = firstLegalLayout(queryMemDesc, queryTy, layouts, desiredAtom);
-            }
+            auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);
+            layout = firstLegalLayout(queryMemDesc, queryTy, layouts,
+                                      desiredAtom);
             if (!layout.is_none()) {
               appendTrace("findDirectLayoutForMemDesc queryTy layouts");
               return layout;
@@ -2121,25 +2102,18 @@ void init_gluon_ir(py::module &&m) {
             auto shape = llvm::to_vector(
                 queryMemDescTy.getShape().take_back(queryMemDescTy.getRank()));
             auto blockedLayouts = getBlockedFallbackLayouts(queryTy, shape);
-            if (disallowSupportRescueFor32x32Subview) {
-              layout = firstLegalLayoutForType(queryTy, blockedLayouts,
-                                               desiredAtom);
-            } else {
-              layout = firstLegalLayout(queryMemDesc, queryTy, blockedLayouts,
-                                        desiredAtom);
-            }
+            layout = firstLegalLayout(queryMemDesc, queryTy, blockedLayouts,
+                                      desiredAtom);
             if (!layout.is_none()) {
               appendTrace("findDirectLayoutForMemDesc blocked fallback");
               return layout;
             }
           }
           py::object fallbackLayout = py::none();
-          if (!disallowSupportRescueFor32x32Subview) {
-            fallbackLayout = physicalSupportLayout(queryMemDesc, desiredAtom);
-            if (!fallbackLayout.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
-              return fallbackLayout;
-            }
+          fallbackLayout = physicalSupportLayout(queryMemDesc, desiredAtom);
+          if (!fallbackLayout.is_none()) {
+            appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
+            return fallbackLayout;
           }
           if (desiredAtom) {
             if (isViewLikeMemDesc)

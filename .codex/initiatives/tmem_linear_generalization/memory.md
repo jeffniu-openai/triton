@@ -2775,3 +2775,35 @@ rejection, not rescue
   - retried bounded support-query/base-offset/anchor experiments
   - reverted them because none restored correct semantics
   - kept only the green rebuilt baseline and recorded the evidence
+
+## 2026-04-09: unified support-query cleanup retired the 32x32 / reinterpret / block_m_64 hack buckets
+
+- The interrupted isolated-worktree support-query refactor was actually
+  coherent once rebuilt and revalidated.
+- Durable cleanup boundary from this slice:
+  - `getTMemLdStSupportQueryPlan(...)` is now the single support-query contract
+    used by verifier checks, Gluon direct reg-layout search, and LLVM lowering
+  - lowering-specific TMEM subview offsets now live in one shared
+    `getTMemSubviewOffsetForLowering(...)` helper instead of diverging between
+    the view conversion and final LLVM lowering
+  - the old direct `32x32` view quarantine is replaced by explicit query-layout
+    scalarization to `32x32b.x1` packets when translated origins would
+    otherwise over-cover the logical view
+  - reinterpret / column-subview descriptor views reuse the same linear-layout
+    support-query machinery instead of bespoke rescue splits
+- Validated effect:
+  - descriptor-chain reinterpret positives and `M=64` `32x32` fallback cases in
+    `python/test/gluon/test_core.py` are green
+  - descriptor-chain matrix sweeps and `block_m_64` subslice/reinterpret cases
+    are green
+  - focused runtime-matrix descriptor-chain / rank5 / multidim slices are green
+  - `triton-opt` checks for `test/TritonNvidiaGPU/{ops,invalid,tmem_layouts}.mlir`
+    are green
+- Backlog impact:
+  - retire the post-merge-base hack buckets for direct `32x32`
+    rescue/scalarization, `64x128xf32` reinterpret rescue, and the
+    `block_m_64` packed row-zero-lifted fixups
+  - keep the half-row ld/st packet-decomposition bug open as a separate
+    correctness problem
+  - remaining targeted cleanup backlog is the separate `warpx2`
+    family-specific planner work plus the blocked GB200-equivalent rerun

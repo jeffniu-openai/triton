@@ -5026,3 +5026,51 @@ Open after this slice:
     backlog (`32x32` rescue/scalarization, `64x128xf32` reinterpret rescue,
     packed row-zero-lifted fixups, `warpx2` family cleanup) instead of landing
     another local half-row workaround
+
+## 2026-04-09 support-query cleanup checkpoint: direct 32x32 / reinterpret rescue now use one contract
+- Re-audited the dirty isolated-worktree support-query cleanup after the
+  half-row probe and found it was already a coherent landing slice once built
+  and revalidated.
+- Main cleanup in this slice:
+  - replaced the split `SubviewSupportPlan` / ad hoc support-query fallback
+    layering with one `getTMemLdStSupportQueryPlan(...)` contract shared by
+    verifier diagnostics, Gluon direct-layout search, and LLVM lowering
+  - moved TMEM subview offset quirks into one
+    `getTMemSubviewOffsetForLowering(...)` helper so `ViewOpToLLVM.cpp` and
+    `TensorMemoryToLLVM.cpp` agree on the canonical contiguous `32x32` special
+    case and the other lowering-only subview adjustments
+  - removed the old `32x32` descriptor-view support-rescue quarantine and
+    instead made query-layout lowering explicitly scalarize vectorized
+    `32x32b` messages to `x1` packets when translated query origins would
+    otherwise over-cover the logical TMEM view
+  - preserved non-canonical TMEM view layouts when the direct-view path asks
+    for them, and let support-query planning cover reinterpret / column-subview
+    descriptor views through the same linear-layout query/origin contract
+- Effect on the previous hack inventory:
+  - direct `32x32` support rescue / scalarization is now handled by the shared
+    query-layout decomposition instead of a hard negative gate
+  - `64x128xf32` reinterpret rescue now lowers through the same support-query /
+    raw-query machinery instead of a one-off rescue split
+  - the `block_m_64` packed row-zero-lifted subslice / reinterpret behavior is
+    green again under the unified plan
+  - the remaining post-merge-base cleanup backlog is now the separate
+    `warpx2` family-specific planner cleanup
+- Validation for this checkpoint:
+  - `TRITON_BUILD_WITH_CCACHE=true TRITON_HOME=/tmp CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py -k 'test_tmem_linear_runtime_views or test_tmem_linear_m64_roundtrip_32x32b_fallback'`
+    - `14 passed`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py -k test_tmem_descriptor_chain_matrix`
+    - `26 passed`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py -k 'test_tmem_subslice_block_m_64 or test_tmem_subslice_block_m_64_parent_layout_reports_clean_error'`
+    - `4 passed`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive or test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip or test_tmem_runtime_matrix_ldst_descriptor_rank5_roundtrip or test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip'`
+    - `4 passed, 12 skipped`
+  - manual `triton-opt` checks from the build dir:
+    - `bin/triton-opt test/TritonNvidiaGPU/ops.mlir | FileCheck`
+    - `bin/triton-opt --split-input-file --verify-diagnostics test/TritonNvidiaGPU/invalid.mlir`
+    - `bin/triton-opt test/TritonNvidiaGPU/tmem_layouts.mlir -split-input-file --triton-nvidia-optimize-tmem-layouts --allow-unregistered-dialect | FileCheck`
+- Still open after this slice:
+  - lifted/direct half-row ld/st remains a separate packet-decomposition BUG;
+    do not treat this support-query cleanup as resolving that bucket
+  - the GB200-equivalent full sweep is still blocked on node/GPU health, so
+    this checkpoint only has focused local validation

@@ -1124,13 +1124,6 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   };
   auto kRow = StringAttr::get(op->getContext(), "row");
   auto kCol = StringAttr::get(op->getContext(), "col");
-  bool isViewLikeMemDesc =
-      isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp, gpu::MemDescSubsliceOp,
-                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
-                      gpu::MemDescReinterpretOp>(memdescValue.getDefiningOp());
-  bool disallowSupportRescueFor32x32Subview =
-      isViewLikeMemDesc && memdesc.getRank() == 2 && memdesc.getShape()[0] == 32 &&
-      memdesc.getShape()[1] == 32;
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
     if (!isa_and_nonnull<gpu::MemDescReinterpretOp>(memdescValue.getDefiningOp()) ||
         memdesc.getRank() != 2)
@@ -1169,26 +1162,16 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
                                                  rowPlan));
   };
   if (auto supportPlan =
-          getTMemLdStSubviewSupportPlan(memdescValue, &supportQueryError)) {
-    if (trySupportQuery(supportPlan->query, supportPlan->rowPlan)) {
+          getTMemLdStSupportQueryPlan(memdescValue, &supportQueryError)) {
+    if (trySupportQuery(supportPlan->query, supportPlan->rowPlan))
       return success();
-    }
-  }
-  if (!disallowSupportRescueFor32x32Subview) {
-    if (auto supportQuery = getTMemLdStSupportQueryLayout(memdescValue,
-                                                          &supportQueryError)) {
-      if (trySupportQuery(*supportQuery, std::nullopt))
-        return success();
-    }
   }
   std::string rawQueryError;
   if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
           memdescValue, /*preserveNonCanonicalView=*/true, &rawQueryError);
       succeeded(rawQuery)) {
-    auto rowPlan = disallowSupportRescueFor32x32Subview
-                       ? std::optional<TMemLdStRowPlan>{}
-                       : getTMemLdStRowPlanForQuery(memdescValue, memdesc);
-    if (!rowPlan && !disallowSupportRescueFor32x32Subview)
+    auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+    if (!rowPlan)
       rowPlan = getBackingTMemLdStRowPlan(memdescValue);
     if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
                                               /*emitError=*/{}, rowPlan))) {
@@ -1198,9 +1181,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
   if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret)
     for (MemDescType queryTy : queryTypes) {
-    auto rowPlan = disallowSupportRescueFor32x32Subview
-                       ? std::optional<TMemLdStRowPlan>{}
-                       : getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+    auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
     if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
                                               /*emitError=*/{}, rowPlan))) {
       return success();
@@ -1211,12 +1192,10 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   if (auto standaloneTy =
           inferStandaloneTMemViewType(memdescValue, &standaloneError);
       succeeded(standaloneTy)) {
-    if (!disallowSupportRescueFor32x32Subview) {
-      if (auto maybePlan = getTMemLdStPhysicalSupportPlan(
-              *standaloneTy, lookupNumWarps(op), maxnreg);
-          maybePlan && maybePlan->regTy == type) {
-        return success();
-      }
+    if (auto maybePlan = getTMemLdStPhysicalSupportPlan(
+            *standaloneTy, lookupNumWarps(op), maxnreg);
+        maybePlan && maybePlan->regTy == type) {
+      return success();
     }
   }
 
@@ -1227,7 +1206,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
                                     [&](Diagnostic &diag) { diag.print(os); });
     std::string supportError;
     if (auto supportPlan =
-            getTMemLdStSubviewSupportPlan(memdescValue, &supportError)) {
+            getTMemLdStSupportQueryPlan(memdescValue, &supportError)) {
       auto rowPlan = supportPlan->rowPlan;
       if (!rowPlan)
         rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
@@ -1242,30 +1221,13 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
                                         },
                                         rowPlan);
     }
-    if (!disallowSupportRescueFor32x32Subview) {
-      if (auto supportQuery =
-              getTMemLdStSupportQueryLayout(memdescValue, &supportError)) {
-        auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
-        if (!rowPlan)
-          rowPlan = getBackingTMemLdStRowPlan(memdescValue);
-        if (!rowPlan)
-          rowPlan = getTMemLdStRowPlan(supportQuery->layout);
-        (void)computeTMemLdStEncodingInfo(type, memdesc, *supportQuery, maxnreg,
-                                          [&]() {
-                                            return mlir::emitError(op->getLoc());
-                                          },
-                                          rowPlan);
-      }
-    }
     std::string rawError;
     if (requestedLayoutDetails.empty()) {
       if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
               memdescValue, /*preserveNonCanonicalView=*/true, &rawError);
           succeeded(rawQuery)) {
-        auto rowPlan = disallowSupportRescueFor32x32Subview
-                           ? std::optional<TMemLdStRowPlan>{}
-                           : getTMemLdStRowPlanForQuery(memdescValue, memdesc);
-        if (!rowPlan && !disallowSupportRescueFor32x32Subview)
+        auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+        if (!rowPlan)
           rowPlan = getBackingTMemLdStRowPlan(memdescValue);
         (void)computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
                                           [&]() {
@@ -1277,9 +1239,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
     if (requestedLayoutDetails.empty() &&
         !disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
       for (MemDescType queryTy : queryTypes) {
-        auto rowPlan = disallowSupportRescueFor32x32Subview
-                           ? std::optional<TMemLdStRowPlan>{}
-                           : getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+        auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
         (void)computeTMemLdStEncodingInfo(
             type, queryTy, maxnreg,
             [&]() { return mlir::emitError(op->getLoc()); }, rowPlan);
@@ -1397,16 +1357,16 @@ LogicalResult TMEMLoadOp::verify() {
       ScopedDiagnosticHandler handler(getContext(),
                                       [&](Diagnostic &diag) { diag.print(os); });
       std::string supportError;
-      if (auto supportQuery = getTMemLdStSupportQueryLayout(getSrc(),
-                                                            &supportError)) {
+      if (auto supportPlan = getTMemLdStSupportQueryPlan(getSrc(),
+                                                         &supportError)) {
         auto srcMemTy = cast<MemDescType>(getSrc().getType());
-        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
+        auto rowPlan = supportPlan->rowPlan;
         if (!rowPlan)
-          rowPlan = getTMemLdStRowPlan(supportQuery->layout);
+          rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
         if (!rowPlan)
           rowPlan = getBackingTMemLdStRowPlan(getSrc());
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
-                regTy, srcMemTy, *supportQuery, maxnreg,
+                regTy, srcMemTy, supportPlan->query, maxnreg,
                 [&]() { return mlir::emitError(getOperation()->getLoc()); },
                 rowPlan);
             succeeded(maybeInfo)) {

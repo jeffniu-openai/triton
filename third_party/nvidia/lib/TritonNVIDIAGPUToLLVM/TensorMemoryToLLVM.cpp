@@ -74,15 +74,12 @@ static uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
   if (auto subslice = dyn_cast_if_present<triton::gpu::MemDescSubsliceOp>(
           memDescValue.getDefiningOp())) {
     auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
-    auto dstTy = dyn_cast<MemDescType>(subslice.getType());
-    if (!srcTy || !dstTy || srcTy.getRank() != 2 || dstTy.getRank() != 2 ||
-        !isTensorMemoryEncoding(srcTy.getEncoding()) ||
-        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()))
+    if (!srcTy || !isTensorMemoryEncoding(srcTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
       return 0;
-    SmallVector<int32_t> offsets(subslice.getOffsets().begin(),
-                                 subslice.getOffsets().end());
+    }
     return recurse(subslice.getSrc()) +
-           triton::nvidia_gpu::getTMemViewOffset(srcTy, offsets);
+           triton::nvidia_gpu::getTMemSubviewOffsetForLowering(subslice);
   }
 
   if (auto subslice = dyn_cast_if_present<TMEMSubSliceOp>(
@@ -761,9 +758,6 @@ lowerTMemLdStFromTypes(
                       triton::gpu::MemDescTransOp,
                       triton::gpu::MemDescReinterpretOp>(
           memDescValue.getDefiningOp());
-  bool disallowSupportRescueFor32x32Subview =
-      isViewLikeMemDesc && memTy.getRank() == 2 && memTy.getShape()[0] == 32 &&
-      memTy.getShape()[1] == 32;
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
@@ -868,22 +862,20 @@ lowerTMemLdStFromTypes(
       return failure();
     };
     std::string supportError;
-    if (auto supportPlan =
-            getTMemLdStSubviewSupportPlan(memDescValue, &supportError)) {
-      if (auto lowered =
-              trySupportQuery(supportPlan->query, supportPlan->rowPlan);
-          succeeded(lowered)) {
-        return *lowered;
-      }
-    }
-    if (!disableSupportQuery && !disallowSupportRescueFor32x32Subview) {
-      if (auto supportQuery =
-              getTMemLdStSupportQueryLayout(memDescValue, &supportError)) {
-        if (auto lowered = trySupportQuery(*supportQuery, std::nullopt);
+    if (!disableSupportQuery) {
+      if (auto supportPlan =
+              getTMemLdStSupportQueryPlan(memDescValue, &supportError)) {
+        if (auto lowered =
+                trySupportQuery(supportPlan->query, supportPlan->rowPlan);
             succeeded(lowered)) {
           return *lowered;
         }
+      } else if (debugQuerySelection && !supportError.empty()) {
+        llvm::errs() << "[tmem-ldst] supportQuery unavailable: " << supportError
+                     << "\n";
       }
+    } else if (debugQuerySelection) {
+      llvm::errs() << "[tmem-ldst] supportQuery disabled\n";
     }
     std::string rawError;
     if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
@@ -904,13 +896,10 @@ lowerTMemLdStFromTypes(
             succeeded(maybeStandaloneTy))
           rawMemTy = *maybeStandaloneTy;
       }
-      rawRowPlan = disallowSupportRescueFor32x32Subview
-                       ? std::optional<TMemLdStRowPlan>{}
-                       : getBackingTMemLdStRowPlan(memDescValue);
-      if (!rawRowPlan && !disallowSupportRescueFor32x32Subview)
+      rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
+      if (!rawRowPlan)
         rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
-      if (!disallowSupportRescueFor32x32Subview &&
-          isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
+      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
           memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
           memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
         rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
@@ -978,11 +967,8 @@ lowerTMemLdStFromTypes(
   std::optional<TMemLdStRowPlan> firstQueryRowPlan;
   if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret)
     for (MemDescType queryTy : queryTypes) {
-    auto rowPlan = disallowSupportRescueFor32x32Subview
-                       ? std::optional<TMemLdStRowPlan>{}
-                       : (memDescValue ? getTMemLdStRowPlanForQuery(memDescValue,
-                                                                    queryTy)
-                                       : getTMemLdStRowPlanForType(queryTy));
+    auto rowPlan = memDescValue ? getTMemLdStRowPlanForQuery(memDescValue, queryTy)
+                                : getTMemLdStRowPlanForType(queryTy);
     if (debugQuerySelection) {
       llvm::errs() << "[tmem-ldst] queryTy=" << queryTy << " rowPlan="
                    << (rowPlan ? llvm::Twine(rowPlan->rowSpan).str()
