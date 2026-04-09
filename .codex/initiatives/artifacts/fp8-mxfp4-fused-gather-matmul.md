@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-09T05:51:15Z
+updated: 2026-04-09T06:08:18Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -139,10 +139,10 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Artifact: Investigation note with candidate bottlenecks and evidence
   - Dependencies: Baseline report
   - Notes: Focus on gather load path, scale handling, shared-memory pressure, and scheduling. Partial result on `bs=16384, E256/es8`: `ws` and `gluon_optimized` launch the same `512`-thread / `152`-CTA shape with `128` registers per thread, but `ws` trails on tensor/memory utilization and shows materially higher `mio_throttle` and `long_scoreboard` stalls, pointing at producer/consumer scheduling inside the separate activation-vs-weight partitions rather than a simple occupancy shortfall.
-- [ ] Implement the first round of host-side or kernel-side tuning changes.
+- [x] Implement the first round of host-side or kernel-side tuning changes.
   - Artifact: Code change plus targeted correctness coverage
   - Dependencies: Bottleneck analysis
-  - Notes: Likely touch `_p_matmul.py`, launch config, or Blackwell opt-flag heuristics.
+  - Notes: Done for the `python/perf/matmul_ws_optimized.py` sandbox on the target `bs=16384, E256, es8` case. The winning patch is a bounded epilogue rewrite: packed `f32x2` accumulator scale+bias, packed output scaling, and a packed FP8 store path that keeps the final `e4m3x2` conversion in halfword form instead of exploding back to byte stores.
 - [ ] Iterate on Blackwell-specific tuning knobs and compare variants.
   - Artifact: Benchmark comparison table with before/after deltas
   - Dependencies: First tuning patch
@@ -252,12 +252,17 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `make` in `/root/code/triton-ws-opt` (fails because the fresh worktree still lacks `build/cmake.linux-aarch64-cpython-3.12/build.ninja`); `make` in `/root/code/triton` (`ninja: no work to do`, which is the editable Triton runtime these perf scripts are currently using); `python -m py_compile python/perf/sweep_matmul_ws_split_sf.py`; `PYTHONPATH=python/triton_kernels python -m python.perf.sweep_matmul_ws_split_sf --x-range 5 --w-range 4 --scale-range 4 --rep 5 --rerun-rep 12 --top 1`; `PYTHONPATH=python/triton_kernels python -m python.perf.sweep_matmul_ws_split_sf --x-range 2:6 --w-range 2:5 --scale-range 1:8 --rep 6 --rerun-rep 40 --top 20 --csv-out /root/.codex/memories/triton-fp8-mxfp4-fused-gather/raw/ws_split_sf_buffer_sweep_2026-04-09.csv`
   - Learnings: The broad sweep covered `160` configs on the target `bs=16384, E256, es8` bucket. The rerun baselines in the same harness were `ws=0.3448 ms`, `ws_optimized=0.3385 ms`, and `gluon_optimized=0.3328 ms`. The best rerun `ws_split_sf` config was still far behind at `x_num_bufs=5, w_num_bufs=4, scale_num_bufs=4 -> 0.3672 ms`; the next best cluster was `x=4, w=4, scale=4..6 -> 0.3682-0.3688 ms`. The strongest pattern is that extra scale buffering helps only until about `4-6` scale buffers and then flattens or regresses. `scale_num_bufs=1` is catastrophically bad across the grid (`~0.77-0.79 ms`), `2` is still poor (`~0.47-0.55 ms` on the plausible regions), and the first useful regime starts at `3-4`. Sacrificing weight or activation buffers to buy more scale depth never wins: the best legal configs keep `w_num_bufs=4` and `x_num_bufs=4-5`, and even those remain slower than plain `ws`. The legality map is also now clear: every extra scale buffer costs `1024 B` of shared memory, `x=4, w=5` is illegal for all swept scale counts (`234,720 B` and above), and `x=6, w=4` is also illegal for all swept scale counts (`234,720 B` and above).
   - Plan updates: Treat `ws_split_sf` buffer-count tuning as exhausted on the target bucket. The sweep harness is still useful for future architecture experiments, but no additional bounded `x/w/scale` sweeps are likely to change the conclusion unless another kernel change first creates materially more shared-memory headroom or removes the extra partition cost.
+- `2026-04-09` Completed: Added durable PTX 9.2 research notes and rewrote the winning WS epilogue around packed float2 math plus packed FP8 stores
+  - Artifact: `.codex/initiatives/artifacts/ptx-isa-9.2-blackwell-float2-research.md`, `python/perf/matmul_ws_optimized.py`, `/tmp/wsopt_packed_store_vs_gluon.ncu-rep`
+  - Validation: `make` in `/root/code/triton`; `python -m py_compile python/perf/matmul_ws_optimized.py`; `CUDA_VISIBLE_DEVICES=0/1/2/3 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather ...` across the bounded epilogue sweeps; `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python/triton_kernels TRITON_WS_USE_EXP2_SIGMOID=0 TRITON_WS_USE_PACKED_FINAL_FMA=0 TRITON_WS_USE_PACKED_FP8_STORE=1 TRITON_WS_USE_PACKED_OUT_SCALE=1 TRITON_WS_EPILOGUE_N_ELEMS=4 python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100`; `CUDA_VISIBLE_DEVICES=3 USE_IR_LOC=ttgir PYTHONPATH=python/triton_kernels TRITON_WS_USE_EXP2_SIGMOID=0 TRITON_WS_USE_PACKED_FINAL_FMA=0 TRITON_WS_USE_PACKED_FP8_STORE=1 TRITON_WS_USE_PACKED_OUT_SCALE=1 TRITON_WS_EPILOGUE_N_ELEMS=4 ncu -o /tmp/wsopt_packed_store_vs_gluon -f --import-source on --set full -k '::regex:.*matmul.*' python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws_optimized,gluon_optimized --limit 1 --validate-only`
+  - Learnings: The shell on this host still cannot mirror `docs.nvidia.com` directly (`wget`, `curl`, `requests`, and `urllib` all fail with the same TLS EOF), so the durable PTX notes were written from the accessible official docs via the browsing/subagent path instead of from a local mirror. On the kernel side, the useful bounded epilogue changes were: `fma.rn.f32x2` for accumulator scale+bias, `mul.f32x2` for output scaling, and a custom packed `cvt.rn.satfinite.e4m3x2.f32` + `st.global.b16` store path that preserves FP8 pairs through the final write. The rejected variants are also now explicit: the `exp2` sigmoid path failed validation on the target bucket, scalar output scaling regressed, packed final SwiGLU FMA regressed, and the float2 path only compiled cleanly with `EPILOGUE_N_ELEMS=4` (`2/8/16` hit layout-mismatch failures in `float2.fma`). The winning measured result on the target bucket is now `ws=0.3536 ms`, `ws_optimized=0.3420 ms`, `gluon_optimized=0.3443 ms` with `warmup=30`, `rep=100`, so `ws_optimized` is about `3.3%` faster than `ws` and about `0.7%` faster than `gluon_optimized`.
+  - Plan updates: Promote the packed-store epilogue as the default WS-optimized target-bucket configuration. The next useful work is to validate whether the same epilogue still wins on the remaining non-parrot families and to decide whether further gains should come from store-layout generalization or from a larger producer-pipeline rewrite.
 
 ## Next Up
 
 - [ ] Capture launch flags around the `E256/es8` device-side efficiency cliff under cudagraph benchmarking and run the remaining non-parrot baseline families (`E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`)
-- [ ] Use the TMEM-compatible split-capable layout as the starting point for the next WS epilogue experiment, with the bounded goal of removing the current split-motivated relayout while keeping bias broadcast and final stores legal; if that still stalls, revisit a larger WS partition rewrite with the user
-- [ ] Do not spend more bounded tuning effort on `ws_split_sf` unless another change first creates enough shared-memory headroom to actually raise `x_num_bufs` or `w_num_bufs`
+- [ ] Validate the packed-store `ws_optimized` epilogue on the remaining non-parrot families and the smaller parrot-gather family to see whether the target-bucket win generalizes or is tightly bucket-specific
+- [ ] Do not spend more bounded tuning effort on `ws_split_sf`; if more target-bucket gain is required beyond the packed-store win, the next move is either broader store-layout generalization or a larger WS producer-pipeline rewrite with the user
 
 ## Open Questions
 

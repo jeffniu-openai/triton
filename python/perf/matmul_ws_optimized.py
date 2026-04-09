@@ -8,8 +8,10 @@ import triton
 import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 import triton.experimental.gluon.language.nvidia.blackwell as blackwell
+from triton.experimental.gluon.language.nvidia.blackwell import float2
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.core as tl_core
+import triton.language.extra.cuda.libdevice as libdevice
 
 from triton_kernels.matmul import Epilogue, FusedActivation, FusedComm, PrecisionConfig
 from triton_kernels.tensor import RaggedTensorMetadata, Tensor
@@ -29,10 +31,91 @@ class KernelConfig:
     w_num_bufs: int = 4
     epilogue_n_elems: int = 4
     acc_instr_variant: str = "32x32b"
+    use_exp2_sigmoid: bool = False
+    use_packed_final_fma: bool = False
+    use_packed_fp8_store: bool = True
+    use_packed_out_scale: bool = True
 
 
 @gluon.jit
-def epilogue_partition_optimized(p: ws_base.PartitionArgs, EPILOGUE_N_ELEMS: gl.constexpr):
+def _swiglu_pairs_rcp(gelu, linear, alpha, limit):
+    gelu = gelu.to(gl.float32)
+    linear = linear.to(gl.float32)
+    gelu = gl.minimum(gelu, limit)
+    linear = tl_core.clamp(linear, -limit, limit)
+    den = 1.0 + libdevice.fast_expf(-alpha * gelu)
+    recip = tl_core.inline_asm_elementwise(
+        "{ rcp.approx.ftz.f32 $0, $1; }",
+        "=f,f",
+        [den],
+        dtype=tl_core.float32,
+        is_pure=True,
+        pack=1,
+    )
+    activated = gelu * recip
+    return gl.fma(activated, linear, activated)
+
+
+@gluon.jit
+def _swiglu_pairs_rcp_packed(gelu, linear, alpha, limit):
+    gelu = gelu.to(gl.float32)
+    linear = linear.to(gl.float32)
+    gelu = gl.minimum(gelu, limit)
+    linear = tl_core.clamp(linear, -limit, limit)
+    den = 1.0 + libdevice.fast_expf(-alpha * gelu)
+    recip = tl_core.inline_asm_elementwise(
+        "{ rcp.approx.ftz.f32 $0, $1; }",
+        "=f,f",
+        [den],
+        dtype=tl_core.float32,
+        is_pure=True,
+        pack=1,
+    )
+    activated = gelu * recip
+    activated_packed = float2.pack(activated, axis=1)
+    linear_packed = float2.pack(linear, axis=1)
+    return float2.fma(activated_packed, linear_packed, activated_packed)
+
+
+@gluon.jit
+def _swiglu_pairs_exp2(gelu, linear, alpha, limit):
+    gelu = gelu.to(gl.float32)
+    linear = linear.to(gl.float32)
+    gelu = gl.minimum(gelu, limit)
+    linear = tl_core.clamp(linear, -limit, limit)
+    t = (-alpha * gelu) * 1.4426950408889634
+    exp_term = libdevice.exp2(t)
+    activated = gelu * libdevice.rcp_rn(1.0 + exp_term)
+    return gl.fma(activated, linear, activated)
+
+
+@gluon.jit
+def _pack_e4m3x2(values):
+    return tl_core.inline_asm_elementwise(
+        """
+        {
+            .reg .f32 lane<2>;
+            mov.b64 {lane0, lane1}, $1;
+            cvt.rn.satfinite.e4m3x2.f32 $0, lane1, lane0;
+        }
+        """,
+        "=h,l",
+        [values.value],
+        dtype=tl_core.int16,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@gluon.jit
+def epilogue_partition_optimized(
+    p: ws_base.PartitionArgs,
+    EPILOGUE_N_ELEMS: gl.constexpr,
+    USE_EXP2_SIGMOID: gl.constexpr,
+    USE_PACKED_FINAL_FMA: gl.constexpr,
+    USE_PACKED_FP8_STORE: gl.constexpr,
+    USE_PACKED_OUT_SCALE: gl.constexpr,
+):
     idx = 0
     phase = 0
 
@@ -74,20 +157,54 @@ def epilogue_partition_optimized(p: ws_base.PartitionArgs, EPILOGUE_N_ELEMS: gl.
         idx, phase = ws_base.advance(idx, phase, p.acc_num_bufs)
 
         out_off_n = pid_n * p.BLOCK_N // p.REDUCTION_N
-        acc = gl.fma(gl.convert_layout(acc.permute((1, 0)), split_layout), acc_scale, bias)
+        acc = gl.convert_layout(acc.permute((1, 0)), split_layout)
+        acc_packed = float2.pack(acc, axis=1)
+        bias_packed = float2.pack(bias, axis=1)
+        acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
+        gelu, linear = float2.unpack2(acc_packed)
+        if USE_EXP2_SIGMOID:
+            out = _swiglu_pairs_exp2(gelu, linear, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+        elif USE_PACKED_FINAL_FMA:
+            out_packed = _swiglu_pairs_rcp_packed(gelu, linear, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+            if USE_PACKED_OUT_SCALE:
+                out_packed = out_packed * float2.full_like(out_packed, out_recip)
+            if USE_PACKED_FP8_STORE:
+                packed_out = _pack_e4m3x2(out_packed)
+            else:
+                out = float2.unpack(out_packed, axis=1)
+        else:
+            out = _swiglu_pairs_rcp(gelu, linear, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+        if (not USE_EXP2_SIGMOID) and (not USE_PACKED_FINAL_FMA) and USE_PACKED_OUT_SCALE:
+            out_packed = float2.pack(out, axis=1)
+            out_packed = out_packed * float2.full_like(out_packed, out_recip)
+            if USE_PACKED_FP8_STORE:
+                packed_out = _pack_e4m3x2(out_packed)
+            else:
+                out = float2.unpack(out_packed, axis=1)
+        elif (not USE_EXP2_SIGMOID) and (not USE_PACKED_FINAL_FMA):
+            out = out * out_recip
+        elif USE_EXP2_SIGMOID:
+            out = out * out_recip
+        if USE_PACKED_FP8_STORE:
+            out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int16), bitcast=True)
+            packed_layout: gl.constexpr = packed_out.type.layout
+            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, packed_layout))
+            offs_n = out_off_n // 2 + gl.arange(0, block_n_div_act // 2, layout=gl.SliceLayout(0, packed_layout))
+            mask = gl.expand_dims(offs_m < shape_m, 1)
+            ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 2)
+            ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+            gl.store(ptrs, packed_out, mask=mask)
+        else:
+            if p.FLEXPOINT_SATURATE_INF:
+                out = tl_core.clamp(out, -448.0, 448.0)
+            out = out.to(p.out_desc.dtype)
 
-        out = ws_base.swiglu(acc, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
-        out = out * out_recip
-        if p.FLEXPOINT_SATURATE_INF:
-            out = tl_core.clamp(out, -448.0, 448.0)
-        out = out.to(p.out_desc.dtype)
-
-        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, out.type.layout))
-        offs_n = out_off_n + gl.arange(0, block_n_div_act, layout=gl.SliceLayout(0, out.type.layout))
-        mask = gl.expand_dims(offs_m < shape_m, 1)
-        ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
-        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-        gl.store(ptrs, out, mask=mask)
+            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, out.type.layout))
+            offs_n = out_off_n + gl.arange(0, block_n_div_act, layout=gl.SliceLayout(0, out.type.layout))
+            mask = gl.expand_dims(offs_m < shape_m, 1)
+            ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
+            ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+            gl.store(ptrs, out, mask=mask)
 
 @gluon.jit
 def ws_matmul_kernel_optimized(
@@ -131,6 +248,10 @@ def ws_matmul_kernel_optimized(
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
     EPILOGUE_N_ELEMS: gl.constexpr,
+    USE_EXP2_SIGMOID: gl.constexpr,
+    USE_PACKED_FINAL_FMA: gl.constexpr,
+    USE_PACKED_FP8_STORE: gl.constexpr,
+    USE_PACKED_OUT_SCALE: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -255,7 +376,17 @@ def ws_matmul_kernel_optimized(
     # E256/es8 bucket on this branch.
     gl.warp_specialize(
         [
-            (epilogue_partition_optimized, (p, EPILOGUE_N_ELEMS)),
+            (
+                epilogue_partition_optimized,
+                (
+                    p,
+                    EPILOGUE_N_ELEMS,
+                    USE_EXP2_SIGMOID,
+                    USE_PACKED_FINAL_FMA,
+                    USE_PACKED_FP8_STORE,
+                    USE_PACKED_OUT_SCALE,
+                ),
+            ),
             (ws_base.load_activations, (p,)),
             (ws_base.load_weights, (p,)),
             (ws_base.mma_partition, (p,)),
@@ -290,6 +421,22 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
         x_num_bufs=int(os.environ.get("TRITON_WS_X_NUM_BUFS", defaults.x_num_bufs)),
         w_num_bufs=int(os.environ.get("TRITON_WS_W_NUM_BUFS", defaults.w_num_bufs)),
         epilogue_n_elems=int(os.environ.get("TRITON_WS_EPILOGUE_N_ELEMS", defaults.epilogue_n_elems)),
+        use_exp2_sigmoid=os.environ.get(
+            "TRITON_WS_USE_EXP2_SIGMOID", "1" if defaults.use_exp2_sigmoid else "0"
+        )
+        == "1",
+        use_packed_final_fma=os.environ.get(
+            "TRITON_WS_USE_PACKED_FINAL_FMA", "1" if defaults.use_packed_final_fma else "0"
+        )
+        == "1",
+        use_packed_fp8_store=os.environ.get(
+            "TRITON_WS_USE_PACKED_FP8_STORE", "1" if defaults.use_packed_fp8_store else "0"
+        )
+        == "1",
+        use_packed_out_scale=os.environ.get(
+            "TRITON_WS_USE_PACKED_OUT_SCALE", "1" if defaults.use_packed_out_scale else "0"
+        )
+        == "1",
     )
     row_count = _row_count(m_rows, expected_slice_size, n_slices)
     return cfg, row_count
@@ -439,6 +586,10 @@ def matmul(
         X_NUM_BUFS=config.x_num_bufs,
         W_NUM_BUFS=config.w_num_bufs,
         EPILOGUE_N_ELEMS=config.epilogue_n_elems,
+        USE_EXP2_SIGMOID=config.use_exp2_sigmoid,
+        USE_PACKED_FINAL_FMA=config.use_packed_final_fma,
+        USE_PACKED_FP8_STORE=config.use_packed_fp8_store,
+        USE_PACKED_OUT_SCALE=config.use_packed_out_scale,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
         MXFP_BLOCK_SIZE=mxfp_block_size,
