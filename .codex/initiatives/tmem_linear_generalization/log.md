@@ -5167,3 +5167,35 @@ Open after this slice:
       - `1 failed` (`did not raise`, later confirmed wrong-code by direct probe)
     - `HOME=/tmp/triton-home-iso-splitn-20260409 TRITON_CACHE_DIR=/tmp/triton-cache-iso-splitn-20260409 CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
       - `1 failed` (`Triton Error [CUDA]: misaligned address`)
+
+## 2026-04-09 lifted column-half descriptor views restored; M64 permuted row-anchor bug isolated
+- The dirty descriptor-view fallback work was converted into a real TMEM-utils checkpoint instead of another Gluon-only rescue.
+- Implementation outcome:
+  - `getColumnSubviewTMemLdStSupportQueryPlan(...)` now recognizes lifted `reshape -> dim0 subslice -> index` column-half views and exposes the backing 2D support frame directly.
+  - `isUnsupportedDirectTMemLdStDescriptorView(...)` now rejects true direct-view impossibilities via row-anchor representability instead of relying on the previous blanket surrogate-query skip.
+  - Gluon direct reg-layout search no longer suppresses surrogate query types after raw-query failure; valid descriptor views can still fall through to the canonical/surrogate query type once support-query and raw-query paths are exhausted.
+- Validated effect on the previously live descriptor-view buckets:
+  - lifted one-CTA `dim0_slice` positives are green again for `n in {64, 128}` across all explicit ld/st variants.
+  - lifted higher-rank half-row clean negatives stay green.
+  - `scrambled_cols` multidim slice stays clean-negative.
+  - two-CTA `block_two_ctas` lifted `dim0_slice` positive/OOR slices stay green.
+- Focused validation for this checkpoint:
+  - `make -j8`
+  - `HOME=/tmp/triton-home-targeted-20260409b TRITON_CACHE_DIR=/tmp/triton-cache-targeted-20260409b CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported[scrambled_cols-<lambda>]'
+    - `21 passed`
+  - `HOME=/tmp/triton-home-1cta-20260409 TRITON_CACHE_DIR=/tmp/triton-cache-1cta-20260409 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_tmem_oor python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lifted_layout python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout`
+    - `47 passed, 1 skipped`
+  - `HOME=/tmp/triton-home-2cta-20260409 TRITON_CACHE_DIR=/tmp/triton-cache-2cta-20260409 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_positive_lifted_layout python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_reports_tmem_oor`
+    - `12 passed`
+  - exact split-N repro kept as live evidence:
+    - `HOME=/tmp/triton-home-iso-splitn-20260409 TRITON_CACHE_DIR=/tmp/triton-cache-iso-splitn-20260409 CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+      - `1 failed` (`Triton Error [CUDA]: misaligned address`)
+- Broad validation notes:
+  - the attempted 4-GPU `python/test/gluon/test_core.py + python/test/gluon/test_tmem_runtime_matrix.py` sweep is not a trustworthy TMEM signal on this node yet because GPU 0 hit many unrelated `python/test/gluon/test_core.py::test_mma_shared_inputs[...]` NaN failures.
+  - a matrix-only 4-GPU shard run confirmed that the first real TMEM failure is still the `splitn_rowcol_permuted_layout_sweep` bucket; once that misaligned-address launch fires, later tests on the same shard fail as follow-on CUDA-context poison and should not be counted as independent regressions.
+- Remaining live TMEM implementation bug after this checkpoint:
+  - `M=64` row/col-permuted direct ld/st layouts still admit wrong warp anchor pairs for the 64-row family.
+  - direct warmup on `row_perm=rotate1`, `col_perm=identity`, `n=2` shows the generated `#linear` warp bases as `[[32, 0], [1, 0]]` and the TMEM row bases as `[[2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0], [1, 0]]`; both explicit `16x32bx2` and auto-selected `32x32b_splitn` emit the expected `16x32bx2.x2.b32` packet family at immediate `0`, then fault at launch.
+  - this points at a row-anchor selection/validation bug: the current direct-ld/st path is effectively deriving warp anchors from permuted row-basis position instead of solving for the logical 64-row anchor family (`16,32`) in linear-layout space.
+- Recommended next step:
+  - fix the 64-row direct ld/st anchor selection/validation path so it chooses (or rejects against) logical row anchors in linear-layout coordinates rather than basis-order position, then rerun the exact `splitn_rowcol_permuted_layout_sweep` bucket and the interrupted matrix-only shard.

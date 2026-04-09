@@ -2589,6 +2589,74 @@ static bool isExactCanonicalContiguous32x32TMemViewType(MemDescType memTy) {
   return true;
 }
 
+static std::optional<std::string>
+getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
+    MemDescType memTy, std::optional<TMemLdStRowPlan> rowPlan) {
+  if (!memTy || !rowPlan)
+    return std::nullopt;
+
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto squeezeTrivialBlock = [&](LinearLayout layout) {
+    if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) == 1)
+      layout = layout.squeezeIns(kBlock);
+    if (layout.hasOutDim(kBlock) && layout.getOutDimSize(kBlock) == 1)
+      layout = layout.squeezeOuts(kBlock);
+    return layout;
+  };
+
+  auto maybeMemLayout = [&]() -> std::optional<LinearLayout> {
+    if (isa<TensorMemoryEncodingAttr>(memTy.getEncoding()) &&
+        memTy.getShape() == memTy.getAllocShape()) {
+      return squeezeTrivialBlock(toLinearLayout(memTy));
+    }
+
+    std::string analysisError;
+    if (auto maybeAnalysisLayout = getTMemViewAnalysisLinearLayout(
+            memTy.getShape(), memTy.getEncoding(), &analysisError)) {
+      return squeezeTrivialBlock(
+          normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysisLayout));
+    }
+
+    std::string canonicalError;
+    if (auto maybeCanonical =
+            getCanonicalTMemLinearEncoding(memTy, &canonicalError)) {
+      return squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+          maybeCanonical->getLinearLayout()));
+    }
+    return std::nullopt;
+  }();
+  if (!maybeMemLayout || !maybeMemLayout->hasInDim(kRow) ||
+      !maybeMemLayout->hasInDim(kCol)) {
+    return std::nullopt;
+  }
+
+  auto anchorMemLayout = *maybeMemLayout;
+  if (anchorMemLayout.hasInDim(kRow))
+    anchorMemLayout = anchorMemLayout.removeZeroBasesAlongDim(kRow);
+  auto hasRowAnchor = [&](int32_t logicalRow) {
+    if (logicalRow == 0)
+      return true;
+    if (!llvm::isPowerOf2_32(static_cast<uint32_t>(logicalRow)))
+      return false;
+    return llvm::Log2_32(static_cast<uint32_t>(logicalRow)) <
+           anchorMemLayout.getInDimSizeLog2(kRow);
+  };
+  if (hasRowAnchor(rowPlan->warpRow0) && hasRowAnchor(rowPlan->warpRow1))
+    return std::nullopt;
+
+  return std::string(
+             "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
+             "required row anchors ") +
+         std::to_string(rowPlan->warpRow0) + "," +
+         std::to_string(rowPlan->warpRow1) +
+         " are not directly representable in the descriptor view. Access the "
+         "full backing tile or reshape/copy so the TMEM row anchors stay "
+         "materializable.";
+}
+
 bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
                                                std::string *error) {
   auto unsupported = [&](StringRef reason) {
@@ -2624,6 +2692,15 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   if (shouldPreferDirectHalfRowsSubviewRowPlan(memDesc, queryTy, queryPlan,
                                                backingPlan)) {
     return false;
+  }
+
+  auto rowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
+  if (!rowPlan)
+    rowPlan = backingPlan;
+  if (auto anchorReason =
+          getUnsupportedTMemLdStDescriptorViewRowAnchorReason(queryTy,
+                                                              rowPlan)) {
+    return unsupported(*anchorReason);
   }
 
   auto rejectHalfRowsView = [&](MemDescType srcTy) {
@@ -2897,6 +2974,26 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     return std::nullopt;
   }
 
+  auto getSourceSupport = [&](Value src)
+      -> std::optional<TMemLdStSupportQueryPlan> {
+    std::string srcError;
+    auto maybeSrcSupport = getTMemLdStSupportQueryPlan(src, &srcError);
+    FailureOr<TMemLdStQueryLayout> srcQuery =
+        maybeSrcSupport
+            ? FailureOr<TMemLdStQueryLayout>{maybeSrcSupport->query}
+            : inferStandaloneTMemLdStQueryLayoutImpl(
+                  src, /*preserveNonCanonicalView=*/true, &srcError);
+    if (failed(srcQuery))
+      return std::nullopt;
+    auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+    return TMemLdStSupportQueryPlan{
+        TMemLdStQueryLayout{srcQuery->layout,
+                            maybeTwoCTAs.value_or(srcQuery->twoCTAs),
+                            srcQuery->origin},
+        maybeSrcSupport ? maybeSrcSupport->rowPlan
+                        : std::optional<TMemLdStRowPlan>{}};
+  };
+
   if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
     auto srcTy = dyn_cast<MemDescType>(reinterpret.getSrc().getType());
     if (!srcTy || srcTy.getRank() != 2)
@@ -2922,6 +3019,44 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     return TMemLdStSupportQueryPlan{*reinterpretedSupport, support->rowPlan};
   }
 
+  if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
+    APInt indexValue;
+    if (matchPattern(index.getIndex(), m_ConstantInt(&indexValue)) &&
+        indexValue.getSExtValue() == 0) {
+      if (auto subslice = index.getSrc().getDefiningOp<gpu::MemDescSubsliceOp>();
+          subslice && isTensorMemoryColumnHalfDim0Slice(subslice)) {
+        if (auto reshape =
+                subslice.getSrc().getDefiningOp<gpu::MemDescReshapeOp>()) {
+          auto srcTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
+          if (!srcTy || srcTy.getRank() != 2)
+            return std::nullopt;
+          std::string srcError;
+          auto maybeSrcLayout = getTMemViewAnalysisLinearLayout(
+              srcTy.getShape(), srcTy.getEncoding(), &srcError);
+          if (!maybeSrcLayout) {
+            if (auto maybeCanonical =
+                    getCanonicalTMemLinearEncoding(srcTy, &srcError)) {
+              maybeSrcLayout = normalizeTensorMemoryLinearLayoutForAnalysis(
+                  maybeCanonical->getLinearLayout());
+            }
+          }
+          if (!maybeSrcLayout)
+            return std::nullopt;
+          auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+          auto rowPlan = getTMemLdStRowPlanForQuery(reshape.getSrc(), srcTy);
+          if (!rowPlan)
+            rowPlan = getBackingTMemLdStRowPlan(reshape.getSrc());
+          return TMemLdStSupportQueryPlan{
+              TMemLdStQueryLayout{*maybeSrcLayout,
+                                  maybeTwoCTAs.value_or(false),
+                                  SmallVector<int32_t>(
+                                      maybeSrcLayout->getNumInDims(), 0)},
+              rowPlan};
+        }
+      }
+    }
+  }
+
   auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>();
   if (!subslice)
     return std::nullopt;
@@ -2935,24 +3070,17 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     return std::nullopt;
   }
 
-  std::string srcError;
-  auto maybeSrcSupport =
-      getTMemLdStSupportQueryPlan(subslice.getSrc(), &srcError);
-  FailureOr<TMemLdStQueryLayout> srcQuery =
-      maybeSrcSupport
-          ? FailureOr<TMemLdStQueryLayout>{maybeSrcSupport->query}
-          : inferStandaloneTMemLdStQueryLayoutImpl(
-                subslice.getSrc(), /*preserveNonCanonicalView=*/true,
-                &srcError);
-  if (failed(srcQuery))
+  auto maybeSrcSupport = getSourceSupport(subslice.getSrc());
+  if (!maybeSrcSupport)
     return std::nullopt;
+  auto support = *maybeSrcSupport;
 
   auto *ctx = memDesc.getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
-  encodedOffsets.reserve(srcQuery->layout.getNumInDims());
-  for (auto dim : srcQuery->layout.getInDimNames()) {
+  encodedOffsets.reserve(support.query.layout.getNumInDims());
+  for (auto dim : support.query.layout.getInDimNames()) {
     if (dim == kRow)
       encodedOffsets.push_back({dim, subslice.getOffsets()[0]});
     else if (dim == kCol)
@@ -2962,12 +3090,10 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   }
 
   auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
-  return TMemLdStSupportQueryPlan{
-      TMemLdStQueryLayout{
-          srcQuery->layout, maybeTwoCTAs.value_or(srcQuery->twoCTAs),
-          remapTMemLdStQueryOrigin(*srcQuery, srcQuery->layout, encodedOffsets)},
-      maybeSrcSupport ? maybeSrcSupport->rowPlan
-                      : std::optional<TMemLdStRowPlan>{}};
+  support.query.twoCTAs = maybeTwoCTAs.value_or(support.query.twoCTAs);
+  support.query.origin = remapTMemLdStQueryOrigin(
+      support.query, support.query.layout, encodedOffsets);
+  return support;
 }
 
 std::optional<TMemLdStSupportQueryPlan>

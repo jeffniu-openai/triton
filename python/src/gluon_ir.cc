@@ -1894,6 +1894,45 @@ void init_gluon_ir(py::module &&m) {
           bool disableTypeOnlyFallback =
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;
+          auto isGenericHalfRowsDescriptorView = [&](Value memDesc) {
+            auto queryTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+            auto rejectHalfRowsView = [&](ttg::MemDescType srcTy) {
+              return srcTy && queryTy && srcTy.getRank() == 2 &&
+                     queryTy.getRank() == 2 &&
+                     srcTy.getShape()[0] == queryTy.getShape()[0] * 2 &&
+                     srcTy.getShape()[1] == queryTy.getShape()[1];
+            };
+            if (auto subslice = memDesc.getDefiningOp<ttg::MemDescSubsliceOp>()) {
+              auto srcTy = dyn_cast<ttg::MemDescType>(subslice.getSrc().getType());
+              auto offsets = subslice.getOffsets();
+              return rejectHalfRowsView(srcTy) && offsets.size() == 2 &&
+                     offsets[0] == queryTy.getShape()[0] && offsets[1] == 0;
+            }
+            auto index = memDesc.getDefiningOp<ttg::MemDescIndexOp>();
+            if (!index)
+              return false;
+            APInt indexValue;
+            if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)) ||
+                indexValue.getSExtValue() != 0)
+              return false;
+            auto subslice = index.getSrc().getDefiningOp<ttg::MemDescSubsliceOp>();
+            if (!subslice)
+              return false;
+            auto offsets = subslice.getOffsets();
+            if (offsets.size() != 3 || offsets[0] != 1 || offsets[1] != 0 ||
+                offsets[2] != 0)
+              return false;
+            auto reshape = subslice.getSrc().getDefiningOp<ttg::MemDescReshapeOp>();
+            if (!reshape)
+              return false;
+            auto reshapeTy = dyn_cast<ttg::MemDescType>(reshape.getType());
+            auto srcTy = dyn_cast<ttg::MemDescType>(reshape.getSrc().getType());
+            return reshapeTy && rejectHalfRowsView(srcTy) && queryTy &&
+                   reshapeTy.getRank() == 3 && queryTy.getRank() == 2 &&
+                   reshapeTy.getShape()[0] == 2 &&
+                   reshapeTy.getShape()[1] == queryTy.getShape()[0] &&
+                   reshapeTy.getShape()[2] == queryTy.getShape()[1];
+          };
           auto hasZeroBasisAlong = [&](const tt::LinearLayout &layout,
                                       StringAttr dim) {
             if (!layout.hasInDim(dim))
@@ -2084,11 +2123,15 @@ void init_gluon_ir(py::module &&m) {
               return layout;
             }
           }
-          if (disableTypeOnlyFallback &&
-              isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
-                              ttg::MemDescReshapeOp, ttg::MemDescTransOp,
-                              ttg::MemDescReinterpretOp>(
-                  queryMemDesc.getDefiningOp())) {
+          if (isGenericHalfRowsDescriptorView(queryMemDesc)) {
+            if (traceToFile)
+              appendTrace("findDirectLayoutForMemDesc halfRows exact-lowering-required");
+            if (debug) {
+              debugLog << "[tmem-reg-layout] half-rows descriptor view requires exact support/raw-query lowering; refusing type-only fallback\n";
+            }
+            return py::none();
+          }
+          if (disableTypeOnlyFallback && isViewLikeMemDesc) {
             return py::none();
           }
           py::object supportFallback = py::none();

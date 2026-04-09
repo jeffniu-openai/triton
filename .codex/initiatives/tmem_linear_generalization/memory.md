@@ -2847,3 +2847,23 @@ rejection, not rescue
   1. tighten or repair the view-like fallback path in `compute_tmem_reg_layout_from_memdesc(...)` so surrogate query-type fallback cannot over-admit wrong-code descriptor views.
   2. return to the real half-row packet-decomposition fix once the fallback path is no longer masking it.
   3. debug the separate split-N permuted reg-layout / lowering misalignment after the view-like descriptor work.
+
+## 2026-04-09 descriptor-view fallback checkpoint: column-half views restored, split-N row-anchor bug remains
+- The descriptor-view over-admission buckets from the previous checkpoint are closed locally:
+  - lifted one-CTA and two-CTA `dim0_slice` positives are green again.
+  - lifted higher-rank half-row clean negatives are green again.
+  - `scrambled_cols` multidim slice is back to a clean unsupported boundary instead of wrong-code.
+- Durable implementation shape from this slice:
+  - lifted `reshape -> dim0 subslice -> index` column-half views now get a real TMEM support-query plan derived from the backing 2D support frame.
+  - impossible direct descriptor views are screened by row-anchor representability, not by a blanket Gluon-side surrogate-query ban.
+  - Gluon direct reg-layout search can use surrogate/canonical query types again after support-query and raw-query paths fail.
+- Current remaining TMEM bug bucket on healthy local GPUs:
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` still faults with `Triton Error [CUDA]: misaligned address` for row/col-permuted `M=64` direct ld/st layouts.
+  - the failure is not specific to the split-N heuristic: exact repro on `row_perm=rotate1`, `col_perm=identity`, `n=2` also faults for explicit `16x32bx2`.
+  - warmup TTGIR for that repro shows the generated reg-layout warp anchors as `[[32, 0], [1, 0]]` while the logical 64-row family should anchor on `16,32`; current code is keying off row-basis order under permutation instead of logical row-anchor coordinates.
+- Validation evidence worth preserving:
+  - focused descriptor-view runtime slices: `21 passed`, then `47 passed, 1 skipped`, then two-CTA `12 passed`.
+  - exact split-N repro remains red under `CUDA_LAUNCH_BLOCKING=1`.
+  - mixed-file broad sweeps on this node are currently noisy because GPU 0 showed unrelated `test_mma_shared_inputs[...]` NaN failures in `python/test/gluon/test_core.py`; do not treat that bucket as TMEM initiative signal until rerun independently.
+- Next step:
+  - repair 64-row direct ld/st anchor selection/validation for row-permuted layouts, then rerun the row/col-permuted split-N sweep and a clean matrix-only shard sweep.
