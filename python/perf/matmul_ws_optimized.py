@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 
 import torch
 import triton
@@ -8,16 +9,11 @@ import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 import triton.experimental.gluon.language.nvidia.blackwell as blackwell
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
-from triton.experimental.gluon.language.nvidia.hopper import tma as hopper_tma
-from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
-from triton.tools.ragged_tma import create_ragged_descriptor
 
 from triton_kernels.matmul import Epilogue, FusedActivation, FusedComm, PrecisionConfig
 from triton_kernels.tensor import RaggedTensorMetadata, Tensor
 
 from . import matmul_ws as ws_base
-
-EPILOGUE_SUBTILE_M = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,31 +24,14 @@ class KernelConfig:
     xcd_swizzle: int = 1
     n_major: bool = False
     num_warps: int = 8
+    x_num_bufs: int = 5
+    w_num_bufs: int = 4
+    epilogue_n_elems: int = 4
+    acc_instr_variant: str = "32x32b"
 
 
 @gluon.jit
-def to_ragged_indices(slice_off, slice_size, row):
-    billion: gl.constexpr = 0x40000000
-    return billion, slice_off + slice_size, billion - slice_size + row
-
-
-@gluon.jit
-def store_output_subtile_ragged(
-    out_desc,
-    out_sub,
-    slice_offset,
-    shape_m,
-    row_off,
-    out_off_n,
-):
-    subtile_m: gl.constexpr = out_desc.block_shape[2]
-    subtile_n: gl.constexpr = out_desc.block_shape[3]
-    c0, c1, c2 = to_ragged_indices(slice_offset, shape_m, row_off)
-    hopper_tma.descriptor_store(out_desc, [c0, c1, c2, out_off_n], gl.reshape(out_sub, (1, 1, subtile_m, subtile_n)))
-
-
-@gluon.jit
-def epilogue_partition_optimized(p: ws_base.PartitionArgs):
+def epilogue_partition_optimized(p: ws_base.PartitionArgs, EPILOGUE_N_ELEMS: gl.constexpr):
     idx = 0
     phase = 0
 
@@ -64,16 +43,14 @@ def epilogue_partition_optimized(p: ws_base.PartitionArgs):
     acc_reg_layout: gl.constexpr = p.acc_bufs.index(0).get_reg_layout()
     num_warps: gl.constexpr = gl.num_warps()
     warps_n: gl.constexpr = 2 if num_warps >= 4 and p.BLOCK_N >= 256 else 1
-    split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [num_warps // warps_n, warps_n], [1, 0])
+    split_layout: gl.constexpr = gl.BlockedLayout(
+        [1, EPILOGUE_N_ELEMS],
+        [1, 32],
+        [num_warps // warps_n, warps_n],
+        [1, 0],
+    )
     bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
-    use_ragged_tma_store: gl.constexpr = len(p.out_desc.block_shape) == 4
     block_n_div_act: gl.constexpr = p.BLOCK_N // p.REDUCTION_N
-    if use_ragged_tma_store:
-        subtile_m: gl.constexpr = p.out_desc.block_shape[2]
-        subtile_n: gl.constexpr = p.out_desc.block_shape[3]
-        subtile_factor_m: gl.constexpr = p.BLOCK_M // subtile_m
-        gl.static_assert(subtile_n == block_n_div_act)
-        gl.static_assert((subtile_factor_m == 1) | (subtile_factor_m == 2))
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
@@ -95,51 +72,21 @@ def epilogue_partition_optimized(p: ws_base.PartitionArgs):
         mbarrier.arrive(acc_empty_bar)
         idx, phase = ws_base.advance(idx, phase, p.acc_num_bufs)
 
+        out_off_n = pid_n * p.BLOCK_N // p.REDUCTION_N
         acc = gl.fma(gl.convert_layout(acc.permute((1, 0)), split_layout), acc_scale, bias)
 
         out = ws_base.swiglu(acc, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
-        out_off_n = pid_n * p.BLOCK_N // p.REDUCTION_N
         out = out * out_recip
         if p.FLEXPOINT_SATURATE_INF:
             out = gl.clamp(out, -448.0, 448.0)
         out = out.to(p.out_desc.dtype)
 
-        if use_ragged_tma_store:
-            if subtile_factor_m == 1:
-                store_output_subtile_ragged(
-                    p.out_desc,
-                    out,
-                    slice_offset,
-                    shape_m,
-                    off_m,
-                    out_off_n,
-                )
-            else:
-                out0, out1 = gl.split(gl.reshape(out, (subtile_factor_m, subtile_m, block_n_div_act)).permute((1, 2, 0)))
-                store_output_subtile_ragged(
-                    p.out_desc,
-                    out0,
-                    slice_offset,
-                    shape_m,
-                    off_m,
-                    out_off_n,
-                )
-                store_output_subtile_ragged(
-                    p.out_desc,
-                    out1,
-                    slice_offset,
-                    shape_m,
-                    off_m + subtile_m,
-                    out_off_n,
-                )
-        else:
-            layout: gl.constexpr = out.type.layout
-            offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, layout))
-            offs_n = out_off_n + gl.arange(0, block_n_div_act, layout=gl.SliceLayout(0, layout))
-            mask = gl.expand_dims(offs_m < shape_m, 1)
-            ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
-            ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
-            gl.store(ptrs, out, mask=mask)
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, out.type.layout))
+        offs_n = out_off_n + gl.arange(0, block_n_div_act, layout=gl.SliceLayout(0, out.type.layout))
+        mask = gl.expand_dims(offs_m < shape_m, 1)
+        ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
+        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+        gl.store(ptrs, out, mask=mask)
 
 @gluon.jit
 def ws_matmul_kernel_optimized(
@@ -180,6 +127,9 @@ def ws_matmul_kernel_optimized(
     XCD_SWIZZLE: gl.constexpr,
     N_MAJOR: gl.constexpr,
     NUM_SMS: gl.constexpr,
+    X_NUM_BUFS: gl.constexpr,
+    W_NUM_BUFS: gl.constexpr,
+    EPILOGUE_N_ELEMS: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -197,7 +147,7 @@ def ws_matmul_kernel_optimized(
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
     acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([128, BLOCK_M], col_stride=1)
 
-    x_num_bufs: gl.constexpr = 4
+    x_num_bufs: gl.constexpr = X_NUM_BUFS
     x_bufs = gl.allocate_shared_memory(
         x_desc.dtype,
         [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
@@ -209,7 +159,7 @@ def ws_matmul_kernel_optimized(
         mbarrier.init(x_empty_bars.index(i), count=1)
         mbarrier.init(x_ready_bars.index(i), count=1)
 
-    w_num_bufs: gl.constexpr = 4
+    w_num_bufs: gl.constexpr = W_NUM_BUFS
     w_bufs = gl.allocate_shared_memory(
         w_desc.dtype,
         [w_num_bufs] + w_desc.block_type.shape,
@@ -304,7 +254,7 @@ def ws_matmul_kernel_optimized(
     # E256/es8 bucket on this branch.
     gl.warp_specialize(
         [
-            (epilogue_partition_optimized, (p,)),
+            (epilogue_partition_optimized, (p, EPILOGUE_N_ELEMS)),
             (ws_base.load_activations, (p,)),
             (ws_base.load_weights, (p,)),
             (ws_base.mma_partition, (p,)),
@@ -334,7 +284,12 @@ def _row_count(m_rows: int, expected_slice_size: int | None, n_slices: int) -> i
 
 
 def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices: int) -> tuple[KernelConfig, int]:
-    cfg = KernelConfig()
+    defaults = KernelConfig()
+    cfg = KernelConfig(
+        x_num_bufs=int(os.environ.get("TRITON_WS_X_NUM_BUFS", defaults.x_num_bufs)),
+        w_num_bufs=int(os.environ.get("TRITON_WS_W_NUM_BUFS", defaults.w_num_bufs)),
+        epilogue_n_elems=int(os.environ.get("TRITON_WS_EPILOGUE_N_ELEMS", defaults.epilogue_n_elems)),
+    )
     row_count = _row_count(m_rows, expected_slice_size, n_slices)
     return cfg, row_count
 
@@ -349,13 +304,6 @@ def _select_launch_grid(
 ) -> int:
     num_tiles = expected_grid_m * grid_n
     return max(1, min(sms, num_tiles))
-
-
-def make_ragged_output_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ...], ragged_dim: int = 0):
-    ptr = t if isinstance(t, torch.Tensor) else t.storage.data
-    host_desc = create_ragged_descriptor(ptr, list(block_shape), ragged_dim=ragged_dim)
-    layout = ws_base.get_operand_layout(t, host_desc.block_shape)
-    return TensorDescriptor(host_desc.base, host_desc.shape, host_desc.strides, host_desc.block_shape, layout)
 
 
 def matmul(
@@ -447,10 +395,7 @@ def matmul(
             256,
         ],
     )
-    out_desc = make_ragged_output_descriptor(
-        c,
-        [min(config.block_m, EPILOGUE_SUBTILE_M), config.block_n // reduction_n],
-    )
+    out_desc = ws_base.make_operand_descriptor(c, [config.block_m, config.block_n // reduction_n])
 
     ws_matmul_kernel_optimized[grid](
         x_desc=x_desc,
@@ -490,6 +435,9 @@ def matmul(
         XCD_SWIZZLE=config.xcd_swizzle,
         N_MAJOR=config.n_major,
         NUM_SMS=launch_grid,
+        X_NUM_BUFS=config.x_num_bufs,
+        W_NUM_BUFS=config.w_num_bufs,
+        EPILOGUE_N_ELEMS=config.epilogue_n_elems,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
         MXFP_BLOCK_SIZE=mxfp_block_size,
