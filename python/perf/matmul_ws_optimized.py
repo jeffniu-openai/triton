@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-import os
 
 import torch
 import triton
@@ -1451,100 +1450,6 @@ def ws_matmul_kernel_optimized(
         mbarrier.invalidate(store_ready_bars.index(0))
 
 
-def _select_kernel_config() -> KernelConfig:
-    defaults = KernelConfig()
-    cfg = KernelConfig(
-        num_warps=defaults.num_warps,
-        x_num_bufs=int(os.environ.get("TRITON_WS_X_NUM_BUFS", defaults.x_num_bufs)),
-        w_num_bufs=int(os.environ.get("TRITON_WS_W_NUM_BUFS", defaults.w_num_bufs)),
-        load_activation_warps=int(
-            os.environ.get("TRITON_WS_LOAD_ACTIVATION_WARPS", defaults.load_activation_warps)
-        ),
-        load_weight_warps=int(
-            os.environ.get("TRITON_WS_LOAD_WEIGHT_WARPS", defaults.load_weight_warps)
-        ),
-        mma_warps=int(os.environ.get("TRITON_WS_MMA_WARPS", defaults.mma_warps)),
-        store_helper_warps=int(
-            os.environ.get("TRITON_WS_STORE_HELPER_WARPS", defaults.store_helper_warps)
-        ),
-        epilogue_n_elems=int(os.environ.get("TRITON_WS_EPILOGUE_N_ELEMS", defaults.epilogue_n_elems)),
-        epilogue_subtile_n=int(
-            os.environ.get("TRITON_WS_EPILOGUE_SUBTILE_N", defaults.epilogue_subtile_n)
-        ),
-        epilogue_row_subtile_factor=int(
-            os.environ.get(
-                "TRITON_WS_EPILOGUE_ROW_SUBTILE_FACTOR",
-                defaults.epilogue_row_subtile_factor,
-            )
-        ),
-        epilogue_n_fragment_factor=int(
-            os.environ.get(
-                "TRITON_WS_EPILOGUE_N_FRAGMENT_FACTOR",
-                defaults.epilogue_n_fragment_factor,
-            )
-        ),
-        epilogue_schedule=int(
-            os.environ.get(
-                "TRITON_WS_EPILOGUE_SCHEDULE",
-                defaults.epilogue_schedule,
-            )
-        ),
-        epilogue_store_helper=os.environ.get(
-            "TRITON_WS_USE_EPILOGUE_STORE_HELPER",
-            "1" if defaults.epilogue_store_helper else "0",
-        )
-        == "1",
-        epilogue_store_helper_depth=int(
-            os.environ.get(
-                "TRITON_WS_EPILOGUE_STORE_HELPER_DEPTH",
-                defaults.epilogue_store_helper_depth,
-            )
-        ),
-        load_activation_regs=int(
-            os.environ.get("TRITON_WS_LOAD_ACTIVATION_REGS", defaults.load_activation_regs)
-        ),
-        load_weight_regs=int(os.environ.get("TRITON_WS_LOAD_WEIGHT_REGS", defaults.load_weight_regs)),
-        mma_regs=int(os.environ.get("TRITON_WS_MMA_REGS", defaults.mma_regs)),
-        store_helper_regs=int(
-            os.environ.get("TRITON_WS_STORE_HELPER_REGS", defaults.store_helper_regs)
-        ),
-        use_packed_final_fma=os.environ.get(
-            "TRITON_WS_USE_PACKED_FINAL_FMA", "1" if defaults.use_packed_final_fma else "0"
-        )
-        == "1",
-        use_packed_fp8_store=os.environ.get(
-            "TRITON_WS_USE_PACKED_FP8_STORE", "1" if defaults.use_packed_fp8_store else "0"
-        )
-        == "1",
-        use_blocked_packed_store=os.environ.get(
-            "TRITON_WS_USE_BLOCKED_PACKED_STORE", "1" if defaults.use_blocked_packed_store else "0"
-        )
-        == "1",
-        use_wide_packed_store32=os.environ.get(
-            "TRITON_WS_USE_WIDE_PACKED_STORE32", "1" if defaults.use_wide_packed_store32 else "0"
-        )
-        == "1",
-        use_wide_packed_store64=os.environ.get(
-            "TRITON_WS_USE_WIDE_PACKED_STORE64", "1" if defaults.use_wide_packed_store64 else "0"
-        )
-        == "1",
-        use_packed_out_scale=os.environ.get(
-            "TRITON_WS_USE_PACKED_OUT_SCALE", "1" if defaults.use_packed_out_scale else "0"
-        )
-        == "1",
-        use_linear_acc_epilogue=os.environ.get(
-            "TRITON_WS_USE_LINEAR_ACC_EPILOGUE", "1" if defaults.use_linear_acc_epilogue else "0"
-        )
-        == "1",
-        use_helper_packed_out_buffer=os.environ.get(
-            "TRITON_WS_USE_HELPER_PACKED_OUT_BUFFER",
-            "1" if defaults.use_helper_packed_out_buffer else "0",
-        )
-        == "1",
-    )
-    return cfg
-
-
 def _select_launch_grid(
     grid_n: int,
     expected_grid_m: int,
@@ -1608,7 +1513,7 @@ def matmul(
     _, _, n = b.shape
     m = gather_indx.shape[0]
 
-    config = _select_kernel_config()
+    config = KernelConfig()
     # Keep the current full-width-N epilogue invariant. The scheduling work in
     # this file only splits rows; smaller N subtiles are still left disabled on
     # this branch because of layout/codegen issues.
