@@ -218,26 +218,28 @@ makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
 
 static std::optional<SmallVector<int32_t>>
 getLogicalRowAnchorBasis(const LinearLayout &layout, int32_t logicalRow) {
-  if (layout.getNumOutDims() == 0)
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (outDims.empty())
     return std::nullopt;
 
-  SmallVector<int32_t> expected(layout.getNumOutDims(), 0);
-  expected.front() = logicalRow;
+  auto *ctx = outDims.front().getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  if (!layout.hasInDim(kRow) || logicalRow < 0 ||
+      logicalRow >= layout.getInDimSize(kRow))
+    return std::nullopt;
 
-  auto outDims = llvm::to_vector(layout.getOutDimNames());
-  auto expectedCoords =
-      makeFullLinearLayoutCoords(outDims, {{outDims.front(), logicalRow}});
-  auto realizedCoords = layout.apply(layout.pseudoinvert().apply(expectedCoords));
-  for (auto [idx, outDim] : llvm::enumerate(outDims)) {
-    if (lookupLinearLayoutCoord(realizedCoords, outDim) != expected[idx])
-      return std::nullopt;
-  }
+  auto inDims = llvm::to_vector(layout.getInDimNames());
+  auto realizedCoords =
+      layout.apply(makeFullLinearLayoutCoords(inDims, {{kRow, logicalRow}}));
 
-  // Direct ld/st warp anchors live in TMEM output space. They do not need to
-  // come from a particular input-dimension basis family; widened MMAv5
-  // accumulator layouts can materialize a required row anchor through column or
-  // block bases once the full linear layout is considered.
-  return expected;
+  // TMEM row plans are expressed in the analyzed layout's logical row space.
+  // The physical warp anchor is the image of that logical row coordinate under
+  // the full linear layout, even when row/col/block families are permuted.
+  SmallVector<int32_t> anchor;
+  anchor.reserve(outDims.size());
+  for (StringAttr outDim : outDims)
+    anchor.push_back(lookupLinearLayoutCoord(realizedCoords, outDim));
+  return anchor;
 }
 
 static FailureOr<LinearLayout>

@@ -2949,3 +2949,32 @@ rejection, not rescue
 - Remaining initiative work after this checkpoint:
   - rerun the interrupted broad 4-GPU `test_core.py` + `test_tmem_runtime_matrix.py` sweep on the healthy node
   - continue on the separate half-row ld/st packet-decomposition correctness bucket if that remains the next real failure surface
+
+## 2026-04-09: row-plan anchors are logical-row images through the analyzed layout
+
+- The "row anchors are fixed output-space vectors like `[32, 0]` / `[64, 0]`" model was still wrong.
+- Correct invariant:
+  - row plans are expressed in the analyzed layout's logical `row` input space.
+  - the physical warp anchor is the image of the sparse logical point `{row = logicalRow}` under the analyzed `LinearLayout`.
+  - this is why the same row plan can materialize as different output vectors in different legal layouts.
+- Concrete evidence from the repaired split-N `64x128` root case:
+  - analyzed mem layout:
+    - `row=16 -> (0, 64)`
+    - `row=32 -> (16, 0)`
+    - `row=64 -> (32, 0)`
+  - the valid direct path is therefore anchored on the images of logical rows `32` and `64`, not on literal output vectors `[32, 0]` and `[64, 0]`.
+- Fix shape:
+  - update `getLogicalRowAnchorBasis(...)` to apply the analyzed layout to the sparse logical input point `{row = logicalRow}` and return that output-space image.
+  - this supersedes the previous full-image output-vector check, which was only accidentally correct for some widened descriptor views.
+- Validation snapshot:
+  - split-N `64x128` core roundtrip exact repro: green
+  - widened two-CTA MMAv5 control exact repro: green
+  - split-N runtime-matrix guard exact repro: green
+- Remaining live bucket after this correction:
+  - `test_block_m_64_mma[linear]`
+  - diagnosis:
+    - not a generic support-query failure
+    - packed TMEM analysis already reaches a valid `32x32b.unpack::16b`-style candidate (`atom=4`, `regsPerMsg=1`) for the row-zero-lifted reinterpret view
+    - the compiler still hard-rejects that case with `packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering`
+  - recommendation:
+    - implement the packed unpack direct lowering for row-zero-lifted reinterpret views and remove the clean-negative guard once the emitted PTX/LLIR is correct.

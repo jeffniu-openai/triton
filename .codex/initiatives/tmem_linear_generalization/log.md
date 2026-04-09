@@ -5314,3 +5314,42 @@ Open after this slice:
       - `30 passed`
 - Next step after this checkpoint:
   - resume the interrupted 4-GPU `python/test/gluon/test_core.py` + `python/test/gluon/test_tmem_runtime_matrix.py` sweep and stop on the next clean failure bucket, if any.
+
+## 2026-04-09 row anchors are the analyzed layout image of logical row coordinates, not fixed output vectors
+- The previous checkpoint's "full-image output-space anchor `[logical_row, 0]`" rule was still too strong.
+- Broad reruns exposed a real false-negative on the direct split-N root path:
+  - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[splitn_64x128-layout6-64-128-expected_offset_imms6]`
+  - failure shape before the fix:
+    - `ttng.tmem_store op source has no supported register layout`
+    - diagnostic: `required row anchors 32,64 are not directly representable in the descriptor view`
+- Half-rows debug showed why the output-vector rule was wrong for legal M64 direct paths:
+  - analyzed mem layout for the split-N `64x128` root case:
+    - `row=16 -> (0, 64)`
+    - `row=32 -> (16, 0)`
+    - `row=64 -> (32, 0)`
+  - row plans are expressed in the analyzed layout's logical `row` input space, and the physical warp anchor is the image of that logical row coordinate under the analyzed layout.
+  - in other words, the direct path does not require literal output vectors `[32, 0]` and `[64, 0]`; it requires whatever output-space vectors `row=32` and `row=64` map to in the analyzed layout.
+- Corrected helper invariant:
+  - `getLogicalRowAnchorBasis(...)` must build the sparse logical input point `{row = logicalRow}` and apply the analyzed `LinearLayout` to it.
+  - this naturally handles row/col/block entanglement without assuming basis-family position or assuming a fixed output-space row axis.
+- Important cross-check:
+  - the widened two-CTA MMAv5 case that motivated the previous checkpoint still stays green under this corrected rule.
+  - half-rows debug there shows the same phenomenon: `row=64` maps to `(0, 32)` in the analyzed mem layout, while the lowering still succeeds.
+- Focused validation after the correction:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `HOME=/tmp/triton-home-splitn64x128-fixcheck TRITON_CACHE_DIR=/tmp/triton-cache-splitn64x128-fixcheck CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[splitn_64x128-layout6-64-128-expected_offset_imms6]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-twocta-fixcheck TRITON_CACHE_DIR=/tmp/triton-cache-twocta-fixcheck CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[True-ctas_per_cga2-1-1-1-64-64-0-warps0-16-True-False-acc_dtype6]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-splitn-guard-fixcheck TRITON_CACHE_DIR=/tmp/triton-cache-splitn-guard-fixcheck CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - `1 passed`
+- New remaining live bucket after this correction:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - exact current failure:
+    - `ttng.tmem_store op source has no supported register layout`
+    - diagnostic: `row-zero lifted TMEM reinterpret views require the packed 32x32b.unpack::16b direct path`
+  - TMEM query debug now shows this is not an arbitrary rejection:
+    - packed support analysis reaches a valid `atom=4` / `regsPerMsg=1` candidate and computes the packed conversion
+    - the current hard stop is the explicit guard `packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering`
+  - recommendation:
+    - implement the packed `32x32b.unpack::16b` direct lowering for row-zero-lifted reinterpret views instead of rejecting them at support-query time.
