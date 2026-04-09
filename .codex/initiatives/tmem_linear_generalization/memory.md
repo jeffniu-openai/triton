@@ -2978,3 +2978,32 @@ rejection, not rescue
     - the compiler still hard-rejects that case with `packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering`
   - recommendation:
     - implement the packed unpack direct lowering for row-zero-lifted reinterpret views and remove the clean-negative guard once the emitted PTX/LLIR is correct.
+
+## 2026-04-09: `block_m_64` bucket closed
+
+- Final root cause was producer planning, not a missing ISA path:
+  - the manual tcgen05 MMA builder copied the explicit root row plan onto the accumulator TMEM alloc but not onto TMEM-backed source operands.
+  - the `block_m_64` linear kernel therefore emitted the intended `16x32bx2` direct path yet still produced wrong numerics because the TMEM roots did not share the same explicit row-anchor contract.
+- Durable fix:
+  - `TensorMemoryUtils.cpp`
+    - keep row-zero-lifted `M=64` reinterpret classification keyed off the original reinterpret-view semantics
+    - continue rejecting the packed-support shortcut for row-zero-lifted non-`I32x32b` candidates so the compiler does not silently choose the wrong packed path
+  - `python/src/gluon_ir.cc`
+    - add `annotateMMAv5TMemOperandRootRowPlan(...)`
+    - copy the accumulator's explicit `ttng.tmem_ldst_row_plan` onto TMEM-backed MMA operands in both tcgen05 MMA builders
+- Result:
+  - `%al_tmem`, `%ar_tmem`, and `%acc_tmem` all carry `ttng.tmem_ldst_row_plan = array<i32: 32, 64, 128, 0>`
+  - focused `block_m_64` probe is numerically clean (`close True`, `max_abs 0.01538`)
+  - `test_tmem_subslice_block_m_64_parent_layout[linear]` is now a real positive and should stay that way unless the direct row-zero-lifted path regresses
+- Test updates:
+  - flip the former negative `linear` parent-layout case to positive
+  - keep `test_block_m_64_mma` checking correctness plus the direct `16x32bx2` opcode mix
+  - do not pin the exact TMEM alloc word count; that overfit failed during validation and is not the right contract
+- Focused validation snapshot:
+  - `make -j8`
+  - `test_tmem_subslice_block_m_64_parent_layout` -> `2 passed`
+  - `test_block_m_64_mma` -> `2 passed`
+  - widened two-CTA `test_mma_shared_inputs[...]` guard -> `1 passed`
+  - split-N runtime-matrix guard repro -> `1 passed`
+- Next step:
+  - resume the broader healthy-node validation sweep and classify the next real failure bucket, if any.

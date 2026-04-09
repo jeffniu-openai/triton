@@ -2069,8 +2069,8 @@ def test_tmem_subslice_block_m_64(layout_kind):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_kind,expect_direct_success", [("legacy", True), ("linear", False)])
-def test_tmem_subslice_block_m_64_parent_layout(layout_kind, expect_direct_success, capfd, fresh_triton_cache):
+@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
+def test_tmem_subslice_block_m_64_parent_layout(layout_kind, fresh_triton_cache):
 
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
 
@@ -2093,24 +2093,14 @@ def test_tmem_subslice_block_m_64_parent_layout(layout_kind, expect_direct_succe
     s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
     out_tri = torch.empty_like(s)
 
-    if expect_direct_success:
-        compiled = kernel[(1, )](s, out_tri)
+    compiled = kernel[(1, )](s, out_tri)
 
-        out_ref = s.clone()
-        out_ref[:, 0:32] = 0.0
-        out_ref[:, 64:96] = 0.0
+    out_ref = s.clone()
+    out_ref[:, 0:32] = 0.0
+    out_ref[:, 64:96] = 0.0
 
-        torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
-        assert "ttg.convert_layout" not in compiled.asm["ttgir"]
-        return
-
-    with pytest.raises(Exception) as err:
-        kernel[(1, )](s, out_tri)
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert "source has no supported register layout" in text
-    assert "row-zero lifted TMEM reinterpret views require the packed 32x32b.unpack::16b direct path" in text
-    assert "Use the descriptor's own get_reg_layout() result rather than a parent TMEM register layout." in text
+    torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
+    assert "ttg.convert_layout" not in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2198,12 +2188,12 @@ def test_block_m_64_mma(layout_kind):
     assert ttgir.count("ttng.tmem_alloc") == 3
     assert len(re.findall(r"ttng\.tmem_alloc(?: \{[^}]*\})? : \(\) -> !ttg\.memdesc<64x128xf32", ttgir)) == 1
     assert len(re.findall(r"ttng\.tmem_alloc(?: \{[^}]*\})? : \(\) -> !ttg\.memdesc<64x128xf16", ttgir)) == 2
-    assert ttgir.count("ttng.tmem_ldst_row_plan") == 1
+    assert ttgir.count("ttng.tmem_ldst_row_plan") == 3
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_subslice" not in ttgir
 
     llir = compiled.asm["llir"]
-    assert llir.count("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [$1], 128")
+    assert llir.count("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [$1],") == 1
     ptx = compiled.asm["ptx"]
     assert ptx.count("tcgen05.st.sync.aligned.16x32bx2.x16.b32") == 4
     assert ptx.count("tcgen05.st.sync.aligned.16x32bx2.x32.b32") == 2

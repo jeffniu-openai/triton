@@ -4235,9 +4235,7 @@ computeTMemLdStEncodingInfoImpl(
       logicalRows == originalActivePhysicalRows &&
       logicalCols == originalPhysicalCols * 2;
   bool isRowZeroM64ReinterpretView =
-      bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
-      !hasZeroBasisAlong(memLayout, kCol) && logicalRows == physicalRows &&
-      logicalCols == physicalCols * 2;
+      bitwidth == 16 && logicalRows == 64 && isOriginalRowZeroLiftedReinterpret;
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding());
   LinearLayout regLayout =
       squeezeTrivialBlock(toLinearEncoding(regTy).getLinearLayout());
@@ -4560,8 +4558,7 @@ computeTMemLdStEncodingInfoImpl(
     bool isPackedRowZeroLiftedView =
         hasZeroBasisAlong(packedMemLayout, kRow) &&
         !hasZeroBasisAlong(packedMemLayout, kCol);
-    if (isPackedRowZeroLiftedView && info->atom != TMemAccessAtom::I32x32b &&
-        !isRowZeroM64ReinterpretView) {
+    if (isPackedRowZeroLiftedView && info->atom != TMemAccessAtom::I32x32b) {
       if (debugQuery) {
         llvm::errs() << "[tmem-ldst] packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering\n";
       }

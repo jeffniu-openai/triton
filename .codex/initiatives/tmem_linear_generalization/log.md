@@ -5353,3 +5353,44 @@ Open after this slice:
     - the current hard stop is the explicit guard `packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering`
   - recommendation:
     - implement the packed `32x32b.unpack::16b` direct lowering for row-zero-lifted reinterpret views instead of rejecting them at support-query time.
+
+## 2026-04-09: `block_m_64` linear is fixed; the remaining failures were stale tests, not a live TMEM bug
+
+- The original `block_m_64` diagnosis was only half right.
+  - there was a real compiler bug, but it was not "missing packed unpack direct lowering" anymore after the row-zero-lifted support-query cleanup.
+  - after that cleanup, the remaining wrong-code came from producer planning: the manual `tcgen05_mma` builder annotated the accumulator TMEM root with an explicit `ttng.tmem_ldst_row_plan`, but left the TMEM operand roots implicit.
+- Root cause:
+  - `test_block_m_64_mma[linear]` stores `al` / `ar` through row-zero-lifted reinterpret views and then consumes those TMEM allocations through `tcgen05_mma`.
+  - with only `%acc_tmem` carrying `ttng.tmem_ldst_row_plan = array<i32: 32, 64, 128, 0>`, TTGIR/LLIR still chose the expected `16x32bx2` direct op mix, but the TMEM source roots and accumulator root no longer agreed on the explicit row-anchor contract.
+  - that mismatch produced wrong numerics even though the emitted opcode family looked plausible.
+- Fix shape:
+  - in `TensorMemoryUtils.cpp`, keep row-zero-lifted `M=64` reinterpret recognition keyed off the original reinterpret-view semantics, not only the remapped support-query mem layout.
+  - still reject the packed-support shortcut for row-zero-lifted non-`I32x32b` candidates so the compiler does not silently fall back to the wrong packed path.
+  - in `python/src/gluon_ir.cc`, add `annotateMMAv5TMemOperandRootRowPlan(...)` and copy the accumulator's explicit row plan onto TMEM-backed MMA operands in both `create_tcgen05_mma(...)` and `create_tcgen05_mma_scaled(...)`.
+- Concrete evidence after the fix:
+  - TTGIR now carries `ttng.tmem_ldst_row_plan = array<i32: 32, 64, 128, 0>` on `%al_tmem`, `%ar_tmem`, and `%acc_tmem`.
+  - the focused `block_m_64` probe is numerically clean:
+    - `close True`
+    - `max_abs 0.015384674072265625`
+  - the intended direct-path opcode mix is preserved:
+    - `tcgen05.st.sync.aligned.16x32bx2.x16.b32` -> `4`
+    - `tcgen05.st.sync.aligned.16x32bx2.x32.b32` -> `2`
+    - `tcgen05.ld.sync.aligned.16x32bx2.x32.b32` -> `2`
+    - `tcgen05.mma.cta_group::1.kind::f16` -> `16`
+- Test fallout:
+  - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout[linear-False]` was a stale negative. The linear parent-layout reinterpret path is now a valid direct positive, so the test should compile/run and assert no `ttg.convert_layout`.
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]` failed only because its TTGIR/LLIR shape assertions lagged the fix.
+  - one attempted test update overfit the exact TMEM alloc word count (`128` vs `256`); that is not the right contract here, so the final test keeps the direct-path opcode and correctness assertions and only checks that the alloc exists.
+- Focused validation after the fix and test refresh:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `HOME=/tmp/triton-home-blockm64-parent-final3 TRITON_CACHE_DIR=/tmp/triton-cache-blockm64-parent-final3 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout`
+    - `2 passed`
+  - `HOME=/tmp/triton-home-blockm64-final3 TRITON_CACHE_DIR=/tmp/triton-cache-blockm64-final3 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_block_m_64_mma`
+    - `2 passed`
+  - `HOME=/tmp/triton-home-mma-twocta-final3 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-final3 CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[True-ctas_per_cga2-1-1-1-64-64-0-warps0-16-True-False-acc_dtype6]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-splitn-guard-final3 TRITON_CACHE_DIR=/tmp/triton-cache-splitn-guard-final3 CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - `1 passed`
+- Current status after closing `block_m_64`:
+  - the `block_m_64` linear bucket is no longer a live issue.
+  - the immediate next step is to resume the broader healthy-node sweep and stop on the next real TMEM failure surface, if any.

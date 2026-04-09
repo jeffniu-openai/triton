@@ -127,6 +127,14 @@ static void annotateMMAv5AccumulatorRootRowPlan(Value acc) {
     ttng::setExplicitTMemLdStRowPlan(alloc, *plan);
 }
 
+static void annotateMMAv5TMemOperandRootRowPlan(Value operand, Value acc) {
+  auto operandAlloc = getBackingTMemAlloc(operand);
+  auto accAlloc = getBackingTMemAlloc(acc);
+  if (!operandAlloc || !accAlloc || operandAlloc == accAlloc)
+    return;
+  ttng::copyExplicitTMemLdStRowPlan(operandAlloc, accAlloc);
+}
+
 struct GluonOpBuilder : public TritonOpBuilder {
   using TritonOpBuilder::TritonOpBuilder;
   // Construct an attribute or type while calling its verifier. Error messages
@@ -1049,6 +1057,8 @@ void init_gluon_ir(py::module &&m) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
              annotateMMAv5AccumulatorRootRowPlan(acc);
+             annotateMMAv5TMemOperandRootRowPlan(a, acc);
+             annotateMMAv5TMemOperandRootRowPlan(b, acc);
              self.create<ttng::TCGen5MMAOp>(tokType, a, b, acc, accDep, useAcc,
                                             pred, two_ctas, multicast,
                                             mbarriers, mbarrier_preds,
@@ -1063,6 +1073,8 @@ void init_gluon_ir(py::module &&m) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
              annotateMMAv5AccumulatorRootRowPlan(acc);
+             annotateMMAv5TMemOperandRootRowPlan(a, acc);
+             annotateMMAv5TMemOperandRootRowPlan(b, acc);
              self.create<ttng::TCGen5MMAScaledOp>(
                  tokType, a, b, acc, accDep, aScale, bScale, aType, bType,
                  useAcc, pred, mbarriers, mbarrier_preds, two_ctas,
