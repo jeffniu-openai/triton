@@ -2069,8 +2069,8 @@ def test_tmem_subslice_block_m_64(layout_kind):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
-def test_tmem_subslice_block_m_64_parent_layout_reports_clean_error(layout_kind, capfd):
+@pytest.mark.parametrize("layout_kind,expect_direct_success", [("legacy", True), ("linear", False)])
+def test_tmem_subslice_block_m_64_parent_layout(layout_kind, expect_direct_success, capfd, fresh_triton_cache):
 
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
 
@@ -2092,12 +2092,25 @@ def test_tmem_subslice_block_m_64_parent_layout_reports_clean_error(layout_kind,
     torch.manual_seed(0)
     s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
     out_tri = torch.empty_like(s)
+
+    if expect_direct_success:
+        compiled = kernel[(1, )](s, out_tri)
+
+        out_ref = s.clone()
+        out_ref[:, 0:32] = 0.0
+        out_ref[:, 64:96] = 0.0
+
+        torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
+        assert "ttg.convert_layout" not in compiled.asm["ttgir"]
+        return
+
     with pytest.raises(Exception) as err:
         kernel[(1, )](s, out_tri)
     captured = capfd.readouterr()
     text = str(err.value) + captured.err + captured.out
     assert "source has no supported register layout" in text
-    assert "Use the descriptor's own get_reg_layout() result" in text or "register layout image is not contained" in text
+    assert "row-zero lifted TMEM reinterpret views require the packed 32x32b.unpack::16b direct path" in text
+    assert "Use the descriptor's own get_reg_layout() result rather than a parent TMEM register layout." in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -2435,6 +2448,70 @@ def test_tmem_descriptor_chain_matrix(name, layout, M, N, instr_variant, num_war
     assert expected_ld in compiled.asm["ptx"]
     assert expected_st in compiled.asm["llir"]
     assert expected_ld in compiled.asm["llir"]
+
+
+@gluon.jit
+def tmem_legacy_m64_root_subslice_default_load_kernel(inp_ptr, out_ptr):
+    layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    offs_m = ttgl.arange(0, 64, layout=ttgl.SliceLayout(1, layout))[:, None]
+    offs_n = ttgl.arange(0, 32, layout=ttgl.SliceLayout(0, layout))[None, :]
+    offs = offs_m * 32 + offs_n
+
+    inp = ttgl.load(inp_ptr + offs)
+
+    tmem_layout: ttgl.constexpr = TensorMemoryLayout((64, 64), col_stride=1)
+    tmem = allocate_tensor_memory(ttgl.float32, [64, 64], layout=tmem_layout)
+    sub = tmem.slice(0, 32, dim=1)
+
+    sub_layout: ttgl.constexpr = sub.get_reg_layout(instr_variant="32x32b_splitn")
+    sub.store(ttgl.convert_layout(inp, sub_layout))
+    out = sub.load()
+    out = ttgl.convert_layout(out, layout)
+    ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
+def tmem_legacy_m64_index_subslice_default_load_kernel(inp_ptr, out_ptr):
+    layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    offs_m = ttgl.arange(0, 64, layout=ttgl.SliceLayout(1, layout))[:, None]
+    offs_n = ttgl.arange(0, 32, layout=ttgl.SliceLayout(0, layout))[None, :]
+    offs = offs_m * 32 + offs_n
+
+    inp = ttgl.load(inp_ptr + offs)
+
+    tmem_layout: ttgl.constexpr = TensorMemoryLayout((64, 64), col_stride=1)
+    tmem = allocate_tensor_memory(ttgl.float32, [2, 64, 64], layout=tmem_layout)
+    sub = tmem.index(1).slice(0, 32, dim=1)
+
+    sub_layout: ttgl.constexpr = sub.get_reg_layout(instr_variant="32x32b_splitn")
+    sub.store(ttgl.convert_layout(inp, sub_layout))
+    out = sub.load()
+    out = ttgl.convert_layout(out, layout)
+    ttgl.store(out_ptr + offs, out)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "name,kernel",
+    [
+        ("root_subslice", tmem_legacy_m64_root_subslice_default_load_kernel),
+        ("index_subslice", tmem_legacy_m64_index_subslice_default_load_kernel),
+    ],
+)
+def test_tmem_legacy_m64_subview_default_load_auto_selects_splitn(name, kernel):
+    M = 64
+    N = 32
+    inp = torch.arange(M * N, dtype=torch.float32, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = kernel[(1, )](inp, out, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_opcode = "tcgen05.ld.sync.aligned.16x32bx2.x8.b32"
+    assert expected_opcode in compiled.asm["ptx"]
+    assert expected_opcode in compiled.asm["llir"]
+    assert "tcgen05.ld.sync.aligned.32x32b" not in compiled.asm["ptx"]
+    assert "tcgen05.ld.sync.aligned.32x32b" not in compiled.asm["llir"]
 
 
 TMEM_LINEAR_ATOM_CASES = [

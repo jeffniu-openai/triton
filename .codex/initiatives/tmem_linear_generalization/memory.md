@@ -2826,3 +2826,10 @@ rejection, not rescue
   - remaining work is no longer planner cleanup; it is the separate half-row
     ld/st correctness bucket plus resuming GB200-equivalent validation once the
     machine is healthy
+
+## 2026-04-09 cache-sensitive validation and current block_m_64 boundary
+- `fresh_knobs` deletes cache env vars such as `TRITON_CACHE_DIR`, so command-line cache-dir isolation is not sufficient for tests that use that fixture. If a test needs a fresh compiler cache after calling `fresh_knobs`, set `fresh_knobs.cache.dir = fresh_triton_cache` inside the test or clear the default `~/.triton/cache` before a broad shard rerun.
+- Parameterized tests whose compile result depends on a closure/layout object can alias through the on-disk cache inside one pytest process unless they get a per-test cache dir.
+- Current `block_m_64` parent-layout reinterpret boundary:
+  - legacy `TensorMemoryLayout((64, 64), col_stride=1)` parent-layout stores into the packed `float16` reinterpret subview are now positive and lower directly.
+  - the row-zero-lifted `_make_tmem_linear_layout_m64(128)` parent-layout case is still clean-negative; it needs the packed `32x32b.unpack::16b` direct path and cannot yet accept the parent TMEM register layout directly.

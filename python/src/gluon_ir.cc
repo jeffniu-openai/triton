@@ -1907,13 +1907,21 @@ void init_gluon_ir(py::module &&m) {
             return false;
           };
           auto tryTypeOnlyM64SplitNLayout = [&]() -> py::object {
+            unsigned bitwidth = queryMemDescTy.getElementTypeBitWidth();
             if (queryMemDescTy.getRank() != 2 || queryMemDescTy.getShape()[0] != 64 ||
-                queryMemDescTy.getElementTypeBitWidth() != 16 || numWarps != 4 ||
+                (bitwidth != 16 && bitwidth != 32) || numWarps != 4 ||
                 isa<ttng::TensorMemoryScalesEncodingAttr>(queryMemDescTy.getEncoding()))
               return py::none();
+            auto typeOnlyTy = queryMemDescTy;
+            if (auto maybeStandaloneTy =
+                    ttng::inferStandaloneTMemRegLayoutQueryType(queryMemDesc,
+                                                                /*error=*/nullptr);
+                succeeded(maybeStandaloneTy)) {
+              typeOnlyTy = *maybeStandaloneTy;
+            }
             return firstLegalLayoutForType(
-                queryMemDescTy,
-                ttng::getTmemCompatibleLayouts(queryMemDescTy, numWarps),
+                typeOnlyTy,
+                ttng::getTmemCompatibleLayouts(typeOnlyTy, numWarps),
                 ttng::TMemAccessAtom::I16x32bx2);
           };
           std::string supportError;

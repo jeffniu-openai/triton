@@ -73,6 +73,47 @@ def _strip_zero_reg_bases_from_layout(layout):
     )
 
 
+def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
+    num_warps = _unwrap_if_constexpr(num_warps)
+    shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.shape)]
+    alloc_shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.type.alloc_shape)]
+    layout = _unwrap_if_constexpr(desc.layout)
+
+    if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
+        return None
+    if desc.dtype.primitive_bitwidth != 32:
+        return None
+    if isinstance(layout, TensorMemoryScalesLayout):
+        return None
+
+    splitn_layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
+        desc.handle, num_warps, "32x32b_splitn"
+    )
+    if splitn_layout is not None:
+        return _finalize_splitn_tmem_reg_layout(
+            splitn_layout,
+            desc.dtype,
+            shape,
+            alloc_shape,
+            layout,
+            num_warps,
+            "32x32b_splitn",
+            False,
+        )
+
+    try:
+        return _compute_tmem_reg_layout(
+            desc.dtype,
+            shape,
+            alloc_shape,
+            layout,
+            num_warps,
+            "auto",
+        )
+    except ValueError:
+        return None
+
+
 @gluon.jit
 def _reduce_min_direct(a, b):
     return ttgl.minimum(a, b)
@@ -401,6 +442,11 @@ class tensor_memory_descriptor(base_value):
                 num_warps,
                 "16x32bx2",
             )
+        splitn_auto_layout = _try_handle_aware_m64_splitn_auto_layout(
+            self, num_warps
+        )
+        if requested_variant == "auto" and splitn_auto_layout is not None:
+            return splitn_auto_layout
         layout = None
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
@@ -449,7 +495,14 @@ class tensor_memory_descriptor(base_value):
             tensor: A distributed tensor containing the loaded data.
         """
         if layout is None:
-            layout = self.get_reg_layout(_semantic=_semantic, _generator=_generator)
+            num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
+            layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
+            if layout is None:
+                layout = self.get_reg_layout(
+                    num_warps=num_warps,
+                    _semantic=_semantic,
+                    _generator=_generator,
+                )
         layout = _unwrap_if_constexpr(layout)
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder

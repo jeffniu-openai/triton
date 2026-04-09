@@ -5108,3 +5108,27 @@ Open after this slice:
   - still-open initiative work is the separate half-row ld/st
     packet-decomposition correctness bug plus the blocked GB200-equivalent
     validation rerun once node health is restored
+
+## 2026-04-09 GB200-equivalent validation resumed: shard 23/32 clean after cache isolation and boundary updates
+- GPU health is restored enough to resume the blocked `gluon-main` sweep.
+- First rerun of `gluon-main` group `23/32` exposed one false regression and one real test-boundary drift:
+  - `python/test/gluon/test_fpsan.py::test_tmem_index_subslice` was a stale-compiler-cache false failure, not a live TMEM codegen bug.
+    - Symptom: the exact nodeid reused a cached scalar `tcgen05.ld.sync.aligned.32x32b` kernel and then faulted with `CUDA error: misaligned address`.
+    - Root cause: `fresh_knobs` deletes `TRITON_CACHE_DIR`, so command-line cache-dir isolation is ignored unless the test sets `knobs.cache.dir` again after the fixture reset.
+    - Fix landed in test coverage: `test_tmem_index_subslice` now pins `fresh_knobs.cache.dir = fresh_triton_cache`, and the exact nodeid is green again.
+  - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout[...]` had drifted because the old negative expectation no longer matched all layouts.
+    - `legacy` is now truly positive: the parent-layout direct store into the packed reinterpret subview executes correctly and lowers without an extra `ttg.convert_layout`.
+    - `linear` remains clean-negative for now: the row-zero-lifted `_make_tmem_linear_layout_m64(128)` reinterpret still requires the packed `32x32b.unpack::16b` direct path, so a parent TMEM register layout is not directly codegenable there.
+    - Added per-test fresh-cache isolation as well because the `legacy` and `linear` parametrizations can alias through the compile cache inside one pytest process otherwise.
+- Validation for this checkpoint:
+  - `make -j8`
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout`
+    - `2 passed`
+  - `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_fpsan.py::test_tmem_index_subslice`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-m64splitn3 PYTHONPATH=python:. pytest -s --tb=short -k tmem_legacy_m64_subview_default_load_auto_selects_splitn python/test/gluon/test_core.py`
+    - `2 passed`
+  - `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short --splits 32 --group 23 python/test/gluon python/tutorials/gluon`
+    - `734 passed, 72 skipped`
+- Additional observation from the shard:
+  - a `.kind::i8` PTXAS rejection for `sm_103a` still prints under `-s` from an earlier `mma_kernel` test path, but it is not a current failing nodeid in group `23/32`; treat it as separate follow-up noise unless it starts failing a test directly.

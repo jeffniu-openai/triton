@@ -112,6 +112,42 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
         from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryScalesLayout
         is_scales_layout = isinstance(layout, TensorMemoryScalesLayout)
 
+    def try_splitn_auto_layout():
+        if requested_variant != "auto" or is_scales_layout:
+            return None
+        if rank != 2 or num_warps != 4 or element_ty.primitive_bitwidth != 32:
+            return None
+        if shape[0] != 64:
+            return None
+
+        splitn_alloc_shape = alloc_shape
+        if alloc_shape[-rank:] != shape:
+            splitn_alloc_shape = shape
+
+        splitn_layout = compute_tmem_reg_layout(
+            element_ty,
+            shape,
+            splitn_alloc_shape,
+            layout,
+            num_warps,
+            "32x32b_splitn",
+        )
+        if splitn_layout is None:
+            return None
+        try:
+            return _finalize_splitn_tmem_reg_layout(
+                splitn_layout,
+                element_ty,
+                shape,
+                alloc_shape,
+                layout,
+                num_warps,
+                "32x32b_splitn",
+                is_scales_layout,
+            )
+        except ValueError:
+            return None
+
     layout_obj = compute_tmem_reg_layout(
         element_ty,
         shape,
@@ -143,6 +179,9 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
             num_warps,
             requested_variant,
         )
+    splitn_auto_layout = try_splitn_auto_layout()
+    if splitn_auto_layout is not None:
+        layout_obj = splitn_auto_layout
     _check(layout_obj is not None,
            lambda: f"TMEM layout '{requested_variant}' unsupported for shape {shape} and num_warps {num_warps}; "
            + ("for tensor-memory scales, try instr_variant=\"16x32bx2\" for narrow tiles, "

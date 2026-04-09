@@ -1686,7 +1686,7 @@ def test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error(device
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_index_subslice(device, fresh_knobs):
+def test_tmem_index_subslice(device, fresh_knobs, fresh_triton_cache):
     _require_cuda_backend(device)
 
     B = 64
@@ -1694,6 +1694,7 @@ def test_tmem_index_subslice(device, fresh_knobs):
     SLICE_N = gl.constexpr(32)
 
     fresh_knobs.compilation.instrumentation_mode = "fpsan"
+    fresh_knobs.cache.dir = fresh_triton_cache
 
     @gluon.jit
     def kernel(x_ptr, out_ptr):
