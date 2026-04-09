@@ -789,15 +789,15 @@ def epilogue_partition_optimized(p: PartitionArgs):
         bias_packed = float2.pack(bias, axis=1)
         bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
         acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
-        if SUBTILE_COUNT == 1:
-            acc_packed_subtiles = (acc_packed,)
-        elif SUBTILE_COUNT == 2:
-            acc_packed_subtiles = _split_packed_last_dim_in_half(acc_packed)
-        else:
-            half0, half1 = _split_packed_last_dim_in_half(acc_packed)
-            half00, half01 = _split_packed_last_dim_in_half(half0)
-            half10, half11 = _split_packed_last_dim_in_half(half1)
-            acc_packed_subtiles = (half00, half01, half10, half11)
+        gl.static_assert(SUBTILE_COUNT == 1 or SUBTILE_COUNT == 2 or SUBTILE_COUNT == 4)
+        acc_packed_subtiles = (acc_packed,)
+        for split_level in gl.static_range(2):
+            if (1 << split_level) < SUBTILE_COUNT:
+                next_subtiles = ()
+                for subtile_idx in gl.static_range(1 << split_level):
+                    lhs, rhs = _split_packed_last_dim_in_half(acc_packed_subtiles[subtile_idx])
+                    next_subtiles += (lhs, rhs)
+                acc_packed_subtiles = next_subtiles
 
         for subtile_idx in gl.static_range(SUBTILE_COUNT):
             subtile_off_n = subtile_idx * p.EPILOGUE_SUBTILE_N
