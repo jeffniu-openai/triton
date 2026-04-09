@@ -17,6 +17,10 @@
   workaround must be removed.
 - Development-time PTX and hardware validation is expected for ambiguous
   `tcgen05` behavior, but only targeted regressions land in-tree.
+- This devbox can be unstable. Land TMEM work in frequent, modular commits
+  with commit messages that explain context, motivation, implementation, and
+  validation, then push each commit to `jeffniu-openai/codex/tmem` so the
+  remote branch remains a recoverable checkpoint.
 - Plain `ttng.tmem_load`, `ttng.tmem_store`, and source-initialized
   `ttng.tmem_alloc` now defer layout feasibility to relayout/lowering instead
   of rejecting non-default compatible register layouts in the verifier.

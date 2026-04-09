@@ -8,3 +8,30 @@
 - Run lit from the build dir:  `cd BUILD_DIR; ninja triton-opt; lit -v test/<path>.mlir` (example: `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir`).
 - Lit tests can be run locally (no GPU required).
 - Compiler crashes sometimes print an MLIR reproducer (external_resources / mlir_reproducer). Save the full MLIR + {-# ... #-} metadata to `/tmp/<file>.mlir`, then run `triton-opt /tmp/<file>.mlir --run-reproducer` to reproduce locally.
+
+## Execution Safety
+- This machine can be unstable. Make frequent, modular, incremental commits instead of carrying large uncommitted diffs.
+- Commit messages must be detailed enough to serve as a durable handoff: record context, why the change was needed, what changed, and any important validation or remaining boundaries.
+- After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
+- Keep commits scoped so they can be understood and reverted independently.
+
+## Python Sweep Best Practices
+- Install and use `pytest-split` for outer sharding and keep `pytest-xdist` available for lighter CPU-bound cases.
+- Treat validation in stages:
+  - `make`
+  - targeted lit checks for compiler-only changes
+  - focused pytest nodeids or `-k` slices on one GPU
+  - 4-GPU grouped sweeps only after the focused slice is green
+- Keep compile-only and heavy GPU runtime sweeps separate. Do not mix large runtime files with broad compile-only files in the same shard.
+- For heavy GPU runtime files, run one outer pytest process per GPU:
+  - set `CUDA_VISIBLE_DEVICES=<gpu>`
+  - set a distinct `TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>`
+  - use the same file list on all shards with `pytest -s --tb=short --splits 4 --group <group>`
+- Preferred 4-GPU runtime sweep pattern:
+  - GPU 0: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 1 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 1: `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 2 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 2: `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 3 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 3: `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 4 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+- Do not combine `--splits 4` with `-n auto` for heavy TMEM runtime sweeps. If inner parallelism is needed for lighter sweeps, keep it small (`-n 1` or `-n 2`) and do not oversubscribe the GPU.
+- Use `pytest --collect-only -q <files>` before large sweeps when changing file lists or selecting exact nodeids.
+- Rerun failures by exact nodeid on an isolated GPU before rerunning an entire shard.
