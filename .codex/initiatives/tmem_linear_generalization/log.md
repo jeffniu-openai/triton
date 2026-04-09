@@ -4884,3 +4884,51 @@ Open after this slice:
 - Conclusion: current blocker is machine/driver state, not a new confirmed Triton regression in TMEM codegen. Resume remaining GB200-equivalent GPU targets only after GPU/NVLink health is restored.
 
 - After killing the stray probe and wedged pytest processes, `timeout 20s nvidia-smi --query-gpu=...` still timed out. GPU control path remained unhealthy, so the GB200-equivalent GPU sweep could not be completed further in this session.
+
+## 2026-04-09
+- Landed the first bounded cleanup slice for the `M=64` MMAv5 root-accumulator
+  hack and checkpointed it in modular remote-pushed commits.
+- Repo/operator guidance updates:
+  - added `AGENTS.md` guidance for unstable-machine recovery, detailed
+    handoff-grade commit messages, and pushing each TMEM commit to
+    `jeffniu-openai/codex/tmem`
+  - documented the standard 4-GPU pytest sweep workflow there
+  - added `pytest-split` to `python/test-requirements.txt`
+- Compiler contract cleanup:
+  - replaced the lowering-side
+    `preferredRootRowPlanForM64AccumulatorAlloc` heuristic in
+    `TensorMemoryToLLVM.cpp`
+  - added `ttng.tmem_ldst_row_plan` helpers in `TensorMemoryUtils`
+  - `getBackingTMemLdStRowPlan(...)` now honors an explicit root row-plan
+    contract before type-derived inference
+  - `AccelerateMatmul` attaches the explicit contract to MMAv5 accumulator root
+    allocs
+  - MMAv5 software pipelining and Hopper warp-specialization rematerialized
+    allocs now copy the explicit contract
+  - manual Gluon `tcgen05_mma` / `tcgen05_mma_scaled` builders now walk
+    accumulator subviews back to the backing `ttng.tmem_alloc` and attach the
+    same explicit contract there
+  - shared helper `getMMAv5AccumulatorRootRowPlan(...)` now owns the actual
+    `16/32 @ 128` vs `32/64 @ 128` family split
+- Build environment note:
+  - full `make` initially reproduced the unrelated GSan runtime failure
+    (`GSanLibrary.cu`: `fatal error: 'climits' file not found`)
+  - rerunning with
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13`
+    unblocked the GSan step and allowed `make -j8` to complete on this node
+- Validation:
+  - `TRITON_HOME=/tmp CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - manual FileCheck-equivalent runs:
+    - `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt /root/code/triton/test/TritonGPU/loop-pipeline-blackwell.mlir -split-input-file -tritongpu-hoist-tmem-alloc -tritongpu-assign-latencies -tritongpu-schedule-loops -tritongpu-pipeline -triton-nvidia-gpu-remove-tmem-tokens -canonicalize | /tmp/.triton/llvm/llvm-7f77ca0d-ubuntu-arm64/bin/FileCheck /root/code/triton/test/TritonGPU/loop-pipeline-blackwell.mlir --check-prefixes=CHECK`
+    - `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt /root/code/triton/test/TritonNvidiaGPU/mma_lowering.mlir -split-input-file --triton-nvidia-mma-lowering | /tmp/.triton/llvm/llvm-7f77ca0d-ubuntu-arm64/bin/FileCheck /root/code/triton/test/TritonNvidiaGPU/mma_lowering.mlir`
+  - targeted GPU pytest slice on `CUDA_VISIBLE_DEVICES=0` with isolated cache:
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[True-4-64-128-32]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+    - all four passed after the Gluon/manual-path backing-alloc annotation fix
+- Remaining hack backlog after this slice:
+  - direct `32x32` support rescue / scalarization paths
+  - `64x128xf32` reinterpret rescue
+  - packed row-zero-lifted `TMemLdStEncodingInfo` fixups
+  - `warpx2` family-specific planner cleanup

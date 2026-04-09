@@ -21,6 +21,15 @@
   with commit messages that explain context, motivation, implementation, and
   validation, then push each commit to `jeffniu-openai/codex/tmem` so the
   remote branch remains a recoverable checkpoint.
+- `M=64` MMAv5 accumulator ld/st row plans are an explicit producer-owned
+  contract on the backing `ttng.tmem_alloc` via
+  `ttng.tmem_ldst_row_plan`; producer-side TTGIR construction (currently
+  `AccelerateMatmul` and the manual Gluon `tcgen05_*` builders) is
+  responsible for attaching it, and lowering/query helpers must consume that
+  contract instead of inferring it from alloc users.
+- On this arm64 devbox, full `make` currently needs
+  `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13`
+  to unblock the unrelated GSan runtime build.
 - Plain `ttng.tmem_load`, `ttng.tmem_store`, and source-initialized
   `ttng.tmem_alloc` now defer layout feasibility to relayout/lowering instead
   of rejecting non-default compatible register layouts in the verifier.
