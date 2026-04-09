@@ -217,22 +217,27 @@ makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
 }
 
 static std::optional<SmallVector<int32_t>>
-getLogicalRowAnchorBasis(const LinearLayout &layout, StringAttr rowDim,
-                         int32_t logicalRow) {
-  if (logicalRow == 0)
-    return SmallVector<int32_t>(layout.getNumOutDims(), 0);
-  if (!layout.hasInDim(rowDim))
+getLogicalRowAnchorBasis(const LinearLayout &layout, int32_t logicalRow) {
+  if (layout.getNumOutDims() == 0)
     return std::nullopt;
 
-  // Row bases can be permuted or interleaved with explicit zero-lift bases, so
-  // the basis position is not a stable encoding of the physical row anchor.
-  // TMEM row bases are still emitted as 2D [row, col] output vectors, so match
-  // the anchor by its row coordinate contribution instead.
-  for (ArrayRef<int32_t> basis : layout.getBases().lookup(rowDim)) {
-    if (!basis.empty() && basis.front() == logicalRow)
-      return SmallVector<int32_t>(basis.begin(), basis.end());
+  SmallVector<int32_t> expected(layout.getNumOutDims(), 0);
+  expected.front() = logicalRow;
+
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  auto expectedCoords =
+      makeFullLinearLayoutCoords(outDims, {{outDims.front(), logicalRow}});
+  auto realizedCoords = layout.apply(layout.pseudoinvert().apply(expectedCoords));
+  for (auto [idx, outDim] : llvm::enumerate(outDims)) {
+    if (lookupLinearLayoutCoord(realizedCoords, outDim) != expected[idx])
+      return std::nullopt;
   }
-  return std::nullopt;
+
+  // Direct ld/st warp anchors live in TMEM output space. They do not need to
+  // come from a particular input-dimension basis family; widened MMAv5
+  // accumulator layouts can materialize a required row anchor through column or
+  // block bases once the full linear layout is considered.
+  return expected;
 }
 
 static FailureOr<LinearLayout>
@@ -2655,8 +2660,8 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
     return std::nullopt;
   }
 
-  if (getLogicalRowAnchorBasis(*maybeMemLayout, kRow, rowPlan->warpRow0) &&
-      getLogicalRowAnchorBasis(*maybeMemLayout, kRow, rowPlan->warpRow1))
+  if (getLogicalRowAnchorBasis(*maybeMemLayout, rowPlan->warpRow0) &&
+      getLogicalRowAnchorBasis(*maybeMemLayout, rowPlan->warpRow1))
     return std::nullopt;
 
   return std::string(
@@ -4444,7 +4449,7 @@ computeTMemLdStEncodingInfoImpl(
     auto anchorMemLayout = packedMemLayout;
     auto getRowAnchorBasis = [&](int32_t logicalRow)
         -> std::optional<SmallVector<int32_t>> {
-      return getLogicalRowAnchorBasis(anchorMemLayout, kRow, logicalRow);
+      return getLogicalRowAnchorBasis(anchorMemLayout, logicalRow);
     };
     auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
     auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);
@@ -4960,7 +4965,7 @@ computeTMemLdStEncodingInfoImpl(
   };
   auto getRowAnchorBasis = [&](int32_t logicalRow)
       -> std::optional<SmallVector<int32_t>> {
-    return getLogicalRowAnchorBasis(memLayout, kRow, logicalRow);
+    return getLogicalRowAnchorBasis(memLayout, logicalRow);
   };
   auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
   auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);

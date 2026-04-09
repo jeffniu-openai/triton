@@ -2910,3 +2910,42 @@ rejection, not rescue
   - the minimal tcgen05 MMA `M=64` bucket stays green
   - the clean-negative multidim-slice `scrambled_cols` case stays green
 - Remaining initiative work is no longer the split-N permuted row-anchor bucket; it is the separate half-row ld/st packet-decomposition bug plus the broader GB300-equivalent rerun.
+
+## 2026-04-09: direct ld/st row-anchor legality must query the full TMEM linear-layout image
+
+- Broad healthy-node reruns exposed a separate real `test_mma_shared_inputs[...]` compiler regression for widened `two_ctas=True` MMAv5 accumulator descriptor views.
+- Exact failure shape before the fix:
+  - `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<...>`
+  - debug reason:
+    - `required row anchors 32,64 are not directly representable in the descriptor view`
+- Root cause:
+  - the first row-anchor helper generalization was still too basis-family-specific.
+  - it only accepted required anchors when they appeared in `layout.getBases().lookup(kRow)`.
+  - for arbitrary linear layouts, that is wrong: a legal TMEM row anchor is an output-space vector like `[64, 0]`, and the full linear-layout image may materialize it through `col` or block bases.
+  - concrete failing layout evidence:
+    - `rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 32]]`
+    - `cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [64, 0]]`
+    - `block_bases=[[128, 0]]`
+    - the required `64` anchor exists, but not in the `row` basis family.
+- Correct invariant:
+  - direct tcgen05 ld/st row-anchor support must be decided by representability of the desired TMEM output-space anchor vector in the full linear-layout image.
+  - do not special-case by input-dimension family once the codegen path is already expressed in linear-layout arithmetic.
+- Implementation shape that works:
+  - in `getLogicalRowAnchorBasis(...)`, build the expected output vector `[logical_row, 0, ...]`
+  - use `layout.pseudoinvert()` to synthesize candidate input coordinates
+  - reapply the original layout and accept only if it realizes the expected output vector exactly
+  - keep using that shared helper in:
+    - packed support-query planning
+    - main `computeTMemLdStEncodingInfoImpl(...)`
+    - unsupported descriptor-view row-anchor diagnostics
+- Validation snapshot for this checkpoint:
+  - exact previously failing two-CTA repros: green
+  - one-CTA control: green
+  - split-N row/col-permuted guard repro: green
+  - grouped widened two-CTA slices:
+    - `30 passed`
+    - `30 passed`
+    - `30 passed`
+- Remaining initiative work after this checkpoint:
+  - rerun the interrupted broad 4-GPU `test_core.py` + `test_tmem_runtime_matrix.py` sweep on the healthy node
+  - continue on the separate half-row ld/st packet-decomposition correctness bucket if that remains the next real failure surface

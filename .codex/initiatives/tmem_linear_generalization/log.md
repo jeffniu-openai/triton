@@ -5265,3 +5265,52 @@ Open after this slice:
 - Remaining initiative work after this checkpoint:
   - the separate half-row ld/st packet-decomposition correctness bucket
   - resuming the broader GB300-equivalent validation on the now-healthy machine
+
+## 2026-04-09 full-image row-anchor representability closes the widened 2CTA MMAv5 descriptor-view bucket
+- Resuming the healthy-node broad validation surfaced a real new TMEM regression in `python/test/gluon/test_core.py::test_mma_shared_inputs[...]`, not node noise:
+  - exact failing compiler repros before the fix:
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[True-ctas_per_cga1-1-1-1-64-0-0-warps0-8-False-True-acc_dtype0]`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[True-ctas_per_cga2-1-1-1-64-64-0-warps0-16-True-False-acc_dtype6]`
+  - exact failure shape:
+    - `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<...>`
+    - debug reason from `TRITON_DEBUG_TMEM_REG_LAYOUT=1`:
+      - `unsupported tensor memory descriptor view for direct tcgen05.ld/st: required row anchors 32,64 are not directly representable in the descriptor view.`
+- Root cause:
+  - the centralized `getLogicalRowAnchorBasis(...)` helper from the previous checkpoint was still too narrow: it only accepted required row anchors if they appeared in the TMEM `row` basis family.
+  - that is not a stable invariant for arbitrary linear layouts. In the failing widened two-CTA MMAv5 accumulator descriptor view, the required logical `64` anchor is real but carried by the full linear-layout image through a `col` basis rather than a `row` basis.
+  - direct ld/st legality here is a question about whether the output-space anchor vector `[logical_row, 0]` is representable at all, not which input-dimension family materializes it.
+- Concrete evidence from the failing layout:
+  - `cga_layout_c = ((1, 0),)`
+  - `TensorMemoryLinearLayout(rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 32]], cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [64, 0]], shape=[256, 64], block_bases=[[128, 0]], two_ctas=True)`
+  - the `64` row anchor is visibly materialized by the `cols` family as `[64, 0]`, so rejecting the descriptor view was a compiler bug.
+- Fix:
+  - widen `getLogicalRowAnchorBasis(...)` so it checks full-image representability of the desired TMEM output-space anchor instead of scanning only `layout.getBases().lookup(kRow)`.
+  - implementation shape in `TensorMemoryUtils.cpp`:
+    - build the expected TMEM output vector `[logical_row, 0, ...]`
+    - use `layout.pseudoinvert()` to synthesize candidate input coordinates
+    - reapply the original layout and accept the anchor only if the realized output vector exactly matches the expected one
+  - keep the same shared helper wiring for packed support-query planning, the main `computeTMemLdStEncodingInfoImpl(...)` path, and the clean-negative unsupported-descriptor diagnostic.
+- Durable outcome:
+  - direct tcgen05 ld/st support is now keyed off the full TMEM linear-layout image, which is the right abstraction for arbitrary linear layouts.
+  - valid widened descriptor views are no longer rejected just because the matching anchor is carried by a `col` or block basis family.
+- Focused validation after the fix:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `HOME=/tmp/triton-home-twocta-repro1 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-repro1 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[True-ctas_per_cga1-1-1-1-64-0-0-warps0-8-False-True-acc_dtype0]`
+    - `1 passed`
+  - `HOME=/tmp/triton-home-twocta-repro2 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-repro2 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[True-ctas_per_cga2-1-1-1-64-64-0-warps0-16-True-False-acc_dtype6]`
+    - `1 passed`
+  - one-CTA control:
+    - `HOME=/tmp/triton-home-twocta-control TRITON_CACHE_DIR=/tmp/triton-cache-twocta-control CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga1-1-1-1-64-0-0-warps0-8-False-True-acc_dtype0]`
+      - `1 passed`
+  - split-N guard:
+    - `HOME=/tmp/triton-home-splitn-guard4 TRITON_CACHE_DIR=/tmp/triton-cache-splitn-guard4 CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+      - `1 passed`
+  - widened two-CTA grouped slices:
+    - `HOME=/tmp/triton-home-twocta-slice1 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-slice1 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python:. pytest -s --tb=short -vv <30 exact nodeids matching test_mma_shared_inputs[True-ctas_per_cga1-1-1-1-64-0-0-...]>`
+      - `30 passed`
+    - `HOME=/tmp/triton-home-twocta-slice2 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-slice2 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python:. pytest -s --tb=short -vv <30 exact nodeids matching test_mma_shared_inputs[True-ctas_per_cga2-1-1-1-64-64-0-...]>`
+      - `30 passed`
+    - `HOME=/tmp/triton-home-twocta-slice3 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-slice3 CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python:. pytest -s --tb=short -vv <30 exact nodeids matching test_mma_shared_inputs[True-ctas_per_cga2-1-1-1-64-128-32-...]>`
+      - `30 passed`
+- Next step after this checkpoint:
+  - resume the interrupted 4-GPU `python/test/gluon/test_core.py` + `python/test/gluon/test_tmem_runtime_matrix.py` sweep and stop on the next clean failure bucket, if any.
