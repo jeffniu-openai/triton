@@ -15,6 +15,7 @@
 - After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
 - Keep commits scoped so they can be understood and reverted independently.
 - When debugging compiler or codegen bugs, identify and fix the core linear-layout, planner, or lowering issue rather than layering patchwork or ad-hoc special cases. Use targeted probes to find the real abstraction mismatch first, then implement the general fix and update tests to match correct behavior.
+- For multi-session initiatives, keep a dated handoff document in the initiative folder and update it at every meaningful checkpoint and before any likely context rollover. Record the current branch/HEAD, dirty files, exact repros run, what passed or failed, the current root-cause hypothesis, and the next concrete steps so the next session is not dependent on context compaction alone.
 
 ## Python Sweep Best Practices
 - Install and use `pytest-split` for outer sharding and keep `pytest-xdist` available for lighter CPU-bound cases.
