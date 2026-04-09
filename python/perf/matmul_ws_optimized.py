@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 import os
 
@@ -31,6 +32,7 @@ class KernelConfig:
     w_num_bufs: int = 4
     epilogue_n_elems: int = 4
     epilogue_subtile_n: int = 256
+    epilogue_row_subtile_factor: int = 1
     acc_instr_variant: str = "32x32b"
     use_exp2_sigmoid: bool = False
     use_packed_final_fma: bool = False
@@ -108,9 +110,16 @@ def _pack_e4m3x2(values):
         pack=1,
     )
 
+
 @gluon.jit
 def _store_packed_out(
-    p, packed_out, off_m, out_off_n, shape_m, slice_offset, USE_BLOCKED_PACKED_STORE: gl.constexpr
+    p,
+    packed_out,
+    off_m,
+    out_off_n,
+    shape_m,
+    slice_offset,
+    USE_BLOCKED_PACKED_STORE: gl.constexpr,
 ):
     if USE_BLOCKED_PACKED_STORE:
         # Default-off store relayout probe. It still lowers to b16 stores on
@@ -121,7 +130,7 @@ def _store_packed_out(
         )
     out_ptr = p.out_ptr.cast(gl.pointer_type(gl.int16), bitcast=True)
     packed_layout: gl.constexpr = packed_out.type.layout
-    offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, packed_layout))
+    offs_m = off_m + gl.arange(0, packed_out.shape[0], layout=gl.SliceLayout(1, packed_layout))
     offs_n = out_off_n // 2 + gl.arange(0, packed_out.shape[1], layout=gl.SliceLayout(0, packed_layout))
     mask = gl.expand_dims(offs_m < shape_m, 1)
     ptrs = out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 2)
@@ -131,7 +140,7 @@ def _store_packed_out(
 
 @gluon.jit
 def _store_out(p, out, off_m, out_off_n, shape_m, slice_offset):
-    offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, out.type.layout))
+    offs_m = off_m + gl.arange(0, out.shape[0], layout=gl.SliceLayout(1, out.type.layout))
     offs_n = out_off_n + gl.arange(0, out.shape[1], layout=gl.SliceLayout(0, out.type.layout))
     mask = gl.expand_dims(offs_m < shape_m, 1)
     ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
@@ -141,13 +150,103 @@ def _store_out(p, out, off_m, out_off_n, shape_m, slice_offset):
 
 @gluon.jit
 def _split_last_dim_in_half(values):
+    layout: gl.constexpr = values.type.layout
+    if isinstance(layout, gl.DistributedLinearLayout) or (
+        isinstance(layout, gl.SliceLayout) and isinstance(layout.parent, gl.DistributedLinearLayout)
+    ):
+        lhs, rhs = values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1)).split()
+        split_layout: gl.constexpr = _get_split_last_dim_layout(lhs.type.layout)
+        lhs = gl.convert_layout(lhs, split_layout, assert_trivial=True)
+        rhs = gl.convert_layout(rhs, split_layout, assert_trivial=True)
+        return lhs, rhs
     return gl.split(values.reshape((values.shape[0], 2, values.shape[1] // 2)).permute((0, 2, 1)))
+
+
+@gluon.constexpr_function
+def _get_split_last_dim_layout(layout: gl.constexpr):
+    layout = _to_distributed_linear_layout(layout)
+    target = [0, layout.shape[1] // 2]
+    last_reg_idx = len(layout.reg_bases) - 1
+    reg_last = layout.reg_bases[last_reg_idx]
+
+    if reg_last == target:
+        return layout
+
+    ret = copy.deepcopy(layout)
+    for basis_list in (ret.reg_bases, ret.lane_bases, ret.warp_bases, ret.block_bases):
+        for i, basis in enumerate(basis_list):
+            if basis == target:
+                basis_list[i], ret.reg_bases[last_reg_idx] = reg_last, target
+                return ret
+    assert False, f"split requires having a basis {target}. Got\n{layout}"
+
+
+@gluon.constexpr_function
+def _to_distributed_linear_layout(layout: gl.constexpr):
+    if isinstance(layout, gl.DistributedLinearLayout):
+        return layout
+
+    assert isinstance(layout, gl.SliceLayout), "split requires a linear or slice-of-linear layout"
+    assert isinstance(layout.parent, gl.DistributedLinearLayout), "split requires a slice of a linear layout"
+    dim = layout.dim
+    parent = layout.parent
+    shape = parent.shape[:dim] + parent.shape[dim + 1 :]
+    return gl.DistributedLinearLayout(
+        [basis[:dim] + basis[dim + 1 :] for basis in parent.reg_bases],
+        [basis[:dim] + basis[dim + 1 :] for basis in parent.lane_bases],
+        [basis[:dim] + basis[dim + 1 :] for basis in parent.warp_bases],
+        [basis[:dim] + basis[dim + 1 :] for basis in parent.block_bases],
+        shape,
+    )
 
 
 @gluon.jit
 def _split_packed_last_dim_in_half(values):
     lhs, rhs = _split_last_dim_in_half(values.value)
     return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
+
+
+@gluon.jit
+def _split_first_dim_in_half(values):
+    return gl.split(values.reshape((2, values.shape[0] // 2, values.shape[1])).permute((1, 2, 0)))
+
+
+@gluon.jit
+def _store_packed_out_fragments(
+    p: ws_base.PartitionArgs,
+    out_packed,
+    out_recip,
+    off_m,
+    out_off_n,
+    shape_m,
+    slice_offset,
+    USE_PACKED_FP8_STORE: gl.constexpr,
+    USE_BLOCKED_PACKED_STORE: gl.constexpr,
+    USE_PACKED_OUT_SCALE: gl.constexpr,
+):
+    scaled_out_packed = out_packed
+    if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
+        scaled_out_packed = out_packed * float2.full_like(out_packed, out_recip)
+
+    if USE_PACKED_FP8_STORE:
+        packed_fp8 = _pack_e4m3x2(scaled_out_packed)
+        _store_packed_out(
+            p,
+            packed_fp8,
+            off_m,
+            out_off_n,
+            shape_m,
+            slice_offset,
+            USE_BLOCKED_PACKED_STORE,
+        )
+        return
+
+    out_frag = float2.unpack(scaled_out_packed if USE_PACKED_OUT_SCALE else out_packed, axis=1)
+    if not USE_PACKED_OUT_SCALE:
+        out_frag = out_frag * out_recip
+    if p.FLEXPOINT_SATURATE_INF:
+        out_frag = tl_core.clamp(out_frag, -448.0, 448.0)
+    _store_out(p, out_frag.to(p.out_desc.dtype), off_m, out_off_n, shape_m, slice_offset)
 
 
 @gluon.jit
@@ -159,6 +258,7 @@ def _epilogue_from_acc_packed(
     out_off_n,
     shape_m,
     slice_offset,
+    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
@@ -166,32 +266,126 @@ def _epilogue_from_acc_packed(
     USE_PACKED_OUT_SCALE: gl.constexpr,
 ):
     gelu, linear = float2.unpack2(acc_packed)
+    if EPILOGUE_ROW_SUBTILE_FACTOR == 2:
+        gelu_subtiles = _split_first_dim_in_half(gelu)
+        linear_subtiles = _split_first_dim_in_half(linear)
+    elif EPILOGUE_ROW_SUBTILE_FACTOR == 4:
+        gelu_half0, gelu_half1 = _split_first_dim_in_half(gelu)
+        gelu_00, gelu_01 = _split_first_dim_in_half(gelu_half0)
+        gelu_10, gelu_11 = _split_first_dim_in_half(gelu_half1)
+        gelu_subtiles = (gelu_00, gelu_01, gelu_10, gelu_11)
+        linear_half0, linear_half1 = _split_first_dim_in_half(linear)
+        linear_00, linear_01 = _split_first_dim_in_half(linear_half0)
+        linear_10, linear_11 = _split_first_dim_in_half(linear_half1)
+        linear_subtiles = (linear_00, linear_01, linear_10, linear_11)
+    else:
+        gelu_subtiles = None
+        linear_subtiles = None
+
+    if EPILOGUE_ROW_SUBTILE_FACTOR > 1:
+        frag_off_m = off_m
+        for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
+            gelu_frag = gelu_subtiles[frag_idx]
+            linear_frag = linear_subtiles[frag_idx]
+            if USE_EXP2_SIGMOID:
+                out_frag = _swiglu_pairs_exp2(gelu_frag, linear_frag, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+                if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
+                    _store_packed_out_fragments(
+                        p,
+                        float2.pack(out_frag, axis=1),
+                        out_recip,
+                        frag_off_m,
+                        out_off_n,
+                        shape_m,
+                        slice_offset,
+                        USE_PACKED_FP8_STORE,
+                        USE_BLOCKED_PACKED_STORE,
+                        USE_PACKED_OUT_SCALE,
+                    )
+                else:
+                    out_frag = out_frag * out_recip
+                    if p.FLEXPOINT_SATURATE_INF:
+                        out_frag = tl_core.clamp(out_frag, -448.0, 448.0)
+                    _store_out(p, out_frag.to(p.out_desc.dtype), frag_off_m, out_off_n, shape_m, slice_offset)
+            elif USE_PACKED_FINAL_FMA:
+                out_packed_frag = _swiglu_pairs_rcp_packed(gelu_frag, linear_frag, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+                if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
+                    _store_packed_out_fragments(
+                        p,
+                        out_packed_frag,
+                        out_recip,
+                        frag_off_m,
+                        out_off_n,
+                        shape_m,
+                        slice_offset,
+                        USE_PACKED_FP8_STORE,
+                        USE_BLOCKED_PACKED_STORE,
+                        USE_PACKED_OUT_SCALE,
+                    )
+                else:
+                    out_frag = float2.unpack(out_packed_frag, axis=1) * out_recip
+                    if p.FLEXPOINT_SATURATE_INF:
+                        out_frag = tl_core.clamp(out_frag, -448.0, 448.0)
+                    _store_out(p, out_frag.to(p.out_desc.dtype), frag_off_m, out_off_n, shape_m, slice_offset)
+            else:
+                out_frag = _swiglu_pairs_rcp(gelu_frag, linear_frag, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+                if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
+                    _store_packed_out_fragments(
+                        p,
+                        float2.pack(out_frag, axis=1),
+                        out_recip,
+                        frag_off_m,
+                        out_off_n,
+                        shape_m,
+                        slice_offset,
+                        USE_PACKED_FP8_STORE,
+                        USE_BLOCKED_PACKED_STORE,
+                        USE_PACKED_OUT_SCALE,
+                    )
+                else:
+                    out_frag = out_frag * out_recip
+                    if p.FLEXPOINT_SATURATE_INF:
+                        out_frag = tl_core.clamp(out_frag, -448.0, 448.0)
+                    _store_out(p, out_frag.to(p.out_desc.dtype), frag_off_m, out_off_n, shape_m, slice_offset)
+            frag_off_m += gelu_frag.shape[0]
+        return
+
     if USE_EXP2_SIGMOID:
         out = _swiglu_pairs_exp2(gelu, linear, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
     elif USE_PACKED_FINAL_FMA:
         out_packed = _swiglu_pairs_rcp_packed(gelu, linear, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
-        if USE_PACKED_OUT_SCALE:
-            out_packed = out_packed * float2.full_like(out_packed, out_recip)
-        if USE_PACKED_FP8_STORE:
-            packed_fp8 = _pack_e4m3x2(out_packed)
-            _store_packed_out(
-                p, packed_fp8, off_m, out_off_n, shape_m, slice_offset, USE_BLOCKED_PACKED_STORE
+        if USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE:
+            _store_packed_out_fragments(
+                p,
+                out_packed,
+                out_recip,
+                off_m,
+                out_off_n,
+                shape_m,
+                slice_offset,
+                USE_PACKED_FP8_STORE,
+                USE_BLOCKED_PACKED_STORE,
+                USE_PACKED_OUT_SCALE,
             )
             return
         out = float2.unpack(out_packed, axis=1)
     else:
         out = _swiglu_pairs_rcp(gelu, linear, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
 
-    if (not USE_EXP2_SIGMOID) and (not USE_PACKED_FINAL_FMA) and USE_PACKED_OUT_SCALE:
-        out_packed = float2.pack(out, axis=1)
-        out_packed = out_packed * float2.full_like(out_packed, out_recip)
-        if USE_PACKED_FP8_STORE:
-            packed_fp8 = _pack_e4m3x2(out_packed)
-            _store_packed_out(
-                p, packed_fp8, off_m, out_off_n, shape_m, slice_offset, USE_BLOCKED_PACKED_STORE
-            )
-            return
-        out = float2.unpack(out_packed, axis=1)
+    if (not USE_EXP2_SIGMOID) and (not USE_PACKED_FINAL_FMA) and (USE_PACKED_OUT_SCALE or USE_PACKED_FP8_STORE):
+        _store_packed_out_fragments(
+            p,
+            float2.pack(out, axis=1),
+            out_recip,
+            off_m,
+            out_off_n,
+            shape_m,
+            slice_offset,
+            USE_PACKED_FP8_STORE,
+            USE_BLOCKED_PACKED_STORE,
+            USE_PACKED_OUT_SCALE,
+        )
+        return
     elif (not USE_EXP2_SIGMOID) and (not USE_PACKED_FINAL_FMA):
         out = out * out_recip
     elif USE_EXP2_SIGMOID:
@@ -207,6 +401,7 @@ def epilogue_partition_optimized(
     p: ws_base.PartitionArgs,
     EPILOGUE_N_ELEMS: gl.constexpr,
     EPILOGUE_SUBTILE_N: gl.constexpr,
+    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
@@ -275,6 +470,7 @@ def epilogue_partition_optimized(
                 out_off_n,
                 shape_m,
                 slice_offset,
+                EPILOGUE_ROW_SUBTILE_FACTOR,
                 USE_EXP2_SIGMOID,
                 USE_PACKED_FINAL_FMA,
                 USE_PACKED_FP8_STORE,
@@ -325,6 +521,7 @@ def ws_matmul_kernel_optimized(
     W_NUM_BUFS: gl.constexpr,
     EPILOGUE_N_ELEMS: gl.constexpr,
     EPILOGUE_SUBTILE_N: gl.constexpr,
+    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     USE_EXP2_SIGMOID: gl.constexpr,
     USE_PACKED_FINAL_FMA: gl.constexpr,
     USE_PACKED_FP8_STORE: gl.constexpr,
@@ -460,6 +657,7 @@ def ws_matmul_kernel_optimized(
                     p,
                     EPILOGUE_N_ELEMS,
                     EPILOGUE_SUBTILE_N,
+                    EPILOGUE_ROW_SUBTILE_FACTOR,
                     USE_EXP2_SIGMOID,
                     USE_PACKED_FINAL_FMA,
                     USE_PACKED_FP8_STORE,
@@ -503,6 +701,12 @@ def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices
         epilogue_n_elems=int(os.environ.get("TRITON_WS_EPILOGUE_N_ELEMS", defaults.epilogue_n_elems)),
         epilogue_subtile_n=int(
             os.environ.get("TRITON_WS_EPILOGUE_SUBTILE_N", defaults.epilogue_subtile_n)
+        ),
+        epilogue_row_subtile_factor=int(
+            os.environ.get(
+                "TRITON_WS_EPILOGUE_ROW_SUBTILE_FACTOR",
+                defaults.epilogue_row_subtile_factor,
+            )
         ),
         use_exp2_sigmoid=os.environ.get(
             "TRITON_WS_USE_EXP2_SIGMOID", "1" if defaults.use_exp2_sigmoid else "0"
@@ -606,6 +810,8 @@ def matmul(
     assert config.block_n % config.epilogue_subtile_n == 0
     assert config.epilogue_subtile_n % reduction_n == 0
     assert config.block_n // config.epilogue_subtile_n == 1
+    assert config.epilogue_row_subtile_factor in (1, 2, 4)
+    assert config.block_m % config.epilogue_row_subtile_factor == 0
     mxfp_block_size = 32
     scale_size_outer = 128
     scale_size_inner = 4
@@ -680,6 +886,7 @@ def matmul(
         W_NUM_BUFS=config.w_num_bufs,
         EPILOGUE_N_ELEMS=config.epilogue_n_elems,
         EPILOGUE_SUBTILE_N=config.epilogue_subtile_n,
+        EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
         USE_EXP2_SIGMOID=config.use_exp2_sigmoid,
         USE_PACKED_FINAL_FMA=config.use_packed_final_fma,
         USE_PACKED_FP8_STORE=config.use_packed_fp8_store,
