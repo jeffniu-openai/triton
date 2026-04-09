@@ -14,6 +14,7 @@
 - Commit messages must be detailed enough to serve as a durable handoff: record context, why the change was needed, what changed, and any important validation or remaining boundaries.
 - After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
 - Keep commits scoped so they can be understood and reverted independently.
+- When debugging compiler or codegen bugs, identify and fix the core linear-layout, planner, or lowering issue rather than layering patchwork or ad-hoc special cases. Use targeted probes to find the real abstraction mismatch first, then implement the general fix and update tests to match correct behavior.
 
 ## Python Sweep Best Practices
 - Install and use `pytest-split` for outer sharding and keep `pytest-xdist` available for lighter CPU-bound cases.
