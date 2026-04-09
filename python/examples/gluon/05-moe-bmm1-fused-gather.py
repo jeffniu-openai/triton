@@ -776,6 +776,8 @@ def epilogue_store_partition_optimized(p: PartitionArgs):
                 empty_bar = p.store_empty_bars.index(store_idx)
                 mbarrier.wait(ready_bar, store_phase)
                 packed_fp8 = p.store_bufs.index(store_idx).load(store_layout)
+                # The ring slot is no longer needed once the fragment is in registers.
+                mbarrier.arrive(empty_bar)
                 _store_packed_out(
                     p,
                     packed_fp8,
@@ -784,7 +786,6 @@ def epilogue_store_partition_optimized(p: PartitionArgs):
                     shape_m,
                     slice_offset,
                 )
-                mbarrier.arrive(empty_bar)
                 store_idx, store_phase = advance(store_idx, store_phase, p.EPILOGUE_STORE_HELPER_DEPTH)
 
 
