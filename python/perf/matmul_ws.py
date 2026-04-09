@@ -11,6 +11,7 @@ import triton.experimental.gluon.language.nvidia.blackwell as blackwell
 import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.extra.cuda.libdevice as libdevice
+import triton.language.core as tl_core
 from triton.language.core import _aggregate as aggregate
 
 
@@ -81,7 +82,7 @@ def swiglu(input, ALPHA: gl.constexpr, LIMIT: gl.constexpr):
     gelu = gelu.to(gl.float32)
     linear = linear.to(gl.float32)
     gelu = gl.minimum(gelu, LIMIT)
-    linear = gl.clamp(linear, -LIMIT, LIMIT)
+    linear = tl_core.clamp(linear, -LIMIT, LIMIT)
     s = gelu / (1 + libdevice.fast_expf(-ALPHA * gelu))
     return gl.fma(s, linear, s)
 
@@ -318,7 +319,7 @@ def epilogue_partition(p: PartitionArgs):
         out = out * out_recip
         if p.FLEXPOINT_SATURATE_INF:
             INF: gl.constexpr = 448.0
-            out = gl.clamp(out, -INF, INF)
+            out = tl_core.clamp(out, -INF, INF)
         out = out.to(p.out_desc.dtype)
 
         offs_m = off_m + gl.arange(0, p.BLOCK_M)

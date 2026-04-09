@@ -8,8 +8,10 @@ import triton
 import triton.experimental.gluon as gluon
 import triton.experimental.gluon.language as gl
 import triton.experimental.gluon.language.nvidia.blackwell as blackwell
+import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.core as tl_core
+from triton.language.core import _aggregate as aggregate
 
 from triton_kernels.matmul import Epilogue, FusedActivation, FusedComm, PrecisionConfig
 from triton_kernels.tensor import RaggedTensorMetadata, Tensor
@@ -27,12 +29,249 @@ class KernelConfig:
     num_warps: int = 8
     x_num_bufs: int = 5
     w_num_bufs: int = 4
+    w_scale_num_bufs: int = 4
     epilogue_n_elems: int = 4
     acc_instr_variant: str = "32x32b"
 
 
+@aggregate
+class PartitionArgs:
+    x_desc: tma.tensor_descriptor
+    w_desc: tma.tensor_descriptor
+    scale_desc: tma.tensor_descriptor
+    out_desc: tma.tensor_descriptor
+    x_scale_ptr: gl.tensor | gl.constexpr
+    w_scale_ptr: gl.tensor | gl.constexpr
+    out_scale_ptr: gl.tensor
+
+    out_ptr: gl.tensor
+    bias_ptr: gl.tensor
+    bias_stride: gl.tensor
+    gather_indx_ptr: gl.tensor
+    x_slice_sizes: gl.tensor
+    x_slice_offs: gl.tensor
+    x_block_offs: gl.tensor
+    x_block_schedule: gl.tensor
+
+    x_bufs: gl.shared_memory_descriptor
+    x_empty_bars: gl.shared_memory_descriptor
+    x_ready_bars: gl.shared_memory_descriptor
+    x_num_bufs: gl.constexpr
+
+    w_bufs: gl.shared_memory_descriptor
+    w_empty_bars: gl.shared_memory_descriptor
+    w_ready_bars: gl.shared_memory_descriptor
+    w_num_bufs: gl.constexpr
+
+    w_scale_bufs: gl.shared_memory_descriptor
+    w_scale_empty_bars: gl.shared_memory_descriptor
+    w_scale_ready_bars: gl.shared_memory_descriptor
+    w_scale_num_bufs: gl.constexpr
+
+    x_scale_tmem: blackwell.tensor_memory_descriptor
+    w_scale_tmem: blackwell.tensor_memory_descriptor
+    acc_bufs: blackwell.tensor_memory_descriptor
+    acc_empty_bars: gl.shared_memory_descriptor
+    acc_ready_bars: gl.shared_memory_descriptor
+    acc_num_bufs: gl.constexpr
+
+    grid_m: gl.tensor
+    GRID_N: gl.constexpr
+    K_TILES: gl.constexpr
+    SCALE_FLAT_N: gl.constexpr
+    SCALE_BLOCK_N_DIV: gl.constexpr
+    num_blocks: gl.tensor
+
+    NUM_SMS: gl.constexpr
+    XCD_SWIZZLE: gl.constexpr
+    N_MAJOR: gl.constexpr
+    BLOCK_M: gl.constexpr
+    BLOCK_N: gl.constexpr
+    BLOCK_K: gl.constexpr
+    SCALE_SIZE_OUTER: gl.constexpr
+    SCALE_SIZE_INNER: gl.constexpr
+    MXFP_BLOCK_SIZE: gl.constexpr
+    PACKED_BLOCK_K: gl.constexpr
+
+    SWIGLU_ALPHA: gl.constexpr
+    SWIGLU_LIMIT: gl.constexpr
+    REDUCTION_N: gl.constexpr
+    FLEXPOINT_SATURATE_INF: gl.constexpr
+
+    @gluon.jit
+    def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
+        return ws_base.apply_block_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            slice_offsets=self.x_slice_offs,
+            block_schedule=self.x_block_schedule,
+            XCD_SWIZZLE=self.XCD_SWIZZLE,
+            N_MAJOR=self.N_MAJOR,
+        )
+
+
 @gluon.jit
-def epilogue_partition_optimized(p: ws_base.PartitionArgs, EPILOGUE_N_ELEMS: gl.constexpr):
+def load_activations_split_sf(p: PartitionArgs):
+    OFFS_LAYOUT: gl.constexpr = gl.SliceLayout(
+        dim=0,
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0]),
+    )
+    TILE_X_BYTES: gl.constexpr = p.x_desc.block_type.nbytes * p.BLOCK_M
+
+    idx = 0
+    phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, _, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=OFFS_LAYOUT)
+        mask_m = offs_m < shape_m
+        offs_x_m = gl.load(
+            p.gather_indx_ptr + slice_offset + offs_m,
+            mask=mask_m,
+            other=p.x_desc.shape[0],
+        )
+
+        for ki in range(p.K_TILES):
+            off_k_x = ki * p.BLOCK_K
+
+            empty_bar = p.x_empty_bars.index(idx)
+            ready_bar = p.x_ready_bars.index(idx)
+            x_buf = p.x_bufs.index(idx)
+
+            mbarrier.wait(empty_bar, phase)
+            mbarrier.expect(ready_bar, TILE_X_BYTES)
+            tma.async_gather(p.x_desc, offs_x_m, off_k_x, ready_bar, x_buf)
+
+            idx, phase = ws_base.advance(idx, phase, p.x_num_bufs)
+
+
+@gluon.jit
+def load_weights_split_sf(p: PartitionArgs):
+    TILE_W_BYTES: gl.constexpr = p.w_desc.block_type.nbytes
+
+    idx = 0
+    phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        _, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+        off_n = pid_n * p.BLOCK_N
+
+        for ki in range(p.K_TILES):
+            off_k_w = ki * p.PACKED_BLOCK_K
+
+            empty_bar = p.w_empty_bars.index(idx)
+            ready_bar = p.w_ready_bars.index(idx)
+            w_buf = p.w_bufs.index(idx)
+
+            mbarrier.wait(empty_bar, phase)
+            mbarrier.expect(ready_bar, TILE_W_BYTES)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, off_n, off_k_w], ready_bar, w_buf)
+
+            idx, phase = ws_base.advance(idx, phase, p.w_num_bufs)
+
+
+@gluon.jit
+def load_weight_scales_split_sf(p: PartitionArgs):
+    TILE_SCALE_BYTES: gl.constexpr = p.scale_desc.block_type.nbytes
+
+    idx = 0
+    phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        _, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+        for ki in range(p.K_TILES):
+            off_k_scale = (ki * p.PACKED_BLOCK_K) // 64
+
+            empty_bar = p.w_scale_empty_bars.index(idx)
+            ready_bar = p.w_scale_ready_bars.index(idx)
+            scale_buf = p.w_scale_bufs.index(idx)
+
+            mbarrier.wait(empty_bar, phase)
+            mbarrier.expect(ready_bar, TILE_SCALE_BYTES)
+            tma.async_copy_global_to_shared(
+                p.scale_desc,
+                [0, scale_idx, off_k_scale, 0, 0],
+                ready_bar,
+                scale_buf,
+            )
+
+            idx, phase = ws_base.advance(idx, phase, p.w_scale_num_bufs)
+
+
+@gluon.jit
+def mma_partition_split_sf(p: PartitionArgs):
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
+    w_scale_idx = 0
+    w_scale_phase = 0
+    mma_idx = 0
+    mma_phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        acc_empty_bar = p.acc_empty_bars.index(mma_idx)
+        acc_ready_bar = p.acc_ready_bars.index(mma_idx)
+        acc_buf = p.acc_bufs.index(mma_idx)
+        mbarrier.wait(acc_empty_bar, mma_phase)
+
+        use_acc = False
+        for ki in range(p.K_TILES):
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            mbarrier.wait(w_ready_bar, w_phase)
+
+            w_scale_ready_bar = p.w_scale_ready_bars.index(w_scale_idx)
+            w_scale_empty_bar = p.w_scale_empty_bars.index(w_scale_idx)
+            scale_buf = p.w_scale_bufs.index(w_scale_idx)
+            mbarrier.wait(w_scale_ready_bar, w_scale_phase)
+            blackwell.tcgen05_copy(
+                ws_base.unswizzle_mx_scale(
+                    scale_buf,
+                    p.SCALE_SIZE_OUTER,
+                    p.SCALE_SIZE_INNER,
+                    p.MXFP_BLOCK_SIZE,
+                ),
+                p.w_scale_tmem,
+            )
+
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_ready_bar, x_phase)
+
+            blackwell.tcgen05_mma_scaled(
+                w_buf.reshape((w_buf.shape[1], w_buf.shape[2])),
+                x_buf.permute((1, 0)),
+                acc_buf,
+                p.w_scale_tmem,
+                p.x_scale_tmem,
+                a_type="e2m1",
+                b_type="e4m3",
+                use_acc=use_acc,
+            )
+            blackwell.tcgen05_commit(x_empty_bar)
+            blackwell.tcgen05_commit(w_empty_bar)
+            blackwell.tcgen05_commit(w_scale_empty_bar)
+
+            x_idx, x_phase = ws_base.advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = ws_base.advance(w_idx, w_phase, p.w_num_bufs)
+            w_scale_idx, w_scale_phase = ws_base.advance(w_scale_idx, w_scale_phase, p.w_scale_num_bufs)
+            use_acc = True
+
+        blackwell.tcgen05_commit(acc_ready_bar)
+        mma_idx, mma_phase = ws_base.advance(mma_idx, mma_phase, p.acc_num_bufs)
+
+
+@gluon.jit
+def epilogue_partition_split_sf(p: PartitionArgs, EPILOGUE_N_ELEMS: gl.constexpr):
     idx = 0
     phase = 0
 
@@ -89,8 +328,9 @@ def epilogue_partition_optimized(p: ws_base.PartitionArgs, EPILOGUE_N_ELEMS: gl.
         ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
         gl.store(ptrs, out, mask=mask)
 
+
 @gluon.jit
-def ws_matmul_kernel_optimized(
+def ws_matmul_kernel_split_sf(
     x_desc,
     w_desc,
     scale_desc,
@@ -130,6 +370,7 @@ def ws_matmul_kernel_optimized(
     NUM_SMS: gl.constexpr,
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
+    W_SCALE_NUM_BUFS: gl.constexpr,
     EPILOGUE_N_ELEMS: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
@@ -166,16 +407,23 @@ def ws_matmul_kernel_optimized(
         [w_num_bufs] + w_desc.block_type.shape,
         w_desc.layout,
     )
-    w_scale_bufs = gl.allocate_shared_memory(
-        scale_desc.dtype,
-        [w_num_bufs] + scale_desc.block_type.shape,
-        scale_desc.layout,
-    )
     w_empty_bars = gl.allocate_shared_memory(gl.int64, [w_num_bufs, 1], mbarrier.MBarrierLayout())
     w_ready_bars = gl.allocate_shared_memory(gl.int64, [w_num_bufs, 1], mbarrier.MBarrierLayout())
     for i in gl.static_range(w_num_bufs):
         mbarrier.init(w_empty_bars.index(i), count=1)
         mbarrier.init(w_ready_bars.index(i), count=1)
+
+    w_scale_num_bufs: gl.constexpr = W_SCALE_NUM_BUFS
+    w_scale_bufs = gl.allocate_shared_memory(
+        scale_desc.dtype,
+        [w_scale_num_bufs] + scale_desc.block_type.shape,
+        scale_desc.layout,
+    )
+    w_scale_empty_bars = gl.allocate_shared_memory(gl.int64, [w_scale_num_bufs, 1], mbarrier.MBarrierLayout())
+    w_scale_ready_bars = gl.allocate_shared_memory(gl.int64, [w_scale_num_bufs, 1], mbarrier.MBarrierLayout())
+    for i in gl.static_range(w_scale_num_bufs):
+        mbarrier.init(w_scale_empty_bars.index(i), count=1)
+        mbarrier.init(w_scale_ready_bars.index(i), count=1)
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, SCALE_K], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, SCALE_K], scale_layout)
@@ -190,7 +438,7 @@ def ws_matmul_kernel_optimized(
 
     x_scale_tmem.store(gl.full((BLOCK_M, SCALE_K), 127, dtype=gl.uint8, layout=x_scale_tmem.get_reg_layout()))
 
-    p = ws_base.PartitionArgs(
+    p = PartitionArgs(
         x_desc=x_desc,
         w_desc=w_desc,
         scale_desc=scale_desc,
@@ -214,10 +462,14 @@ def ws_matmul_kernel_optimized(
         x_num_bufs=x_num_bufs,
         #
         w_bufs=w_bufs,
-        w_scale_bufs=w_scale_bufs,
         w_empty_bars=w_empty_bars,
         w_ready_bars=w_ready_bars,
         w_num_bufs=w_num_bufs,
+        #
+        w_scale_bufs=w_scale_bufs,
+        w_scale_empty_bars=w_scale_empty_bars,
+        w_scale_ready_bars=w_scale_ready_bars,
+        w_scale_num_bufs=w_scale_num_bufs,
         #
         x_scale_tmem=x_scale_tmem,
         w_scale_tmem=w_scale_tmem,
@@ -250,18 +502,16 @@ def ws_matmul_kernel_optimized(
         FLEXPOINT_SATURATE_INF=FLEXPOINT_SATURATE_INF,
     )
 
-    # Keep the baseline partitioning, but loosen the weight-loader register
-    # budget. This is the only small tactical change that improved the target
-    # E256/es8 bucket on this branch.
     gl.warp_specialize(
         [
-            (epilogue_partition_optimized, (p, EPILOGUE_N_ELEMS)),
-            (ws_base.load_activations, (p,)),
-            (ws_base.load_weights, (p,)),
-            (ws_base.mma_partition, (p,)),
+            (epilogue_partition_split_sf, (p, EPILOGUE_N_ELEMS)),
+            (load_activations_split_sf, (p,)),
+            (load_weights_split_sf, (p,)),
+            (load_weight_scales_split_sf, (p,)),
+            (mma_partition_split_sf, (p,)),
         ],
-        [4, 1, 1],
-        [96, 64, 24],
+        [4, 1, 1, 1],
+        [96, 64, 32, 24],
     )
 
     for i in gl.static_range(x_num_bufs):
@@ -270,6 +520,9 @@ def ws_matmul_kernel_optimized(
     for i in gl.static_range(w_num_bufs):
         mbarrier.invalidate(w_empty_bars.index(i))
         mbarrier.invalidate(w_ready_bars.index(i))
+    for i in gl.static_range(w_scale_num_bufs):
+        mbarrier.invalidate(w_scale_empty_bars.index(i))
+        mbarrier.invalidate(w_scale_ready_bars.index(i))
     for i in gl.static_range(acc_num_bufs):
         mbarrier.invalidate(acc_empty_bars.index(i))
         mbarrier.invalidate(acc_ready_bars.index(i))
@@ -284,12 +537,24 @@ def _row_count(m_rows: int, expected_slice_size: int | None, n_slices: int) -> i
     return exp * n_slices
 
 
+def _get_env_int(names: tuple[str, ...], default: int) -> int:
+    for name in names:
+        value = os.environ.get(name)
+        if value is not None:
+            return int(value)
+    return default
+
+
 def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices: int) -> tuple[KernelConfig, int]:
     defaults = KernelConfig()
     cfg = KernelConfig(
-        x_num_bufs=int(os.environ.get("TRITON_WS_X_NUM_BUFS", defaults.x_num_bufs)),
-        w_num_bufs=int(os.environ.get("TRITON_WS_W_NUM_BUFS", defaults.w_num_bufs)),
-        epilogue_n_elems=int(os.environ.get("TRITON_WS_EPILOGUE_N_ELEMS", defaults.epilogue_n_elems)),
+        x_num_bufs=_get_env_int(("TRITON_WS_SPLIT_SF_X_NUM_BUFS", "TRITON_WS_X_NUM_BUFS"), defaults.x_num_bufs),
+        w_num_bufs=_get_env_int(("TRITON_WS_SPLIT_SF_W_NUM_BUFS", "TRITON_WS_W_NUM_BUFS"), defaults.w_num_bufs),
+        w_scale_num_bufs=_get_env_int(("TRITON_WS_SPLIT_SF_SCALE_NUM_BUFS",), defaults.w_scale_num_bufs),
+        epilogue_n_elems=_get_env_int(
+            ("TRITON_WS_SPLIT_SF_EPILOGUE_N_ELEMS", "TRITON_WS_EPILOGUE_N_ELEMS"),
+            defaults.epilogue_n_elems,
+        ),
     )
     row_count = _row_count(m_rows, expected_slice_size, n_slices)
     return cfg, row_count
@@ -398,7 +663,7 @@ def matmul(
     )
     out_desc = ws_base.make_operand_descriptor(c, [config.block_m, config.block_n // reduction_n])
 
-    ws_matmul_kernel_optimized[grid](
+    ws_matmul_kernel_split_sf[grid](
         x_desc=x_desc,
         w_desc=w_desc,
         scale_desc=scale_desc,
@@ -438,6 +703,7 @@ def matmul(
         NUM_SMS=launch_grid,
         X_NUM_BUFS=config.x_num_bufs,
         W_NUM_BUFS=config.w_num_bufs,
+        W_SCALE_NUM_BUFS=config.w_scale_num_bufs,
         EPILOGUE_N_ELEMS=config.epilogue_n_elems,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,

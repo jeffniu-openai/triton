@@ -33,6 +33,7 @@ from .matmul_gluon import matmul_ogs
 from .matmul_gluon_optimized import matmul_ogs as matmul_ogs_optimized
 from .matmul_ws import matmul as matmul_ws
 from .matmul_ws_optimized import matmul as matmul_ws_optimized
+from .matmul_ws_split_sf import matmul as matmul_ws_split_sf
 
 # Default roofline constants for a single NVIDIA GB300 GPU.
 # FP8 peak is inferred from the official GB300 NVL72 rack spec: 720 PFLOP/s
@@ -48,10 +49,12 @@ GLUON_KERNEL_NAME = "gluon"
 GLUON_OPTIMIZED_KERNEL_NAME = "gluon_optimized"
 WS_KERNEL_NAME = "ws"
 WS_OPTIMIZED_KERNEL_NAME = "ws_optimized"
+WS_SPLIT_SF_KERNEL_NAME = "ws_split_sf"
 KERNEL_NAME_COLUMN_WIDTH = max(
     len("kernel"),
     len(GLUON_OPTIMIZED_KERNEL_NAME),
     len(WS_OPTIMIZED_KERNEL_NAME),
+    len(WS_SPLIT_SF_KERNEL_NAME),
 )
 
 
@@ -235,6 +238,8 @@ def resolve_kernel(kernel_name: str) -> KernelFn:
         return matmul_ws
     if kernel_name == WS_OPTIMIZED_KERNEL_NAME:
         return matmul_ws_optimized
+    if kernel_name == WS_SPLIT_SF_KERNEL_NAME:
+        return matmul_ws_split_sf
     raise ValueError(f"Unknown kernel {kernel_name}")
 
 
@@ -248,6 +253,7 @@ def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
             GLUON_OPTIMIZED_KERNEL_NAME,
             WS_KERNEL_NAME,
             WS_OPTIMIZED_KERNEL_NAME,
+            WS_SPLIT_SF_KERNEL_NAME,
         )
     return tuple(kernel_mode.split(","))
 
