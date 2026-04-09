@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-09T18:38:46Z
+updated: 2026-04-09T18:42:30Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -348,6 +348,11 @@ Correctness for exact-math epilogue work can no longer treat `original` as the o
   - Validation: `make` in `/root/code/triton`; `python -m py_compile python/perf/matmul_ws_optimized.py`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100 --validation-reference exact`
   - Learnings: `matmul_ws_optimized.py` no longer reads any tuning knobs from `os.environ`; the file now just instantiates `KernelConfig()` directly in `matmul(...)` and uses the checked-in default values as the only supported configuration path. This removes the remaining `os` import and the long env-parsing block while keeping the current performance result intact. The exact target rerun after the change came back `ws=0.3511 ms`, `ws_optimized=0.3447 ms`, and `gluon_optimized=0.3455 ms`, so the fixed-default version still edges out `gluon_optimized` on the same benchmark.
   - Plan updates: Treat the checked-in `KernelConfig` dataclass as the single source of truth for WS-optimized tuning on this branch. If a future experiment needs a new knob again, add it back intentionally rather than rebuilding the old env-driven surface.
+- `2026-04-09` Completed: Replaced the hand-unrolled row-subtile trees with a tuple-plus-`gl.static_range` splitter helper
+  - Artifact: `python/perf/matmul_ws_optimized.py`
+  - Validation: `make` in `/root/code/triton`; `python -m py_compile python/perf/matmul_ws_optimized.py`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100 --validation-reference exact`
+  - Learnings: The worst remaining readability problem in the cleaned file was the repeated `if EPILOGUE_ROW_SUBTILE_FACTOR == ...` trees in `_epilogue_from_acc_packed(...)` and `_epilogue_enqueue_from_acc_packed(...)`. Replacing those with a shared `_split_first_dim_packed_subtiles(...)` helper cuts the repeated splitter code substantially while keeping the same row-subtile semantics for the supported `1/2/4/8/16/32` factors. The helper uses the attention-style pattern the user pointed at: keep the fragments in a Python tuple and grow that tuple across `gl.static_range(...)` levels, indexing each stage explicitly instead of hand-writing every split tree. The exact target rerun after this refactor came back `ws=0.3513 ms`, `ws_optimized=0.3447 ms`, and `gluon_optimized=0.3457 ms`, so the cleanup kept the default helper-wavefront kernel slightly ahead of `gluon_optimized`.
+  - Plan updates: Continue using shared tuple/static-range helpers for future WS readability work where the frontend allows it, but keep validating each refactor on the exact target bucket because Gluon still rejects some seemingly-legal Python constructs in jitted code.
 
 ## Next Up
 

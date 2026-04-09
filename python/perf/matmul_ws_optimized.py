@@ -267,6 +267,28 @@ def _split_first_dim_in_half_packed(values):
 
 
 @gluon.jit
+def _split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
+    gl.static_assert(
+        subtile_factor == 1
+        or subtile_factor == 2
+        or subtile_factor == 4
+        or subtile_factor == 8
+        or subtile_factor == 16
+        or subtile_factor == 32,
+        "unsupported row subtile factor",
+    )
+    subtiles = (values,)
+    for split_level in gl.static_range(5):
+        if (1 << split_level) < subtile_factor:
+            next_subtiles = ()
+            for subtile_idx in gl.static_range(1 << split_level):
+                lhs, rhs = _split_first_dim_in_half_packed(subtiles[subtile_idx])
+                next_subtiles += (lhs, rhs)
+            subtiles = next_subtiles
+    return subtiles
+
+
+@gluon.jit
 def _prepare_swiglu_fragment_from_packed(acc_packed, limit):
     gelu, linear = float2.unpack2(acc_packed)
     gelu = gl.minimum(gelu.to(gl.float32), limit)
@@ -430,133 +452,7 @@ def _epilogue_from_acc_packed(
     )
     FRAG_ROWS: gl.constexpr = p.BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
     HALF_OUT_N: gl.constexpr = p.BLOCK_N // p.REDUCTION_N // 2
-    if EPILOGUE_ROW_SUBTILE_FACTOR == 32:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        thirtysecond00000, thirtysecond00001 = _split_first_dim_in_half_packed(sixteenth0000)
-        thirtysecond00010, thirtysecond00011 = _split_first_dim_in_half_packed(sixteenth0001)
-        thirtysecond00100, thirtysecond00101 = _split_first_dim_in_half_packed(sixteenth0010)
-        thirtysecond00110, thirtysecond00111 = _split_first_dim_in_half_packed(sixteenth0011)
-        thirtysecond01000, thirtysecond01001 = _split_first_dim_in_half_packed(sixteenth0100)
-        thirtysecond01010, thirtysecond01011 = _split_first_dim_in_half_packed(sixteenth0101)
-        thirtysecond01100, thirtysecond01101 = _split_first_dim_in_half_packed(sixteenth0110)
-        thirtysecond01110, thirtysecond01111 = _split_first_dim_in_half_packed(sixteenth0111)
-        thirtysecond10000, thirtysecond10001 = _split_first_dim_in_half_packed(sixteenth1000)
-        thirtysecond10010, thirtysecond10011 = _split_first_dim_in_half_packed(sixteenth1001)
-        thirtysecond10100, thirtysecond10101 = _split_first_dim_in_half_packed(sixteenth1010)
-        thirtysecond10110, thirtysecond10111 = _split_first_dim_in_half_packed(sixteenth1011)
-        thirtysecond11000, thirtysecond11001 = _split_first_dim_in_half_packed(sixteenth1100)
-        thirtysecond11010, thirtysecond11011 = _split_first_dim_in_half_packed(sixteenth1101)
-        thirtysecond11100, thirtysecond11101 = _split_first_dim_in_half_packed(sixteenth1110)
-        thirtysecond11110, thirtysecond11111 = _split_first_dim_in_half_packed(sixteenth1111)
-        acc_packed_subtiles = (
-            thirtysecond00000,
-            thirtysecond00001,
-            thirtysecond00010,
-            thirtysecond00011,
-            thirtysecond00100,
-            thirtysecond00101,
-            thirtysecond00110,
-            thirtysecond00111,
-            thirtysecond01000,
-            thirtysecond01001,
-            thirtysecond01010,
-            thirtysecond01011,
-            thirtysecond01100,
-            thirtysecond01101,
-            thirtysecond01110,
-            thirtysecond01111,
-            thirtysecond10000,
-            thirtysecond10001,
-            thirtysecond10010,
-            thirtysecond10011,
-            thirtysecond10100,
-            thirtysecond10101,
-            thirtysecond10110,
-            thirtysecond10111,
-            thirtysecond11000,
-            thirtysecond11001,
-            thirtysecond11010,
-            thirtysecond11011,
-            thirtysecond11100,
-            thirtysecond11101,
-            thirtysecond11110,
-            thirtysecond11111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 16:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        acc_packed_subtiles = (
-            sixteenth0000,
-            sixteenth0001,
-            sixteenth0010,
-            sixteenth0011,
-            sixteenth0100,
-            sixteenth0101,
-            sixteenth0110,
-            sixteenth0111,
-            sixteenth1000,
-            sixteenth1001,
-            sixteenth1010,
-            sixteenth1011,
-            sixteenth1100,
-            sixteenth1101,
-            sixteenth1110,
-            sixteenth1111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 8:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        acc_packed_subtiles = (
-            eighth000,
-            eighth001,
-            eighth010,
-            eighth011,
-            eighth100,
-            eighth101,
-            eighth110,
-            eighth111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 4:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        acc_packed_subtiles = (quarter00, quarter01, quarter10, quarter11)
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 2:
-        acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
-    else:
-        acc_packed_subtiles = (acc_packed,)
+    acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, EPILOGUE_ROW_SUBTILE_FACTOR)
 
     if EPILOGUE_ROW_SUBTILE_FACTOR == 1 or EPILOGUE_N_FRAGMENT_FACTOR != 1 or EPILOGUE_SCHEDULE != 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
@@ -732,131 +628,7 @@ def _epilogue_enqueue_from_acc_packed(
     gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     gl.static_assert(EPILOGUE_N_FRAGMENT_FACTOR == 1, "store helper does not support N fragmenting")
     FRAG_ROWS: gl.constexpr = p.BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
-    if EPILOGUE_ROW_SUBTILE_FACTOR == 32:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        thirtysecond00000, thirtysecond00001 = _split_first_dim_in_half_packed(sixteenth0000)
-        thirtysecond00010, thirtysecond00011 = _split_first_dim_in_half_packed(sixteenth0001)
-        thirtysecond00100, thirtysecond00101 = _split_first_dim_in_half_packed(sixteenth0010)
-        thirtysecond00110, thirtysecond00111 = _split_first_dim_in_half_packed(sixteenth0011)
-        thirtysecond01000, thirtysecond01001 = _split_first_dim_in_half_packed(sixteenth0100)
-        thirtysecond01010, thirtysecond01011 = _split_first_dim_in_half_packed(sixteenth0101)
-        thirtysecond01100, thirtysecond01101 = _split_first_dim_in_half_packed(sixteenth0110)
-        thirtysecond01110, thirtysecond01111 = _split_first_dim_in_half_packed(sixteenth0111)
-        thirtysecond10000, thirtysecond10001 = _split_first_dim_in_half_packed(sixteenth1000)
-        thirtysecond10010, thirtysecond10011 = _split_first_dim_in_half_packed(sixteenth1001)
-        thirtysecond10100, thirtysecond10101 = _split_first_dim_in_half_packed(sixteenth1010)
-        thirtysecond10110, thirtysecond10111 = _split_first_dim_in_half_packed(sixteenth1011)
-        thirtysecond11000, thirtysecond11001 = _split_first_dim_in_half_packed(sixteenth1100)
-        thirtysecond11010, thirtysecond11011 = _split_first_dim_in_half_packed(sixteenth1101)
-        thirtysecond11100, thirtysecond11101 = _split_first_dim_in_half_packed(sixteenth1110)
-        thirtysecond11110, thirtysecond11111 = _split_first_dim_in_half_packed(sixteenth1111)
-        acc_packed_subtiles = (
-            thirtysecond00000,
-            thirtysecond00001,
-            thirtysecond00010,
-            thirtysecond00011,
-            thirtysecond00100,
-            thirtysecond00101,
-            thirtysecond00110,
-            thirtysecond00111,
-            thirtysecond01000,
-            thirtysecond01001,
-            thirtysecond01010,
-            thirtysecond01011,
-            thirtysecond01100,
-            thirtysecond01101,
-            thirtysecond01110,
-            thirtysecond01111,
-            thirtysecond10000,
-            thirtysecond10001,
-            thirtysecond10010,
-            thirtysecond10011,
-            thirtysecond10100,
-            thirtysecond10101,
-            thirtysecond10110,
-            thirtysecond10111,
-            thirtysecond11000,
-            thirtysecond11001,
-            thirtysecond11010,
-            thirtysecond11011,
-            thirtysecond11100,
-            thirtysecond11101,
-            thirtysecond11110,
-            thirtysecond11111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 16:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        sixteenth0000, sixteenth0001 = _split_first_dim_in_half_packed(eighth000)
-        sixteenth0010, sixteenth0011 = _split_first_dim_in_half_packed(eighth001)
-        sixteenth0100, sixteenth0101 = _split_first_dim_in_half_packed(eighth010)
-        sixteenth0110, sixteenth0111 = _split_first_dim_in_half_packed(eighth011)
-        sixteenth1000, sixteenth1001 = _split_first_dim_in_half_packed(eighth100)
-        sixteenth1010, sixteenth1011 = _split_first_dim_in_half_packed(eighth101)
-        sixteenth1100, sixteenth1101 = _split_first_dim_in_half_packed(eighth110)
-        sixteenth1110, sixteenth1111 = _split_first_dim_in_half_packed(eighth111)
-        acc_packed_subtiles = (
-            sixteenth0000,
-            sixteenth0001,
-            sixteenth0010,
-            sixteenth0011,
-            sixteenth0100,
-            sixteenth0101,
-            sixteenth0110,
-            sixteenth0111,
-            sixteenth1000,
-            sixteenth1001,
-            sixteenth1010,
-            sixteenth1011,
-            sixteenth1100,
-            sixteenth1101,
-            sixteenth1110,
-            sixteenth1111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 8:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        eighth000, eighth001 = _split_first_dim_in_half_packed(quarter00)
-        eighth010, eighth011 = _split_first_dim_in_half_packed(quarter01)
-        eighth100, eighth101 = _split_first_dim_in_half_packed(quarter10)
-        eighth110, eighth111 = _split_first_dim_in_half_packed(quarter11)
-        acc_packed_subtiles = (
-            eighth000,
-            eighth001,
-            eighth010,
-            eighth011,
-            eighth100,
-            eighth101,
-            eighth110,
-            eighth111,
-        )
-    elif EPILOGUE_ROW_SUBTILE_FACTOR == 4:
-        half0, half1 = _split_first_dim_in_half_packed(acc_packed)
-        quarter00, quarter01 = _split_first_dim_in_half_packed(half0)
-        quarter10, quarter11 = _split_first_dim_in_half_packed(half1)
-        acc_packed_subtiles = (quarter00, quarter01, quarter10, quarter11)
-    else:
-        acc_packed_subtiles = _split_first_dim_in_half_packed(acc_packed)
+    acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, EPILOGUE_ROW_SUBTILE_FACTOR)
     if EPILOGUE_SCHEDULE != 1 or EPILOGUE_ROW_SUBTILE_FACTOR == 1:
         for frag_idx in gl.static_range(EPILOGUE_ROW_SUBTILE_FACTOR):
             gelu_frag, linear_frag = _prepare_swiglu_fragment_from_packed(
