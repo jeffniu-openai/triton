@@ -346,11 +346,11 @@ def _enqueue_packed_fp8_fragment(
     USE_HELPER_PACKED_OUT_BUFFER: gl.constexpr,
     STORE_HELPER_DEPTH: gl.constexpr,
 ):
-    payload = out_packed.value if USE_HELPER_PACKED_OUT_BUFFER else _pack_fp8_out_fragment(out_packed, out_recip)
     gl.static_assert(STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
     empty_bar = store_empty_bars.index(store_idx)
     ready_bar = store_ready_bars.index(store_idx)
     mbarrier.wait(empty_bar, store_phase)
+    payload = out_packed.value if USE_HELPER_PACKED_OUT_BUFFER else _pack_fp8_out_fragment(out_packed, out_recip)
     store_bufs.index(store_idx).store(payload)
     mbarrier.arrive(ready_bar)
     return ws_base.advance(store_idx, store_phase, STORE_HELPER_DEPTH)
@@ -1053,22 +1053,32 @@ def epilogue_store_partition_optimized(
                 empty_bar = store_empty_bars.index(store_idx)
                 mbarrier.wait(ready_bar, store_phase)
                 store_buf = store_bufs.index(store_idx)
-                packed_fp8 = (
-                    _pack_fp8_out_fragment(float2.Float2Tensor(store_buf.load(STORE_LAYOUT)), out_recip)
-                    if USE_HELPER_PACKED_OUT_BUFFER
-                    else store_buf.load(STORE_LAYOUT)
-                )
-                _store_packed_out(
-                    p,
-                    packed_fp8,
-                    frag_off_m,
-                    out_off_n,
-                    shape_m,
-                    slice_offset,
-                    USE_BLOCKED_PACKED_STORE,
-                    USE_WIDE_PACKED_STORE32,
-                    USE_WIDE_PACKED_STORE64,
-                )
+                if USE_HELPER_PACKED_OUT_BUFFER:
+                    packed_fp8 = _pack_fp8_out_fragment(float2.Float2Tensor(store_buf.load(STORE_LAYOUT)), out_recip)
+                    _store_packed_out(
+                        p,
+                        packed_fp8,
+                        frag_off_m,
+                        out_off_n,
+                        shape_m,
+                        slice_offset,
+                        USE_BLOCKED_PACKED_STORE,
+                        USE_WIDE_PACKED_STORE32,
+                        USE_WIDE_PACKED_STORE64,
+                    )
+                else:
+                    packed_fp8 = store_buf.load(STORE_LAYOUT)
+                    _store_packed_out(
+                        p,
+                        packed_fp8,
+                        frag_off_m,
+                        out_off_n,
+                        shape_m,
+                        slice_offset,
+                        USE_BLOCKED_PACKED_STORE,
+                        USE_WIDE_PACKED_STORE32,
+                        USE_WIDE_PACKED_STORE64,
+                    )
                 mbarrier.arrive(empty_bar)
                 store_idx, store_phase = ws_base.advance(store_idx, store_phase, STORE_HELPER_DEPTH)
 
@@ -1188,12 +1198,12 @@ def epilogue_partition_optimized(
                     EPILOGUE_SCHEDULE,
                     USE_EXP2_SIGMOID,
                     USE_PACKED_FINAL_FMA,
-                        USE_PACKED_FP8_STORE,
-                        USE_BLOCKED_PACKED_STORE,
-                        USE_WIDE_PACKED_STORE32,
-                        USE_WIDE_PACKED_STORE64,
-                        USE_PACKED_OUT_SCALE,
-                    )
+                    USE_PACKED_FP8_STORE,
+                    USE_BLOCKED_PACKED_STORE,
+                    USE_WIDE_PACKED_STORE32,
+                    USE_WIDE_PACKED_STORE64,
+                    USE_PACKED_OUT_SCALE,
+                )
 
 @gluon.jit
 def ws_matmul_kernel_optimized(
@@ -1533,7 +1543,7 @@ def _row_count(m_rows: int, expected_slice_size: int | None, n_slices: int) -> i
 def _select_kernel_config(m_rows: int, expected_slice_size: int | None, n_slices: int) -> tuple[KernelConfig, int]:
     defaults = KernelConfig()
     cfg = KernelConfig(
-        num_warps=defaults.num_warps,
+        num_warps=int(os.environ.get("TRITON_WS_NUM_WARPS", defaults.num_warps)),
         x_num_bufs=int(os.environ.get("TRITON_WS_X_NUM_BUFS", defaults.x_num_bufs)),
         w_num_bufs=int(os.environ.get("TRITON_WS_W_NUM_BUFS", defaults.w_num_bufs)),
         load_activation_warps=int(
@@ -1702,7 +1712,7 @@ def matmul(
     assert config.block_n % config.epilogue_subtile_n == 0
     assert config.epilogue_subtile_n % reduction_n == 0
     assert config.block_n // config.epilogue_subtile_n == 1
-    assert config.num_warps == 8
+    assert config.num_warps >= 8 and (config.num_warps & (config.num_warps - 1)) == 0
     assert config.epilogue_row_subtile_factor in (1, 2, 4, 8, 16, 32)
     assert config.block_m % config.epilogue_row_subtile_factor == 0
     assert config.epilogue_n_fragment_factor in (1, 2)
