@@ -4985,3 +4985,44 @@ Open after this slice:
   use clean negatives only for impossible ISA cases, and choose among multiple
   legal codegen paths with performance-oriented heuristics rather than
   hard-coded exclusions.
+
+## 2026-04-09 half-row ld/st probe refresh: still a planner/decomposition BUG, not a new negative boundary
+- Re-ran the remaining lifted half-row ld/st wrong-code bucket from the
+  isolated worktree after repairing the earlier malformed-debug-string state
+  and keeping the broader support-query cleanup changes buildable again.
+- Reconfirmed that the bug is not limited to the lifted higher-rank
+  `reshape((2, M/2, N)).slice(1, 1, dim=0).index(0)` chain:
+  - a direct `128x64 -> slice(M/2, M/2, dim=0)` TMEM row-half view is also
+    wrong under the current direct ld/st planner
+  - a standalone root `64x64` TMEM tile with the same `16x128b` family still
+    executes correctly
+- The new concrete evidence is that the current direct packet families map the
+  row-half view to alternating 16-row bands instead of the contiguous lower
+  half:
+  - `32x32b`, `16x64b`, `16x256b`, and the current auto-selected `16x32bx2`
+    path all hit rows `0-15,32-47,64-79,96-111`
+  - `16x128b` hits rows `16-31,48-63,80-95,112-127`
+  - expected semantics remain the contiguous lower half `64-127`
+- Interpretation:
+  - this bucket still looks physically codegen-legal in principle because the
+    root `64x64` family itself is valid; the current lowering is simply
+    choosing the wrong TMEM packet decomposition for views carved from a larger
+    backing tile
+  - therefore this is still an open BUG in planner/decomposition semantics, not
+    evidence for introducing a new permanent clean-negative verifier boundary
+- Bounded experiments retried and reverted in this session because they did not
+  restore correct semantics:
+  - raw-query rebasing with direct-view layouts plus lifted origins
+  - widened backing-tile support queries
+  - local-vs-backing row anchors
+  - packet-band / base-offset reinterpretations
+  - half-row base-shift cancel / no-cancel variants
+- Validation kept from the probe:
+  - `TRITON_BUILD_WITH_CCACHE=true TRITON_HOME=/tmp CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+- Next-action consequence:
+  - keep the half-row bucket classified as a remaining positive-correctness
+    problem that needs a real linear-layout packet decomposition
+  - pivot implementation effort back to the tractable support-query cleanup
+    backlog (`32x32` rescue/scalarization, `64x128xf32` reinterpret rescue,
+    packed row-zero-lifted fixups, `warpx2` family cleanup) instead of landing
+    another local half-row workaround

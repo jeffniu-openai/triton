@@ -2748,3 +2748,30 @@ rejection, not rescue
 - Conclusion: current blocker is machine/driver state, not a new confirmed Triton regression in TMEM codegen. Resume remaining GB200-equivalent GPU targets only after GPU/NVLink health is restored.
 
 - After killing the stray probe and wedged pytest processes, `timeout 20s nvidia-smi --query-gpu=...` still timed out. GPU control path remained unhealthy, so the GB200-equivalent GPU sweep could not be completed further in this session.
+
+## 2026-04-09: half-row ld/st still needs a real linear-layout packet decomposition
+
+- Revalidated the remaining lifted row-half ld/st wrong-code bucket after
+  repairing the interrupted support-query cleanup state.
+- Important refinement:
+  - the bug is not only the lifted higher-rank
+    `reshape((2, M/2, N)).slice(1, 1, dim=0).index(0)` descriptor chain
+  - the direct `128x64 -> slice(M/2, M/2, dim=0)` TMEM row-half view is also
+    wrong, while a root `64x64` tile with the same `16x128b` family still
+    works
+- The current direct ld/st families do not describe the row-half view as a
+  simple contiguous lower-half rebasing:
+  - `32x32b`, `16x64b`, `16x256b`, and auto-selected `16x32bx2` touch the even
+    16-row bands `0-15,32-47,64-79,96-111`
+  - `16x128b` touches the odd 16-row bands `16-31,48-63,80-95,112-127`
+  - expected semantics remain the contiguous lower half `64-127`
+- This preserves the earlier initiative conclusion:
+  - the row-half bucket still looks physically codegenable in principle
+  - the current lowering is selecting the wrong packet decomposition for a view
+    carved from a larger backing tile
+  - do not convert this into a new permanent clean-negative boundary; fix it
+    through a cleaner linear-layout planner/decomposition model
+- Session outcome:
+  - retried bounded support-query/base-offset/anchor experiments
+  - reverted them because none restored correct semantics
+  - kept only the green rebuilt baseline and recorded the evidence
