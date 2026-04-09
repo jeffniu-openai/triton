@@ -2807,3 +2807,22 @@ rejection, not rescue
     correctness problem
   - remaining targeted cleanup backlog is the separate `warpx2`
     family-specific planner work plus the blocked GB200-equivalent rerun
+
+## 2026-04-09: warpx2 family-specific planner cleanup reduced to shared linear-layout search
+
+- The remaining `warpx2` planner cleanup was structural, not a behavior bug.
+- Durable outcome:
+  - keep `01_23` vs `02_13` differences only in the plan-spec selection logic
+  - use one bounded descriptor-layout mutation search for both families once
+    the family-specific core descriptor shape has been chosen
+  - remove duplicated `02_13` seed-layout reinsertion and other probe-era
+    planner residue without changing the tested lowering results
+- Validation:
+  - `make -j8` with the recorded include-path workaround is green
+  - warpx2 runtime-matrix slice is green (`4 passed`)
+  - `test/TritonNvidiaGPU/invalid.mlir` verify-diagnostics is green
+- Backlog impact:
+  - the post-merge-base managed-session hack inventory is now closed
+  - remaining work is no longer planner cleanup; it is the separate half-row
+    ld/st correctness bucket plus resuming GB200-equivalent validation once the
+    machine is healthy

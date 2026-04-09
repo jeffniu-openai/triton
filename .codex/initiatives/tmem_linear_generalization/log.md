@@ -5074,3 +5074,37 @@ Open after this slice:
     do not treat this support-query cleanup as resolving that bucket
   - the GB200-equivalent full sweep is still blocked on node/GPU health, so
     this checkpoint only has focused local validation
+
+## 2026-04-09 warpx2 planner cleanup: shared descriptor-layout search factored out
+- Followed the support-query landing by cleaning up the remaining
+  `tcgen05.copy.warpx2` planner residue in
+  `TensorMemoryUtils.cpp`.
+- What changed:
+  - kept the real ISA distinction between `warpx2::01_23` and
+    `warpx2::02_13` in the small plan-spec selection logic inside
+    `getTMemCopyPlans(...)`
+  - collapsed the duplicated descriptor-layout mutation search in
+    `getTMemCopyDescriptorLayouts(...)` into one bounded
+    linear-layout-driven helper shared by both warpx2 families
+  - removed the redundant `02_13` seed-layout reinsertion and the stale
+    no-op `atom->multicast == 3 ? 32u : 32u` generic plan ternary while
+    preserving plan ordering
+- Why this matters:
+  - the old code implied that `01_23` and `02_13` needed separate descriptor
+    mutation logic, but once the family-specific core descriptor shape is
+    chosen the remaining layout search is the same linear-layout problem for
+    both families
+  - this keeps the family-specific behavior where it belongs
+    (plan specification / opcode choice) and removes duplicated search code
+    from the planner
+- Validation:
+  - `TRITON_BUILD_WITH_CCACHE=true TRITON_HOME=/tmp CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `4 passed`
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file --verify-diagnostics test/TritonNvidiaGPU/invalid.mlir`
+- Remaining initiative work after this cleanup:
+  - the post-merge-base hack inventory from the managed-session handoff is now
+    closed
+  - still-open initiative work is the separate half-row ld/st
+    packet-decomposition correctness bug plus the blocked GB200-equivalent
+    validation rerun once node health is restored

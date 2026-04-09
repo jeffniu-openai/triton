@@ -5579,6 +5579,17 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
   };
 
   llvm::SmallVector<TMemCopyPlan> plans;
+  auto appendWarpx2Plan = [&](unsigned descriptorRows,
+                              unsigned sourceWarpGroups, bool directSeed,
+                              int tmemDwordDelta,
+                              int directSourceOffsetB128) {
+    auto plan = makePlan({std::tuple{descriptorRows, sourceWarpGroups, 64u, 0}});
+    auto &message = plan.messages.front();
+    message.useDirectSeedDescriptor = directSeed;
+    message.tmemDwordDelta = tmemDwordDelta;
+    message.directSourceOffsetB128 = directSourceOffsetB128;
+    plans.push_back(std::move(plan));
+  };
 
   // CUTLASS models the two warpx2 families differently:
   //   - 01_23 is a 32x128b core-descriptor family with one broadcast axis and
@@ -5586,27 +5597,30 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
   //   - 02_13 is a true 64x128b core-descriptor family with one broadcast
   //     axis.
   if (atom->multicast == 1) {
-    plans.push_back(makePlan({std::tuple{32u, 4u, 64u, 0}}));
+    appendWarpx2Plan(/*descriptorRows=*/32u, /*sourceWarpGroups=*/4u,
+                     /*directSeed=*/false, /*tmemDwordDelta=*/0,
+                     /*directSourceOffsetB128=*/0);
     return plans;
   }
   if (atom->multicast == 2) {
-    auto directHalfPlan = makePlan({std::tuple{64u, 2u, 64u, 0}});
-    directHalfPlan.messages.front().tmemDwordDelta = 4;
-    directHalfPlan.messages.front().useDirectSeedDescriptor = true;
-    directHalfPlan.messages.front().directSourceOffsetB128 = 32;
-    plans.push_back(std::move(directHalfPlan));
-    plans.push_back(makePlan({std::tuple{64u, 2u, 64u, 0}}));
+    appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
+                     /*directSeed=*/true, /*tmemDwordDelta=*/4,
+                     /*directSourceOffsetB128=*/32);
+    appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
+                     /*directSeed=*/false, /*tmemDwordDelta=*/0,
+                     /*directSourceOffsetB128=*/0);
     // Direct PTX probes show warpx2::02_13 can sometimes use the same
     // descriptor seed shape as the clean 01_23 path even though the opcode
     // selects a different quadrant family. Keep the 64x2 factorization first,
     // but also try a bounded 32x4 fallback before declaring the family
     // unsupported.
-    plans.push_back(makePlan({std::tuple{32u, 4u, 64u, 0}}));
+    appendWarpx2Plan(/*descriptorRows=*/32u, /*sourceWarpGroups=*/4u,
+                     /*directSeed=*/false, /*tmemDwordDelta=*/0,
+                     /*directSourceOffsetB128=*/0);
     return plans;
   }
 
-  plans.push_back(makePlan({std::tuple{32u, 4u, atom->multicast == 3 ? 32u : 32u,
-                                        0}}));
+  plans.push_back(makePlan({std::tuple{32u, 4u, 32u, 0}}));
   // Dense families sometimes admit a 64x2 descriptor factorization in addition
   // to the canonical 32x4 split. Keep the canonical plan first and only fall
   // back to the 64x2 variant when descriptor synthesis rejects the canonical
@@ -5762,66 +5776,7 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
     pushUnique(LinearLayout(std::move(bases), to_vector(layout.getOutDims()),
                             /*requireSurjective=*/false));
   };
-  pushUnique(makeLayout(message.descriptorRows, message.sourceWarpGroups,
-                        cvt.getInDimSize(kCol)));
-  if (auto directSharedLayout =
-          makeSharedSeedLayout(message.descriptorRows,
-                               message.sourceWarpGroups,
-                               cvt.getInDimSize(kCol))) {
-    pushUnique(*directSharedLayout);
-    pushSortedInputBasesVariant(*directSharedLayout);
-    if (message.atom.multicast == 2) {
-      pushUnique(*directSharedLayout);
-      pushSortedInputBasesVariant(*directSharedLayout);
-    }
-  }
-  // tcgen05.copy.warpx2::01_23 exposes a 32x128b core descriptor plus extra
-  // source warp-group bits that can materialize as repeat along row, repeat
-  // along column, or residual broadcast. Try the bounded family of
-  // row/column/broadcast repartitions and let the descriptor matcher select the
-  // first representable one.
-  if (message.atom.multicast == 1 && message.sourceWarpGroups > 1) {
-    unsigned warpBits = llvm::Log2_32(message.sourceWarpGroups);
-    for (unsigned rowFoldBits = 0; rowFoldBits <= warpBits; ++rowFoldBits) {
-      for (unsigned colFoldBits = 0;
-           rowFoldBits + colFoldBits <= warpBits; ++colFoldBits) {
-        unsigned foldedBits = rowFoldBits + colFoldBits;
-        unsigned residualWarpGroups = message.sourceWarpGroups >> foldedBits;
-        pushUnique(makeLayout(message.descriptorRows << rowFoldBits,
-                              residualWarpGroups,
-                              cvt.getInDimSize(kCol) << colFoldBits));
-      }
-    }
-
-    // The public warpx2::01_23 path exposes one additional low-order source
-    // bit that may need to move from the descriptor column space into the
-    // descriptor row space. MMAShared descriptors still expect a canonical
-    // 32x4 core tile, so try the bounded family of "promote one extra column
-    // bit into the low row bits" variants as well.
-    llvm::SmallVector<LinearLayout> seedLayouts = layouts;
-    unsigned descriptorColBits = llvm::Log2_32(message.descriptorShape[1]);
-    for (const auto &layout : seedLayouts) {
-      const auto &rowBases = layout.getBases().lookup(kRow);
-      const auto &colBases = layout.getBases().lookup(kCol);
-      for (unsigned demotedRowIndex = 0; demotedRowIndex < rowBases.size();
-           ++demotedRowIndex)
-        pushRotatedRowVariant(layout, demotedRowIndex);
-      for (unsigned sourceRowIndex = 0; sourceRowIndex < rowBases.size();
-           ++sourceRowIndex)
-        for (unsigned destRowIndex = 0; destRowIndex < rowBases.size();
-             ++destRowIndex)
-          pushMovedRowVariant(layout, sourceRowIndex, destRowIndex);
-      if (colBases.size() <= descriptorColBits)
-        continue;
-      for (unsigned promotedColIndex = descriptorColBits;
-           promotedColIndex < colBases.size(); ++promotedColIndex) {
-        pushReassignedVariant(layout, promotedColIndex, std::nullopt);
-        for (unsigned demotedRowIndex = 0; demotedRowIndex < rowBases.size();
-             ++demotedRowIndex)
-          pushReassignedVariant(layout, promotedColIndex, demotedRowIndex);
-      }
-    }
-  } else if (message.atom.multicast == 2) {
+  auto addWarpx2DescriptorVariants = [&]() {
     if (message.sourceWarpGroups > 1) {
       unsigned warpBits = llvm::Log2_32(message.sourceWarpGroups);
       for (unsigned rowFoldBits = 0; rowFoldBits <= warpBits; ++rowFoldBits) {
@@ -5835,6 +5790,7 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
         }
       }
     }
+
     llvm::SmallVector<LinearLayout> seedLayouts = layouts;
     unsigned descriptorColBits = llvm::Log2_32(message.descriptorShape[1]);
     for (const auto &layout : seedLayouts) {
@@ -5858,7 +5814,24 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
           pushReassignedVariant(layout, promotedColIndex, demotedRowIndex);
       }
     }
+  };
+  pushUnique(makeLayout(message.descriptorRows, message.sourceWarpGroups,
+                        cvt.getInDimSize(kCol)));
+  if (auto directSharedLayout =
+          makeSharedSeedLayout(message.descriptorRows,
+                               message.sourceWarpGroups,
+                               cvt.getInDimSize(kCol))) {
+    pushUnique(*directSharedLayout);
+    pushSortedInputBasesVariant(*directSharedLayout);
   }
+  // Once getTMemCopyPlans(...) has chosen the core warpx2 descriptor family
+  // (`32x4` for `01_23`, `64x2` for `02_13`), both public warpx2 paths need
+  // the same bounded linear-layout search: repartition any extra source warp
+  // bits across descriptor rows / cols and then try the small family of row
+  // reorders and promoted low-order column bits that MMAShared descriptors can
+  // still materialize.
+  if (message.atom.multicast == 1 || message.atom.multicast == 2)
+    addWarpx2DescriptorVariants();
   return layouts;
 }
 
