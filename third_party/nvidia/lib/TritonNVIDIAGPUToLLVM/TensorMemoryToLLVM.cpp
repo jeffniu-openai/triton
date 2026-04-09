@@ -14,6 +14,7 @@
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -105,6 +106,43 @@ static uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
   }
 
   return 0;
+}
+
+static int32_t lookupLinearLayoutCoord(
+    ArrayRef<std::pair<StringAttr, int32_t>> coords, StringAttr dim) {
+  for (auto [name, value] : coords) {
+    if (name == dim)
+      return value;
+  }
+  return 0;
+}
+
+static SmallVector<std::pair<StringAttr, int32_t>>
+makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
+                           ArrayRef<std::pair<StringAttr, int32_t>> sparse) {
+  SmallVector<std::pair<StringAttr, int32_t>> result;
+  result.reserve(dims.size());
+  for (auto dim : dims)
+    result.push_back({dim, lookupLinearLayoutCoord(sparse, dim)});
+  return result;
+}
+
+static bool canRepresentLogicalRowAnchor(const LinearLayout &layout,
+                                         int32_t logicalRow) {
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (outDims.empty())
+    return false;
+  auto *ctx = outDims.front().getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  if (!layout.hasInDim(kRow) || logicalRow < 0 ||
+      logicalRow >= layout.getInDimSize(kRow)) {
+    return false;
+  }
+  auto inDims = llvm::to_vector(layout.getInDimNames());
+  auto realizedCoords =
+      layout.apply(makeFullLinearLayoutCoords(inDims, {{kRow, logicalRow}}));
+  (void)realizedCoords;
+  return true;
 }
 
 static LinearLayout getTMemCopyAddressLayout(MemDescType memDescType,
@@ -775,6 +813,36 @@ lowerTMemLdStFromTypes(
   };
   auto kRow = StringAttr::get(rewriter.getContext(), "row");
   auto kCol = StringAttr::get(rewriter.getContext(), "col");
+  auto preferBackingRowPlanForDirectRootLoad =
+      [&](MemDescType queryTy,
+          std::optional<TMemLdStRowPlan> rowPlan) -> std::optional<TMemLdStRowPlan> {
+    if (!vals.empty() || !memDescValue ||
+        !isa_and_nonnull<TMEMAllocOp>(memDescValue.getDefiningOp()) || !rowPlan) {
+      return rowPlan;
+    }
+    auto backingPlan = getBackingTMemLdStRowPlan(memDescValue);
+    if (!backingPlan || backingPlan->rowSpan <= rowPlan->rowSpan ||
+        queryTy != memTy || queryTy.getRank() != 2 ||
+        queryTy.getShape()[0] != 64) {
+      return rowPlan;
+    }
+    auto queryLayout = toLinearLayout(queryTy);
+    if (!canRepresentLogicalRowAnchor(queryLayout, backingPlan->warpRow0) ||
+        !canRepresentLogicalRowAnchor(queryLayout, backingPlan->warpRow1)) {
+      return rowPlan;
+    }
+    return backingPlan;
+  };
+  auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
+    if (!memDescValue || memTy.getRank() != 2 ||
+        memTy.getElementTypeBitWidth() != 32 || memTy.getShape()[0] != 64 ||
+        isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+      return false;
+    }
+    auto regLayout = toLinearLayout(regTy);
+    auto kWarp = StringAttr::get(rewriter.getContext(), "warp");
+    return regLayout.hasInDim(kWarp) && regLayout.getInDimSize(kWarp) == 4;
+  }();
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
     if (!memDescValue ||
         !isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
@@ -801,6 +869,105 @@ lowerTMemLdStFromTypes(
   }();
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
+  auto tryRawQueryLowering =
+      [&]() -> std::optional<std::pair<SmallVector<Value>, SmallVector<Value>>> {
+    if (!memDescValue)
+      return std::nullopt;
+    std::string rawError;
+    if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+            memDescValue, /*preserveNonCanonicalView=*/true, &rawError);
+        succeeded(rawQuery)) {
+      rawQueryLayout = *rawQuery;
+      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
+              memDescValue.getDefiningOp()) &&
+          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
+          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
+        rawQueryLayout->layout = toLinearLayout(memTy);
+      }
+      MemDescType rawMemTy = memTy;
+      if (!(isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
+                memDescValue.getDefiningOp()) &&
+            memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
+            memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128)) {
+        if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
+                memDescValue, /*error=*/nullptr);
+            succeeded(maybeStandaloneTy)) {
+          rawMemTy = *maybeStandaloneTy;
+        }
+      }
+      rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
+      if (!rawRowPlan)
+        rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
+      rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan);
+      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
+              memDescValue.getDefiningOp()) &&
+          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
+          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
+        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                                     /*rowSpan=*/64};
+      }
+      if (debugQuerySelection) {
+        llvm::errs() << "[tmem-ldst] raw memTy=" << memTy << " rawRowPlan="
+                     << (rawRowPlan ? llvm::Twine(rawRowPlan->rowSpan).str()
+                                    : std::string("none"))
+                     << "\n";
+      }
+      std::string rawDetails;
+      auto rawEncodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
+        llvm::raw_string_ostream os(rawDetails);
+        ScopedDiagnosticHandler handler(
+            rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
+        return computeTMemLdStEncodingInfo(
+            regTy, rawMemTy, *rawQueryLayout, maxnreg,
+            debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
+            rawRowPlan);
+      }();
+      appendTrace(Twine("rawQuery ") +
+                  (succeeded(rawEncodingInfoOr)
+                       ? (Twine("ok atom=") +
+                          Twine(static_cast<int>(rawEncodingInfoOr->atom)) +
+                          " regsPerMsg=" +
+                          Twine(rawEncodingInfoOr->numRegsPerMessage) +
+                          " baseOffset=" + Twine(rawEncodingInfoOr->baseOffset) +
+                          " warpBase0=" +
+                          Twine(rawEncodingInfoOr->warpBaseOffset0) +
+                          " warpBase1=" +
+                          Twine(rawEncodingInfoOr->warpBaseOffset1) +
+                          " reps=" + rawEncodingInfoOr->reps.toString())
+                       : (Twine("fail details=") + rawDetails)));
+      if (debugQuerySelection) {
+        llvm::errs() << "[tmem-ldst] rawQuery -> "
+                     << (succeeded(rawEncodingInfoOr)
+                             ? ("ok atom=" +
+                                llvm::Twine(static_cast<int>(rawEncodingInfoOr->atom)))
+                                   .str()
+                             : ("fail details=" + rawDetails))
+                     << "\n";
+      }
+      if (succeeded(rawEncodingInfoOr)) {
+        auto &encodingInfoOr = rawEncodingInfoOr;
+        uint32_t alreadyAdjustedBase =
+            getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
+        // Subview ops that already advanced the TMEM base pointer should only
+        // keep the portion of the raw-query baseOffset that remains relative
+        // to the lowered base, rather than re-applying the full view origin.
+        if (alreadyAdjustedBase != 0)
+          encodingInfoOr->baseOffset =
+              encodingInfoOr->baseOffset > alreadyAdjustedBase
+                  ? encodingInfoOr->baseOffset - alreadyAdjustedBase
+                  : 0;
+        if (auto lowered = lowerTMemLdStFromInfo(
+                loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals,
+                tmemBase, redOp, useAbs, useNaN);
+            succeeded(lowered)) {
+          return *lowered;
+        }
+      }
+    } else if (debugQuerySelection && !rawError.empty()) {
+      llvm::errs() << "[tmem-ldst] rawQuery fail: " << rawError << "\n";
+    }
+    return std::nullopt;
+  };
   if (memDescValue) {
     bool disableSupportQuery =
         std::getenv("TRITON_DISABLE_TMEM_SUPPORT_QUERY_LOWERING") != nullptr;
@@ -813,6 +980,7 @@ lowerTMemLdStFromTypes(
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       if (!supportRowPlan)
         supportRowPlan = getTMemLdStRowPlan(supportQuery.layout);
+      supportRowPlan = preferBackingRowPlanForDirectRootLoad(memTy, supportRowPlan);
       std::string supportDetails;
       auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
         llvm::raw_string_ostream os(supportDetails);
@@ -877,90 +1045,9 @@ lowerTMemLdStFromTypes(
     } else if (debugQuerySelection) {
       llvm::errs() << "[tmem-ldst] supportQuery disabled\n";
     }
-    std::string rawError;
-    if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-            memDescValue, /*preserveNonCanonicalView=*/true, &rawError);
-        succeeded(rawQuery)) {
-      rawQueryLayout = *rawQuery;
-      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
-          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
-          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
-        rawQueryLayout->layout = toLinearLayout(memTy);
-      }
-      MemDescType rawMemTy = memTy;
-      if (!(isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
-            memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
-            memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128)) {
-        if (auto maybeStandaloneTy =
-                inferStandaloneTMemRegLayoutQueryType(memDescValue, /*error=*/nullptr);
-            succeeded(maybeStandaloneTy))
-          rawMemTy = *maybeStandaloneTy;
-      }
-      rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
-      if (!rawRowPlan)
-        rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
-      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(memDescValue.getDefiningOp()) &&
-          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
-          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
-        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
-                                     /*rowSpan=*/64};
-      }
-      if (debugQuerySelection) {
-        llvm::errs() << "[tmem-ldst] raw memTy=" << memTy << " rawRowPlan="
-                     << (rawRowPlan ? llvm::Twine(rawRowPlan->rowSpan).str()
-                                    : std::string("none"))
-                     << "\n";
-      }
-      std::string rawDetails;
-      auto rawEncodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
-        llvm::raw_string_ostream os(rawDetails);
-        ScopedDiagnosticHandler handler(
-            rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
-        return computeTMemLdStEncodingInfo(
-            regTy, rawMemTy, *rawQueryLayout, maxnreg,
-            debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
-            rawRowPlan);
-      }();
-      appendTrace(Twine("rawQuery ") +
-                  (succeeded(rawEncodingInfoOr)
-                       ? (Twine("ok atom=") +
-                          Twine(static_cast<int>(rawEncodingInfoOr->atom)) +
-                          " regsPerMsg=" +
-                          Twine(rawEncodingInfoOr->numRegsPerMessage) +
-                          " baseOffset=" + Twine(rawEncodingInfoOr->baseOffset) +
-                          " warpBase0=" +
-                          Twine(rawEncodingInfoOr->warpBaseOffset0) +
-                          " warpBase1=" +
-                          Twine(rawEncodingInfoOr->warpBaseOffset1) +
-                          " reps=" + rawEncodingInfoOr->reps.toString())
-                       : (Twine("fail details=") + rawDetails)));
-      if (debugQuerySelection) {
-        llvm::errs() << "[tmem-ldst] rawQuery -> "
-                     << (succeeded(rawEncodingInfoOr)
-                             ? ("ok atom=" +
-                                llvm::Twine(static_cast<int>(rawEncodingInfoOr->atom)))
-                                   .str()
-                             : ("fail details=" + rawDetails))
-                     << "\n";
-      }
-      if (succeeded(rawEncodingInfoOr)) {
-        auto &encodingInfoOr = rawEncodingInfoOr;
-        uint32_t alreadyAdjustedBase =
-            getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
-        // Subview ops that already advanced the TMEM base pointer should only
-        // keep the portion of the raw-query baseOffset that remains relative
-        // to the lowered base, rather than re-applying the full view origin.
-        if (alreadyAdjustedBase != 0)
-          encodingInfoOr->baseOffset =
-              encodingInfoOr->baseOffset > alreadyAdjustedBase
-                  ? encodingInfoOr->baseOffset - alreadyAdjustedBase
-                  : 0;
-        return lowerTMemLdStFromInfo(
-            loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
-            redOp, useAbs, useNaN);
-      }
-    } else if (debugQuerySelection && !rawError.empty()) {
-      llvm::errs() << "[tmem-ldst] rawQuery fail: " << rawError << "\n";
+    if (!preferQueryTypeLoweringBeforeRawQuery) {
+      if (auto lowered = tryRawQueryLowering())
+        return *lowered;
     }
   }
   std::optional<MemDescType> firstQueryTy;
@@ -969,6 +1056,7 @@ lowerTMemLdStFromTypes(
     for (MemDescType queryTy : queryTypes) {
     auto rowPlan = memDescValue ? getTMemLdStRowPlanForQuery(memDescValue, queryTy)
                                 : getTMemLdStRowPlanForType(queryTy);
+    rowPlan = preferBackingRowPlanForDirectRootLoad(queryTy, rowPlan);
     if (debugQuerySelection) {
       llvm::errs() << "[tmem-ldst] queryTy=" << queryTy << " rowPlan="
                    << (rowPlan ? llvm::Twine(rowPlan->rowSpan).str()
@@ -1022,6 +1110,10 @@ lowerTMemLdStFromTypes(
           loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
           redOp, useAbs, useNaN);
     }
+  }
+  if (preferQueryTypeLoweringBeforeRawQuery) {
+    if (auto lowered = tryRawQueryLowering())
+      return *lowered;
   }
   if (rawQueryLayout) {
     (void)computeTMemLdStEncodingInfo(regTy, memTy, rawQueryLayout->layout,

@@ -1328,15 +1328,9 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll) {
 }
 
 static std::optional<LinearLayout>
-getCanonicalM64SplitNLayout(MemDescType memType, unsigned numWarps) {
-  if (memType.getRank() != 2 || (numWarps != 4 && numWarps != 8))
+getCanonicalM64SplitNLayout(MLIRContext *ctx, int64_t n, unsigned numWarps) {
+  if (n < 2 || !llvm::isPowerOf2_64(n) || (numWarps != 4 && numWarps != 8))
     return std::nullopt;
-  int64_t m = memType.getShape()[0];
-  int64_t n = memType.getShape()[1];
-  if (m != 64 || n < 2 || !llvm::isPowerOf2_64(n))
-    return std::nullopt;
-
-  auto *ctx = memType.getContext();
   auto kReg = StringAttr::get(ctx, "register");
   auto kLane = StringAttr::get(ctx, "lane");
   auto kWarp = StringAttr::get(ctx, "warp");
@@ -1375,6 +1369,14 @@ getCanonicalM64SplitNLayout(MemDescType memType, unsigned numWarps) {
   LinearLayout layout(bases, {{kDim0, 64}, {kDim1, static_cast<int32_t>(n)}},
                       /*requireSurjective=*/false);
   return layout;
+}
+
+static std::optional<LinearLayout>
+getCanonicalM64SplitNLayout(MemDescType memType, unsigned numWarps) {
+  if (memType.getRank() != 2 || memType.getShape()[0] != 64)
+    return std::nullopt;
+  return getCanonicalM64SplitNLayout(memType.getContext(), memType.getShape()[1],
+                                     numWarps);
 }
 
 static bool matchesCanonicalContiguousM64LinearView(const LinearLayout &ll) {
@@ -1708,55 +1710,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
     if (atom == TMemAccessAtom::I16x32bx2 && rowPlan.rowSpan == 64 &&
         !hasBlockDim && candidateLL.getInDimSize(rowColDims[0]) == 64) {
       int64_t n = candidateLL.getInDimSize(rowColDims[1]);
-      if (n >= 2 && llvm::isPowerOf2_64(n)) {
-        auto kReg = StringAttr::get(ctx, "register");
-        auto kLane = StringAttr::get(ctx, "lane");
-        auto kWarp = StringAttr::get(ctx, "warp");
-        SmallVector<std::vector<int32_t>> regBases;
-        SmallVector<std::vector<int32_t>> laneBases = {
-            {1, 0}, {2, 0}, {4, 0}, {8, 0}};
-        SmallVector<std::vector<int32_t>> warpBases;
-        if (numWarps == 4) {
-          int64_t laneSplitCol = n >= 4 ? n / 4 : 0;
-          laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
-          for (int64_t col = 1; col < n; col <<= 1) {
-            if (col == laneSplitCol)
-              continue;
-            regBases.push_back({0, static_cast<int32_t>(col)});
-          }
-          warpBases = {{16, 0}, {32, 0}};
-        } else if (numWarps == 8) {
-          int64_t warpSplitCol = n >= 4 ? n / 4 : 0;
-          int64_t laneSplitCol = n >= 2 ? n / 2 : 0;
-          laneBases.push_back({0, static_cast<int32_t>(laneSplitCol)});
-          for (int64_t col = 1; col < warpSplitCol; col <<= 1)
-            regBases.push_back({0, static_cast<int32_t>(col)});
-          warpBases = {{16, 0}, {32, 0},
-                       {0, static_cast<int32_t>(warpSplitCol)}};
-        }
-        if (!warpBases.empty()) {
-          SmallVector<
-              std::pair<StringAttr, std::vector<std::vector<int32_t>>>>
-              bases = {
-                  {kReg, std::vector<std::vector<int32_t>>(regBases.begin(),
-                                                           regBases.end())},
-                  {kLane, std::vector<std::vector<int32_t>>(laneBases.begin(),
-                                                            laneBases.end())},
-                  {kWarp, std::vector<std::vector<int32_t>>(warpBases.begin(),
-                                                            warpBases.end())},
-              };
-          std::string error;
-          LinearLayout::BasesT basisMap;
-          for (auto &entry : bases)
-            basisMap[entry.first] = entry.second;
-          auto maybeLayout = LinearLayout::tryCreate(
-              std::move(basisMap), candidateLL.getOutDims(),
-              /*requireSurjective=*/false, &error);
-          if (!maybeLayout)
-            return std::nullopt;
-          return *maybeLayout;
-        }
-      }
+      if (auto canonical = getCanonicalM64SplitNLayout(ctx, n, numWarps))
+        return canonical;
     }
     auto tile = getTileLayout(ctx, atom, false, /*withWarp=*/false,
                               rowPlan.warpRow0, rowPlan.warpRow1,
@@ -2236,6 +2191,22 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     }
   }
   if (!rowPlanOverride) {
+    auto tryCanonicalM64SplitN =
+        [&]() -> std::optional<LinearLayout> {
+      if (atom != TMemAccessAtom::I16x32bx2 ||
+          isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) ||
+          memType.getShape() != memType.getAllocShape()) {
+        return std::nullopt;
+      }
+      if (auto canonical = getCanonicalM64SplitNLayout(memType, numWarps);
+          canonical && isValidLayout(*canonical)) {
+        return canonical;
+      }
+      return std::nullopt;
+    };
+    if (auto canonical = tryCanonicalM64SplitN())
+      return canonical;
+
     auto tryCanonicalContiguousM64 =
         [&](const LinearLayout &candidate) -> std::optional<LinearLayout> {
       if (!matchesCanonicalContiguousM64LinearView(candidate))
@@ -2720,6 +2691,27 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
 
   auto tensorTy =
       RankedTensorType::get(memType.getShape(), memType.getElementType());
+  auto tryPushUniqueLayout = [&](const LinearLayout &layout) {
+    auto candidateEncoding =
+        tryGetLinearEncodingAttr(memType.getContext(), layout);
+    if (!candidateEncoding)
+      return;
+    if (llvm::is_contained(layouts, *candidateEncoding))
+      return;
+    auto candidateType = tensorTy.cloneWithEncoding(*candidateEncoding);
+    if (succeeded(
+            computeTMemLdStEncodingInfo(candidateType, memType,
+                                        /*maxnreg=*/256))) {
+      layouts.push_back(*candidateEncoding);
+    }
+  };
+  if (!isScales && memType.getElementTypeBitWidth() == 32 &&
+      memType.getRank() == 2 && memType.getShape() == memType.getAllocShape() &&
+      memType.getShape()[0] == 64) {
+    if (auto canonicalSplitN = getCanonicalM64SplitNLayout(memType, numWarps))
+      tryPushUniqueLayout(*canonicalSplitN);
+  }
+
   auto isCompatible = [&](const LinearLayout &layout) {
     auto candidateEncoding = tryGetLinearEncodingAttr(memType.getContext(), layout);
     if (!candidateEncoding)

@@ -1287,6 +1287,13 @@ void init_gluon_ir(py::module &&m) {
             shape, elementType, layoutAttr,
             ttng::TensorMemorySpaceAttr::get(ctx),
             /*mutableMemory=*/true, allocShape);
+        auto matchesDesiredAtom =
+            [&](ttg::MemDescType queryTy,
+                std::optional<ttng::TMemAccessAtom> desiredAtom,
+                ttng::TMemAccessAtom actualAtom) {
+              (void)queryTy;
+              return !desiredAtom || actualAtom == *desiredAtom;
+            };
         auto firstLegalLayoutForType =
             [&](ttg::MemDescType queryTy,
                 ArrayRef<ttg::DistributedEncodingTrait> layouts,
@@ -1297,7 +1304,7 @@ void init_gluon_ir(py::module &&m) {
             auto maybeInfo = ttng::computeTMemLdStEncodingInfo(
                 regTy, queryTy, /*maxnreg=*/256);
             if (succeeded(maybeInfo) &&
-                (!desiredAtom || maybeInfo->atom == *desiredAtom)) {
+                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
               return layoutToGluon(candidateLayout);
             }
           }
@@ -1333,6 +1340,31 @@ void init_gluon_ir(py::module &&m) {
           if (desiredAtom && maybePlan->atom != *desiredAtom)
             return py::none();
           return layoutToGluon(maybePlan->regTy.getEncoding());
+        };
+        auto firstLegalLayoutForCanonicalType =
+            [&](ttg::MemDescType queryTy,
+                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+          std::string canonicalError;
+          auto maybeCanonicalEncoding =
+              ttng::getCanonicalTMemLinearEncoding(queryTy, &canonicalError);
+          if (!maybeCanonicalEncoding ||
+              cast<Attribute>(*maybeCanonicalEncoding) ==
+                  cast<Attribute>(queryTy.getEncoding())) {
+            return py::none();
+          }
+          auto canonicalTy = builder.getChecked<ttg::MemDescType>(
+              llvm::to_vector(queryTy.getShape()), queryTy.getElementType(),
+              *maybeCanonicalEncoding, queryTy.getMemorySpace(),
+              queryTy.getMutableMemory(),
+              llvm::to_vector(queryTy.getAllocShape()));
+          if (py::object layout = firstLegalLayoutForType(
+                  canonicalTy,
+                  ttng::getTmemCompatibleLayouts(canonicalTy, numWarps),
+                  desiredAtom);
+              !layout.is_none()) {
+            return layout;
+          }
+          return physicalSupportLayout(canonicalTy, desiredAtom);
         };
 
         if (atomName == "auto") {
@@ -1379,6 +1411,18 @@ void init_gluon_ir(py::module &&m) {
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
+        if ((atom == ttng::TMemAccessAtom::I16x32bx2 ||
+             atom == ttng::TMemAccessAtom::I32x32b) &&
+            numWarps == 4 && memDescTy.getRank() == 2 &&
+            memDescTy.getShape()[0] == 64 &&
+            memDescTy.getElementTypeBitWidth() == 32 &&
+            !isa<ttng::TensorMemoryScalesEncodingAttr>(memDescTy.getEncoding())) {
+          if (py::object layout =
+                  firstLegalLayoutForCanonicalType(memDescTy, atom);
+              !layout.is_none()) {
+            return layout;
+          }
+        }
 
         if (py::object layout = firstLegalLayoutForType(
                 memDescTy, ttng::getTmemCompatibleLayouts(memDescTy, numWarps),
@@ -1497,17 +1541,8 @@ void init_gluon_ir(py::module &&m) {
             [&](ttg::MemDescType queryTy,
                 std::optional<ttng::TMemAccessAtom> desiredAtom,
                 ttng::TMemAccessAtom actualAtom) {
-              if (!desiredAtom || actualAtom == *desiredAtom)
-                return true;
-              if (queryTy.getRank() == 2 &&
-                  queryTy.getElementTypeBitWidth() == 32 &&
-                  queryTy.getShape()[0] == 64) {
-                return (*desiredAtom == ttng::TMemAccessAtom::I32x32b &&
-                        actualAtom == ttng::TMemAccessAtom::I16x32bx2) ||
-                       (*desiredAtom == ttng::TMemAccessAtom::I16x32bx2 &&
-                        actualAtom == ttng::TMemAccessAtom::I32x32b);
-              }
-              return false;
+              (void)queryTy;
+              return !desiredAtom || actualAtom == *desiredAtom;
             };
         auto normalizeRegLayoutForAttr =
             [&](tt::LinearLayout layout) -> std::optional<tt::LinearLayout> {
@@ -1550,12 +1585,21 @@ void init_gluon_ir(py::module &&m) {
           auto addAttr = [&](ttg::DistributedEncodingTrait attr) {
             if (llvm::none_of(layouts, [&](ttg::DistributedEncodingTrait existing) {
                   return cast<Attribute>(existing) == cast<Attribute>(attr);
-                })) {
+              })) {
               layouts.push_back(attr);
             }
           };
           auto rowPlan =
               ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
+          // Keep the handle-aware candidate ranking aligned with the public
+          // descriptor type path: start from the generic compatible-layout
+          // order, then append row-plan-specific direct layouts that only the
+          // memdesc-aware path can discover. This avoids letting a speculative
+          // row-plan-specific I32x32b layout preempt the better split-N family
+          // for root M64 descriptors while still preserving view-specific
+          // rescue layouts.
+          for (auto layout : ttng::getTmemCompatibleLayouts(queryTy, numWarps))
+            addAttr(layout);
           auto addLayout = [&](tt::LinearLayout layout) {
             auto normalizedLayout =
                 normalizeRegLayoutForAttr(std::move(layout));
@@ -1579,8 +1623,6 @@ void init_gluon_ir(py::module &&m) {
               }
             }
           }
-          for (auto layout : ttng::getTmemCompatibleLayouts(queryTy, numWarps))
-            addAttr(layout);
           return layouts;
         };
         auto getBlockedFallbackLayouts =
@@ -1906,6 +1948,27 @@ void init_gluon_ir(py::module &&m) {
           bool disableTypeOnlyFallback =
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;
+          auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
+          auto preferQueryTypeLayoutsBeforeRawQuery =
+              queryMemDescTy.getRank() == 2 &&
+              queryMemDescTy.getElementTypeBitWidth() == 32 &&
+              queryMemDescTy.getShape()[0] == 64 && numWarps == 4 &&
+              !isa<ttng::TensorMemoryScalesEncodingAttr>(
+                  queryMemDescTy.getEncoding()) &&
+              (!desiredAtom || *desiredAtom == ttng::TMemAccessAtom::I32x32b ||
+               *desiredAtom == ttng::TMemAccessAtom::I16x32bx2);
+          auto tryQueryTypeLayouts = [&]() -> py::object {
+            for (ttg::MemDescType queryTy : queryTypes) {
+              auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);
+              py::object layout = firstLegalLayout(queryMemDesc, queryTy, layouts,
+                                                   desiredAtom);
+              if (!layout.is_none()) {
+                appendTrace("findDirectLayoutForMemDesc queryTy layouts");
+                return layout;
+              }
+            }
+            return py::none();
+          };
           auto isGenericHalfRowsDescriptorView = [&](Value memDesc) {
             auto queryTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
             auto rejectHalfRowsView = [&](ttg::MemDescType srcTy) {
@@ -1956,24 +2019,6 @@ void init_gluon_ir(py::module &&m) {
               }
             }
             return false;
-          };
-          auto tryTypeOnlyM64SplitNLayout = [&]() -> py::object {
-            unsigned bitwidth = queryMemDescTy.getElementTypeBitWidth();
-            if (queryMemDescTy.getRank() != 2 || queryMemDescTy.getShape()[0] != 64 ||
-                (bitwidth != 16 && bitwidth != 32) || numWarps != 4 ||
-                isa<ttng::TensorMemoryScalesEncodingAttr>(queryMemDescTy.getEncoding()))
-              return py::none();
-            auto typeOnlyTy = queryMemDescTy;
-            if (auto maybeStandaloneTy =
-                    ttng::inferStandaloneTMemRegLayoutQueryType(queryMemDesc,
-                                                                /*error=*/nullptr);
-                succeeded(maybeStandaloneTy)) {
-              typeOnlyTy = *maybeStandaloneTy;
-            }
-            return firstLegalLayoutForType(
-                typeOnlyTy,
-                ttng::getTmemCompatibleLayouts(typeOnlyTy, numWarps),
-                ttng::TMemAccessAtom::I16x32bx2);
           };
           std::string supportError;
           auto trySupportLayout =
@@ -2109,13 +2154,6 @@ void init_gluon_ir(py::module &&m) {
               debugLog << "[tmem-reg-layout] reshaped support query failed\n";
             return py::none();
           };
-          if (!desiredAtom || *desiredAtom == ttng::TMemAccessAtom::I16x32bx2) {
-            py::object layout = tryTypeOnlyM64SplitNLayout();
-            if (!layout.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc typeOnlyM64SplitN");
-              return layout;
-            }
-          }
           if (auto supportPlan =
                   ttng::getTMemLdStSupportQueryPlan(queryMemDesc,
                                                     &supportError)) {
@@ -2126,6 +2164,11 @@ void init_gluon_ir(py::module &&m) {
           } else if (debug && !supportError.empty()) {
             debugLog << "[tmem-reg-layout] support query unavailable: "
                      << supportError << "\n";
+          }
+          if (preferQueryTypeLayoutsBeforeRawQuery) {
+            py::object layout = tryQueryTypeLayouts();
+            if (!layout.is_none())
+              return layout;
           }
           if (auto rawQueryLayout = inferRawQueryLayout(queryMemDesc)) {
             py::object layout = firstLegalLayoutForRawQuery(
@@ -2152,21 +2195,18 @@ void init_gluon_ir(py::module &&m) {
             appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
             return supportFallback;
           }
-          auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
-          for (ttg::MemDescType queryTy : queryTypes) {
-            py::object layout = py::none();
-            auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);
-            layout = firstLegalLayout(queryMemDesc, queryTy, layouts,
-                                      desiredAtom);
-            if (!layout.is_none()) {
-              appendTrace("findDirectLayoutForMemDesc queryTy layouts");
+          if (!preferQueryTypeLayoutsBeforeRawQuery) {
+            py::object layout = tryQueryTypeLayouts();
+            if (!layout.is_none())
               return layout;
-            }
+          }
+          for (ttg::MemDescType queryTy : queryTypes) {
             auto shape = llvm::to_vector(
                 queryMemDescTy.getShape().take_back(queryMemDescTy.getRank()));
             auto blockedLayouts = getBlockedFallbackLayouts(queryTy, shape);
-            layout = firstLegalLayout(queryMemDesc, queryTy, blockedLayouts,
-                                      desiredAtom);
+            py::object layout =
+                firstLegalLayout(queryMemDesc, queryTy, blockedLayouts,
+                                 desiredAtom);
             if (!layout.is_none()) {
               appendTrace("findDirectLayoutForMemDesc blocked fallback");
               return layout;

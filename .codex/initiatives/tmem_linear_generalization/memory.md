@@ -27,6 +27,17 @@
   `AccelerateMatmul` and the manual Gluon `tcgen05_*` builders) is
   responsible for attaching it, and lowering/query helpers must consume that
   contract instead of inferring it from alloc users.
+- For rank-2 `M=64`, `f32`, 4-warp TMEM root loads, handle-aware layout
+  selection and LLVM lowering must agree on the same split-N-compatible family:
+  - start from `getTmemCompatibleLayouts(queryTy, numWarps)` before appending
+    memdesc-specific rescue layouts; and
+  - keep atom matching strict so a speculative `I32x32b` candidate cannot
+    preempt a legal `I16x32bx2` split-N root load.
+- The initiative target is to admit any arbitrary linear TMEM layout that can
+  be lowered correctly and executes correctly on hardware. Clean negatives are
+  only for ISA-impossible cases; if a formerly negative layout now codegens and
+  runs correctly, update the test to positive rather than preserving the
+  rejection.
 - On this arm64 devbox, full `make` currently needs
   `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13`
   to unblock the unrelated GSan runtime build.

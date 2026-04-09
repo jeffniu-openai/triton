@@ -5453,3 +5453,48 @@ Open after this slice:
     - the matching explicit `16x32bx2` repro
     - the stale block-descriptor clean-negative test after updating its expected fragments
     - group 4 of the broad sweep
+
+## 2026-04-09: root `M=64x32xf32` TMEM loads were selecting the wrong atom family, and the structural fix is validated
+
+- The remaining one-CTA tcgen05 failure after the `even_odd` cleanup was:
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+- I stopped treating that as another packet-offset bug and traced the whole root-load selection path instead:
+  - the public descriptor `get_reg_layout(...)` for the same `64x32xf32` root descriptor already returned the canonical split-N register layout;
+  - the actual TTGIR `acc_tmem.load()` result layout still came out as a generic linear layout that lowered to thirty-two scalar `tcgen05.ld.sync.aligned.32x32b.x1.b32` messages; and
+  - Gluon trace showed the handle-aware memdesc path was satisfying a split-N request with an `I32x32b` candidate before the real `I16x32bx2` family was considered.
+- Root cause:
+  - `python/src/gluon_ir.cc` treated `I32x32b` and `I16x32bx2` as interchangeable for rank-2 `M=64` `f32` descriptors via `matchesDesiredAtom(...)`; and
+  - the handle-aware candidate list prefixed row-plan-specific direct layouts ahead of the generic `getTmemCompatibleLayouts(...)` order, so the search could short-circuit on the wrong family.
+- Durable fix shape:
+  - `python/src/gluon_ir.cc`
+    - make `matchesDesiredAtom(...)` strict again for the TMEM descriptor API and handle-aware memdesc path;
+    - align handle-aware candidate ranking with `getTmemCompatibleLayouts(queryTy, numWarps)` before appending memdesc-specific rescue layouts; and
+    - when the public descriptor API is asked for `M=64`, 4-warp `I16x32bx2`/`I32x32b` layouts, try the canonical TMEM-linear type first so the same split-N family is visible through the public type path.
+  - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+    - factor a reusable canonical `M=64` split-N linear layout builder; and
+    - inject that layout into both direct-layout construction and `getTmemCompatibleLayouts(...)` so the compiler has a stable canonical split-N candidate family.
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+    - keep the earlier query-type-before-raw-query ordering for rank-2 `M=64` root loads so LLVM lowering follows the same family choice as Gluon.
+- Concrete evidence after the fix:
+  - TTGIR for the exact failing kernel now uses the split-N linear register layout:
+    - `register = [[0,1],[0,2],[0,4],[0,16]]`
+    - `lane = [[1,0],[2,0],[4,0],[8,0],[0,8]]`
+    - `warp = [[16,0],[32,0]]`
+  - PTX for the root load now uses the correct two-message family instead of 32 scalar loads:
+    - `tcgen05.ld.sync.aligned.16x32bx2.x8.b32`
+- Focused validation on the cleaned tree:
+  - `make -j8`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-exact-fix-clean PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-blockm64-fix-clean PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-roundtrip-fix-clean PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - `1 passed`
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-tmem-rowcol-fix PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2 python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_rowcol_permuted_layout_sweep python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep`
+    - `615 passed in 378.72s`
+- Validation gap on this node:
+  - compiler lit checks are still unavailable here because neither `lit` nor `python3 -m lit` is installed and there is no local `llvm-lit` in the build tree.
+- Status after this checkpoint:
+  - the live `M=64x32xf32` tcgen05 root-load bug is fixed;
+  - the `even_odd` row/col TMEM runtime slice is green again; and
+  - the next initiative step is to resume the broader healthy-node 4-GPU `test_core.py` + `test_tmem_runtime_matrix.py` sweep from this cleaner tip and classify the next real failure surface, if any.

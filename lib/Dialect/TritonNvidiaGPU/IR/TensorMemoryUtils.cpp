@@ -1916,7 +1916,6 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
            !queryTy.getAllocShape().empty() &&
            queryTy.getAllocShape().back() > queryTy.getShape()[1];
   };
-
   if (preferBackingTMemLdStQueryTypes(memDesc) &&
       !preferQueryPlanForM64SplitNSubview())
     return backingPlan;
@@ -4913,12 +4912,12 @@ computeTMemLdStEncodingInfoImpl(
            memLayout.getInDimSize(kRow) == rowPlanOverride->rowSpan;
   };
   bool allowLiftedM64AccumulatorOverride =
-      rowPlanOverride && rowPlanOverride->rowSpan == 128 && bitwidth == 32 &&
-      logicalRows == 64 && memLayout.hasInDim(kRow) &&
-      memLayout.getInDimSize(kRow) == 64 && hasZeroBasisAlong(memLayout, kRow) &&
-      !hasZeroBasisAlong(memLayout, kCol) &&
+      rowPlanOverride && rowPlanOverride->rowSpan == 128 &&
+      memTy.getShape() == memTy.getAllocShape() && logicalRows == 64 &&
       ((rowPlanOverride->warpRow0 == 16 && rowPlanOverride->warpRow1 == 32) ||
-       (rowPlanOverride->warpRow0 == 32 && rowPlanOverride->warpRow1 == 64));
+       (rowPlanOverride->warpRow0 == 32 && rowPlanOverride->warpRow1 == 64)) &&
+      getLogicalRowAnchorBasis(memLayout, rowPlanOverride->warpRow0) &&
+      getLogicalRowAnchorBasis(memLayout, rowPlanOverride->warpRow1);
   if (rowPlanOverride &&
       (!rowPlan || rowPlanOverride->rowSpan == rowPlan->rowSpan ||
        memLayoutSupportsOverride() || allowLiftedM64AccumulatorOverride))
@@ -5136,6 +5135,28 @@ computeTMemLdStEncodingInfoImpl(
   if (isI16RowZeroM64ReinterpretView && info->secondHalfOffset &&
       regLayout.hasInDim(kWarp) && regLayout.getInDimSize(kWarp) <= 4)
     info->secondHalfOffset = *info->secondHalfOffset * 2;
+  bool isI16RowZeroM64DirectView =
+      bitwidth == 32 && logicalRows == 64 && logicalCols == 32 &&
+      physicalRows == 128 && physicalCols == 32 &&
+      hasZeroBasisAlong(originalMemLayout, kRow) &&
+      !hasZeroBasisAlong(originalMemLayout, kCol) &&
+      info->atom == TMemAccessAtom::I16x32bx2 && expectedWarp0Basis &&
+      expectedWarp1Basis;
+  if (isI16RowZeroM64DirectView) {
+    if (debug)
+      llvm::errs() << "[halfrows-info] apply row-zero M64 direct-view fix\n";
+    // The lifted 64x32 raw-query quotient collapses one warp basis to zero.
+    // Preserve that structure, but retarget the active warp basis to the
+    // second logical row-anchor image and use the first anchor image as the
+    // half-row packet offset.
+    if (isZeroBasis(warpBasis0) && !isZeroBasis(warpBasis1)) {
+      warpBasis1.assign(expectedWarp1Basis->begin(), expectedWarp1Basis->end());
+      info->secondHalfOffset = packTMemBasisOffset(*expectedWarp0Basis);
+    } else if (!isZeroBasis(warpBasis0) && isZeroBasis(warpBasis1)) {
+      warpBasis0.assign(expectedWarp1Basis->begin(), expectedWarp1Basis->end());
+      info->secondHalfOffset = packTMemBasisOffset(*expectedWarp0Basis);
+    }
+  }
   info->warpBaseOffset0 = packTMemBasisOffset(warpBasis0);
   info->warpBaseOffset1 = packTMemBasisOffset(warpBasis1);
   info->warpRow0 = warpBasis0.empty() ? 0 : warpBasis0.front();
@@ -5152,6 +5173,20 @@ computeTMemLdStEncodingInfoImpl(
       physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
       !hasZeroBasisAlong(originalMemLayout, kCol);
   if (isI32RowZeroM64DirectView && info->atom == TMemAccessAtom::I32x32b &&
+      info->warpBaseOffset0 == (32u << 16) &&
+      info->warpBaseOffset1 == (64u << 16)) {
+    info->warpBaseOffset0 = halvePackedTMemRowOffset(info->warpBaseOffset0);
+    info->warpBaseOffset1 = halvePackedTMemRowOffset(info->warpBaseOffset1);
+    info->warpRow0 /= 2;
+    info->warpRow1 /= 2;
+  }
+  bool isI16PackedRowZeroM64DirectView =
+      bitwidth == 16 && memTy.getShape() == memTy.getAllocShape() &&
+      logicalRows == 64 && logicalCols == physicalCols &&
+      physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
+      hasZeroBasisAlong(originalMemLayout, kCol);
+  if (isI16PackedRowZeroM64DirectView &&
+      info->atom == TMemAccessAtom::I16x32bx2 &&
       info->warpBaseOffset0 == (32u << 16) &&
       info->warpBaseOffset1 == (64u << 16)) {
     info->warpBaseOffset0 = halvePackedTMemRowOffset(info->warpBaseOffset0);
