@@ -10,8 +10,14 @@ import torch
 from triton.testing import do_bench_cudagraph
 
 from triton_kernels.distributed import make_expt_dict_uniform
-from triton_kernels.matmul import FlexCtx, FnSpecs, FusedActivation, PrecisionConfig, matmul
-from triton_kernels.numerics import InFlexData, OutFlexData
+from triton_kernels.matmul import FlexCtx, FnSpecs, FusedActivation, PrecisionConfig, matmul, matmul_torch
+from triton_kernels.numerics import (
+    InFlexData,
+    MAX_FINITE_FLOAT8E4B8,
+    MAX_FINITE_FLOAT8E4NV,
+    MAX_FINITE_FLOAT8E5,
+    OutFlexData,
+)
 from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mxfp
 from triton_kernels.swiglu import swiglu_fn
 from triton_kernels.tensor import (
@@ -45,6 +51,7 @@ DEFAULT_BENCH_BACKEND = "do_bench_cudagraph"
 DEFAULT_KERNEL_MODE = "both"
 ALL_KERNEL_MODE = "all"
 ORIGINAL_KERNEL_NAME = "original"
+EXACT_REFERENCE_NAME = "exact"
 GLUON_KERNEL_NAME = "gluon"
 GLUON_OPTIMIZED_KERNEL_NAME = "gluon_optimized"
 WS_KERNEL_NAME = "ws"
@@ -447,6 +454,76 @@ def normalize_output_tensor(y: torch.Tensor) -> torch.Tensor:
     return y.squeeze(0) if y.ndim == 3 and y.shape[0] == 1 else y
 
 
+def _exact_swiglu_torch(values: torch.Tensor, alpha: float, limit: float | None) -> torch.Tensor:
+    gelu = values[..., ::2].to(torch.float32)
+    linear = values[..., 1::2].to(torch.float32)
+    if limit is not None:
+        gelu = gelu.clamp(max=limit)
+        linear = linear.clamp(min=-limit, max=limit)
+    activated = gelu * torch.sigmoid(alpha * gelu)
+    return activated * (linear + 1.0)
+
+
+def _quantize_like_flexpoint(
+    values: torch.Tensor,
+    expected_scale: torch.Tensor | None,
+    out_dtype: torch.dtype,
+    saturate_inf: bool,
+) -> torch.Tensor:
+    if expected_scale is not None:
+        values = values / expected_scale
+    if saturate_inf:
+        max_finite = {
+            torch.float8_e5m2: MAX_FINITE_FLOAT8E5,
+            torch.float8_e4m3fn: MAX_FINITE_FLOAT8E4NV,
+            torch.float8_e4m3fnuz: MAX_FINITE_FLOAT8E4B8,
+        }[out_dtype]
+        values = values.clamp(min=-max_finite, max=max_finite)
+    return values.to(out_dtype)
+
+
+def run_exact_reference(prepared: PreparedCase) -> tuple[torch.Tensor, PrecisionConfig]:
+    linear_precision = PrecisionConfig(
+        flex_ctx=FlexCtx(
+            lhs_data=InFlexData(dtype=prepared.out_dtype, scale=prepared.x_scale),
+            rhs_data=InFlexData(),
+            out_data=OutFlexData(),
+        ),
+        flexpoint_saturate_inf=True,
+        b_mx_scale=prepared.w_scale,
+        b_microblock_size=MXFP_BLOCK_SIZE.value,
+    )
+    linear = matmul_torch(
+        prepared.x,
+        prepared.w,
+        prepared.bias,
+        a_ragged_metadata=prepared.ragged_batch_metadata,
+        gather_indx=prepared.gather_indx,
+        precision_config=linear_precision,
+    )
+    alpha, limit = prepared.fused_activation.fn_args
+    exact_out = _exact_swiglu_torch(linear, float(alpha), float(limit))
+    precision_config = make_precision_config(prepared)
+    quantized = _quantize_like_flexpoint(
+        exact_out,
+        precision_config.flex_ctx.out_data.expected_scale,
+        prepared.out_dtype,
+        precision_config.flexpoint_saturate_inf,
+    )
+    return quantized, precision_config
+
+
+def build_validation_reference(
+    prepared: PreparedCase,
+    reference_name: str,
+) -> tuple[str, tuple[torch.Tensor, PrecisionConfig]]:
+    if reference_name == ORIGINAL_KERNEL_NAME:
+        return ORIGINAL_KERNEL_NAME, run_case_once(prepared, ORIGINAL_KERNEL_NAME)
+    if reference_name == EXACT_REFERENCE_NAME:
+        return EXACT_REFERENCE_NAME, run_exact_reference(prepared)
+    raise ValueError(f"Unknown validation reference {reference_name!r}")
+
+
 def validate_case_outputs(
     case: Case,
     kernel_name: str,
@@ -456,14 +533,40 @@ def validate_case_outputs(
 ) -> None:
     ref_y, ref_precision = reference
     cand_y, cand_precision = candidate
-    assert_close(
-        ref_y.to(torch.float32),
-        cand_y.to(torch.float32),
-        maxtol=3e-2,
-        rmstol=None,
-        description=f"{case.case_id}:{kernel_name}_vs_{reference_kernel_name}",
-        verbose=False,
-    )
+    if reference_kernel_name == EXACT_REFERENCE_NAME:
+        ref_f32 = ref_y.to(torch.float32)
+        cand_f32 = cand_y.to(torch.float32)
+        abs_diff = (ref_f32 - cand_f32).abs()
+        max_abs = float(abs_diff.max().item()) if abs_diff.numel() else 0.0
+        num_mismatched = int((abs_diff != 0).sum().item())
+        mismatch_frac = 0.0 if abs_diff.numel() == 0 else num_mismatched / abs_diff.numel()
+        if max_abs > 0.0625 or mismatch_frac > 1e-5:
+            bad_idxs = torch.nonzero(abs_diff != 0)[:1000]
+            print(
+                f"{case.case_id}:{kernel_name}_vs_{reference_kernel_name} "
+                f"max_abs={max_abs} mismatch_frac={mismatch_frac}"
+            )
+            if bad_idxs.numel() > 0:
+                print(
+                    f"{num_mismatched} / {abs_diff.numel()} mismatched elements "
+                    f"(shape = {tuple(abs_diff.shape)}) at coords {bad_idxs.tolist()}"
+                )
+                bad_idxs = bad_idxs.unbind(-1)
+                print("ref values: ", ref_f32[tuple(bad_idxs)].cpu())
+                print("tri values: ", cand_f32[tuple(bad_idxs)].cpu())
+            raise AssertionError(
+                f"{case.case_id}:{kernel_name}_vs_{reference_kernel_name} "
+                f"failed exact-reference tolerance: max_abs={max_abs}, mismatch_frac={mismatch_frac}"
+            )
+    else:
+        assert_close(
+            ref_y.to(torch.float32),
+            cand_y.to(torch.float32),
+            maxtol=3e-2,
+            rmstol=None,
+            description=f"{case.case_id}:{kernel_name}_vs_{reference_kernel_name}",
+            verbose=False,
+        )
 
     ref_scale = ref_precision.flex_ctx.out_data.actual_scale
     cand_scale = cand_precision.flex_ctx.out_data.actual_scale
@@ -738,6 +841,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--validate-only", action="store_true", help="Run correctness validation only, without cudagraph timing."
     )
+    parser.add_argument(
+        "--validation-reference",
+        choices=(ORIGINAL_KERNEL_NAME, EXACT_REFERENCE_NAME),
+        default=ORIGINAL_KERNEL_NAME,
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--local-rank", type=int, default=None)
@@ -782,7 +890,7 @@ def main() -> None:
         prepared = prepare_case(case, device=args.device, seed=args.seed, local_rank_override=args.local_rank)
         validation_reference = None
         if args.validate and any(kernel_name != ORIGINAL_KERNEL_NAME for kernel_name in kernel_names):
-            validation_reference = (ORIGINAL_KERNEL_NAME, run_case_once(prepared, ORIGINAL_KERNEL_NAME))
+            validation_reference = build_validation_reference(prepared, args.validation_reference)
         if args.validate_only:
             assert validation_reference is not None
             for kernel_name in kernel_names:

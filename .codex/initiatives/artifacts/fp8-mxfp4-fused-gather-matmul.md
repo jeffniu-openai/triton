@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-09T09:05:04Z
+updated: 2026-04-09T09:23:41Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -61,6 +61,10 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
 - Gathered activations currently do not combine with x-scale swizzling (`a_hbm_swizzling`) in tests.
 - Blackwell/native MXFP heuristics in `opt_flags.py` and `opt_flags_nvidia.py` push many MXFP cases toward persistent/TMA execution and cap `block_k` to conserve shared memory.
 
+Current exact-math tuning is centered on the perf-side sandbox kernel in `python/perf/matmul_ws_optimized.py`, not on the production `triton_kernels.matmul` path yet. The active sandbox baseline keeps `x_num_bufs=5` and `w_num_bufs=4`, then uses a helper-assisted row-fragment epilogue (`epilogue_row_subtile_factor=8`, `epilogue_schedule=wavefront`, `epilogue_store_helper=True`, `store_helper_warps=2`) plus packed `f32x2` math and packed FP8 stores.
+
+Correctness for exact-math epilogue work can no longer treat `original` as the oracle. `python/triton_kernels/triton_kernels/swiglu_details/_swiglu.py` computes SwiGLU through `exp_ftz`, which lowers to `ex2.approx.ftz.f32`, so `original` is an approximate fused-activation reference. The benchmark harness now has an exact host-side validation mode built from `matmul_torch` + exact `torch.sigmoid` + flexpoint-style requantization, and exact `ws_optimized` work should validate with `--validation-reference exact`.
+
 ### Systems Involved
 
 - System/component: `python/triton_kernels/triton_kernels/matmul.py`
@@ -106,6 +110,7 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
 | Assumption | GB300 tuning will primarily land on the persistent `_p_matmul` path. | High | Capture the chosen kernel path and launch flags during baseline measurement. |
 | Assumption | Weight layout and scale layout will matter materially for mxfp4 performance on Blackwell. | High | Benchmark swizzled vs strided layouts and record the selected launch flags. |
 | Assumption | The highest-value first target is the large non-parrot family at `K=5120, N=10240`; the smaller parrot case is a secondary check. | Med | Start with the large family unless the user redirects prioritization. |
+| Risk | The benchmark's `original` kernel is not an exact SwiGLU oracle because `compute_swiglu` uses `exp_ftz` / `ex2.approx.ftz.f32`. | High | Use `--validation-reference exact` for exact-math `ws_optimized` work and keep `original` only for compatibility/perf comparisons. |
 | Risk | Current `opt_flags` heuristics may choose suboptimal `block_m/block_n/block_k`, `num_warps`, or `num_stages` for fused gather. | High | Log chosen flags for the target shapes, then force controlled overrides and compare. |
 | Risk | Gather may underutilize TMA or create row-index irregularity that hides the benefit of existing Blackwell MXFP handling. | High | Measure gathered vs ungathered baselines with the same dtype/layout settings. |
 | Risk | Gathered activations and x-scale swizzling are currently disallowed together in tests, which narrows the safe tuning space. | High | Keep initial tuning away from x-scale swizzle unless we decide to extend support deliberately. |
@@ -150,10 +155,10 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
 
 ### Phase 3: Validation and Handoff
 
-- [ ] Validate the tuned path against relevant correctness cases and nearby regressions.
-  - Artifact: Test and benchmark log
+- [x] Validate the tuned path against relevant correctness cases and nearby regressions.
+  - Artifact: Exact-reference benchmark log plus nearby non-parrot comparison table
   - Dependencies: Candidate tuned implementation
-  - Notes: Keep scope tight to the touched path first, then expand if needed.
+  - Notes: The current helper-wavefront `ws_optimized` default validates with `--validation-reference exact` on all five large non-parrot cases (`E256/es8`, `E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`) and has fresh isolated same-GPU comparison runs on GPUs 1, 2, and 3.
 - [ ] Prepare handoff notes for the user's laptop sync.
   - Artifact: Summary of commits, measured gains, remaining risks, and follow-ups
   - Dependencies: Validated tuned state
@@ -282,13 +287,18 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `make` in `/root/code/triton`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws_optimized,gluon_optimized --limit 1 --validate-only`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws_optimized,gluon_optimized --limit 1 --warmup 20 --rep 60`; detached-worktree validation of `016ec044c4` and `7995b3cabd` with the same `--validate-only` command
   - Learnings: The current `HEAD` after `6e50a0a5ae` was not actually a safe promotion point: `ws_optimized` missed `original` by 6 deterministic output elements on the target bucket even with all obvious epilogue toggles disabled. Detached worktree checks showed both `016ec044c4` and `7995b3cabd` still validate cleanly, so the regression boundary is exactly the helper-cleanup commit. Restoring `python/perf/matmul_ws_optimized.py` to the `016ec044c4` version in the active branch brings the kernel back to a correct beating-gluon baseline on GPU 0 (`ws_optimized=0.3404 ms`, `gluon_optimized=0.3448 ms`, both `ok(original)`).
   - Plan updates: Treat the sweep harness from `6e50a0a5ae` as still useful infrastructure, but do not trust the widened worker-allocation/helper-tuning surface from that commit until it is reintroduced on top of a validating baseline. Resume exact-math epilogue work from the restored `016ec044c4` file state, then add new tuning controls incrementally with immediate `--validate-only` checks.
+- `2026-04-09` Completed: Added exact host-reference validation, revived the helper-wavefront epilogue under exact math, and re-promoted it as the active `ws_optimized` sandbox baseline
+  - Artifact: `python/perf/bench_matmul_parrot_gather.py`, `python/perf/matmul_ws_optimized.py`
+  - Validation: `make` in `/root/code/triton`; `python -m py_compile python/perf/bench_matmul_parrot_gather.py python/perf/matmul_ws_optimized.py`; `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws_optimized --limit 5 --validate-only --validation-reference exact`; `CUDA_VISIBLE_DEVICES=2 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100 --validation-reference exact`; `CUDA_VISIBLE_DEVICES=3 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 100 --validation-reference exact`; `CUDA_VISIBLE_DEVICES=1 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws_optimized,gluon_optimized --limit 5 --warmup 10 --rep 40 --validation-reference exact`
+  - Learnings: The earlier 6-element mismatch against `original` was mostly a reference issue, not a real exact-math correctness regression: `original` computes SwiGLU through `exp_ftz` / `ex2.approx.ftz.f32`, so exact WS epilogues need an exact host-side oracle. The new benchmark reference path runs `matmul_torch`, applies exact `torch.sigmoid` SwiGLU, then requantizes with the same flexpoint-style scale handling and accepts only the tiny remaining FP8 quantization envelope (`max_abs <= 0.0625`, `mismatch_frac <= 1e-5`). Reintroducing the helper-store path on top of exact math gives a better sandbox baseline than the restored non-helper row-fragment default: the promoted config is row-8, helper-enabled, wavefront-scheduled, `aw=4`, `ww=1`, `mw=1`, `srw=2`, `ar=104`, `wr=48`, `mr=24`, `srr=24`, with packed final FMA and packed FP8 stores. Isolated long target-bucket runs now show GPU 2 at `ws=0.3537 ms`, `ws_optimized=0.3450 ms`, `gluon_optimized=0.3452 ms` and GPU 3 at `ws=0.3518 ms`, `ws_optimized=0.3426 ms`, `gluon_optimized=0.3426 ms`. The isolated GPU 1 family sweep shows `ws_optimized` at `0.3400/0.1802/0.0862/0.3106/0.3113 ms` vs `gluon_optimized` at `0.3397/0.1740/0.0863/0.3140/0.3450 ms` for `E256/es8`, `E256/es16`, `E256/es32`, `E272/es8`, and `E288/es8` respectively. The spare-warp hypothesis also looks bounded: reducing activation-loader warps below 4 to free more epilogue-side workers regressed the target bucket, so the profitable direction remains helper-assisted store overlap rather than starving the activation producer.
+  - Plan updates: Make `--validation-reference exact` the default validation mode for exact-math `ws_optimized` work, and treat the helper-wavefront configuration as the new sandbox baseline. Future epilogue work should focus on larger exact-math redesigns such as helper-side packed-output buffering, linear-layout epilogues, and wider manual fragment/store schemes rather than more small row-factor or activation-warps sweeps.
 
 ## Next Up
 
-- [ ] Capture launch flags around the `E256/es8` device-side efficiency cliff under cudagraph benchmarking and run the remaining non-parrot baseline families (`E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`)
-- [ ] Validate the packed-store `ws_optimized` epilogue on the remaining non-parrot families and the smaller parrot-gather family to see whether the target-bucket win generalizes or is tightly bucket-specific
-- [ ] Do not spend more bounded tuning effort on `ws_split_sf` or more small row-fragment schedule sweeps; if more target-bucket gain is required beyond the packed-store win, the next move is either a larger manual epilogue fragment/dataflow rewrite, compiler-aware layout work, or a larger WS producer-pipeline rewrite with the user
-- [ ] Use the new 4-GPU sweep harness plus same-GPU confirmation to test larger exact-math `ws_optimized` epilogue rewrites, starting with linear-layout epilogues and more aggressive helper-partition work sharing
+- [ ] Continue exact-math `ws_optimized` epilogue redesigns from the row-8 helper-wavefront baseline, starting with `use_helper_packed_out_buffer`, `use_linear_acc_epilogue`, and wider manual fragment/store experiments that preserve exact SwiGLU semantics.
+- [ ] Use the 4-GPU sweep harness only for broad screening, then promote candidates only after isolated same-GPU runs with `--validation-reference exact`; collect NCU only for variants that beat the current helper baseline by a stable margin.
+- [ ] Keep the older baseline/launch-flag capture task on the backlog, but do not spend more time on `original`-based validation, more `ws_split_sf` buffer sweeps, non-power-of-two warp-count ideas, or depth-1 helper rings.
+- [ ] Recheck the smaller parrot-gather family once the next exact-math epilogue candidate clearly beats the current helper-wavefront baseline, so validation effort stays aligned with the highest-value non-parrot bucket first.
 
 ## Open Questions
 
