@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-09T01:43:21Z
+updated: 2026-04-09T04:18:18Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -222,11 +222,16 @@ The test surface in `python/triton_kernels/tests/test_matmul.py` already exercis
   - Validation: `make`; `python -m py_compile python/perf/matmul_ws_optimized.py python/perf/bench_matmul_parrot_gather.py`; `python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel original,gluon,gluon_optimized,ws --limit 1`; `USE_IR_LOC=ttgir ncu -o /tmp/ws_vs_gluon_opt_16384 -f --import-source on --set full -k '::regex:.*matmul.*' python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,gluon_optimized --limit 1 --validate-only`; `python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1`
   - Learnings: On the refreshed branch, `gluon_optimized` runs at about `0.3390 ms` while `ws` is about `0.3496 ms` on the target bucket. The best bounded `ws_optimized` variant so far keeps the baseline launch/scheduling shape and only raises the weight-loader register budget, reaching about `0.3480 ms`; attempts to add another weight-loader warp, cap the persistent grid at `128`, enable `XCD_SWIZZLE=2`, switch to `N_MAJOR`, or rebalance staging buffers all regressed or overflowed shared memory. The NCU capture confirms the gap is still dominated by higher `mio_throttle` and `long_scoreboard` stalls inside the WS producer pipeline rather than by register spill or CTA under-occupancy.
   - Plan updates: Keep `ws_optimized` as the sandbox for further tactical experiments, but treat the remaining `~2.7%` gap to `gluon_optimized` as evidence that a larger partition/layout change may be required if small heuristic nudges stop moving the result.
+- `2026-04-09` Completed: Exhausted the remaining bounded WS heuristic sweep on the 16K `E256/es8` bucket
+  - Artifact: `python/perf/matmul_ws_optimized.py`, `/tmp/ws_opt_vs_gluon_opt_16384.ncu-rep`
+  - Validation: `python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1`; `USE_IR_LOC=ttgir ncu -o /tmp/ws_opt_vs_gluon_opt_16384 -f --import-source on --set full -k '::regex:.*matmul.*' python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws_optimized,gluon_optimized --limit 1 --validate-only`; temporary direct-module sweeps over tile geometry, worker register budgets, worker warp allocations, and staging depths on the fixed `bs=16384, E256/es8` prepared case
+  - Learnings: A Gluon-style epilogue transplant into `ws_optimized` keeps the kernel correct and slightly improves the direct fixed-case benchmark (`~0.3441 -> ~0.3437 ms` on one prepared case), but it does not materially change the harness result (`~0.3481 ms`) or close the gap to `gluon_optimized` (`~0.337-0.339 ms`). Geometry changes (`BLOCK_M=64`, `BLOCK_N=128`) were decisively worse, weight-heavy register reallocations regressed, `x_num_bufs=3` regressed badly, and `w_num_bufs=5` overflowed shared memory. The refreshed NCU profile for `ws_optimized` still shows the same signature as plain `ws`: lower DRAM/L2 throughput and tensor utilization than `gluon_optimized`, plus higher `long_scoreboard` (`6.57` vs `5.30`) and `mio_throttle` (`0.74` vs `0.30`) stall ratios.
+  - Plan updates: Treat the current WS architecture as heuristically exhausted for the target bucket. The next promising step is a larger producer-pipeline rewrite, most likely collapsing the separate activation and weight+scale loader partitions into a combined load partition or otherwise changing how the WS pipeline is partitioned.
 
 ## Next Up
 
 - [ ] Capture launch flags around the `E256/es8` device-side efficiency cliff under cudagraph benchmarking and run the remaining non-parrot baseline families (`E256/es16`, `E256/es32`, `E272/es8`, `E288/es8`)
-- [ ] Decide whether to keep spending time on bounded WS heuristic tuning or switch to a larger design change, given that the current best `ws_optimized` tweak only improves `0.3496 -> 0.3480 ms` while `gluon_optimized` remains at `~0.3390 ms`
+- [ ] Ask the user for approval before attempting a larger WS pipeline rewrite, because the bounded heuristic/layout search is exhausted and the likely next step is to change the separate activation-vs-weight partition design
 
 ## Open Questions
 

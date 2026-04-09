@@ -26,6 +26,60 @@ class KernelConfig:
 
 
 @gluon.jit
+def epilogue_partition_optimized(p: ws_base.PartitionArgs):
+    idx = 0
+    phase = 0
+
+    x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
+    w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
+    acc_scale = x_scale * w_scale
+    out_recip = 1.0 / gl.load(p.out_scale_ptr)
+
+    acc_reg_layout: gl.constexpr = p.acc_bufs.index(0).get_reg_layout()
+    num_warps: gl.constexpr = gl.num_warps()
+    warps_n: gl.constexpr = 2 if num_warps >= 4 and p.BLOCK_N >= 256 else 1
+    split_layout: gl.constexpr = gl.BlockedLayout([1, 2], [1, 32], [num_warps // warps_n, warps_n], [1, 0])
+    bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        off_n = pid_n * p.BLOCK_N
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+
+        offs_bias_n = off_n + gl.arange(0, p.BLOCK_N, layout=bias_layout)
+        bias = gl.convert_layout(
+            gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
+            split_layout,
+        )
+
+        acc_empty_bar = p.acc_empty_bars.index(idx)
+        acc_ready_bar = p.acc_ready_bars.index(idx)
+        acc_buf = p.acc_bufs.index(idx)
+        mbarrier.wait(acc_ready_bar, phase)
+        acc = acc_buf.load(acc_reg_layout)
+        mbarrier.arrive(acc_empty_bar)
+        idx, phase = ws_base.advance(idx, phase, p.acc_num_bufs)
+
+        acc = gl.fma(gl.convert_layout(acc.permute((1, 0)), split_layout), acc_scale, bias)
+
+        out = ws_base.swiglu(acc, p.SWIGLU_ALPHA, p.SWIGLU_LIMIT)
+        out_off_n = pid_n * p.BLOCK_N // p.REDUCTION_N
+        out = out * out_recip
+        if p.FLEXPOINT_SATURATE_INF:
+            out = gl.clamp(out, -448.0, 448.0)
+        out = out.to(p.out_desc.dtype)
+
+        layout: gl.constexpr = out.type.layout
+        offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=gl.SliceLayout(1, layout))
+        offs_n = out_off_n + gl.arange(0, p.BLOCK_N // p.REDUCTION_N, layout=gl.SliceLayout(0, layout))
+        mask = gl.expand_dims(offs_m < shape_m, 1)
+        ptrs = p.out_ptr + gl.expand_dims(slice_offset + offs_m, 1) * p.out_desc.strides[0]
+        ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+        gl.store(ptrs, out, mask=mask)
+
+
+@gluon.jit
 def ws_matmul_kernel_optimized(
     x_desc,
     w_desc,
@@ -188,7 +242,7 @@ def ws_matmul_kernel_optimized(
     # E256/es8 bucket on this branch.
     gl.warp_specialize(
         [
-            (ws_base.epilogue_partition, (p,)),
+            (epilogue_partition_optimized, (p,)),
             (ws_base.load_activations, (p,)),
             (ws_base.load_weights, (p,)),
             (ws_base.mma_partition, (p,)),
