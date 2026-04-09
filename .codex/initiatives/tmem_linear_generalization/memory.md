@@ -3007,3 +3007,38 @@ rejection, not rescue
   - split-N runtime-matrix guard repro -> `1 passed`
 - Next step:
   - resume the broader healthy-node validation sweep and classify the next real failure bucket, if any.
+
+## 2026-04-09: broad sweep status after `block_m_64`
+
+- Healthy-node 4-GPU sweep summary:
+  - group 1: green (`4327 passed, 612 skipped`)
+  - group 2: green (`2596 passed, 2343 skipped`)
+  - group 3: green (`2388 passed, 2551 skipped`)
+  - group 4: not many independent failures; it reduces to one stale clean-negative expectation plus one real misaligned-address bucket that poisons the rest of the process
+- Non-bug noise bucket:
+  - `test_tcgen05_mma_plain_kind_i8_reports_clean_error` prints a large `.kind::i8` PTXAS dump in the shard log but passes in isolation
+  - do not treat that PTXAS text as initiative signal
+- Stale test bucket:
+  - `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[block_two_ctas-layout1-reinterpret_layout1-expected_fragments1]`
+  - current diagnostic is the row-anchor-specific descriptor-view message:
+    - `required row anchors 16,32 are not directly representable in the descriptor view`
+  - update the expected text; no compiler change appears needed for this one
+- Real remaining bucket:
+  - exact repro:
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[even_odd-identity-2-32x32b_splitn]`
+  - fresh isolate still fails with `Triton Error [CUDA]: misaligned address`
+  - matching explicit direct-path control also fails:
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[even_odd-identity-2-16x32bx2]`
+- Root-cause direction:
+  - this is not just split-N auto-selection; the explicit `16x32bx2` variant fails too
+  - support query still admits the path (`rawQuery -> ok atom=4`)
+  - failing and passing controls both use the same high-level row plan (`warpRow0=16 warpRow1=32`, `secondHalfOffset=0`)
+  - the differentiator is the permuted TMEM row-basis order:
+    - failing `even_odd`: `[[1,0],[4,0],[16,0],[2,0],[0,0],[8,0],[32,0]]`
+    - passing `rotate1`: `[[2,0],[4,0],[8,0],[16,0],[0,0],[32,0],[1,0]]`
+  - treat this as the common M64 direct `16x32bx2` half-row packet-decomposition / anchor-realization bug for row-permuted layouts
+- Next step:
+  - fix the common M64 direct `16x32bx2` row-permuted planner in `TensorMemoryUtils.cpp`
+  - rerun the exact `even_odd` `32x32b_splitn` and `16x32bx2` repros
+  - update the stale block-descriptor clean-negative test
+  - then rerun broad sweep group 4

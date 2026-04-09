@@ -5394,3 +5394,62 @@ Open after this slice:
 - Current status after closing `block_m_64`:
   - the `block_m_64` linear bucket is no longer a live issue.
   - the immediate next step is to resume the broader healthy-node sweep and stop on the next real TMEM failure surface, if any.
+
+## 2026-04-09: broad healthy-node sweep narrows to an `even_odd` M64 direct-path misaligned-address bug
+
+- I resumed the blocked 4-GPU `python/test/gluon/test_core.py` + `python/test/gluon/test_tmem_runtime_matrix.py` sweep on the healthy node using per-shard log files so expected clean-negative PTXAS output would not masquerade as a live regression.
+- Sweep status:
+  - group 1: `4327 passed, 612 skipped, 14814 deselected`
+  - group 2: `2596 passed, 2343 skipped, 14814 deselected`
+  - group 3: `2388 passed, 2551 skipped, 14814 deselected`
+  - group 4: `505 failed, 2810 passed, 1621 skipped, 14817 deselected`
+- Important non-bug classification from group 4:
+  - the early `.kind::i8` PTXAS dump is expected output from `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`.
+  - exact isolate:
+    - `CUDA_VISIBLE_DEVICES=3 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`
+    - result: `1 passed`
+  - do not treat the `.kind::i8` PTXAS text in the shard log as a TMEM initiative regression.
+- Group-4 failures reduce to two coherent buckets:
+  - stale clean-negative expectation:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_block_descriptor_reports_clean_error[block_two_ctas-layout1-reinterpret_layout1-expected_fragments1]`
+    - exact isolate still fails only because the expected text is stale.
+    - current compiler diagnostic is more specific:
+      - `unsupported tensor memory descriptor view for direct tcgen05.ld/st: required row anchors 16,32 are not directly representable in the descriptor view. Access the full backing tile or reshape/copy so the TMEM row anchors stay materializable.`
+    - old expected fragment `No TMEM-compatible register layout exists for this operand.` should be updated.
+  - real runtime bug:
+    - exact first failing shard nodeid:
+      - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[even_odd-identity-2-32x32b_splitn]`
+    - fresh isolate with `CUDA_LAUNCH_BLOCKING=1` still fails at launch with:
+      - `RuntimeError: Triton Error [CUDA]: misaligned address`
+    - explicit direct-path control also fails fresh:
+      - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[even_odd-identity-2-16x32bx2]`
+      - same `misaligned address`
+- Root-cause classification for the real bucket:
+  - this is not a split-N auto-selection heuristic issue; the explicit `16x32bx2` path fails too.
+  - it is also not a clean legality-screening issue in the current support query:
+    - debug shows `rawQuery -> ok atom=4`
+    - chosen row plan is still `warpRow0=16 warpRow1=32 rowSpan=64 baseOffset=0`
+    - chosen packet shape is still `secondHalfOffset=0`
+  - the likely bug is the common M64 direct `16x32bx2` half-row packet decomposition / anchor realization for certain row-basis permutations.
+  - evidence from a passing control:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - still passes with the same high-level row plan and same `atom=4`
+  - key difference is the analyzed TMEM row-basis ordering:
+    - failing raw memTy rows:
+      - `[[1, 0], [4, 0], [16, 0], [2, 0], [0, 0], [8, 0], [32, 0]]`
+    - passing raw memTy rows:
+      - `[[2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0], [1, 0]]`
+  - inference:
+    - the direct path is being admitted for both cases, but the emitted access decomposition only stays valid for some row-basis permutations.
+    - this matches the initiative's remaining "half-row ld/st packet-decomposition correctness" bucket much more than a new verifier/support-query bucket.
+- Important sweep-reading guidance:
+  - after the first `misaligned address`, many later tests in the same group-4 process fail immediately on unrelated CUDA calls or on stale clean-negative expectations.
+  - do not count the full `505 failed` summary as 505 independent regressions.
+  - the next real implementation target is the exact `even_odd` split-N/direct `16x32bx2` misaligned-address repro above.
+- Recommended next step:
+  - fix the common M64 direct `16x32bx2` row-permuted half-row planner in `TensorMemoryUtils.cpp`
+  - rerun:
+    - the exact `even_odd-identity-2` `32x32b_splitn` repro
+    - the matching explicit `16x32bx2` repro
+    - the stale block-descriptor clean-negative test after updating its expected fragments
+    - group 4 of the broad sweep
