@@ -4932,3 +4932,36 @@ Open after this slice:
   - `64x128xf32` reinterpret rescue
   - packed row-zero-lifted `TMemLdStEncodingInfo` fixups
   - `warpx2` family-specific planner cleanup
+
+## 2026-04-09 managed-session handoff
+- Resumed the older Codex session in the managed `~/code/triton` checkout only to
+  extract handoff context; no further implementation should continue there because
+  `brix-agent` can reset that checkout back to the provisioned baseline branch.
+- That interrupted session reported that its in-progress isolated-worktree slice
+  was specifically aimed at collapsing bespoke TMEM support hacks into one
+  support-query contract and then validating the cleanup in
+  `/root/code/triton-tmem-isolated`.
+- Hack backlog it was still targeting relative to the post-merge-base cleanup:
+  - direct `32x32` support rescue / scalarization
+  - `64x128xf32` reinterpret rescue
+  - packed row-zero-lifted `TMemLdStEncodingInfo` fixups
+  - `warpx2` family-specific planner cleanup
+- The managed-session handoff also said the uncommitted isolated-worktree patch
+  was incomplete at the moment of interruption: stale Gluon-side support-plan
+  plumbing remained and a malformed debug-string block made that snapshot
+  non-buildable until repaired.
+- Validation/build state reported by that session before interruption:
+  - already-green bounded checkpoint before this slice:
+    - `make` with `TRITON_HOME=/tmp` and
+      `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13`
+    - targeted `triton-opt` checks for
+      `test/TritonGPU/loop-pipeline-blackwell.mlir` and
+      `test/TritonNvidiaGPU/mma_lowering.mlir`
+    - GPU pytests:
+      - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+      - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+      - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[True-4-64-128-32]`
+      - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+  - the newer isolated-worktree support-query cleanup itself had not yet been
+    built or tested in that session and should have been assumed non-buildable
+    until the stale Gluon callsite and malformed debug strings were fixed.
