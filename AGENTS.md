@@ -5,6 +5,7 @@
 - This machine is unstable, so make frequent incremental and modular commits while working.
 - Write detailed commit messages and bodies. Include rationale, scope, and any relevant benchmark or profiling logs so the git history itself serves as initiative documentation.
 - When you make a commit, push the current branch to the matching branch on `jeffniu-openai` and keep that remote branch up to date.
+- This machine has 4 GPUs available. For performance-sensitive sweeps, prefer parallelizing work across all 4 GPUs when practical instead of serializing everything onto one device.
 
 ## Build and Testing Guidelines
 - Before running any tests, run `make` in the triton directory to rebuild triton.
