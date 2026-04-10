@@ -44,6 +44,11 @@ from triton_kernels.testing import assert_close
 from triton_kernels.topk import topk
 
 
+# ===-----------------------------------------------------------------------===#
+# Device Code
+# ===-----------------------------------------------------------------------===#
+
+
 @gluon.jit
 def advance(idx: gl.tensor, phase: gl.tensor, num_bufs: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
     next_idx = idx + 1
@@ -174,6 +179,7 @@ def _split_m_float2(values):
 
 @gluon.jit
 def split_m_subtiles(values, subtile_factor: gl.constexpr):
+    # For epilogue subtiling.
     subtiles = (values,)
     for split_level in gl.static_range(5):
         if (1 << split_level) < subtile_factor:
@@ -467,6 +473,7 @@ def epilogue_overlapped_store(
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     acc_packed_subtiles = split_m_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
 
+    # Software pipelined and overlapped SwiGLU with transfer to store partition.
     prepared_gelu, prepared_linear = _swiglu_step1(
         acc_packed_subtiles[0],
         p.SWIGLU_LIMIT,
