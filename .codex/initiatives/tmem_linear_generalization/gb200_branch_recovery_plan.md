@@ -46,6 +46,36 @@ PY
 
 ## Current Classification Summary
 
+### Current Verified Recovery Buckets After `c6990c1e9`
+
+- Fresh isolated current-head reruns now reduce the actionable GB200 backlog
+  to three concrete surfaces:
+  1. branch-added TMEM/compiler exacts:
+     - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+     - current rerun:
+       - `12 failed in 3.73s`
+     - merge-base status:
+       - absent from merge-base coverage
+  2. old-mainline convolution example regression:
+     - `python/examples/gluon/02-convolution.py`
+     - current rerun:
+       - `48 failed in 8.38s`
+     - merge-base rerun:
+       - `48 passed in 7.30s`
+  3. old-mainline multicta example regression:
+     - `python/examples/gluon/03-matmul-multicta.py`
+     - current rerun:
+       - `14 failed, 68 passed, 14 skipped in 65.24s`
+     - merge-base rerun:
+       - `82 passed, 14 skipped in 37.96s`
+- Updated practical consequence:
+  - the next compiler/debugging slice should stay on the `12` descriptor-chain
+    exacts
+  - once that branch-only TMEM bucket is reduced or explained, move to the two
+    old-mainline example regressions
+  - the broader shard/group manifests are now historical context, not the live
+    recovery queue
+
 ### Current Clean-HEAD Checkpoint
 
 - HEAD:

@@ -6862,3 +6862,28 @@ Open after this slice:
   - the old warpx2/front-end representability tail is no longer a live bucket
   - the live TMEM/compiler recovery backlog is now the `12`-nodeid
     descriptor-chain manifest, followed by the separate examples lane
+
+## 2026-04-10: refreshed current-head and merge-base checks reduce the live GB200 backlog to descriptor-chain plus examples
+- After checkpointing `c6990c1e9`, I refreshed the remaining live current-head
+  exact surfaces instead of relying on the older broad shard/group totals:
+  - descriptor-chain manifest:
+    - `12 failed in 3.73s`
+  - `python/examples/gluon/02-convolution.py`:
+    - `48 failed in 8.38s`
+  - `python/examples/gluon/03-matmul-multicta.py`:
+    - `14 failed, 68 passed, 14 skipped in 65.24s`
+- I also refreshed the old-mainline boundary against merge-base `7f61ac734`:
+  - the TMEM descriptor-chain / split-N / warpx2 / non-surjective parser
+    exacts are branch-only coverage and do not exist on merge-base
+  - `python/examples/gluon/02-convolution.py` is green on merge-base:
+    - `48 passed in 7.30s`
+  - `python/examples/gluon/03-matmul-multicta.py` is green on merge-base:
+    - `82 passed, 14 skipped in 37.96s`
+- Practical consequence:
+  - the live GB200 branch backlog is now explicit:
+    1. the `12`-nodeid branch-only descriptor-chain TMEM/compiler bucket
+    2. the `48`-nodeid old-mainline convolution regression
+    3. the `14`-nodeid old-mainline multicta regression
+  - the older large shard/group counts should now be treated as historical
+    reduction artifacts and cache/process-fallout evidence, not as the live
+    red list

@@ -103,7 +103,10 @@ PY
       branch-added / branch-changed focused `test_core.py` shard reduction
   - current interpretation:
     - this is the current independent descriptor-chain runtime bug bucket
-    - all `12` exacts fail cleanly with `RuntimeError: CUDA error: misaligned address`
+    - fresh rerun at `c6990c1e9`:
+      - `12 failed in 3.73s`
+    - all `12` exacts fail cleanly with
+      `RuntimeError: CUDA error: misaligned address`
     - the other `14` descriptor-chain exacts from the contaminated shard pass
       in isolation and should not stay in the live red list
 - [gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt)
@@ -142,6 +145,10 @@ PY
     - isolated current-head `python/examples/gluon/02-convolution.py`
   - current interpretation:
     - preferred exact manifest for the convolution half of the examples lane
+    - fresh current-head rerun at `c6990c1e9`:
+      - `48 failed in 8.38s`
+    - fresh merge-base rerun at `7f61ac734`:
+      - `48 passed in 7.30s`
 - [gb200_current_branch_examples_multicta_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_multicta_failures.txt)
   - `14` nodeids
   - source:
@@ -149,6 +156,10 @@ PY
   - current interpretation:
     - preferred exact manifest for the multicta matmul half of the examples
       lane
+    - fresh current-head rerun at `c6990c1e9`:
+      - `14 failed, 68 passed, 14 skipped in 65.24s`
+    - fresh merge-base rerun at `7f61ac734`:
+      - `82 passed, 14 skipped in 37.96s`
 - [gb200_current_branch_test_proton_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_proton_failures.txt)
   - `11` nodeids
   - source:

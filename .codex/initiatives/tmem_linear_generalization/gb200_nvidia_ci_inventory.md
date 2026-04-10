@@ -18,6 +18,38 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Current Verified Red List After `c6990c1e9` (2026-04-10 20:05 UTC)
+
+- Fresh isolated current-head reruns confirm that the live GB200 branch backlog
+  is now:
+  - `12` descriptor-chain exacts
+    - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+    - rerun result:
+      - `12 failed in 3.73s`
+  - `48` convolution example exacts
+    - `python/examples/gluon/02-convolution.py`
+    - rerun result:
+      - `48 failed in 8.38s`
+  - `14` multicta example exacts
+    - `python/examples/gluon/03-matmul-multicta.py`
+    - rerun result:
+      - `14 failed, 68 passed, 14 skipped in 65.24s`
+- Fresh merge-base checks revalidate the old-mainline boundary:
+  - the TMEM descriptor-chain / split-N / warpx2 / non-surjective parser exacts
+    do not exist anywhere under merge-base `python/test/gluon/`
+  - `python/examples/gluon/02-convolution.py`
+    - merge-base rerun:
+      - `48 passed in 7.30s`
+  - `python/examples/gluon/03-matmul-multicta.py`
+    - merge-base rerun:
+      - `82 passed, 14 skipped in 37.96s`
+- Practical consequence:
+  - the branch-only TMEM/compiler recovery work is now just the
+    `12`-nodeid descriptor-chain manifest
+  - the remaining old-mainline regression lane is the two example files above
+  - the earlier larger shard counts remain useful only as historical reduction
+    artifacts and cache/process-fallout evidence, not as the live red list
+
 ## Latest Non-Surjective `[128,4]` Recovery Checkpoint (2026-04-10 18:45 UTC)
 
 - The shared `[128,4]` direct-view tail is now gone:

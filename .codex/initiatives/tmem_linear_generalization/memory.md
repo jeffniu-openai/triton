@@ -199,8 +199,12 @@
 - Current separate regression lane after the TMEM/compiler bucket:
   - `python/examples/gluon/02-convolution.py`
     - `48` exact `OutOfResources` failures
+    - merge-base rerun is green:
+      - `48 passed in 7.30s`
   - `python/examples/gluon/03-matmul-multicta.py`
     - `14` exact wrong-code failures
+    - merge-base rerun is green:
+      - `82 passed, 14 skipped in 37.96s`
   - these example functions already exist on merge-base, so keep them tracked
     separately from the branch-added TMEM coverage
 - Current non-recovery/stability buckets to keep separate:
@@ -211,9 +215,9 @@
   - cache/process contamination investigation, which still needs a proper
     root-cause pass instead of environment workarounds
 - Immediate next move:
-  - checkpoint the `[128, 4]` recovery slice
-  - then capture fresh descriptor-chain traces and continue the remaining GB200
-    CI inventory / merge-base classification work
+  - capture fresh descriptor-chain traces and fix that branch-only TMEM bucket
+    first
+  - then move to the two merge-base-green example regressions
 
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is
