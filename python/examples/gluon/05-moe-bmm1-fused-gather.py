@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain
 
 import pytest
@@ -172,6 +172,24 @@ class KernelConfig:
     load_regs: int = 80
     mma_regs: int = 20
     store_helper_regs: int = 16
+
+
+def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
+    if ragged_metadata.expected_slice_size is not None:
+        return ragged_metadata.expected_slice_size
+    return max(1, m // ragged_metadata.n_slices)
+
+
+def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> KernelConfig:
+    slice_size = estimated_slice_size(ragged_metadata, m)
+    config = KernelConfig()
+    if slice_size <= 8:
+        return replace(config, block_m=16, epilogue_row_subtile_factor=2)
+    if slice_size <= 16:
+        return replace(config, block_m=32, epilogue_row_subtile_factor=4)
+    if slice_size <= 32:
+        return replace(config, block_m=64, epilogue_row_subtile_factor=4)
+    return config
 
 
 @aggregate
@@ -889,7 +907,7 @@ def matmul(
     _, _, n = b.shape
     m = gather_indx.shape[0]
 
-    config = KernelConfig()
+    config = select_kernel_config(a_ragged_metadata, m)
 
     mxfp_block_size = 32
     scale_size_outer = 128
@@ -1212,7 +1230,7 @@ def is_blackwell():
     return is_cuda() and torch.cuda.get_device_capability()[0] == 10
 
 
-@pytest.mark.parametrize("batch_size", [1024])
+@pytest.mark.parametrize("batch_size", [128, 1024])
 @pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
 def test_op(batch_size):
     prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)

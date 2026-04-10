@@ -1,12 +1,30 @@
 # WS Example Split-K Design
 
+## Current Status
+
+This remains a design-only artifact.
+
+After landing the low-batch `block_m` ladder and matching exact helper-store row-subtile policy in
+the standalone example, the GPT-OSS 120B MM1 sweep no longer shows a residual low-batch gap that
+justifies split-K as the immediate next step. The current live policy is:
+
+- `slice_size <= 8`: `block_m = 16`, `epilogue_row_subtile_factor = 2`
+- `slice_size <= 16`: `block_m = 32`, `epilogue_row_subtile_factor = 4`
+- `slice_size <= 32`: `block_m = 64`, `epilogue_row_subtile_factor = 4`
+- otherwise: `block_m = 128`, `epilogue_row_subtile_factor = 8`
+
+On the current GPT-OSS MM1 sweep, that policy beats the production reference at every measured
+batch from `128` through `16384`. So split-K should stay deferred unless a different low-batch
+workload still shows a material gap after the landed tile-policy fixes.
+
 ## Goal
 
 Design an example-only split-K path for
 [05-moe-bmm1-fused-gather.py](/root/code/triton-ws-opt/python/examples/gluon/05-moe-bmm1-fused-gather.py)
-that can be implemented later without guessing. This design assumes the low-batch `block_m` ladder
-is implemented first, because the research pass shows that low-batch tiling is the primary GPT-OSS
-MM1 gap and the production reference does not need split-K to win the low-batch cases.
+that can be implemented later without guessing if a future workload still needs it. This design
+assumes the low-batch tile-policy work lands first, because the research pass showed that
+low-batch tiling is the primary GPT-OSS MM1 gap and the production reference does not need split-K
+to win the low-batch cases.
 
 ## Constraints From The Current Example
 
@@ -72,7 +90,7 @@ Keep the initial search space narrow:
 
 - `split_k in {1, 2, 4}`
 
-Only allow `split_k > 1` for low batch, after the low-batch `block_m` ladder is in place.
+Only allow `split_k > 1` for low batch, after the low-batch tile policy is already in place.
 
 ### Block Mapping
 
@@ -182,14 +200,11 @@ So split-K must stay low-batch-only in v1. It is not acceptable as a general alw
 
 ## Host-Side Policy
 
-Implement split-K only after adding the low-batch `block_m` ladder.
+Implement split-K only after confirming that the landed low-batch tile policy still leaves a
+material gap on the target workload.
 
-Recommended first policy:
+Recommended first policy if split-K is revived:
 
-- tune `block_m` first:
-  - `32` for `128/256/512`
-  - `64` for `1024`
-  - `128` after that
 - only try `split_k > 1` on the low-batch region that still lags after the ladder lands
 - initial candidate policy:
   - `split_k = 1` by default
@@ -230,17 +245,17 @@ Acceptance:
 
 ## Recommended Implementation Order
 
-1. Add the low-batch `block_m` ladder.
-2. Re-run the GPT-OSS sweep.
-3. Only if low-batch still lags materially, add split-K kernel 1 with FP32 scratch.
-4. Add split-K reduction + exact epilogue kernel 2.
-5. Benchmark `split_k = 1/2/4` on low batch only.
+1. Reconfirm that the current landed low-batch policy still leaves a meaningful gap on the target
+   workload.
+2. Only if low-batch still lags materially, add split-K kernel 1 with FP32 scratch.
+3. Add split-K reduction + exact epilogue kernel 2.
+4. Benchmark `split_k = 1/2/4` on low batch only.
 
 ## Summary
 
 The design is straightforward, but the research result changes the priority:
 
-- low-batch `block_m` tuning is first-order and should land first
-- split-K is a second-stage extension
+- low-batch tile policy was first-order and is now landed
+- split-K is a deferred second-stage extension
 - the recommended split-K path is a clean two-kernel FP32 pre-activation reduction design, not
   atomics and not per-shard SwiGLU

@@ -143,28 +143,77 @@ Interpretation:
   speedup cleanly enough to use as a promotion signal, so the timing decision is based on the
   corrected `do_bench_cudagraph` measurements above.
 
-## Important Constraint
+## Epilogue Constraint And Fix
 
-`block_m = 16` is not currently legal in the exact helper-wavefront WS example. The packed epilogue
-split path fails compilation with:
+The original exact helper-wavefront example could not compile `block_m = 16` with the old
+`epilogue_row_subtile_factor = 8`. The packed epilogue split path failed with:
 
 `Fp4ToFpOp/SplitOp requires at least 2 elements per thread in the axis/last dimension`
 
-That means the immediate low-batch ladder for the current design is realistically:
+The important follow-up is that this was not a fundamental `block_m = 16` limitation. It was a
+fragment-layout limitation. The same exact helper-store path becomes legal again if the row
+subtiling is relaxed:
 
-- `32`
-- `64`
-- `128`
+- `block_m = 16`, `epilogue_row_subtile_factor = 4` compiles and validates
+- `block_m = 16`, `epilogue_row_subtile_factor = 2` compiles and validates
 
-and not the reference’s full `16/32/64/128` ladder unless the epilogue fragment layout is adapted.
+So the real low-batch implementation problem is:
+
+- choose a smaller `block_m`
+- choose a matching smaller row-subtile factor for the exact helper-wavefront epilogue
+
+and not “rewrite the epilogue before `block_m = 16` can ever work.”
+
+## Landed Low-Batch Policy
+
+The live example now has a dynamic low-batch selector keyed off `slice_size`:
+
+| `slice_size` | `block_m` | `epilogue_row_subtile_factor` |
+|---:|---:|---:|
+| `<= 8` | `16` | `2` |
+| `<= 16` | `32` | `4` |
+| `<= 32` | `64` | `4` |
+| `> 32` | `128` | `8` |
+
+This preserves the current high-batch kernel shape while making the exact helper-store path legal
+for the smallest GPT-OSS MM1 buckets.
+
+## Post-Landing Results
+
+Same prepared case, same GPU, `rep = 1000`:
+
+| Batch | Example ms | Reference ms | Example / Reference |
+|---|---:|---:|---:|
+| 128 | 0.03265 | 0.03304 | 1.012x |
+| 256 | 0.03267 | 0.03351 | 1.026x |
+| 512 | 0.03379 | 0.03415 | 1.011x |
+| 1024 | 0.03583 | 0.03633 | 1.014x |
+| 2048 | 0.04093 | 0.04271 | 1.043x |
+| 4096 | 0.04799 | 0.04987 | 1.039x |
+| 8192 | 0.07188 | 0.07841 | 1.091x |
+| 16384 | 0.11187 | 0.12137 | 1.085x |
+
+Long-run confirmation, `rep = 3000`:
+
+| Batch | Example Config | Example ms | Reference ms | Example / Reference |
+|---|---|---:|---:|---:|
+| 128 | `block_m=16`, `row_subtile=2` | 0.03262 | 0.03306 | 1.013x |
+| 256 | `block_m=16`, `row_subtile=2` | 0.03265 | 0.03344 | 1.024x |
+| 512 | `block_m=32`, `row_subtile=4` | 0.03377 | 0.03411 | 1.010x |
+| 1024 | `block_m=64`, `row_subtile=4` | 0.03583 | 0.03626 | 1.012x |
+
+Raw data for the landed policy is recorded in:
+
+- `.codex/initiatives/artifacts/ws-low-batch-performance-post-landing.csv`
+- `.codex/initiatives/artifacts/ws-low-batch-performance-post-landing-rep3000.csv`
 
 ## Conclusions
 
-1. The biggest missing optimization for GPT-OSS MM1 low batch is **not split-K**. It is a low-batch
-   `block_m` ladder in the standalone example.
-2. That ladder is already enough to all but close the measured gap at `128..1024`.
-3. Split-K should still be designed, but only as a second-stage experiment after the low-batch
-   `block_m` policy lands.
-4. The current exact helper-wavefront epilogue needs either:
-   - a `32/64/128` ladder only, or
-   - a small epilogue-layout fix before `block_m = 16` becomes legal.
+1. The biggest missing optimization for GPT-OSS MM1 low batch was **not split-K**. It was a
+   low-batch `block_m` ladder plus smaller exact helper-store row fragments.
+2. That policy is now landed in the standalone example and flips the GPT-OSS sweep from a
+   low-batch loss into a low-batch win.
+3. Split-K remains a valid design for future workloads, but it is no longer justified as the next
+   step for GPT-OSS 120B MM1 on this example.
+4. The real exact-epilogue lesson is that `block_m = 16` only required a fragment-layout change,
+   not a major epilogue rewrite.
