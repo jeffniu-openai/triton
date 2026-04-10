@@ -36,6 +36,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/PipeliningUtility.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include <optional>
 #include <utility>
 
@@ -90,6 +91,8 @@ public:
             auto newAlloc = ttng::TMEMAllocOp::create(
                 rewriter, alloc.getLoc(), alloc.getResultTypes()[0],
                 rewriter.getType<AsyncTokenType>(), storeSrc);
+            ttng::copyExplicitTMemLdStRowPlan(newAlloc, alloc);
+            ttng::setExplicitMMAv5RootRowPlanIfNeeded(newAlloc);
 
             if (auto allocTok = alloc.getToken()) {
               allocTok.replaceAllUsesWith(newAlloc.getToken());

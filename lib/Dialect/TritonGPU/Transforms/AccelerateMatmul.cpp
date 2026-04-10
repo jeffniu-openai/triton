@@ -90,12 +90,7 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
 
 static void annotateMMAv5AccumulatorRootRowPlan(
     triton::nvidia_gpu::TMEMAllocOp alloc) {
-  auto memTy = dyn_cast<MemDescType>(alloc.getType());
-  if (!memTy) {
-    return;
-  }
-  if (auto plan = triton::nvidia_gpu::getMMAv5RootRowPlan(memTy))
-    triton::nvidia_gpu::setExplicitTMemLdStRowPlan(alloc, *plan);
+  triton::nvidia_gpu::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 }
 
 SmallVector<unsigned> warpsPerTileV2(DotOpInterface dotOp,

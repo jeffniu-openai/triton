@@ -18,6 +18,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/Schedule.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.h"
 #include <optional>
 
@@ -700,6 +701,8 @@ int insertTmemAref(TmemAccessDag &accessDag, int numTmemBlocks) {
     b.setInsertionPoint(outerWsLoop);
   auto arefAlloc =
       cast<TMEMAllocOp>(createAlloc(b, allocOp.getLoc(), arefBufType, Value()));
+  copyExplicitTMemLdStRowPlan(arefAlloc, allocOp);
+  setExplicitMMAv5RootRowPlanIfNeeded(arefAlloc);
   auto arefOp = createArefCreateOp(b, {arefBufType}, {arefAlloc->getResult(0)},
                                    allocOp.getLoc());
 

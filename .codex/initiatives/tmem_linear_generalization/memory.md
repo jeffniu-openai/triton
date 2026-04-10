@@ -176,6 +176,32 @@
   treated as compiler bugs; if they depend on implicit physical TMEM mapping,
   rewrite them to explicit descriptor/view composition first and only treat
   residual failures as compiler issues.
+- Latest current-head checkpoint:
+  - the explicit MMAv5 row-plan propagation patch is now the correct local
+    baseline;
+  - after `make -j8`, a fresh `make NUM_PROCS=24 test-unit` run is down to
+    `134 failed, 15019 passed, 5492 skipped`;
+  - the remaining exact unit surface is now only:
+    - `3` `python/test/unit/language/test_matmul.py` nodeids
+    - `3` `python/test/unit/language/test_tensor_descriptor.py` nodeids
+    - `128` `python/test/unit/language/test_warp_specialization.py` nodeids
+  - use
+    `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt` as the
+    current exact manifest for this bucket rather than the older `182`/`2098`
+    manifests.
+- Latest structural read:
+  - the remaining unit failures now look like a root-preserving
+    descriptor-view row-anchor bug rather than the older source-root MMAv5
+    producer bug;
+  - the strongest current hypothesis is that direct-planning representability
+    is collapsing a backing `128`-row MMAv5 contract to the active `64`-row
+    descriptor view too early for `memdesc_index` / higher-rank views; and
+  - the next compiler fix should therefore target that planner logic directly.
+- Census still in flight:
+  - refreshed merge-base reruns of `test_matmul.py` and
+    `test_warp_specialization.py`
+  - refreshed current-head `python/triton_kernels/tests`
+  - keep those pending items explicit in the handoff until they complete.
 - A later exact-rerun checkpoint has now repaired the representative direct
   split-N TMEM bucket from the original census:
   - `test_tmem_descriptor_chain_matrix[...]` is green again;

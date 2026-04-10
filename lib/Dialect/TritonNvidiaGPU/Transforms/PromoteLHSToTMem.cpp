@@ -106,8 +106,7 @@ public:
       src = ttg::ConvertLayoutOp::create(rewriter, loc, newTy, src);
     }
     auto tMemAlloc = TMEMAllocOp::create(rewriter, loc, lhsMemDescType, src);
-    if (auto plan = nvidia_gpu::getMMAv5RootRowPlan(lhsMemDescType))
-      nvidia_gpu::setExplicitTMemLdStRowPlan(tMemAlloc, *plan);
+    nvidia_gpu::setExplicitMMAv5RootRowPlanIfNeeded(tMemAlloc);
     tcGen5MMAOp.getAMutable().assign(tMemAlloc);
     return success();
   }

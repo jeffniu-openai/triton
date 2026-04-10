@@ -1812,6 +1812,16 @@ void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan) {
               DenseI32ArrayAttr::get(op.getContext(), rawPlan));
 }
 
+void setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp op) {
+  if (op->hasAttr(kExplicitTMemLdStRowPlanAttrName))
+    return;
+  auto memTy = dyn_cast<MemDescType>(op.getType());
+  if (!memTy)
+    return;
+  if (auto plan = getMMAv5RootRowPlan(memTy))
+    setExplicitTMemLdStRowPlan(op, *plan);
+}
+
 void copyExplicitTMemLdStRowPlan(TMEMAllocOp dst, TMEMAllocOp src) {
   if (Attribute attr = src->getAttr(kExplicitTMemLdStRowPlanAttrName))
     dst->setAttr(kExplicitTMemLdStRowPlanAttrName, attr);

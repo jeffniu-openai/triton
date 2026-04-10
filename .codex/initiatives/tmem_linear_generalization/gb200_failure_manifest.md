@@ -30,6 +30,41 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Refreshed Current-Head Unit Reduction
+
+- [gb200_current_branch_test_unit_matmul_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_matmul_refresh_failures.txt)
+  - `3` nodeids
+  - source:
+    - refreshed current-head `python/test/unit/language/test_matmul.py`
+      reduction after the MMAv5 row-plan propagation patch
+  - current interpretation:
+    - these are the only remaining current-head `test_matmul.py` failures on
+      the latest dirty worktree
+- [gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt)
+  - `3` nodeids
+  - source:
+    - refreshed current-head `python/test/unit/language/test_tensor_descriptor.py`
+  - current interpretation:
+    - this whole file is green on merge-base, so the refreshed `3`-nodeid
+      bucket is branch-local
+- [gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt)
+  - `128` nodeids
+  - source:
+    - refreshed current-head
+      `python/test/unit/language/test_warp_specialization.py`
+  - current interpretation:
+    - this is now the dominant remaining current-head unit bucket after the
+      MMAv5 row-plan propagation patch
+- [gb200_current_branch_test_unit_rowanchor_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_rowanchor_refresh_failures.txt)
+  - `134` nodeids
+  - source:
+    - concatenation of the three refreshed current-head unit manifests above
+  - current interpretation:
+    - this is the best current exact nodeid inventory for the remaining
+      current-head GB200 `test-unit` surface on the latest dirty worktree
+    - prefer this manifest over the older `182`/`2098` unit manifests when
+      choosing exact repros on the current tree
+
 - [gb200_current_branch_test_unit_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_failures.txt)
   - `182` nodeids
   - source:
@@ -151,6 +186,9 @@ collecting the merge-base test files and comparing exact nodeids:
 ## Notes
 
 - These manifests reflect the current branch tip at the time of generation.
+- The refreshed `3 + 3 + 128 = 134` unit manifests above are now the primary
+  current-head unit inventory for the latest dirty MMAv5 row-plan propagation
+  checkpoint.
 - The older `182`-nodeid unit manifest is still useful as the first reduced
   branch-recovery slice, but the newer `2098`-nodeid XML manifest is the
   current broad CI-like unit inventory.
@@ -158,8 +196,9 @@ collecting the merge-base test files and comparing exact nodeids:
   current dirty MMAv5 root-row-plan fix:
   - they still prove branch-vs-merge-base classification; but
   - they no longer reflect current-head counts for
-    `python/test/regression/test_cast_matmul.py`, and likely overcount the
-    current unit surface until a post-fix rerun refreshes them.
+    `python/test/regression/test_cast_matmul.py`; and
+  - they overcount the current unit surface until a post-fix rerun refreshes
+    them.
 - Fresh isolated current-branch reruns of representative exact nodeids from
   the XML-only tail files all pass:
   - `python/test/unit/language/test_standard.py::test_maximum_minium[maximum-int32]`

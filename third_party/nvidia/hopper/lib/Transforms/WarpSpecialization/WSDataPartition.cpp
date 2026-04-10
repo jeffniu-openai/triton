@@ -6,6 +6,7 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 
 using namespace mlir::triton;
 using namespace mlir::triton::gpu;
@@ -943,6 +944,7 @@ static Operation *sliceOp(Operation *op, int offset, IRMapping &mappings,
       auto alloc =
           builder.createWithAsyncTaskIds<triton::nvidia_gpu::TMEMAllocOp>(
               op->getLoc(), newType, cvtOp);
+      ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 
       auto v = tmemAllocOp->getResult(0);
       auto newV = alloc->getResult(0);

@@ -99,6 +99,7 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy)
 std::optional<TMemLdStRowPlan> getMMAv5RootRowPlan(gpu::MemDescType memTy);
 
 void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan);
+void setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp op);
 
 void copyExplicitTMemLdStRowPlan(TMEMAllocOp dst, TMEMAllocOp src);
 

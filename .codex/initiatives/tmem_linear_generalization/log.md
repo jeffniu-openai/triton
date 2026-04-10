@@ -6254,6 +6254,42 @@ Open after this slice:
   - the GB200 manifest files now need regeneration after the next broader rerun
     before their aggregate counts are treated as current.
 
+## 2026-04-10: explicit MMAv5 row-plan propagation through cloned/higher-rank roots reduces the live GB200 unit surface to 134 exact nodeids
+
+- I extended the explicit MMAv5 root-row-plan contract through the remaining
+  cloned and higher-rank TMEM root producer paths:
+  - added `setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp)` in
+    `TensorMemoryUtils.{h,cpp}`;
+  - replaced duplicated producer annotations in
+    `AccelerateMatmul.cpp`, `PromoteLHSToTMem.cpp`, and `python/src/gluon_ir.cc`;
+  - propagated or reinitialized the contract in
+    `MMAv5PipelineUtility.cpp`, `WSCodePartition.cpp`,
+    `WSDataPartition.cpp`, `HoistTmemStore.cpp`, and
+    `InsertTmemAref.cpp`.
+- After `make -j8`, a fresh broad rerun shows:
+  - `make NUM_PROCS=24 test-unit`
+    - `134 failed, 15019 passed, 5492 skipped`
+- I regenerated the current-head reduced unit manifests:
+  - `gb200_current_branch_test_unit_matmul_refresh_failures.txt`
+  - `gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt`
+  - `gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt`
+  - `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`
+- Fresh isolated reruns completed in this checkpoint:
+  - `python/test/unit/language/test_tensor_descriptor.py`
+    - `3 failed, 2601 passed, 110 skipped`
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `128 failed, 1471 passed, 202 skipped`
+  - merge-base `python/test/unit/language/test_tensor_descriptor.py`
+    - `2604 passed, 110 skipped`
+- Current interpretation:
+  - the older `182` / `2098` unit manifests are now historical counts for the
+    latest dirty worktree;
+  - the remaining unit surface is much narrower and now points at a single
+    planner/representability family; and
+  - the most likely next core fix is in direct-view row-anchor
+    representability for root-preserving views, not another producer
+    annotation sweep.
+
 ## 2026-04-10: the broad unit XML surface is now fully reduced against merge-base, and the raw-first root-load experiment is back as the current dirty candidate
 
 - I finished the strongest remaining unit-side merge-base reduction:

@@ -20,6 +20,76 @@ lives in `gb200_branch_recovery_plan.md`.
 
 ## Latest Current-Branch Reduction (2026-04-10)
 
+### MMAv5 Row-Plan Propagation Checkpoint
+
+- The current dirty worktree extends the earlier MMAv5 source-root fix into the
+  remaining alloc-cloning / higher-rank producer paths:
+  - added `setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp)` in
+    `TensorMemoryUtils.{h,cpp}`;
+  - replaced duplicated annotation ladders in
+    `AccelerateMatmul.cpp`, `PromoteLHSToTMem.cpp`, and `python/src/gluon_ir.cc`;
+  - propagated or reinitialized explicit MMAv5 root row plans through cloned
+    allocs in:
+    - `MMAv5PipelineUtility.cpp`
+    - `WSCodePartition.cpp`
+    - `WSDataPartition.cpp`
+    - `HoistTmemStore.cpp`
+    - `InsertTmemAref.cpp`
+- Fresh broad current-branch rerun after `make -j8`:
+  - `make NUM_PROCS=24 test-unit`
+    - `134 failed, 15019 passed, 5492 skipped in 317.52s`
+- The broad unit surface is now materially smaller and cleaner than the older
+  `162`/`182`/`2098` manifests:
+  - exact failing files:
+    - `python/test/unit/language/test_matmul.py`
+      - `3` exact nodeids
+    - `python/test/unit/language/test_tensor_descriptor.py`
+      - `3` exact nodeids
+    - `python/test/unit/language/test_warp_specialization.py`
+      - `128` exact nodeids
+  - exact current-head manifests:
+    - `gb200_current_branch_test_unit_matmul_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`
+- Fresh isolated current-branch reruns completed so far:
+  - `python/test/unit/language/test_tensor_descriptor.py`
+    - `3 failed, 2601 passed, 110 skipped`
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `128 failed, 1471 passed, 202 skipped`
+  - `python/test/unit/language/test_matmul.py`
+    - exact current-head failing nodeids already reduced to:
+      - `test_simple_persistent_matmul[False-4-64-128-32]`
+      - `test_simple_persistent_matmul[False-4-64-16-16]`
+      - `test_simple_persistent_matmul[False-8-64-128-32]`
+- Fresh merge-base confirmation completed so far:
+  - `python/test/unit/language/test_tensor_descriptor.py`
+    - `2604 passed, 110 skipped`
+  - this reconfirms that the whole current-head tensor-descriptor bucket is
+    branch-local
+- Current interpretation:
+  - the explicit MMAv5 row-plan propagation patch is a real improvement and
+    should be treated as the new baseline;
+  - the older larger unit manifests remain useful as branch-vs-main evidence,
+    but they are historical with respect to the current dirty worktree; and
+  - the remaining unit red surface now looks like a much narrower
+    root-preserving descriptor-view row-anchor problem.
+- Current root-cause hypothesis from the latest reproducer work:
+  - the planner is collapsing a root-backed `128`-row MMAv5 contract into the
+    `64`-row active descriptor view too early for root-preserving views;
+  - that makes direct `tcgen05.ld/st` representability checks reason about the
+    wrong physical row-anchor space for `memdesc_index` / higher-rank views;
+  - the strongest clue from the saved reproducer is that
+    `activePhysicalRows=64` shows up even while the backing explicit row plan
+    still wants anchors `32,64,128`.
+- Still pending from this checkpoint:
+  - refreshed merge-base full-file reruns of:
+    - `python/test/unit/language/test_matmul.py`
+    - `python/test/unit/language/test_warp_specialization.py`
+  - the current-branch `python/triton_kernels/tests` inventory run
+  - use the older merge-base-green file reruns in this folder as provisional
+    branch-vs-main evidence until those refreshes complete
+
 - The current dirty worktree has now moved past the older raw-first LLVM probe.
   The live fix is producer-side:
   - `getMMAv5RootRowPlan(...)` is now the shared row-plan helper for all

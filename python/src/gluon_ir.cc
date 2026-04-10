@@ -120,11 +120,7 @@ static void annotateMMAv5AccumulatorRootRowPlan(Value acc) {
   auto alloc = getBackingTMemAlloc(acc);
   if (!alloc)
     return;
-  auto memTy = dyn_cast<ttg::MemDescType>(alloc.getType());
-  if (!memTy)
-    return;
-  if (auto plan = ttng::getMMAv5RootRowPlan(memTy))
-    ttng::setExplicitTMemLdStRowPlan(alloc, *plan);
+  ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 }
 
 static void annotateMMAv5TMemOperandRootRowPlan(Value operand, Value acc) {

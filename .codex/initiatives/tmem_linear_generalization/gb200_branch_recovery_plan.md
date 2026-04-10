@@ -46,6 +46,52 @@ PY
 
 ## Current Classification Summary
 
+### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
+
+- The current dirty follow-up propagates explicit MMAv5 root row plans through
+  the remaining alloc-cloning / higher-rank producer paths instead of only the
+  original root producers:
+  - new helper:
+    - `setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp)`
+  - cloned or recreated allocs now preserve or reinitialize the contract in:
+    - `MMAv5PipelineUtility.cpp`
+    - `WSCodePartition.cpp`
+    - `WSDataPartition.cpp`
+    - `HoistTmemStore.cpp`
+    - `InsertTmemAref.cpp`
+- Broad current-head impact after `make -j8`:
+  - `make NUM_PROCS=24 test-unit`
+    - `134 failed, 15019 passed, 5492 skipped`
+- Refreshed current-head exact manifests now reduce the live unit surface to:
+  - `3` `test_matmul.py` nodeids
+  - `3` `test_tensor_descriptor.py` nodeids
+  - `128` `test_warp_specialization.py` nodeids
+  - combined:
+    - `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`
+      (`134` exact nodeids)
+- Fresh merge-base confirmation completed so far:
+  - `python/test/unit/language/test_tensor_descriptor.py`
+    - `2604 passed, 110 skipped`
+  - the `3` refreshed tensor-descriptor exact failures are therefore
+    definitely branch-local
+- Current root-cause hypothesis:
+  - the remaining red surface is no longer the old broad MMAv5 producer bug;
+  - the planner is likely collapsing a root-backed `128`-row MMAv5 contract to
+    the `64`-row active descriptor view too early for root-preserving
+    descriptor views;
+  - that breaks direct row-anchor representability for `memdesc_index` /
+    higher-rank views that still semantically depend on the backing root row
+    contract.
+- Practical consequence:
+  - the next structural fix should be in the planner / direct-view
+    representability logic, not another producer annotation sweep.
+- Still pending in the census:
+  - refreshed merge-base full-file reruns of `test_matmul.py` and
+    `test_warp_specialization.py`
+  - refreshed current-head `python/triton_kernels/tests`
+  - until those complete, the older merge-base-green file reruns remain the
+    provisional branch-vs-main evidence for those files
+
 ### Post-Census Repair Checkpoint
 
 - The first representative TMEM exact bucket from the census is now repaired
