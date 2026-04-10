@@ -123,6 +123,68 @@ def invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
         mbarrier.invalidate(bars.index(i))
 
 
+@gluon.jit
+def pack_e4m3x2(values):
+    return tl_core.inline_asm_elementwise(
+        """
+        {
+            .reg .f32 lane<2>;
+            mov.b64 {lane0, lane1}, $1;
+            cvt.rn.satfinite.e4m3x2.f32 $0, lane1, lane0;
+        }
+        """,
+        "=h,l",
+        [values.value],
+        dtype=tl_core.int16,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@gluon.jit
+def pack_u16x2(x0, x1):
+    return tl_core.inline_asm_elementwise(
+        """
+        mov.b32 $0, { $1, $2 };
+        """,
+        "=r,h,h",
+        [x0, x1],
+        dtype=tl_core.int32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@gluon.jit
+def pack_fp8x4(values):
+    lhs, rhs = gl.split(values.reshape((values.shape[0], values.shape[1] // 2, 2)))
+    return pack_u16x2(lhs, rhs)
+
+
+@gluon.jit
+def _split_m(values):
+    return gl.split(values.reshape((2, values.shape[0] // 2, values.shape[1])).permute((1, 2, 0)))
+
+
+@gluon.jit
+def _split_m_float2(values):
+    lhs, rhs = _split_m(values.value)
+    return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
+
+
+@gluon.jit
+def split_m_subtiles(values, subtile_factor: gl.constexpr):
+    subtiles = (values,)
+    for split_level in gl.static_range(5):
+        if (1 << split_level) < subtile_factor:
+            next_subtiles = ()
+            for subtile_idx in gl.static_range(1 << split_level):
+                lhs, rhs = _split_m_float2(subtiles[subtile_idx])
+                next_subtiles += (lhs, rhs)
+            subtiles = next_subtiles
+    return subtiles
+
+
 @aggregate
 class PartitionArgs:
     x_desc: tma.tensor_descriptor
@@ -323,44 +385,6 @@ def mma_partition(p: PartitionArgs):
 
 
 @gluon.jit
-def pack_e4m3x2(values):
-    return tl_core.inline_asm_elementwise(
-        """
-        {
-            .reg .f32 lane<2>;
-            mov.b64 {lane0, lane1}, $1;
-            cvt.rn.satfinite.e4m3x2.f32 $0, lane1, lane0;
-        }
-        """,
-        "=h,l",
-        [values.value],
-        dtype=tl_core.int16,
-        is_pure=True,
-        pack=1,
-    )
-
-
-@gluon.jit
-def pack_u16x2(x0, x1):
-    return tl_core.inline_asm_elementwise(
-        """
-        mov.b32 $0, { $1, $2 };
-        """,
-        "=r,h,h",
-        [x0, x1],
-        dtype=tl_core.int32,
-        is_pure=True,
-        pack=1,
-    )
-
-
-@gluon.jit
-def pack_packed_fp8x4(values):
-    lhs, rhs = gl.split(values.reshape((values.shape[0], values.shape[1] // 2, 2)))
-    return pack_u16x2(lhs, rhs)
-
-
-@gluon.jit
 def store_packed_out(
     p: PartitionArgs,
     packed_out,
@@ -369,7 +393,7 @@ def store_packed_out(
     shape_m,
     slice_offset,
 ):
-    values = pack_packed_fp8x4(packed_out)
+    values = pack_fp8x4(packed_out)
     layout: gl.constexpr = values.type.layout
     offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
     offs_n = out_off_n // 4 + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
@@ -383,31 +407,7 @@ def store_packed_out(
 
 
 @gluon.jit
-def split_first_dim_in_half(values):
-    return gl.split(values.reshape((2, values.shape[0] // 2, values.shape[1])).permute((1, 2, 0)))
-
-
-@gluon.jit
-def split_first_dim_in_half_packed(values):
-    lhs, rhs = split_first_dim_in_half(values.value)
-    return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
-
-
-@gluon.jit
-def split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
-    subtiles = (values,)
-    for split_level in gl.static_range(5):
-        if (1 << split_level) < subtile_factor:
-            next_subtiles = ()
-            for subtile_idx in gl.static_range(1 << split_level):
-                lhs, rhs = split_first_dim_in_half_packed(subtiles[subtile_idx])
-                next_subtiles += (lhs, rhs)
-            subtiles = next_subtiles
-    return subtiles
-
-
-@gluon.jit
-def prepare_swiglu_fragment_from_packed(acc_packed, limit):
+def _swiglu_step1(acc_packed, limit):
     gelu, linear = float2.unpack2(acc_packed)
     gelu = gl.minimum(gelu.to(gl.float32), limit)
     linear = tl_core.clamp(linear.to(gl.float32), -limit, limit)
@@ -415,7 +415,7 @@ def prepare_swiglu_fragment_from_packed(acc_packed, limit):
 
 
 @gluon.jit
-def finish_swiglu_fragment_packed(gelu, linear, alpha):
+def _swiglu_step2(gelu, linear, alpha):
     den = 1.0 + libdevice.exp(-alpha * gelu)
     activated = gelu / den
     activated_packed = float2.pack(activated, axis=1)
@@ -440,7 +440,7 @@ def store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.c
 
 
 @gluon.jit
-def enqueue_packed_fp8_fragment(
+def _store_out_subtile(
     p: PartitionArgs,
     out_packed,
     out_recip,
@@ -457,7 +457,7 @@ def enqueue_packed_fp8_fragment(
 
 
 @gluon.jit
-def epilogue_enqueue_from_acc_packed(
+def epilogue_overlapped_store(
     p: PartitionArgs,
     acc_packed,
     out_recip,
@@ -465,25 +465,25 @@ def epilogue_enqueue_from_acc_packed(
     store_phase,
 ):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    acc_packed_subtiles = split_first_dim_packed_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
+    acc_packed_subtiles = split_m_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
 
-    prepared_gelu, prepared_linear = prepare_swiglu_fragment_from_packed(
+    prepared_gelu, prepared_linear = _swiglu_step1(
         acc_packed_subtiles[0],
         p.SWIGLU_LIMIT,
     )
     ready_out_packed = acc_packed_subtiles[0]
     for frag_idx in gl.static_range(1, p.EPILOGUE_ROW_SUBTILE_FACTOR):
-        cur_gelu, cur_linear = prepare_swiglu_fragment_from_packed(
+        cur_gelu, cur_linear = _swiglu_step1(
             acc_packed_subtiles[frag_idx],
             p.SWIGLU_LIMIT,
         )
-        next_ready_out_packed = finish_swiglu_fragment_packed(
+        next_ready_out_packed = _swiglu_step2(
             prepared_gelu,
             prepared_linear,
             p.SWIGLU_ALPHA,
         )
         if frag_idx > 1:
-            store_idx, store_phase = enqueue_packed_fp8_fragment(
+            store_idx, store_phase = _store_out_subtile(
                 p,
                 ready_out_packed,
                 out_recip,
@@ -494,19 +494,19 @@ def epilogue_enqueue_from_acc_packed(
         prepared_gelu = cur_gelu
         prepared_linear = cur_linear
 
-    store_idx, store_phase = enqueue_packed_fp8_fragment(
+    store_idx, store_phase = _store_out_subtile(
         p,
         ready_out_packed,
         out_recip,
         store_idx,
         store_phase,
     )
-    last_out_packed = finish_swiglu_fragment_packed(
+    last_out_packed = _swiglu_step2(
         prepared_gelu,
         prepared_linear,
         p.SWIGLU_ALPHA,
     )
-    store_idx, store_phase = enqueue_packed_fp8_fragment(
+    store_idx, store_phase = _store_out_subtile(
         p,
         last_out_packed,
         out_recip,
@@ -517,7 +517,7 @@ def epilogue_enqueue_from_acc_packed(
 
 
 @gluon.jit
-def load_biased_acc_packed(
+def load_bias(
     p: PartitionArgs,
     idx,
     phase,
@@ -605,7 +605,7 @@ def epilogue_partition(p: PartitionArgs):
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
-        idx, phase, acc_packed = load_biased_acc_packed(
+        idx, phase, acc_packed = load_bias(
             p,
             idx,
             phase,
@@ -616,7 +616,7 @@ def epilogue_partition(p: PartitionArgs):
             acc_scale,
         )
 
-        store_idx, store_phase = epilogue_enqueue_from_acc_packed(
+        store_idx, store_phase = epilogue_overlapped_store(
             p,
             acc_packed,
             out_recip,
@@ -1025,7 +1025,7 @@ def matmul(
 
 
 # ===-----------------------------------------------------------------------===#
-# Example Helpers
+# Benchmark and Testing
 # ===-----------------------------------------------------------------------===#
 
 GPT_OSS_120B_NUM_EXPERTS = 128
@@ -1155,7 +1155,7 @@ def make_output_buffer(prepared: PreparedCase) -> torch.Tensor:
     return torch.zeros(prepared.out_shape, dtype=prepared.out_dtype, device=prepared.x.device)
 
 
-def exact_swiglu_torch(values: torch.Tensor, alpha: float, limit: float) -> torch.Tensor:
+def swiglu(values: torch.Tensor, alpha: float, limit: float) -> torch.Tensor:
     gelu = values[..., ::2].to(torch.float32).clamp(max=limit)
     linear = values[..., 1::2].to(torch.float32).clamp(min=-limit, max=limit)
     activated = gelu * torch.sigmoid(alpha * gelu)
@@ -1206,7 +1206,7 @@ def run_exact_reference(prepared: PreparedCase) -> tuple[torch.Tensor, Precision
         precision_config=linear_precision,
     )
     alpha, limit = prepared.fused_activation.fn_args
-    exact_out = exact_swiglu_torch(linear, float(alpha), float(limit))
+    exact_out = swiglu(linear, float(alpha), float(limit))
     precision_config = make_precision_config(prepared)
     quantized = quantize_like_flexpoint(exact_out, precision_config.flex_ctx.out_data.expected_scale)
     return quantized, precision_config
