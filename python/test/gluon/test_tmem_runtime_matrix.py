@@ -1686,7 +1686,8 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
         _make_tmem_linear_layout_64x32_block(two_ctas=True),
         (
             "source has no supported register layout",
-            "No TMEM-compatible register layout exists for this operand.",
+            "unsupported tensor memory descriptor view for direct tcgen05.ld/st",
+            "required row anchors 16,32 are not directly representable in the descriptor view",
         ),
     ),
 ]

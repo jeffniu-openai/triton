@@ -5606,3 +5606,41 @@ Open after this slice:
 - Removed the duplicated documentation index from `memory.md` so that
   `memory.md` stays focused on project memory, decisions, and plans rather than
   folder navigation.
+
+## 2026-04-10: added a GB200-only NVIDIA CI inventory and cleared the stale block-descriptor diagnostic expectation
+
+- I added `.codex/initiatives/tmem_linear_generalization/gb200_nvidia_ci_inventory.md`
+  as the current CI-grounded baseline for this Blackwell devbox phase.
+- Scope for this stabilization pass is intentionally narrowed to the GB200 lane
+  of `.github/workflows/integration-tests-nvidia.yml`; AMD, macOS, and the
+  H100-only interpreter lane are out of scope for the current red-list pass.
+- The new inventory records:
+  - the GB200 workflow commands;
+  - a repo-level test-surface snapshot (`ctest -N`, lit file count, Python test
+    file counts, and the current `test_core.py` + `test_tmem_runtime_matrix.py`
+    collect-only size); and
+  - the currently confirmed red list on this devbox.
+- Exact-nodeid confirmation before the test expectation update:
+  - `CUDA_VISIBLE_DEVICES=0 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]`
+    - `1 failed` (`4096 / 8192`)
+  - `CUDA_VISIBLE_DEVICES=1 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `1 failed` (`2048 / 8192`)
+  - `CUDA_VISIBLE_DEVICES=2 ... pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_block_descriptor_reports_clean_error[block_two_ctas-layout1-reinterpret_layout1-expected_fragments1]`
+    - failed only because the expected diagnostic text still referenced the old
+      generic register-layout message
+- I updated the stale block-descriptor expectation to the current row-anchor
+  materialization diagnostic fragments:
+  - `source has no supported register layout`
+  - `unsupported tensor memory descriptor view for direct tcgen05.ld/st`
+  - `required row anchors 16,32 are not directly representable in the descriptor view`
+- Validation after the update:
+  - `make -j8`
+  - exact rerun of the same block-descriptor nodeid
+    - `1 passed`
+- Status after this checkpoint:
+  - the stale runtime-matrix expectation is no longer part of the GB200 red
+    list; and
+  - the only currently confirmed GB200/NVIDIA red tests are the two
+    reinterpret-heavy `block_m_64` tests, which are now explicitly tracked as
+    rewrite candidates under the newer TMEM descriptor/view contract rather
+    than proven compiler bugs.

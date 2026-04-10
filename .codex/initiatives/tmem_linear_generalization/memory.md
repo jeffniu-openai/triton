@@ -147,12 +147,18 @@
   - moved into a clearly scoped follow-on initiative.
 
 ### Immediate Priority Order From The Current State
-- Finish the shared-planner cleanup and remove the legacy-vs-linear
-  `block_m_64` divergence.
-- Fix the parent-layout reinterpret packet decomposition from quotient
-  structure.
+- Keep the GB200/NVIDIA CI red list current in `gb200_nvidia_ci_inventory.md`
+  and use that file as the current validation baseline for this Blackwell
+  devbox phase.
+- Clear stale-expectation failures first so the remaining red list reflects
+  only real behavior changes.
 - Rewrite the reinterpret-heavy `block_m_64` tests to guaranteed descriptor
-  APIs once the core lowering is stable.
+  APIs before treating them as proven compiler bugs.
+- After the reinterpret-contract rewrite settles what still fails, finish the
+  shared-planner cleanup and remove the legacy-vs-linear `block_m_64`
+  divergence.
+- Then fix any remaining parent-layout reinterpret packet decomposition from
+  quotient structure.
 - Re-broaden through TMEM runtime, MMA/matmul, `triton_kernels`, and then the
   broader suite.
 - Continue the larger initiative mission after the local bug buckets are green:
@@ -160,6 +166,23 @@
   - `copy` `warpx2` completion
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
+
+## Current GB200/NVIDIA CI Baseline
+- For the current stabilization phase, the source of truth for what is "red" is
+  the GB200 lane from `.github/workflows/integration-tests-nvidia.yml`, as
+  recorded in `gb200_nvidia_ci_inventory.md`.
+- This GB300 devbox is treated as representative for that Blackwell lane.
+- In the current phase, reinterpret-heavy TMEM tests are not automatically
+  treated as compiler bugs; if they depend on implicit physical TMEM mapping,
+  rewrite them to explicit descriptor/view composition first and only treat
+  residual failures as compiler issues.
+- The currently confirmed GB200 red list is:
+  - two `block_m_64` reinterpret-contract rewrite candidates in
+    `python/test/gluon/test_core.py`.
+- The stale
+  `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[...]`
+  expectation has already been updated to the current row-anchor diagnostic and
+  is no longer part of the red list.
 
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual
