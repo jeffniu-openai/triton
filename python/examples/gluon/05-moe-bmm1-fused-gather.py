@@ -431,14 +431,6 @@ def _split_first_dim_in_half_packed(values):
 
 @gluon.jit
 def _split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
-    gl.static_assert(
-        subtile_factor == 2
-        or subtile_factor == 4
-        or subtile_factor == 8
-        or subtile_factor == 16
-        or subtile_factor == 32,
-        "unsupported row subtile factor",
-    )
     subtiles = (values,)
     for split_level in gl.static_range(5):
         if (1 << split_level) < subtile_factor:
@@ -492,7 +484,6 @@ def _enqueue_packed_fp8_fragment(
     store_phase,
 ):
     payload = _pack_fp8_out_fragment(out_packed, out_recip)
-    gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
     empty_bar = p.store_empty_bars.index(store_idx)
     ready_bar = p.store_ready_bars.index(store_idx)
     mbarrier.wait(empty_bar, store_phase)
@@ -595,7 +586,7 @@ def _load_biased_acc_packed(
 
 
 @gluon.jit
-def epilogue_store_partition_optimized(p: PartitionArgs):
+def epilogue_store_partition(p: PartitionArgs):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
     store_layout: gl.constexpr = _store_helper_fragment_layout(frag_rows, gl.num_warps())
@@ -614,7 +605,6 @@ def epilogue_store_partition_optimized(p: PartitionArgs):
             empty_bar = p.store_empty_bars.index(store_idx)
             mbarrier.wait(ready_bar, store_phase)
             packed_fp8 = p.store_bufs.index(store_idx).load(store_layout)
-            # The ring slot is no longer needed once the fragment is in registers.
             mbarrier.arrive(empty_bar)
             _store_packed_out(
                 p,
@@ -628,7 +618,7 @@ def epilogue_store_partition_optimized(p: PartitionArgs):
 
 
 @gluon.jit
-def epilogue_partition_optimized(p: PartitionArgs):
+def epilogue_partition(p: PartitionArgs):
     idx = 0
     phase = 0
     store_idx = 0
@@ -672,7 +662,7 @@ def epilogue_partition_optimized(p: PartitionArgs):
 
 
 @gluon.jit
-def ws_matmul_kernel_optimized(
+def ws_matmul_kernel(
     x_desc: tma.tensor_descriptor,
     w_desc: tma.tensor_descriptor,
     scale_desc: tma.tensor_descriptor,
@@ -845,8 +835,8 @@ def ws_matmul_kernel_optimized(
 
     gl.warp_specialize(
         [
-            (epilogue_partition_optimized, (p,)),
-            (epilogue_store_partition_optimized, (p,)),
+            (epilogue_partition, (p,)),
+            (epilogue_store_partition, (p,)),
             (load_activations, (p,)),
             (load_weights, (p,)),
             (mma_partition, (p,)),
@@ -923,7 +913,7 @@ def matmul(
     )
     out_desc = make_operand_descriptor(c, (config.block_m, config.block_n // reduction_n))
 
-    ws_matmul_kernel_optimized[grid](
+    ws_matmul_kernel[grid](
         x_desc=x_desc,
         w_desc=w_desc,
         scale_desc=scale_desc,
