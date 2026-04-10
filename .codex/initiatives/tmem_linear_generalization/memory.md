@@ -7,6 +7,160 @@
 - Broaden TMEM lowering for linear layouts while keeping MMAv5 and `tmem_copy`
   on explicit hardware-family matchers.
 
+## Long-Term Mission And Completion Plan
+
+### Mission
+- Finish the TMEM linear-layout generalization so the compiler accepts any
+  arbitrary linear TMEM layout or descriptor-view chain that is physically
+  realizable by the PTX/ISA and executes it correctly on hardware.
+- Keep clean negatives only for true ISA-impossible cases.
+- When multiple legal codegen paths exist, choose among them with sane
+  performance-oriented heuristics instead of hard-coded exclusions.
+- Make the implementation cleanly layered:
+  - normalize legacy spellings early;
+  - express view composition and reinterpret through exact `LinearLayout`
+    arithmetic;
+  - use one planner for legality, family selection, packet decomposition, and
+    lowering;
+  - keep verifier/frontend/LLVM in agreement by consuming the same structural
+    plan instead of recreating it independently.
+
+### Project-Level Exit Criteria
+- Legacy TMEM encodings and `tensor_memory_linear` encodings lower through the
+  same physical-family/planner model rather than parallel rescue stacks.
+- Arbitrary linear TMEM layouts and descriptor-view chains are positive
+  whenever their physical image can be realized by the PTX instruction
+  families and the generated code is correct on hardware.
+- Remaining negatives are only genuine ISA/semantic boundaries, and they fail
+  with clean actionable diagnostics rather than assertions, parser failures, or
+  wrong-code.
+- The broader `tcgen05` surface is covered, not just the current runtime
+  matrix:
+  - `ld/st`
+  - `ld.red`
+  - `copy`
+  - `mma`
+  - `mma_scaled`
+- Test coverage and fuzzing saturate those surfaces at the user level, and the
+  broad validation stack is green:
+  - focused TMEM runtime tests
+  - MMA/matmul tests
+  - `triton_kernels` matmul
+  - wider pytest/lit suites
+  - multi-GPU grouped sweeps where appropriate.
+
+### Phase 1: Core Logic Cleanup
+- Unify TMEM ld/st planning into one shared structural planner consumed by:
+  - Gluon descriptor/layout selection
+  - verifier checks
+  - LLVM lowering
+- Fold the current duplicated raw-query/support-query/row-plan ordering into
+  that planner.
+- Canonicalize legacy TMEM physical families once, then lower them through the
+  same planner as TMEM-linear layouts.
+- Replace reinterpret packet surgery with quotient-driven decomposition:
+  - compute memdesc and register reinterpret in the same physical coordinate
+    frame;
+  - derive row anchors, packet offsets, repetition, support-band selection,
+    and atom family from quotient factorization;
+  - remove special-case post-hoc row/col/offset rewrites once the algebraic
+    path covers them.
+- Keep producer-owned row plans explicit, but centralize row-plan acquisition
+  and projection in the shared planner instead of scattered local fallback
+  ladders.
+
+### Phase 2: Close The Current Live Buckets
+- First close the legacy `block_m_64` divergence:
+  - make `test_tmem_subslice_block_m_64[legacy]` go through the same effective
+    packed-support physical family as the working TMEM-linear case;
+  - do this by fixing legacy normalization/planning, not by another local
+    packet tweak.
+- Then close the parent-layout reinterpret packet-decomposition bug:
+  - make `test_tmem_subslice_block_m_64_parent_layout[linear]` derive the
+    correct support-band/subview packet decomposition from quotient structure;
+  - do not paper over this by forcing a different atom family.
+- Keep checking the earlier positive controls while doing this:
+  - `test_block_m_64_mma`
+  - `test_mma_shared_inputs`
+  - row/col-permuted TMEM runtime slices
+  - descriptor-chain matrix cases.
+
+### Phase 3: Rewrite Test Contracts Around Guaranteed APIs
+- Audit TMEM tests that currently rely on `_reinterpret` plus implicit
+  knowledge of the compiler's physical TMEM mapping.
+- For intent tests, rewrite kernels to use explicit guaranteed descriptor/view
+  composition:
+  - `slice`
+  - `index`
+  - `reshape`
+  - `permute`
+- Keep `_reinterpret` tests only for what reinterpret itself promises:
+  - bitcount/view preservation
+  - legality diagnostics
+  - no crashes
+  - direct lowering only when the resulting physical support image is actually
+    realizable by the ISA.
+- Update stale negatives to positive whenever support has legitimately
+  broadened and hardware execution is correct.
+
+### Phase 4: Expand The Reachable `tcgen05` Surface
+- `ld/st`:
+  - continue broadening arbitrary linear-layout and descriptor-view support
+    until all ISA-realizable atom/layout combinations reachable from legal user
+    inputs are supported without wrong-code.
+- `ld.red`:
+  - expand the positive surface for legal reduction layouts and keep the clean
+    dedicated diagnostic for unsupported N-sharded cases.
+- `copy`:
+  - finish the remaining ISA-realizable copy families, especially `warpx2`,
+    with the required descriptor/address/message synthesis and user-visible
+    layout path.
+- `mma` / `mma_scaled`:
+  - broaden beyond the current canonical MMAv5-compatible subset to all
+    ISA-legal instruction/layout families reachable from legal user layouts.
+- For all of the above, preserve the invariant that user-visible layout
+  generalization is not tied to a pile of family-specific hacks.
+
+### Phase 5: Performance And Selection Heuristics
+- Where multiple codegen paths are legal, add or refine heuristics so the
+  compiler prefers the better-performing family.
+- Keep tests opinionated about generated code only when the intent is
+  performance and the heuristic is meant to enforce that choice.
+- Prefer simple, explainable heuristics first; only grow a richer cost model if
+  the simpler rules are insufficient.
+
+### Phase 6: Saturation Validation And Closure
+- Broaden validation iteratively in the following order:
+  1. exact nodeids nearest the changed planner/lowering logic
+  2. local TMEM runtime matrix slices
+  3. broader TMEM descriptor/view slices
+  4. MMA/matmul slices
+  5. `triton_kernels` matmul
+  6. wider pytest/lit coverage
+  7. grouped 4-GPU sweeps
+- Keep compile-only and heavy GPU runtime sweeps separate.
+- Re-run the fuzz plan on the expanded surfaces and classify any residual clean
+  negatives against true ISA boundaries.
+- Only consider the initiative complete when the remaining open items are
+  either:
+  - demonstrably ISA-impossible and documented as such; or
+  - moved into a clearly scoped follow-on initiative.
+
+### Immediate Priority Order From The Current State
+- Finish the shared-planner cleanup and remove the legacy-vs-linear
+  `block_m_64` divergence.
+- Fix the parent-layout reinterpret packet decomposition from quotient
+  structure.
+- Rewrite the reinterpret-heavy `block_m_64` tests to guaranteed descriptor
+  APIs once the core lowering is stable.
+- Re-broaden through TMEM runtime, MMA/matmul, `triton_kernels`, and then the
+  broader suite.
+- Continue the larger initiative mission after the local bug buckets are green:
+  - `ld.red` expansion
+  - `copy` `warpx2` completion
+  - broader MMAv5 / `mma_scaled` reachable-family support
+  - saturation fuzzing and final cleanup of stale negatives and heuristics.
+
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual
   semantic paths.

@@ -5537,3 +5537,25 @@ Open after this slice:
   - throwaway PTX/LLIR probe matching those kernels:
     - confirmed the opcode-family split described above between broken legacy direct and working TMEM-linear direct
     - confirmed the parent-layout bucket is already on the packed opcode family and is now blocked specifically on packet decomposition semantics
+
+## 2026-04-10: recorded the long-term TMEM completion plan so future sessions align on the full mission
+
+- I added a durable `Long-Term Mission And Completion Plan` section to
+  `.codex/initiatives/tmem_linear_generalization/memory.md`.
+- The purpose is to keep future context windows aligned on the actual project
+  finish line rather than stopping at the current bug buckets.
+- The recorded plan states that after the current planner/cleanup work lands,
+  the initiative still needs:
+  - shared-planner unification across frontend/verifier/LLVM;
+  - legacy/TMEM-linear unification;
+  - quotient-driven reinterpret packet decomposition;
+  - reinterpret-heavy test rewrites toward guaranteed descriptor/view APIs;
+  - broader `tcgen05` surface completion across `ld/st`, `ld.red`, `copy`,
+    `mma`, and `mma_scaled`;
+  - performance-oriented family-selection heuristics; and
+  - staged broad validation up through TMEM runtime, MMA/matmul,
+    `triton_kernels`, broader suite, and grouped multi-GPU sweeps.
+- I also added a shorter future-session anchor to
+  `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md` so
+  sessions that begin from the handoff tail still see the long-term plan and
+  current phase ordering immediately.

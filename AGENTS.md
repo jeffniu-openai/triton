@@ -14,6 +14,11 @@
 - Commit messages must be detailed enough to serve as a durable handoff: record context, why the change was needed, what changed, and any important validation or remaining boundaries.
 - After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
 - Keep commits scoped so they can be understood and reverted independently.
+- Before resuming the TMEM linear-layout generalization initiative, re-read the `Long-Term Mission And Completion Plan` section in `.codex/initiatives/tmem_linear_generalization/memory.md` and the latest tail of `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md`. Do not optimize only for the current red tests; keep the work aligned with the full mission:
+  - support arbitrary linear TMEM layouts and descriptor-view chains whenever the ISA can realize them correctly;
+  - keep clean negatives only for true ISA-impossible cases;
+  - prefer one shared planner and exact linear-layout arithmetic over family-specific rescue stacks; and
+  - after the current bug buckets are green, continue through the recorded long-term phases (`ld.red`, `copy` `warpx2`, broader MMAv5 reachable-family support, heuristic cleanup, and staged broad validation) instead of treating the initiative as done.
 - When debugging compiler or codegen bugs, identify and fix the core linear-layout, planner, or lowering issue rather than layering patchwork or ad-hoc special cases. Use targeted probes to find the real abstraction mismatch first, then implement the general fix and update tests to match correct behavior.
 - For TMEM reinterpret lowering in particular, prefer exact linear-layout arithmetic end-to-end:
   - derive support layouts, origins, row anchors, packet offsets, and query families from `LinearLayout` compose/invert/pseudoinvert algebra;
