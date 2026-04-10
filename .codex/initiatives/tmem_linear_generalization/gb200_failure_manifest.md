@@ -107,26 +107,18 @@ PY
     - the other `14` descriptor-chain exacts from the contaminated shard pass
       in isolation and should not stay in the live red list
 - [gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt)
-  - `1` nodeid
+  - `0` nodeids
   - source:
-    - isolated rerun of the single branch-added / branch-changed focused
-      `test_tmem_linear_roundtrip_splitn_shapes[...]` exact from the shard
-      reduction
+    - refreshed after the canonical `M=64` split-N lowering fix
   - current interpretation:
-    - runtime correctness is already green
-    - only the exact PTX offset-immediate expectation is stale/opinionated
-      right now
+    - this stale/opinionated split-N expectation exact is now green too
 - [gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt)
-  - `208` nodeids
+  - `0` nodeids
   - source:
-    - isolated rerun of the full
-      `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
-      exact submanifest extracted from the earlier focused runtime-matrix
-      shard reduction
+    - refreshed after the canonical `M=64` split-N lowering fix
   - current interpretation:
-    - this is the current dominant runtime-matrix runtime bucket
-    - all `208` exacts still fail cleanly with
-      `RuntimeError: CUDA error: misaligned address`
+    - the old dominant split-N runtime bucket is now fully green
+    - keep the old count only in the log/history, not in the live red set
 - [gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt)
   - `2` nodeids
   - source:
@@ -194,10 +186,7 @@ PY
 - The live current-branch manifests above are no longer interpreted as a flat
   list of unrelated tests:
   - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
-    - packed-family / packed-mem-layout discovery bug for permuted `M=64`
-      split-N direct views
-    - failing cases log `packed16 support precondition fail` /
-      `no packed mem layout` and degrade to scalar `32x32b.x1`
+    - now empty after the canonical `M=64` split-N lowering symmetry fix
   - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
     - shared with the isolated frontend exact:
       - non-surjective `[128, 4]` descriptor-view row-anchor representability

@@ -188,6 +188,12 @@ LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
 
 LinearLayout getCanonicalTensorMemoryLinearLayout(gpu::MemDescType memDescType);
 
+std::optional<LinearLayout>
+getCanonicalM64SplitNLayout(MLIRContext *ctx, int64_t n, unsigned numWarps);
+
+std::optional<LinearLayout>
+getCanonicalM64SplitNLayout(gpu::MemDescType memType, unsigned numWarps);
+
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
                                   bool twoCTAs,

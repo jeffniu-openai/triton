@@ -1328,7 +1328,7 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll) {
   return std::nullopt;
 }
 
-static std::optional<LinearLayout>
+std::optional<LinearLayout>
 getCanonicalM64SplitNLayout(MLIRContext *ctx, int64_t n, unsigned numWarps) {
   if (n < 2 || !llvm::isPowerOf2_64(n) || (numWarps != 4 && numWarps != 8))
     return std::nullopt;
@@ -1372,7 +1372,7 @@ getCanonicalM64SplitNLayout(MLIRContext *ctx, int64_t n, unsigned numWarps) {
   return layout;
 }
 
-static std::optional<LinearLayout>
+std::optional<LinearLayout>
 getCanonicalM64SplitNLayout(MemDescType memType, unsigned numWarps) {
   if (memType.getRank() != 2 || memType.getShape()[0] != 64)
     return std::nullopt;

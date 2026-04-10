@@ -18,6 +18,36 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Split-N Recovery Checkpoint (2026-04-10 18:20 UTC)
+
+- The dominant TMEM runtime bucket is now gone:
+  - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+    - now `0` nodeids
+  - isolated rerun result after the canonical split-N lowering fix:
+    - `208 passed in 21.52s`
+- The adjacent split-N PTX-expectation exact is also gone:
+  - `gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+    - now `0` nodeids
+  - `test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - now passes
+- Root cause / fix summary:
+  - Gluon/layout synthesis already knew the canonical `M=64` split-N register
+    family
+  - lowering did not preserve that symmetry and could reinterpret the same
+    family as scalar `I32x32b`
+  - exposing `getCanonicalM64SplitNLayout(...)` to lowering and preferring the
+    packed `I16x32bx2` family when the direct register layout already matches
+    that canonical split-N family fixed the runtime bucket
+- What remains live after the split-N fix:
+  - descriptor-chain exacts:
+    - still `12 / 12` failing
+  - shared `[128, 4]` representability tail:
+    - `2` warpx2 candidate-positive runtime-matrix exacts still fail
+    - `1` isolated frontend exact still fails
+- Practical consequence:
+  - the next compiler slice should move to the shared non-surjective
+    `[128, 4]` direct-view representability gap, not back to split-N.
+
 ## Latest Trace-Driven Bucket Split (2026-04-10 17:25 UTC)
 
 - The remaining live Gluon compiler buckets now have representative passing vs

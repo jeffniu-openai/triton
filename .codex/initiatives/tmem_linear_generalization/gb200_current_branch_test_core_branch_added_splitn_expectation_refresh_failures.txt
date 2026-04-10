@@ -1,1 +1,0 @@
-python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[splitn_64x128-layout6-64-128-expected_offset_imms6]

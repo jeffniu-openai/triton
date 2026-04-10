@@ -5448,10 +5448,21 @@ computeTMemLdStEncodingInfoImpl(
                                   cvt.getBasis(kWarp, 0).end());
   SmallVector<int32_t> warpBasis1(cvt.getBasis(kWarp, 1).begin(),
                                   cvt.getBasis(kWarp, 1).end());
+  auto prefersCanonicalM64SplitN = [&]() {
+    if (bitwidth != 32 || isScales || logicalRows != 64 || logicalCols < 2 ||
+        !llvm::isPowerOf2_64(logicalCols) || rowPlan->rowSpan != 64 ||
+        !regLayout.hasInDim(kWarp))
+      return false;
+    unsigned numWarps = regLayout.getInDimSize(kWarp);
+    auto maybeCanonical = getCanonicalM64SplitNLayout(ctx, logicalCols, numWarps);
+    if (!maybeCanonical)
+      return false;
+    return regLayout == squeezeTrivialBlock(std::move(*maybeCanonical));
+  }();
 
   auto info = lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError,
                             /*unpacked=*/false, warpBasis0, warpBasis1,
-                            rowPlan->rowSpan);
+                            rowPlan->rowSpan, prefersCanonicalM64SplitN);
   if (failed(info))
     return failure();
   // Sparse higher-rank TMEM views can carry logical selection bits as zero

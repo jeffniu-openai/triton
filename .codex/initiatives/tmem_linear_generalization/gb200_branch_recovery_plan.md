@@ -49,7 +49,7 @@ PY
 ### Current Clean-HEAD Checkpoint
 
 - HEAD:
-  - `c2c853016`
+  - `181e369bd`
 - Worktree:
   - clean
 - Current branch-topline state:
@@ -117,6 +117,19 @@ PY
   3. descriptor-chain cleanup, split by `linear_m64_*` vs `linear_mixed_*` if
      needed
   4. examples lane after the TMEM/compiler buckets are under control
+- Post-fix update:
+  - step `1` is now complete
+  - the `208`-nodeid split-N runtime-matrix manifest reruns fully green
+  - the stale split-N PTX-expectation exact is also green now
+  - the live TMEM/compiler backlog is therefore reduced to:
+    - the shared `[128, 4]` representability gap (`2 + 1` exacts)
+    - the `12` descriptor-chain exacts
+    - then the examples lane
+- Immediate next execution order:
+  1. shared non-surjective `[128, 4]` direct-view representability
+  2. descriptor-chain cleanup, still split by `linear_m64_*` vs
+     `linear_mixed_*`
+  3. examples lane after the TMEM/compiler buckets are under control
 
 ### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
 

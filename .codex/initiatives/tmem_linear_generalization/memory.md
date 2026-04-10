@@ -167,33 +167,38 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-10 16:45 UTC)
+## Current Topline (2026-04-10 18:20 UTC)
 
 - Current durable checkpoint:
-  - HEAD `c2c853016`
-  - worktree clean
+  - HEAD `181e369bd`
+  - worktree dirty in:
+    - `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`
+    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
 - GB200 lane state confirmed again after rebuild:
   - `make test-lit`
     - green
     - `248 passed, 2 unsupported`
   - `make NUM_PROCS=24 test-unit`
     - green
-- The focused GB200 Gluon story has narrowed further:
+- The focused GB200 Gluon story has narrowed again:
   - the earlier merge-base-present focused `test_core.py` exact bucket is no
     longer live:
     - `146 / 146` exacts now pass on the current branch
   - the branch-added / branch-changed focused `test_core.py` tail reduces to:
     - `12` clean descriptor-chain runtime failures
       (`gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`)
-    - `1` split-N PTX-immediate expectation failure
-      (`gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`)
+    - `0` split-N PTX-immediate expectation failures
+      (`gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+      is now empty)
     - the earlier `21` `variant_sweep` exacts all pass in isolation and are
       now classified as shard fallout
 - The focused runtime-matrix / frontend story is now reduced too:
-  - `208`
+  - `0`
     `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` exacts
-    still fail cleanly
-    (`gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`)
+    remain red
+    (`gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+    is now empty after a `208 passed` isolated rerun)
   - the remaining non-splitn runtime-matrix tail is down to just the two
     warpx2 candidate positives
     (`gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`)
@@ -209,17 +214,11 @@
   - unlike the branch-added TMEM tests above, these example functions already
     exist on merge-base, so treat them as regressions on old upstream coverage
 - Current active compiler bucket:
-  - split-N row/col-permuted runtime-matrix lowering for the `208`-nodeid
-    manifest above
-    - the failing-vs-passing trace split is now crisp:
-      - passing `n=2` controls keep packed `16x32bx2.x2`
-      - failing permuted `n=4` cases log `packed16 support precondition fail`
-        / `no packed mem layout` and degrade to scalar `32x32b.x1`
-    - this is the next highest-value planner fix slice
   - non-surjective descriptor-view `get_reg_layout()` support for the warpx2
     candidate positives and the isolated frontend exact
     - all three now reduce to the same direct-view representability gap on
       non-surjective `[128, 4]` views with required row anchors `32,64`
+    - this is now the next active fix slice
   - descriptor-chain/reinterpret/view-composition lowering for the exact
     `12`-nodeid focused-core manifest above
     - this now appears to split into at least:
@@ -230,7 +229,6 @@
     - shared-memory inflation in `02-convolution.py`
     - wrong-code in `03-matmul-multicta.py`
 - Current non-correctness/stale buckets to keep separate:
-  - the split-N offset-immediate expectation exact
   - the two `block_m_64` reinterpret-contract rewrite candidates
   - Proton failures, which remain preexisting on merge-base
   - cache/xdist contamination investigation

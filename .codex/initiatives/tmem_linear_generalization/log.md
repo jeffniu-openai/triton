@@ -6797,3 +6797,32 @@ Open after this slice:
   - `/tmp/fail_identity_rotate1_4_splitn.{ttgir,ptx,query.log}`
   - `/tmp/frontend_reg_layout_exception.txt`
   - `/tmp/warpx2_reg_layout_exception.txt`
+
+## 2026-04-10: restored canonical `M=64` split-N lowering symmetry and cleared the `208`-nodeid runtime bucket
+- I fixed the symmetry gap between layout synthesis and lowering for canonical
+  `M=64` split-N direct layouts:
+  - exposed `getCanonicalM64SplitNLayout(...)` through `Dialect.h`
+  - reused that helper in `computeTMemLdStEncodingInfoImpl(...)`
+  - when the direct register layout already matches the canonical split-N
+    family, lowering now prefers the packed `I16x32bx2` family instead of
+    reinterpreting the same family as scalar `I32x32b`
+- Validation:
+  - `make -j8`
+  - `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/ops.mlir`
+    - `2 passed`
+  - representative exacts:
+    - failing permuted split-N exact now passes
+    - matching packed control stays green
+  - full isolated split-N manifest rerun:
+    - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+      -> `208 passed in 21.52s`
+  - adjacent stale split-N PTX-expectation exact:
+    - now passes too
+  - neighboring buckets after the fix:
+    - descriptor-chain manifest still `12 failed`
+    - warpx2/frontend representability tail still `3 failed`
+- Practical consequence:
+  - the live TMEM/compiler backlog is now reduced to:
+    1. the shared non-surjective `[128, 4]` descriptor-view representability gap
+    2. the `12` descriptor-chain exacts
+    3. the examples lane
