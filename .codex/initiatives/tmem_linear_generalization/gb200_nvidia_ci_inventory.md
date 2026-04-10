@@ -918,3 +918,48 @@ These stay in the nearest validation loop while the red list is being reduced.
   direct-lowering surface coverage, record that as initiative debt and move the
   work back to the core compiler/API backlog instead of forcing the old
   reinterpret behavior to remain the contract.
+
+## 2026-04-10 Overnight Sweep Checkpoint (Partial)
+
+- Current branch / commit:
+  - `e70a3aa09`
+- Newly frozen `test-gluon` exact manifests:
+  - shard `3 / 4`:
+    - `1252` exact nodeids
+    - exact merge-base split:
+      - `967` old-mainline nodeids
+      - `285` branch-added / branch-changed nodeids
+  - shard `4 / 4`:
+    - `686` exact nodeids
+    - identical nodeid set to the older group-4 manifest
+- Stable current-head shard `4 / 4` result:
+  - `686 failed, 4911 passed, 849 skipped, 19345 deselected`
+  - all failures are in branch-added
+    `python/test/gluon/test_tmem_runtime_matrix.py`
+  - dominant families still:
+    - split-N row/col-permuted
+    - `ld.red` row-permuted linear-layout
+    - `ldst_scales`
+    - scaled-MMA copy `warpx4`
+    - `cp_no_scales`
+- Current-head shard `3 / 4` status:
+  - the merge-base split is now durable, but the raw shard count still
+    overstates the number of independent failures
+  - earlier standalone reruns already showed bad-kernel fallout after the
+    first primary TMEM failures
+- Still running when this checkpoint was written:
+  - current-head shard `1 / 4`
+    - no failure markers emitted yet
+  - current-head `python/triton_kernels/tests`
+    - no failure markers emitted yet
+    - caveat: the run currently shares GPU `3` with an older non-CI
+      `python/test/unit` shard, so any red result must be rerun in isolation
+  - fresh merge-base full-file reruns:
+    - `python/test/unit/language/test_matmul.py`
+    - `python/test/unit/language/test_warp_specialization.py`
+    - both clean so far
+- Queued next reductions after those GPUs free:
+  - isolated current-head `python/test/gluon/test_lowerings.py`
+  - isolated current-head `python/test/gluon/test_fpsan.py`
+  - isolated current-head focused `python/test/gluon/test_core.py` slice for
+    the dominant shard-3 TMEM/MMA families

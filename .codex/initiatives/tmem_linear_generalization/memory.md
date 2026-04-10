@@ -3647,3 +3647,43 @@ rejection, not rescue
 - Performance policy:
   - note codegen-family changes that may matter later, but keep the current
     recovery loop focused on correctness and functionality first.
+
+## 2026-04-10: the overnight GB200 sweep is now down to final long runners plus isolated shard reductions
+
+- Newly frozen current-head `test-gluon` manifests at `e70a3aa09`:
+  - shard `3 / 4`
+    - `1252` exact nodeids
+    - exact merge-base split:
+      - `967` exact old-mainline nodeids
+      - `285` exact branch-added / branch-changed nodeids
+  - shard `4 / 4`
+    - `686` exact nodeids
+    - unchanged from the older group-4 manifest
+    - still entirely branch-added
+      `python/test/gluon/test_tmem_runtime_matrix.py` coverage
+- Current group-4 interpretation is stable:
+  - the branch-added runtime-matrix file is still broadly red on the current
+    branch; and
+  - the dominant families remain split-N row/col-permuted, `ld.red`,
+    `ldst_scales`, scaled-MMA copy `warpx4`, and `cp_no_scales`
+- Current group-3 interpretation still needs isolation reduction:
+  - the merge-base split is now exact and durable; but
+  - the raw shard still overstates the number of independent failures because
+    earlier standalone reruns already showed primary TMEM failures followed by
+    poisoned-context fallout
+- Still in flight when this note was written:
+  - current-head shard `1 / 4`
+  - current-head `python/triton_kernels/tests`
+  - fresh merge-base full-file reruns of:
+    - `python/test/unit/language/test_matmul.py`
+    - `python/test/unit/language/test_warp_specialization.py`
+- Queued next reductions after those GPUs free:
+  - isolated current-head `python/test/gluon/test_lowerings.py`
+  - isolated current-head `python/test/gluon/test_fpsan.py`
+  - isolated current-head focused `python/test/gluon/test_core.py` slice for
+    the dominant shard-3 TMEM/MMA families
+- Durable execution rule for the rest of this census:
+  - do not pick fixes from raw shard totals when isolated fresh-process reruns
+    are the next obvious reduction
+  - convert the broad shard inventory into an independent exact-failure
+    inventory first, then prioritize code changes from that reduced set

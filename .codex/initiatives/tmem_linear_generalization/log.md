@@ -6405,3 +6405,34 @@ Open after this slice:
     higher-rank roots; and
   - the older unit/regression manifests are now historical counts that need a
     post-fix refresh before they are treated as the current red total.
+
+## 2026-04-10: refreshed current-head group-3/group-4 manifests and queued isolated shard reductions
+
+- I materialized the current `e70a3aa09` `test-gluon` exact manifests:
+  - `gb200_current_branch_test_gluon_group3_e70a3aa09_failures.txt`
+    - `1252` exact nodeids
+  - `gb200_current_branch_test_gluon_group4_e70a3aa09_failures.txt`
+    - `686` exact nodeids
+- I also derived the exact merge-base split for the new shard-3 manifest:
+  - `gb200_mergebase_present_test_gluon_group3_e70a3aa09_failures.txt`
+    - `967` exact old-mainline nodeids
+  - `gb200_mergebase_missing_test_gluon_group3_e70a3aa09_failures.txt`
+    - `285` exact branch-added / branch-changed nodeids
+- Current-head shard `4 / 4` is re-confirmed as the same stable branch-added
+  runtime-matrix bucket as before:
+  - `686 failed, 4911 passed, 849 skipped, 19345 deselected`
+  - all failures are in `python/test/gluon/test_tmem_runtime_matrix.py`
+  - the dominant families remain split-N row/col-permuted, `ld.red`,
+    `ldst_scales`, scaled-MMA copy `warpx4`, and `cp_no_scales`
+- I left the still-running long jobs alone and queued the first isolated
+  reductions behind them instead of oversubscribing the same GPUs:
+  - after current-head shard `1 / 4` completes, run isolated
+    `python/test/gluon/test_lowerings.py`
+  - after the fresh merge-base `test_warp_specialization.py` rerun completes,
+    run isolated `python/test/gluon/test_fpsan.py`
+  - after the fresh merge-base `test_matmul.py` rerun completes, run a focused
+    current-head `python/test/gluon/test_core.py` TMEM/MMA slice
+- Reasoning:
+  - the raw shard totals are good census evidence but poor fix units
+  - the next useful reduction is to identify which shard-3 families still fail
+    independently in isolated fresh processes

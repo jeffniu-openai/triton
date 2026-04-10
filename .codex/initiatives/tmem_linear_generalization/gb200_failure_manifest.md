@@ -236,3 +236,22 @@ collecting the merge-base test files and comparing exact nodeids:
   it as branch recovery work.
 - Proton is included here for census completeness even though it is already
   known to be preexisting on merge-base.
+
+## 2026-04-10 Partial Overnight Refresh
+
+- Refreshed current-head shard manifests at `e70a3aa09`:
+  - `gb200_current_branch_test_gluon_group3_e70a3aa09_failures.txt`
+    - `1252` exact nodeids
+  - `gb200_current_branch_test_gluon_group4_e70a3aa09_failures.txt`
+    - `686` exact nodeids
+- Exact merge-base split for the refreshed shard `3 / 4` manifest:
+  - `gb200_mergebase_present_test_gluon_group3_e70a3aa09_failures.txt`
+    - `967` exact old-mainline nodeids
+  - `gb200_mergebase_missing_test_gluon_group3_e70a3aa09_failures.txt`
+    - `285` exact branch-added / branch-changed nodeids
+- Important current reading:
+  - shard `4 / 4` is unchanged from the older manifest and remains entirely
+    branch-added `python/test/gluon/test_tmem_runtime_matrix.py` coverage
+  - shard `3 / 4` now has a durable branch-vs-main split, but it still needs
+    isolated reruns before the raw `1252` nodeids are treated as independent
+    bugs

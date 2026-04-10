@@ -339,3 +339,32 @@ PY
 - The current branch recovery phase is functionality/correctness-first.
 - Keep an eye on codegen-family selection changes while fixing TMEM, because
   they may later explain performance deltas even when correctness is restored.
+
+## 2026-04-10 Overnight Classification Checkpoint
+
+- Refreshed current-head shard manifests now make the branch-vs-main split
+  explicit without claiming the raw shard totals are independent bugs:
+  - shard `3 / 4`:
+    - `1252` exact nodeids total
+    - `967` exact old-mainline nodeids
+    - `285` exact branch-added / branch-changed nodeids
+  - shard `4 / 4`:
+    - `686` exact nodeids
+    - entirely branch-added runtime-matrix coverage
+    - unchanged from the older group-4 manifest
+- Practical consequence:
+  - do not pick fixes from the raw shard-3 total yet
+  - first reduce shard `3 / 4` through isolated current-head reruns of:
+    1. `python/test/gluon/test_lowerings.py`
+    2. `python/test/gluon/test_fpsan.py`
+    3. focused `python/test/gluon/test_core.py` TMEM/MMA slice
+- Fresh status still pending while this checkpoint was written:
+  - current-head shard `1 / 4`
+  - current-head `python/triton_kernels/tests`
+  - fresh merge-base full-file reruns of `test_matmul.py` and
+    `test_warp_specialization.py`
+- Until those finish, the live recovery ordering remains:
+  1. old-mainline unit/lit descriptor-view row-anchor bucket
+  2. old-mainline warp-specialization higher-rank MMAv5-root bucket
+  3. branch-added TMEM runtime-matrix bucket
+  4. remaining isolated shard-3 exacts after the queued reductions land
