@@ -5559,3 +5559,36 @@ Open after this slice:
   `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md` so
   sessions that begin from the handoff tail still see the long-term plan and
   current phase ordering immediately.
+
+## 2026-04-10: full documentation sweep refreshed the current source-of-truth docs without rewriting history
+
+- I read the full initiative doc set:
+  - `memory.md`
+  - `log.md`
+  - `handoff_2026-04-09.md`
+  - `fuzz_plan.md`
+  - `handoff_2026-03-26.md`
+  - `next_agent_prompt_2026-03-26.md`
+- I left the older dated handoffs/prompts alone on purpose; they are archival
+  provenance, not current status.
+- Documentation classification after the sweep:
+  - `memory.md`
+    - durable source of truth for mission, current decisions, long-term plan,
+      and current undated priorities
+  - `log.md`
+    - append-only chronology
+  - `handoff_2026-04-09.md`
+    - active current-state handoff
+  - `fuzz_plan.md`
+    - operational post-cleanup saturation playbook
+  - `handoff_2026-03-26.md` and `next_agent_prompt_2026-03-26.md`
+    - archival
+- Current-doc refreshes made:
+  - added a `Documentation Map` near the top of `memory.md`
+  - refreshed `memory.md`'s undated `Next Execution Plan` and
+    `Active Fuzz Backlog` so they match the current planner-cleanup-first
+    reality rather than the earlier broad-fuzz-first phase
+  - added a `How To Use This File` section to `fuzz_plan.md`
+  - updated `fuzz_plan.md`'s immediate sections so they clearly defer broad
+    saturation until the shared-planner / legacy-unification / reinterpret
+    packet-decomposition work is green

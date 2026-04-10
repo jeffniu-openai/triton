@@ -10,6 +10,21 @@
   - `BUG`: parser/verifier/pass crash, malformed IR emission, wrong opcode, or
     wrong runtime result.
 
+## How To Use This File
+- `memory.md` is the durable source of truth for mission, current status, and
+  immediate implementation priorities.
+- `handoff_2026-04-09.md` is the active handoff for the latest live bug
+  buckets and debug conclusions.
+- This file is the operational saturation/fuzzing playbook for the broader
+  `tcgen05` surface once the current planner/cleanup blockers are green.
+- Do not treat the broad coverage items here as a reason to skip the current
+  higher-priority planner work in `memory.md`:
+  - shared ld/st planner cleanup
+  - legacy-vs-linear unification
+  - quotient-driven reinterpret packet decomposition
+  - rewrite of reinterpret-heavy intent tests to guaranteed descriptor/view
+    APIs
+
 ## Instruction Inventory
 
 ### Allocation / lifetime
@@ -388,41 +403,45 @@ Every fuzz case records:
   families, newly confirmed unsupported frontiers, and any bug/crash fixes.
 
 ## Immediate Missing Coverage To Tackle First
-- Positive higher-rank TMEM descriptor chains beyond the currently supported
-  contiguous-column cases.
-- `ld.red` runtime saturation over all supported modifiers and non-sharded
-  layouts.
-- `cp` `cta_group::2` coverage and any reachable `warpx2` cases.
-- `mma` runtime coverage beyond `f16`, especially `tf32`, `f8f6f4`, and `i8`.
-- `mma_scaled` runtime coverage beyond the current minimal `mxf8f6f4` case.
-- Explicit runtime checks for alloc/dealloc lifetime instructions and their
-  exact LLVM/PTX emission.
+- Before broad saturation, close the current planner/cleanup blockers recorded
+  in `memory.md`:
+  - shared TMEM ld/st planner cleanup
+  - legacy `block_m_64` support-family unification
+  - parent-layout reinterpret packet decomposition
+  - reinterpret-heavy test-contract rewrites
+- Once those are green, the next missing coverage to tackle is:
+  - refreshed TMEM descriptor/view runtime slices after the planner cleanup
+  - `ld.red` runtime saturation over all supported modifiers and non-sharded
+    layouts
+  - `cp` `cta_group::2` coverage and any reachable `warpx2` cases
+  - `mma` runtime coverage beyond the already-proven anchor cases
+  - `mma_scaled` runtime coverage beyond the current minimal cases
+  - explicit runtime checks for alloc/dealloc lifetime instructions and their
+    exact LLVM/PTX emission
 
 ## Immediate Next Code Changes
-- `python/test/gluon/test_tmem_runtime_matrix.py`
-  - expand the positive `ld/st` matrix over more exotic TMEM-linear families
-    and descriptor chains;
-  - keep currently unsupported broadcasted higher-rank TMEM views as explicit
-    clean-negative regressions until lowering support lands;
-  - add runtime matrices for newly discovered `cp` atoms, especially `warpx2`
-    when a legal layout is found;
-  - broaden `mma` and `mma_scaled` runtime matrices beyond the current minimal
-    one-CTA / two-CTA coverage.
-- `python/test/gluon/test_core.py`
-  - retain the current focused runtime anchors and extend:
-    - `ld.red` modifier coverage;
-    - scaled-MMA format coverage; and
-    - allocator / lifetime end-to-end cases.
-- `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
-  - add exact opcode checks for:
-    - `alloc` / `relinquish_alloc_permit` / `dealloc`;
-    - all `ld.red` modifiers;
-    - every reachable `cp` atom family;
-    - every reachable `mma` kind family; and
-    - two-CTA commit multicast variants.
-- Backend files to change when the sweeps expose a theoretically legal gap:
+- Near-term code changes should focus on the planner/lowering core, not on
+  expanding the broad test matrix first:
   - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
-  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
-  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
-  - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+    - shared ld/st planner cleanup
+    - reinterpret quotient / packet-decomposition cleanup
+    - legacy-vs-linear physical-family unification
   - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
+    - family-selection cleanup as planner responsibilities are centralized
+  - `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+    - consume the same structural planner decisions as frontend/verifier
+  - `python/src/gluon_ir.cc`
+    - keep descriptor/layout selection aligned with the shared planner
+  - `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`
+    - verifier consumption of the shared planner/results
+- Test changes that should happen alongside that code:
+  - `python/test/gluon/test_core.py`
+    - keep the current `block_m_64` anchors green
+    - rewrite reinterpret-heavy intent tests toward guaranteed
+      descriptor/view APIs once the lowering is stable
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - refresh the nearest TMEM runtime slices after the planner cleanup
+    - only then resume broader saturation work
+  - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - add or refresh exact opcode checks when the planner cleanup changes the
+      stable direct family

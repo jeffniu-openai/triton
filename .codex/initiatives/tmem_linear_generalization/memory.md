@@ -7,6 +7,26 @@
 - Broaden TMEM lowering for linear layouts while keeping MMAv5 and `tmem_copy`
   on explicit hardware-family matchers.
 
+## Documentation Map
+- `memory.md`
+  - durable source of truth for mission, current decisions, long-term plan, and
+    current undated priorities
+- `log.md`
+  - append-only chronological record of checkpoints, bug classification,
+    validation, and conclusions
+- `handoff_2026-04-09.md`
+  - current active handoff; read its tail first for the latest live buckets,
+    disproved experiments, and next implementation steps
+- `fuzz_plan.md`
+  - operational saturation/fuzzing playbook for the broader `tcgen05` surface;
+    use it once the current planner/cleanup blockers are green
+- `handoff_2026-03-26.md`
+  - historical handoff from the earlier phase of the initiative; keep for
+    provenance, not as current status
+- `next_agent_prompt_2026-03-26.md`
+  - archived takeover prompt from the earlier managed-session workflow; not a
+    current source of truth
+
 ## Long-Term Mission And Completion Plan
 
 ### Mission
@@ -456,45 +476,40 @@
   test drafting. Claims belong in `agents/claims.md`.
 
 ## Next Execution Plan
-- The detailed per-instruction fuzz plan lives in
-  `experiments/tmem_fuzz_plan.md`.
-- Immediate priority order:
-  - close the clean-diagnostic vs. runtime-pass boundary for higher-rank
-    broadcasted TMEM views;
-  - broaden positive runtime coverage until every currently documented and
-    backend-reachable TMEM opcode family is seen in both PTX and LLIR on real
-    hardware;
-  - then use the fuzz results to decide which remaining clean failures are true
-    ISA limits and which are lowering gaps that should be implemented.
+- The current execution order is driven by the long-term plan near the top of
+  this file, not by the older broad-fuzz milestones below.
+- Immediate implementation order:
+  - build the shared TMEM ld/st planner and remove duplicated frontend /
+    verifier / LLVM planning drift;
+  - make legacy TMEM `block_m_64` collapse onto the same physical-family plan
+    as the working TMEM-linear case;
+  - derive the parent-layout reinterpret packet decomposition from quotient
+    structure instead of packet/offset surgery;
+  - rewrite reinterpret-heavy TMEM intent tests to guaranteed descriptor/view
+    APIs once the lowering is stable;
+  - then re-broaden validation through TMEM runtime, MMA/matmul,
+    `triton_kernels`, and the wider suite.
+- The detailed post-cleanup saturation playbook lives in `fuzz_plan.md`.
 
 ## Active Fuzz Backlog
-- Convert the current higher-rank TMEM `ld/st` broadcasted-subview failure into
-  a permanent clean-diagnostic regression, then expand positive higher-rank
-  runtime coverage only on compositions with proven legal TMEM register layouts.
-- Status update (2026-03-25):
-  - positive higher-rank descriptor `index -> 2D load/store` compositions are
-    now covered for `identity`, `mixed`, `block_two_ctas`, and
-    `mmav5_twocta` over `N in {64,128,256}` and variants
-    `{32x32b,16x64b,16x128b,16x256b}` with GPU execution and PTX/LLIR checks.
-  - non-representable higher-rank multidimensional TMEM slices are now locked
-    as clean negatives with `unsupported tensor memory memdesc_subslice view`.
-  - MMAv5 two-CTA context-mismatch higher-rank compositions remain clean
-    negatives with the intended invalid-layout / CGA-mismatch diagnostic.
-- Ensure every currently emitted TMEM instruction family has:
-  - at least one passing runtime test with exact PTX/LLIR opcode checks;
-  - at least one lit lowering test that validates the generated LLVMIR; and
-  - at least one clean-negative regression if the family has known impossible
-    frontiers.
-- Treat undocumented or ambiguous documented families, especially `cp.warpx2`,
-  as direct-PTX probe targets until the backend/legalizer boundary is clear.
-- Latest coverage refresh (2026-03-25):
-  - canonical TMEM-linear `ld.red` now has direct GPU coverage in the runtime
-    matrix for `min/max x {abs,no-abs} x {NaN,non-NaN}`;
-  - TMEM LLVMIR lit coverage is green after tightening lifecycle, `cp`,
-    `mma_scaled`, and pointer-math checks;
-  - `cp.warpx2` still has no executable compiler path in the current tree from
-    the bounded subslice search, so it remains a live probe target rather than
-    a passing family.
+- Broad fuzzing is no longer the immediate task while the shared planner /
+  reinterpret cleanup is still incomplete.
+- The active fuzz backlog should be resumed in this order once the current
+  planner bugs are green:
+  - rerun the nearest TMEM runtime slices and refresh the positive frontier for
+    descriptor/view compositions after the planner cleanup;
+  - expand `ld.red` runtime saturation over the supported non-sharded layouts
+    and modifiers;
+  - continue `cp` family completion, especially `warpx2`, once the required
+    descriptor/address/message synthesis is in place;
+  - broaden `mma` and `mma_scaled` runtime coverage beyond the already-proven
+    families;
+  - make sure every emitted family keeps:
+    - runtime PTX/LLIR parity coverage,
+    - at least one lit lowering check, and
+    - clean-negative coverage for true impossible frontiers.
+- Ambiguous or undocumented families should still be treated as direct-PTX
+  probe targets before promoting them to compiler work.
 
 ## Current Higher-Rank TMEM Status
 - Chosen semantic direction is now explicit:
