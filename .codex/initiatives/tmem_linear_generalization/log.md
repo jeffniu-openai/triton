@@ -5836,3 +5836,74 @@ Open after this slice:
   - and the GB200 `test-gluon` picture is now complete enough to move back to
     the cleanly reproduced split-N TMEM regressions as the next TMEM-local
     debugging target
+
+## 2026-04-10: expanded the GB200 census through test-unit, isolated new standalone buckets, and started merge-base baseline bring-up
+
+- I expanded `make test-unit` into diagnosable pieces:
+  - sharded `python/test/unit` across 4 GPUs with
+    `pytest --splits 4 --group <n> -n 2 ... --ignore-glob='plugins/*' --ignore=test_debug.py`
+  - then ran:
+    - `python/test/unit/test_debug.py`
+    - `python/triton_kernels/tests/`
+    - `python/tutorials/06-fused-attention.py`
+    - `python/test/unit/instrumentation/test_gpuhello.py`
+    - plugin tests under `python/test/unit/plugins/`
+- Results recorded so far:
+  - shard `1 / 4`: green (`5048 passed, 114 skipped`)
+  - shard `2 / 4`: red (`8 failed, 4507 passed, 647 skipped`)
+    - exact failures are the tf32/tf32x3 `python/test/unit/language/test_core.py::test_dot[...]` family
+  - shard `3 / 4`: red (`23 failed, 729 passed, 4410 skipped`)
+    - concentrated in `python/test/unit/language/test_matmul.py`
+  - shard `4 / 4`: red (`131 failed, 4707 passed, 321 skipped`)
+    - concentrated in `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[...]`
+      and large `python/test/unit/language/test_warp_specialization.py` forward/persistent-forward surfaces
+  - `python/test/unit/test_debug.py`: red in both xdist and serial forms (`20 failed, 75 passed`)
+  - `python/tutorials/06-fused-attention.py`: green (`192 passed, 192 skipped`)
+  - `python/test/unit/instrumentation/test_gpuhello.py`: green (`1 passed`)
+  - plugin tests: green
+  - `python/triton_kernels/tests/`: still running while I wrote this entry
+- Most important isolated reruns:
+  - confirmed real standalone wrong-code:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+      - `49.4%` mismatches
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+      - `49.9%` mismatches
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+      - `49.7%` mismatches
+  - confirmed real standalone compile/pipeline failures:
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
+    - both hit the same `ttng.tmem_store` unsupported-row-anchors `32,64`
+      diagnostic chain before `PassManager::run failed`
+  - debug-harness classification:
+    - `python/test/unit/test_debug.py` is not just outer xdist noise;
+    - serial rerun still fails because the test path itself forks and then
+      touches CUDA (`py._process.forkedfunc`)
+- Branch-surface classification:
+  - modified GB200-relevant test files on this branch are only:
+    - `python/test/gluon/test_core.py`
+    - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - `python/test/unit/language/test_compile_only.py`
+    - `python/test/unit/language/test_matmul.py`
+  - the new `test_dot`, tensor-descriptor, warp-specialization, debug,
+    regression, example, and Proton failures are therefore not explained by
+    test-file edits alone
+- I fetched `origin/main` and confirmed merge-base:
+  - `7f61ac734edc657b737fb159a1b9d50cb47944e6`
+- I created a detached baseline worktree:
+  - `/root/code/triton-mergebase-ci`
+- Baseline bring-up status:
+  - direct `make` / raw CMake on the old tree hit build-system drift around
+    missing `NVWS` tablegen products;
+  - I applied local-only baseline shims in the merge-base worktree to skip
+    example plugin builds and the legacy GSan runtime; and
+  - `python3 setup.py build_ext` now compiles substantially farther, making the
+    branch-vs-main comparison path viable once it completes
+- Net new conclusion:
+  - the GB200 red surface is now clearly larger than the original TMEM
+    reinterpret rewrite candidates;
+  - there are confirmed new standalone unit/runtime/compiler buckets to
+    classify against main;
+  - and the baseline-comparison infrastructure is finally moving, but it still
+    depends on local-only build shims because the exact merge-base tree does
+    not build cleanly against the current host toolchain out of the box

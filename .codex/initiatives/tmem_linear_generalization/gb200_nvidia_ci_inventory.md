@@ -230,6 +230,146 @@ is:
     - failures are concentrated in expected tree-shape / frame-name /
       periodic-flush assertions for cudagraph profiling behavior
 
+### `test-unit` Sweep Update (2026-04-10)
+
+To finish the GB200 census, `make test-unit` was expanded into its component
+commands and run in a more diagnosable shape:
+
+- broad unit lane:
+  - `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-unit-gpu<gpu> PYTHONPATH=python:. python3 -m pytest -s --tb=short --splits 4 --group <group> -n 2 python/test/unit --ignore-glob='python/test/unit/plugins/*' --ignore=python/test/unit/test_debug.py`
+- tail commands:
+  - `python/test/unit/test_debug.py`
+  - `python/triton_kernels/tests/`
+  - `python/tutorials/06-fused-attention.py`
+  - `python/test/unit/instrumentation/test_gpuhello.py`
+  - plugin tests under `python/test/unit/plugins/`
+
+Current results:
+
+- unit shard `1 / 4`
+  - green
+  - `5048 passed, 114 skipped`
+- unit shard `2 / 4`
+  - red
+  - `8 failed, 4507 passed, 647 skipped`
+  - exact failing nodeids:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-trans-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-add-matrix-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-add-rows-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-add-cols-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-softmax-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-chain-dot-tf32-float32-float32-1-None]`
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-chain-dot-tf32x3-float32-float32-1-None]`
+  - isolated rerun confirms at least the leading nodeid is a real standalone
+    wrong-code failure (`49.4%` mismatches), not shard contamination
+- unit shard `3 / 4`
+  - red
+  - `23 failed, 729 passed, 4410 skipped`
+  - failure concentration:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[...]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[...]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[...]`
+  - isolated reruns already confirm both sub-buckets:
+    - simple matmul wrong-code:
+      - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+      - `49.9%` mismatches
+    - persistent matmul compile/pipeline failure:
+      - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
+      - `ttng.tmem_store` unsupported register layout / row anchors `32,64`
+        followed by `PassManager::run failed`
+- unit shard `4 / 4`
+  - red
+  - `131 failed, 4707 passed, 321 skipped`
+  - failure concentration:
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[{float16,bfloat16,float32}]`
+    - large systematic `python/test/unit/language/test_warp_specialization.py`
+      forward and persistent-forward failure surface
+  - isolated reruns already confirm representative standalone failures:
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      - `ttng.tmem_store` unsupported register layout / row anchors `32,64`
+        followed by `PassManager::run failed`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+      - `49.7%` mismatches
+  - remaining work:
+    - materialize the full exact failing nodeid list for the large
+      warp-specialization bucket in a dedicated follow-up rerun so merge-base
+      comparison can be done nodeid-by-nodeid
+
+Tail-command status:
+
+- `python/test/unit/test_debug.py`
+  - red
+  - xdist-shaped run: `20 failed, 75 passed`
+  - serial rerun: same `20 failed, 75 passed`
+  - classification:
+    - real harness/runtime problem, not just outer xdist noise
+    - failures all show `Cannot re-initialize CUDA in forked subprocess`
+      originating from `py._process.forkedfunc`
+- `python/tutorials/06-fused-attention.py`
+  - green
+  - `192 passed, 192 skipped`
+- `python/test/unit/instrumentation/test_gpuhello.py`
+  - green
+  - `1 passed`
+- plugin tests
+  - green
+  - `python/test/unit/plugins/test_plugin.py`
+  - `python/test/unit/plugins/test_dialect_plugin.py`
+  - `python/test/unit/plugins/custom_ops.py`
+- `python/triton_kernels/tests/`
+  - still running at the time of this update
+  - inventory is not complete until this command finishes and its exact red
+    surface is recorded
+
+Interim interpretation of the unit lane:
+
+- The new red surface is broader than the TMEM reinterpret rewrite candidates.
+- Confirmed standalone buckets now include:
+  - tf32/tf32x3 dot wrong-code
+  - matmul wrong-code
+  - warp-specialization attention wrong-code
+  - tensor-descriptor reshape-to-matmul compile/pipeline failure
+  - persistent matmul compile/pipeline failure
+  - debug harness CUDA-after-fork failure
+- Branch-surface check:
+  - among GB200-relevant Python tests, this branch modified:
+    - `python/test/gluon/test_core.py`
+    - `python/test/gluon/test_tmem_runtime_matrix.py`
+    - `python/test/unit/language/test_compile_only.py`
+    - `python/test/unit/language/test_matmul.py`
+  - it did **not** modify:
+    - `python/test/unit/language/test_core.py`
+    - `python/test/unit/language/test_tensor_descriptor.py`
+    - `python/test/unit/language/test_warp_specialization.py`
+    - `python/test/unit/test_debug.py`
+    - `python/test/regression/test_cast_matmul.py`
+    - `python/examples/gluon/*`
+    - `third_party/proton/test/test_profile.py`
+  - this means those buckets are not explained by test-file edits and must be
+    classified later as pre-existing-on-main, real branch regressions, or
+    flake/harness/cache issues.
+
+### Merge-Base Comparison Setup Status (2026-04-10)
+
+- `origin/main` is now fetched locally.
+- Merge-base for current branch vs main:
+  - `7f61ac734edc657b737fb159a1b9d50cb47944e6`
+- A detached worktree exists at:
+  - `/root/code/triton-mergebase-ci`
+- Baseline comparison is currently blocked by merge-base build-system drift:
+  - raw `make` / direct CMake path on that older tree does not emit the
+    `NVWS` tablegen products expected by the modern local toolchain;
+  - a local-only shim was added in the merge-base worktree to skip example
+    plugin builds so the baseline can configure farther; and
+  - `setup.py build_ext` is currently being tried as a more faithful old-tree
+    build path because it wires more compatibility arguments than the direct
+    `make` path.
+- Until that baseline build is usable, the branch-vs-main classification is
+  incomplete. The current doc intentionally distinguishes:
+  - exact local red buckets already confirmed on this branch, and
+  - baseline comparison work still in progress.
+
 ### Noisy But Expected During `-s` Shard Runs
 
 - `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`

@@ -191,6 +191,31 @@
       portability and multicta matmul wrong-code.
 - Use `gb200_nvidia_ci_inventory.md` for the exact continuously updated red
   list and lane-by-lane census status.
+- The GB200 census has now widened through most of `make test-unit` as well:
+  - shard `1 / 4` green;
+  - shard `2 / 4` isolates tf32/tf32x3 `test_dot[...]` wrong-code;
+  - shard `3 / 4` isolates `test_matmul.py` wrong-code plus persistent-matmul
+    compile/pipeline failures;
+  - shard `4 / 4` isolates `test_tensor_descriptor_reshape_matmul[...]` and a
+    large warp-specialization attention wrong-code bucket;
+  - `test_debug.py` is red even in serial because the harness itself forks and
+    then touches CUDA;
+  - fused-attention, instrumentation, and plugin tail commands are green; and
+  - `python/triton_kernels/tests/` is still the remaining current-branch long
+    pole while the docs are being refreshed.
+- Representative isolated reruns now confirm that the new unit buckets are
+  standalone failures on this branch, not only broad-shard noise:
+  - one `test_dot[...]` nodeid;
+  - one `test_simple_matmul[...]` nodeid;
+  - one `test_warp_specialize_attention_forward[...]` nodeid;
+  - `test_tensor_descriptor_reshape_matmul[float32]`; and
+  - one `test_simple_persistent_matmul[...]` nodeid.
+- Merge-base comparison against `origin/main` is in progress:
+  - merge-base is `7f61ac734edc657b737fb159a1b9d50cb47944e6`;
+  - the detached worktree is `/root/code/triton-mergebase-ci`; and
+  - older-tree build drift requires local-only baseline shims (skip example
+    plugins, skip legacy GSan runtime) before the baseline can be used for
+    branch-vs-main classification.
 - The stale
   `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[...]`
   expectation has already been updated to the current row-anchor diagnostic and
