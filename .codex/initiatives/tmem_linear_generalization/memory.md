@@ -170,7 +170,7 @@
 ## Current Topline (2026-04-10 16:45 UTC)
 
 - Current durable checkpoint:
-  - HEAD `460c12c63`
+  - HEAD `c2c853016`
   - worktree clean
 - GB200 lane state confirmed again after rebuild:
   - `make test-lit`
@@ -209,12 +209,23 @@
   - unlike the branch-added TMEM tests above, these example functions already
     exist on merge-base, so treat them as regressions on old upstream coverage
 - Current active compiler bucket:
-  - descriptor-chain/reinterpret/view-composition lowering for the exact
-    `12`-nodeid focused-core manifest above
   - split-N row/col-permuted runtime-matrix lowering for the `208`-nodeid
     manifest above
+    - the failing-vs-passing trace split is now crisp:
+      - passing `n=2` controls keep packed `16x32bx2.x2`
+      - failing permuted `n=4` cases log `packed16 support precondition fail`
+        / `no packed mem layout` and degrade to scalar `32x32b.x1`
+    - this is the next highest-value planner fix slice
   - non-surjective descriptor-view `get_reg_layout()` support for the warpx2
     candidate positives and the isolated frontend exact
+    - all three now reduce to the same direct-view representability gap on
+      non-surjective `[128, 4]` views with required row anchors `32,64`
+  - descriptor-chain/reinterpret/view-composition lowering for the exact
+    `12`-nodeid focused-core manifest above
+    - this now appears to split into at least:
+      - packed `linear_m64_*` launch-fault cases
+      - mixed-layout scalar-family access-mapping cases where the PTX currently
+        matches a passing identity control too closely
   - example recovery after the TMEM/core buckets are understood:
     - shared-memory inflation in `02-convolution.py`
     - wrong-code in `03-matmul-multicta.py`
@@ -222,6 +233,10 @@
   - the split-N offset-immediate expectation exact
   - the two `block_m_64` reinterpret-contract rewrite candidates
   - Proton failures, which remain preexisting on merge-base
+  - cache/xdist contamination investigation
+    - there is still no reproduced proof of a simple on-disk cache-key
+      collision; the current evidence is stronger for process/device
+      contamination after a bad kernel than for persistent cache-key aliasing
 
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is

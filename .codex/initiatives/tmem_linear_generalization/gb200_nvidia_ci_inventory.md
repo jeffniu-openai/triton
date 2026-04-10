@@ -18,6 +18,45 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Trace-Driven Bucket Split (2026-04-10 17:25 UTC)
+
+- The remaining live Gluon compiler buckets now have representative passing vs
+  failing TTGIR/PTX/query traces, which changes the recovery ordering.
+- Descriptor-chain exacts (`12` live nodeids) split into at least two
+  structural subfamilies:
+  - `linear_m64_*` / split-N descriptor-chain cases:
+    - raw query stays packed (`atom=4`)
+    - PTX uses `tcgen05.{st,ld}.sync.aligned.16x32bx2.x32.b32`
+    - still faults at launch with `RuntimeError: CUDA error: misaligned address`
+  - `linear_mixed_*` descriptor-chain cases:
+    - raw query stays scalar (`atom=0`)
+    - PTX uses the same `32x32b.x128` family and the same visible address
+      sequence as the passing identity control
+    - implication:
+      - mixed-layout basis information is likely being erased or ignored before
+        scalar-family access mapping is formed
+- The dominant runtime-matrix bucket (`208` split-N row/col-permuted exacts)
+  now has a clean planner-side signature:
+  - passing control:
+    - packed raw query on raw memdesc `64x2`
+    - emits `16x32bx2.x2.b32`
+  - failing permuted case:
+    - logs `packed16 support precondition fail`
+    - logs `packed16 support skip: no packed mem layout`
+    - degrades to scalar `atom=0` `32x32b.x1`
+  - implication:
+    - the active bug is packed-family / packed-mem-layout discovery for
+      permuted `M=64` direct views, not a generic late packet-offset tweak
+- The smaller frontend-style tail is also unified:
+  - the two `warpx2` candidate-positive runtime-matrix exacts and the isolated
+    frontend exact fail for the same direct-view representability reason on a
+    non-surjective `[128, 4]` descriptor view:
+    - required row anchors `32,64` are not directly representable
+- Practical consequence:
+  - the next compiler fix should start with the split-N packed-family discovery
+    gap, then the shared `[128, 4]` representability gap, and only then the
+    descriptor-chain mixed-layout bucket.
+
 ## Latest Runtime-Matrix / Frontend Refresh (2026-04-10 16:55 UTC)
 
 - The old `413`-nodeid focused `test_tmem_runtime_matrix.py` bucket is no

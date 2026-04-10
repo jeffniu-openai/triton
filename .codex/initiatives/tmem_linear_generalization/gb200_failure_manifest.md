@@ -189,6 +189,27 @@ PY
       this bucket is tracked as branch-changed coverage rather than an
       identical old-mainline failure set
 
+## Current Underlying-Bucket Refinement
+
+- The live current-branch manifests above are no longer interpreted as a flat
+  list of unrelated tests:
+  - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+    - packed-family / packed-mem-layout discovery bug for permuted `M=64`
+      split-N direct views
+    - failing cases log `packed16 support precondition fail` /
+      `no packed mem layout` and degrade to scalar `32x32b.x1`
+  - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
+    - shared with the isolated frontend exact:
+      - non-surjective `[128, 4]` descriptor-view row-anchor representability
+        gap in `get_reg_layout()`
+  - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+    - at least two subfamilies:
+      - packed `linear_m64_*` launch-fault cases
+      - mixed-layout scalar-family access-mapping cases
+- Use the manifests as machine-readable rerun inputs, but use
+  `gb200_nvidia_ci_inventory.md` and `gb200_branch_recovery_plan.md` for the
+  current trace-backed recovery ordering.
+
 ## Shard-3 Merge-Base Reduction Lists
 
 These lists were derived from the current-branch shard-3 exact nodeids by

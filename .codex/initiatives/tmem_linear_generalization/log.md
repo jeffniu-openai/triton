@@ -6753,3 +6753,47 @@ Open after this slice:
     introduced by this initiative
   - the examples lane remains a separate regression surface on old upstream
     functions and should stay visible after the TMEM buckets are fixed
+
+## 2026-04-10: trace-backed split of the remaining GB200 TMEM/compiler backlog
+- I stopped treating the remaining GB200 Gluon reds as only manifest counts and
+  captured representative TTGIR/PTX/query traces for the live TMEM buckets.
+- Descriptor-chain bucket (`12` exacts):
+  - `linear_m64_*` / split-N exacts:
+    - raw query stays packed (`atom=4`)
+    - PTX uses `tcgen05.{st,ld}.sync.aligned.16x32bx2.x32.b32`
+    - kernels still fault at launch with `CUDA error: misaligned address`
+  - `linear_mixed_*` exacts:
+    - raw query stays scalar (`atom=0`)
+    - PTX around the `tcgen05` accesses is structurally identical to a passing
+      identity control using `32x32b.x128`
+    - implication:
+      - mixed-layout basis information is likely being dropped or ignored
+        before scalar-family access mapping is formed
+- Split-N runtime-matrix bucket (`208` exacts):
+  - passing control keeps a packed `16x32bx2.x2` direct path
+  - failing permuted `n=4` cases log:
+    - `packed16 support precondition fail`
+    - `packed16 support skip: no packed mem layout`
+  - and then degrade to scalar `32x32b.x1`
+  - implication:
+    - this is now clearly a packed-family / packed-mem-layout discovery bug for
+      permuted `M=64` direct views
+- Smaller frontend tail (`2` warpx2 candidate-positive runtime-matrix exacts +
+  `1` frontend exact):
+  - all three fail for the same reason:
+    - non-surjective `[128, 4]` descriptor view cannot currently materialize
+      required row anchors `32,64` in `get_reg_layout()`
+- Practical consequence:
+  - next recovery order should be:
+    1. split-N packed-family discovery
+    2. shared non-surjective `[128, 4]` representability
+    3. descriptor-chain cleanup, split by `linear_m64_*` vs `linear_mixed_*`
+       if needed
+- Trace artifacts:
+  - `/tmp/pass_identity_32x32b_4w.{ttgir,ptx,query.log}`
+  - `/tmp/fail_m64_splitn_8w.{ttgir,ptx,query.log}`
+  - `/tmp/fail_mixed_32x32b_4w.{ttgir,ptx,query.log}`
+  - `/tmp/pass_identity_identity_2_splitn.{ttgir,ptx,query.log}`
+  - `/tmp/fail_identity_rotate1_4_splitn.{ttgir,ptx,query.log}`
+  - `/tmp/frontend_reg_layout_exception.txt`
+  - `/tmp/warpx2_reg_layout_exception.txt`

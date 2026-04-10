@@ -49,7 +49,7 @@ PY
 ### Current Clean-HEAD Checkpoint
 
 - HEAD:
-  - `460c12c63`
+  - `c2c853016`
 - Worktree:
   - clean
 - Current branch-topline state:
@@ -98,6 +98,25 @@ PY
     - but unlike the branch-added TMEM tests above, those failing example
       functions already exist on merge-base, so they should be treated as
       branch-caused regressions on old upstream coverage
+- Latest trace-backed refinement:
+  - the `208` split-N runtime-matrix exacts now have the strongest failing vs
+    passing contrast and should move to the front of the queue:
+    - passing control keeps a packed `16x32bx2.x2` direct path
+    - failing permuted cases log `packed16 support precondition fail` /
+      `no packed mem layout` and degrade to scalar `32x32b.x1`
+  - the `2` warpx2 positives plus the isolated frontend exact are one shared
+    representability gap on non-surjective `[128, 4]` descriptor views, not
+    independent Python/frontend issues
+  - the `12` descriptor-chain exacts are likely at least two sub-buckets:
+    - packed `linear_m64_*` launch faults
+    - mixed-layout scalar-family accesses that currently look identical to a
+      passing identity control at the PTX level
+- Updated execution order:
+  1. split-N row/col-permuted packed-family discovery
+  2. shared non-surjective `[128, 4]` direct-view representability
+  3. descriptor-chain cleanup, split by `linear_m64_*` vs `linear_mixed_*` if
+     needed
+  4. examples lane after the TMEM/compiler buckets are under control
 
 ### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
 
