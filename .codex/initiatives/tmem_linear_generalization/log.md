@@ -5584,7 +5584,6 @@ Open after this slice:
   - `handoff_2026-03-26.md` and `next_agent_prompt_2026-03-26.md`
     - archival
 - Current-doc refreshes made:
-  - added a `Documentation Map` near the top of `memory.md`
   - refreshed `memory.md`'s undated `Next Execution Plan` and
     `Active Fuzz Backlog` so they match the current planner-cleanup-first
     reality rather than the earlier broad-fuzz-first phase
@@ -5592,3 +5591,18 @@ Open after this slice:
   - updated `fuzz_plan.md`'s immediate sections so they clearly defer broad
     saturation until the shared-planner / legacy-unification / reinterpret
     packet-decomposition work is green
+
+## 2026-04-10: moved the initiative doc index into a dedicated README
+
+- Added `.codex/initiatives/tmem_linear_generalization/README.md` as the entry
+  point for the initiative folder.
+- The README now:
+  - classifies each document by role;
+  - tells future sessions to start there, then read `memory.md` as the
+    initiative's durable memory/source of truth;
+  - points to the active handoff and `fuzz_plan.md`; and
+  - explicitly says to keep the README up to date when document roles or
+    source-of-truth entry points change.
+- Removed the duplicated documentation index from `memory.md` so that
+  `memory.md` stays focused on project memory, decisions, and plans rather than
+  folder navigation.

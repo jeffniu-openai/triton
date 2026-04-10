@@ -7,26 +7,6 @@
 - Broaden TMEM lowering for linear layouts while keeping MMAv5 and `tmem_copy`
   on explicit hardware-family matchers.
 
-## Documentation Map
-- `memory.md`
-  - durable source of truth for mission, current decisions, long-term plan, and
-    current undated priorities
-- `log.md`
-  - append-only chronological record of checkpoints, bug classification,
-    validation, and conclusions
-- `handoff_2026-04-09.md`
-  - current active handoff; read its tail first for the latest live buckets,
-    disproved experiments, and next implementation steps
-- `fuzz_plan.md`
-  - operational saturation/fuzzing playbook for the broader `tcgen05` surface;
-    use it once the current planner/cleanup blockers are green
-- `handoff_2026-03-26.md`
-  - historical handoff from the earlier phase of the initiative; keep for
-    provenance, not as current status
-- `next_agent_prompt_2026-03-26.md`
-  - archived takeover prompt from the earlier managed-session workflow; not a
-    current source of truth
-
 ## Long-Term Mission And Completion Plan
 
 ### Mission
