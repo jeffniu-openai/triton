@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, replace
 from itertools import chain
 
@@ -54,29 +52,29 @@ def advance(idx: gl.tensor, phase: gl.tensor, num_bufs: gl.constexpr) -> tuple[g
 
 
 @gluon.jit
-def unpack_block_schedule(schedule):
+def unpack_block_schedule(schedule: gl.tensor) -> tuple[gl.tensor, gl.tensor]:
     return schedule & 0xFFFF, schedule >> 16
 
 
 @gluon.jit
-def banded_row_major(lin_idx, m_tiles, n_tiles, band_n: gl.constexpr):
-    full_band_tiles = m_tiles * band_n
-    n_full_bands = n_tiles // band_n
+def banded_row_major(lin_idx, m_tiles, n_tiles, BAND_N: gl.constexpr):
+    full_band_tiles = m_tiles * BAND_N
+    n_full_bands = n_tiles // BAND_N
     full_band_work = n_full_bands * full_band_tiles
 
     if lin_idx < full_band_work:
         band_id = lin_idx // full_band_tiles
         within_band = lin_idx % full_band_tiles
-        return within_band // band_n, band_id * band_n + (within_band % band_n)
+        return within_band // BAND_N, band_id * BAND_N + (within_band % BAND_N)
 
-    tail_n = n_tiles - n_full_bands * band_n
+    tail_n = n_tiles - n_full_bands * BAND_N
     tail_idx = lin_idx - full_band_work
-    return tail_idx // tail_n, n_full_bands * band_n + (tail_idx % tail_n)
+    return tail_idx // tail_n, n_full_bands * BAND_N + (tail_idx % tail_n)
 
 
 @gluon.jit
 def block_schedule_coords(pid_mn: gl.tensor, grid_m: gl.tensor, GRID_N: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
-    return banded_row_major(pid_mn, grid_m, GRID_N, 20)
+    return banded_row_major(pid_mn, grid_m, GRID_N, BAND_N=20)
 
 
 @gluon.jit
@@ -160,21 +158,21 @@ def make_operand_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ..
 
 @dataclass(frozen=True, slots=True)
 class KernelConfig:
-    block_m: int = 128
-    block_n: int = 256
-    block_k: int = 128
-    x_num_bufs: int = 5
-    w_num_bufs: int = 4
-    load_activation_warps: int = 4
-    load_weight_warps: int = 1
-    mma_warps: int = 1
-    store_helper_warps: int = 2
-    epilogue_row_subtile_factor: int = 8
-    epilogue_store_helper_depth: int = 2
-    load_activation_regs: int = 112
-    load_weight_regs: int = 48
-    mma_regs: int = 24
-    store_helper_regs: int = 16
+    BLOCK_M: int = 128
+    BLOCK_N: int = 256
+    BLOCK_K: int = 128
+    X_NUM_BUFS: int = 5
+    W_NUM_BUFS: int = 4
+    LOAD_ACTIVATION_WARPS: int = 4
+    LOAD_WEIGHT_WARPS: int = 1
+    MMA_WARPS: int = 1
+    STORE_HELPER_WARPS: int = 2
+    EPILOGUE_ROW_SUBTILE_FACTOR: int = 8
+    EPILOGUE_STORE_HELPER_DEPTH: int = 2
+    LOAD_ACTIVATION_REGS: int = 112
+    LOAD_WEIGHT_REGS: int = 48
+    MMA_REGS: int = 24
+    STORE_HELPER_REGS: int = 16
 
 
 def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
@@ -187,11 +185,11 @@ def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> Kerne
     slice_size = estimated_slice_size(ragged_metadata, m)
     config = KernelConfig()
     if slice_size <= 8:
-        return replace(config, block_m=16, epilogue_row_subtile_factor=2)
+        return replace(config, BLOCK_M=16, EPILOGUE_ROW_SUBTILE_FACTOR=2)
     if slice_size <= 16:
-        return replace(config, block_m=32, epilogue_row_subtile_factor=4)
+        return replace(config, BLOCK_M=32, EPILOGUE_ROW_SUBTILE_FACTOR=4)
     if slice_size <= 58:
-        return replace(config, block_m=64, epilogue_row_subtile_factor=4)
+        return replace(config, BLOCK_M=64, EPILOGUE_ROW_SUBTILE_FACTOR=4)
     return config
 
 
@@ -959,27 +957,27 @@ def matmul(
     mxfp_block_size = 32
     scale_size_outer = 128
     scale_size_inner = 4
-    x_block_idx = config.block_m.bit_length() - 5
+    x_block_idx = config.BLOCK_M.bit_length() - 5
 
-    expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, config.block_m)
-    grid_n = triton.cdiv(n, config.block_n)
+    expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, config.BLOCK_M)
+    grid_n = triton.cdiv(n, config.BLOCK_N)
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
     launch_grid = max(1, min(sms, expected_grid_m * grid_n))
     grid = (launch_grid,)
 
-    x_desc = make_operand_descriptor(a, (1, config.block_k))
-    w_desc = make_operand_descriptor(b, (1, config.block_n, config.block_k // 2), transposed=True)
+    x_desc = make_operand_descriptor(a, (1, config.BLOCK_K))
+    w_desc = make_operand_descriptor(b, (1, config.BLOCK_N, config.BLOCK_K // 2), transposed=True)
     scale_desc = make_operand_descriptor(
         b_mx_scales,
         (
             1,
-            config.block_n // scale_size_outer,
-            config.block_k // mxfp_block_size // scale_size_inner,
+            config.BLOCK_N // scale_size_outer,
+            config.BLOCK_K // mxfp_block_size // scale_size_inner,
             2,
             256,
         ),
     )
-    out_desc = make_operand_descriptor(c, (config.block_m, config.block_n // reduction_n))
+    out_desc = make_operand_descriptor(c, (config.BLOCK_M, config.BLOCK_N // reduction_n))
 
     ws_matmul_kernel[grid](
         x_desc=x_desc,
@@ -1013,22 +1011,22 @@ def matmul(
         #
         FLEXPOINT_SATURATE_INF=precision_config.flexpoint_saturate_inf,
         #
-        BLOCK_M=config.block_m,
-        BLOCK_N=config.block_n,
-        BLOCK_K=config.block_k,
+        BLOCK_M=config.BLOCK_M,
+        BLOCK_N=config.BLOCK_N,
+        BLOCK_K=config.BLOCK_K,
         NUM_SMS=launch_grid,
-        X_NUM_BUFS=config.x_num_bufs,
-        W_NUM_BUFS=config.w_num_bufs,
-        LOAD_ACTIVATION_WARPS=config.load_activation_warps,
-        LOAD_WEIGHT_WARPS=config.load_weight_warps,
-        MMA_WARPS=config.mma_warps,
-        STORE_HELPER_WARPS=config.store_helper_warps,
-        LOAD_ACTIVATION_REGS=config.load_activation_regs,
-        LOAD_WEIGHT_REGS=config.load_weight_regs,
-        MMA_REGS=config.mma_regs,
-        STORE_HELPER_REGS=config.store_helper_regs,
-        EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
-        EPILOGUE_STORE_HELPER_DEPTH=config.epilogue_store_helper_depth,
+        X_NUM_BUFS=config.X_NUM_BUFS,
+        W_NUM_BUFS=config.W_NUM_BUFS,
+        LOAD_ACTIVATION_WARPS=config.LOAD_ACTIVATION_WARPS,
+        LOAD_WEIGHT_WARPS=config.LOAD_WEIGHT_WARPS,
+        MMA_WARPS=config.MMA_WARPS,
+        STORE_HELPER_WARPS=config.STORE_HELPER_WARPS,
+        LOAD_ACTIVATION_REGS=config.LOAD_ACTIVATION_REGS,
+        LOAD_WEIGHT_REGS=config.LOAD_WEIGHT_REGS,
+        MMA_REGS=config.MMA_REGS,
+        STORE_HELPER_REGS=config.STORE_HELPER_REGS,
+        EPILOGUE_ROW_SUBTILE_FACTOR=config.EPILOGUE_ROW_SUBTILE_FACTOR,
+        EPILOGUE_STORE_HELPER_DEPTH=config.EPILOGUE_STORE_HELPER_DEPTH,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
         MXFP_BLOCK_SIZE=mxfp_block_size,
@@ -1105,9 +1103,7 @@ def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[Ra
         local_expts_hist[torch.randint(0, len(local_expts_hist), size=())] = 1
 
     ragged_metadata = make_ragged_tensor_metadata(local_expts_hist, batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN)
-    ragged_metadata.expected_slice_size = (
-        batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN // GPT_OSS_120B_NUM_EXPERTS
-    )
+    ragged_metadata.expected_slice_size = batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN // GPT_OSS_120B_NUM_EXPERTS
     combine_indx = sparse_logits.mask_metadata.col_sorted_indx
     gather_indx = torch.div(combine_indx, GPT_OSS_120B_EXPERTS_PER_TOKEN, rounding_mode="trunc")
     return ragged_metadata, gather_indx
