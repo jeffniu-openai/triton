@@ -39,8 +39,6 @@ from .matmul_gluon import matmul_ogs
 from .matmul_gluon_optimized import matmul_ogs as matmul_ogs_optimized
 from .matmul_ws import matmul as matmul_ws
 from .matmul_ws_optimized import matmul as matmul_ws_optimized
-from .matmul_ws_optimized_direct_store import matmul as matmul_ws_optimized_direct_store
-from .matmul_ws_optimized_tma_store import matmul as matmul_ws_optimized_tma_store
 from .matmul_ws_split_sf import matmul as matmul_ws_split_sf
 
 # Default roofline constants for a single NVIDIA GB300 GPU.
@@ -58,15 +56,11 @@ GLUON_KERNEL_NAME = "gluon"
 GLUON_OPTIMIZED_KERNEL_NAME = "gluon_optimized"
 WS_KERNEL_NAME = "ws"
 WS_OPTIMIZED_KERNEL_NAME = "ws_optimized"
-WS_OPTIMIZED_DIRECT_STORE_KERNEL_NAME = "ws_optimized_direct_store"
-WS_OPTIMIZED_TMA_STORE_KERNEL_NAME = "ws_optimized_tma_store"
 WS_SPLIT_SF_KERNEL_NAME = "ws_split_sf"
 KERNEL_NAME_COLUMN_WIDTH = max(
     len("kernel"),
     len(GLUON_OPTIMIZED_KERNEL_NAME),
     len(WS_OPTIMIZED_KERNEL_NAME),
-    len(WS_OPTIMIZED_DIRECT_STORE_KERNEL_NAME),
-    len(WS_OPTIMIZED_TMA_STORE_KERNEL_NAME),
     len(WS_SPLIT_SF_KERNEL_NAME),
 )
 
@@ -251,10 +245,6 @@ def resolve_kernel(kernel_name: str) -> KernelFn:
         return matmul_ws
     if kernel_name == WS_OPTIMIZED_KERNEL_NAME:
         return matmul_ws_optimized
-    if kernel_name == WS_OPTIMIZED_DIRECT_STORE_KERNEL_NAME:
-        return matmul_ws_optimized_direct_store
-    if kernel_name == WS_OPTIMIZED_TMA_STORE_KERNEL_NAME:
-        return matmul_ws_optimized_tma_store
     if kernel_name == WS_SPLIT_SF_KERNEL_NAME:
         return matmul_ws_split_sf
     raise ValueError(f"Unknown kernel {kernel_name}")
@@ -270,8 +260,6 @@ def iter_kernel_names(kernel_mode: str) -> tuple[str, ...]:
             GLUON_OPTIMIZED_KERNEL_NAME,
             WS_KERNEL_NAME,
             WS_OPTIMIZED_KERNEL_NAME,
-            WS_OPTIMIZED_DIRECT_STORE_KERNEL_NAME,
-            WS_OPTIMIZED_TMA_STORE_KERNEL_NAME,
             WS_SPLIT_SF_KERNEL_NAME,
         )
     return tuple(kernel_mode.split(","))
@@ -600,17 +588,8 @@ def make_kernel_run(
     kernel = resolve_kernel(kernel_name)
     precision_config = make_precision_config(prepared)
     out = make_output_buffer(prepared)
-    if kernel_name in (
-        WS_OPTIMIZED_KERNEL_NAME,
-        WS_OPTIMIZED_DIRECT_STORE_KERNEL_NAME,
-        WS_OPTIMIZED_TMA_STORE_KERNEL_NAME,
-    ):
-        if kernel_name == WS_OPTIMIZED_KERNEL_NAME:
-            ws_kernel = matmul_ws_optimized
-        elif kernel_name == WS_OPTIMIZED_DIRECT_STORE_KERNEL_NAME:
-            ws_kernel = matmul_ws_optimized_direct_store
-        else:
-            ws_kernel = matmul_ws_optimized_tma_store
+    if kernel_name == WS_OPTIMIZED_KERNEL_NAME:
+        ws_kernel = matmul_ws_optimized
 
         def run() -> torch.Tensor:
             return ws_kernel(
