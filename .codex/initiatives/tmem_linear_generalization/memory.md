@@ -197,6 +197,9 @@
       portability and multicta matmul wrong-code.
 - Use `gb200_nvidia_ci_inventory.md` for the exact continuously updated red
   list and lane-by-lane census status.
+- Use `gb200_failure_manifest.md` and the adjacent generated `.txt` files when
+  you need exact nodeid lists for the current-branch failures or the
+  merge-base-existing shard-3 subsets.
 - The current-branch GB200 census is now complete through the whole CI target
   stack we care about:
   - `make test-unit` finishes at

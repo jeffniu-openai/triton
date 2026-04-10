@@ -1,0 +1,12 @@
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_twocta[False-linear]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_twocta[False-legacy]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_twocta[True-linear]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_twocta[True-legacy]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_twocta_asymmetric_shape_reports_clean_error
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_unsupported_linear_layout_reports_clean_error[linear_identity_64-acc_layout0-1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_unsupported_linear_layout_reports_clean_error[linear_block_64-acc_layout1-1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_unsupported_linear_layout_reports_clean_error[mixed-acc_layout2-1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_unsupported_linear_layout_reports_clean_error[block-acc_layout3-1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_unsupported_linear_layout_reports_clean_error[block_two_ctas-acc_layout4-2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error[acc_layout0]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error[acc_layout1]

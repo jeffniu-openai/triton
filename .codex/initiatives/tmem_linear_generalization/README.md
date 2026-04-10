@@ -14,6 +14,9 @@ When resuming the initiative:
 - then read `memory.md` as the initiative's durable memory/source of truth;
 - use `gb200_nvidia_ci_inventory.md` for the current GB200/NVIDIA CI baseline
   and confirmed red list;
+- use `gb200_failure_manifest.md` plus the adjacent generated `.txt` files
+  when you need the exact nodeid inventories for the current branch or the
+  merge-base-existing shard-3 subsets;
 - then read the tail of the active handoff for the latest live buckets and next
   concrete steps;
 - use `log.md` for chronological provenance and validation history; and
@@ -47,6 +50,14 @@ When resuming the initiative:
     each current failure as stale expectation, rewrite-candidate, or real bug
   - update it before broadening beyond exact nodeids or changing the current
     CI-grounded failure story
+
+- `gb200_failure_manifest.md`
+  - index for the generated exact current-branch failure lists and the
+    merge-base-existing shard-3 subsets
+  - use the adjacent `.txt` files when you need exact nodeids rather than
+    prose summaries
+  - refresh the manifests whenever the current-branch failure surface changes
+    materially
 
 - `fuzz_plan.md`
   - operational saturation/fuzzing playbook for the broader `tcgen05` surface

@@ -6083,3 +6083,25 @@ Open after this slice:
   - it now includes broad new-on-branch matmul / warp-specialization /
     lowering / reduction surfaces that still need exact merge-base reduction
     before fix ordering is frozen
+
+## 2026-04-10: materialized durable exact-failure manifests in the initiative folder
+
+- I generated durable exact nodeid lists from the saved current-branch logs:
+  - `gb200_current_branch_test_unit_failures.txt` (`182`)
+  - `gb200_current_branch_test_gluon_group3_failures.txt` (`1160`)
+  - `gb200_current_branch_test_gluon_group4_failures.txt` (`686`)
+  - `gb200_current_branch_test_regression_failures.txt` (`234`)
+  - `gb200_current_branch_examples_gluon_failures.txt` (`62`)
+  - `gb200_current_branch_test_proton_failures.txt` (`11`)
+- I also materialized the shard-3 merge-base split lists:
+  - `gb200_mergebase_existing_test_gluon_core_group3_failures.txt` (`203`)
+  - `gb200_branch_added_or_renamed_test_gluon_core_group3_failures.txt` (`90`)
+  - `gb200_mergebase_existing_test_gluon_fpsan_group3_failures.txt` (`60`)
+  - `gb200_branch_added_or_renamed_test_gluon_fpsan_group3_failures.txt` (`12`)
+  - `gb200_mergebase_existing_test_gluon_layout_format_view_group3_failures.txt` (`1`)
+  - `gb200_branch_added_or_renamed_test_gluon_frontend_group3_failures.txt` (`1`)
+- I added `gb200_failure_manifest.md` as the human-readable index explaining
+  what each list is, how to rerun one nodeid, and how to rerun a whole
+  generated exact list on either the current branch or the merge-base worktree.
+- This means future sessions no longer depend on transient `/tmp` logs just to
+  recover the exact failing nodeids from the completed GB200 census.

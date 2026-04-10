@@ -1,0 +1,60 @@
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics[add-_expected_add_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics[sub-_expected_sub_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics[mul-_expected_mul_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics[truediv-_expected_div_payload_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics[fdiv-_expected_div_payload_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics[mod-_expected_srem_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics_zero_denominator[truediv-_expected_div_payload_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics_zero_denominator[fdiv-_expected_div_payload_i32]
+python/test/gluon/test_fpsan.py::test_binops_payload_semantics_zero_denominator[mod-_expected_srem_i32]
+python/test/gluon/test_fpsan.py::test_unary_math_identity[exp] - Runti...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[exp2] - Runt...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[log] - Runti...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[log2] - Runt...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[cos] - Runti...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[sin] - Runti...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[sqrt] - Runt...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[sqrt_rn] - R...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[rsqrt] - Run...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[erf] - Runti...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[floor] - Run...
+python/test/gluon/test_fpsan.py::test_unary_math_identity[ceil] - Runt...
+python/test/gluon/test_fpsan.py::test_extern_unary_payload_semantics[tan-__nv_tanf]
+python/test/gluon/test_fpsan.py::test_extern_unary_payload_semantics[tanh-__nv_tanhf]
+python/test/gluon/test_fpsan.py::test_extern_unary_payload_semantics[log1p-__nv_log1pf]
+python/test/gluon/test_fpsan.py::test_extern_unary_payload_semantics[cbrt-__nv_cbrtf]
+python/test/gluon/test_fpsan.py::test_extern_unary_payload_semantics[round-__nv_roundf]
+python/test/gluon/test_fpsan.py::test_extern_binary_payload_semantics[atan2-__nv_atan2f]
+python/test/gluon/test_fpsan.py::test_extern_binary_payload_semantics[hypot-__nv_hypotf]
+python/test/gluon/test_fpsan.py::test_extern_binary_payload_semantics[pow-__nv_powf]
+python/test/gluon/test_fpsan.py::test_extern_ternary_payload_semantics[fma-__nv_fmaf]
+python/test/gluon/test_fpsan.py::test_extern_mixed_payload_semantics[ldexp-__nv_ldexpf]
+python/test/gluon/test_fpsan.py::test_fma_payload_semantics - RuntimeE...
+python/test/gluon/test_fpsan.py::test_cast_trunc_ext_payload_semantics
+python/test/gluon/test_fpsan.py::test_cast_ext_payload_semantics - Run...
+python/test/gluon/test_fpsan.py::test_dot_fma - RuntimeError: CUDA err...
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[False-False-legacy_64-64-acc_layout0]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[False-False-legacy_128-128-acc_layout1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[False-False-linear_128-128-acc_layout2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[False-True-legacy_64-64-acc_layout0]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[False-True-legacy_128-128-acc_layout1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[False-True-linear_128-128-acc_layout2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[True-False-legacy_64-64-acc_layout0]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[True-False-legacy_128-128-acc_layout1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[True-False-linear_128-128-acc_layout2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[True-True-legacy_64-64-acc_layout0]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[True-True-legacy_128-128-acc_layout1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma[True-True-linear_128-128-acc_layout2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[legacy-acc_layout0-e2m1-e2m1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[legacy-acc_layout0-e4m3-e4m3]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[legacy-acc_layout0-e5m2-e5m2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[legacy-acc_layout0-e4m3-e2m1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[legacy-acc_layout0-e2m1-e4m3]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e2m1-e2m1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e4m3-e4m3]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e5m2-e5m2]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e4m3-e2m1]
+python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e2m1-e4m3]
+python/test/gluon/test_fpsan.py::test_tmem_index_subslice - RuntimeErr...
+python/test/gluon/test_fpsan.py::test_reduction - RuntimeError: CUDA e...
+python/test/gluon/test_fpsan.py::test_reduction_matches_loop - Runtime...
