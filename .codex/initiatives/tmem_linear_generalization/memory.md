@@ -182,6 +182,12 @@
   - there is now also a real `M=64` split-N TMEM regression at the current
     branch tip, confirmed by clean isolated reruns of descriptor-chain and
     roundtrip exact nodeids; and
+  - the completed `test-gluon` shard `4 / 4` now shows a much larger
+    branch-added runtime-matrix bucket:
+    - `686 failed, 4911 passed, 849 skipped, 19345 deselected`;
+    - every failure is in `python/test/gluon/test_tmem_runtime_matrix.py`;
+    - the dominant families are split-N row/col-permuted, `ld.red`,
+      `ldst_scales`, and `cp` / scaled-MMA coverage; and
   - there are also broader GB200 non-TMEM buckets outside the old reinterpret
     debate:
     - `python/test/regression/test_cast_matmul.py`;
@@ -210,6 +216,18 @@
   - one `test_warp_specialize_attention_forward[...]` nodeid;
   - `test_tensor_descriptor_reshape_matmul[float32]`; and
   - one `test_simple_persistent_matmul[...]` nodeid.
+- The branch-vs-merge-base PTX comparison now points at one common core issue
+  rather than a pile of unrelated regressions:
+  - for a representative `BLOCK_M=64, BLOCK_N=512` tf32 matmul, the forced
+    `16x256` variant still chooses the same family on both sides, but the
+    current branch collapses the second support band into contiguous packet
+    offsets (`+0,+128,+256,+384`) while merge-base uses the lifted offsets
+    (`+0,+128,+1048576,+1048704`);
+  - the non-forced sibling shifts family selection from merge-base
+    `32x32b.x64` to current-branch `16x32bx2.x64`; and
+  - the best current reading is that the new row-plan-aware canonical-`M=64`
+    family selection / packet decomposition is misclassifying a support-band
+    quotient bit as ordinary repetition.
 - Merge-base comparison against `origin/main` is in progress:
   - merge-base is `7f61ac734edc657b737fb159a1b9d50cb47944e6`;
   - the detached worktree is `/root/code/triton-mergebase-ci`; and

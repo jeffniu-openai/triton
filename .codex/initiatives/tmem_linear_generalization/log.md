@@ -5997,3 +5997,35 @@ Open after this slice:
 - Remaining current-branch exact inventories still running when I wrote this:
   - `python/test/gluon/ python/tutorials/gluon/` shard `3 / 4`
   - `python/test/gluon/ python/tutorials/gluon/` shard `4 / 4`
+
+## 2026-04-10: completed `test-gluon` shard 4 and tied the new red surface back to the row-plan / canonical-M64 planner
+
+- I finished the previously in-flight `python/test/gluon/ python/tutorials/gluon/`
+  shard `4 / 4`:
+  - `686 failed, 4911 passed, 849 skipped, 19345 deselected`
+  - every failure is in the branch-added file
+    `python/test/gluon/test_tmem_runtime_matrix.py`
+- The dominant runtime-matrix families in the completed shard are:
+  - `224` `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+  - `48` `test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout[...]`
+  - `33` `test_tmem_runtime_matrix_ldst_scales_variant_sweep[...]`
+  - `32` `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep[...]`
+  - `30` `test_tmem_runtime_matrix_cp_no_scales[...]`
+- That means the branch-added TMEM runtime-matrix surface is broadly red right
+  now; it is not just a stale-negative or clean-error expectation cleanup
+  story anymore.
+- I also recorded the strongest current branch-vs-merge-base PTX clue so far:
+  - for representative `BLOCK_M=64` tf32 matmul wrong-code, the forced
+    `16x256` variant still chooses the same family on both sides, but the
+    current branch collapses the second support band into contiguous packet
+    offsets (`+0,+128,+256,+384`) while merge-base uses the lifted offsets
+    (`+0,+128,+1048576,+1048704`);
+  - and the non-forced sibling shifts family selection from merge-base
+    `32x32b.x64` to current-branch `16x32bx2.x64`.
+- Best current interpretation:
+  - the new row-plan-aware canonical-`M=64` family selection / packet
+    decomposition is collapsing a support-band / lifted-image quotient bit into
+    ordinary packet repetition
+  - this is the most plausible common root cause across the split-N TMEM
+    regressions, the new runtime-matrix failures, and the broader
+    tf32/tf32x3 matmul/dot wrong-code buckets

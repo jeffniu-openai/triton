@@ -132,6 +132,29 @@ is:
   - re-evaluate the whole higher-rank half-row clean-error family one exact
     nodeid at a time before deciding which expectations should become positive
 
+5. Branch-added TMEM runtime-matrix bucket
+- Source:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+- Current result from `test-gluon` shard `4 / 4`:
+  - `686 failed, 4911 passed, 849 skipped, 19345 deselected`
+- Classification:
+  - `BRANCH_ADDED_COVERAGE_RED`
+- Why this is branch-local:
+  - `python/test/gluon/test_tmem_runtime_matrix.py` does not exist on the
+    merge-base, so every failure in this file is new coverage introduced by
+    this branch
+- Current interpretation:
+  - this is not one small stale-expectation pocket; the shard is dominated by
+    real runtime-matrix breakage in the new TMEM coverage
+  - the top failing families in the completed shard are:
+    - `224` `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+    - `48` `test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout[...]`
+    - `33` `test_tmem_runtime_matrix_ldst_scales_variant_sweep[...]`
+    - `32` `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep[...]`
+    - `30` `test_tmem_runtime_matrix_cp_no_scales[...]`
+  - there is still some stale-negative churn mixed in, but the dominant signal
+    is wrong-code / unsupported-layout fallout in branch-added TMEM coverage
+
 5. Real GB200 regression-suite bucket outside the TMEM reinterpret tests
 - Command:
   - `make test-regression`
@@ -214,12 +237,17 @@ is:
     until rerun clean
 - `test-gluon` shard `4 / 4`
   - red
-  - `687 failed, 4910 passed, 849 skipped, 19345 deselected`
-  - first useful failure:
-    - higher-rank half-row "reports clean error" case that no longer raises
-  - at least one sibling case in that family passes clean in isolation, so much
-    of the later shard output should be treated as stale-negative fallout and
-    contamination until rerun clean
+  - `686 failed, 4911 passed, 849 skipped, 19345 deselected`
+  - every failure in the completed shard is in the branch-added file
+    `python/test/gluon/test_tmem_runtime_matrix.py`
+  - top exact-family counts:
+    - `224` `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+    - `48` `test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout[...]`
+    - `33` `test_tmem_runtime_matrix_ldst_scales_variant_sweep[...]`
+    - `32` `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep[...]`
+    - `30` `test_tmem_runtime_matrix_cp_no_scales[...]`
+  - stale-negative fallout still exists inside the shard, but the finished
+    result is much broader than the original half-row clean-error family
 - `make test-proton`
   - red after the `llnl-hatchet` install removed the old import blocker
   - `10 failed, 114 passed, 1 skipped`
@@ -229,6 +257,30 @@ is:
       environment issue
     - failures are concentrated in expected tree-shape / frame-name /
       periodic-flush assertions for cudagraph profiling behavior
+
+## Cross-Bucket PTX / TTGIR Clue
+
+The current branch-vs-merge-base PTX comparison is now strong enough to guide
+the recovery plan, even before the last broad sweeps finish:
+
+- Representative wrong-code kernel:
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+- Forced `16x256` variant:
+  - current branch still chooses the `16x256b` family, but the final
+    `tcgen05.ld.sync.aligned.16x256b.x16.b32` packet offsets are contiguous:
+    `+0`, `+128`, `+256`, `+384`
+  - merge-base uses the same family but places the second support band at the
+    large lifted offsets:
+    `+0`, `+128`, `+1048576`, `+1048704`
+- Non-forced sibling:
+  - current branch chooses `16x32bx2.x64`
+  - merge-base chooses `32x32b.x64`
+- Current interpretation:
+  - the new row-plan-aware canonical-`M=64` family selection / packet
+    decomposition is collapsing a support-band / lifted-image bit into ordinary
+    packet repetition
+  - this is a better fit for the observed branch-wide wrong-code than any
+    theory based on isolated cache poisoning or unrelated LLVM noise
 
 ### `test-unit` Sweep Update (2026-04-10)
 
