@@ -28,6 +28,12 @@
   - treat special-case row/col rewrites as a temporary smell to remove, not a durable design; and
   - keep clean negatives only for cases the ISA cannot realize after the layout arithmetic is done correctly.
 - For multi-session initiatives, keep a dated handoff document in the initiative folder and update it at every meaningful checkpoint and before any likely context rollover. Record the current branch/HEAD, dirty files, exact repros run, what passed or failed, the current root-cause hypothesis, and the next concrete steps so the next session is not dependent on context compaction alone.
+- During the GB200/NVIDIA CI stabilization phase, keep `.codex/initiatives/tmem_linear_generalization/gb200_nvidia_ci_inventory.md`, `.codex/initiatives/tmem_linear_generalization/gb200_failure_manifest.md`, and `.codex/initiatives/tmem_linear_generalization/gb200_branch_recovery_plan.md` aligned with the latest branch-vs-merge-base classification:
+  - record exact repro commands for each bucket;
+  - mark whether a failure is preexisting on merge-base, branch-added coverage, branch-changed coverage, a real new regression, or flake/cache-sensitive noise;
+  - keep reinterpret-contract tests separate from proven compiler regressions until they are rewritten to explicit TMEM view APIs where appropriate; and
+  - track performance-only deltas separately so correctness recovery stays first.
+- If a test looks cache-sensitive, verify whether the symptom survives a fresh process boundary before blaming `TRITON_CACHE_DIR`. Prefer root-causing missing cache-key inputs, process/device contamination after bad kernels, or compiler global-state reuse over relying on environmental workarounds.
 
 ## Python Sweep Best Practices
 - Install and use `pytest-split` for outer sharding and keep `pytest-xdist` available for lighter CPU-bound cases.

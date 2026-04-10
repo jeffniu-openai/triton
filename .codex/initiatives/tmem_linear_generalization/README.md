@@ -17,6 +17,9 @@ When resuming the initiative:
 - use `gb200_failure_manifest.md` plus the adjacent generated `.txt` files
   when you need the exact nodeid inventories for the current branch or the
   merge-base-existing shard-3 subsets;
+- use `gb200_branch_recovery_plan.md` when you need the prioritized
+  branch-caused recovery backlog and the exact representative repros to drive
+  fixes;
 - then read the tail of the active handoff for the latest live buckets and next
   concrete steps;
 - use `log.md` for chronological provenance and validation history; and
@@ -58,6 +61,12 @@ When resuming the initiative:
     prose summaries
   - refresh the manifests whenever the current-branch failure surface changes
     materially
+
+- `gb200_branch_recovery_plan.md`
+  - prioritized recovery backlog for restoring GB200 CI parity with main
+  - separates real branch regressions from preexisting failures, stale
+    negatives, and reinterpret-contract rewrite candidates
+  - use it to choose the next fix slice once the GB200 census is current
 
 - `fuzz_plan.md`
   - operational saturation/fuzzing playbook for the broader `tcgen05` surface

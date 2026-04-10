@@ -4,6 +4,10 @@ This file is the durable index for the exact GB200 current-branch failure
 lists generated during the 2026-04-10 census. The `.txt` files beside it are
 meant to be machine-usable artifacts, not hand-maintained prose.
 
+Use this file together with:
+- `gb200_nvidia_ci_inventory.md` for the executed lane state and classification
+- `gb200_branch_recovery_plan.md` for the prioritized branch-caused backlog
+
 ## How To Use
 
 - Rerun a single exact failure:
@@ -104,5 +108,8 @@ collecting the merge-base test files and comparing exact nodeids:
 - Branch-vs-main classification is now complete for most of the exact GB200
   surface; the remaining work is using those classifications to choose and fix
   the first core compiler buckets.
+- When a manifest corresponds to a preexisting-on-main bucket
+  (`test_debug.py`, Proton), keep it for census completeness but do not treat
+  it as branch recovery work.
 - Proton is included here for census completeness even though it is already
   known to be preexisting on merge-base.

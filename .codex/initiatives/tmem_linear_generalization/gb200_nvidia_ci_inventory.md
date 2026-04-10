@@ -15,6 +15,9 @@ The current execution order follows the plan recorded in `memory.md`:
 - feed only the real compiler/backend gaps back into the TMEM cleanup/refactor
   work.
 
+The exact branch-caused recovery order that sits on top of this inventory now
+lives in `gb200_branch_recovery_plan.md`.
+
 ## Workflow Coverage
 
 The GB200/NVIDIA workflow currently runs:
@@ -169,6 +172,30 @@ is:
   - it is a broader Blackwell regression-suite wrong-code bucket and needs its
     own follow-up after the TMEM census is recorded
 
+## Branch-vs-Main Classification Snapshot
+
+The GB200 branch-vs-main classification is now strong enough to drive fixes:
+
+- `PREEXISTING_ON_MERGE_BASE`
+  - `python/test/unit/test_debug.py`
+  - `third_party/proton/test/test_profile.py`
+- `REINTERPRET_CONTRACT_TEST_TO_REWRITE`
+  - `test_tmem_subslice_block_m_64[legacy]`
+  - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+- `STALE_NEGATIVE_OR_SUPPORT_BROADENED`
+  - the higher-rank half-row clean-negative family that no longer raises
+- `REAL_NEW_ON_BRANCH_REGRESSION`
+  - unit dot / matmul / warp-specialization / tensor-descriptor reshape
+  - `python/test/regression/test_cast_matmul.py`
+  - merge-base-present shard-3 Gluon subsets
+  - exact `python/examples/gluon/` failure manifest
+- `BRANCH_ADDED_COVERAGE_RED`
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+  - branch-added / branch-changed shard-3 Gluon subsets
+
+Use `gb200_failure_manifest.md` for the exact `.txt` lists and
+`gb200_branch_recovery_plan.md` for the prioritized fix order.
+
 ## Executed GB200 Census Status
 
 ### Green Or Healthy
@@ -271,6 +298,26 @@ is:
       baseline `libproton.so` symlink
     - keep it in the GB200 census, but do not keep it in the TMEM branch
       recovery backlog
+
+## Cache / Flake Status
+
+- Current evidence still does not support a simple on-disk cache-collision
+  theory.
+- Reconfirmed probe:
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+  - followed by
+    `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+- Results:
+  - same pytest process: bad test fails, `test_block_m_64_mma[linear]` still
+    passes
+  - separate fresh processes with the same `TRITON_CACHE_DIR`: same outcome
+- Working interpretation:
+  - shard-only anomalies are more likely process/device contamination after bad
+    kernels, or another missing runtime invalidation/input, than a trivial
+    cache-key collision
+- Actionable rule:
+  - if a future anomaly looks cache-sensitive, preserve the exact order and
+    replay it across fresh processes before designing around the cache
 
 ## Cross-Bucket PTX / TTGIR Clue
 

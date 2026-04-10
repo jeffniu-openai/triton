@@ -3486,3 +3486,33 @@ rejection, not rescue
     after bad kernels, not at a trivial `TRITON_CACHE_DIR` collision
   - if a future repro is truly cache-sensitive, it needs to survive a fresh
     process boundary before the cache-key theory should drive design work
+
+## 2026-04-10: the GB200 recovery phase now has a frozen branch backlog and a dedicated execution plan
+
+- The inventory/classification phase is now complete enough to stop spending
+  cycles rediscovering red tests.
+- The initiative folder now has a dedicated recovery planner:
+  - `gb200_branch_recovery_plan.md`
+- Use it together with:
+  - `gb200_nvidia_ci_inventory.md` for the current executed CI state;
+  - `gb200_failure_manifest.md` and the adjacent `.txt` files for exact
+    nodeids; and
+  - the active handoff for the latest implementation hypothesis.
+- Current prioritized order:
+  1. fix the common `M=64` TMEM planner / packet-decomposition bug;
+  2. re-check the compile-time `row anchors 32,64` bucket as either the same
+     structural bug's legality sibling or the next planner task;
+  3. re-broaden through branch-added runtime-matrix coverage and then the
+     merge-base-present shard-3 Gluon manifests;
+  4. only after backend stability returns, resume the reinterpret-contract
+     rewrites blocked on missing explicit reordered-view support.
+- Current cache/flakiness reading remains conservative:
+  - a second probe also failed to reproduce poisoning using a known-bad
+    runtime-matrix nodeid followed by `test_block_m_64_mma[linear]` in the
+    same process and then across fresh processes while reusing the same cache
+    directory;
+  - do not treat `TRITON_CACHE_DIR` collisions as proven until a failing order
+    survives a fresh process boundary.
+- Performance policy:
+  - note codegen-family changes that may matter later, but keep the current
+    recovery loop focused on correctness and functionality first.

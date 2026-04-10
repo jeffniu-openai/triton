@@ -6144,3 +6144,32 @@ Open after this slice:
     clearly `BRANCH_ADDED_OR_CHANGED_COVERAGE`
   - the inventory/classification phase is effectively done; the next phase is
     fix ordering and implementation against the now-frozen branch backlog
+
+## 2026-04-10: froze the GB200 branch recovery backlog and rechecked the cache-collision story
+
+- Added `gb200_branch_recovery_plan.md` as the execution-layer document on top
+  of the completed GB200 census.
+- Updated `README.md`, `memory.md`, `gb200_nvidia_ci_inventory.md`,
+  `gb200_failure_manifest.md`, and the active handoff so future sessions can
+  jump directly from:
+  - executed GB200 lane state;
+  - to exact manifests;
+  - to the prioritized branch-caused recovery order.
+- The recovery plan now explicitly separates:
+  - real new-on-branch regressions;
+  - branch-added / branch-changed red coverage;
+  - reinterpret-contract tests that still need API rewrites; and
+  - preexisting merge-base failures that must stay out of the branch recovery
+    backlog.
+- Rechecked the cache-collision hypothesis with a stronger probe:
+  - bad:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+  - then good:
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - result:
+    - same pytest process: bad still fails, good still passes
+    - fresh processes reusing the same cache: same result
+- Current conclusion:
+  - there is still no reproduced proof of a simple on-disk cache-key collision
+  - if shard-only anomalies reappear, preserve the order and classify them
+    against process/device contamination before redesigning cache behavior
