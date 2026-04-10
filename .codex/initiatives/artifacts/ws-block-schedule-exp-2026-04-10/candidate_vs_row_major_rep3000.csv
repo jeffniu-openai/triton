@@ -1,0 +1,17 @@
+round_idx,order,row_major_ms,candidate_ms,delta_ms
+0,row_major->band_n_20_row_major,0.34178631,0.34080711,0.00097920
+1,band_n_20_row_major->row_major,0.34281503,0.34044026,0.00237477
+2,row_major->band_n_20_row_major,0.34286125,0.34067188,0.00218937
+3,band_n_20_row_major->row_major,0.34298818,0.34074465,0.00224353
+4,row_major->band_n_20_row_major,0.34297663,0.34031356,0.00266307
+5,band_n_20_row_major->row_major,0.34297974,0.34041634,0.00256340
+6,row_major->band_n_20_row_major,0.34295532,0.34047502,0.00248030
+7,band_n_20_row_major->row_major,0.34300236,0.34041158,0.00259078
+8,row_major->band_n_20_row_major,0.34293069,0.34073641,0.00219428
+9,band_n_20_row_major->row_major,0.34232001,0.34067147,0.00164854
+10,row_major->band_n_20_row_major,0.34227183,0.34064248,0.00162935
+11,band_n_20_row_major->row_major,0.34254029,0.34062845,0.00191184
+12,row_major->band_n_20_row_major,0.34255386,0.34069536,0.00185850
+13,band_n_20_row_major->row_major,0.34279885,0.34065917,0.00213968
+14,row_major->band_n_20_row_major,0.34269777,0.34070179,0.00199598
+15,band_n_20_row_major->row_major,0.34274950,0.34067594,0.00207356

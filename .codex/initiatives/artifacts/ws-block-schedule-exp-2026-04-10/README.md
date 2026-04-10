@@ -119,6 +119,33 @@ So the only surviving nontrivial candidate from this follow-up is:
 
 - `band_n_20_row_major`
 
+## Repeated Long-Run Paired Analysis
+
+To check whether the small edge was just noise, a repeated paired comparison was run with:
+
+- `16` rounds
+- `rep=3000` per timing call
+- `5` manual warmup launches before each timing
+- alternating order every round
+
+Artifacts:
+
+- `analyze_candidate_schedule.py`
+- `candidate_vs_row_major_rep3000.csv`
+- `candidate_vs_row_major_rep3000.md`
+
+Summary:
+
+- mean `row_major = 0.34270173 ms`
+- mean `band_n_20_row_major = 0.34060572 ms`
+- mean delta (`row_major - candidate`) = `0.00209601 ms`
+- mean relative edge for candidate = `0.6116%`
+- bootstrap 95% CI for the mean delta = `[0.00188117, 0.00228858] ms`
+- sign test p-value = `0.000031`
+- wins / losses / ties = `16 / 0 / 0`
+
+So under this repeated same-GPU setup, the difference does look statistically real.
+
 ## NCU Note
 
 A quick `rep=1` NCU comparison against `row_major` did **not** reinforce the timing edge:
@@ -146,6 +173,6 @@ If block scheduling is revisited again, the most justified follow-up is:
 
 1. upstream `band_n_20_row_major` into the real schedule switch
 2. compare it directly against the current repo `row_major` path in the normal benchmark harness
-3. only if that still wins, repeat NCU with a tighter apples-to-apples profile setup
+3. repeat NCU with a tighter apples-to-apples profile setup after promotion
 
 No other schedule family in this follow-up produced a comparable signal.
