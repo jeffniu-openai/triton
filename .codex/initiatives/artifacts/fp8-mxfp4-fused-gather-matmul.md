@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-10T20:06:20Z
+updated: 2026-04-10T20:24:22Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -563,6 +563,11 @@ The later merged-loader cleanup is no longer the only viable producer topology. 
   - Validation: `make` from `/root/code/triton`; `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py`; `PYTHONPATH=python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`; ad hoc benchmark-path sanity check at `batch=2048` via `do_bench_cudagraph` -> `example=0.040898 ms`, `reference=0.043668 ms`
   - Learnings: `store_helper_fragment_layout(...)` was only used once inside `epilogue_store_partition`, so keeping it as a separate constexpr helper was unnecessary. Inlining the `gl.BlockedLayout(...)` at the use site makes the store-helper layout contract more local without changing codegen. I also audited reuse opportunities from `triton_kernels.tests.test_matmul` and the underlying `triton_kernels.testing` module. The only clean reuse worth taking here was `alloc_rand(...)` for the example's byte-dtype random-input path, since that logic matched the existing local float8 generation. I explicitly did not switch the example over to `make_random_tensor(...)`: it would drag in a test-only generic dtype adapter surface and, more importantly, it normalizes non-byte random blocks, which would silently change the benchmark input distribution rather than just clean up helpers.
   - Plan updates: Keep future helper reuse conservative. Prefer public helpers from `triton_kernels.testing` only when they preserve the example's current input-generation and reference-validation semantics; otherwise keep the example-local helper.
+- `2026-04-10` Completed: Reused `make_random_tensor` for the example's activation and FP4 weight generation
+  - Artifact: `python/examples/gluon/05-moe-bmm1-fused-gather.py`
+  - Validation: `make` from `/root/code/triton`; `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py`; `PYTHONPATH=python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`; ad hoc benchmark-path sanity checks via `do_bench_cudagraph` -> `batch=128` `example=0.032971 ms`, `reference=0.034037 ms`; `batch=2048` `example=0.040564 ms`, `reference=0.043139 ms`
+  - Learnings: `make_random_tensor(...)` is not a no-op swap because it uses `alloc_rand(...)`, which normalizes non-byte random blocks. After the user explicitly said that changing the numerical input distribution was acceptable for this example, the safe reuse boundary became clear: use `make_random_tensor(...)` for the benchmark-side activation and FP4 weight construction, keep the routing-data generation local, and keep only a tiny local dtype adapter to satisfy the helper's interface. This let me delete the bespoke FP4 downcast/layout helper path while preserving correctness and keeping the benchmark path in the same performance band. The representative benchmark points were slightly better than the immediately previous sanity numbers, so there is no evidence of a regression from the broader helper reuse.
+  - Plan updates: Keep using `make_random_tensor(...)` for example-side benchmark input generation unless a future benchmark/test goal needs the older plain-`randn` weight distribution specifically. Further helper reuse should continue to be judged by whether it simplifies the example without changing semantics that the example is trying to showcase.
 
 ## Next Up
 

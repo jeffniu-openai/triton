@@ -25,7 +25,7 @@ from triton_kernels.matmul import (
     matmul_torch,
 )
 from triton_kernels.numerics import InFlexData, MAX_FINITE_FLOAT8E4NV, OutFlexData
-from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mxfp
+from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE
 from triton_kernels.swiglu import PrecisionConfig as SwiGLUPrecisionConfig, swiglu_fn, swiglu_torch
 from triton_kernels.tensor import (
     FP4,
@@ -33,14 +33,13 @@ from triton_kernels.tensor import (
     Tensor,
     convert_layout,
     make_ragged_tensor_metadata,
-    wrap_torch_tensor,
 )
 from triton_kernels.tensor_details.dtype import UINT8
 from triton_kernels.tensor_details.layout import (
     make_default_matmul_mxfp4_w_layout,
     make_default_matmul_mxfp4_w_scale_layout,
 )
-from triton_kernels.testing import alloc_rand, assert_close
+from triton_kernels.testing import alloc_rand, assert_close, make_random_tensor
 from triton_kernels.topk import topk
 
 
@@ -1063,20 +1062,49 @@ class PreparedCase:
     out_dtype: torch.dtype
 
 
-def alloc_randn(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torch.Tensor:
-    if dtype.itemsize == 1:
-        return alloc_rand(shape, device=device, dtype=dtype)
-    return torch.randn(shape, device=device, dtype=dtype)
+@dataclass(frozen=True, slots=True)
+class RandomTensorDType:
+    torch_dtype: torch.dtype
+    has_mx_scale: bool = False
+    is_mxfloat4: bool = False
+    is_nvfp4: bool = False
 
 
-def alloc_randn_fp4(shape: tuple[int, ...], device: str) -> tuple[Tensor, Tensor]:
-    data = alloc_randn(shape, torch.bfloat16, device)
-    data, scale = downcast_to_mxfp(data, FP4, axis=1)  # type: ignore[arg-type]
-    data_layout = make_default_matmul_mxfp4_w_layout(mx_axis=1)
-    scale_layout = make_default_matmul_mxfp4_w_scale_layout(mx_axis=1, num_warps=8)
-    data = convert_layout(wrap_torch_tensor(data, dtype=FP4), data_layout)
-    scale = convert_layout(wrap_torch_tensor(scale), scale_layout)
-    return data, scale
+FLOAT8_E4M3_DTYPE = RandomTensorDType(torch.float8_e4m3fn)
+MXFP4_DTYPE = RandomTensorDType(torch.uint8, has_mx_scale=True, is_mxfloat4=True)
+
+
+def make_activation_tensor(batch_size: int, k: int, device: str) -> torch.Tensor:
+    x, _, _ = make_random_tensor(
+        shape=(batch_size, k),
+        n_slices=1,
+        ragged_dim=None,
+        ragged_padding=False,
+        device=device,
+        dtype=FLOAT8_E4M3_DTYPE,
+        mxfp_dim=None,
+        transpose=False,
+        squeeze_batch_dim=True,
+    )
+    return x
+
+
+def make_weight_tensor(n_expts_local: int, k: int, n: int, device: str) -> tuple[Tensor, Tensor]:
+    w, w_scale, _ = make_random_tensor(
+        shape=(k, n),
+        n_slices=n_expts_local,
+        ragged_dim=None,
+        ragged_padding=False,
+        device=device,
+        dtype=MXFP4_DTYPE,
+        mxfp_dim=-2,
+        transpose=False,
+        squeeze_batch_dim=False,
+        value_hbm_swizzling=make_default_matmul_mxfp4_w_layout(mx_axis=-2),
+        scale_hbm_swizzling=make_default_matmul_mxfp4_w_scale_layout(mx_axis=-2, num_warps=8),
+    )
+    assert w_scale is not None
+    return w, w_scale
 
 
 def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[RaggedTensorMetadata, torch.Tensor]:
@@ -1105,9 +1133,9 @@ def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
     k, n = GPT_OSS_120B_MM1_SHAPE
     n_expts_local = GPT_OSS_120B_NUM_EXPERTS // GPT_OSS_120B_NUM_EXPERT_SHARDS
     ragged_metadata, gather_indx = init_routing_data(batch_size, local_rank, device)
-    x = alloc_randn((batch_size, k), dtype=torch.float8_e4m3fn, device=device)
-    w, w_scale = alloc_randn_fp4((n_expts_local, k, n), device=device)
-    bias = alloc_randn((n_expts_local, n), dtype=torch.float32, device=device)
+    x = make_activation_tensor(batch_size, k, device)
+    w, w_scale = make_weight_tensor(n_expts_local, k, n, device)
+    bias = alloc_rand((n_expts_local, n), device=device, dtype=torch.float32)
 
     swiglu_alpha = float(torch.rand((), device=device).item()) / 5 + 1.0
     swiglu_limit = float(torch.rand((), device=device).item()) / 5 + 1.3
