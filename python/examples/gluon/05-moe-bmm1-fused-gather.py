@@ -1095,10 +1095,6 @@ def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[Ra
     return ragged_metadata, gather_indx
 
 
-def normalize_flex_scale(scale: torch.Tensor) -> torch.Tensor:
-    return scale.reshape(1) if scale.ndim == 0 else scale
-
-
 def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
     torch.manual_seed(seed)
 
@@ -1117,8 +1113,8 @@ def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
         (swiglu_alpha, swiglu_limit),
     )
 
-    x_scale = normalize_flex_scale(torch.rand((), device=device) + 0.5)
-    y_scale = normalize_flex_scale(torch.rand((), device=device) + 3.5)
+    x_scale = (torch.rand((), device=device) + 0.5).reshape(1)
+    y_scale = (torch.rand((), device=device) + 3.5).reshape(1)
     return PreparedCase(
         batch_size=batch_size,
         local_rank=local_rank,
@@ -1174,15 +1170,22 @@ def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, P
     return y, precision_config
 
 
-def validate_outputs(
-    prepared: PreparedCase,
-    provider: str,
-    candidate: tuple[torch.Tensor, PrecisionConfig],
-    reference: tuple[torch.Tensor, PrecisionConfig],
-) -> None:
-    ref_y, ref_precision = reference
-    cand_y, cand_precision = candidate
-    description = f"gpt-oss-120b-mm1-bs{prepared.batch_size}:{provider}"
+# ===-----------------------------------------------------------------------===#
+# Unit Tests
+# ===-----------------------------------------------------------------------===#
+
+
+def is_blackwell():
+    return triton.runtime.driver.active.get_current_target().backend == "cuda" and torch.cuda.get_device_capability()[0] == 10
+
+
+@pytest.mark.parametrize("batch_size", [128, 1536, 2048])
+@pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
+def test_op(batch_size):
+    prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+    ref_y, ref_precision = run_provider(prepared, "reference")
+    cand_y, cand_precision = run_provider(prepared, "example")
+    description = f"gpt-oss-120b-mm1-bs{prepared.batch_size}:example"
     assert_close(
         ref_y.to(torch.float32),
         cand_y.to(torch.float32),
@@ -1191,7 +1194,6 @@ def validate_outputs(
         description=f"{description}:out",
         verbose=False,
     )
-
     ref_scale = ref_precision.flex_ctx.out_data.actual_scale
     cand_scale = cand_precision.flex_ctx.out_data.actual_scale
     if ref_scale is not None or cand_scale is not None:
@@ -1204,35 +1206,6 @@ def validate_outputs(
             description=f"{description}:out_scale",
             verbose=False,
         )
-
-
-def count_active_tokens(prepared: PreparedCase) -> int:
-    return int(prepared.ragged_metadata.slice_sizes.sum().item())
-
-
-# ===-----------------------------------------------------------------------===#
-# Unit Tests
-# ===-----------------------------------------------------------------------===#
-
-
-def is_cuda():
-    return triton.runtime.driver.active.get_current_target().backend == "cuda"
-
-
-def is_blackwell():
-    return is_cuda() and torch.cuda.get_device_capability()[0] == 10
-
-
-@pytest.mark.parametrize("batch_size", [128, 1536, 2048])
-@pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
-def test_op(batch_size):
-    prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
-    validate_outputs(
-        prepared,
-        "example",
-        run_provider(prepared, "example"),
-        run_provider(prepared, "reference"),
-    )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1268,7 +1241,7 @@ def bench(batch_size, provider):
     out = make_output_buffer(prepared)
 
     ms = do_bench_cudagraph(lambda: run_kernel(prepared, kernel, precision_config, out))
-    n_tokens = count_active_tokens(prepared)
+    n_tokens = int(prepared.ragged_metadata.slice_sizes.sum().item())
     k, n = GPT_OSS_120B_MM1_SHAPE
     flops = 2 * n_tokens * k * n
     return flops * 1e-12 / (ms * 1e-3)
