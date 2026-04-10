@@ -5691,3 +5691,21 @@ Open after this slice:
   - determine whether one more explicit view projection can keep the reordered
     quarter-band contract inside the currently supported direct-view frontier,
     or whether supporting that reordered M64 view requires a compiler fix.
+- Follow-up row-split probes after that checkpoint:
+  - `/tmp/probe_blockm64_reorder_rowsplit.py`
+    - tried to split the M64 tile into `2 x 32` rows before the quarter-band
+      reorder and then iterate over the halves
+    - failed in Gluon AST lowering because Python list iteration inside the JIT
+      kernel is not supported there (`'List' object has no attribute 'func'`)
+  - `/tmp/probe_blockm64_reorder_rowsplit2.py`
+    - unrolled the two halves explicitly to remove the loop limitation
+    - failed at higher-rank TMEM view inference when indexing the reordered
+      `2 x 32 x 4 x 32` view:
+      - `failed to infer memdesc_index result type`
+      - `unsupported tensor memory memdesc_subslice view; preserved tensor memory view encoding also failed: rank must be less than or equal to the memdesc rank for tensor memory`
+- Net new conclusion:
+  - the explicit rewrite candidate is now blocked at two layers:
+    - direct reordered-view ld/st still wants unsupported `32,64` row anchors;
+      and
+    - the row-split workaround currently hits higher-rank TMEM view/index
+      inference limits before lowering.

@@ -196,6 +196,17 @@
 - Implication: the reinterpret-test rewrite is still the next task, but it now
   likely requires either one more explicit view projection step or compiler
   support for the reordered M64 quarter-band descriptor view.
+- A follow-up row-split probe also suggests the gap is not only in final
+  lowering:
+  - splitting the view into `2 x 32` rows before the quarter-band reorder
+    should, in principle, avoid the unsupported `32,64` anchor requirement on
+    the full `64`-row view; but
+  - once written as a higher-rank TMEM view,
+    `halves.index(0)` currently fails with
+    `failed to infer memdesc_index result type ... rank must be less than or equal to the memdesc rank for tensor memory`.
+- So the explicit-contract path is currently blocked by both:
+  - direct-view row-anchor materialization on the reordered `64`-row view; and
+  - higher-rank TMEM view/index inference on the row-split variant.
 
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual
