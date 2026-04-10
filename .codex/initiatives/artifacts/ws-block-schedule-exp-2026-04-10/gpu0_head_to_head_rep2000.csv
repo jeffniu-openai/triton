@@ -1,0 +1,3 @@
+case_id,local_rank,strategy_name,strategy_id,runtime_ms,tflops,tbps,validated,expected_slice_size
+bs16384_E256_es8_B5120x10240,0,row_major,0,0.34173582,2559.33733124,2.70464080,true,256
+bs16384_E256_es8_B5120x10240,0,band_n_20_row_major,29,0.34050464,2568.59124826,2.71442009,true,256

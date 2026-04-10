@@ -1,0 +1,5 @@
+case_id,local_rank,strategy_name,strategy_id,runtime_ms,tflops,tbps,validated,expected_slice_size
+bs16384_E256_es8_B5120x10240,0,row_major,0,0.34515699,2533.96937005,2.67783260,true,256
+bs16384_E256_es8_B5120x10240,0,band_n_8_grouped_m_19,24,0.34832582,2510.91705380,2.65347151,true,256
+bs16384_E256_es8_B5120x10240,0,band_n_4_grouped_m_38,25,0.35423138,2469.05638489,2.60923425,true,256
+bs16384_E256_es8_B5120x10240,0,band_n_2_grouped_m_76,26,0.35522623,2462.14146758,2.60192675,true,256
