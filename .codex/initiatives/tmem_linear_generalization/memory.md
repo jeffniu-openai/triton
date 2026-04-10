@@ -167,6 +167,36 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
+## Current Topline (2026-04-10 16:45 UTC)
+
+- Current durable checkpoint:
+  - HEAD `460c12c63`
+  - worktree clean
+- GB200 lane state confirmed again after rebuild:
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - `make NUM_PROCS=24 test-unit`
+    - green
+- The focused GB200 Gluon story has narrowed further:
+  - the earlier merge-base-present focused `test_core.py` exact bucket is no
+    longer live:
+    - `146 / 146` exacts now pass on the current branch
+  - the branch-added / branch-changed focused `test_core.py` tail reduces to:
+    - `12` clean descriptor-chain runtime failures
+      (`gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`)
+    - `1` split-N PTX-immediate expectation failure
+      (`gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`)
+    - the earlier `21` `variant_sweep` exacts all pass in isolation and are
+      now classified as shard fallout
+- Current active compiler bucket:
+  - descriptor-chain/reinterpret/view-composition lowering for the exact
+    `12`-nodeid focused-core manifest above
+- Current non-correctness/stale buckets to keep separate:
+  - the split-N offset-immediate expectation exact
+  - the two `block_m_64` reinterpret-contract rewrite candidates
+  - Proton failures, which remain preexisting on merge-base
+
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is
   the GB200 lane from `.github/workflows/integration-tests-nvidia.yml`, as

@@ -46,6 +46,38 @@ PY
 
 ## Current Classification Summary
 
+### Current Clean-HEAD Checkpoint
+
+- HEAD:
+  - `460c12c63`
+- Worktree:
+  - clean
+- Current branch-topline state:
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - `make NUM_PROCS=24 test-unit`
+    - green
+  - the next active Gluon recovery slice is no longer the old
+    merge-base-present focused `test_core.py` bucket:
+    - `146 / 146` merge-base-present exacts now pass on the current branch
+- The remaining focused-core branch-added / branch-changed tail now reduces to:
+  - `12` exact descriptor-chain runtime failures:
+    - use
+      `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+    - shared symptom:
+      - `RuntimeError: CUDA error: misaligned address`
+  - `1` split-N PTX-expectation exact:
+    - use
+      `gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+    - current classification:
+      - runtime-correct but stale/opinionated codegen expectation
+  - `21` `test_tmem_linear_roundtrip_variant_sweep[...]` exacts from the same
+    earlier shard now all pass in clean isolation
+- Practical consequence:
+  - the next compiler fix should be driven by the descriptor-chain manifest,
+    not by the older contaminated shard counts.
+
 ### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
 
 - The current dirty follow-up propagates explicit MMAv5 root row plans through

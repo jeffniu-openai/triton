@@ -6675,3 +6675,27 @@ Open after this slice:
   - the GB200 branch-recovery backlog no longer contains a unit-lane bucket
   - the next active recovery surface is the merge-base-present focused
     `python/test/gluon/test_core.py` bucket (`146` exact nodeids)
+
+## 2026-04-10: focused `test_core.py` branch-added exacts reduced from contaminated shard counts to a `12 + 1` live tail
+- I rebuilt and rechecked the local lit baseline:
+  - `make -j8`
+  - `make test-lit` -> `248 passed, 2 unsupported`
+- I then reduced the branch-added / branch-changed focused
+  `python/test/gluon/test_core.py` bucket from the earlier contaminated shard
+  logs:
+  - the `146` merge-base-present exacts now all pass on the current branch
+  - the `21` `test_tmem_linear_roundtrip_variant_sweep[...]` exacts from the
+    same shard all pass in clean isolation (`21 passed in 8.01s`)
+  - the `26` descriptor-chain exacts reduce to `12` independent failures and
+    `14` clean passes (`12 failed, 14 passed in 10.82s`)
+  - the single branch-added `test_tmem_linear_roundtrip_splitn_shapes[...]`
+    exact remains only as a stale PTX offset-immediate expectation
+- New durable manifests:
+  - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+  - `gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+- Practical consequence:
+  - the next active compiler fix slice is no longer “the whole focused
+    branch-added core bucket”; it is the `12`-nodeid descriptor-chain
+    subfamily
+  - the `variant_sweep` tail should now be treated as shard fallout, not as an
+    independent recovery backlog item

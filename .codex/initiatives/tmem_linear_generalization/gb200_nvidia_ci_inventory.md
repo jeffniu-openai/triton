@@ -18,6 +18,53 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Focused-Core Refresh (2026-04-10 16:45 UTC)
+
+- HEAD:
+  - `460c12c63`
+- Worktree:
+  - clean
+- Refreshed local baseline after `make -j8`:
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+- The older split `test-gluon` shard-3 focused-core story is now materially
+  narrower after fresh exact reruns:
+  - merge-base-present focused `test_core.py` exacts:
+    - `146 / 146` pass on the current branch
+    - implication:
+      - the previously prioritized merge-base-present focused core bucket is no
+        longer a live current-head red surface
+  - branch-added / branch-changed focused `test_core.py` exacts:
+    - initial shard reduction:
+      - `48` raw failing exacts
+    - exact isolated reduction:
+      - `21 / 21` `test_tmem_linear_roundtrip_variant_sweep[...]` exacts pass
+        in isolation
+      - `12 / 26` `test_tmem_descriptor_chain_matrix[...]` exacts still fail
+        cleanly with `RuntimeError: CUDA error: misaligned address`
+      - the remaining `14 / 26`
+        `test_tmem_descriptor_chain_matrix[...]` exacts pass in isolation
+      - `1 / 1` `test_tmem_linear_roundtrip_splitn_shapes[...]` exact still
+        fails only because the PTX offset-immediate expectation is stale while
+        runtime correctness is already green
+- New current exact manifests for the independently failing focused-core tail:
+  - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+    - `12` exact nodeids
+  - `gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+    - `1` exact nodeid
+- Current interpretation:
+  - the branch-added focused-core surface is no longer “descriptor-chain `26`
+    plus variant sweep `21`”;
+  - the real independent bug bucket is the `12`-nodeid descriptor-chain
+    subfamily, not the whole contaminated shard reduction; and
+  - the variant-sweep tail is now firmly classified as shard fallout after the
+    earlier CUDA fault, not as another independent TMEM family.
+- Current next action:
+  - drive the next compiler fix from the `12`-nodeid descriptor-chain manifest
+    and keep the split-N offset-expectation node in the stale/opinionated
+    bucket unless a broader heuristic change makes it worth updating.
+
 ## Latest Current-Branch Reduction (2026-04-10)
 
 ### MMAv5 Row-Plan Propagation Checkpoint

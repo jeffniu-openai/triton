@@ -96,6 +96,26 @@ PY
   - `686` nodeids
   - source:
     - `python3 -m pytest -q -rf --tb=no --splits 4 --group 4 -k 'not test_tmem_subslice_block_m_64 and not test_tmem_subslice_block_m_64_parent_layout' python/test/gluon/ python/tutorials/gluon/`
+- [gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt)
+  - `12` nodeids
+  - source:
+    - isolated rerun of the `26` descriptor-chain exacts extracted from the
+      branch-added / branch-changed focused `test_core.py` shard reduction
+  - current interpretation:
+    - this is the current independent descriptor-chain runtime bug bucket
+    - all `12` exacts fail cleanly with `RuntimeError: CUDA error: misaligned address`
+    - the other `14` descriptor-chain exacts from the contaminated shard pass
+      in isolation and should not stay in the live red list
+- [gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt)
+  - `1` nodeid
+  - source:
+    - isolated rerun of the single branch-added / branch-changed focused
+      `test_tmem_linear_roundtrip_splitn_shapes[...]` exact from the shard
+      reduction
+  - current interpretation:
+    - runtime correctness is already green
+    - only the exact PTX offset-immediate expectation is stale/opinionated
+      right now
 - [gb200_current_branch_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_regression_failures.txt)
   - `234` nodeids
   - source:
@@ -204,6 +224,11 @@ collecting the merge-base test files and comparing exact nodeids:
 - The refreshed `3 + 3 + 128 = 134` unit manifests above are now the primary
   current-head unit inventory for the latest dirty MMAv5 row-plan propagation
   checkpoint.
+- The focused branch-added `test_core.py` tail is now reduced too:
+  - the `21` `test_tmem_linear_roundtrip_variant_sweep[...]` exacts from the
+    contaminated shard all pass in clean isolation; and
+  - the independent live surface is the `12`-nodeid descriptor-chain manifest
+    plus the single split-N PTX-expectation node above.
 - The older `182`-nodeid unit manifest is still useful as the first reduced
   branch-recovery slice, but the newer `2098`-nodeid XML manifest is the
   current broad CI-like unit inventory.
