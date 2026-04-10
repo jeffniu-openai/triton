@@ -5719,3 +5719,73 @@ Open after this slice:
 - Future cleanup work should treat those as remembered backlog items when
   resuming the TMEM bug/hack refactor rather than rediscovering them through
   another round of test rewrites.
+
+## 2026-04-10: executed the first broad GB200/NVIDIA CI census and found new non-reinterpret red buckets
+
+- I continued the initiative by moving from the old exact-nodeid-only TMEM
+  baseline into the broader GB200 Blackwell lane inventory.
+- Local environment status:
+  - `make test-lit`
+    - broken locally because `LLVM_EXTERNAL_LIT` is empty in `CMakeCache.txt`,
+      which makes the generated rule try to run `/llvm-lit`
+    - manual fallback `cd $BUILD_DIR && python3 -m lit.main -sv test` passes
+  - `make test-proton`
+    - blocked locally by missing `llnl-hatchet`
+- Confirmed green lanes:
+  - `make test-cpp`
+    - `240 / 240` passed
+  - `make test-gsan`
+    - `20 / 20` passed
+  - `make test-microbenchmark`
+    - passed
+- Confirmed new GB200 red lane outside TMEM reinterpret:
+  - `make test-regression`
+    - `234 failed, 856 passed, 216 skipped`
+    - all observed failures were in `python/test/regression/test_cast_matmul.py`
+- I then ran the main Gluon/tutorial surface with `pytest --splits 4 --group`
+  across four GPUs, excluding only the two documented rewrite-blocked
+  `block_m_64` subslice tests.
+- Shard results observed during this checkpoint:
+  - shard `2 / 4`
+    - green
+    - `2663 passed, 3784 skipped, 19344 deselected`
+  - shard `4 / 4`
+    - red
+    - `687 failed, 4910 passed, 849 skipped, 19345 deselected`
+  - shard `3 / 4`
+    - red
+    - `1160 failed, 3251 passed, 2036 skipped, 19344 deselected`
+  - shard `1 / 4`
+    - still running when I wrote this entry
+    - no exact failure had appeared yet
+- Most important clean exact reruns after the broad shards:
+  - stale-negative / broadened-support candidate:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout[identity-64-32x32b-32x32b.x64.b32]`
+    - still fails, but only because it no longer raises `CompilationError`
+  - non-reproducible in isolation:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout[identity-64-16x64b-16x64b.x32.b32]`
+    - passes clean on an isolated rerun
+  - non-reproducible in isolation:
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+    - passes clean on an isolated rerun
+  - real split-N TMEM regressions confirmed clean:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+      - `4096 / 8192` mismatches
+    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+      - `2048 / 2048` mismatches
+- I also captured a separate exact toolchain/codegen bucket from the red Gluon
+  shard, but it turned out not to be a new bug:
+  - `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`
+    passes clean on an isolated rerun
+  - the PTXAS message
+    `Feature '.kind::i8' not supported on .target 'sm_103a'`
+    is the expected behavior for that negative test
+  - the broad shard only looked alarming because `-s` printed the PTXAS
+    reproducer
+- Net new conclusion:
+  - the initiative is no longer just about the old reinterpret-contract tests
+  - the current branch tip has a real `M=64` split-N TMEM regression again
+  - the higher-rank half-row "clean error" family now mixes stale negatives and
+    contaminated shard fallout, so it needs per-nodeid reclassification
+  - and there is a broader `test_cast_matmul.py` regression-suite bucket
+    outside TMEM

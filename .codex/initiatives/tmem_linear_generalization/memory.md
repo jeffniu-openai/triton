@@ -176,13 +176,26 @@
   treated as compiler bugs; if they depend on implicit physical TMEM mapping,
   rewrite them to explicit descriptor/view composition first and only treat
   residual failures as compiler issues.
-- The currently confirmed GB200 red list is:
-  - two `block_m_64` reinterpret-contract rewrite candidates in
-    `python/test/gluon/test_core.py`.
+- The executed GB200 census has now widened the red story beyond the original
+  two `block_m_64` rewrite candidates:
+  - the two reinterpret-contract rewrite candidates are still tracked; but
+  - there is now also a real `M=64` split-N TMEM regression at the current
+    branch tip, confirmed by clean isolated reruns of descriptor-chain and
+    roundtrip exact nodeids; and
+  - there is also a broader `test_cast_matmul.py` regression-suite bucket
+    outside the old reinterpret debate.
+- Use `gb200_nvidia_ci_inventory.md` for the exact continuously updated red
+  list and lane-by-lane census status.
 - The stale
   `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[...]`
   expectation has already been updated to the current row-anchor diagnostic and
   is no longer part of the red list.
+- The higher-rank half-row "reports clean error" family now needs re-triage:
+  - at least one exact nodeid no longer raises and should be treated as a
+    stale-negative / broadened-support candidate; while
+  - at least one sibling case passes clean in isolation after the shard run,
+    which means large shard-level failure counts in that family cannot be taken
+    at face value without clean reruns.
 - First rewrite experiments for the two remaining `block_m_64` tests did not
   produce a landable explicit-view replacement yet:
   - simple direct 2D slice rewrites compiled and reproduced the same wrong
@@ -223,6 +236,16 @@
     compositions remain representable; and
   - only after that, finish rewriting the old reinterpret-heavy `block_m_64`
     tests to guaranteed APIs.
+- New current-execution ordering after the first real GB200 census:
+  - keep the two rewrite-candidate `block_m_64` tests logged as missing
+    explicit-view surface coverage, but do not let them dominate the whole
+    initiative narrative;
+  - fix or at least isolate the real `M=64` split-N TMEM regression first,
+    because it breaks previously green exact controls on clean reruns;
+  - separately triage the higher-rank half-row clean-negative family and update
+    tests where support has genuinely broadened; and
+  - keep the broad regression `test_cast_matmul.py` bucket visible in the
+    GB200 inventory as a distinct follow-up surface.
 
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual
