@@ -63,6 +63,16 @@ confirmed GB200/NVIDIA red list is:
   - do not treat this as a proven compiler bug until the test is restated with
     explicit TMEM descriptor/view APIs (`slice/index/reshape/permute`) or
     otherwise narrowed to reinterpret's actual contract
+  - current status after rewrite exploration:
+    - direct logical-slice rewrites do not encode the intended borrowed
+      physical fragment behavior; and
+    - the more faithful explicit quarter-band reorder is currently blocked by
+      missing TMEM surface coverage in the compiler/backend
+  - missing coverage now observed:
+    - reordered `M=64` quarter-band views fail direct ld/st with unsupported
+      row anchors `32,64`; and
+    - row-split higher-rank variants fail TMEM view/index inference before
+      lowering
 
 2. Reinterpret-contract rewrite candidate
 - Nodeid:
@@ -77,6 +87,10 @@ confirmed GB200/NVIDIA red list is:
 - Current policy:
   - same as above; this test currently encodes implicit physical-mapping
     assumptions rather than the newer explicit TMEM view contract
+  - current status after rewrite exploration:
+    - same blocker as the legacy case: the explicit descriptor/view rewrite is
+      not landable yet because the necessary reordered M64 views are not fully
+      supported by the current TMEM API/backend surface
 
 ## Recently Cleared During This Checkpoint
 
@@ -105,5 +119,7 @@ These stay in the nearest validation loop while the red list is being reduced.
   actual behavior changes.
 - For reinterpret-heavy TMEM tests, first restate the user intent under the new
   explicit descriptor/view API contract.
-- Only failures that remain after that rewrite should be treated as core
-  compiler bugs requiring planner or lowering changes.
+- If the explicit rewrite itself is blocked by missing TMEM view/index or
+  direct-lowering surface coverage, record that as initiative debt and move the
+  work back to the core compiler/API backlog instead of forcing the old
+  reinterpret behavior to remain the contract.

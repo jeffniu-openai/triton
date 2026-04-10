@@ -207,6 +207,22 @@
 - So the explicit-contract path is currently blocked by both:
   - direct-view row-anchor materialization on the reordered `64`-row view; and
   - higher-rank TMEM view/index inference on the row-split variant.
+- Treat those as concrete missing TMEM feature/surface-coverage gaps, not just
+  as failed test rewrites:
+  - TMEM explicit view composition still lacks enough surface coverage to
+    express the old borrowed-physical `block_m_64` intent with guaranteed APIs;
+  - direct ld/st lowering does not yet cover reordered M64 quarter-band views
+    even when the intended physical grouping is explicit; and
+  - higher-rank TMEM reshape/index/subslice inference still has holes for the
+    row-split workaround that would otherwise stay inside a supported `32`-row
+    direct frontier.
+- When the initiative returns to fixing bugs/hacks/cleanup in this area, these
+  are now explicit backlog items rather than rediscovery work:
+  - support or cleanly model reordered M64 quarter-band descriptor views;
+  - broaden higher-rank TMEM view/index inference so row-split descriptor
+    compositions remain representable; and
+  - only after that, finish rewriting the old reinterpret-heavy `block_m_64`
+    tests to guaranteed APIs.
 
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual

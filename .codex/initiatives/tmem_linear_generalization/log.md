@@ -5709,3 +5709,13 @@ Open after this slice:
       and
     - the row-split workaround currently hits higher-rank TMEM view/index
       inference limits before lowering.
+- Record this as initiative debt, not just failed experimentation:
+  - the current TMEM API/compiler/backend surface is still missing coverage for
+    the explicit-contract replacement of the old `block_m_64`
+    reinterpret-dependent tests;
+  - the concrete missing pieces currently exposed are:
+    - reordered M64 quarter-band direct views; and
+    - higher-rank row-split TMEM reshape/index/subslice inference.
+- Future cleanup work should treat those as remembered backlog items when
+  resuming the TMEM bug/hack refactor rather than rediscovering them through
+  another round of test rewrites.
