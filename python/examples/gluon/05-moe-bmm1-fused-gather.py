@@ -187,7 +187,7 @@ def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> Kerne
         return replace(config, block_m=16, epilogue_row_subtile_factor=2)
     if slice_size <= 16:
         return replace(config, block_m=32, epilogue_row_subtile_factor=4)
-    if slice_size <= 32:
+    if slice_size <= 58:
         return replace(config, block_m=64, epilogue_row_subtile_factor=4)
     return config
 
@@ -1230,7 +1230,7 @@ def is_blackwell():
     return is_cuda() and torch.cuda.get_device_capability()[0] == 10
 
 
-@pytest.mark.parametrize("batch_size", [128, 1024])
+@pytest.mark.parametrize("batch_size", [128, 1536, 2048])
 @pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
 def test_op(batch_size):
     prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)

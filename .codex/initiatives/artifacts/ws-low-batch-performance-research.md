@@ -172,11 +172,26 @@ The live example now has a dynamic low-batch selector keyed off `slice_size`:
 |---:|---:|---:|
 | `<= 8` | `16` | `2` |
 | `<= 16` | `32` | `4` |
-| `<= 32` | `64` | `4` |
-| `> 32` | `128` | `8` |
+| `<= 58` | `64` | `4` |
+| `> 58` | `128` | `8` |
 
 This preserves the current high-batch kernel shape while making the exact helper-store path legal
 for the smallest GPT-OSS MM1 buckets.
+
+The first landed selector used `<= 32` for the `64/4` region, but a full post-landing sweep showed
+that transition was too early and created an avoidable pocket at `batch=1280..1536`. Targeted
+same-process A/Bs showed the real crossover is much later:
+
+| Batch | `slice_size` | `64/4` ms | `128/8` ms | Better |
+|---|---:|---:|---:|---|
+| 1280 | 40 | 0.03582 | 0.04269 | `64/4` |
+| 1536 | 48 | 0.03604 | 0.04345 | `64/4` |
+| 1792 | 56 | 0.04137 | 0.04153 | `64/4` |
+| 1856 | 58 | 0.04095 | 0.04167 | `64/4` |
+| 1920 | 60 | 0.04168 | 0.04104 | `128/8` |
+| 1984 | 62 | 0.04202 | 0.04136 | `128/8` |
+
+So the stable selector boundary is `slice_size <= 58` for `64/4`, then `128/8` after that.
 
 ## Post-Landing Results
 
@@ -188,10 +203,10 @@ Same prepared case, same GPU, `rep = 1000`:
 | 256 | 0.03267 | 0.03351 | 1.026x |
 | 512 | 0.03379 | 0.03415 | 1.011x |
 | 1024 | 0.03583 | 0.03633 | 1.014x |
-| 2048 | 0.04093 | 0.04271 | 1.043x |
-| 4096 | 0.04799 | 0.04987 | 1.039x |
-| 8192 | 0.07188 | 0.07841 | 1.091x |
-| 16384 | 0.11187 | 0.12137 | 1.085x |
+| 2048 | 0.04062 | 0.04253 | 1.047x |
+| 4096 | 0.04855 | 0.04963 | 1.022x |
+| 8192 | 0.07159 | 0.07720 | 1.078x |
+| 16384 | 0.11184 | 0.12187 | 1.090x |
 
 Long-run confirmation, `rep = 3000`:
 
@@ -206,6 +221,7 @@ Raw data for the landed policy is recorded in:
 
 - `.codex/initiatives/artifacts/ws-low-batch-performance-post-landing.csv`
 - `.codex/initiatives/artifacts/ws-low-batch-performance-post-landing-rep3000.csv`
+- `.codex/initiatives/artifacts/ws-low-batch-performance-refresh-after-boundary-fix.csv`
 
 ## Conclusions
 
