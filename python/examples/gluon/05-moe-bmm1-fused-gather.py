@@ -73,11 +73,6 @@ def banded_row_major(lin_idx, m_tiles, n_tiles, BAND_N: gl.constexpr):
 
 
 @gluon.jit
-def block_schedule_coords(pid_mn: gl.tensor, grid_m: gl.tensor, GRID_N: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
-    return banded_row_major(pid_mn, grid_m, GRID_N, BAND_N=20)
-
-
-@gluon.jit
 def apply_block_schedule(
     block_id: gl.tensor,
     grid_m: gl.tensor,
@@ -86,7 +81,7 @@ def apply_block_schedule(
     block_schedule: gl.tensor,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
     pid_mn = block_id % (grid_m * GRID_N)
-    schedule_pid_m, pid_n = block_schedule_coords(pid_mn, grid_m, GRID_N)
+    schedule_pid_m, pid_n = banded_row_major(pid_mn, grid_m, GRID_N, BAND_N=20)
 
     slice_idx, pid_m = unpack_block_schedule(gl.load(block_schedule + schedule_pid_m))
     slice_offset = gl.load(slice_offsets + slice_idx)
@@ -109,88 +104,23 @@ def unswizzle_mx_scale(
     return smem.reshape((rows * SIZE_OUTER, cols // SIZE_OUTER))
 
 
-def get_operand_layout(t: Tensor, block_shape: list[int]):
-    rank = len(block_shape)
-    if t.dtype == FP4:
-        assert rank == 3
-        return gl.NVMMASharedLayout(
-            swizzle_byte_width=128,
-            element_bitwidth=8,
-            rank=rank,
-            fp4_padded=True,
-        )
-    if t.dtype == UINT8:
-        assert rank == 5
-        return gl.NVMMASharedLayout(
-            swizzle_byte_width=0,
-            element_bitwidth=8,
-            rank=rank,
-        )
-    if t.dtype == torch.float32:
-        assert rank == 2
-        return gl.NVMMASharedLayout.get_default_for(
-            block_shape,
-            torch.float32,
-        )
-
-    assert t.dtype == torch.float8_e4m3fn
-    return gl.NVMMASharedLayout(
-        swizzle_byte_width=128,
-        element_bitwidth=8,
-        rank=rank,
-    )
+@gluon.jit
+def alloc_barrier_ring(num_bufs: gl.constexpr):
+    bars = gl.allocate_shared_memory(gl.int64, [num_bufs, 1], mbarrier.MBarrierLayout())
+    for i in gl.static_range(num_bufs):
+        mbarrier.init(bars.index(i), count=1)
+    return bars
 
 
-def make_operand_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ...], transposed: bool = False):
-    from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
-
-    ptr = t if isinstance(t, torch.Tensor) else t.storage.data
-    shape = list(ptr.shape)
-    strides = list(ptr.stride())
-
-    if transposed:
-        shape[-1], shape[-2] = shape[-2], shape[-1]
-        strides[-1], strides[-2] = strides[-2], strides[-1]
-
-    layout = get_operand_layout(t, list(block_shape))
-    return TensorDescriptor(ptr, shape, strides, block_shape, layout)
+@gluon.jit
+def alloc_empty_ready_barriers(num_bufs: gl.constexpr):
+    return alloc_barrier_ring(num_bufs), alloc_barrier_ring(num_bufs)
 
 
-@dataclass(frozen=True, slots=True)
-class KernelConfig:
-    BLOCK_M: int = 128
-    BLOCK_N: int = 256
-    BLOCK_K: int = 128
-    X_NUM_BUFS: int = 5
-    W_NUM_BUFS: int = 4
-    LOAD_ACTIVATION_WARPS: int = 4
-    LOAD_WEIGHT_WARPS: int = 1
-    MMA_WARPS: int = 1
-    STORE_HELPER_WARPS: int = 2
-    EPILOGUE_ROW_SUBTILE_FACTOR: int = 8
-    EPILOGUE_STORE_HELPER_DEPTH: int = 2
-    LOAD_ACTIVATION_REGS: int = 112
-    LOAD_WEIGHT_REGS: int = 48
-    MMA_REGS: int = 24
-    STORE_HELPER_REGS: int = 16
-
-
-def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
-    if ragged_metadata.expected_slice_size is not None:
-        return ragged_metadata.expected_slice_size
-    return max(1, m // ragged_metadata.n_slices)
-
-
-def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> KernelConfig:
-    slice_size = estimated_slice_size(ragged_metadata, m)
-    config = KernelConfig()
-    if slice_size <= 8:
-        return replace(config, BLOCK_M=16, EPILOGUE_ROW_SUBTILE_FACTOR=2)
-    if slice_size <= 16:
-        return replace(config, BLOCK_M=32, EPILOGUE_ROW_SUBTILE_FACTOR=4)
-    if slice_size <= 58:
-        return replace(config, BLOCK_M=64, EPILOGUE_ROW_SUBTILE_FACTOR=4)
-    return config
+@gluon.jit
+def invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
+    for i in gl.static_range(num_bufs):
+        mbarrier.invalidate(bars.index(i))
 
 
 @aggregate
@@ -267,25 +197,6 @@ class PartitionArgs:
             slice_offsets=self.x_slice_offs,
             block_schedule=self.x_block_schedule,
         )
-
-
-@gluon.jit
-def alloc_barrier_ring(num_bufs: gl.constexpr):
-    bars = gl.allocate_shared_memory(gl.int64, [num_bufs, 1], mbarrier.MBarrierLayout())
-    for i in gl.static_range(num_bufs):
-        mbarrier.init(bars.index(i), count=1)
-    return bars
-
-
-@gluon.jit
-def alloc_empty_ready_barriers(num_bufs: gl.constexpr):
-    return alloc_barrier_ring(num_bufs), alloc_barrier_ring(num_bufs)
-
-
-@gluon.jit
-def invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
-    for i in gl.static_range(num_bufs):
-        mbarrier.invalidate(bars.index(i))
 
 
 @gluon.jit
@@ -450,19 +361,6 @@ def pack_packed_fp8x4(values):
 
 
 @gluon.jit
-def store_strided_2d(ptr, values, off_m, off_n, shape_m, shape_n, slice_offset, stride_m, stride_n):
-    layout: gl.constexpr = values.type.layout
-    offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
-    offs_n = off_n + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
-    mask_m = gl.expand_dims(offs_m < shape_m, 1)
-    mask_n = gl.expand_dims(offs_n < shape_n, 0)
-    mask = mask_m & mask_n
-    ptrs = ptr + gl.expand_dims(slice_offset + offs_m, 1) * stride_m
-    ptrs = ptrs + gl.expand_dims(offs_n, 0) * stride_n
-    gl.store(ptrs, values, mask=mask)
-
-
-@gluon.jit
 def store_packed_out(
     p: PartitionArgs,
     packed_out,
@@ -471,17 +369,17 @@ def store_packed_out(
     shape_m,
     slice_offset,
 ):
-    store_strided_2d(
-        p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True),
-        pack_packed_fp8x4(packed_out),
-        off_m,
-        out_off_n // 4,
-        shape_m,
-        (p.out_desc.shape[1] + 3) // 4,
-        slice_offset,
-        p.out_desc.strides[0] // 4,
-        p.out_desc.strides[1],
-    )
+    values = pack_packed_fp8x4(packed_out)
+    layout: gl.constexpr = values.type.layout
+    offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
+    offs_n = out_off_n // 4 + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
+    mask_m = gl.expand_dims(offs_m < shape_m, 1)
+    mask_n = gl.expand_dims(offs_n < (p.out_desc.shape[1] + 3) // 4, 0)
+    mask = mask_m & mask_n
+    ptrs = p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True)
+    ptrs = ptrs + gl.expand_dims(slice_offset + offs_m, 1) * (p.out_desc.strides[0] // 4)
+    ptrs = ptrs + gl.expand_dims(offs_n, 0) * p.out_desc.strides[1]
+    gl.store(ptrs, values, mask=mask)
 
 
 @gluon.jit
@@ -921,6 +819,95 @@ def ws_matmul_kernel(
     invalidate_barrier_ring(store_ready_bars, EPILOGUE_STORE_HELPER_DEPTH)
 
 
+# ===-----------------------------------------------------------------------===#
+# Host Code
+# ===-----------------------------------------------------------------------===#
+
+
+def get_operand_layout(t: Tensor, block_shape: list[int]):
+    rank = len(block_shape)
+    if t.dtype == FP4:
+        assert rank == 3
+        return gl.NVMMASharedLayout(
+            swizzle_byte_width=128,
+            element_bitwidth=8,
+            rank=rank,
+            fp4_padded=True,
+        )
+    if t.dtype == UINT8:
+        assert rank == 5
+        return gl.NVMMASharedLayout(
+            swizzle_byte_width=0,
+            element_bitwidth=8,
+            rank=rank,
+        )
+    if t.dtype == torch.float32:
+        assert rank == 2
+        return gl.NVMMASharedLayout.get_default_for(
+            block_shape,
+            torch.float32,
+        )
+
+    assert t.dtype == torch.float8_e4m3fn
+    return gl.NVMMASharedLayout(
+        swizzle_byte_width=128,
+        element_bitwidth=8,
+        rank=rank,
+    )
+
+
+def make_operand_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ...], transposed: bool = False):
+    from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
+
+    ptr = t if isinstance(t, torch.Tensor) else t.storage.data
+    shape = list(ptr.shape)
+    strides = list(ptr.stride())
+
+    if transposed:
+        shape[-1], shape[-2] = shape[-2], shape[-1]
+        strides[-1], strides[-2] = strides[-2], strides[-1]
+
+    layout = get_operand_layout(t, list(block_shape))
+    return TensorDescriptor(ptr, shape, strides, block_shape, layout)
+
+
+@dataclass(frozen=True, slots=True)
+class KernelConfig:
+    BLOCK_M: int = 128
+    BLOCK_N: int = 256
+    BLOCK_K: int = 128
+    X_NUM_BUFS: int = 5
+    W_NUM_BUFS: int = 4
+    LOAD_ACTIVATION_WARPS: int = 4
+    LOAD_WEIGHT_WARPS: int = 1
+    MMA_WARPS: int = 1
+    STORE_HELPER_WARPS: int = 2
+    EPILOGUE_ROW_SUBTILE_FACTOR: int = 8
+    EPILOGUE_STORE_HELPER_DEPTH: int = 2
+    LOAD_ACTIVATION_REGS: int = 112
+    LOAD_WEIGHT_REGS: int = 48
+    MMA_REGS: int = 24
+    STORE_HELPER_REGS: int = 16
+
+
+def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
+    if ragged_metadata.expected_slice_size is not None:
+        return ragged_metadata.expected_slice_size
+    return max(1, m // ragged_metadata.n_slices)
+
+
+def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> KernelConfig:
+    slice_size = estimated_slice_size(ragged_metadata, m)
+    config = KernelConfig()
+    if slice_size <= 8:
+        return replace(config, BLOCK_M=16, EPILOGUE_ROW_SUBTILE_FACTOR=2)
+    if slice_size <= 16:
+        return replace(config, BLOCK_M=32, EPILOGUE_ROW_SUBTILE_FACTOR=4)
+    if slice_size <= 58:
+        return replace(config, BLOCK_M=64, EPILOGUE_ROW_SUBTILE_FACTOR=4)
+    return config
+
+
 def matmul(
     a: torch.Tensor,
     b: torch.Tensor | Tensor,
@@ -1188,7 +1175,7 @@ def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, P
     kernel = matmul if provider == "example" else reference_matmul
     y = kernel(
         a=prepared.x,
-        b=prepared.w,  # type: ignore[arg-type]
+        b=prepared.w,
         bias=prepared.bias,
         a_ragged_metadata=prepared.ragged_metadata,
         gather_indx=prepared.gather_indx,
