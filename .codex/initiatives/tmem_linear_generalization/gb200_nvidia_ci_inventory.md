@@ -1096,3 +1096,52 @@ These stay in the nearest validation loop while the red list is being reduced.
   - keep the cache/xdist investigation separate:
     - current evidence still favors worker/process/device contamination over a
       proven on-disk cache-key collision
+
+## 2026-04-10 post-closure recovery checkpoint: pure outer memdesc_index row-plan selection shrinks the active lit/unit surface
+
+- This section is a current dirty-worktree recovery note layered on top of the
+  closed GB200 census above. The closure numbers remain the durable baseline
+  for `9150a3d5e`; the notes below describe the next local recovery slice.
+- Code change under validation:
+  - `getTMemLdStRowPlanForQuery(...)` now prefers the query row plan for pure
+    outer `ttg.memdesc_index` TMEM views that only peel non-layout prefix
+    dimensions and preserve the trailing 2D TMEM tile.
+- Current validation on that dirty worktree:
+  - `make -j8`
+    - green
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - exact focused unit repros:
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+      - passes
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      - passes
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+      - still fails with `Triton Error [CUDA]: misaligned address`
+  - direct lit repro:
+    - `test/TritonGPU/pipeline-lower-loop.mlir`
+      - passes
+- Interrupted broad `make NUM_PROCS=24 test-unit` rerun:
+  - no `test_matmul.py` or `test_tensor_descriptor.py` failures were observed
+    before the run entered `test_warp_specialization.py`;
+  - the first real remaining exact is:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+  - the interrupted log currently contains:
+    - `10` true kernel failures (`assert_close` / launch-site exacts); and
+    - `109` later `torch.manual_seed` contamination failures on poisoned xdist
+      workers.
+- Harness symptom discovered during that rerun:
+  - after the warp failures, the last xdist worker stalled in
+    `python/test/unit/runtime/test_cache.py::test_async_compile_mock`;
+  - `py-spy` shows the worker blocked in
+    `triton.runtime._async_compile.AsyncCompileMode.__exit__`, waiting on
+    unfinished futures; and
+  - this should be tracked under the separate cache/async-compile harness
+    investigation, not as a TMEM correctness regression by itself.
+- Practical implication for the GB200 inventory:
+  - the old baseline closure remains valid for the last committed `HEAD`; but
+  - the active recovery surface after this local row-plan slice is now:
+    1. higher-rank MMAv5-root `test_warp_specialization.py`
+    2. merge-base-present focused `test_core.py`
+    3. branch-added runtime-matrix and other Gluon tails

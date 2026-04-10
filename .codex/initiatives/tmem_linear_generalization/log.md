@@ -6538,3 +6538,48 @@ Open after this slice:
   - the census no longer needs raw shard totals to choose fixes
   - the current evidence still points more strongly at worker/process/device
     contamination after bad kernels than at a proven on-disk cache collision
+
+## 2026-04-10: pure outer memdesc_index row-plan selection cleared the old direct-view lit/unit bucket; warp specialization remains
+
+- Implemented a narrow structural fix in
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`:
+  - added `isPureOuterTMemIndexView(...)`
+  - `getTMemLdStRowPlanForQuery(...)` now returns the query row plan for pure
+    outer `ttg.memdesc_index` TMEM views instead of inheriting the larger
+    backing row plan
+- Validation:
+  - `make -j8`
+    - green
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - focused exacts:
+    - `test_simple_persistent_matmul[False-4-64-128-32]`
+      - green
+    - `test_tensor_descriptor_reshape_matmul[float32]`
+      - green
+    - direct `pipeline-lower-loop.mlir` repro
+      - green
+    - `test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+      - still fails with `Triton Error [CUDA]: misaligned address`
+- Interrupted broad `make NUM_PROCS=24 test-unit` rerun showed:
+  - no remaining `test_matmul.py` or `test_tensor_descriptor.py` failures
+    before the run reached `test_warp_specialization.py`
+  - current log reduction:
+    - `10` real warp-specialization kernel failures
+    - `109` later `torch.manual_seed` contamination failures on poisoned xdist
+      workers
+  - the first real remaining exact is:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+- Separate harness note:
+  - after the warp failures, the last xdist worker stalled in
+    `python/test/unit/runtime/test_cache.py::test_async_compile_mock`
+  - `py-spy` shows the worker blocked in
+    `triton.runtime._async_compile.AsyncCompileMode.__exit__`, waiting on
+    unfinished futures
+  - this remains a separate cache/async-compile investigation item
+- Net effect:
+  - the old committed recovery step `1` (direct-view row-anchor
+    representability) is effectively closed by this local slice
+  - the live old-mainline unit blocker is now the higher-rank MMAv5-root warp
+    specialization runtime bucket

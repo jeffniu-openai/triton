@@ -3779,3 +3779,59 @@ rejection, not rescue
   - `test_layout_format_view.py` should drop out of the active red list
   - the branch-added runtime-matrix work should be driven from the focused
     `413`-nodeid manifest rather than from the full raw group-4 shard alone
+
+## 2026-04-10: pure outer memdesc_index row-plan selection clears the old direct-view lit/unit bucket
+
+- Current code delta:
+  - `getTMemLdStRowPlanForQuery(...)` now prefers the query row plan for
+    pure outer `ttg.memdesc_index` TMEM views that:
+    - preserve the trailing 2D TMEM tile shape and alloc shape;
+    - only peel extra non-layout dimensions; and
+    - bottom out at a TMEM root (`ttng.tmem_alloc`, `nvws.aref.buffer`, or a
+      block argument).
+- Why this matters:
+  - the failing lit + unit bucket was not a true direct-view impossibility;
+  - verifier/planner code was carrying the larger backing row plan through
+    simple outer-index TMEM views, which made representable 64-row queries look
+    impossible.
+- Focused validation on the dirty worktree:
+  - `make -j8`
+    - green
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - exact current-head unit repros:
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+      - passes
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      - passes
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+      - still fails with `Triton Error [CUDA]: misaligned address`
+  - direct lit repro:
+    - `test/TritonGPU/pipeline-lower-loop.mlir`
+      - passes under `triton-opt`
+- Broad `make NUM_PROCS=24 test-unit` evidence before interruption:
+  - the run reached deep into `test_warp_specialization.py` without surfacing
+    any `test_matmul.py` or `test_tensor_descriptor.py` failures, which is a
+    strong signal that the old direct-view row-anchor representability bucket is
+    cleared;
+  - the first real remaining unit exact is:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+  - the interrupted log currently contains:
+    - `10` true kernel failures at the `assert_close` / launch site; and
+    - `109` later `torch.manual_seed` contamination failures on poisoned xdist
+      workers.
+- Separate harness note:
+  - after the warp-specialization failures, the last xdist worker stalled in
+    `python/test/unit/runtime/test_cache.py::test_async_compile_mock`;
+  - `py-spy dump` shows the worker blocked in
+    `triton.runtime._async_compile.AsyncCompileMode.__exit__`, waiting on
+    unfinished futures; and
+  - keep that as a separate cache/async-compile harness investigation, not as
+    evidence against the row-plan fix itself.
+- Updated immediate priority:
+  1. checkpoint the pure-outer-index row-plan fix;
+  2. diagnose the remaining higher-rank MMAv5-root warp-specialization runtime
+     bucket from the first real exact above; and
+  3. only after that, return to the focused merge-base-present `test_core.py`
+     Gluon bucket.

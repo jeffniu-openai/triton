@@ -1890,6 +1890,63 @@ bool preferBackingTMemLdStQueryTypes(Value memDesc) {
   return queryPlan && backingPlan && queryPlan->rowSpan < backingPlan->rowSpan;
 }
 
+static bool isPureOuterTMemIndexView(Value memDesc) {
+  // Pure outer memdesc_index chains only peel non-layout prefix dimensions.
+  // Their trailing 2D TMEM tile is unchanged, so direct ld/st planning should
+  // reason from the query row plan rather than the larger backing view.
+  auto queryTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!queryTy || queryTy.getRank() != 2 ||
+      !isTensorMemoryEncoding(queryTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding())) {
+    return false;
+  }
+
+  auto layoutRank =
+      static_cast<size_t>(cast<LayoutEncodingTrait>(queryTy.getEncoding()).getRank());
+  if (layoutRank != 2)
+    return false;
+
+  bool sawIndex = false;
+  Value cur = memDesc;
+  while (auto index = cur.getDefiningOp<gpu::MemDescIndexOp>()) {
+    sawIndex = true;
+    auto curTy = dyn_cast<MemDescType>(cur.getType());
+    auto srcTy = dyn_cast<MemDescType>(index.getSrc().getType());
+    if (!curTy || !srcTy || curTy.getRank() + 1 != srcTy.getRank() ||
+        !isTensorMemoryEncoding(srcTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
+      return false;
+    }
+
+    auto curLayoutRank = static_cast<size_t>(
+        cast<LayoutEncodingTrait>(curTy.getEncoding()).getRank());
+    auto srcLayoutRank = static_cast<size_t>(
+        cast<LayoutEncodingTrait>(srcTy.getEncoding()).getRank());
+    if (curLayoutRank != layoutRank || srcLayoutRank != layoutRank ||
+        srcTy.getRank() <= static_cast<int64_t>(layoutRank) ||
+        !llvm::equal(srcTy.getShape().take_back(layoutRank),
+                     curTy.getShape().take_back(layoutRank))) {
+      return false;
+    }
+
+    if (srcTy.getAllocShape().size() >= layoutRank &&
+        curTy.getAllocShape().size() >= layoutRank &&
+        !llvm::equal(srcTy.getAllocShape().take_back(layoutRank),
+                     curTy.getAllocShape().take_back(layoutRank))) {
+      return false;
+    }
+
+    cur = index.getSrc();
+  }
+
+  if (!sawIndex)
+    return false;
+
+  Operation *baseDef = cur.getDefiningOp();
+  return !baseDef || isa<TMEMAllocOp>(baseDef) ||
+         baseDef->getName().getStringRef() == "nvws.aref.buffer";
+}
+
 static bool isHigherRankHalfRowsSubview(Value memDesc) {
   auto queryTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>();
@@ -1973,6 +2030,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
 
   if (shouldPreferDirectHalfRowsSubviewRowPlan(memDesc, queryTy, queryPlan,
                                                backingPlan))
+    return queryPlan;
+  if (isPureOuterTMemIndexView(memDesc))
     return queryPlan;
 
   auto encoding = queryTy.getEncoding();

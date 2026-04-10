@@ -467,3 +467,51 @@ PY
     3. log device identity, cache key inputs, and compile artifact paths
     4. only change cache-key semantics if the failure survives the fresh
        process boundary and still tracks cache reuse
+
+## 2026-04-10 direct-view row-anchor checkpoint: step 1 is effectively landed, step 2 is now the live blocker
+
+- Implemented recovery for the step-1 bucket:
+  - `getTMemLdStRowPlanForQuery(...)` now uses the query row plan for pure
+    outer `ttg.memdesc_index` TMEM views instead of blindly inheriting the
+    larger backing row plan.
+- Current validation:
+  - `make -j8`
+    - green
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - focused exacts:
+    - `test_simple_persistent_matmul[False-4-64-128-32]`
+      - green
+    - `test_tensor_descriptor_reshape_matmul[float32]`
+      - green
+    - direct `pipeline-lower-loop.mlir` repro
+      - green
+- Broad `test-unit` consequence:
+  - the run no longer surfaced any independent `test_matmul.py` or
+    `test_tensor_descriptor.py` failures before reaching
+    `test_warp_specialization.py`;
+  - this is strong evidence that the old direct-view lit + unit
+    representability bucket is fixed for the right structural reason.
+- Live remaining old-mainline unit blocker:
+  - first real exact:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+  - isolated current-head repro on GPU 0 with `CUDA_LAUNCH_BLOCKING=1`:
+    - still fails at kernel launch with `Triton Error [CUDA]: misaligned address`
+  - interrupted broad-unit log:
+    - `10` true warp-specialization kernel failures
+    - `109` later `torch.manual_seed` contamination failures on poisoned xdist
+      workers
+- Separate harness symptom worth remembering:
+  - after the warp failures, the last remaining xdist worker can stall in
+    `python/test/unit/runtime/test_cache.py::test_async_compile_mock`;
+  - `py-spy` shows it waiting in `AsyncCompileMode.__exit__` on unfinished
+    futures; and
+  - this should be investigated as part of the cache/async-compile harness work,
+    not conflated with the TMEM row-plan bug.
+- Updated recovery order after this checkpoint:
+  1. higher-rank MMAv5-root warp-specialization bucket
+  2. merge-base-present focused `python/test/gluon/test_core.py` bucket
+  3. branch-added / branch-changed Gluon coverage
+  4. example lane
+  5. reinterpret-contract rewrites and missing explicit view support
