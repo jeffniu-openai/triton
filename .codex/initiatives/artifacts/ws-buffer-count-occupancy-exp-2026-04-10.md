@@ -117,19 +117,59 @@ Interpretation:
 - The under-half candidate was only under half if counting dynamic SMEM alone. Once NCU's driver-side shared memory allocation is included, the total is still above half an SM (`115.90 KiB + 1.02 KiB > 116.224 KiB`), so shared memory still limits residency to one CTA.
 - Registers are an independent blocker anyway: `128` registers/thread keeps `Block Limit Registers = 1` for all three runs.
 
-So the original “virtually double `NUM_SMS` after lowering buffers” hypothesis does not hold for the current kernel. The slowdown is not “2x CTA residency failed to help”; it is that **2x CTA residency never actually happened**.
+So the original “virtually double `NUM_SMS` after lowering buffers” hypothesis did not hold for these first candidates. The slowdown was not “2x CTA residency failed to help”; it was that **2x CTA residency never actually happened**.
+
+### Follow-up: Forced Register Caps Can Reach 2 CTAs / SM In The Smallest Regime
+
+The one remaining config-space lever was `maxnreg`. A follow-up sweep revisited the smallest live low-batch regime (`BLOCK_M=16`) with a milder buffer reduction and explicit register caps:
+
+| Variant | X bufs | W bufs | `maxnreg` | Virtual CTA factor | Median ms |
+|---|---:|---:|---:|---:|---:|
+| live default | 5 | 4 | none | `1x` | 0.03416 |
+| reduced-buffer candidate | 3 | 3 | 64 | `1x` | 0.03695 |
+| reduced-buffer candidate | 3 | 3 | 64 | `2x` | 0.03470 |
+| reduced-buffer candidate | 3 | 3 | 56 | `2x` | 0.03510 |
+| reduced-buffer candidate | 3 | 3 | 48 | `2x` | 0.03449 |
+
+This is the first low-batch occupancy experiment that actually worked at the hardware level:
+
+- forcing `maxnreg=64` or `48` compiled the kernel to `64` / `48` registers per thread with no code changes
+- the reduced-buffer `x=3,w=3` kernel also fit under half-SMEM in practice (`114.88 KiB` per block in NCU)
+- with doubled persistent CTA count (`grid=(304, 1, 1)`, `NUM_SMS=304`), NCU reported:
+  - `launch__occupancy_limit_registers = 2`
+  - `launch__occupancy_limit_shared_mem = 2`
+  - `sm__ctas_active.avg.per_cycle_active ~= 1.85`
+  - `sm__warps_active.avg.per_cycle_active ~= 29.36`
+
+So the machine really did admit about two CTAs per SM for this smallest regime once both shared memory and registers were brought under the threshold.
+
+The catch is performance: even the best real 2-CTA point (`x=3,w=3,maxnreg=48,sms_factor=2`) was still slightly slower than the live default (`0.03449 ms` vs `0.03416 ms`, about `+0.97%`). The occupancy boost does help the stripped-down kernel materially relative to its own `1x` version (`0.03449-0.03470 ms` vs `0.03695 ms`), but it does not make up for the producer-side buffering that was removed to get there.
+
+### Follow-up: The Next Regime Still Fails
+
+The same pattern does not carry to the `BLOCK_M=32` regime. On `batch=384`, the best under-half candidate remained `x=2,w=3`, and even with forced register caps plus a doubled persistent grid it stayed far slower than baseline:
+
+| Variant | Median ms |
+|---|---:|
+| live default | 0.03596 |
+| `x=2,w=3,maxnreg=64,sms_factor=1` | 0.04351 |
+| `x=2,w=3,maxnreg=64,sms_factor=2` | 0.04756 |
+| `x=2,w=3,maxnreg=48,sms_factor=2` | 0.04732 |
+
+So the real “2-CTA path” appears limited to the smallest `BLOCK_M=16` regime, and even there it is not faster than the buffered live default.
 
 ### Interpretation
 
-The current low-batch WS kernel is not overbuffered enough for this trade to work.
+The current low-batch WS kernel is not overbuffered enough for this trade to work as a winning default.
 
 - The default pipelines need the extra activation and weight/scale buffering more than they need additional persistent CTAs.
 - Crossing the half-SMEM line by itself is not enough; the producer-side latency hiding lost from reducing buffers is larger than any gain from extra CTA residency.
-- The failed `2x` virtual-CTA reruns show that even when the resource thresholds make 2 CTAs per SM possible on paper, this kernel gets slower once the buffering is stripped down enough to reach that point.
+- Forced register caps can make real 2-CTA residency happen for `BLOCK_M=16`, but even that best case still lands slightly behind the live default.
+- The `BLOCK_M=32` regime remains decisively negative even after the same occupancy trick is applied.
 
 ### Conclusion
 
-Do not lower load-buffer counts in the live example to chase 2x persistent CTA residency.
+Do not lower load-buffer counts in the live example to chase 2x persistent CTA residency as the default policy.
 
 For this kernel, the better policy remains:
 
@@ -137,4 +177,10 @@ For this kernel, the better policy remains:
 - keep the existing low-batch `BLOCK_M` ladder
 - look elsewhere for more low-batch speedup
 
-The next credible resource-side idea would need to cut SMEM without starving the producer pipeline, which likely means changing staging topology rather than simply deleting load buffers.
+The only positive occupancy result found so far is useful as a boundary condition:
+
+- `BLOCK_M=16`, `x=3,w=3`, `maxnreg=48/64`, doubled persistent grid
+- real achieved CTA concurrency near `1.85`
+- still slightly slower than default
+
+So the next credible resource-side idea would need to cut SMEM and registers without starving the producer pipeline, which likely means changing staging topology rather than simply deleting load buffers or capping registers.
