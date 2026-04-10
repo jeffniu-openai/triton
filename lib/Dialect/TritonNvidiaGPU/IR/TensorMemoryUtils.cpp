@@ -22,18 +22,41 @@ constexpr int largestTmemLoadStore = 128;
 constexpr StringLiteral kExplicitTMemLdStRowPlanAttrName =
     "ttng.tmem_ldst_row_plan";
 
+static Value getTMemLdStRowPlanForwardingSource(Value memDesc) {
+  auto blockArg = dyn_cast<BlockArgument>(memDesc);
+  if (!blockArg)
+    return {};
+
+  auto *parentOp = blockArg.getOwner()->getParentOp();
+  auto partitions = dyn_cast_if_present<gpu::WarpSpecializePartitionsOp>(parentOp);
+  if (!partitions)
+    return {};
+
+  auto captures = partitions.getExplicitCaptures();
+  unsigned argNumber = blockArg.getArgNumber();
+  if (argNumber >= captures.size())
+    return {};
+  return captures[argNumber];
+}
+
 static std::optional<TMemLdStRowPlan>
 getExplicitTMemLdStRowPlan(Value memDesc) {
-  auto alloc = dyn_cast_if_present<TMEMAllocOp>(memDesc.getDefiningOp());
-  if (!alloc)
-    return std::nullopt;
-  auto attr = alloc->getAttrOfType<DenseI32ArrayAttr>(
-      kExplicitTMemLdStRowPlanAttrName);
-  if (!attr || attr.size() != 4)
-    return std::nullopt;
-  return TMemLdStRowPlan{/*warpRow0=*/attr[0], /*warpRow1=*/attr[1],
-                         /*rowSpan=*/attr[2],
-                         /*baseOffset=*/static_cast<uint32_t>(attr[3])};
+  SmallPtrSet<Value, 4> seen;
+  Value cur = memDesc;
+  while (cur && seen.insert(cur).second) {
+    if (auto alloc = dyn_cast_if_present<TMEMAllocOp>(cur.getDefiningOp())) {
+      auto attr = alloc->getAttrOfType<DenseI32ArrayAttr>(
+          kExplicitTMemLdStRowPlanAttrName);
+      if (attr && attr.size() == 4) {
+        return TMemLdStRowPlan{/*warpRow0=*/attr[0], /*warpRow1=*/attr[1],
+                               /*rowSpan=*/attr[2],
+                               /*baseOffset=*/static_cast<uint32_t>(attr[3])};
+      }
+      return std::nullopt;
+    }
+    cur = getTMemLdStRowPlanForwardingSource(cur);
+  }
+  return std::nullopt;
 }
 
 static int getMatrixRankForLayout(std::unique_ptr<uint64_t[]> matrix, int numRows,

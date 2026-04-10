@@ -3835,3 +3835,50 @@ rejection, not rescue
      bucket from the first real exact above; and
   3. only after that, return to the focused merge-base-present `test_core.py`
      Gluon bucket.
+
+## 2026-04-10: warp-specialize partition captures now preserve explicit TMEM row plans
+
+- Core bug:
+  - the remaining higher-rank MMAv5-root runtime failures were not caused by
+    missing root annotations;
+  - the explicit producer-owned `ttng.tmem_ldst_row_plan` contract was being
+    lost when TMEM memdescs crossed `ttg.warp_specialize` partition block
+    arguments; and
+  - raw-query planning on captured `ttg.memdesc_index<64x64xf32>` views then
+    fell back from `rawRowPlan=128` to `rawRowPlan=64`, scalarized the
+    `tl.dot(p, v, acc)` TMEM access to `32x32b.x1`, and triggered the
+    Blackwell runtime `misaligned address` fault.
+- Implemented structural fix:
+  - `getExplicitTMemLdStRowPlan(...)` in
+    `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` now follows
+    `gpu::WarpSpecializePartitionsOp` block arguments back through
+    `getExplicitCaptures()`, so the planner can recover the original producer
+    row-plan contract inside partition regions.
+- Compile-only validation:
+  - `make -j8`
+    - green
+  - TMEM debug query trace for the first exact warp repro:
+    - all sampled `ttg.memdesc_index<64x64xf32>` raw queries now report
+      `rawRowPlan=128` and `rawQuery -> ok atom=4`
+    - the older `rawRowPlan=64` / `atom=0` split is gone
+  - PTX for the same kernel:
+    - the old scalar `.loc 491` `tcgen05.ld/st.sync.aligned.32x32b.x1.b32`
+      sequence is gone
+    - the MMAv5 load/store path is back on packed
+      `tcgen05.ld/st.sync.aligned.16x32bx2.x32.b32`
+- Focused runtime validation:
+  - all of the following exacts now pass:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-True-3-128-64-1024-1024]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-8-False-3-128-64-8192-8192]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-True-2-64-64-8192-8192]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-2-128-64-8192-8192]`
+- Updated immediate priority:
+  1. rerun `python/test/unit/language/test_warp_specialization.py` to replace
+     the older `128`-nodeid manifest with a fresh current-head result;
+  2. rerun `make NUM_PROCS=24 test-unit` once the file-level warp bucket is
+     understood;
+  3. if the old unit bucket is closed, continue with the merge-base-present
+     focused `python/test/gluon/test_core.py` recovery bucket; and
+  4. keep the separate cache/async-compile harness investigation distinct from
+     TMEM correctness work.

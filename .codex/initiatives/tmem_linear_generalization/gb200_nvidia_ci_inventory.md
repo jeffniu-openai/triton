@@ -1145,3 +1145,38 @@ These stay in the nearest validation loop while the red list is being reduced.
     1. higher-rank MMAv5-root `test_warp_specialization.py`
     2. merge-base-present focused `test_core.py`
     3. branch-added runtime-matrix and other Gluon tails
+
+## 2026-04-10 post-recovery checkpoint: warp-specialization row-plan forwarding likely collapses the remaining old-mainline unit bucket
+
+- This section updates the active recovery story above without replacing the
+  last committed GB200 closure numbers until a fresh broad rerun is finished.
+- New structural fix under validation:
+  - explicit TMEM row-plan recovery now follows
+    `gpu::WarpSpecializePartitionsOp` block arguments back through
+    `getExplicitCaptures()`
+  - this preserves the original `ttng.tmem_ldst_row_plan` contract inside the
+    partition regions used by `python/test/unit/language/test_warp_specialization.py`
+- Compile-only evidence:
+  - TMEM debug query traces for the first representative exact now show only:
+    - `rawRowPlan=128`
+    - `rawQuery -> ok atom=4`
+  - the earlier `rawRowPlan=64` / `atom=0` split on captured
+    `ttg.memdesc_index<64x64xf32>` views is gone
+  - PTX for the same kernel is back on packed
+    `tcgen05.ld/st.sync.aligned.16x32bx2.x32.b32` at source line `491`
+- Focused runtime evidence:
+  - these previously failing representative exacts now pass:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-True-3-128-64-1024-1024]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-8-False-3-128-64-8192-8192]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[False-4-True-2-64-64-8192-8192]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-2-128-64-8192-8192]`
+- Inventory consequence:
+  - the old `128`-nodeid `test_warp_specialization.py` manifest is now likely
+    stale
+  - do not keep treating that exact count as current-head truth once the fresh
+    file rerun lands
+- Next measurement required before changing the top-line GB200 counts:
+  1. rerun `python/test/unit/language/test_warp_specialization.py`
+  2. rerun `make NUM_PROCS=24 test-unit`
+  3. refresh the unit exact manifests from the new result

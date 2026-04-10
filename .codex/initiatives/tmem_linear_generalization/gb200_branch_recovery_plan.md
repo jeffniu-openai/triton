@@ -515,3 +515,32 @@ PY
   3. branch-added / branch-changed Gluon coverage
   4. example lane
   5. reinterpret-contract rewrites and missing explicit view support
+
+## 2026-04-10 warp-specialization capture-forwarding checkpoint: step 2 is likely fixed, but needs a fresh file-level/unit census
+
+- Structural recovery landed for the step-2 bucket:
+  - explicit `ttng.tmem_ldst_row_plan` contracts now survive
+    `ttg.warp_specialize` partition captures because
+    `getExplicitTMemLdStRowPlan(...)` follows block arguments back through
+    `gpu::WarpSpecializePartitionsOp::getExplicitCaptures()`
+- Why this is the right fix:
+  - the bug was contract loss across partition captures, not a missing root
+    annotation and not an MMAv5 family-selection heuristic problem
+  - fixing the forwarding edge keeps the planner consistent instead of adding a
+    new warp-specialization-specific rescue stack
+- Current evidence:
+  - compile-only TMEM traces now keep `ttg.memdesc_index<64x64xf32>` raw
+    queries on `rawRowPlan=128` / `atom=4`
+  - PTX for the first exact warp repro is back on packed
+    `16x32bx2.x32` at source line `491`
+  - five representative `test_warp_specialize_attention_forward[...]` exacts
+    from the earlier interrupted `test-unit` log now pass in isolation
+- Updated recovery order from here:
+  1. rerun `python/test/unit/language/test_warp_specialization.py`
+  2. rerun `make NUM_PROCS=24 test-unit`
+  3. refresh the exact manifests and the GB200 CI inventory from that result
+  4. if the old-mainline unit bucket is closed or materially smaller, continue
+     with the merge-base-present focused `python/test/gluon/test_core.py`
+     bucket
+  5. keep the cache/xdist investigation as a separate harness track unless a
+     fresh serial repro proves a deeper cache-key bug

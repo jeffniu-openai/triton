@@ -6583,3 +6583,45 @@ Open after this slice:
     representability) is effectively closed by this local slice
   - the live old-mainline unit blocker is now the higher-rank MMAv5-root warp
     specialization runtime bucket
+
+## 2026-04-10: warp-specialize partition captures were dropping explicit TMEM row plans; representative runtime exacts are green again
+
+- Implemented a structural follow-up in
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`:
+  - `getExplicitTMemLdStRowPlan(...)` now follows
+    `gpu::WarpSpecializePartitionsOp` block arguments back through
+    `getExplicitCaptures()` so the planner can recover the original
+    `ttng.tmem_ldst_row_plan` producer contract inside partition regions
+- Root cause this fixed:
+  - TTGIR already had explicit row-plan attrs on the higher-rank MMAv5 TMEM
+    roots
+  - the contract was being lost only after crossing warp-specialization
+    partition captures
+  - raw-query planning on captured `ttg.memdesc_index<64x64xf32>` views then
+    degraded from `rawRowPlan=128` / `atom=4` to `rawRowPlan=64` / `atom=0`
+  - that scalarized the `tl.dot(p, v, acc)` TMEM path at source line `491` to
+    `32x32b.x1` and caused the Blackwell `misaligned address` launch failure
+- Compile-only validation:
+  - `make -j8`
+    - green
+  - TMEM debug-query trace:
+    - all sampled `ttg.memdesc_index<64x64xf32>` raw queries now stay on
+      `rawRowPlan=128`
+    - the older `rawRowPlan=64` / `atom=0` split is gone
+  - PTX dump for the first exact warp repro:
+    - the old `.loc 1 491 15` scalar
+      `tcgen05.ld/st.sync.aligned.32x32b.x1.b32` sequence is gone
+    - packed `tcgen05.ld/st.sync.aligned.16x32bx2.x32.b32` is restored
+- Focused runtime validation:
+  - the following representative exacts now pass:
+    - `test_warp_specialize_attention_forward[False-4-False-2-64-64-1024-1024]`
+    - `test_warp_specialize_attention_forward[False-4-True-3-128-64-1024-1024]`
+    - `test_warp_specialize_attention_forward[False-8-False-3-128-64-8192-8192]`
+    - `test_warp_specialize_attention_forward[False-4-True-2-64-64-8192-8192]`
+    - `test_warp_specialize_attention_forward[True-4-False-2-128-64-8192-8192]`
+- Interpretation:
+  - the older `128`-nodeid `test_warp_specialization.py` manifest is now
+    likely stale
+  - next required measurement is a full file rerun, then a fresh
+    `make NUM_PROCS=24 test-unit` rerun before returning to the focused
+    merge-base-present `test_core.py` Gluon bucket
