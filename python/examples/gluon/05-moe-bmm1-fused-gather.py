@@ -1166,6 +1166,7 @@ def run_kernel(prepared: PreparedCase, kernel, precision_config: PrecisionConfig
         fused_activation=prepared.fused_activation,
     )
 
+
 def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, PrecisionConfig]:
     precision_config = make_precision_config(prepared)
     kernel = matmul if provider == "example" else reference_matmul
@@ -1266,10 +1267,7 @@ def bench(batch_size, provider):
     kernel = matmul if provider == "example" else reference_matmul
     out = make_output_buffer(prepared)
 
-    def run() -> torch.Tensor:
-        return run_kernel(prepared, kernel, precision_config, out)
-
-    ms = do_bench_cudagraph(run)
+    ms = do_bench_cudagraph(lambda: run_kernel(prepared, kernel, precision_config, out))
     n_tokens = count_active_tokens(prepared)
     k, n = GPT_OSS_120B_MM1_SHAPE
     flops = 2 * n_tokens * k * n
