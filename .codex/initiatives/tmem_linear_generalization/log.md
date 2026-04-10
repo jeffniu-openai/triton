@@ -6726,3 +6726,30 @@ Open after this slice:
 - New durable manifests:
   - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
   - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
+
+## 2026-04-10: examples stay red on the current head, while the active TMEM-focused Gluon failures are all branch-added coverage
+- Refreshed the examples lane on the current head using the existing exact
+  manifests:
+  - `python/examples/gluon/02-convolution.py`
+    - `48 / 48` exacts still fail with the same shared-memory
+      `OutOfResources` symptom (`262208` requested vs `232448` limit)
+  - `python/examples/gluon/03-matmul-multicta.py`
+    - `14 / 14` exacts still fail with wrong-code
+- Merge-base boundary is now explicit for the remaining Gluon work:
+  - the active TMEM-focused red functions do **not** exist on merge-base:
+    - `test_tmem_descriptor_chain_matrix`
+    - `test_tmem_linear_roundtrip_splitn_shapes`
+    - `test_tmem_linear_roundtrip_variant_sweep`
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep`
+    - the two warpx2 candidate-positive runtime-matrix tests
+    - the isolated frontend parse test
+  - the examples red functions already exist on merge-base:
+    - `02-convolution.py::test_op`
+    - `03-matmul-multicta.py::test_matmul_matches_torch`
+  - and those merge-base example files are already known green from earlier
+    full-file reruns
+- Practical consequence:
+  - the active TMEM/compiler buckets are now clearly branch-added coverage
+    introduced by this initiative
+  - the examples lane remains a separate regression surface on old upstream
+    functions and should stay visible after the TMEM buckets are fixed

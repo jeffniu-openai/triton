@@ -201,6 +201,13 @@
     unsupported-auto-layout symptom
   - the earlier `test_fpsan.py` tail has rerun green and drops out of the live
     red list
+- The remaining examples lane is still live on current head:
+  - `48 / 48` `02-convolution.py::test_op[...]` exacts still fail with the
+    same shared-memory `OutOfResources` symptom
+  - `14 / 14` `03-matmul-multicta.py::test_matmul_matches_torch[...]` exacts
+    still fail with wrong-code
+  - unlike the branch-added TMEM tests above, these example functions already
+    exist on merge-base, so treat them as regressions on old upstream coverage
 - Current active compiler bucket:
   - descriptor-chain/reinterpret/view-composition lowering for the exact
     `12`-nodeid focused-core manifest above
@@ -208,6 +215,9 @@
     manifest above
   - non-surjective descriptor-view `get_reg_layout()` support for the warpx2
     candidate positives and the isolated frontend exact
+  - example recovery after the TMEM/core buckets are understood:
+    - shared-memory inflation in `02-convolution.py`
+    - wrong-code in `03-matmul-multicta.py`
 - Current non-correctness/stale buckets to keep separate:
   - the split-N offset-immediate expectation exact
   - the two `block_m_64` reinterpret-contract rewrite candidates

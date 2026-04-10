@@ -92,6 +92,12 @@ PY
     - the `12`-nodeid descriptor-chain focused-core runtime bucket
     - the `208`-nodeid runtime-matrix split-N runtime bucket
     - the smaller `auto`-reg-layout descriptor-view frontend/warpx2 bucket
+  - the examples lane remains separate:
+    - it is still red on current head (`48` convolution OOR exacts and `14`
+      multicta wrong-code exacts)
+    - but unlike the branch-added TMEM tests above, those failing example
+      functions already exist on merge-base, so they should be treated as
+      branch-caused regressions on old upstream coverage
 
 ### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
 

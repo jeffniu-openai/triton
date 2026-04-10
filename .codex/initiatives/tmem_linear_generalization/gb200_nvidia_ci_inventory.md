@@ -59,6 +59,34 @@ lives in `gb200_branch_recovery_plan.md`.
     surface (`2` warpx2 positives + `1` frontend exact), not by the old mixed
     `413`-nodeid census.
 
+## Latest Examples / Merge-Base Classification Refresh (2026-04-10 17:00 UTC)
+
+- The examples lane was refreshed on the current head rather than relying only
+  on the earlier broad census:
+  - `python/examples/gluon/02-convolution.py`
+    - `48 / 48` exacts still fail
+    - stable symptom:
+      - `OutOfResources: shared memory, Required: 262208, Hardware limit: 232448`
+  - `python/examples/gluon/03-matmul-multicta.py`
+    - `14 / 14` exacts still fail
+    - stable symptom:
+      - wrong-code / `AssertionError: Tensor-likes are not close!`
+- Merge-base boundary is now explicit for the remaining Gluon buckets:
+  - the active TMEM-focused red functions are branch-added coverage and do not
+    exist on merge-base:
+    - `test_tmem_descriptor_chain_matrix`
+    - `test_tmem_linear_roundtrip_splitn_shapes`
+    - `test_tmem_linear_roundtrip_variant_sweep`
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep`
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_{01_23,02_13}_candidate_positive`
+    - `test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+  - the examples red functions already exist on merge-base:
+    - `python/examples/gluon/02-convolution.py::test_op`
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch`
+  - those merge-base example files are already known green from the earlier
+    full-file reruns, so the examples lane remains branch-caused recovery work
+    on old upstream functions rather than brand-new branch-only coverage.
+
 ## Latest Focused-Core Refresh (2026-04-10 16:45 UTC)
 
 - HEAD:
