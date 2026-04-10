@@ -23,45 +23,37 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
     Value tmemBase, bool useRawWordColumns) {
   auto ll = [&]() {
+    std::string layoutError;
+    if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
+      if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
+              memTy.getShape(), memTy.getEncoding(), &layoutError)) {
+        // Exact tensor-memory-linear encodings carry the physical TMEM view
+        // contract directly. MMAv5 family planning still determines legality,
+        // but raw row/col address arithmetic must use the analyzed view
+        // itself so tile-permuted and other non-canonical linear layouts
+        // reach the correct physical TMEM coordinates.
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            *maybeAnalysis);
+      }
+    }
+
     auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
     auto shape = memTy.getShape().take_back(rank);
     auto allocShape = memTy.getAllocShape().take_back(rank);
     if (shape == allocShape) {
-      auto cga = gpu::getCGALayout(memTy.getEncoding());
-      auto tryPlannedCanonicalLayout = [&](unsigned mmaSizeM, unsigned mmaSizeN,
-                                           unsigned colStride,
-                                           bool twoCTAs)
-          -> std::optional<LinearLayout> {
-        if (auto maybeCanonical = ttng::getCanonicalTMemLinearEncoding(
-                shape, mmaSizeM, mmaSizeN, colStride, cga, twoCTAs,
-                /*error=*/nullptr)) {
-          return maybeCanonical->getLinearLayout();
-        }
-        return std::nullopt;
-      };
       if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
-        if (auto maybeLayout = tryPlannedCanonicalLayout(
-                info->mmaSizeM, info->mmaSizeN, info->colStride,
-                info->twoCTAs)) {
-          return *maybeLayout;
-        }
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            info->canonicalLayout);
       }
       if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
-        if (auto maybeLayout = tryPlannedCanonicalLayout(
-                info->mmaSizeM, info->mmaSizeN, info->colStride,
-                info->twoCTAs)) {
-          return *maybeLayout;
-        }
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            info->canonicalLayout);
       }
       if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
-        if (auto maybeLayout = tryPlannedCanonicalLayout(
-                info->mmaSizeM, info->mmaSizeN, info->colStride,
-                info->twoCTAs)) {
-          return *maybeLayout;
-        }
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            info->canonicalLayout);
       }
     }
-    std::string layoutError;
     if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
             memTy.getShape(), memTy.getEncoding(), &layoutError)) {
       return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
@@ -678,7 +670,7 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
 
   DotOpMmaV5TmemLoader dLoader =
       DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
-                                  /*useRawWordColumns=*/false);
+                                  /*useRawWordColumns=*/true);
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,
                           int m, int n, const DotConversion::InstDesc &desc) {
     return dLoader.tmemLoad(m * desc.mmaSizeM, n * desc.mmaSizeN, rewriter,
@@ -801,7 +793,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   // and descriptor-view offsets without a separate block-id schedule.
   DotOpMmaV5TmemLoader dLoader =
       DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
-                                  /*useRawWordColumns=*/false);
+                                  /*useRawWordColumns=*/true);
   dot.getAccumulatorInfo = [](MemDescType memTy) {
     return ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
   };

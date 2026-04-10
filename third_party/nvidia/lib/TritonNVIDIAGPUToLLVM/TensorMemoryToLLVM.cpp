@@ -834,8 +834,14 @@ lowerTMemLdStFromTypes(
     return backingPlan;
   };
   auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
-    if (!memDescValue || memTy.getRank() != 2 ||
-        memTy.getElementTypeBitWidth() != 32 || memTy.getShape()[0] != 64 ||
+    // The M=64 f32 query-type rescue exists for direct root loads whose
+    // canonical TMEM family is split-N. Applying it to descriptor views
+    // short-circuits the exact raw/support-query path and can collapse complex
+    // view arithmetic back to scalar 32x32b lowering.
+    if (!vals.empty() || !memDescValue || isViewLikeMemDesc ||
+        !isa_and_nonnull<TMEMAllocOp>(memDescValue.getDefiningOp()) ||
+        memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+        memTy.getShape()[0] != 64 ||
         isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
       return false;
     }
@@ -987,7 +993,8 @@ lowerTMemLdStFromTypes(
         ScopedDiagnosticHandler handler(
             rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
         return computeTMemLdStEncodingInfo(
-            regTy, memTy, supportQuery, maxnreg, /*emitError=*/{},
+            regTy, memTy, supportQuery, maxnreg,
+            debugQuerySelection ? diag : std::function<InFlightDiagnostic()>{},
             supportRowPlan);
       }();
       appendTrace(Twine("supportQuery ") +

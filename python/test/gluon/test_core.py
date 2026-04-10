@@ -2809,9 +2809,9 @@ TMEM_LINEAR_SPLITN_CASES = [
         128,
         (
             ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 64, 32),
             ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 64, 32),
         ),
     ),
     (

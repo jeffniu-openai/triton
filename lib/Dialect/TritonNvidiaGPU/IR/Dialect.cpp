@@ -1300,7 +1300,8 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlan(const LinearLayout &ll) {
     return std::nullopt;
   auto stripped = ll.removeZeroBasesAlongDim(kRow);
   if (stripped.hasInDim(kRow) &&
-      stripped.getInDimSizeLog2(kRow) < ll.getInDimSizeLog2(kRow))
+      stripped.getInDimSizeLog2(kRow) < ll.getInDimSizeLog2(kRow) &&
+      stripped.getInDimSizeLog2(kRow) >= 6)
     return getTMemLdStRowPlan(stripped);
   unsigned rowBits = ll.getInDimSizeLog2(kRow);
   auto isZeroRowBasis = [&](unsigned idx) {

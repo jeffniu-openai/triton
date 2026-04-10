@@ -1187,9 +1187,28 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
     auto linearDst = linearizeRowMajorCoordsLocal(layoutDstShape, dstPoint);
     if (failed(linearDst))
       return failure();
-    int64_t linearSrc =
-        (*linearDst * static_cast<int64_t>(dstBitwidth)) / srcBitwidth;
+    int64_t srcBitOffset = *linearDst * static_cast<int64_t>(dstBitwidth);
+    if (srcBitOffset % srcBitwidth != 0) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return failure();
+    }
+    int64_t linearSrc = srcBitOffset / srcBitwidth;
     return unravelRowMajorCoordsLocal(layoutSrcShape, linearSrc);
+  };
+  auto remapOriginPoint = [&](ArrayRef<int32_t> srcPoint)
+      -> FailureOr<SmallVector<int32_t>> {
+    auto linearSrc = linearizeRowMajorCoordsLocal(layoutSrcShape, srcPoint);
+    if (failed(linearSrc))
+      return failure();
+    int64_t dstBitOffset = *linearSrc * static_cast<int64_t>(srcBitwidth);
+    if (dstBitOffset % dstBitwidth != 0) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return failure();
+    }
+    int64_t linearDst = dstBitOffset / dstBitwidth;
+    return unravelRowMajorCoordsLocal(layoutDstShape, linearDst);
   };
 
   auto srcLogicalDims = llvm::to_vector(ll.getOutDimNames());
@@ -1256,9 +1275,33 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
                "compute support layout";
     return failure();
   }
-  auto result = TMemLdStQueryLayout{
-      *dstLayout, srcQuery.twoCTAs,
-      remapTMemLdStQueryOrigin(srcQuery, *dstLayout, /*deltaCoords=*/{})};
+  SmallVector<std::pair<StringAttr, int32_t>> srcOriginSparse;
+  srcOriginSparse.reserve(ll.getNumInDims());
+  auto srcInDims = llvm::to_vector(ll.getInDimNames());
+  for (auto [dim, value] : llvm::zip_equal(srcInDims, srcQuery.origin))
+    srcOriginSparse.push_back({dim, value});
+  auto srcOriginCoords =
+      ll.apply(makeFullLinearLayoutCoords(srcInDims, srcOriginSparse));
+  SmallVector<int32_t> srcOriginPoint;
+  srcOriginPoint.reserve(ll.getNumOutDims());
+  for (auto dim : ll.getOutDimNames())
+    srcOriginPoint.push_back(lookupLinearLayoutCoord(srcOriginCoords, dim));
+  auto dstOriginPoint = remapOriginPoint(srcOriginPoint);
+  if (failed(dstOriginPoint))
+    return failure();
+  auto dstLogicalDims = llvm::to_vector(dstLayout->getOutDimNames());
+  SmallVector<std::pair<StringAttr, int32_t>> dstOriginSparse;
+  dstOriginSparse.reserve(dstLogicalDims.size());
+  for (auto [dim, value] : llvm::zip_equal(dstLogicalDims, *dstOriginPoint))
+    dstOriginSparse.push_back({dim, value});
+  auto dstOriginCoords = (*dstInv).apply(
+      makeFullLinearLayoutCoords(dstLogicalDims, dstOriginSparse));
+  SmallVector<int32_t> dstOrigin;
+  dstOrigin.reserve(dstLayout->getNumInDims());
+  for (auto dim : dstLayout->getInDimNames())
+    dstOrigin.push_back(lookupLinearLayoutCoord(dstOriginCoords, dim));
+  auto result = TMemLdStQueryLayout{*dstLayout, srcQuery.twoCTAs,
+                                    std::move(dstOrigin)};
   if (debug) {
     llvm::errs() << "[tmem-ldst] reinterpret srcShape=";
     for (int64_t size : srcShape)
@@ -1277,6 +1320,22 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
     llvm::errs() << "\n";
   }
   return result;
+}
+
+static FailureOr<LinearLayout>
+reinterpretLinearLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
+                        const LinearLayout &srcLayout,
+                        ArrayRef<int64_t> dstShape, int dstBitwidth,
+                        MLIRContext *ctx, std::string *error) {
+  SmallVector<int32_t> zeroOrigin(srcLayout.getNumInDims(), 0);
+  TMemLdStQueryLayout srcQuery{srcLayout, /*twoCTAs=*/false,
+                               std::move(zeroOrigin)};
+  auto result = inferTMemReinterpretQueryLayout(srcShape, srcBitwidth, srcQuery,
+                                                dstShape, dstBitwidth, ctx,
+                                                error);
+  if (failed(result))
+    return failure();
+  return result->layout;
 }
 
 static FailureOr<TMemLdStQueryLayout>
@@ -2850,7 +2909,39 @@ reinterpretColumnSubviewSupportQueryLayout(
   }
   if (srcBitwidth == dstBitwidth)
     return srcSupport;
-
+  SmallVector<int64_t> supportSrcShape;
+  supportSrcShape.reserve(srcSupport.layout.getNumOutDims());
+  for (int32_t size : srcSupport.layout.getOutDimSizes())
+    supportSrcShape.push_back(static_cast<int64_t>(size));
+  if (supportSrcShape.size() != 2 || supportSrcShape[0] != srcShape[0] ||
+      supportSrcShape[1] < srcShape[1]) {
+    return std::nullopt;
+  }
+  SmallVector<int64_t> supportDstShape(supportSrcShape.begin(),
+                                       supportSrcShape.end());
+  if (srcBitwidth > dstBitwidth) {
+    int64_t ratio = srcBitwidth / dstBitwidth;
+    if (srcBitwidth % dstBitwidth != 0 || !llvm::isPowerOf2_64(ratio)) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return std::nullopt;
+    }
+    supportDstShape.back() *= ratio;
+  } else {
+    int64_t ratio = dstBitwidth / srcBitwidth;
+    if (dstBitwidth % srcBitwidth != 0 || !llvm::isPowerOf2_64(ratio) ||
+        supportDstShape.back() % ratio != 0) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return std::nullopt;
+    }
+    supportDstShape.back() /= ratio;
+  }
+  if (supportDstShape[0] != dstShape[0] || supportDstShape[1] < dstShape[1]) {
+    if (error)
+      *error = "unsupported tensor memory memdesc_reinterpret view";
+    return std::nullopt;
+  }
   auto *ctx = srcSupport.layout.getInDimNames().begin()->getContext();
   auto kCol = StringAttr::get(ctx, "col");
   auto bases = srcSupport.layout.getBases();
@@ -2865,7 +2956,9 @@ reinterpretColumnSubviewSupportQueryLayout(
     return std::nullopt;
   size_t originIdx = std::distance(inDims.begin(), originIt);
 
-  auto zeroBasis = [&]() { return std::vector<int32_t>(srcSupport.layout.getNumOutDims(), 0); };
+  auto zeroBasis = [&]() {
+    return std::vector<int32_t>(srcSupport.layout.getNumOutDims(), 0);
+  };
   if (srcBitwidth > dstBitwidth) {
     int64_t ratio = srcBitwidth / dstBitwidth;
     if (srcBitwidth % dstBitwidth != 0 || !llvm::isPowerOf2_64(ratio)) {
@@ -2890,13 +2983,15 @@ reinterpretColumnSubviewSupportQueryLayout(
       return std::nullopt;
     }
     for (unsigned i = 0; i < removeBits; ++i) {
-      if (!llvm::all_of(colIt->second[i], [](int32_t value) { return value == 0; })) {
+      if (!llvm::all_of(colIt->second[i],
+                        [](int32_t value) { return value == 0; })) {
         if (error)
           *error = "unsupported tensor memory memdesc_reinterpret view";
         return std::nullopt;
       }
     }
-    colIt->second.erase(colIt->second.begin(), colIt->second.begin() + removeBits);
+    colIt->second.erase(colIt->second.begin(), colIt->second.begin() +
+                                                removeBits);
     if (origin[originIdx] % static_cast<int32_t>(ratio) != 0) {
       if (error)
         *error = "unsupported tensor memory memdesc_reinterpret view";
@@ -2904,23 +2999,30 @@ reinterpretColumnSubviewSupportQueryLayout(
     }
     origin[originIdx] /= static_cast<int32_t>(ratio);
   }
-
-  auto outDimNames = standardOutDimNames(ctx, dstShape.size());
-  SmallVector<std::pair<StringAttr, int32_t>> outDims;
-  outDims.reserve(dstShape.size());
-  for (auto [idx, size] : llvm::enumerate(dstShape))
-    outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
-
-  auto result = TMemLdStQueryLayout{LinearLayout(std::move(bases), std::move(outDims),
-                                          /*requireSurjective=*/false),
-                             srcSupport.twoCTAs, std::move(origin)};
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
+    llvm::errs() << "[tmem-ldst] reinterpret support srcShape="
+                 << supportSrcShape[0] << "x" << supportSrcShape[1]
+                 << " dstShape=" << supportDstShape[0] << "x"
+                 << supportDstShape[1] << " viewSrc=" << srcShape[0] << "x"
+                 << srcShape[1] << " viewDst=" << dstShape[0] << "x"
+                 << dstShape[1] << "\n";
     llvm::errs() << "[tmem-ldst] reinterpret support src layout:\n"
                  << srcSupport.layout.toString() << "\n";
     llvm::errs() << "[tmem-ldst] reinterpret support src origin:";
     for (int32_t value : srcSupport.origin)
       llvm::errs() << " " << value;
     llvm::errs() << "\n";
+  }
+  auto outDimNames = standardOutDimNames(ctx, supportDstShape.size());
+  SmallVector<std::pair<StringAttr, int32_t>> outDims;
+  outDims.reserve(supportDstShape.size());
+  for (auto [idx, size] : llvm::enumerate(supportDstShape))
+    outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
+  auto result = TMemLdStQueryLayout{
+      LinearLayout(std::move(bases), std::move(outDims),
+                   /*requireSurjective=*/false),
+      srcSupport.twoCTAs, std::move(origin)};
+  if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
     llvm::errs() << "[tmem-ldst] reinterpret support dst layout:\n"
                  << result.layout.toString() << "\n";
     llvm::errs() << "[tmem-ldst] reinterpret support dst origin:";
@@ -2992,6 +3094,11 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     return std::nullopt;
   }
 
+  auto refreshSupportRowPlan = [&](TMemLdStSupportQueryPlan &support) {
+    if (auto rowPlan = getTMemLdStRowPlan(support.query.layout))
+      support.rowPlan = rowPlan;
+  };
+
   auto getSourceSupport = [&](Value src)
       -> std::optional<TMemLdStSupportQueryPlan> {
     std::string srcError;
@@ -3003,13 +3110,23 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
                   src, /*preserveNonCanonicalView=*/true, &srcError);
     if (failed(srcQuery))
       return std::nullopt;
+    if (!maybeSrcSupport) {
+      auto normalizedLayout =
+          normalizeTensorMemoryLinearLayoutForAnalysis(srcQuery->layout);
+      srcQuery = TMemLdStQueryLayout{
+          normalizedLayout, srcQuery->twoCTAs,
+          remapTMemLdStQueryOrigin(*srcQuery, normalizedLayout,
+                                   /*deltaCoords=*/{})};
+    }
     auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
-    return TMemLdStSupportQueryPlan{
+    auto support = TMemLdStSupportQueryPlan{
         TMemLdStQueryLayout{srcQuery->layout,
                             maybeTwoCTAs.value_or(srcQuery->twoCTAs),
                             srcQuery->origin},
         maybeSrcSupport ? maybeSrcSupport->rowPlan
                         : std::optional<TMemLdStRowPlan>{}};
+    refreshSupportRowPlan(support);
+    return support;
   };
 
   if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
@@ -3034,7 +3151,10 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
       return std::nullopt;
     if (auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding()))
       reinterpretedSupport->twoCTAs = *maybeTwoCTAs;
-    return TMemLdStSupportQueryPlan{*reinterpretedSupport, support->rowPlan};
+    auto result =
+        TMemLdStSupportQueryPlan{*reinterpretedSupport, support->rowPlan};
+    refreshSupportRowPlan(result);
+    return result;
   }
 
   if (auto index = memDesc.getDefiningOp<gpu::MemDescIndexOp>()) {
@@ -3094,23 +3214,82 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   auto support = *maybeSrcSupport;
 
   auto *ctx = memDesc.getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
-  SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
-  encodedOffsets.reserve(support.query.layout.getNumInDims());
-  for (auto dim : support.query.layout.getInDimNames()) {
-    if (dim == kRow)
-      encodedOffsets.push_back({dim, subslice.getOffsets()[0]});
-    else if (dim == kCol)
-      encodedOffsets.push_back({dim, subslice.getOffsets()[1]});
-    else
-      encodedOffsets.push_back({dim, 0});
+  if (auto maybeDstTy = inferStandaloneTMemViewType(memDesc, error);
+      succeeded(maybeDstTy)) {
+    if (auto maybeDstAnalysis = getTMemViewAnalysisLayout(
+            maybeDstTy->getShape(), maybeDstTy->getEncoding(), error)) {
+      TMemLdStQueryLayout workingQuery = support.query;
+      auto llInv = computeLeftInverseLayout(workingQuery.layout, error);
+      if (failed(llInv)) {
+        auto normalizedLayout =
+            normalizeTensorMemoryLinearLayoutForAnalysis(workingQuery.layout);
+        std::string normalizedError;
+        auto normalizedInv =
+            computeLeftInverseLayout(normalizedLayout, &normalizedError);
+        if (succeeded(normalizedInv)) {
+          workingQuery = TMemLdStQueryLayout{
+              normalizedLayout, workingQuery.twoCTAs,
+              remapTMemLdStQueryOrigin(workingQuery, normalizedLayout,
+                                       /*deltaCoords=*/{})};
+          llInv = std::move(normalizedInv);
+        }
+      }
+      if (succeeded(llInv)) {
+        auto logicalDims = llvm::to_vector(workingQuery.layout.getOutDimNames());
+        SmallVector<std::pair<StringAttr, int32_t>> encodedOffsets;
+        encodedOffsets.reserve(logicalDims.size());
+        for (auto [dim, logicalDim] : llvm::enumerate(logicalDims))
+          encodedOffsets.push_back({logicalDim, subslice.getOffsets()[dim]});
+        auto baseCoords = llInv->apply(
+            makeFullLinearLayoutCoords(logicalDims, encodedOffsets));
+        auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+        support.query = TMemLdStQueryLayout{
+            maybeDstAnalysis->layout,
+            maybeTwoCTAs.value_or(maybeDstAnalysis->twoCTAs),
+            remapTMemLdStQueryOrigin(workingQuery, maybeDstAnalysis->layout,
+                                     baseCoords)};
+        refreshSupportRowPlan(support);
+        return support;
+      }
+    }
   }
-
+  SmallVector<int32_t> offsets(subslice.getOffsets().begin(),
+                               subslice.getOffsets().end());
+  auto slicedSupport = inferTMemSubsliceQueryLayout(
+      srcTy.getShape(), support.query, queryTy.getShape(), offsets,
+      srcTy.getElementTypeBitWidth(), ctx, error);
+  if (failed(slicedSupport)) {
+    if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
+      llvm::errs() << "[tmem-ldst-support] column subslice projection failed: "
+                   << (error ? *error : std::string("<no error>")) << "\n"
+                   << "[tmem-ldst-support] src support layout:\n"
+                   << support.query.layout.toString() << "\n";
+    }
+    std::string rawSubviewError;
+    auto rawSubviewQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+        memDesc, /*preserveNonCanonicalView=*/true, &rawSubviewError);
+    if (failed(rawSubviewQuery)) {
+      if (error && !rawSubviewError.empty())
+        *error = rawSubviewError;
+      return std::nullopt;
+    }
+    auto normalizedSubviewLayout =
+        normalizeTensorMemoryLinearLayoutForAnalysis(rawSubviewQuery->layout);
+    rawSubviewQuery = TMemLdStQueryLayout{
+        normalizedSubviewLayout, rawSubviewQuery->twoCTAs,
+        remapTMemLdStQueryOrigin(*rawSubviewQuery, normalizedSubviewLayout,
+                                 /*deltaCoords=*/{})};
+    auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+    rawSubviewQuery->twoCTAs =
+        maybeTwoCTAs.value_or(rawSubviewQuery->twoCTAs);
+    support.query = *rawSubviewQuery;
+    refreshSupportRowPlan(support);
+    return support;
+  }
   auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
-  support.query.twoCTAs = maybeTwoCTAs.value_or(support.query.twoCTAs);
-  support.query.origin = remapTMemLdStQueryOrigin(
-      support.query, support.query.layout, encodedOffsets);
+  slicedSupport->twoCTAs = maybeTwoCTAs.value_or(slicedSupport->twoCTAs);
+  support.query = *slicedSupport;
+  refreshSupportRowPlan(support);
   return support;
 }
 
@@ -3416,6 +3595,25 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
     if (!result)
       return failure();
     return *result;
+  }
+
+  // Column subviews keep the same local row support and only narrow the
+  // materialized logical column span. In that case the view encoding should be
+  // derived by restricting the normalized support layout to the destination
+  // shape; the view offset is tracked separately on the descriptor/query
+  // origin rather than being baked into the encoding itself.
+  if (extraRank == 0 && layoutRank == 2 && dstShape[0] == srcShape[0] &&
+      offsets[0] == 0 && dstShape[1] <= srcShape[1] &&
+      offsets[1] >= 0 && offsets[1] + dstShape[1] <= srcShape[1]) {
+    auto normalized = normalizeTensorMemoryLinearLayoutForAnalysis(ll);
+    if (auto maybeRestricted =
+            restrictTMemAnalysisLayoutToShape(normalized, dstShape, error);
+        succeeded(maybeRestricted)) {
+      if (auto result = tryMakeTMemViewEncoding(
+              ctx, *maybeRestricted, maybeSrcLayout->twoCTAs, error)) {
+        return *result;
+      }
+    }
   }
 
   auto logicalDims = llvm::to_vector(ll.getOutDimNames());
@@ -4211,6 +4409,15 @@ computeTMemLdStEncodingInfoImpl(
   int bitwidth = memTy.getElementTypeBitWidth();
   int64_t logicalRows = memTy.getShape()[memTy.getRank() - 2];
   int64_t logicalCols = memTy.getShape()[memTy.getRank() - 1];
+  auto memOutDims = llvm::to_vector(memLayout.getOutDims());
+  int64_t supportLogicalRows =
+      memOutDims.size() >= 2 ? memOutDims[memOutDims.size() - 2].second
+                             : logicalRows;
+  int64_t supportLogicalCols =
+      memOutDims.size() >= 1 ? memOutDims.back().second : logicalCols;
+  bool hasWidenedSupportCols =
+      supportLogicalRows == logicalRows &&
+      supportLogicalCols == logicalCols * 2;
   int64_t physicalRows = memLayout.hasInDim(kRow) ? memLayout.getInDimSize(kRow)
                                                   : logicalRows;
   int64_t physicalCols =
@@ -4236,36 +4443,51 @@ computeTMemLdStEncodingInfoImpl(
   bool isRowZeroM64ReinterpretView =
       bitwidth == 16 && logicalRows == 64 && isOriginalRowZeroLiftedReinterpret;
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding());
+  auto activeMemLayout = memLayout;
+  if (activeMemLayout.hasInDim(kRow))
+    activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
+  int64_t activePhysicalRows =
+      activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
+                                     : physicalRows;
+  bool hasZeroRowBasis = hasZeroBasisAlong(memLayout, kRow);
+  bool hasZeroColBasis = hasZeroBasisAlong(memLayout, kCol);
+  bool hasPackedHalfRowAndColSupport =
+      hasZeroRowBasis && hasZeroColBasis &&
+      logicalRows == activePhysicalRows * 2 &&
+      logicalCols == physicalCols * 2;
   LinearLayout regLayout =
       squeezeTrivialBlock(toLinearEncoding(regTy).getLinearLayout());
-  auto tryBuildPackedI16SparseSupportLayout = [&]()
+  auto tryBuildPackedI16SparseSupportLayout =
+      [&](bool stripZeroRowSupportBit)
       -> std::optional<LinearLayout> {
-    auto activeMemLayout = memLayout;
-    if (activeMemLayout.hasInDim(kRow))
-      activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
-    int64_t activePhysicalRows =
-        activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
-                                       : physicalRows;
-    bool hasZeroColBasis = hasZeroBasisAlong(memLayout, kCol);
     bool hasNonTrivialBlock =
         memLayout.hasInDim(kBlock) && memLayout.getInDimSize(kBlock) > 1;
     if (hasNonTrivialBlock)
       return std::nullopt;
     bool isRowZeroLiftedReinterpret =
-        hasZeroBasisAlong(memLayout, kRow) && !hasZeroColBasis &&
+        hasZeroRowBasis && !hasZeroColBasis &&
         logicalRows == activePhysicalRows && logicalCols == physicalCols * 2;
     if (bitwidth != 16 || isScales || !memLayout.hasInDim(kCol) ||
-        logicalRows != activePhysicalRows || logicalCols <= physicalCols ||
+        (!(logicalRows == activePhysicalRows) &&
+         !hasPackedHalfRowAndColSupport) ||
+        (!(hasZeroColBasis &&
+           (hasWidenedSupportCols || hasPackedHalfRowAndColSupport)) &&
+         logicalCols <= physicalCols) ||
         (!hasZeroColBasis && !isRowZeroLiftedReinterpret)) {
       if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
         llvm::errs() << "[tmem-ldst] packed16 support precondition fail: bitwidth="
                      << bitwidth << " isScales=" << isScales
+                     << " zeroRow=" << hasZeroRowBasis
                      << " zeroCol=" << hasZeroColBasis
                      << " rowZeroLifted=" << isRowZeroLiftedReinterpret
+                     << " packedHalfRowAndColSupport="
+                     << hasPackedHalfRowAndColSupport
+                     << " widenedSupportCols=" << hasWidenedSupportCols
                      << " hasCol=" << memLayout.hasInDim(kCol)
                      << " logicalRows=" << logicalRows
                      << " activePhysicalRows=" << activePhysicalRows
                      << " logicalCols=" << logicalCols
+                     << " supportLogicalCols=" << supportLogicalCols
                      << " physicalCols=" << physicalCols << '\n';
       }
       return std::nullopt;
@@ -4347,6 +4569,38 @@ computeTMemLdStEncodingInfoImpl(
       }
     }
     outDims[*colOutIdx].second /= 2;
+    if (hasWidenedSupportCols) {
+      int32_t packedLogicalCols = static_cast<int32_t>(logicalCols / 2);
+      if (packedLogicalCols <= 0 ||
+          outDims[*colOutIdx].second < packedLogicalCols)
+        return std::nullopt;
+      auto supportBandIt = llvm::find_if(
+          colIt->second, [&](ArrayRef<int32_t> basis) {
+            if (basis[*colOutIdx] != packedLogicalCols)
+              return false;
+            for (auto [idx, value] : llvm::enumerate(basis)) {
+              if (idx == *colOutIdx)
+                continue;
+              if (value != 0)
+                return false;
+            }
+            return true;
+          });
+      if (supportBandIt == colIt->second.end())
+        return std::nullopt;
+      colIt->second.erase(supportBandIt);
+      outDims[*colOutIdx].second = packedLogicalCols;
+    }
+
+    if (stripZeroRowSupportBit && hasPackedHalfRowAndColSupport) {
+      auto rowIt = bases.find(kRow);
+      if (rowIt == bases.end())
+        return std::nullopt;
+      auto zeroRowIt = llvm::find_if(rowIt->second, isZeroBasis);
+      if (zeroRowIt == rowIt->second.end())
+        return std::nullopt;
+      rowIt->second.erase(zeroRowIt);
+    }
 
     return LinearLayout(std::move(bases), std::move(outDims),
                         /*requireSurjective=*/false);
@@ -4354,7 +4608,8 @@ computeTMemLdStEncodingInfoImpl(
   auto tryPackedI16SparseSupportInfo = [&]()
       -> std::optional<TMemLdStEncodingInfo> {
     bool debugQuery = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
-    auto maybePackedMemLayout = tryBuildPackedI16SparseSupportLayout();
+    auto maybePackedMemLayout =
+        tryBuildPackedI16SparseSupportLayout(/*stripZeroRowSupportBit=*/true);
     if (!maybePackedMemLayout) {
       if (debugQuery) {
         llvm::errs() << "[tmem-ldst] packed16 support skip: no packed mem layout\n";
@@ -4362,71 +4617,82 @@ computeTMemLdStEncodingInfoImpl(
       return std::nullopt;
     }
 
-    auto tryManuallyPackRegLayout = [&](const LinearLayout &layout,
-                                        StringAttr colOutDim)
-        -> std::optional<LinearLayout> {
-      if (!layout.hasInDim(kReg) || !layout.hasOutDim(colOutDim))
-        return std::nullopt;
-
-      auto outDims = llvm::to_vector(layout.getOutDims());
-      std::optional<unsigned> colOutIdx;
-      for (auto [idx, outDim] : llvm::enumerate(outDims)) {
-        if (outDim.first == colOutDim) {
-          colOutIdx = idx;
-          break;
-        }
-      }
-      if (!colOutIdx || outDims[*colOutIdx].second % 2 != 0)
-        return std::nullopt;
-
-      auto bases = layout.getBases();
-      auto regIt = bases.find(kReg);
-      if (regIt == bases.end() || regIt->second.empty())
-        return std::nullopt;
-
-      auto firstBasis = regIt->second.front();
-      for (auto [idx, value] : llvm::enumerate(firstBasis)) {
-        int32_t expected = idx == *colOutIdx ? 1 : 0;
-        if (value != expected)
-          return std::nullopt;
-      }
-      regIt->second.erase(regIt->second.begin());
-
-      for (auto &dimBases : llvm::make_second_range(bases)) {
-        for (auto &basis : dimBases) {
-          if ((basis[*colOutIdx] & 1) != 0)
-            return std::nullopt;
-          basis[*colOutIdx] >>= 1;
-        }
-      }
-      outDims[*colOutIdx].second /= 2;
-      return LinearLayout(std::move(bases), std::move(outDims),
-                          /*requireSurjective=*/layout.isSurjective());
-    };
-
-    auto regOutDims = regLayout.getOutDims();
-    if (regOutDims.empty())
+    SmallVector<int64_t> regShape(regTy.getShape().begin(), regTy.getShape().end());
+    if (regShape.empty() || regShape.back() % 2 != 0)
       return std::nullopt;
-    StringAttr regColOutDim = regOutDims.back().first;
-    auto maybePackedRegLayout =
-        divideLeft(regLayout, LinearLayout::identity1D(2, kReg, regColOutDim));
-    if (!maybePackedRegLayout)
-      maybePackedRegLayout = tryManuallyPackRegLayout(regLayout, regColOutDim);
-    if (!maybePackedRegLayout) {
+    SmallVector<int64_t> packedRegShape(regShape.begin(), regShape.end());
+    packedRegShape.back() /= 2;
+    std::string packedRegError;
+    auto maybePackedRegLayout = reinterpretLinearLayout(
+        regShape, /*srcBitwidth=*/bitwidth, regLayout, packedRegShape,
+        /*dstBitwidth=*/32, ctx, &packedRegError);
+    if (failed(maybePackedRegLayout)) {
       if (debugQuery) {
-        llvm::errs() << "[tmem-ldst] packed16 support skip: reg layout not packable\n"
-                     << regLayout.toString() << "\n";
+        llvm::errs()
+            << "[tmem-ldst] packed16 support skip: reg layout reinterpret "
+               "failed: "
+            << packedRegError << "\n"
+            << regLayout.toString() << "\n";
       }
       return std::nullopt;
     }
     auto packedRegLayout = squeezeTrivialBlock(std::move(*maybePackedRegLayout));
+    auto stripLeadingZeroRegisterBasis = [&](LinearLayout layout)
+        -> std::optional<LinearLayout> {
+      if (!layout.hasInDim(kReg))
+        return std::nullopt;
+      auto bases = layout.getBases();
+      auto regIt = bases.find(kReg);
+      if (regIt == bases.end() || regIt->second.empty())
+        return std::nullopt;
+      auto isZeroBasis = [](ArrayRef<int32_t> basis) {
+        return llvm::all_of(basis, [](int32_t value) { return value == 0; });
+      };
+      if (!isZeroBasis(regIt->second.front()))
+        return std::nullopt;
+      regIt->second.erase(regIt->second.begin());
+      auto outDims = llvm::to_vector(layout.getOutDims());
+      return LinearLayout(std::move(bases), std::move(outDims),
+                          /*requireSurjective=*/layout.isSurjective());
+    };
+    auto maybePackedRegisterSpaceLayout =
+        stripLeadingZeroRegisterBasis(packedRegLayout);
+    if (!maybePackedRegisterSpaceLayout) {
+      if (debugQuery) {
+        llvm::errs() << "[tmem-ldst] packed16 support skip: packed register "
+                        "reinterpret did not expose a leading zero register "
+                        "basis\n"
+                     << packedRegLayout.toString() << "\n";
+      }
+      return std::nullopt;
+    }
+    packedRegLayout = squeezeTrivialBlock(std::move(*maybePackedRegisterSpaceLayout));
     auto packedMemLayout =
         squeezeTrivialBlock(std::move(*maybePackedMemLayout));
+    auto anchorMemLayout = packedMemLayout;
+    if (hasPackedHalfRowAndColSupport) {
+      auto maybePackedAnchorMemLayout =
+          tryBuildPackedI16SparseSupportLayout(
+              /*stripZeroRowSupportBit=*/false);
+      if (!maybePackedAnchorMemLayout) {
+        if (debugQuery) {
+          llvm::errs()
+              << "[tmem-ldst] packed16 support skip: no anchor mem layout\n";
+        }
+        return std::nullopt;
+      }
+      anchorMemLayout =
+          squeezeTrivialBlock(std::move(*maybePackedAnchorMemLayout));
+    }
     if (debugQuery) {
       llvm::errs() << "[tmem-ldst] packed16 support reg layout:\n"
                    << packedRegLayout.toString() << "\n";
       llvm::errs() << "[tmem-ldst] packed16 support mem layout:\n"
                    << packedMemLayout.toString() << "\n";
+      if (anchorMemLayout != packedMemLayout) {
+        llvm::errs() << "[tmem-ldst] packed16 support anchor layout:\n"
+                     << anchorMemLayout.toString() << "\n";
+      }
     }
 
     auto rowPlan = getTMemLdStRowPlanForType(memTy);
@@ -4438,14 +4704,20 @@ computeTMemLdStEncodingInfoImpl(
     };
     if (rowPlanOverride &&
         (!rowPlan || rowPlanOverride->rowSpan == rowPlan->rowSpan ||
-         memLayoutSupportsOverride(packedMemLayout))) {
+         memLayoutSupportsOverride(packedMemLayout) ||
+         memLayoutSupportsOverride(anchorMemLayout))) {
       rowPlan = rowPlanOverride;
+    }
+    if (debugQuery && rowPlan) {
+      llvm::errs() << "[tmem-ldst] packed16 support rowPlan="
+                   << rowPlan->warpRow0 << "," << rowPlan->warpRow1
+                   << " span=" << rowPlan->rowSpan
+                   << " base=" << rowPlan->baseOffset << "\n";
     }
     if (!rowPlan || !packedRegLayout.hasInDim(kWarp) ||
         packedRegLayout.getInDimSizeLog2(kWarp) < 2)
       return std::nullopt;
 
-    auto anchorMemLayout = packedMemLayout;
     auto getRowAnchorBasis = [&](int32_t logicalRow)
         -> std::optional<SmallVector<int32_t>> {
       return getLogicalRowAnchorBasis(anchorMemLayout, logicalRow);
@@ -4467,13 +4739,13 @@ computeTMemLdStEncodingInfoImpl(
       return std::nullopt;
     }
 
-    if (!canInvertAndComposeSafely(packedRegLayout, anchorMemLayout)) {
+    if (!canInvertAndComposeSafely(packedRegLayout, packedMemLayout)) {
       if (debugQuery) {
         llvm::errs() << "[tmem-ldst] packed16 support skip: packed image containment failed\n";
       }
       return std::nullopt;
     }
-    auto packedCvt = packedRegLayout.invertAndCompose(anchorMemLayout);
+    auto packedCvt = packedRegLayout.invertAndCompose(packedMemLayout);
     packedCvt = squeezeTrivialBlock(std::move(packedCvt));
     if (debugQuery) {
       llvm::errs() << "[tmem-ldst] packed16 support cvt\n"
@@ -4502,18 +4774,25 @@ computeTMemLdStEncodingInfoImpl(
                                           packedCvt.getBasis(kWarp, 0).end());
     SmallVector<int32_t> packedWarpBasis1(packedCvt.getBasis(kWarp, 1).begin(),
                                           packedCvt.getBasis(kWarp, 1).end());
-    auto info = lowerTMemLdSt(packedCvt, /*maxnreg=*/2, /*bitwidth=*/32,
+    bool preferPackedI16x32bx2 =
+        isRowZeroM64ReinterpretView && !hasWidenedSupportCols;
+    // Only the row-zero-lifted M64 reinterpret bucket needs the bounded x2
+    // search. Canonical packed split-N layouts should keep the normal direct
+    // vectorization so they still lower to the larger x16/x32 message shapes.
+    int packedDirectMaxNreg =
+        preferPackedI16x32bx2 ? std::min(maxnreg, 4) : maxnreg;
+    auto info = lowerTMemLdSt(packedCvt, packedDirectMaxNreg, /*bitwidth=*/32,
                               /*emitError=*/{}, /*unpacked=*/false,
                               packedWarpBasis0, packedWarpBasis1,
                               packedRowSpan,
-                              /*preferI16x32bx2=*/isRowZeroM64ReinterpretView);
+                              /*preferI16x32bx2=*/preferPackedI16x32bx2);
     if (failed(info)) {
       if (debugQuery) {
         llvm::errs() << "[tmem-ldst] packed16 support skip: rowSpan="
                      << packedRowSpan << " warp0=" << packedWarpBasis0.front()
                      << " warp1=" << packedWarpBasis1.front() << "\n";
         auto diagInfo = lowerTMemLdSt(
-            packedCvt, /*maxnreg=*/2, /*bitwidth=*/32,
+            packedCvt, packedDirectMaxNreg, /*bitwidth=*/32,
             [&]() -> InFlightDiagnostic {
               llvm::errs() << "[tmem-ldst] packed16 support lower failure: ";
               return mlir::emitRemark(mlir::UnknownLoc::get(ctx));
@@ -4541,9 +4820,10 @@ computeTMemLdStEncodingInfoImpl(
       return (static_cast<uint32_t>(basis[0]) << 16) |
              static_cast<uint32_t>(basis[1]);
     };
-    auto getPackedStaticOffset = [&](int32_t regIdx, int32_t colScale) -> int32_t {
-      auto rowCol = packedCvt.apply(
-          {{kReg, regIdx}, {kLane, 0}, {kWarp, 0}});
+    auto getStaticOffsetFromLayout = [&](const LinearLayout &layout,
+                                         int32_t regIdx,
+                                         int32_t colScale) -> int32_t {
+      auto rowCol = layout.apply({{kReg, regIdx}, {kLane, 0}, {kWarp, 0}});
       int32_t row = 0;
       int32_t col = 0;
       for (auto [dim, value] : rowCol) {
@@ -4554,12 +4834,21 @@ computeTMemLdStEncodingInfoImpl(
       }
       return (row << 16) | (col * colScale);
     };
+    auto getPackedStaticOffset = [&](int32_t regIdx, int32_t colScale) -> int32_t {
+      return getStaticOffsetFromLayout(packedCvt, regIdx, colScale);
+    };
     bool isPackedRowZeroLiftedView =
         hasZeroBasisAlong(packedMemLayout, kRow) &&
         !hasZeroBasisAlong(packedMemLayout, kCol);
-    if (isPackedRowZeroLiftedView && info->atom != TMemAccessAtom::I32x32b) {
+    bool allowPackedI16RowZeroM64 =
+        isRowZeroM64ReinterpretView &&
+        info->atom == TMemAccessAtom::I16x32bx2;
+    if (isPackedRowZeroLiftedView && info->atom != TMemAccessAtom::I32x32b &&
+        !allowPackedI16RowZeroM64) {
       if (debugQuery) {
-        llvm::errs() << "[tmem-ldst] packed16 support skip: row-zero lifted views require 32x32b.unpack direct lowering\n";
+        llvm::errs() << "[tmem-ldst] packed16 support skip: row-zero lifted "
+                        "views require packed 32x32b.unpack direct lowering "
+                        "or the validated M64 16x32bx2 path\n";
       }
       return std::nullopt;
     }
@@ -4589,38 +4878,109 @@ computeTMemLdStEncodingInfoImpl(
               (messageIdx / packedBandMessages) * packedBandMessages * 2;
         info->packetOffsets.push_back(staticOffset);
       }
-    } else if (info->atom == TMemAccessAtom::I16x32bx2) {
+    } else if (info->atom == TMemAccessAtom::I16x32bx2 &&
+               allowPackedI16RowZeroM64) {
+      // The row-zero M64 reinterpret bucket is identified in the original
+      // logical view space. After exact packing/reinterpret arithmetic the
+      // packed sparse-support image is no longer necessarily "row-zero
+      // lifted", but it still needs the validated quotient-derived packet
+      // decomposition and subword-unpacked lowering.
       info->unpacked = true;
-      info->numRegsPerMessage = 2;
-      info->secondHalfOffset = 32;
+      auto packetOriginLayout = info->reps;
+      if (info->secondHalfOffset && packetOriginLayout.hasInDim(kReg) &&
+          packetOriginLayout.hasOutDim(kCol)) {
+        auto packetBases = packetOriginLayout.getBases();
+        auto &regBases = packetBases[kReg];
+        for (auto &basis : regBases) {
+          bool pureColBasis = packetOriginLayout.hasOutDim(kRow)
+                                  ? packetOriginLayout.getBasis(kReg,
+                                                                &basis -
+                                                                    regBases.data(),
+                                                                kRow) == 0
+                                  : true;
+          int32_t colBasis = packetOriginLayout.getBasis(
+              kReg, &basis - regBases.data(), kCol);
+          if (pureColBasis && colBasis != 0 &&
+              colBasis * 2 == static_cast<int32_t>(*info->secondHalfOffset)) {
+            std::fill(basis.begin(), basis.end(), 0);
+            break;
+          }
+        }
+        packetOriginLayout =
+            LinearLayout(std::move(packetBases), packetOriginLayout.getOutDims(),
+                         /*requireSurjective=*/packetOriginLayout.isSurjective());
+      }
       info->packetOffsets.clear();
       info->packetOffsets.reserve(
-          packedCvt.hasInDim(kReg)
-              ? packedCvt.getInDimSize(kReg) / info->numRegsPerMessage
+          info->reps.hasInDim(kReg)
+              ? info->reps.getInDimSize(kReg) / info->numRegsPerMessage
               : 0);
-      int32_t numMessages =
-          packedCvt.getInDimSize(kReg) / info->numRegsPerMessage;
-      for (int32_t messageIdx = 0; messageIdx < numMessages; ++messageIdx) {
-        info->packetOffsets.push_back(
-            getPackedStaticOffset(messageIdx, /*colScale=*/4));
+      if (info->reps.hasInDim(kReg)) {
+        for (int32_t regIdx = 0; regIdx < info->reps.getInDimSize(kReg);
+             regIdx += info->numRegsPerMessage) {
+          info->packetOffsets.push_back(
+              getStaticOffsetFromLayout(packetOriginLayout, regIdx,
+                                        /*colScale=*/2));
+        }
       }
     }
-    info->warpBaseOffset0 = packTMemBasisOffset(*expectedWarp0Basis);
-    info->warpBaseOffset1 = packTMemBasisOffset(*expectedWarp1Basis);
-    info->warpRow0 =
-        expectedWarp0Basis->empty() ? 0 : expectedWarp0Basis->front();
-    info->warpRow1 =
-        expectedWarp1Basis->empty() ? 0 : expectedWarp1Basis->front();
+    if (allowPackedI16RowZeroM64) {
+      // The sparse support image is already represented by packetOffsets.
+      // Keep the validated split-N warp tiling contract here; replacing it
+      // with the lifted support-image anchors collapses the 4-warp M=64
+      // message family onto only two 16-row bands.
+      if (info->packetOffsets.empty())
+        info->secondHalfOffset = *info->secondHalfOffset * 2;
+      info->warpBaseOffset0 =
+          packTMemBasisOffset({rowPlan->warpRow0, /*col=*/0});
+      info->warpBaseOffset1 =
+          packTMemBasisOffset({rowPlan->warpRow1, /*col=*/0});
+      info->warpRow0 = rowPlan->warpRow0;
+      info->warpRow1 = rowPlan->warpRow1;
+    } else {
+      info->warpBaseOffset0 = packTMemBasisOffset(*expectedWarp0Basis);
+      info->warpBaseOffset1 = packTMemBasisOffset(*expectedWarp1Basis);
+      info->warpRow0 =
+          expectedWarp0Basis->empty() ? 0 : expectedWarp0Basis->front();
+      info->warpRow1 =
+          expectedWarp1Basis->empty() ? 0 : expectedWarp1Basis->front();
+    }
     int32_t packedBaseOffset = 0;
     if (rowPlanOverride && rowPlanOverride->rowSpan == packedRowSpan)
       packedBaseOffset = rowPlanOverride->baseOffset;
     else if (rowPlan && rowPlan->rowSpan == packedRowSpan)
       packedBaseOffset = rowPlan->baseOffset;
     info->baseOffset = packedBaseOffset;
+    if (debugQuery) {
+      llvm::errs() << "[tmem-ldst] packed16 support final atom="
+                   << static_cast<int>(info->atom)
+                   << " regsPerMsg=" << info->numRegsPerMessage
+                   << " baseOffset=" << info->baseOffset
+                   << " warpBase0=" << info->warpBaseOffset0
+                   << " warpBase1=" << info->warpBaseOffset1;
+      if (info->secondHalfOffset)
+        llvm::errs() << " secondHalf=" << *info->secondHalfOffset;
+      llvm::errs() << "\n[tmem-ldst] packed16 support final reps:\n"
+                   << info->reps.toString() << "\n";
+      if (!info->packetOffsets.empty()) {
+        llvm::errs() << "[tmem-ldst] packed16 support packetOffsets:";
+        for (int32_t offset : info->packetOffsets)
+          llvm::errs() << " " << offset;
+        llvm::errs() << "\n";
+      }
+    }
     return *info;
   };
-  if (auto info = tryPackedI16SparseSupportInfo())
-    return *info;
+  bool isCanonicalDirectMemLayout =
+      memTy.getShape() == memTy.getAllocShape() && memLayout == originalMemLayout;
+  // The packed-I16 support path exists to lower projected support/query layouts
+  // that cannot be described cleanly as a single direct f16 TMEM family.
+  // Canonical full-shape descriptors should stay on the normal direct path so
+  // the later cost model can select the larger x16/x32 message families.
+  if (!isCanonicalDirectMemLayout) {
+    if (auto info = tryPackedI16SparseSupportInfo())
+      return *info;
+  }
   if (isScales) {
     auto outDims = to_vector(regLayout.getOutDims());
     auto rowBases = memLayout.getBases().lookup(kRow);
