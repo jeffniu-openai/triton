@@ -6699,3 +6699,30 @@ Open after this slice:
     subfamily
   - the `variant_sweep` tail should now be treated as shard fallout, not as an
     independent recovery backlog item
+
+## 2026-04-10: the focused runtime-matrix bucket is now mostly green outside a `208 + 2` live surface
+- I reduced the branch-added focused `python/test/gluon/test_tmem_runtime_matrix.py`
+  manifest with isolated family reruns:
+  - `208 / 208`
+    `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` exacts
+    still fail cleanly with `RuntimeError: CUDA error: misaligned address`
+  - the next four largest families now rerun green:
+    - `48 / 48` `ld_red_row_permuted_linear_layout`
+    - `33 / 33` `ldst_scales_variant_sweep`
+    - `32 / 32` `cp_scales_warpx4_via_scaled_mma_geometry_sweep`
+    - `25 passed, 5 skipped` `cp_no_scales`
+  - the remaining `62` exacts reduce to only two failures:
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
+- Those two remaining runtime-matrix exacts fail at `tmem.get_reg_layout()`
+  with the same
+  `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<fp32, ['128', '4'], ...>`
+  message seen in the isolated frontend exact
+  `python/test/gluon/test_frontend.py::test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`.
+- I also reran the branch-added/renamed `test_fpsan.py` exact manifest:
+  - `11 passed, 1 skipped`
+  - so the earlier isolated FPSAN failure is now classified as stale shard
+    fallout, not as a live GB200 red bucket.
+- New durable manifests:
+  - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+  - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`

@@ -189,9 +189,25 @@
       (`gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`)
     - the earlier `21` `variant_sweep` exacts all pass in isolation and are
       now classified as shard fallout
+- The focused runtime-matrix / frontend story is now reduced too:
+  - `208`
+    `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` exacts
+    still fail cleanly
+    (`gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`)
+  - the remaining non-splitn runtime-matrix tail is down to just the two
+    warpx2 candidate positives
+    (`gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`)
+  - the isolated frontend exact still fails with the same `tmem.get_reg_layout()`
+    unsupported-auto-layout symptom
+  - the earlier `test_fpsan.py` tail has rerun green and drops out of the live
+    red list
 - Current active compiler bucket:
   - descriptor-chain/reinterpret/view-composition lowering for the exact
     `12`-nodeid focused-core manifest above
+  - split-N row/col-permuted runtime-matrix lowering for the `208`-nodeid
+    manifest above
+  - non-surjective descriptor-view `get_reg_layout()` support for the warpx2
+    candidate positives and the isolated frontend exact
 - Current non-correctness/stale buckets to keep separate:
   - the split-N offset-immediate expectation exact
   - the two `block_m_64` reinterpret-contract rewrite candidates

@@ -116,6 +116,27 @@ PY
     - runtime correctness is already green
     - only the exact PTX offset-immediate expectation is stale/opinionated
       right now
+- [gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt)
+  - `208` nodeids
+  - source:
+    - isolated rerun of the full
+      `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+      exact submanifest extracted from the earlier focused runtime-matrix
+      shard reduction
+  - current interpretation:
+    - this is the current dominant runtime-matrix runtime bucket
+    - all `208` exacts still fail cleanly with
+      `RuntimeError: CUDA error: misaligned address`
+- [gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt)
+  - `2` nodeids
+  - source:
+    - isolated rerun of the remaining non-splitn runtime-matrix exacts after
+      the larger families were reduced green
+  - current interpretation:
+    - both exacts fail at `tmem.get_reg_layout()` with
+      `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<fp32, ['128', '4'], ...>`
+    - this looks adjacent to the remaining isolated frontend exact, not to the
+      larger split-N runtime misalignment bucket
 - [gb200_current_branch_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_regression_failures.txt)
   - `234` nodeids
   - source:
@@ -229,6 +250,13 @@ collecting the merge-base test files and comparing exact nodeids:
     contaminated shard all pass in clean isolation; and
   - the independent live surface is the `12`-nodeid descriptor-chain manifest
     plus the single split-N PTX-expectation node above.
+- The focused branch-added runtime-matrix tail is now reduced too:
+  - the dominant live bucket is the `208`-nodeid split-N row/col-permuted
+    manifest above;
+  - the rest of the earlier `413`-nodeid runtime-matrix reduction is almost
+    entirely green now; and
+  - only two warpx2 candidate-positive exacts remain outside the split-N
+    bucket.
 - The older `182`-nodeid unit manifest is still useful as the first reduced
   branch-recovery slice, but the newer `2098`-nodeid XML manifest is the
   current broad CI-like unit inventory.

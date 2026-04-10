@@ -18,6 +18,47 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Runtime-Matrix / Frontend Refresh (2026-04-10 16:55 UTC)
+
+- The old `413`-nodeid focused `test_tmem_runtime_matrix.py` bucket is no
+  longer opaque after isolated family reruns:
+  - `208 / 208`
+    `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` exacts
+    still fail cleanly with `RuntimeError: CUDA error: misaligned address`
+    - manifest:
+      - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+  - the next four largest families are now clean:
+    - `48 / 48`
+      `test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout[...]` pass
+    - `33 / 33` `test_tmem_runtime_matrix_ldst_scales_variant_sweep[...]` pass
+    - `32 / 32`
+      `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep[...]`
+      pass
+    - `25 passed, 5 skipped`
+      `test_tmem_runtime_matrix_cp_no_scales[...]`
+  - the remaining `62` exacts reduce to only `2` live failures:
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
+    - both fail at `tmem.get_reg_layout()` with
+      `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<fp32, ['128', '4'], ...>`
+    - manifest:
+      - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
+- The previously isolated `test_fpsan` tail is now gone:
+  - rerunning the full branch-added/renamed `test_fpsan.py` exact manifest now
+    gives `11 passed, 1 skipped`
+  - implication:
+    - treat the earlier isolated `test_fpsan` failure file as historical shard
+      fallout, not as a live current-head bucket
+- The remaining isolated `test_frontend.py` exact stays red:
+  - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+  - current symptom matches the two live warpx2 candidate positives:
+    - `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<fp32, ['128', '4'], ...>`
+- Current interpretation:
+  - the runtime-matrix lane is now driven primarily by one real split-N
+    runtime bucket (`208` exacts) plus one smaller frontend/get-reg-layout
+    surface (`2` warpx2 positives + `1` frontend exact), not by the old mixed
+    `413`-nodeid census.
+
 ## Latest Focused-Core Refresh (2026-04-10 16:45 UTC)
 
 - HEAD:

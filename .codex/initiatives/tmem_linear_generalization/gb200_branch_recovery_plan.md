@@ -77,6 +77,21 @@ PY
 - Practical consequence:
   - the next compiler fix should be driven by the descriptor-chain manifest,
     not by the older contaminated shard counts.
+- Additional isolated-reduction updates after that checkpoint:
+  - the branch-added / branch-changed `test_fpsan.py` manifest now reruns
+    clean (`11 passed, 1 skipped`) and drops out of the live red list
+  - the focused runtime-matrix bucket is now reduced to:
+    - `208`
+      `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+      exacts, all failing with `CUDA error: misaligned address`
+    - `2` warpx2 candidate-positive exacts failing at `tmem.get_reg_layout()`
+      on the same `tensor_memory_descriptor<fp32, ['128', '4'], ...>` shape
+      that still fails in the isolated frontend exact
+- Updated practical consequence:
+  - the active branch-added recovery work is now split between:
+    - the `12`-nodeid descriptor-chain focused-core runtime bucket
+    - the `208`-nodeid runtime-matrix split-N runtime bucket
+    - the smaller `auto`-reg-layout descriptor-view frontend/warpx2 bucket
 
 ### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
 
