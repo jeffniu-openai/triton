@@ -32,32 +32,16 @@ def unpack_block_schedule(schedule):
 
 
 @gluon.jit
-def xcd_swizzle(block_id, grid_m, GRID_N: gl.constexpr, XCD_SWIZZLE: gl.constexpr):
-    if XCD_SWIZZLE == 1:
-        return block_id
-
-    num_blocks = grid_m * GRID_N
-    per_group = num_blocks // XCD_SWIZZLE
-    extra = num_blocks % XCD_SWIZZLE
-    group = block_id % XCD_SWIZZLE
-    return group * per_group + min(group, extra) + block_id // XCD_SWIZZLE
-
-
-@gluon.jit
 def apply_block_schedule(
     block_id: gl.tensor,
     grid_m: gl.tensor,
     GRID_N: gl.constexpr,
     slice_offsets: gl.tensor,
     block_schedule: gl.tensor,
-    XCD_SWIZZLE: gl.constexpr,
-    N_MAJOR: gl.constexpr,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
-    block_id = xcd_swizzle(block_id, grid_m, GRID_N, XCD_SWIZZLE)
-
     pid_mn = block_id % (grid_m * GRID_N)
-    pid_m = pid_mn % grid_m if N_MAJOR else pid_mn // GRID_N
-    pid_n = pid_mn // grid_m if N_MAJOR else pid_mn % GRID_N
+    pid_m = pid_mn // GRID_N
+    pid_n = pid_mn % GRID_N
 
     slice_idx, pid_m = unpack_block_schedule(gl.load(block_schedule + pid_m))
     slice_offset = gl.load(slice_offsets + slice_idx)
@@ -195,8 +179,6 @@ class PartitionArgs:
     num_blocks: gl.tensor
 
     NUM_SMS: gl.constexpr
-    XCD_SWIZZLE: gl.constexpr
-    N_MAJOR: gl.constexpr
     BLOCK_M: gl.constexpr
     BLOCK_N: gl.constexpr
     BLOCK_K: gl.constexpr
@@ -221,9 +203,26 @@ class PartitionArgs:
             GRID_N=self.GRID_N,
             slice_offsets=self.x_slice_offs,
             block_schedule=self.x_block_schedule,
-            XCD_SWIZZLE=self.XCD_SWIZZLE,
-            N_MAJOR=self.N_MAJOR,
         )
+
+
+@gluon.jit
+def _alloc_barrier_ring(num_bufs: gl.constexpr):
+    bars = gl.allocate_shared_memory(gl.int64, [num_bufs, 1], mbarrier.MBarrierLayout())
+    for i in gl.static_range(num_bufs):
+        mbarrier.init(bars.index(i), count=1)
+    return bars
+
+
+@gluon.jit
+def _alloc_empty_ready_barriers(num_bufs: gl.constexpr):
+    return _alloc_barrier_ring(num_bufs), _alloc_barrier_ring(num_bufs)
+
+
+@gluon.jit
+def _invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
+    for i in gl.static_range(num_bufs):
+        mbarrier.invalidate(bars.index(i))
 
 
 @gluon.jit
@@ -563,6 +562,39 @@ def _epilogue_enqueue_from_acc_packed(
 
 
 @gluon.jit
+def _load_biased_acc_packed(
+    p: PartitionArgs,
+    idx,
+    phase,
+    pid_n,
+    slice_idx,
+    split_layout: gl.constexpr,
+    bias_layout: gl.constexpr,
+    acc_scale,
+):
+    off_n = pid_n * p.BLOCK_N
+    acc_empty_bar = p.acc_empty_bars.index(idx)
+    acc_ready_bar = p.acc_ready_bars.index(idx)
+    acc_buf = p.acc_bufs.index(idx)
+    mbarrier.wait(acc_ready_bar, phase)
+    mbarrier.arrive(acc_empty_bar)
+    idx, phase = advance(idx, phase, p.acc_num_bufs)
+
+    offs_bias_n = off_n + gl.arange(0, p.BLOCK_N, layout=bias_layout)
+    bias = gl.convert_layout(
+        gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
+        split_layout,
+    )
+    acc_regs = acc_buf.load().permute((1, 0))
+    acc = gl.convert_layout(acc_regs, split_layout)
+    acc_packed = float2.pack(acc, axis=1)
+    bias_packed = float2.pack(bias, axis=1)
+    bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
+    acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
+    return idx, phase, acc_packed
+
+
+@gluon.jit
 def epilogue_store_partition_optimized(p: PartitionArgs):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
@@ -619,26 +651,16 @@ def epilogue_partition_optimized(p: PartitionArgs):
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
-        off_n = pid_n * p.BLOCK_N
-
-        acc_empty_bar = p.acc_empty_bars.index(idx)
-        acc_ready_bar = p.acc_ready_bars.index(idx)
-        acc_buf = p.acc_bufs.index(idx)
-        mbarrier.wait(acc_ready_bar, phase)
-        mbarrier.arrive(acc_empty_bar)
-        idx, phase = advance(idx, phase, p.acc_num_bufs)
-
-        offs_bias_n = off_n + gl.arange(0, p.BLOCK_N, layout=bias_layout)
-        bias = gl.convert_layout(
-            gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
+        idx, phase, acc_packed = _load_biased_acc_packed(
+            p,
+            idx,
+            phase,
+            pid_n,
+            slice_idx,
             split_layout,
+            bias_layout,
+            acc_scale,
         )
-        acc_regs = acc_buf.load().permute((1, 0))
-        acc = gl.convert_layout(acc_regs, split_layout)
-        acc_packed = float2.pack(acc, axis=1)
-        bias_packed = float2.pack(bias, axis=1)
-        bias_packed = float2.Float2Tensor(gl.convert_layout(bias_packed.value, acc_packed.value.type.layout))
-        acc_packed = float2.fma(acc_packed, float2.full_like(acc_packed, acc_scale), bias_packed)
 
         store_idx, store_phase = _epilogue_enqueue_from_acc_packed(
             p,
@@ -685,7 +707,6 @@ def ws_matmul_kernel_optimized(
     BLOCK_M: gl.constexpr,
     BLOCK_N: gl.constexpr,
     BLOCK_K: gl.constexpr,
-    XCD_SWIZZLE: gl.constexpr,
     NUM_SMS: gl.constexpr,
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
@@ -722,11 +743,7 @@ def ws_matmul_kernel_optimized(
         [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
         x_desc.layout,
     )
-    x_empty_bars = gl.allocate_shared_memory(gl.int64, [x_num_bufs, 1], mbarrier.MBarrierLayout())
-    x_ready_bars = gl.allocate_shared_memory(gl.int64, [x_num_bufs, 1], mbarrier.MBarrierLayout())
-    for i in gl.static_range(x_num_bufs):
-        mbarrier.init(x_empty_bars.index(i), count=1)
-        mbarrier.init(x_ready_bars.index(i), count=1)
+    x_empty_bars, x_ready_bars = _alloc_empty_ready_barriers(x_num_bufs)
 
     w_num_bufs: gl.constexpr = W_NUM_BUFS
     w_bufs = gl.allocate_shared_memory(
@@ -739,22 +756,14 @@ def ws_matmul_kernel_optimized(
         [w_num_bufs] + scale_desc.block_type.shape,
         scale_desc.layout,
     )
-    w_empty_bars = gl.allocate_shared_memory(gl.int64, [w_num_bufs, 1], mbarrier.MBarrierLayout())
-    w_ready_bars = gl.allocate_shared_memory(gl.int64, [w_num_bufs, 1], mbarrier.MBarrierLayout())
-    for i in gl.static_range(w_num_bufs):
-        mbarrier.init(w_empty_bars.index(i), count=1)
-        mbarrier.init(w_ready_bars.index(i), count=1)
+    w_empty_bars, w_ready_bars = _alloc_empty_ready_barriers(w_num_bufs)
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], scale_layout)
 
     acc_num_bufs: gl.constexpr = 1
     acc_tmem = blackwell.allocate_tensor_memory(gl.float32, [acc_num_bufs, BLOCK_N, BLOCK_M], acc_layout)
-    acc_empty_bars = gl.allocate_shared_memory(gl.int64, [acc_num_bufs, 1], mbarrier.MBarrierLayout())
-    acc_ready_bars = gl.allocate_shared_memory(gl.int64, [acc_num_bufs, 1], mbarrier.MBarrierLayout())
-    for i in gl.static_range(acc_num_bufs):
-        mbarrier.init(acc_empty_bars.index(i), count=1)
-        mbarrier.init(acc_ready_bars.index(i), count=1)
+    acc_empty_bars, acc_ready_bars = _alloc_empty_ready_barriers(acc_num_bufs)
 
     gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     gl.static_assert(EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
@@ -765,19 +774,7 @@ def ws_matmul_kernel_optimized(
         [EPILOGUE_STORE_HELPER_DEPTH, frag_rows, out_packed_n],
         gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
     )
-    store_empty_bars = gl.allocate_shared_memory(
-        gl.int64,
-        [EPILOGUE_STORE_HELPER_DEPTH, 1],
-        mbarrier.MBarrierLayout(),
-    )
-    store_ready_bars = gl.allocate_shared_memory(
-        gl.int64,
-        [EPILOGUE_STORE_HELPER_DEPTH, 1],
-        mbarrier.MBarrierLayout(),
-    )
-    for i in gl.static_range(EPILOGUE_STORE_HELPER_DEPTH):
-        mbarrier.init(store_empty_bars.index(i), count=1)
-        mbarrier.init(store_ready_bars.index(i), count=1)
+    store_empty_bars, store_ready_bars = _alloc_empty_ready_barriers(EPILOGUE_STORE_HELPER_DEPTH)
 
     x_scale_tmem.store(gl.full((BLOCK_M, scale_k), 127, dtype=gl.uint8, layout=x_scale_tmem.get_reg_layout()))
 
@@ -829,8 +826,6 @@ def ws_matmul_kernel_optimized(
         num_blocks=num_blocks,
         #
         NUM_SMS=NUM_SMS,
-        XCD_SWIZZLE=XCD_SWIZZLE,
-        N_MAJOR=False,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
         BLOCK_K=BLOCK_K,
@@ -860,30 +855,17 @@ def ws_matmul_kernel_optimized(
         [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
     )
 
-    for i in gl.static_range(x_num_bufs):
-        mbarrier.invalidate(x_empty_bars.index(i))
-        mbarrier.invalidate(x_ready_bars.index(i))
-    for i in gl.static_range(w_num_bufs):
-        mbarrier.invalidate(w_empty_bars.index(i))
-        mbarrier.invalidate(w_ready_bars.index(i))
-    for i in gl.static_range(acc_num_bufs):
-        mbarrier.invalidate(acc_empty_bars.index(i))
-        mbarrier.invalidate(acc_ready_bars.index(i))
-    for i in gl.static_range(EPILOGUE_STORE_HELPER_DEPTH):
-        mbarrier.invalidate(store_empty_bars.index(i))
-        mbarrier.invalidate(store_ready_bars.index(i))
+    _invalidate_barrier_ring(x_empty_bars, x_num_bufs)
+    _invalidate_barrier_ring(x_ready_bars, x_num_bufs)
+    _invalidate_barrier_ring(w_empty_bars, w_num_bufs)
+    _invalidate_barrier_ring(w_ready_bars, w_num_bufs)
+    _invalidate_barrier_ring(acc_empty_bars, acc_num_bufs)
+    _invalidate_barrier_ring(acc_ready_bars, acc_num_bufs)
+    _invalidate_barrier_ring(store_empty_bars, EPILOGUE_STORE_HELPER_DEPTH)
+    _invalidate_barrier_ring(store_ready_bars, EPILOGUE_STORE_HELPER_DEPTH)
 
 
-def _select_launch_grid(
-    grid_n: int,
-    expected_grid_m: int,
-    sms: int,
-) -> int:
-    num_tiles = expected_grid_m * grid_n
-    return max(1, min(sms, num_tiles))
-
-
-def _matmul_impl(
+def matmul(
     a: torch.Tensor,
     b: torch.Tensor | Tensor,
     bias: torch.Tensor,
@@ -892,8 +874,6 @@ def _matmul_impl(
     precision_config: PrecisionConfig,
     c: torch.Tensor,
     fused_activation: FusedActivation,
-    kernel,
-    out_desc_builder,
 ):
     specs = fused_activation.specs
     assert specs.name == "swiglu"
@@ -917,16 +897,6 @@ def _matmul_impl(
     m = gather_indx.shape[0]
 
     config = KernelConfig()
-    assert config.epilogue_row_subtile_factor in (2, 4, 8, 16, 32)
-    assert config.block_m % config.epilogue_row_subtile_factor == 0
-    assert config.epilogue_store_helper_depth in (2, 3, 4)
-    assert (
-        config.store_helper_warps
-        + config.load_activation_warps
-        + config.load_weight_warps
-        + config.mma_warps
-        <= 8
-    )
 
     mxfp_block_size = 32
     scale_size_outer = 128
@@ -936,11 +906,7 @@ def _matmul_impl(
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, config.block_m)
     grid_n = triton.cdiv(n, config.block_n)
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
-    launch_grid = _select_launch_grid(
-        grid_n=grid_n,
-        expected_grid_m=expected_grid_m,
-        sms=sms,
-    )
+    launch_grid = max(1, min(sms, expected_grid_m * grid_n))
     grid = (launch_grid,)
 
     x_desc = make_operand_descriptor(a, (1, config.block_k))
@@ -955,9 +921,9 @@ def _matmul_impl(
             256,
         ),
     )
-    out_desc = out_desc_builder(c, config, reduction_n)
+    out_desc = make_operand_descriptor(c, (config.block_m, config.block_n // reduction_n))
 
-    kernel[grid](
+    ws_matmul_kernel_optimized[grid](
         x_desc=x_desc,
         w_desc=w_desc,
         scale_desc=scale_desc,
@@ -992,7 +958,6 @@ def _matmul_impl(
         BLOCK_M=config.block_m,
         BLOCK_N=config.block_n,
         BLOCK_K=config.block_k,
-        XCD_SWIZZLE=1,
         NUM_SMS=launch_grid,
         X_NUM_BUFS=config.x_num_bufs,
         W_NUM_BUFS=config.w_num_bufs,
@@ -1014,31 +979,3 @@ def _matmul_impl(
     )
 
     return c.unsqueeze(0)
-
-
-def _make_dense_output_descriptor(c: torch.Tensor, config: KernelConfig, reduction_n: int):
-    return make_operand_descriptor(c, (config.block_m, config.block_n // reduction_n))
-
-
-def matmul(
-    a: torch.Tensor,
-    b: torch.Tensor | Tensor,
-    bias: torch.Tensor,
-    a_ragged_metadata: RaggedTensorMetadata,
-    gather_indx: torch.Tensor,
-    precision_config: PrecisionConfig,
-    c: torch.Tensor,
-    fused_activation: FusedActivation,
-):
-    return _matmul_impl(
-        a=a,
-        b=b,
-        bias=bias,
-        a_ragged_metadata=a_ragged_metadata,
-        gather_indx=gather_indx,
-        precision_config=precision_config,
-        c=c,
-        fused_activation=fused_activation,
-        kernel=ws_matmul_kernel_optimized,
-        out_desc_builder=_make_dense_output_descriptor,
-    )
