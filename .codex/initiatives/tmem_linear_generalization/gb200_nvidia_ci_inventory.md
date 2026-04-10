@@ -266,10 +266,12 @@ Current results:
 - unit shard `3 / 4`
   - red
   - `23 failed, 729 passed, 4410 skipped`
-  - failure concentration:
+  - dedicated full-file inventory is still running, but the exact partial list
+    already covers:
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[...]`
+      - `18` exact nodeids so far
     - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[...]`
-    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[...]`
+      - `4` exact nodeids so far
   - isolated reruns already confirm both sub-buckets:
     - simple matmul wrong-code:
       - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
@@ -278,23 +280,37 @@ Current results:
       - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
       - `ttng.tmem_store` unsupported register layout / row anchors `32,64`
         followed by `PassManager::run failed`
+  - current pattern:
+    - the exact failures cluster in `BLOCK_M=64` cases
+    - the branch-side `test_matmul.py` edits only relaxed PTX-shape
+      expectations and added a TTGIR row-plan assertion, so these wrong-code
+      and compile failures are not explained by the test edits themselves
 - unit shard `4 / 4`
   - red
   - `131 failed, 4707 passed, 321 skipped`
-  - failure concentration:
-    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[{float16,bfloat16,float32}]`
-    - large systematic `python/test/unit/language/test_warp_specialization.py`
-      forward and persistent-forward failure surface
-  - isolated reruns already confirm representative standalone failures:
-    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
-      - `ttng.tmem_store` unsupported register layout / row anchors `32,64`
-        followed by `PassManager::run failed`
-    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
-      - `49.7%` mismatches
-  - remaining work:
-    - materialize the full exact failing nodeid list for the large
-      warp-specialization bucket in a dedicated follow-up rerun so merge-base
-      comparison can be done nodeid-by-nodeid
+  - now reduced further:
+    - `python/test/unit/language/test_tensor_descriptor.py`
+      - fully materialized
+      - exact red list:
+        - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float16]`
+        - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[bfloat16]`
+        - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      - result:
+        - `3 failed, 2601 passed, 110 skipped`
+      - failure mode:
+        - `ttng.tmem_store` unsupported register layout / row anchors `32,64`
+          followed by `PassManager::run failed`
+    - `python/test/unit/language/test_warp_specialization.py`
+      - dedicated full-file inventory is still running
+      - current exact partial list already contains `40` failing
+        `test_warp_specialize_attention_forward[...]` nodeids
+      - representative standalone failure:
+        - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+        - `49.7%` mismatches
+      - current pattern:
+        - the failures cluster in forward attention cases with `N=64`
+          and again line up with the broader `M=64` / Blackwell TMEM
+          regression surface rather than looking like random shard noise
 
 Tail-command status:
 
@@ -306,6 +322,13 @@ Tail-command status:
     - real harness/runtime problem, not just outer xdist noise
     - failures all show `Cannot re-initialize CUDA in forked subprocess`
       originating from `py._process.forkedfunc`
+  - exact failure families:
+    - `python/test/unit/test_debug.py::test_sanitize_int_add_overflow[...]`
+      - `9` failing nodeids
+    - `python/test/unit/test_debug.py::test_sanitize_int_mul_overflow[...]`
+      - `6` failing nodeids
+    - `python/test/unit/test_debug.py::test_sanitize_int_sub_overflow[...]`
+      - `5` failing nodeids
 - `python/tutorials/06-fused-attention.py`
   - green
   - `192 passed, 192 skipped`
@@ -318,9 +341,8 @@ Tail-command status:
   - `python/test/unit/plugins/test_dialect_plugin.py`
   - `python/test/unit/plugins/custom_ops.py`
 - `python/triton_kernels/tests/`
-  - still running at the time of this update
-  - inventory is not complete until this command finishes and its exact red
-    surface is recorded
+  - green
+  - `2377 passed, 3444 skipped`
 
 Interim interpretation of the unit lane:
 
@@ -350,25 +372,33 @@ Interim interpretation of the unit lane:
     classified later as pre-existing-on-main, real branch regressions, or
     flake/harness/cache issues.
 
-### Merge-Base Comparison Setup Status (2026-04-10)
+### Merge-Base Comparison Status (2026-04-10)
 
 - `origin/main` is now fetched locally.
 - Merge-base for current branch vs main:
   - `7f61ac734edc657b737fb159a1b9d50cb47944e6`
 - A detached worktree exists at:
   - `/root/code/triton-mergebase-ci`
-- Baseline comparison is currently blocked by merge-base build-system drift:
-  - raw `make` / direct CMake path on that older tree does not emit the
-    `NVWS` tablegen products expected by the modern local toolchain;
-  - a local-only shim was added in the merge-base worktree to skip example
-    plugin builds so the baseline can configure farther; and
-  - `setup.py build_ext` is currently being tried as a more faithful old-tree
-    build path because it wires more compatibility arguments than the direct
-    `make` path.
-- Until that baseline build is usable, the branch-vs-main classification is
-  incomplete. The current doc intentionally distinguishes:
-  - exact local red buckets already confirmed on this branch, and
-  - baseline comparison work still in progress.
+- The baseline worktree is now usable after local-only bring-up shims:
+  - skip example plugin builds in the merge-base tree; and
+  - skip the legacy GSan runtime target that does not build cleanly against the
+    current host toolchain.
+- Current representative branch-vs-main classification:
+  - exact current-branch failures that pass on merge-base:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+    - `python/test/unit/test_debug.py::test_sanitize_int_add_overflow[-2147483648--1-int32-int32-False-False]`
+  - exact current-branch TMEM nodeids that do not exist on merge-base because
+    the coverage is branch-added:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+- The branch-vs-main classification is therefore no longer blocked on baseline
+  build bring-up. What remains is finishing the exact-nodeid inventory for the
+  bigger current-branch red files, then comparing representative cases from
+  each family.
 
 ### Noisy But Expected During `-s` Shard Runs
 

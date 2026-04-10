@@ -5907,3 +5907,48 @@ Open after this slice:
   - and the baseline-comparison infrastructure is finally moving, but it still
     depends on local-only build shims because the exact merge-base tree does
     not build cleanly against the current host toolchain out of the box
+
+## 2026-04-10: merge-base classification is live, `triton_kernels` is green, and the unit census reduced further
+
+- I finished the remaining easy-firm pieces of the GB200 unit census:
+  - `python/triton_kernels/tests/` is green on the current branch
+    (`2377 passed, 3444 skipped`)
+  - `python/test/unit/language/test_tensor_descriptor.py` is fully reduced to:
+    - `test_tensor_descriptor_reshape_matmul[float16]`
+    - `test_tensor_descriptor_reshape_matmul[bfloat16]`
+    - `test_tensor_descriptor_reshape_matmul[float32]`
+    - all three fail with the same unsupported-row-anchors `32,64`
+      `ttng.tmem_store` diagnostic chain before `PassManager::run failed`
+  - `python/test/unit/test_debug.py` is fully reduced to `20` exact failures:
+    - `9` `test_sanitize_int_add_overflow[...]`
+    - `6` `test_sanitize_int_mul_overflow[...]`
+    - `5` `test_sanitize_int_sub_overflow[...]`
+    - all fail because the sanitizer path forks and then re-initializes CUDA
+- Merge-base baseline comparison is no longer blocked:
+  - the local-only bring-up shims are sufficient to run exact nodeids in
+    `/root/code/triton-mergebase-ci`
+  - the following exact current-branch failures all pass on merge-base:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+    - `python/test/unit/test_debug.py::test_sanitize_int_add_overflow[-2147483648--1-int32-int32-False-False]`
+  - this is now enough to state that the branch has introduced real new-on-top
+    GB200 failures outside the old reinterpret-test discussion
+- The branch-added TMEM coverage split is also explicit now:
+  - exact split-N TMEM nodeids such as
+    `test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-...]` and
+    `test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-...]`
+    do not exist on merge-base, so they should be tracked as branch-added
+    coverage that is currently red, not as regressions against old mainline CI
+- I left the longer exact inventories running:
+  - `python/test/unit/language/test_matmul.py`
+  - `python/test/unit/language/test_warp_specialization.py`
+  - `python/test/regression/test_cast_matmul.py`
+  - `python/examples/gluon/`
+- Partial pattern correlation from those in-flight logs already points at one
+  broader Blackwell/TMEM regression surface:
+  - `test_matmul.py` failures cluster in `BLOCK_M=64`
+  - `test_warp_specialization.py` failures cluster in `N=64`
+  - `test_cast_matmul.py` failures cluster heavily in `GN=64`

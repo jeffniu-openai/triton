@@ -3361,3 +3361,37 @@ rejection, not rescue
 - Important testing note:
   - the `block_m_64` tests are still useful, but they should be treated as intent probes, not as proof that the compiler must preserve every old implicit reinterpret mapping forever.
   - the durable contract should move to explicit descriptor/view composition now that TMEM arbitrary linear layouts and descriptor transforms exist.
+
+## 2026-04-10: GB200 inventory now shows a broader new-on-branch Blackwell/TMEM regression surface
+
+- Merge-base comparison is live now, not blocked:
+  - local-only baseline shims are enough to run exact nodeids in
+    `/root/code/triton-mergebase-ci`
+  - representative exact current-branch failures in old coverage all pass on
+    merge-base:
+    - tf32/tf32x3 dot
+    - simple matmul
+    - persistent matmul
+    - warp-specialized attention forward
+    - tensor-descriptor reshape matmul
+    - debug sanitizer add-overflow
+- The branch-added-vs-regressed split is now explicit:
+  - some red TMEM split-N nodeids are branch-added coverage and do not exist on
+    merge-base
+  - several old, unmodified Blackwell tests now fail only on this branch
+- Newly firm current-branch inventory points:
+  - `python/triton_kernels/tests/` is green
+  - `python/test/unit/language/test_tensor_descriptor.py` reduces to exactly
+    three `test_tensor_descriptor_reshape_matmul[...]` failures, all on the
+    same unsupported-row-anchors `32,64` path
+  - `python/test/unit/test_debug.py` reduces to exactly twenty failing integer
+    overflow sanitizer tests, all on the fork-and-reinitialize-CUDA path
+- The most important correlation from the still-running exact inventories is
+  that the new branch-only failures are clustering around the same shape family:
+  - `test_matmul.py`: `BLOCK_M=64`
+  - `test_warp_specialization.py`: `N=64`
+  - `test_cast_matmul.py`: `GN=64`
+- Working conclusion:
+  - after the branch-added TMEM coverage and reinterpret-rewrite buckets are
+    set aside, there is still a broader Blackwell/TMEM lowering regression on
+    this branch that must be fixed to restore GB200 CI parity with main
