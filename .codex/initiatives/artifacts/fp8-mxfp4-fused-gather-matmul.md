@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-10T19:04:43Z
+updated: 2026-04-10T20:01:03Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -553,6 +553,11 @@ The later merged-loader cleanup is no longer the only viable producer topology. 
   - Validation: `make` from `/root/code/triton`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels pytest -s --tb=short /root/code/triton-ws-opt/python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`; `python -m py_compile /root/code/triton-ws-opt/python/examples/gluon/05-moe-bmm1-fused-gather.py`; targeted `rep=1000` checks on `batch=128,1536,2048,16384`; full GPT-OSS sweep with `rep=1000`; direct `rep=3000` A/B against the merged-loader file from `9ae413dfa0` on `batch=7168,21504,25600,30720`
   - Learnings: The separate-loader rollback is viable on top of the current low-batch selector and exact helper-store epilogue. Across the full GPT-OSS sweep it stays in the same overall performance band as the merged-loader version and still beats the reference at every measured point. The sweep is mixed rather than one-sided: the split-loader variant is clearly better in several low/mid buckets (for example `batch=2048` `0.03986 ms` vs merged `0.04062 ms`, `3072` `0.03986 ms` vs `0.04075 ms`, `7168` `0.05361 ms` vs `0.05568 ms`) and slightly worse in a few higher buckets (for example `25600` `0.15777 ms` vs `0.15644 ms`, `30720` `0.18300 ms` vs `0.18196 ms`). The worst regression seen in the sweep relative to the merged-loader CSV was under `1%` (`+0.85%` at `25600`), while the direct same-process `rep=3000` A/Bs showed the same pattern with small mixed deltas: `7168` favored split by about `3.6%`, `21504`/`25600`/`30720` favored merged by about `0.7%`/`1.2%`/`0.6%`. So the merged loader is not a clear performance win by itself; it is mostly a structural simplification.
   - Plan updates: Do not treat the merged single-load topology as mandatory. Future producer-side work can start from either topology, but any further decision between them should be based on broader architectural changes rather than on expecting a standalone sweep-level win from merging loaders.
+- `2026-04-10` Completed: Reused the canonical `triton_kernels` torch SwiGLU reference in the example benchmark/test helpers
+  - Artifact: `python/examples/gluon/05-moe-bmm1-fused-gather.py`
+  - Validation: `make` from `/root/code/triton`; `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py`; `PYTHONPATH=python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`; ad hoc benchmark-path sanity check at `batch=2048` via `do_bench_cudagraph` -> `example=0.041000 ms`, `reference=0.043870 ms`
+  - Learnings: The example still had a local torch-side `swiglu(...)` helper in its exact-reference path even though `triton_kernels.swiglu.swiglu_torch` already exposes the same clamp-and-activate semantics. Replacing the local helper with `swiglu_torch(linear.to(torch.float32), alpha, SwiGLUPrecisionConfig(limit=...))` removes duplicate reference logic while preserving the current float32 exact-reference behavior. I did not find another equally clean public helper for the final FP8 flexpoint-style quantization step, so that logic stays local for now. This cleanup is benchmark/test-helper only; it does not touch the live kernel path and did not change the example test or benchmark behavior.
+  - Plan updates: Keep looking for reuse opportunities in the example's reference/benchmark helpers, but prefer narrow substitutions from `triton_kernels` public helpers over broad helper-framework refactors unless there is another obvious duplication on the exact-reference path.
 
 ## Next Up
 
