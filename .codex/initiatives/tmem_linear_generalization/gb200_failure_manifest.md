@@ -33,51 +33,54 @@ PY
 ### Refreshed Current-Head Unit Reduction
 
 - [gb200_current_branch_test_unit_matmul_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_matmul_refresh_failures.txt)
-  - `3` nodeids
+  - `0` nodeids
   - source:
-    - refreshed current-head `python/test/unit/language/test_matmul.py`
-      reduction after the MMAv5 row-plan propagation patch
+    - refreshed after the full green rerun at `78196b4e4`
   - current interpretation:
-    - these are the only remaining current-head `test_matmul.py` failures on
-      the latest dirty worktree
+    - the current branch has no remaining GB200 `test-unit`
+      `test_matmul.py` failures
 - [gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt)
-  - `3` nodeids
+  - `0` nodeids
   - source:
-    - refreshed current-head `python/test/unit/language/test_tensor_descriptor.py`
+    - refreshed after the full green rerun at `78196b4e4`
   - current interpretation:
-    - this whole file is green on merge-base, so the refreshed `3`-nodeid
-      bucket is branch-local
+    - the current branch has no remaining GB200 `test-unit`
+      `test_tensor_descriptor.py` failures
 - [gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt)
-  - `128` nodeids
+  - `0` nodeids
   - source:
     - refreshed current-head
       `python/test/unit/language/test_warp_specialization.py`
+    - rerun result:
+      - `1599 passed, 202 skipped`
   - current interpretation:
-    - this is now the dominant remaining current-head unit bucket after the
-      MMAv5 row-plan propagation patch
+    - the old populated warp-specialization manifest is now historical only
 - [gb200_current_branch_test_unit_rowanchor_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_rowanchor_refresh_failures.txt)
-  - `134` nodeids
+  - `0` nodeids
   - source:
-    - concatenation of the three refreshed current-head unit manifests above
+    - concatenation of the now-empty refreshed unit manifests above
   - current interpretation:
-    - this is the best current exact nodeid inventory for the remaining
-      current-head GB200 `test-unit` surface on the latest dirty worktree
-    - prefer this manifest over the older `182`/`2098` unit manifests when
-      choosing exact repros on the current tree
+    - the current branch has no remaining GB200 `test-unit` exact failures
 
 - [gb200_current_branch_test_unit_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_failures.txt)
-  - `182` nodeids
+  - `0` nodeids
   - source:
-    - `make NUM_PROCS=24 test-unit`
-    - plus the exact `python/test/unit/test_debug.py` rerun
+    - fresh full `make NUM_PROCS=24 test-unit` rerun at `78196b4e4`
+    - green sub-lanes:
+      - main `python/test/unit`
+      - `test_debug.py`
+      - `python/triton_kernels/tests`
+      - `python/tutorials/06-fused-attention.py`
+      - instrumentation test
+      - plugin tests
 - [gb200_current_branch_test_unit_xml_failures_2026-04-10.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_xml_failures_2026-04-10.txt)
   - `2098` nodeids
   - source:
     - near-complete broad `python/test/unit` rerun with `--junitxml`
       written to `/tmp/test-unit-stage1-current.xml`
   - current interpretation:
-    - this is the most complete machine-usable exact inventory of the
-      current-branch GB200 unit red surface
+    - historical only
+    - do not use this as the current branch unit red list anymore
     - all `2098` exact nodeids are present on merge-base and the exact
       merge-base rerun is fully green/skip:
       - `2083 passed, 15 skipped`
@@ -127,11 +130,10 @@ PY
     - the `python/test/unit/test_debug.py` exact failures that are also red on
       merge-base
 - [gb200_branch_recovery_test_unit_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_recovery_test_unit_failures.txt)
-  - `162` nodeids
+  - `0` nodeids
   - meaning:
-    - the current-branch `test-unit` failures that survive the preexisting
-      `test_debug.py` carve-out and therefore belong in the branch recovery
-      backlog
+    - the current branch has no remaining GB200 `test-unit` exacts in the
+      branch-recovery backlog
 - [gb200_branch_recovery_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_recovery_test_regression_failures.txt)
   - `234` nodeids
   - meaning:

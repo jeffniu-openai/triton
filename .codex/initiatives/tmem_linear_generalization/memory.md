@@ -172,6 +172,10 @@
   the GB200 lane from `.github/workflows/integration-tests-nvidia.yml`, as
   recorded in `gb200_nvidia_ci_inventory.md`.
 - This GB300 devbox is treated as representative for that Blackwell lane.
+- Superseding current-head note:
+  - as of `78196b4e4`, `make NUM_PROCS=24 test-unit` is fully green again;
+  - the older `134` / `182` / `2098` unit failure counts below are historical
+    checkpoints, not the live unit status.
 - In the current phase, reinterpret-heavy TMEM tests are not automatically
   treated as compiler bugs; if they depend on implicit physical TMEM mapping,
   rewrite them to explicit descriptor/view composition first and only treat
@@ -3882,3 +3886,57 @@ rejection, not rescue
      focused `python/test/gluon/test_core.py` recovery bucket; and
   4. keep the separate cache/async-compile harness investigation distinct from
      TMEM correctness work.
+
+## 2026-04-10: full GB200 `make test-unit` is green again
+
+- The row-plan forwarding fix closed the entire old-mainline unit bucket, not
+  just the five representative warp-specialization exacts:
+  - `python/test/unit/language/test_warp_specialization.py`
+    - rerun as a 4-GPU `--splits 4 --group {1..4}` sweep
+    - result:
+      - `1599 passed, 202 skipped`
+      - `0 failed`
+- Fresh full wrapper rerun:
+  - command:
+    - `make NUM_PROCS=24 test-unit`
+  - artifact:
+    - `/tmp/test-unit-gb200-after-ws.log`
+  - sub-lane results:
+    - main `python/test/unit`
+      - `15153 passed, 5492 skipped, 101 warnings`
+    - `python/test/unit/test_debug.py`
+      - `95 passed`
+    - `python/triton_kernels/tests`
+      - `2377 passed, 3444 skipped`
+    - `python/tutorials/06-fused-attention.py`
+      - `192 passed, 192 skipped, 1 warning`
+    - `python/test/unit/instrumentation/test_gpuhello.py`
+      - `1 passed`
+    - `python/test/unit/plugins/test_plugin.py`
+      - `1 passed`
+    - `python/test/unit/plugins/test_dialect_plugin.py`
+      - `1 passed`
+    - `python/test/unit/plugins/custom_ops.py`
+      - `1 passed`
+- Manifest consequences:
+  - `gb200_current_branch_test_unit_failures.txt`
+    - now empty
+  - refreshed unit sub-manifests (`matmul`, `tensor_descriptor`,
+    `warp_specialization`, `rowanchor`)
+    - now empty
+  - `gb200_branch_recovery_test_unit_failures.txt`
+    - now empty
+  - older populated unit manifests remain only as historical evidence of the
+    earlier failing state
+- Separate harness conclusion:
+  - the earlier async-compile / `test_cache.py` hang did not reproduce in the
+    fresh green rerun
+  - this strengthens the current hypothesis that the old hang was downstream
+    worker/process contamination after bad kernels, not a standing independent
+    unit-lane blocker
+- Updated immediate priority:
+  1. move to the merge-base-present focused
+     `python/test/gluon/test_core.py` bucket (`146` exact nodeids)
+  2. then remeasure the branch-added / branch-changed Gluon tails
+  3. keep examples and reinterpret-contract rewrites behind those compiler and
+     API-frontier fixes

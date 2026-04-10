@@ -6625,3 +6625,53 @@ Open after this slice:
   - next required measurement is a full file rerun, then a fresh
     `make NUM_PROCS=24 test-unit` rerun before returning to the focused
     merge-base-present `test_core.py` Gluon bucket
+
+## 2026-04-10: the full GB200 `test-unit` lane is green again
+
+- Fresh file-level remeasurement:
+  - `python/test/unit/language/test_warp_specialization.py`
+    - rerun via 4-GPU `--splits 4 --group {1..4}`
+    - result:
+      - `1599 passed, 202 skipped`
+      - `0 failed`
+- Fresh full wrapper rerun:
+  - command:
+    - `make NUM_PROCS=24 test-unit`
+  - artifact:
+    - `/tmp/test-unit-gb200-after-ws.log`
+  - green sub-lanes:
+    - main `python/test/unit`
+      - `15153 passed, 5492 skipped, 101 warnings`
+    - `python/test/unit/test_debug.py`
+      - `95 passed`
+    - `python/triton_kernels/tests`
+      - `2377 passed, 3444 skipped`
+    - `python/tutorials/06-fused-attention.py`
+      - `192 passed, 192 skipped, 1 warning`
+    - `python/test/unit/instrumentation/test_gpuhello.py`
+      - `1 passed`
+    - `python/test/unit/plugins/test_plugin.py`
+      - `1 passed`
+    - `python/test/unit/plugins/test_dialect_plugin.py`
+      - `1 passed`
+    - `python/test/unit/plugins/custom_ops.py`
+      - `1 passed`
+- Manifest updates:
+  - current-head unit manifests are now empty:
+    - `gb200_current_branch_test_unit_failures.txt`
+    - `gb200_current_branch_test_unit_matmul_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`
+    - `gb200_branch_recovery_test_unit_failures.txt`
+  - the older populated unit manifests remain only as historical evidence of
+    the pre-fix failure state
+- Separate harness conclusion:
+  - the earlier async-compile / `test_cache.py` hang did not reproduce in the
+    fresh green rerun
+  - this makes the current contamination-after-failure hypothesis stronger
+    than the “persistent independent cache bug in the unit lane” hypothesis
+- Net effect:
+  - the GB200 branch-recovery backlog no longer contains a unit-lane bucket
+  - the next active recovery surface is the merge-base-present focused
+    `python/test/gluon/test_core.py` bucket (`146` exact nodeids)

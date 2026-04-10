@@ -1,3 +1,0 @@
-python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]
-python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-16-16]
-python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]

@@ -1,3 +1,0 @@
-python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float16]
-python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[bfloat16]
-python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]

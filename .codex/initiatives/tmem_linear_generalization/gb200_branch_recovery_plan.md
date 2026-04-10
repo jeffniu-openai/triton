@@ -544,3 +544,37 @@ PY
      bucket
   5. keep the cache/xdist investigation as a separate harness track unless a
      fresh serial repro proves a deeper cache-key bug
+
+## 2026-04-10 unit-lane closure checkpoint: recovery step 2 is closed
+
+- Fresh validation closed the old-mainline unit bucket completely:
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `1599 passed, 202 skipped`
+    - `0 failed`
+  - full `make NUM_PROCS=24 test-unit`
+    - green end to end
+    - included:
+      - main `python/test/unit`
+      - `test_debug.py`
+      - `python/triton_kernels/tests`
+      - `python/tutorials/06-fused-attention.py`
+      - instrumentation test
+      - plugin tests
+- Consequence:
+  - the previous unit manifests are now stale historical artifacts
+  - the live GB200 branch-recovery backlog no longer includes a unit-lane
+    bucket
+- Updated recovery order:
+  1. merge-base-present focused `python/test/gluon/test_core.py`
+     - `146` exact nodeids
+  2. branch-added / branch-changed Gluon coverage
+     - focused core tail
+     - focused runtime-matrix bucket
+     - isolated FPSAN and frontend exacts
+  3. examples lane
+  4. reinterpret-contract rewrites plus any missing explicit descriptor/view
+     support still needed to express those tests cleanly
+- Harness note:
+  - the earlier async-compile / `test_cache.py` hang did not reproduce in the
+    fresh green unit rerun, so it stays on the side as a failure-induced
+    contamination investigation rather than a primary blocker

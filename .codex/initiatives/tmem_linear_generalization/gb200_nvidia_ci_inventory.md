@@ -1180,3 +1180,64 @@ These stay in the nearest validation loop while the red list is being reduced.
   1. rerun `python/test/unit/language/test_warp_specialization.py`
   2. rerun `make NUM_PROCS=24 test-unit`
   3. refresh the unit exact manifests from the new result
+
+## 2026-04-10 unit-lane closure: `make test-unit` is green on the current branch
+
+- This supersedes the earlier unit-red status in the closed census above.
+- Fresh current-head remeasurement:
+  - `python/test/unit/language/test_warp_specialization.py`
+    - rerun as a 4-GPU `pytest --splits 4 --group {1..4}` sweep
+    - result:
+      - `1599 passed, 202 skipped`
+      - `0 failed`
+  - `make NUM_PROCS=24 test-unit`
+    - artifact:
+      - `/tmp/test-unit-gb200-after-ws.log`
+    - green sub-lanes:
+      - main `python/test/unit`
+        - `15153 passed, 5492 skipped, 101 warnings`
+      - `python/test/unit/test_debug.py`
+        - `95 passed`
+      - `python/triton_kernels/tests`
+        - `2377 passed, 3444 skipped`
+      - `python/tutorials/06-fused-attention.py`
+        - `192 passed, 192 skipped, 1 warning`
+      - `python/test/unit/instrumentation/test_gpuhello.py`
+        - `1 passed`
+      - `python/test/unit/plugins/test_plugin.py`
+        - `1 passed`
+      - `python/test/unit/plugins/test_dialect_plugin.py`
+        - `1 passed`
+      - `python/test/unit/plugins/custom_ops.py`
+        - `1 passed`
+- Inventory consequences:
+  - the current-branch GB200 unit lane is no longer red
+  - current unit exact manifests are now empty:
+    - `gb200_current_branch_test_unit_failures.txt`
+    - `gb200_current_branch_test_unit_matmul_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt`
+    - `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`
+    - `gb200_branch_recovery_test_unit_failures.txt`
+  - the older populated unit manifests remain historical only
+- Separate harness conclusion:
+  - the earlier async-compile / `test_cache.py` hang did not reproduce in the
+    fresh green rerun
+  - the current evidence still points more strongly at failure-induced worker
+    or device contamination than at an independent always-on cache-key issue
+- Updated remaining GB200 red lanes after this closure:
+  - `make test-gluon`
+    - focused `python/test/gluon/test_core.py`
+      - `146` merge-base-present exacts still prioritized
+      - `186` branch-added / branch-changed focused core exacts still pending
+    - focused `python/test/gluon/test_tmem_runtime_matrix.py`
+      - `413` branch-added exacts
+    - isolated `test_fpsan.py`
+      - `1` branch-changed exact
+    - isolated `test_frontend.py`
+      - `1` branch-added exact
+    - examples:
+      - `48` `02-convolution.py`
+      - `14` `03-matmul-multicta.py`
+  - `make test-proton`
+    - still preexisting on merge-base
