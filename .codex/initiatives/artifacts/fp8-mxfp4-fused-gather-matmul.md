@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-10T20:27:13Z
+updated: 2026-04-10T20:31:54Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -573,6 +573,11 @@ The later merged-loader cleanup is no longer the only viable producer topology. 
   - Validation: `make` from `/root/code/triton`; `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py`; `PYTHONPATH=python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`; ad hoc benchmark-path sanity checks via `do_bench_cudagraph` -> `batch=128` `example=0.032971 ms`, `reference=0.034037 ms`; `batch=2048` `example=0.040898 ms`, `reference=0.043668 ms`
   - Learnings: The broader reuse was correct and performance-neutral, but it made the example more verbose by introducing a local dtype-adapter layer and obscuring the simple FP4 setup that the example is trying to show. For this file, readability of the standalone example matters more than maximizing reuse of generic test helpers. The right cleanup boundary is the earlier narrow reuse: keep `alloc_rand(...)` for the byte-dtype path and `swiglu_torch(...)` for the exact reference, but leave the activation and FP4 weight builders local.
   - Plan updates: Prefer narrow helper reuse in this example. If a future reuse idea needs multiple adapter types or makes the setup path harder to read, keep the example-local helper instead.
+- `2026-04-10` Completed: Simplified the example's benchmark/test helpers around `assert_close` and a `[M, N]` output contract
+  - Artifact: `python/examples/gluon/05-moe-bmm1-fused-gather.py`
+  - Validation: `make` from `/root/code/triton`; `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py`; `PYTHONPATH=python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`; ad hoc benchmark-path sanity checks via `do_bench_cudagraph` -> `batch=128` `example=0.032887 ms`, `reference=0.033916 ms`; `batch=2048` `example=0.040651 ms`, `reference=0.043184 ms`
+  - Learnings: The old helper block had two avoidable sources of verbosity: a manual output-diff checker and a shape shim that let the example return `[1, M, N]` while the reference path returned `[M, N]`. The cleaned version now uses one shared `run_kernel(...)` helper for both provider execution and benchmark timing, compares the example directly against `reference_matmul` in `test_op`, and uses `assert_close` for correctness checks on float32-decoded outputs with tolerances calibrated from the current acceptance envelope (`maxtol=0.126`, `rmstol=1e-4`). The example wrapper itself now returns `[M, N]` directly, which lets the tests delete the output canonicalization shim entirely. This keeps the test focused on the only meaningful contract here: the example should match the reference provider, and the reference provider does not need to be revalidated against a third exact path inside `test_op`.
+  - Plan updates: Keep the example benchmark/test helpers biased toward direct provider-vs-reference checks and small shared launch helpers. Avoid reintroducing custom diff logic or shape-normalization shims unless a future benchmark path genuinely needs them.
 
 ## Next Up
 
