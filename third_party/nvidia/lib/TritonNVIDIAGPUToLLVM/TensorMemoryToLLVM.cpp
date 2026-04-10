@@ -834,20 +834,7 @@ lowerTMemLdStFromTypes(
     return backingPlan;
   };
   auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
-    // The M=64 f32 query-type rescue exists for direct root loads whose
-    // canonical TMEM family is split-N. Applying it to descriptor views
-    // short-circuits the exact raw/support-query path and can collapse complex
-    // view arithmetic back to scalar 32x32b lowering.
-    if (!vals.empty() || !memDescValue || isViewLikeMemDesc ||
-        !isa_and_nonnull<TMEMAllocOp>(memDescValue.getDefiningOp()) ||
-        memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
-        memTy.getShape()[0] != 64 ||
-        isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
-      return false;
-    }
-    auto regLayout = toLinearLayout(regTy);
-    auto kWarp = StringAttr::get(rewriter.getContext(), "warp");
-    return regLayout.hasInDim(kWarp) && regLayout.getInDimSize(kWarp) == 4;
+    return false;
   }();
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
     if (!memDescValue ||

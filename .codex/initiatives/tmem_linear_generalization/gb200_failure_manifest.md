@@ -35,6 +35,21 @@ PY
   - source:
     - `make NUM_PROCS=24 test-unit`
     - plus the exact `python/test/unit/test_debug.py` rerun
+- [gb200_current_branch_test_unit_xml_failures_2026-04-10.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_xml_failures_2026-04-10.txt)
+  - `2098` nodeids
+  - source:
+    - near-complete broad `python/test/unit` rerun with `--junitxml`
+      written to `/tmp/test-unit-stage1-current.xml`
+  - current interpretation:
+    - this is the most complete machine-usable exact inventory of the
+      current-branch GB200 unit red surface
+    - all `2098` exact nodeids are present on merge-base and the exact
+      merge-base rerun is fully green/skip:
+      - `2083 passed, 15 skipped`
+    - do **not** read this as `2098` independent fresh root-cause buckets on
+      the current branch; representative fresh reruns from the tail files
+      pass, so much of this list is branch-local xdist/process fallout after a
+      smaller number of primary MMAv5/TMEM failures
 - [gb200_current_branch_test_gluon_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_group3_failures.txt)
   - `1160` nodeids
   - source:
@@ -136,6 +151,21 @@ collecting the merge-base test files and comparing exact nodeids:
 ## Notes
 
 - These manifests reflect the current branch tip at the time of generation.
+- The older `182`-nodeid unit manifest is still useful as the first reduced
+  branch-recovery slice, but the newer `2098`-nodeid XML manifest is the
+  current broad CI-like unit inventory.
+- Fresh isolated current-branch reruns of representative exact nodeids from
+  the XML-only tail files all pass:
+  - `python/test/unit/language/test_standard.py::test_maximum_minium[maximum-int32]`
+  - `python/test/unit/language/test_random.py::test_randint[10-0-int32-False]`
+  - `python/test/unit/runtime/test_cache.py::test_reuse`
+  - `python/test/unit/runtime/test_blaslt.py::test_blaslt[float8_e4m3fn-16-16-16]`
+  - `python/test/unit/runtime/test_autotuner.py::test_kwargs[False]`
+  - `python/test/unit/runtime/test_launch.py::test_metadata`
+  - `python/test/unit/runtime/test_bindings.py::test_python_func_in_visit_call`
+  - `python/test/unit/tools/test_triton_to_gluon.py::test_simple_matmul[4-128-128-64-1-float32-float16]`
+  - use that evidence together with the merge-base exact-green result to treat
+    the XML tail mainly as branch-local fallout, not as the primary fix order
 - Post-census status update:
   - after the later `TensorMemoryUtils.cpp` direct-planning fix, the
     representative exact split-N TMEM nodeids that motivated the original

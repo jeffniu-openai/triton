@@ -6253,3 +6253,71 @@ Open after this slice:
     MMAv5 producer-side, not generic direct TMEM planning; and
   - the GB200 manifest files now need regeneration after the next broader rerun
     before their aggregate counts are treated as current.
+
+## 2026-04-10: the broad unit XML surface is now fully reduced against merge-base, and the raw-first root-load experiment is back as the current dirty candidate
+
+- I finished the strongest remaining unit-side merge-base reduction:
+  - the near-complete current-branch `--junitxml` rerun produced
+    `2098` unique exact nodeids in
+    `gb200_current_branch_test_unit_xml_failures_2026-04-10.txt`;
+  - every one of those exact nodeids is present on merge-base; and
+  - the exact merge-base rerun is fully green/skip:
+    - `2083 passed, 15 skipped in 370.31s`.
+- This closes the "already failing on main?" question for the broad unit xdist
+  red surface:
+  - it is branch-local; but
+  - it is not `2098` independent fresh root-cause buckets.
+- I also rechecked one representative exact nodeid from every XML-only tail
+  file on the current branch, each in a fresh isolated process, and they all
+  pass:
+  - `python/test/unit/language/test_standard.py::test_maximum_minium[maximum-int32]`
+  - `python/test/unit/language/test_random.py::test_randint[10-0-int32-False]`
+  - `python/test/unit/runtime/test_cache.py::test_reuse`
+  - `python/test/unit/runtime/test_blaslt.py::test_blaslt[float8_e4m3fn-16-16-16]`
+  - `python/test/unit/runtime/test_autotuner.py::test_kwargs[False]`
+  - `python/test/unit/runtime/test_launch.py::test_metadata`
+  - `python/test/unit/runtime/test_bindings.py::test_python_func_in_visit_call`
+  - `python/test/unit/tools/test_triton_to_gluon.py::test_simple_matmul[4-128-128-64-1-float32-float16]`
+- Current read:
+  - the broad unit XML tail is mainly branch-local xdist/process fallout after
+    a smaller set of primary MMAv5/TMEM failures, not a dozen unrelated new
+    compiler bugs.
+- I also reintroduced the raw-first root-load experiment in
+  `TensorMemoryToLLVM.cpp`, but this time only as a narrow lowering choice:
+  - root TMEM ld/st lowering no longer prefers the same-atom query-type rescue
+    before the exact raw-query path;
+  - this restores the representative wide-N root-load unit matmul exact:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+  - and the repaired direct split-N TMEM controls remain green:
+    - `test_tmem_descriptor_chain_matrix[...]`
+    - `test_tmem_linear_roundtrip_splitn_shapes[...]`
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+    - `test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `test_block_m_64_mma[linear]`
+- Remaining fresh exact failures on the current dirty tree are now the true
+  short list:
+  - misaligned address:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+  - stable wrong-code:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
+      with `65535 / 131072` mismatches (`50.0%`)
+  - compile-time row-anchor gap:
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      both still fail with
+      `required row anchors 32,64 are not directly representable in the descriptor view`
+      before the software pipeliner asserts.
+- I also wrote down the strongest current non-cache flake clue:
+  - simple standalone processes obey `CUDA_VISIBLE_DEVICES` correctly on this
+    devbox; but
+  - some pytest/xdist workers in the broad sweeps did not, or appeared on a
+    different physical GPU than their environment implied.
+- Next execution order after this checkpoint:
+  1. checkpoint the raw-first root-load change plus the updated inventory;
+  2. debug the remaining source-initialized/root-load misaligned-address
+     cluster;
+  3. then handle the persistent-forward wrong-code sibling; and
+  4. then revisit the compile-time row-anchor representability bucket.

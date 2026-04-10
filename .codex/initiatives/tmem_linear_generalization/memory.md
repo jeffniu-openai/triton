@@ -222,6 +222,65 @@
 - Use `gb200_failure_manifest.md` and the adjacent generated `.txt` files when
   you need exact nodeid lists for the current-branch failures or the
   merge-base-existing shard-3 subsets.
+- The broad GB200 unit story has advanced past the older `162`-failure reduced
+  manifest:
+  - the direct CI-like run still finished red at
+    `2058 failed, 13095 passed, 5492 skipped`;
+  - a near-complete `--junitxml` rerun captured `2098` unique current-branch
+    unit failures across `12` files in
+    `gb200_current_branch_test_unit_xml_failures_2026-04-10.txt`; and
+  - the exact merge-base rerun of those same `2098` nodeids is fully
+    green/skip:
+    - `2083 passed, 15 skipped`.
+- That means the broad unit XML surface is branch-local, but not all of it is
+  a primary fresh root-cause bucket:
+  - representative fresh exact nodeids from the XML-only tail files all pass
+    on the current branch:
+    - `test_standard.py`
+    - `test_random.py`
+    - `test_cache.py`
+    - `test_blaslt.py`
+    - `test_autotuner.py`
+    - `test_launch.py`
+    - `test_bindings.py`
+    - `test_triton_to_gluon.py`
+  - current interpretation:
+    - the tail is mostly branch-local xdist/process fallout after a smaller
+      set of primary MMAv5/TMEM failures.
+- The current dirty LLVM-side follow-up also repairs one representative
+  old-mainline unit matmul exact without reopening the repaired split-N TMEM
+  controls:
+  - `TensorMemoryToLLVM.cpp` now keeps root TMEM ld/st lowering on the exact
+    raw-query path instead of preferring the same-atom query-type rescue first;
+  - this restores
+    `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`; and
+  - the repaired split-N exact controls remain green:
+    - `test_tmem_descriptor_chain_matrix[...]`
+    - `test_tmem_linear_roundtrip_splitn_shapes[...]`
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+    - `test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `test_block_m_64_mma[linear]`
+- The remaining fresh exact branch-local buckets on the current dirty tree are
+  now the real short list to fix:
+  - misaligned address:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+  - `50.0%` wrong-code:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
+  - compile-time row-anchor gap:
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      both still hit
+      `required row anchors 32,64 are not directly representable in the descriptor view`
+      before the software pipeliner asserts.
+- Keep the cache/collision story grounded in the actual probes:
+  - there is still no reproduced proof of a simple on-disk cache-key
+    collision; and
+  - there is now a stronger harness clue instead:
+    - simple standalone processes obey `CUDA_VISIBLE_DEVICES`;
+    - some pytest/xdist workers in the broad sweeps did not.
 - The current-branch GB200 census is now complete through the whole CI target
   stack we care about:
   - `make test-unit` finishes at

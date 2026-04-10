@@ -18,6 +18,57 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Current-Branch Reduction (2026-04-10)
+
+- The broad GB200 unit lane is now better understood than the earlier
+  `162`-failure reduced manifest suggested:
+  - the direct CI-style run still finished red at
+    `2058 failed, 13095 passed, 5492 skipped`;
+  - a near-complete `--junitxml` rerun captured `2098` unique failing nodeids
+    across `12` unit files in
+    `gb200_current_branch_test_unit_xml_failures_2026-04-10.txt`; and
+  - the exact same `2098` nodeids are fully green/skip on merge-base:
+    `2083 passed, 15 skipped`.
+- That closes the "already failing on main?" question for the broad unit
+  surface: it is branch-local.
+- It does **not** mean there are `2098` independent fresh branch bugs:
+  - isolated current-branch reruns of representative exact nodeids from the
+    XML-only tail files (`test_standard.py`, `test_random.py`,
+    `test_cache.py`, `test_blaslt.py`, `test_autotuner.py`,
+    `test_launch.py`, `test_bindings.py`, and `test_triton_to_gluon.py`) all
+    pass cleanly; so
+  - the current read is "few primary MMAv5/TMEM buckets plus substantial
+    branch-local xdist/process fallout after bad kernels", not twelve separate
+    root-cause families.
+- The current dirty worktree also has one new positive fix candidate in
+  `TensorMemoryToLLVM.cpp`:
+  - root TMEM ld/st lowering now stays on the exact raw-query path instead of
+    preferring the same-atom query-type rescue first;
+  - this restores the representative wide-N root-load unit matmul exact
+    `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`;
+  - and it keeps the repaired split-N TMEM controls green:
+    - `test_tmem_descriptor_chain_matrix[...]`
+    - `test_tmem_linear_roundtrip_splitn_shapes[...]`
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
+    - `test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `test_block_m_64_mma[linear]`.
+- The remaining fresh exact branch-local failures on the current dirty tree are
+  now concentrated in a short list:
+  - launch-time misaligned address:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+  - stable wrong-code:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
+      with `65535 / 131072` mismatches (`50.0%`)
+  - compile-time row-anchor materialization gap:
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+      both still fail with
+      `unsupported tensor memory descriptor view for direct tcgen05.ld/st: required row anchors 32,64 are not directly representable in the descriptor view`
+      before the software pipeliner asserts.
+
 ## Workflow Coverage
 
 The GB200/NVIDIA workflow currently runs:
@@ -160,7 +211,7 @@ is:
   - there is still some stale-negative churn mixed in, but the dominant signal
     is wrong-code / unsupported-layout fallout in branch-added TMEM coverage
 
-5. Real GB200 regression-suite bucket outside the TMEM reinterpret tests
+6. Real GB200 regression-suite bucket outside the TMEM reinterpret tests
 - Command:
   - `make test-regression`
 - Current result:
@@ -319,6 +370,15 @@ Use `gb200_failure_manifest.md` for the exact `.txt` lists and
   - shard-only anomalies are more likely process/device contamination after bad
     kernels, or another missing runtime invalidation/input, than a trivial
     cache-key collision
+- Additional harness anomaly to remember before redesigning cache keys:
+  - on this devbox, a simple standalone process respects
+    `CUDA_VISIBLE_DEVICES=3` and lands on physical GPU `3`;
+  - but some pytest/xdist workers in the broader sweeps either had no
+    `CUDA_VISIBLE_DEVICES` in `/proc/<pid>/environ`, or reported
+    `CUDA_VISIBLE_DEVICES=3` while `nvidia-smi` attributed them to physical
+    GPU `0`;
+  - so there is a real worker/device-isolation discrepancy in the harness, and
+    it must be ruled out before blaming on-disk cache reuse.
 - Actionable rule:
   - if a future anomaly looks cache-sensitive, preserve the exact order and
     replay it across fresh processes before designing around the cache

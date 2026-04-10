@@ -69,6 +69,45 @@ PY
   remain useful for backlog shape but not as current pass/fail counts until a
   broader rerun refreshes them.
 
+### Latest Dirty Worktree Checkpoint
+
+- The current dirty follow-up in
+  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+  disables the same-atom query-type preference for root TMEM ld/st lowering so
+  LLVM stays on the exact raw-query path first.
+- Exact impact on the current worktree:
+  - repaired:
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+  - still green:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - still failing fresh:
+    - misaligned address:
+      - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+      - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
+      - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+      - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+    - `50.0%` wrong-code:
+      - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
+    - compile-time row-anchor gap:
+      - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+      - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
+- The broad unit xdist XML surface is now fully classified against merge-base:
+  - `2098` current-branch exact nodeids exist on merge-base; and
+  - the exact merge-base rerun is fully green/skip:
+    - `2083 passed, 15 skipped`
+- Fresh isolated current-branch reruns from the XML-only tail files all pass:
+  - `test_standard.py`, `test_random.py`, `test_cache.py`, `test_blaslt.py`,
+    `test_autotuner.py`, `test_launch.py`, `test_bindings.py`, and
+    `test_triton_to_gluon.py`
+- Current interpretation:
+  - the broad unit XML surface is branch-local, but the primary fix order is
+    still the smaller MMAv5/TMEM list above; the rest of the unit XML tail is
+    mainly fallout after bad kernels.
+
 ### Excluded From The Branch Recovery Backlog
 
 - `python/test/unit/test_debug.py`
@@ -97,8 +136,9 @@ PY
   - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
   - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
   - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
-  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+  - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
   - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+  - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
 - Broader affected manifests / files:
   - `gb200_current_branch_test_gluon_group4_failures.txt`
   - `python/test/regression/test_cast_matmul.py`
@@ -121,7 +161,7 @@ PY
   - these failures hit `ttng.tmem_store` row anchors `32,64` and may be the
     compile-time sibling of the same structural planner mistake
 - Representative exact nodeids:
-  - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
+  - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
   - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
 - Broader affected coverage:
   - all three `test_tensor_descriptor_reshape_matmul[...]`
@@ -187,8 +227,12 @@ PY
     - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
   - then debug the remaining producer-side exacts:
     - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
-    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
     - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
+  - only after those are reduced, rerun the full `2098`-nodeid unit XML
+    manifest on the current branch to see how much of the xdist fallout clears
   - then the `8` exact `test_dot[...]` nodeids
   - then `python/test/unit/language/test_matmul.py`
   - then `python/test/unit/language/test_warp_specialization.py`
@@ -224,14 +268,22 @@ PY
   - some shard-only anomalies are more likely process/device contamination
     after bad kernels, or another missing invalidation/input in the runtime
     path, than a trivial `TRITON_CACHE_DIR` key collision.
+- Additional concrete harness discrepancy to investigate:
+  - a simple standalone process obeys `CUDA_VISIBLE_DEVICES` correctly on this
+    machine;
+  - but some pytest/xdist workers in the broad sweeps either lost
+    `CUDA_VISIBLE_DEVICES` or appeared on physical GPU `0` even when their
+    environment reported `CUDA_VISIBLE_DEVICES=3`.
 - Root-cause plan for future work:
   1. preserve the exact failing order when a shard-only anomaly appears;
   2. replay it in one process, then across fresh processes with the same cache,
      then across fresh caches;
-  3. only blame cache keys if the symptom survives the process boundary and
+  3. instrument worker env + physical GPU selection before changing cache
+     logic;
+  4. only blame cache keys if the symptom survives the process boundary and
      remains tied to cache reuse;
-  4. otherwise investigate bad-kernel aftermath, stream/device state leakage,
-     or compiler global-state reuse.
+  5. otherwise investigate bad-kernel aftermath, stream/device state leakage,
+     xdist worker isolation, or compiler global-state reuse.
 
 ## Performance Notes To Revisit Later
 
