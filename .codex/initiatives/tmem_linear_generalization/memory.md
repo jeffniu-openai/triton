@@ -183,6 +183,19 @@
   `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[...]`
   expectation has already been updated to the current row-anchor diagnostic and
   is no longer part of the red list.
+- First rewrite experiments for the two remaining `block_m_64` tests did not
+  produce a landable explicit-view replacement yet:
+  - simple direct 2D slice rewrites compiled and reproduced the same wrong
+    outputs as the old reinterpret-heavy tests, so they did not actually
+    restate the intended borrowed-physical view contract; and
+  - a more explicit quarter-band reorder
+    (`reshape((64, 2, 2, 32)).permute((0, 2, 1, 3)).reshape((64, 4, 32))`)
+    appears algebraically promising, but direct stores to the reordered bands
+    currently fail cleanly with
+    `required row anchors 32,64 are not directly representable in the descriptor view`.
+- Implication: the reinterpret-test rewrite is still the next task, but it now
+  likely requires either one more explicit view projection step or compiler
+  support for the reordered M64 quarter-band descriptor view.
 
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual

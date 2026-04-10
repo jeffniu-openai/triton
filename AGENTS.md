@@ -19,6 +19,7 @@
   - keep clean negatives only for true ISA-impossible cases;
   - prefer one shared planner and exact linear-layout arithmetic over family-specific rescue stacks; and
   - after the current bug buckets are green, continue through the recorded long-term phases (`ld.red`, `copy` `warpx2`, broader MMAv5 reachable-family support, heuristic cleanup, and staged broad validation) instead of treating the initiative as done.
+- For TMEM initiative work, keep `.codex/initiatives/tmem_linear_generalization/README.md`, `.codex/initiatives/tmem_linear_generalization/memory.md`, `.codex/initiatives/tmem_linear_generalization/log.md`, and `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md` aligned at meaningful checkpoints. Do not let critical state live only in chat context. Commit messages should remain detailed enough that a reader of `git log` can recover the relevant context, motivation, validation, and remaining boundaries without needing the lost session transcript.
 - When debugging compiler or codegen bugs, identify and fix the core linear-layout, planner, or lowering issue rather than layering patchwork or ad-hoc special cases. Use targeted probes to find the real abstraction mismatch first, then implement the general fix and update tests to match correct behavior.
 - For TMEM reinterpret lowering in particular, prefer exact linear-layout arithmetic end-to-end:
   - derive support layouts, origins, row anchors, packet offsets, and query families from `LinearLayout` compose/invert/pseudoinvert algebra;

@@ -5644,3 +5644,50 @@ Open after this slice:
     reinterpret-heavy `block_m_64` tests, which are now explicitly tracked as
     rewrite candidates under the newer TMEM descriptor/view contract rather
     than proven compiler bugs.
+
+## 2026-04-10: first explicit-view rewrite attempts for the remaining `block_m_64` GB200 reds narrowed the problem
+
+- After the stale expectation fix, I tried to rewrite the two remaining
+  `block_m_64` GB200 red tests to explicit descriptor/view APIs instead of
+  implicit `_reinterpret(...)` behavior.
+- First attempt: direct 2D slices only
+  - kernel idea:
+    - replace the old half-band borrow with `slice(0, 32, dim=1)` /
+      `slice(64, 32, dim=1)` stores
+    - replace the old `64x2` reinterpret fragments with nested 2-column slices
+      inside `slice(32, 32, dim=1)`
+  - validation:
+    - `make -j8`
+    - `CUDA_VISIBLE_DEVICES=0 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64`
+    - `CUDA_VISIBLE_DEVICES=1 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout`
+  - result:
+    - both tests compiled and still failed with the same old mismatch counts:
+      - `4096 / 8192`
+      - `2048 / 8192`
+  - conclusion:
+    - plain logical slices do not restate the intended borrowed-physical
+      contract for M64
+- Second attempt: explicit quarter-band reorder
+  - candidate view:
+    - `reshape((64, 2, 2, 32)).permute((0, 2, 1, 3)).reshape((64, 4, 32))`
+  - rationale:
+    - this reorders quarter bands as `[0, 2, 1, 3]`, matching the old expected
+      physical-half-band behavior much better than direct slices
+  - throwaway probes:
+    - `/tmp/probe_blockm64_reorder.py`
+    - `/tmp/probe_blockm64_reorder_splitbands.py`
+  - result:
+    - direct stores to the reordered views fail cleanly with
+      `required row anchors 32,64 are not directly representable in the descriptor view`
+    - one broader rank-3 variant also exposed a `dims.size() == 2` assertion in
+      `getDistributedLayoutForTmemLdSt(...)` when asking `get_reg_layout()` on
+      the intermediate parent view
+  - conclusion:
+    - the reordered quarter-band view is the most plausible explicit-contract
+      direction found so far, but it is not directly lowerable today
+- I reverted the experimental test edits after the probes so the worktree
+  returned to the clean committed baseline.
+- Next useful step:
+  - determine whether one more explicit view projection can keep the reordered
+    quarter-band contract inside the currently supported direct-view frontier,
+    or whether supporting that reordered M64 view requires a compiler fix.
