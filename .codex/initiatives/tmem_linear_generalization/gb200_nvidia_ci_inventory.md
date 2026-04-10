@@ -187,6 +187,21 @@ is:
   - red
   - `234 failed, 856 passed, 216 skipped`
   - concentrated in `python/test/regression/test_cast_matmul.py`
+- `python/examples/gluon/`
+  - red
+  - `62 failed, 759 passed, 74 skipped`
+  - failure concentration:
+    - `02-convolution.py`
+      - repeated `OutOfResources` on Blackwell shared-memory limit
+      - required shared memory `262208`, hardware limit `232448`
+    - `03-matmul-multicta.py`
+      - repeated wrong-code at about `48%` mismatches in the failing cases
+  - current interpretation:
+    - the convolution failures look like a launch-configuration / autotuning /
+      portability issue rather than TMEM reinterpret fallout
+    - the multicta matmul failures likely belong near the broader GB200 matmul
+      regression surface and should be triaged alongside the split-N / cast
+      matmul buckets
 - `test-gluon` shard `3 / 4`
   - red
   - `1160 failed, 3251 passed, 2036 skipped, 19344 deselected`

@@ -5742,6 +5742,15 @@ Open after this slice:
   - `make test-regression`
     - `234 failed, 856 passed, 216 skipped`
     - all observed failures were in `python/test/regression/test_cast_matmul.py`
+- Additional GB200 red lane from the `test-gluon` examples half:
+  - `CUDA_VISIBLE_DEVICES=1 ... pytest -s --tb=short -n 2 python/examples/gluon/`
+    - `62 failed, 759 passed, 74 skipped`
+  - two visible buckets:
+    - `python/examples/gluon/02-convolution.py`
+      - repeated `OutOfResources`
+      - required shared memory `262208`, hardware limit `232448`
+    - `python/examples/gluon/03-matmul-multicta.py`
+      - repeated wrong-code around `48%` mismatches
 - I then ran the main Gluon/tutorial surface with `pytest --splits 4 --group`
   across four GPUs, excluding only the two documented rewrite-blocked
   `block_m_64` subslice tests.
@@ -5787,5 +5796,8 @@ Open after this slice:
   - the current branch tip has a real `M=64` split-N TMEM regression again
   - the higher-rank half-row "clean error" family now mixes stale negatives and
     contaminated shard fallout, so it needs per-nodeid reclassification
-  - and there is a broader `test_cast_matmul.py` regression-suite bucket
-    outside TMEM
+  - and there are broader GB200 non-TMEM buckets too:
+    - `test_cast_matmul.py` in the regression suite;
+    - shared-memory-limit portability failures in the Gluon convolution
+      examples; and
+    - Gluon multicta matmul wrong-code in the examples lane
