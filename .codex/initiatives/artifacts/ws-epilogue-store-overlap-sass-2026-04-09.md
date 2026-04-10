@@ -92,6 +92,45 @@ Measured on GPU 0 with `warmup=30`, `rep=1000`, exact validation:
 
 So the earlier slot release is a small but real improvement, about `0.0007 ms` or `~0.2%` on the target bucket.
 
+### 6. The small helper win is consistent with STG scoreboard semantics
+
+The early-empty-barrier speedup is not evidence that the old helper consumer was waiting for the global stores to reach memory before executing `SYNCS.ARRIVE`. The more plausible model is:
+
+- `STG.E` issues quickly once its source registers are ready
+- the scoreboard dependency is tied to those source registers and any later register consumers, not to the barrier itself
+- `SYNCS.ARRIVE` can therefore issue immediately after the `STG.E` bundle if there is no dependency between them
+
+That means the old helper consumer was already effectively decoupled from global-store completion. Moving `arrive(empty)` earlier only shortened the handoff window by the local issue distance between the barrier and the `STG.E` cluster, which matches the observed tiny-but-real win.
+
+### 7. Helper buffering is not the same as keeping more data in epilogue registers
+
+The helper path is not just "more buffering in registers." It is buffering in a different partition's registers:
+
+- the epilogue partition computes and writes the packed fragment into the SMEM ring
+- the helper partition loads that fragment into its own registers
+- the helper partition then spends its own issue slots on pointer math, predication, repacking, and `gl.store`
+
+If the fragment stayed in the epilogue registers instead, the epilogue warps would still have to issue all of that final-store work themselves. Raising the epilogue register budget alone cannot create the same decoupling because it does not add separate warp issue bandwidth; it only lets the same warps hold more live data while they still own the address-generation and store instructions.
+
+### 8. Manual source-level interleaving is probably low-upside unless it changes granularity
+
+The current helper producer SASS already shows ptxas doing the obvious useful thing:
+
+- `TRYWAIT`
+- early `STS.U16` payload writes
+- lots of later SwiGLU / packed-float2 arithmetic
+- later `SYNCS.ARRIVE(ready)`
+
+So a source rewrite that merely restates the current full-fragment schedule as "do some arithmetic, then some `STS`, then more arithmetic" is unlikely to buy much. ptxas is already placing the SMEM stores early and overlapping them with the remaining fragment math.
+
+The source-level interleave that still looks plausible is a larger change:
+
+- split the fragment into smaller independently-ready pieces
+- perform exact SwiGLU + packing + `STS` per smaller piece
+- let the helper consumer observe those smaller ready units
+
+That would change the ownership and readiness granularity, not just the textual order of the current full-fragment code.
+
 ## Interpretation
 
 The current helper-vs-TMA-store difference is not explained by a failure of ptxas to overlap store-side instructions. ptxas already interleaves both the helper producer path and the epilogue-owned async-TMA-store path with arithmetic.
@@ -101,6 +140,7 @@ The remaining difference is architectural:
 - helper-store keeps the final global-store work on separate warps
 - helper-store can free the SMEM slot once the fragment is in registers
 - epilogue-owned async-TMA-store keeps the store-wait dependency on the compute partition and ties slot reuse to store completion
+- direct epilogue store with a higher register budget is still not equivalent to the helper path, because the epilogue warps would continue to own the final address-generation and `STG.E` issue stream
 
 That matches the earlier NCU result: async TMA store did not lose on write volume, but it did lose on barrier-style stall and issue efficiency.
 
@@ -108,3 +148,4 @@ That matches the earlier NCU result: async TMA store did not lose on write volum
 
 - Keep the early empty-barrier release in the helper consumer.
 - If TMA store is revisited, test a separate store partition that issues `tma.async_copy_shared_to_global(...)` from the ring, so the compute partition keeps the helper-style decoupling.
+- If direct `gl.store` is revisited, do not expect "more epilogue regs" alone to reproduce the helper result. The more credible direct-store experiment is a finer-grained ready/store protocol that changes how much of the fragment becomes independently storable.
