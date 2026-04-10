@@ -150,36 +150,39 @@ is:
 
 ### Green Or Healthy
 
+- `make test-lit`
+  - passed after reconfiguring the build cache to point `LLVM_EXTERNAL_LIT` at
+    the installed `lit` script
+  - `248 passed, 2 unsupported`
 - `make test-cpp`
   - passed
   - `240 / 240` tests passed
 - manual lit fallback
-  - `cd $BUILD_DIR && python3 -m lit.main -sv test`
-  - passed
+  - still works as a fallback:
+    - `cd $BUILD_DIR && python3 -m lit.main -sv test`
 - `make test-gsan`
   - passed
   - `20 passed`
 - `make test-microbenchmark`
   - passed
   - completed both Tensor and TensorDescriptor launch-overhead runs
+- `test-gluon` shard `1 / 4`
+  - `5433 passed, 1014 skipped, 19344 deselected`
+  - no failures observed
 - `test-gluon` shard `2 / 4`
   - `2663 passed, 3784 skipped, 19344 deselected`
   - no new exact failures
 
 ### Local Environment Blockers
 
-- `make test-lit`
-  - local wrapper is broken on this devbox because `LLVM_EXTERNAL_LIT` is empty
-    in `CMakeCache.txt`, which makes the generated command try to execute
-    `/llvm-lit`
-  - this is why the manual `python3 -m lit.main -sv test` fallback is used for
-    local inventory here
-- `make test-proton`
-  - blocked locally by missing Python dependency `llnl-hatchet`
-  - current import error:
-    - `Failed to import hatchet. pip install llnl-hatchet to get the correct version.`
-  - treat this as a local environment blocker until the devbox matches the CI
-    proton environment
+- no remaining local environment blocker is currently preventing the recorded
+  GB200 inventory from running
+- local env fixes applied during this census:
+  - reconfigured the existing build with
+    `cmake -S . -B $BUILD_DIR -DLLVM_EXTERNAL_LIT=$(which lit)` so
+    `make test-lit` uses the installed `lit` script instead of `/llvm-lit`
+  - installed `llnl-hatchet` into the current Python environment so Proton
+    tests could run past the viewer import
 
 ### Red But Not Yet Fully Reduced
 
@@ -217,9 +220,15 @@ is:
   - at least one sibling case in that family passes clean in isolation, so much
     of the later shard output should be treated as stale-negative fallout and
     contamination until rerun clean
-- `test-gluon` shard `1 / 4`
-  - still running when this checkpoint entry was written
-  - no exact failure had appeared yet
+- `make test-proton`
+  - red after the `llnl-hatchet` install removed the old import blocker
+  - `10 failed, 114 passed, 1 skipped`
+  - all observed failures were in `third_party/proton/test/test_profile.py`
+  - current interpretation:
+    - this is now a real Proton/cudagraph-profile bucket rather than an
+      environment issue
+    - failures are concentrated in expected tree-shape / frame-name /
+      periodic-flush assertions for cudagraph profiling behavior
 
 ### Noisy But Expected During `-s` Shard Runs
 

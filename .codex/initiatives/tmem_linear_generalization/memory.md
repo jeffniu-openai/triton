@@ -182,8 +182,13 @@
   - there is now also a real `M=64` split-N TMEM regression at the current
     branch tip, confirmed by clean isolated reruns of descriptor-chain and
     roundtrip exact nodeids; and
-  - there is also a broader `test_cast_matmul.py` regression-suite bucket
-    outside the old reinterpret debate.
+  - there are also broader GB200 non-TMEM buckets outside the old reinterpret
+    debate:
+    - `python/test/regression/test_cast_matmul.py`;
+    - Proton cudagraph-profile failures after the environment blocker was
+      removed; and
+    - Gluon example failures split between Blackwell shared-memory-limit
+      portability and multicta matmul wrong-code.
 - Use `gb200_nvidia_ci_inventory.md` for the exact continuously updated red
   list and lane-by-lane census status.
 - The stale
@@ -244,8 +249,8 @@
     because it breaks previously green exact controls on clean reruns;
   - separately triage the higher-rank half-row clean-negative family and update
     tests where support has genuinely broadened; and
-  - keep the broad regression `test_cast_matmul.py` bucket visible in the
-    GB200 inventory as a distinct follow-up surface.
+  - keep the broader GB200 non-TMEM buckets visible in the inventory as
+    distinct follow-up surfaces instead of folding them into the TMEM story.
 
 ## Current Decisions
 - Backward compatibility is by early normalization, not by maintaining dual

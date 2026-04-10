@@ -5801,3 +5801,38 @@ Open after this slice:
     - shared-memory-limit portability failures in the Gluon convolution
       examples; and
     - Gluon multicta matmul wrong-code in the examples lane
+
+## 2026-04-10: fixed the local lit and proton environment blockers and completed the last Gluon shard
+
+- I fixed the local `make test-lit` wrapper by reconfiguring the existing build
+  with:
+  - `cmake -S . -B $BUILD_DIR -DLLVM_EXTERNAL_LIT=$(which lit)`
+- Validation:
+  - `make test-lit`
+    - now passes
+    - `248 passed, 2 unsupported`
+- I installed the missing Proton viewer dependency:
+  - `python3 -m pip install llnl-hatchet`
+- Validation after the install:
+  - `CUDA_VISIBLE_DEVICES=1 make test-proton`
+    - no longer fails on import
+    - now reaches real test failures:
+      - `10 failed, 114 passed, 1 skipped`
+      - all observed failures in `third_party/proton/test/test_profile.py`
+      - failures are concentrated in cudagraph-profile structure / frame-name /
+        periodic-flush assertions
+- The long-running last Gluon shard also finished:
+  - sharded `python/test/gluon/ python/tutorials/gluon/` group `1 / 4`
+    - `5433 passed, 1014 skipped, 19344 deselected`
+    - no failures
+- This completes the broad sharded `test-gluon` census picture for this pass:
+  - groups `1 / 4` and `2 / 4` green
+  - groups `3 / 4` and `4 / 4` red
+- Net new conclusion:
+  - the old local environment blockers are no longer hiding those lanes on this
+    devbox
+  - the remaining Proton failures are real test failures, not a missing-package
+    issue
+  - and the GB200 `test-gluon` picture is now complete enough to move back to
+    the cleanly reproduced split-N TMEM regressions as the next TMEM-local
+    debugging target
