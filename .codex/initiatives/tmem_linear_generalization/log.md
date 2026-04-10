@@ -5498,3 +5498,42 @@ Open after this slice:
   - the live `M=64x32xf32` tcgen05 root-load bug is fixed;
   - the `even_odd` row/col TMEM runtime slice is green again; and
   - the next initiative step is to resume the broader healthy-node 4-GPU `test_core.py` + `test_tmem_runtime_matrix.py` sweep from this cleaner tip and classify the next real failure surface, if any.
+
+## 2026-04-10: audited merge-base diff for TMEM patchwork debt and turned it into an explicit cleanup backlog
+
+- I reviewed the compiler-side diff against merge-base `7f61ac734edc657b737fb159a1b9d50cb47944e6` (`master`), excluding `.codex`, to separate real generalization work from temporary rescues that should now be folded back into cleaner abstractions.
+- The recurring TMEM debt families are:
+  - duplicated ld/st planning across Gluon / verifier / LLVM lowering;
+  - M64-family-specific layout-selection fast paths;
+  - reinterpret/support-query packet surgery in `TensorMemoryUtils.cpp`;
+  - legacy-encoding rescue paths that still diverge from TMEM-linear lowering;
+  - scattered row-plan override acquisition; and
+  - tests that still rely on `_reinterpret` as an implicit physical-layout escape hatch.
+- I correlated that audit with the current live `block_m_64` failures and the previously recorded PTX analysis:
+  - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]`
+    - fresh exact pytest still fails at `4096 / 8192`
+    - fresh probe still shows wrong bands only in `64:96` and `96:128`
+    - PTX still emits a legacy-style reinterpret zero-store through `tcgen05.st.sync.aligned.16x32bx2.x16.b32`
+    - passing TMEM-linear control emits repeated `tcgen05.st.sync.aligned.16x32bx2.x2.unpack::16b.b32`
+    - conclusion: legacy lowering is still diverging from the correct packed-support physical family
+  - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - fresh exact pytest still fails at `2048 / 8192`
+    - fresh probe shows mismatches only in `32:64` and `96:128`
+    - PTX is already on the packed `tcgen05.st.sync.aligned.16x32bx2.x2.unpack::16b.b32` family and still omits extra `ttg.convert_layout`
+    - conclusion: atom-family choice is already good; the remaining bug is packet decomposition, specifically failing to separate support-band selection from ordinary repetition
+- This reinforces the initiative's working principle:
+  - fix the shared linear-layout / quotient / planner abstraction, not the symptom with more M64-specific offset surgery.
+- Explicit cleanup order recorded for the next implementation passes:
+  1. build one shared TMEM ld/st planner consumed by Gluon, verifier, and LLVM lowering;
+  2. canonicalize legacy TMEM physical families onto the same planner as TMEM-linear layouts;
+  3. derive reinterpret packet offsets / repetition / support-band selection from quotient factorization in one physical coordinate frame;
+  4. after the core logic is stable, rewrite the reinterpret-heavy `block_m_64` tests to use guaranteed descriptor/view APIs (`slice/index/reshape/permute`) so they encode user intent rather than old compiler accidents.
+- Validation performed for this audit pass:
+  - `make -j8`
+  - `CUDA_VISIBLE_DEVICES=0 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64[legacy]`
+    - `1 failed` (`4096 / 8192`)
+  - `CUDA_VISIBLE_DEVICES=1 ... pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `1 failed` (`2048 / 8192`)
+  - throwaway PTX/LLIR probe matching those kernels:
+    - confirmed the opcode-family split described above between broken legacy direct and working TMEM-linear direct
+    - confirmed the parent-layout bucket is already on the packed opcode family and is now blocked specifically on packet decomposition semantics

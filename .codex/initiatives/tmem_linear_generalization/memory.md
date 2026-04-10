@@ -3068,3 +3068,31 @@ rejection, not rescue
   - rerun the exact `even_odd` `32x32b_splitn` and `16x32bx2` repros
   - update the stale block-descriptor clean-negative test
   - then rerun broad sweep group 4
+
+## 2026-04-10: merge-base audit says the remaining work is planner cleanup, not more one-off M64 surgery
+
+- I audited the compiler diff vs merge-base `7f61ac734edc657b737fb159a1b9d50cb47944e6` (`master`), excluding `.codex`.
+- The TMEM debt clusters into a few recurring families:
+  - duplicated ld/st planning across Gluon / verifier / LLVM lowering
+  - M64 family-specific layout-selection fast paths
+  - reinterpret/support-query packet surgery in `TensorMemoryUtils.cpp`
+  - legacy-encoding rescue paths that still diverge from TMEM-linear lowering
+  - explicit row-plan propagation that is necessary but still too scattered
+  - tests that still rely on `_reinterpret` as an implicit physical-layout escape hatch
+- The remaining live `block_m_64` failures fit that audit exactly:
+  - `test_tmem_subslice_block_m_64[legacy]`
+    - still fails because legacy spelling does not collapse onto the same packed-support family as the working TMEM-linear spelling
+    - PTX correlation:
+      - broken legacy reinterpret zero-store still uses `tcgen05.st.sync.aligned.16x32bx2.x16.b32`
+      - passing linear control uses repeated `tcgen05.st.sync.aligned.16x32bx2.x2.unpack::16b.b32`
+  - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - still fails even though the store is already on the packed `16x32bx2.x2.unpack::16b` family
+    - so the atom family is not the issue there; packet decomposition is still assigning the support-band / subview-selection bit to ordinary repetition
+- The highest-value cleanup order is now:
+  1. unify TMEM ld/st planning into one shared structural planner;
+  2. remove legacy-vs-linear physical-family divergence;
+  3. derive reinterpret packet decomposition from quotient factorization instead of offset/anchor surgery;
+  4. then rewrite the reinterpret-heavy `block_m_64` tests to the guaranteed descriptor/view APIs (`slice/index/reshape/permute`) so they encode user intent rather than old compiler accidents.
+- Important testing note:
+  - the `block_m_64` tests are still useful, but they should be treated as intent probes, not as proof that the compiler must preserve every old implicit reinterpret mapping forever.
+  - the durable contract should move to explicit descriptor/view composition now that TMEM arbitrary linear layouts and descriptor transforms exist.
