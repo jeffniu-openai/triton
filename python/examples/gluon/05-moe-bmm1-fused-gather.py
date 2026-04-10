@@ -163,14 +163,17 @@ class KernelConfig:
     block_m: int = 128
     block_n: int = 256
     block_k: int = 128
-    load_num_bufs: int = 4
-    load_warps: int = 4
+    x_num_bufs: int = 5
+    w_num_bufs: int = 4
+    load_activation_warps: int = 4
+    load_weight_warps: int = 1
     mma_warps: int = 1
     store_helper_warps: int = 2
     epilogue_row_subtile_factor: int = 8
     epilogue_store_helper_depth: int = 2
-    load_regs: int = 80
-    mma_regs: int = 20
+    load_activation_regs: int = 112
+    load_weight_regs: int = 48
+    mma_regs: int = 24
     store_helper_regs: int = 16
 
 
@@ -212,11 +215,15 @@ class PartitionArgs:
     x_block_schedule: gl.tensor
 
     x_bufs: gl.shared_memory_descriptor
+    x_empty_bars: gl.shared_memory_descriptor
+    x_ready_bars: gl.shared_memory_descriptor
+    x_num_bufs: gl.constexpr
+
     w_bufs: gl.shared_memory_descriptor
     w_scale_bufs: gl.shared_memory_descriptor
-    load_empty_bars: gl.shared_memory_descriptor
-    load_ready_bars: gl.shared_memory_descriptor
-    load_num_bufs: gl.constexpr
+    w_empty_bars: gl.shared_memory_descriptor
+    w_ready_bars: gl.shared_memory_descriptor
+    w_num_bufs: gl.constexpr
 
     x_scale_tmem: blackwell.tensor_memory_descriptor
     w_scale_tmem: blackwell.tensor_memory_descriptor
@@ -284,26 +291,20 @@ def invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
 
 
 @gluon.jit
-def load_partition(p: PartitionArgs):
-    gl.static_assert(gl.num_warps() == 4, "merged load partition assumes four load warps")
+def load_activations(p: PartitionArgs):
     offs_layout: gl.constexpr = gl.SliceLayout(
         dim=0,
-        parent=gl.BlockedLayout([1, 4], [32, 1], [1, 4], [1, 0]),
+        parent=gl.BlockedLayout([1, 4], [32, 1], [1, gl.num_warps()], [1, 0]),
     )
     tile_x_bytes: gl.constexpr = p.x_desc.block_type.nbytes * p.BLOCK_M
-    tile_w_bytes: gl.constexpr = p.w_desc.block_type.nbytes
-    tile_scale_bytes: gl.constexpr = p.scale_desc.block_type.nbytes
-    bytes_per_stage: gl.constexpr = tile_x_bytes + tile_w_bytes + tile_scale_bytes
 
     idx = 0
     phase = 1
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
-        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        pid_m, _, slice_idx, slice_offset = p.apply_block_schedule(block_id)
         off_m = pid_m * p.BLOCK_M
         shape_m = gl.load(p.x_slice_sizes + slice_idx)
-        off_n = pid_n * p.BLOCK_N
-        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
 
         offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
         mask_m = offs_m < shape_m
@@ -315,28 +316,55 @@ def load_partition(p: PartitionArgs):
 
         for ki in range(p.K_TILES):
             off_k_x = ki * p.BLOCK_K
+
+            empty_bar = p.x_empty_bars.index(idx)
+            ready_bar = p.x_ready_bars.index(idx)
+            x_buf = p.x_bufs.index(idx)
+
+            mbarrier.wait(empty_bar, phase)
+            mbarrier.expect(ready_bar, tile_x_bytes)
+            tma.async_gather(p.x_desc, offs_x_m, off_k_x, ready_bar, x_buf)
+
+            idx, phase = advance(idx, phase, p.x_num_bufs)
+
+
+@gluon.jit
+def load_weights(p: PartitionArgs):
+    tile_w_bytes: gl.constexpr = p.w_desc.block_type.nbytes
+    tile_scale_bytes: gl.constexpr = p.scale_desc.block_type.nbytes
+    bytes_per_stage: gl.constexpr = tile_w_bytes + tile_scale_bytes
+
+    idx = 0
+    phase = 1
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        _, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+        off_n = pid_n * p.BLOCK_N
+
+        scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+        for ki in range(p.K_TILES):
             off_k_w = ki * p.PACKED_BLOCK_K
             off_k_scale = off_k_w // 64
 
-            empty_bar = p.load_empty_bars.index(idx)
-            ready_bar = p.load_ready_bars.index(idx)
-            x_buf = p.x_bufs.index(idx)
+            w_empty_bar = p.w_empty_bars.index(idx)
+            w_ready_bar = p.w_ready_bars.index(idx)
             w_buf = p.w_bufs.index(idx)
             scale_buf = p.w_scale_bufs.index(idx)
 
-            mbarrier.wait(empty_bar, phase)
-            mbarrier.expect(ready_bar, bytes_per_stage)
-            tma.async_gather(p.x_desc, offs_x_m, off_k_x, ready_bar, x_buf)
-            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, off_n, off_k_w], ready_bar, w_buf)
-            tma.async_copy_global_to_shared(p.scale_desc, [0, scale_idx, off_k_scale, 0, 0], ready_bar, scale_buf)
+            mbarrier.wait(w_empty_bar, phase)
+            mbarrier.expect(w_ready_bar, bytes_per_stage)
+            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, off_n, off_k_w], w_ready_bar, w_buf)
+            tma.async_copy_global_to_shared(p.scale_desc, [0, scale_idx, off_k_scale, 0, 0], w_ready_bar, scale_buf)
 
-            idx, phase = advance(idx, phase, p.load_num_bufs)
+            idx, phase = advance(idx, phase, p.w_num_bufs)
 
 
 @gluon.jit
 def mma_partition(p: PartitionArgs):
-    load_idx = 0
-    load_phase = 0
+    x_idx = 0
+    x_phase = 0
+    w_idx = 0
+    w_phase = 0
     mma_idx = 0
     mma_phase = 1
 
@@ -348,17 +376,21 @@ def mma_partition(p: PartitionArgs):
 
         use_acc = False
         for _ in range(p.K_TILES):
-            load_ready_bar = p.load_ready_bars.index(load_idx)
-            load_empty_bar = p.load_empty_bars.index(load_idx)
-            x_buf = p.x_bufs.index(load_idx)
-            w_buf = p.w_bufs.index(load_idx)
-            scale_buf = p.w_scale_bufs.index(load_idx)
-            mbarrier.wait(load_ready_bar, load_phase)
+            w_ready_bar = p.w_ready_bars.index(w_idx)
+            w_empty_bar = p.w_empty_bars.index(w_idx)
+            w_buf = p.w_bufs.index(w_idx)
+            scale_buf = p.w_scale_bufs.index(w_idx)
+            mbarrier.wait(w_ready_bar, w_phase)
 
             blackwell.tcgen05_copy(
                 unswizzle_mx_scale(scale_buf, p.SCALE_SIZE_OUTER, p.SCALE_SIZE_INNER, p.MXFP_BLOCK_SIZE),
                 p.w_scale_tmem,
             )
+
+            x_ready_bar = p.x_ready_bars.index(x_idx)
+            x_empty_bar = p.x_empty_bars.index(x_idx)
+            x_buf = p.x_bufs.index(x_idx)
+            mbarrier.wait(x_ready_bar, x_phase)
 
             blackwell.tcgen05_mma_scaled(
                 w_buf.reshape((w_buf.shape[1], w_buf.shape[2])),
@@ -370,9 +402,11 @@ def mma_partition(p: PartitionArgs):
                 b_type="e4m3",
                 use_acc=use_acc,
             )
-            blackwell.tcgen05_commit(load_empty_bar)
+            blackwell.tcgen05_commit(x_empty_bar)
+            blackwell.tcgen05_commit(w_empty_bar)
 
-            load_idx, load_phase = advance(load_idx, load_phase, p.load_num_bufs)
+            x_idx, x_phase = advance(x_idx, x_phase, p.x_num_bufs)
+            w_idx, w_phase = advance(w_idx, w_phase, p.w_num_bufs)
             use_acc = True
 
         blackwell.tcgen05_commit(acc_ready_bar)
@@ -732,11 +766,14 @@ def ws_matmul_kernel(
     BLOCK_N: gl.constexpr,
     BLOCK_K: gl.constexpr,
     NUM_SMS: gl.constexpr,
-    LOAD_NUM_BUFS: gl.constexpr,
-    LOAD_WARPS: gl.constexpr,
+    X_NUM_BUFS: gl.constexpr,
+    W_NUM_BUFS: gl.constexpr,
+    LOAD_ACTIVATION_WARPS: gl.constexpr,
+    LOAD_WEIGHT_WARPS: gl.constexpr,
     MMA_WARPS: gl.constexpr,
     STORE_HELPER_WARPS: gl.constexpr,
-    LOAD_REGS: gl.constexpr,
+    LOAD_ACTIVATION_REGS: gl.constexpr,
+    LOAD_WEIGHT_REGS: gl.constexpr,
     MMA_REGS: gl.constexpr,
     STORE_HELPER_REGS: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
@@ -758,23 +795,26 @@ def ws_matmul_kernel(
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
     acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([128, BLOCK_M], col_stride=1)
 
-    load_num_bufs: gl.constexpr = LOAD_NUM_BUFS
+    x_num_bufs: gl.constexpr = X_NUM_BUFS
     x_bufs = gl.allocate_shared_memory(
         x_desc.dtype,
-        [load_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
+        [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
         x_desc.layout,
     )
+    x_empty_bars, x_ready_bars = alloc_empty_ready_barriers(x_num_bufs)
+
+    w_num_bufs: gl.constexpr = W_NUM_BUFS
     w_bufs = gl.allocate_shared_memory(
         w_desc.dtype,
-        [load_num_bufs] + w_desc.block_type.shape,
+        [w_num_bufs] + w_desc.block_type.shape,
         w_desc.layout,
     )
     w_scale_bufs = gl.allocate_shared_memory(
         scale_desc.dtype,
-        [load_num_bufs] + scale_desc.block_type.shape,
+        [w_num_bufs] + scale_desc.block_type.shape,
         scale_desc.layout,
     )
-    load_empty_bars, load_ready_bars = alloc_empty_ready_barriers(load_num_bufs)
+    w_empty_bars, w_ready_bars = alloc_empty_ready_barriers(w_num_bufs)
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], scale_layout)
@@ -815,11 +855,15 @@ def ws_matmul_kernel(
         x_block_schedule=x_block_schedule,
         #
         x_bufs=x_bufs,
+        x_empty_bars=x_empty_bars,
+        x_ready_bars=x_ready_bars,
+        x_num_bufs=x_num_bufs,
+        #
         w_bufs=w_bufs,
         w_scale_bufs=w_scale_bufs,
-        load_empty_bars=load_empty_bars,
-        load_ready_bars=load_ready_bars,
-        load_num_bufs=load_num_bufs,
+        w_empty_bars=w_empty_bars,
+        w_ready_bars=w_ready_bars,
+        w_num_bufs=w_num_bufs,
         #
         x_scale_tmem=x_scale_tmem,
         w_scale_tmem=w_scale_tmem,
@@ -861,15 +905,18 @@ def ws_matmul_kernel(
         [
             (epilogue_partition, (p,)),
             (epilogue_store_partition, (p,)),
-            (load_partition, (p,)),
+            (load_activations, (p,)),
+            (load_weights, (p,)),
             (mma_partition, (p,)),
         ],
-        [STORE_HELPER_WARPS, LOAD_WARPS, MMA_WARPS],
-        [STORE_HELPER_REGS, LOAD_REGS, MMA_REGS],
+        [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
+        [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
     )
 
-    invalidate_barrier_ring(load_empty_bars, load_num_bufs)
-    invalidate_barrier_ring(load_ready_bars, load_num_bufs)
+    invalidate_barrier_ring(x_empty_bars, x_num_bufs)
+    invalidate_barrier_ring(x_ready_bars, x_num_bufs)
+    invalidate_barrier_ring(w_empty_bars, w_num_bufs)
+    invalidate_barrier_ring(w_ready_bars, w_num_bufs)
     invalidate_barrier_ring(acc_empty_bars, acc_num_bufs)
     invalidate_barrier_ring(acc_ready_bars, acc_num_bufs)
     invalidate_barrier_ring(store_empty_bars, EPILOGUE_STORE_HELPER_DEPTH)
@@ -970,11 +1017,14 @@ def matmul(
         BLOCK_N=config.block_n,
         BLOCK_K=config.block_k,
         NUM_SMS=launch_grid,
-        LOAD_NUM_BUFS=config.load_num_bufs,
-        LOAD_WARPS=config.load_warps,
+        X_NUM_BUFS=config.x_num_bufs,
+        W_NUM_BUFS=config.w_num_bufs,
+        LOAD_ACTIVATION_WARPS=config.load_activation_warps,
+        LOAD_WEIGHT_WARPS=config.load_weight_warps,
         MMA_WARPS=config.mma_warps,
         STORE_HELPER_WARPS=config.store_helper_warps,
-        LOAD_REGS=config.load_regs,
+        LOAD_ACTIVATION_REGS=config.load_activation_regs,
+        LOAD_WEIGHT_REGS=config.load_weight_regs,
         MMA_REGS=config.mma_regs,
         STORE_HELPER_REGS=config.store_helper_regs,
         EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
