@@ -214,16 +214,23 @@ PY
   - `62` nodeids
   - source:
     - `python3 -m pytest -q -rf --tb=no python/examples/gluon/`
+  - current interpretation:
+    - historical / stale after the `2026-04-10 19:46 UTC`
+      `02-convolution.py` recovery checkpoint
+    - do not use this aggregate `62`-nodeid file as the live examples red
+      list again until `python/examples/gluon/` is rerun on top of the
+      convolution fix
 - [gb200_current_branch_examples_convolution_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_convolution_failures.txt)
-  - `48` nodeids
+  - `0` nodeids
   - source:
-    - isolated current-head `python/examples/gluon/02-convolution.py`
+    - refreshed isolated current-head `python/examples/gluon/02-convolution.py`
   - current interpretation:
     - preferred exact manifest for the convolution half of the examples lane
-    - fresh current-head rerun at `c6990c1e9`:
-      - `48 failed in 8.38s`
+    - refreshed current-head rerun after the shared-memory scratch fix:
+      - `48 passed in 7.96s`
     - fresh merge-base rerun at `7f61ac734`:
       - `48 passed in 7.30s`
+    - the older `48` nodeids are now historical only
 - [gb200_current_branch_examples_multicta_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_multicta_failures.txt)
   - `14` nodeids
   - source:
@@ -235,6 +242,7 @@ PY
       - `14 failed, 68 passed, 14 skipped in 65.24s`
     - fresh merge-base rerun at `7f61ac734`:
       - `82 passed, 14 skipped in 37.96s`
+    - this is now the next confirmed old-mainline examples bucket
 - [gb200_current_branch_test_proton_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_proton_failures.txt)
   - `11` nodeids
   - source:

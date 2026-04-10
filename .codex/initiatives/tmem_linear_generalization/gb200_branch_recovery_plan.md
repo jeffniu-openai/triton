@@ -77,13 +77,49 @@ PY
     refreshed to `0` nodeids.
   - the older `4685`-nodeid MMAv5 manifest and the pre-fix full-group counts
     are now stale historical artifacts for that function.
-  - the live old-mainline recovery queue now starts with:
-    1. `REAL_NEW_ON_BRANCH_REGRESSION`
-       - `python/examples/gluon/02-convolution.py`
-    2. `REAL_NEW_ON_BRANCH_REGRESSION`
-       - `python/examples/gluon/03-matmul-multicta.py`
+  - the old-mainline queue moved to the examples lane after this checkpoint
   - keep the branch-added PTX-expectation and stale-negative TMEM tails
     outside the core recovery queue until the example regressions are reduced.
+
+### Latest `02-convolution.py` Recovery Checkpoint (2026-04-10 19:46 UTC)
+
+- The merge-base-present convolution example regression is now closed on the
+  current branch.
+- Root cause:
+  - the final failure was not another TMEM row-plan or MMAv5 family bug
+  - it was a branch-added full-tile shared-memory scratch fallback in
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp`
+    for `ttg.convert_layout` when either side used `LinearEncodingAttr`
+  - for the convolution epilogue
+    `tensor<256x256xf16, #linear> -> tensor<256x256xf16, #blocked>`, that
+    fallback over-allocated the scratch buffer to the full `128 KB` tile and
+    pushed the kernel from merge-base `147516` shared bytes to current-head
+    `262208`
+- Supporting cleanup found during the same reduction:
+  - preserve exact TMEM encoding across outer-dimension `memdesc_index` views
+    when the leaf descriptor is still valid
+  - restore barrier-driven `tcgen05.mma` / `tcgen05.mma_scaled` async
+    selection in the Gluon builder instead of forcing `is_async=true`
+- Validation:
+  - `make -j8`
+  - representative exact:
+    - `python/examples/gluon/02-convolution.py::test_op[0-1-3-3-384-384-64-64-1]`
+    - `PASSED`
+  - full file:
+    - `python/examples/gluon/02-convolution.py`
+    - `48 passed in 7.96s`
+  - nearby controls:
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps0-16-False-True-acc_dtype3]`
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_4w-layout0-64-128-32x32b-4-16x32bx2]`
+    - both `PASSED`
+- Recovery consequence:
+  - the live old-mainline branch-recovery queue is now:
+    1. `REAL_NEW_ON_BRANCH_REGRESSION`
+       - `python/examples/gluon/03-matmul-multicta.py`
+  - `gb200_current_branch_examples_convolution_failures.txt` should now be
+    treated as refreshed empty
+  - `gb200_current_branch_examples_gluon_failures.txt` is now stale until the
+    full examples directory is rerun on top of this fix
 
 ### Latest Full GB200 Census Refresh
 

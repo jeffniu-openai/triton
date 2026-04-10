@@ -1074,8 +1074,7 @@ void init_gluon_ir(py::module &&m) {
              annotateMMAv5TMemOperandRootRowPlan(b, acc);
              self.create<ttng::TCGen5MMAOp>(tokType, a, b, acc, accDep, useAcc,
                                             pred, two_ctas, multicast,
-                                            mbarriers, mbarrier_preds,
-                                            /*is_async=*/true);
+                                            mbarriers, mbarrier_preds);
            })
       .def("create_tcgen05_mma_scaled",
            [](GluonOpBuilder &self, Value a, Value b, Value acc, Value aScale,
@@ -1090,8 +1089,7 @@ void init_gluon_ir(py::module &&m) {
              annotateMMAv5TMemOperandRootRowPlan(b, acc);
              self.create<ttng::TCGen5MMAScaledOp>(
                  tokType, a, b, acc, accDep, aScale, bScale, aType, bType,
-                 useAcc, pred, mbarriers, mbarrier_preds, two_ctas,
-                 /*is_async=*/true);
+                 useAcc, pred, mbarriers, mbarrier_preds, two_ctas);
            })
       .def("create_tcgen05_commit",
            [](GluonOpBuilder &self, Value &barrier, Value &pred,

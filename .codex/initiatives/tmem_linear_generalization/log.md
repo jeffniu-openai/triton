@@ -7041,3 +7041,41 @@ Open after this slice:
     2. `python/examples/gluon/03-matmul-multicta.py`
   - keep the branch-added PTX-expectation / stale-negative TMEM tails
     separate while the example regressions are reduced
+
+## 2026-04-10 19:46 UTC
+
+- Closed the merge-base-present `python/examples/gluon/02-convolution.py`
+  regression on the current branch.
+- Root cause:
+  - a branch-added early return in
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp` treated
+    `ttg.convert_layout` with `LinearEncodingAttr` as requiring a full-tile
+    scratch buffer
+  - for the convolution epilogue
+    `tensor<256x256xf16, #linear> -> tensor<256x256xf16, #blocked>`, that
+    inflated the scratch allocation by `128 KB` and pushed the kernel from
+    merge-base `147516` shared bytes to current-head `262208`
+- Supporting cleanup from the same reduction:
+  - preserve exact TMEM encodings across outer-dimension `memdesc_index` views
+    when the leaf descriptor type is still valid
+  - restore barrier-driven `tcgen05.mma` / `tcgen05.mma_scaled` async
+    selection in the Gluon builder instead of forcing async without barriers
+- Validation:
+  - `make -j8`
+  - representative exact:
+    - `python/examples/gluon/02-convolution.py::test_op[0-1-3-3-384-384-64-64-1]`
+    - `PASSED`
+  - full file:
+    - `python/examples/gluon/02-convolution.py`
+    - `48 passed in 7.96s`
+  - nearby guards:
+    - representative `test_mma_shared_inputs[...]`
+    - representative `test_tmem_descriptor_chain_matrix[...]`
+    - both `PASSED`
+- Manifest consequence:
+  - `gb200_current_branch_examples_convolution_failures.txt` is now refreshed
+    empty
+  - `gb200_current_branch_examples_gluon_failures.txt` is stale until the full
+    examples directory is rerun
+- The live old-mainline GB200 recovery queue now starts with:
+  1. `python/examples/gluon/03-matmul-multicta.py`

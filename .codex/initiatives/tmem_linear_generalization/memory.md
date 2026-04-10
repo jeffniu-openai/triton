@@ -161,9 +161,16 @@
   `python/test/gluon/test_core.py::test_mma_shared_inputs[...]` regression
   bucket, using fresh isolated exact reruns and current-vs-merge-base TTGIR /
   PTX / planner comparisons rather than raw shard totals.
-- Then close the two merge-base-present example regressions:
-  - `python/examples/gluon/02-convolution.py`
+- Then close the remaining merge-base-present example regression:
   - `python/examples/gluon/03-matmul-multicta.py`
+- Keep the now-closed `python/examples/gluon/02-convolution.py` checkpoint in
+  mind during follow-up debugging:
+  - the final fix was not another TMEM/PTX family change
+  - it was a branch-added full-tile shared-memory scratch fallback in
+    NVIDIA allocation analysis for `ttg.convert_layout` when one side used
+    `LinearEncodingAttr`
+  - that fallback inflated the epilogue scratch buffer by `128 KB` and pushed
+    the kernel to `262208` shared bytes
 - Keep the branch-added PTX-expectation and stale-negative TMEM tails separate
   from the old-mainline recovery queue until the MMAv5/compiler bucket is
   stable again.
@@ -211,12 +218,33 @@
       - same `11` failures on merge-base, so keep this bucket preexisting
     - `python/examples/gluon/`
 - Current live branch-recovery backlog:
-  1. merge-base-present convolution example regression
-     - `python/examples/gluon/02-convolution.py`
-     - `48` exact `OutOfResources` failures
-  2. merge-base-present multicta example regression
+  1. merge-base-present multicta example regression
      - `python/examples/gluon/03-matmul-multicta.py`
      - `14` exact wrong-code failures
+- Closed at `2026-04-10 19:46 UTC`:
+  - `python/examples/gluon/02-convolution.py`
+    - representative exact now passes
+    - full file:
+      - `48 passed in 7.96s`
+    - root cause:
+      - a branch-added full-tile scratch-size shortcut in
+        `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp` treated
+        `ttg.convert_layout` with `LinearEncodingAttr` as needing the entire
+        source tile in shared memory
+      - for the convolution epilogue
+        `tensor<256x256xf16, #linear> -> tensor<256x256xf16, #blocked>`, that
+        inflated the scratch allocation from the merge-base `16 KB` class to a
+        full `128 KB` tile and raised the kernel from `147516` shared bytes to
+        `262208`
+    - supporting cleanup landed in the same debugging slice:
+      - preserve exact TMEM encoding across outer-dimension
+        `memdesc_index` views when the leaf descriptor is still valid
+      - restore barrier-driven `tcgen05.mma` / `tcgen05.mma_scaled` async
+        selection in the Gluon builder instead of forcing `is_async=true`
+    - current post-fix measurement:
+      - representative compile artifact now reports `147520` shared bytes
+      - the `+4` byte delta versus merge-base is the deliberate
+        `kTensorMemoryAllocSharedBytes` padding for `tcgen05.alloc`
 - Current branch-added / contract-evolution tails to keep separate:
   - `1` opinionated PTX-expectation exact:
     - `gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt`

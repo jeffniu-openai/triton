@@ -1667,3 +1667,45 @@ These stay in the nearest validation loop while the red list is being reduced.
       - `14` `03-matmul-multicta.py`
   - `make test-proton`
     - still preexisting on merge-base
+
+## 2026-04-10 `02-convolution.py` closure: the shared-memory OOR was a linear-convert scratch over-allocation
+
+- The merge-base-present convolution example regression is now closed on the
+  current branch.
+- Current-head remeasurement:
+  - representative exact:
+    - `python/examples/gluon/02-convolution.py::test_op[0-1-3-3-384-384-64-64-1]`
+    - `PASSED`
+  - full file:
+    - `python/examples/gluon/02-convolution.py`
+    - `48 passed in 7.96s`
+  - representative compile artifact:
+    - shared memory dropped from `262208` to `147520`
+    - merge-base reference was `147516`
+    - the remaining `+4` bytes are the deliberate
+      `kTensorMemoryAllocSharedBytes` padding used to materialize the
+      `tcgen05.alloc` base pointer
+- Root cause:
+  - the final OOR was not another TTGIR / TMEM planner mismatch
+  - branch code in
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp`
+    had added a pessimistic early return that treated any
+    `ttg.convert_layout` touching `LinearEncodingAttr` as needing a full-tile
+    scratch buffer
+  - the convolution epilogue’s
+    `tensor<256x256xf16, #linear> -> tensor<256x256xf16, #blocked>`
+    convert then grabbed an unnecessary `128 KB` scratch allocation and pushed
+    the kernel over the GB200/GB300 shared-memory limit
+- Related structural cleanups that stayed in the final fix slice:
+  - preserve exact TMEM encoding across outer-dimension `memdesc_index` views
+    when the leaf descriptor type is still valid
+  - restore barrier-driven `tcgen05.mma` / `tcgen05.mma_scaled` async
+    selection in `python/src/gluon_ir.cc` instead of forcing async without
+    barriers
+- Inventory consequence:
+  - `gb200_current_branch_examples_convolution_failures.txt` should now be
+    considered refreshed empty
+  - the aggregate `gb200_current_branch_examples_gluon_failures.txt` file is
+    stale until the whole examples directory is rerun on top of the fix
+  - the next confirmed old-mainline examples bucket is now
+    `python/examples/gluon/03-matmul-multicta.py`

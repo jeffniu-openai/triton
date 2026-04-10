@@ -119,12 +119,6 @@ static bool canInvertAndComposeLayouts(const LinearLayout &a,
 static unsigned getNumScratchElemsSwizzledCvt(RankedTensorType srcTy,
                                               RankedTensorType dstTy,
                                               TargetInfoBase &targetInfo) {
-  if (isa<triton::gpu::LinearEncodingAttr>(srcTy.getEncoding()) ||
-      isa<triton::gpu::LinearEncodingAttr>(dstTy.getEncoding())) {
-    auto srcLayout = triton::gpu::toLinearLayout(srcTy);
-    auto nBlocks = product(triton::gpu::getCTASplitNum(srcTy.getEncoding()));
-    return srcLayout.getTotalOutDimSize() / nBlocks;
-  }
   auto *ctx = srcTy.getContext();
   auto srcLayout = triton::gpu::toLinearLayout(srcTy);
   auto dstLayout = triton::gpu::toLinearLayout(dstTy);

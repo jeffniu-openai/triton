@@ -646,6 +646,38 @@ static LogicalResult preserveTMemViewEncodingIfValid(
                            error && !error->empty() ? *error : preservedError);
 }
 
+static std::optional<Attribute>
+tryPreserveOuterIndexedTMemEncoding(MLIRContext *ctx,
+                                    ArrayRef<int64_t> srcShape,
+                                    ArrayRef<int64_t> dstShape,
+                                    ArrayRef<int64_t> dstAllocShape,
+                                    Attribute srcEncoding,
+                                    std::string *error) {
+  if (!isTensorMemoryEncoding(srcEncoding) ||
+      isa<TensorMemoryScalesEncodingAttr>(srcEncoding))
+    return std::nullopt;
+
+  auto layoutTrait = dyn_cast<LayoutEncodingTrait>(srcEncoding);
+  if (!layoutTrait)
+    return std::nullopt;
+  auto layoutRank = static_cast<size_t>(layoutTrait.getRank());
+  if (srcShape.size() <= layoutRank || dstShape.size() < layoutRank)
+    return std::nullopt;
+  if (srcShape.take_back(layoutRank) != dstShape.take_back(layoutRank))
+    return std::nullopt;
+
+  std::string localError;
+  if (!tryCreateMemDescType(ctx, dstShape, IntegerType::get(ctx, 8),
+                            srcEncoding, TensorMemorySpaceAttr::get(ctx),
+                            /*mutableMemory=*/false, dstAllocShape,
+                            &localError)) {
+    if (error && error->empty())
+      *error = localError;
+    return std::nullopt;
+  }
+  return srcEncoding;
+}
+
 static std::optional<TMemLdStQueryLayout>
 getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
                           std::string *error) {
@@ -2488,6 +2520,11 @@ inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
                                                  error);
     if (failed(srcTy))
       return failure();
+    if (auto preserved = tryPreserveOuterIndexedTMemEncoding(
+            srcTy->getContext(), srcTy->getShape(), memDescTy.getShape(),
+            memDescTy.getShape(), srcTy->getEncoding(), error)) {
+      return makeStandaloneTy(*preserved);
+    }
     auto maybeEncoding = inferTMemIndexEncoding(
         srcTy->getShape(), memDescTy.getShape(), memDescTy.getShape(),
         srcTy->getEncoding(), error);
@@ -3601,6 +3638,11 @@ LogicalResult inferTMemIndexOpEncoding(ArrayRef<int64_t> srcShape,
                                        std::optional<Location> loc) {
   auto *ctx = srcEncoding.getContext();
   std::string error;
+  if (auto preserved = tryPreserveOuterIndexedTMemEncoding(
+          ctx, srcShape, dstShape, dstAllocShape, srcEncoding, &error)) {
+    dstEncoding = *preserved;
+    return success();
+  }
   auto result =
       inferTMemIndexEncoding(srcShape, dstShape, dstAllocShape, srcEncoding,
                              &error);
@@ -3985,6 +4027,17 @@ inferTMemIndexOpType(gpu::MemDescType srcTy, std::string *error) {
                                     dstTy->getShape().end());
   SmallVector<int64_t> dstAllocShapeCopy(dstTy->getAllocShape().begin(),
                                          dstTy->getAllocShape().end());
+  if (auto preserved = tryPreserveOuterIndexedTMemEncoding(
+          srcTy.getContext(), srcShape, dstShapeCopy, dstAllocShapeCopy,
+          srcTy.getEncoding(), error)) {
+    auto resultTy = tryCreateMemDescType(
+        srcTy.getContext(), dstShape, srcTy.getElementType(), *preserved,
+        srcTy.getMemorySpace(), srcTy.getMutableMemory(), dstAllocShape,
+        error);
+    if (!resultTy)
+      return failure();
+    return *resultTy;
+  }
   auto maybeDstEnc =
       inferTMemIndexEncoding(srcShape, dstShapeCopy, dstAllocShapeCopy,
                              srcTy.getEncoding(), error);
