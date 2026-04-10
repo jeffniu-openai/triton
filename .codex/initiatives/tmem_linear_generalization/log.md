@@ -6105,3 +6105,42 @@ Open after this slice:
   generated exact list on either the current branch or the merge-base worktree.
 - This means future sessions no longer depend on transient `/tmp` logs just to
   recover the exact failing nodeids from the completed GB200 census.
+
+## 2026-04-10: closed almost all remaining branch-vs-main ambiguity
+
+- I finished the remaining merge-base exact reductions that matter for the GB200
+  backlog:
+  - `python/test/unit/language/test_matmul.py`
+    - fully green on merge-base (`761 passed, 4780 skipped`)
+  - `python/test/unit/language/test_warp_specialization.py`
+    - fully green on merge-base (`1599 passed, 202 skipped`)
+  - `python/test/unit/test_debug.py`
+    - same `20` exact nodeids still fail on merge-base
+  - `python/test/gluon/test_lowerings.py`
+    - fully green on merge-base (`4937 passed, 512 skipped`)
+  - exact `test_dot[...]` subset from the current-branch unit manifest:
+    - `8 / 8` pass on merge-base
+  - exact current-branch `examples/gluon` failure manifest:
+    - `62 / 62` pass on merge-base
+  - exact merge-base-present shard-3 subsets:
+    - `185 / 185` `test_core.py` nodeids pass
+    - `38 / 38` `test_fpsan.py` nodeids pass
+    - `1 / 1` `test_layout_format_view.py` nodeid passes
+- I also refined the shard-3 split beyond function-name existence using
+  merge-base `--collect-only`:
+  - `test_core.py`
+    - `203` function-name-existing nodeids split into:
+      - `185` exact nodeids present on merge-base
+      - `18` exact nodeids missing on merge-base because the branch changed the
+        parametrization surface inside existing functions
+  - `test_fpsan.py`
+    - `60` function-name-existing nodeids split into:
+      - `38` exact nodeids present on merge-base
+      - `22` exact nodeids missing on merge-base for the same reason
+- Net result:
+  - the vast majority of the finished GB200 red surface is now either
+    confirmed `REAL_NEW_ON_BRANCH_REGRESSION`,
+    confirmed `PREEXISTING_ON_MERGE_BASE`, or
+    clearly `BRANCH_ADDED_OR_CHANGED_COVERAGE`
+  - the inventory/classification phase is effectively done; the next phase is
+    fix ordering and implementation against the now-frozen branch backlog

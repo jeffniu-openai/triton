@@ -467,28 +467,59 @@ Interim interpretation of the unit lane:
   - `7f61ac734edc657b737fb159a1b9d50cb47944e6`
 - A detached worktree exists at:
   - `/root/code/triton-mergebase-ci`
-- The baseline worktree is now usable after local-only bring-up shims:
+- The baseline worktree is usable after local-only bring-up shims:
   - skip example plugin builds in the merge-base tree; and
   - skip the legacy GSan runtime target that does not build cleanly against the
     current host toolchain.
-- Current representative branch-vs-main classification:
-  - exact current-branch failures that pass on merge-base:
-    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
-    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
-    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
-    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
-    - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
-    - `python/test/unit/test_debug.py::test_sanitize_int_add_overflow[-2147483648--1-int32-int32-False-False]`
-  - exact current-branch TMEM nodeids that do not exist on merge-base because
-    the coverage is branch-added:
-    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
-    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
-- The branch-vs-main classification is therefore no longer blocked on baseline
-  build bring-up. What remains is finishing the exact-nodeid inventory for the
-  bigger current-branch red files, then comparing representative cases from
-  each family.
+- The branch-vs-main classification is now mostly complete for the finished
+  GB200 red surface:
+  - fully green on merge-base, so the current-branch failures are entirely new:
+    - `python/test/unit/language/test_matmul.py`
+      - `761 passed, 4780 skipped`
+    - `python/test/unit/language/test_warp_specialization.py`
+      - `1599 passed, 202 skipped`
+    - `python/test/unit/language/test_tensor_descriptor.py`
+      - `2604 passed, 110 skipped`
+    - `python/test/regression/test_cast_matmul.py`
+      - `1080 passed, 216 skipped`
+    - `python/test/gluon/test_lowerings.py`
+      - `4937 passed, 512 skipped`
+    - current-branch examples exact failure manifest
+      - `62 / 62` pass on merge-base
+  - exact current-branch subsets that are green on merge-base:
+    - the `8` failing `test_dot[...]` nodeids from the current-branch unit
+      manifest
+    - the `185` merge-base-present shard-3 `test_core.py` nodeids
+    - the `38` merge-base-present shard-3 `test_fpsan.py` nodeids
+    - the `1` merge-base-present `test_layout_format_view.py` nodeid
+  - preexisting on merge-base:
+    - `python/test/unit/test_debug.py`
+      - same `20` nodeids fail on merge-base
+    - `third_party/proton/test/test_profile.py`
+      - same `11` nodeids fail on merge-base
+  - branch-added or branch-changed coverage rather than old mainline exact
+    nodeids:
+    - the entire branch-added `python/test/gluon/test_tmem_runtime_matrix.py`
+      file
+    - the branch-added TMEM-core/fpsan/frontend buckets recorded in the
+      failure-manifest split files
+    - the `18` shard-3 `test_core.py` nodeids whose function exists on
+      merge-base but whose exact parametrized nodeid does not
+    - the `22` shard-3 `test_fpsan.py` nodeids in the same category
+- This means the remaining work is no longer “figure out what is new.” It is:
+  - fix the clearly new compiler/backend regressions; and
+  - separately decide how to treat branch-added or branch-changed coverage that
+    is red because the branch expanded the tested surface.
 
 ### Follow-Up Exact Classification (2026-04-10)
+
+- `python/test/unit/language/test_core.py::test_dot[...]`
+  - exact current-branch failing set:
+    - `8` nodeids
+  - merge-base exact rerun of those `8` nodeids:
+    - `8 / 8` pass
+  - current classification:
+    - `REAL_NEW_ON_BRANCH_REGRESSION`
 
 - `python/test/unit/language/test_matmul.py`
   - full exact rerun is now complete:
@@ -503,6 +534,24 @@ Interim interpretation of the unit lane:
     - `test_lhs_in_tmem[float32-False-64-128-32]`: passes on merge-base
   - current classification:
     - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- `python/test/unit/language/test_warp_specialization.py`
+  - current-branch CI-target mirror exposes:
+    - `64` `test_warp_specialize_attention_forward[...]`
+    - `64` `test_warp_specialize_attention_persistent_forward[...]`
+  - merge-base exact rerun:
+    - the full file is green
+    - `1599 passed, 202 skipped`
+  - current classification:
+    - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- `python/test/unit/test_debug.py`
+  - current-branch exact rerun:
+    - `20 failed, 75 passed`
+  - merge-base exact rerun:
+    - the same `20` nodeids fail
+  - current classification:
+    - `PREEXISTING_ON_MERGE_BASE`
 
 - `python/test/regression/test_cast_matmul.py`
   - full exact rerun is complete:
@@ -524,13 +573,53 @@ Interim interpretation of the unit lane:
       - repeated `OutOfResources` on shared memory
     - `14` failures in `python/examples/gluon/03-matmul-multicta.py`
       - wrong-code around `35%` to `48%` mismatches
-  - merge-base spot checks:
-    - `python/examples/gluon/02-convolution.py::test_op[0-1-3-3-384-384-64-64-1]`
-      passes on merge-base
-    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
-      passes on merge-base
+  - merge-base exact rerun of the current-branch failure manifest:
+    - `62 / 62` pass
   - current classification:
     - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- `python/test/gluon/test_lowerings.py`
+  - shard-3 current-branch failures:
+    - `793` exact nodeids
+    - dominated by `603` `test_reduce_layouts[...]` and `176`
+      `test_scan_layouts[...]`
+  - merge-base exact rerun:
+    - the full file is green
+    - `4937 passed, 512 skipped`
+  - current classification:
+    - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- merge-base-existing shard-3 exact subsets
+  - `python/test/gluon/test_core.py`
+    - `203` nodeids had matching function names on merge-base
+    - collect-only exact-nodeid split:
+      - `185` exact nodeids present on merge-base
+      - `18` exact nodeids absent on merge-base despite the function existing
+    - merge-base exact rerun of the `185` present nodeids:
+      - `185 / 185` pass
+    - current classification:
+      - `185` `REAL_NEW_ON_BRANCH_REGRESSION`
+      - `18` `BRANCH_CHANGED_PARAMETRIZATION_SURFACE`
+  - `python/test/gluon/test_fpsan.py`
+    - `60` nodeids had matching function names on merge-base
+    - collect-only exact-nodeid split:
+      - `38` exact nodeids present on merge-base
+      - `22` exact nodeids absent on merge-base despite the function existing
+    - merge-base exact rerun of the `38` present nodeids:
+      - `38 / 38` pass
+    - current classification:
+      - `38` `REAL_NEW_ON_BRANCH_REGRESSION`
+      - `22` `BRANCH_CHANGED_PARAMETRIZATION_SURFACE`
+  - `python/test/gluon/test_layout_format_view.py`
+    - `1` current-branch failing nodeid exists on merge-base
+    - merge-base exact rerun:
+      - `1 / 1` pass
+    - current classification:
+      - `REAL_NEW_ON_BRANCH_REGRESSION`
+  - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+    - exact nodeid missing on merge-base
+    - current classification:
+      - `BRANCH_ADDED_COVERAGE`
 
 - `third_party/proton/test/test_profile.py`
   - current-branch exact rerun:

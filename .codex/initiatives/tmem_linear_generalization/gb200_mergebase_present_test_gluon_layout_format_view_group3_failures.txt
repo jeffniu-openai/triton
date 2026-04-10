@@ -1,0 +1,1 @@
+python/test/gluon/test_layout_format_view.py::test_format_view_kernel

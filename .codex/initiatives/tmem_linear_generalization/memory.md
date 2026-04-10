@@ -244,22 +244,47 @@
   - the best current reading is that the new row-plan-aware canonical-`M=64`
     family selection / packet decomposition is misclassifying a support-band
     quotient bit as ordinary repetition.
-- Merge-base comparison against `origin/main` is in progress:
+- Merge-base comparison against `origin/main` is now largely complete:
   - merge-base is `7f61ac734edc657b737fb159a1b9d50cb47944e6`;
   - the detached worktree is `/root/code/triton-mergebase-ci`; and
   - older-tree build drift requires local-only baseline shims (skip example
     plugins, skip legacy GSan runtime) before the baseline can be used for
     branch-vs-main classification.
-- Full-file merge-base results already sharpen the backlog further:
+- The strongest current branch-vs-main facts are now:
   - `python/test/unit/language/test_tensor_descriptor.py` is fully green on
     merge-base (`2604 passed, 110 skipped`), so the three current-branch
     `test_tensor_descriptor_reshape_matmul[...]` failures are all new;
+  - `python/test/unit/language/test_matmul.py` is fully green on merge-base
+    (`761 passed, 4780 skipped`), so the whole `23`-failure bucket is new;
+  - `python/test/unit/language/test_warp_specialization.py` is fully green on
+    merge-base (`1599 passed, 202 skipped`), so the full forward +
+    persistent-forward bucket is new;
   - `python/test/regression/test_cast_matmul.py` is fully green on merge-base
     (`1080 passed, 216 skipped`), so the current-branch `234`-failure bucket
-    is entirely new-on-branch; and
+    is entirely new-on-branch;
+  - `python/test/gluon/test_lowerings.py` is fully green on merge-base
+    (`4937 passed, 512 skipped`), so the shard-3 `793`-failure lowering bucket
+    is entirely new-on-branch;
+  - the exact `8` failing `test_dot[...]` nodeids all pass on merge-base;
+  - the exact current-branch examples/gluon failure manifest (`62` nodeids) all
+    pass on merge-base;
+  - the exact merge-base-present shard-3 subsets all pass on merge-base:
+    - `185 / 185` `test_core.py` nodeids
+    - `38 / 38` `test_fpsan.py` nodeids
+    - `1 / 1` `test_layout_format_view.py` nodeid;
+  - `python/test/unit/test_debug.py` still fails with the same `20` exact
+    nodeids on merge-base; and
   - `third_party/proton/test/test_profile.py` still fails with the same `11`
     nodeids on merge-base, so Proton is a census item but not a TMEM branch
     recovery item.
+- There is still an important middle bucket between “new regression” and
+  “preexisting”:
+  - some shard-3 failures are branch-changed parametrization surfaces rather
+    than old upstream exact nodeids:
+    - `18` `test_core.py` nodeids
+    - `22` `test_fpsan.py` nodeids
+  - those belong in the branch backlog, but they should be treated as
+    branch-changed coverage, not as regressions against an identical old test.
 - The stale
   `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[...]`
   expectation has already been updated to the current row-anchor diagnostic and

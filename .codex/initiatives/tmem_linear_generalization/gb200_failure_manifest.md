@@ -76,10 +76,33 @@ checking whether the failing function name exists on the merge-base tree.
 - [gb200_branch_added_or_renamed_test_gluon_frontend_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_added_or_renamed_test_gluon_frontend_group3_failures.txt)
   - `1` nodeid
 
+After that first split, the merge-base-existing lists were reduced once more by
+collecting the merge-base test files and comparing exact nodeids:
+
+- [gb200_mergebase_present_test_gluon_core_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_present_test_gluon_core_group3_failures.txt)
+  - `185` nodeids
+  - exact current-branch shard-3 `test_core.py` failures that also exist as
+    exact nodeids on merge-base
+- [gb200_mergebase_missing_test_gluon_core_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_missing_test_gluon_core_group3_failures.txt)
+  - `18` nodeids
+  - meaning:
+    - function exists on merge-base, but the exact current-branch parametrized
+      nodeid does not
+- [gb200_mergebase_present_test_gluon_fpsan_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_present_test_gluon_fpsan_group3_failures.txt)
+  - `38` nodeids
+- [gb200_mergebase_missing_test_gluon_fpsan_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_missing_test_gluon_fpsan_group3_failures.txt)
+  - `22` nodeids
+- [gb200_mergebase_present_test_gluon_layout_format_view_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_present_test_gluon_layout_format_view_group3_failures.txt)
+  - `1` nodeid
+
 ## Notes
 
 - These manifests reflect the current branch tip at the time of generation.
-- Branch-vs-main classification is still in progress for some merge-base-
-  existing lists.
+- The current `.txt` manifests normalize `pytest -q -rf` summary lines back to
+  real nodeids by stripping any appended ` - AssertionError...` /
+  ` - RuntimeError...` suffixes.
+- Branch-vs-main classification is now complete for most of the exact GB200
+  surface; the remaining work is using those classifications to choose and fix
+  the first core compiler buckets.
 - Proton is included here for census completeness even though it is already
   known to be preexisting on merge-base.

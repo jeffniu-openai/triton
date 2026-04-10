@@ -1,6 +1,6 @@
-third_party/proton/test/test_profile.py::test_cudagraph - AssertionErr...
+third_party/proton/test/test_profile.py::test_cudagraph
 third_party/proton/test/test_profile.py::test_cudagraph_not_captured_by_profiler
-third_party/proton/test/test_profile.py::test_cudagraph_deactivate - I...
+third_party/proton/test/test_profile.py::test_cudagraph_deactivate
 third_party/proton/test/test_profile.py::test_multiple_sessions_cudagraph_metric_kernels
 third_party/proton/test/test_profile.py::test_tensor_metrics_cudagraph
 third_party/proton/test/test_profile.py::test_tensor_metrics_cudagraph_deactivate
@@ -8,4 +8,4 @@ third_party/proton/test/test_profile.py::test_periodic_flushing_cudagraph[hatche
 third_party/proton/test/test_profile.py::test_periodic_flushing_cudagraph[hatchet_msgpack-67108864]
 third_party/proton/test/test_profile.py::test_periodic_flushing_cudagraph[hatchet-262144]
 third_party/proton/test/test_profile.py::test_periodic_flushing_cudagraph[hatchet-67108864]
-third_party/proton/test/test_profile.py::test_hw_trace - KeyError: 'ti...
+third_party/proton/test/test_profile.py::test_hw_trace
