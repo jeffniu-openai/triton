@@ -131,6 +131,40 @@ The source-level interleave that still looks plausible is a larger change:
 
 That would change the ownership and readiness granularity, not just the textual order of the current full-fragment code.
 
+### 9. A separate-partition TMA-store consumer needs `fence_async_shared()` and still loses
+
+The follow-up experiment from these notes was to replace the epilogue-owned async-TMA path with a separate store partition that:
+
+- waits on the same ready barrier used by the `gl.store` helper path
+- issues `tma.async_copy_shared_to_global(...)` from the shared-memory ring
+- uses `tma.store_wait(depth - 1)` before releasing the slot for reuse
+
+The first version of that experiment was not exact. Sparse fragment corruption disappeared only after adding `fence_async_shared()` on the producer side immediately after writing the ring slot and before `mbarrier.arrive(ready_bar)`.
+
+That is a durable correctness finding: a cross-partition TMA-store consumer needs a shared-memory visibility fence before the ready barrier, even though the ordinary helper consumer that loads the fragment into registers does not.
+
+With that fence in place, the kernel validated exactly, but it was still slower on the target GPU 0 run (`warmup=30`, `rep=1000`, exact validation):
+
+- `ws = 0.3549 ms`
+- helper-store `ws_optimized = 0.3485 ms`
+- separate-partition `ws_optimized_tma_store = 0.3564 ms`
+- `gluon_optimized = 0.3486 ms`
+
+NCU on the exact-validation path shows why the helper still wins:
+
+- helper `ws_matmul_kernel_optimized`: `479.712 us`
+- separate-partition `ws_matmul_kernel_optimized_tma_store`: `505.312 us`
+- registers/thread: both `128`
+- shared memory/block: both `226.528 KB`
+- tensor throughput: `74.71%` helper vs `70.81%` TMA
+- SM throughput: `83.68%` helper vs `79.89%` TMA
+- issue active: `0.33` helper vs `0.30` TMA
+- eligible warps/scheduler: `0.53` helper vs `0.45` TMA
+- barrier stall/issued inst: `0.57` helper vs `0.62` TMA
+- long scoreboard/issued inst: `7.54` helper vs `8.87` TMA
+
+So moving TMA store onto a separate partition removes the old "compute partition owns `store_wait`" problem, but it does not create a better kernel. The remaining cost is now in the TMA-store path itself plus the extra shared-memory fence and ready/empty protocol.
+
 ## Interpretation
 
 The current helper-vs-TMA-store difference is not explained by a failure of ptxas to overlap store-side instructions. ptxas already interleaves both the helper producer path and the epilogue-owned async-TMA-store path with arithmetic.
@@ -140,6 +174,7 @@ The remaining difference is architectural:
 - helper-store keeps the final global-store work on separate warps
 - helper-store can free the SMEM slot once the fragment is in registers
 - epilogue-owned async-TMA-store keeps the store-wait dependency on the compute partition and ties slot reuse to store completion
+- even a separate-partition TMA-store consumer still needs `fence_async_shared()` before the ready barrier and remains slower than the helper-store consumer on the target bucket
 - direct epilogue store with a higher register budget is still not equivalent to the helper path, because the epilogue warps would continue to own the final address-generation and `STG.E` issue stream
 
 That matches the earlier NCU result: async TMA store did not lose on write volume, but it did lose on barrier-style stall and issue efficiency.
@@ -147,5 +182,5 @@ That matches the earlier NCU result: async TMA store did not lose on write volum
 ## Next Experiments Suggested By These Notes
 
 - Keep the early empty-barrier release in the helper consumer.
-- If TMA store is revisited, test a separate store partition that issues `tma.async_copy_shared_to_global(...)` from the ring, so the compute partition keeps the helper-style decoupling.
+- If TMA store is revisited, remember that a cross-partition TMA-store consumer needs `fence_async_shared()` before `arrive(ready)`. The separate-partition version is exact with that fence, but it still lost to the helper-store consumer on the target bucket, so TMA store should stay deprioritized unless a new design changes more than just the store ownership.
 - If direct `gl.store` is revisited, do not expect "more epilogue regs" alone to reproduce the helper result. The more credible direct-store experiment is a finer-grained ready/store protocol that changes how much of the fragment becomes independently storable.

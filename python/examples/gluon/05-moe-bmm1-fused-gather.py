@@ -10,6 +10,7 @@ import triton.experimental.gluon.language as gl
 import triton.experimental.gluon.language.nvidia.blackwell as blackwell
 import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 from triton.experimental.gluon.language.nvidia.blackwell import float2
+from triton.experimental.gluon.language.nvidia.hopper import fence_async_shared
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.core as tl_core
 import triton.language.extra.cuda.libdevice as libdevice
@@ -599,25 +600,36 @@ def _enqueue_packed_fp8_fragment(
 
 
 @gluon.jit
-def _issue_async_packed_fp8_fragment(
+def _enqueue_packed_fp8_fragment_tma_store(
     p: PartitionArgs,
     out_packed,
     out_recip,
+    store_idx,
+    store_phase,
+):
+    payload = _pack_fp8_out_fragment(out_packed, out_recip)
+    gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
+    empty_bar = p.store_empty_bars.index(store_idx)
+    ready_bar = p.store_ready_bars.index(store_idx)
+    mbarrier.wait(empty_bar, store_phase)
+    p.store_bufs.index(store_idx).store(payload)
+    fence_async_shared()
+    mbarrier.arrive(ready_bar)
+    return advance(store_idx, store_phase, p.EPILOGUE_STORE_HELPER_DEPTH)
+
+
+@gluon.jit
+def _issue_async_packed_fp8_slot(
+    p: PartitionArgs,
     store_idx,
     off_m,
     out_off_n_packed,
     shape_m,
     slice_offset,
 ):
-    payload = _pack_fp8_out_fragment(out_packed, out_recip)
-    gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
-    tma.store_wait(p.EPILOGUE_STORE_HELPER_DEPTH - 1)
     store_buf = p.store_bufs.index(store_idx)
-    store_buf.store(payload)
     ragged0, ragged1, ragged2 = _to_ragged_store_coords(slice_offset, shape_m, off_m)
     tma.async_copy_shared_to_global(p.out_desc, [ragged0, ragged1, ragged2, out_off_n_packed], store_buf)
-    next_idx = store_idx + 1
-    return gl.where(next_idx == p.EPILOGUE_STORE_HELPER_DEPTH, 0, next_idx)
 
 
 @gluon.jit
@@ -681,18 +693,14 @@ def _epilogue_enqueue_from_acc_packed(
 
 
 @gluon.jit
-def _epilogue_async_store_from_acc_packed(
+def _epilogue_enqueue_from_acc_packed_tma_store(
     p: PartitionArgs,
     acc_packed,
     out_recip,
     store_idx,
-    off_m,
-    out_off_n_packed,
-    shape_m,
-    slice_offset,
+    store_phase,
 ):
-    gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "TMA store requires row fragments")
-    frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
+    gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
 
     prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
@@ -711,45 +719,37 @@ def _epilogue_async_store_from_acc_packed(
             p.SWIGLU_ALPHA,
         )
         if frag_idx > 1:
-            store_idx = _issue_async_packed_fp8_fragment(
+            store_idx, store_phase = _enqueue_packed_fp8_fragment_tma_store(
                 p,
                 ready_out_packed,
                 out_recip,
                 store_idx,
-                off_m + (frag_idx - 2) * frag_rows,
-                out_off_n_packed,
-                shape_m,
-                slice_offset,
+                store_phase,
             )
         ready_out_packed = next_ready_out_packed
         prepared_gelu = cur_gelu
         prepared_linear = cur_linear
 
-    store_idx = _issue_async_packed_fp8_fragment(
+    store_idx, store_phase = _enqueue_packed_fp8_fragment_tma_store(
         p,
         ready_out_packed,
         out_recip,
         store_idx,
-        off_m + (p.EPILOGUE_ROW_SUBTILE_FACTOR - 2) * frag_rows,
-        out_off_n_packed,
-        shape_m,
-        slice_offset,
+        store_phase,
     )
     last_out_packed = _finish_swiglu_fragment_packed(
         prepared_gelu,
         prepared_linear,
         p.SWIGLU_ALPHA,
     )
-    return _issue_async_packed_fp8_fragment(
+    store_idx, store_phase = _enqueue_packed_fp8_fragment_tma_store(
         p,
         last_out_packed,
         out_recip,
         store_idx,
-        off_m + (p.EPILOGUE_ROW_SUBTILE_FACTOR - 1) * frag_rows,
-        out_off_n_packed,
-        shape_m,
-        slice_offset,
+        store_phase,
     )
+    return store_idx, store_phase
 
 
 @gluon.jit
@@ -860,6 +860,7 @@ def epilogue_partition_optimized_tma_store(p: PartitionArgs):
     idx = 0
     phase = 0
     store_idx = 0
+    store_phase = 1
 
     x_scale = 1.0 if p.x_scale_ptr is None else gl.load(p.x_scale_ptr)
     w_scale = 1.0 if p.w_scale_ptr is None else gl.load(p.w_scale_ptr)
@@ -878,9 +879,7 @@ def epilogue_partition_optimized_tma_store(p: PartitionArgs):
     bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
-        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
-        off_m = pid_m * p.BLOCK_M
-        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+        pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
         off_n = pid_n * p.BLOCK_N
 
         acc_empty_bar = p.acc_empty_bars.index(idx)
@@ -913,16 +912,51 @@ def epilogue_partition_optimized_tma_store(p: PartitionArgs):
                 acc_packed_subtiles = next_subtiles
 
         for subtile_idx in gl.static_range(subtile_count):
-            store_idx = _epilogue_async_store_from_acc_packed(
+            store_idx, store_phase = _epilogue_enqueue_from_acc_packed_tma_store(
                 p,
                 acc_packed_subtiles[subtile_idx],
                 out_recip,
                 store_idx,
-                off_m,
-                (off_n + subtile_idx * p.BLOCK_N) // p.REDUCTION_N // 2,
-                shape_m,
-                slice_offset,
+                store_phase,
             )
+
+
+@gluon.jit
+def epilogue_store_partition_optimized_tma_store(p: PartitionArgs):
+    gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "TMA store helper requires row fragments")
+    gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "TMA store helper depth must be at least 2")
+    frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
+    subtile_count: gl.constexpr = 1
+
+    ready_idx = 0
+    ready_phase = 0
+    issued_stores = 0
+
+    for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
+        pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        off_m = pid_m * p.BLOCK_M
+        shape_m = gl.load(p.x_slice_sizes + slice_idx)
+
+        for subtile_idx in gl.static_range(subtile_count):
+            subtile_off_n = subtile_idx * p.BLOCK_N
+            out_off_n_packed = (pid_n * p.BLOCK_N + subtile_off_n) // p.REDUCTION_N // 2
+            for frag_idx in gl.static_range(p.EPILOGUE_ROW_SUBTILE_FACTOR):
+                frag_off_m = off_m + frag_idx * frag_rows
+                if issued_stores >= p.EPILOGUE_STORE_HELPER_DEPTH:
+                    tma.store_wait(p.EPILOGUE_STORE_HELPER_DEPTH - 1)
+                    mbarrier.arrive(p.store_empty_bars.index(ready_idx))
+                ready_bar = p.store_ready_bars.index(ready_idx)
+                mbarrier.wait(ready_bar, ready_phase)
+                _issue_async_packed_fp8_slot(
+                    p,
+                    ready_idx,
+                    frag_off_m,
+                    out_off_n_packed,
+                    shape_m,
+                    slice_offset,
+                )
+                ready_idx, ready_phase = advance(ready_idx, ready_phase, p.EPILOGUE_STORE_HELPER_DEPTH)
+                issued_stores = issued_stores + 1
 
     tma.store_wait(0)
 
@@ -1355,12 +1389,13 @@ def ws_matmul_kernel_optimized_tma_store(
     gl.warp_specialize(
         [
             (epilogue_partition_optimized_tma_store, (p,)),
+            (epilogue_store_partition_optimized_tma_store, (p,)),
             (load_activations, (p,)),
             (load_weights, (p,)),
             (mma_partition, (p,)),
         ],
-        [LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
-        [LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
+        [STORE_HELPER_WARPS, LOAD_ACTIVATION_WARPS, LOAD_WEIGHT_WARPS, MMA_WARPS],
+        [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
     )
 
     for i in gl.static_range(x_num_bufs):
