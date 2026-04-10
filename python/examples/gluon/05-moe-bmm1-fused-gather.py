@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import chain
 
+import pytest
 import torch
 import triton
 import triton.experimental.gluon as gluon
@@ -13,10 +15,35 @@ import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.core as tl_core
 import triton.language.extra.cuda.libdevice as libdevice
 from triton.language.core import _aggregate as aggregate
+from triton.testing import do_bench_cudagraph
 
-from triton_kernels.matmul import FusedActivation, PrecisionConfig
-from triton_kernels.tensor import RaggedTensorMetadata, Tensor
-from triton_kernels.tensor_details.dtype import FP4, UINT8
+from triton_kernels.distributed import make_expt_dict_uniform
+from triton_kernels.matmul import (
+    FlexCtx,
+    FnSpecs,
+    FusedActivation,
+    PrecisionConfig,
+    matmul as reference_matmul,
+    matmul_torch,
+)
+from triton_kernels.numerics import InFlexData, MAX_FINITE_FLOAT8E4NV, OutFlexData
+from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mxfp
+from triton_kernels.swiglu import swiglu_fn
+from triton_kernels.tensor import (
+    FP4,
+    RaggedTensorMetadata,
+    Tensor,
+    convert_layout,
+    make_ragged_tensor_metadata,
+    wrap_torch_tensor,
+)
+from triton_kernels.tensor_details.dtype import UINT8
+from triton_kernels.tensor_details.layout import (
+    make_default_matmul_mxfp4_w_layout,
+    make_default_matmul_mxfp4_w_scale_layout,
+)
+from triton_kernels.testing import assert_close
+from triton_kernels.topk import topk
 
 
 @gluon.jit
@@ -33,9 +60,18 @@ def unpack_block_schedule(schedule):
 
 @gluon.jit
 def banded_row_major(lin_idx, m_tiles, n_tiles, band_n: gl.constexpr):
-    band_id = lin_idx // (m_tiles * band_n)
-    within_band = lin_idx % (m_tiles * band_n)
-    return within_band // band_n, band_id * band_n + (within_band % band_n)
+    full_band_tiles = m_tiles * band_n
+    n_full_bands = n_tiles // band_n
+    full_band_work = n_full_bands * full_band_tiles
+
+    if lin_idx < full_band_work:
+        band_id = lin_idx // full_band_tiles
+        within_band = lin_idx % full_band_tiles
+        return within_band // band_n, band_id * band_n + (within_band % band_n)
+
+    tail_n = n_tiles - n_full_bands * band_n
+    tail_idx = lin_idx - full_band_work
+    return tail_idx // tail_n, n_full_bands * band_n + (tail_idx % tail_n)
 
 
 @gluon.jit
@@ -364,11 +400,13 @@ def pack_packed_fp8x4(values):
 
 
 @gluon.jit
-def store_strided_2d(ptr, values, off_m, off_n, shape_m, slice_offset, stride_m, stride_n):
+def store_strided_2d(ptr, values, off_m, off_n, shape_m, shape_n, slice_offset, stride_m, stride_n):
     layout: gl.constexpr = values.type.layout
     offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
     offs_n = off_n + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
-    mask = gl.expand_dims(offs_m < shape_m, 1)
+    mask_m = gl.expand_dims(offs_m < shape_m, 1)
+    mask_n = gl.expand_dims(offs_n < shape_n, 0)
+    mask = mask_m & mask_n
     ptrs = ptr + gl.expand_dims(slice_offset + offs_m, 1) * stride_m
     ptrs = ptrs + gl.expand_dims(offs_n, 0) * stride_n
     gl.store(ptrs, values, mask=mask)
@@ -389,6 +427,7 @@ def store_packed_out(
         off_m,
         out_off_n // 4,
         shape_m,
+        (p.out_desc.shape[1] + 3) // 4,
         slice_offset,
         p.out_desc.strides[0] // 4,
         p.out_desc.strides[1],
@@ -930,3 +969,308 @@ def matmul(
     )
 
     return c.unsqueeze(0)
+
+
+# ===-----------------------------------------------------------------------===#
+# Example Helpers
+# ===-----------------------------------------------------------------------===#
+
+GPT_OSS_120B_NUM_EXPERTS = 128
+GPT_OSS_120B_EXPERTS_PER_TOKEN = 4
+GPT_OSS_120B_NUM_EXPERT_SHARDS = 8
+GPT_OSS_120B_LOCAL_RANK = 0
+GPT_OSS_120B_HIDDEN_SIZE = 2880
+GPT_OSS_120B_INTERMEDIATE_SIZE = 2880
+GPT_OSS_120B_MM1_SHAPE = (GPT_OSS_120B_HIDDEN_SIZE, 2 * GPT_OSS_120B_INTERMEDIATE_SIZE)
+GPT_OSS_120B_BATCH_PER_EXPERT = tuple(
+    chain.from_iterable(range(2 ** (2 + k), 2 ** (3 + k), min(2**k, 32)) for k in range(8))
+)
+GPT_OSS_120B_BATCH_SIZES = tuple(
+    batch_per_expert * GPT_OSS_120B_NUM_EXPERTS // GPT_OSS_120B_EXPERTS_PER_TOKEN
+    for batch_per_expert in GPT_OSS_120B_BATCH_PER_EXPERT
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCase:
+    batch_size: int
+    local_rank: int
+    x: torch.Tensor
+    w: Tensor
+    w_scale: Tensor
+    bias: torch.Tensor
+    ragged_metadata: RaggedTensorMetadata
+    gather_indx: torch.Tensor
+    fused_activation: FusedActivation
+    x_scale: torch.Tensor
+    y_scale: torch.Tensor
+    out_shape: tuple[int, int, int]
+    out_dtype: torch.dtype
+
+
+def alloc_randn(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torch.Tensor:
+    if dtype.itemsize == 1:
+        tmp = 2 ** -(torch.randint(4, 8, shape, device=device, dtype=torch.float16))
+        return tmp.to(dtype)
+    return torch.randn(shape, device=device, dtype=dtype)
+
+
+def alloc_randn_fp4(shape: tuple[int, ...], device: str) -> tuple[Tensor, Tensor]:
+    data = alloc_randn(shape, torch.bfloat16, device)
+    data, scale = downcast_to_mxfp(data, FP4, axis=1)  # type: ignore[arg-type]
+    data_layout = make_default_matmul_mxfp4_w_layout(mx_axis=1)
+    scale_layout = make_default_matmul_mxfp4_w_scale_layout(mx_axis=1, num_warps=8)
+    data = convert_layout(wrap_torch_tensor(data, dtype=FP4), data_layout)
+    scale = convert_layout(wrap_torch_tensor(scale), scale_layout)
+    return data, scale
+
+
+def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[RaggedTensorMetadata, torch.Tensor]:
+    expt_dist = make_expt_dict_uniform(GPT_OSS_120B_NUM_EXPERT_SHARDS, GPT_OSS_120B_NUM_EXPERTS)
+    logits = torch.randn((batch_size, GPT_OSS_120B_NUM_EXPERTS), dtype=torch.float16, device=device)
+    sparse_logits = topk(logits, GPT_OSS_120B_EXPERTS_PER_TOKEN, apply_softmax=True)
+    expt_hist = sparse_logits.mask_metadata.col_sum
+
+    local_expts = expt_dist[local_rank]
+    local_expts_hist = expt_hist[local_expts]
+    if local_expts_hist.sum() == 0:
+        local_expts_hist[torch.randint(0, len(local_expts_hist), size=())] = 1
+
+    ragged_metadata = make_ragged_tensor_metadata(local_expts_hist, batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN)
+    ragged_metadata.expected_slice_size = (
+        batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN // GPT_OSS_120B_NUM_EXPERTS
+    )
+    combine_indx = sparse_logits.mask_metadata.col_sorted_indx
+    gather_indx = torch.div(combine_indx, GPT_OSS_120B_EXPERTS_PER_TOKEN, rounding_mode="trunc")
+    return ragged_metadata, gather_indx
+
+
+def normalize_flex_scale(scale: torch.Tensor) -> torch.Tensor:
+    return scale.reshape(1) if scale.ndim == 0 else scale
+
+
+def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
+    torch.manual_seed(seed)
+
+    local_rank = GPT_OSS_120B_LOCAL_RANK
+    k, n = GPT_OSS_120B_MM1_SHAPE
+    n_expts_local = GPT_OSS_120B_NUM_EXPERTS // GPT_OSS_120B_NUM_EXPERT_SHARDS
+    ragged_metadata, gather_indx = init_routing_data(batch_size, local_rank, device)
+    x = alloc_randn((batch_size, k), dtype=torch.float8_e4m3fn, device=device)
+    w, w_scale = alloc_randn_fp4((n_expts_local, k, n), device=device)
+    bias = alloc_randn((n_expts_local, n), dtype=torch.float32, device=device)
+
+    swiglu_alpha = float(torch.rand((), device=device).item()) / 5 + 1.0
+    swiglu_limit = float(torch.rand((), device=device).item()) / 5 + 1.3
+    fused_activation = FusedActivation(
+        FnSpecs("swiglu", swiglu_fn, ("alpha", "limit"), reduction_n=2),
+        (swiglu_alpha, swiglu_limit),
+    )
+
+    x_scale = normalize_flex_scale(torch.rand((), device=device) + 0.5)
+    y_scale = normalize_flex_scale(torch.rand((), device=device) + 3.5)
+    return PreparedCase(
+        batch_size=batch_size,
+        local_rank=local_rank,
+        x=x,
+        w=w,
+        w_scale=w_scale,
+        bias=bias,
+        ragged_metadata=ragged_metadata,
+        gather_indx=gather_indx,
+        fused_activation=fused_activation,
+        x_scale=x_scale,
+        y_scale=y_scale,
+        out_shape=(1, batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN, n // fused_activation.specs.reduction_n),
+        out_dtype=torch.float8_e4m3fn,
+    )
+
+
+def make_precision_config(prepared: PreparedCase) -> PrecisionConfig:
+    return PrecisionConfig(
+        flexpoint_saturate_inf=True,
+        b_mx_scale=prepared.w_scale,
+        b_microblock_size=MXFP_BLOCK_SIZE.value,
+        out_dtype=prepared.out_dtype,
+        flex_ctx=FlexCtx(
+            lhs_data=InFlexData(dtype=prepared.out_dtype, scale=prepared.x_scale),
+            rhs_data=InFlexData(),
+            out_data=OutFlexData(dtype=prepared.out_dtype, expected_scale=prepared.y_scale),
+        ),
+    )
+
+
+def make_output_buffer(prepared: PreparedCase) -> torch.Tensor:
+    return torch.zeros(prepared.out_shape, dtype=prepared.out_dtype, device=prepared.x.device)
+
+
+def exact_swiglu_torch(values: torch.Tensor, alpha: float, limit: float) -> torch.Tensor:
+    gelu = values[..., ::2].to(torch.float32).clamp(max=limit)
+    linear = values[..., 1::2].to(torch.float32).clamp(min=-limit, max=limit)
+    activated = gelu * torch.sigmoid(alpha * gelu)
+    return activated * (linear + 1.0)
+
+
+def quantize_like_flexpoint(values: torch.Tensor, expected_scale: torch.Tensor | None) -> torch.Tensor:
+    if expected_scale is not None:
+        values = values / expected_scale
+    values = values.clamp(min=-MAX_FINITE_FLOAT8E4NV, max=MAX_FINITE_FLOAT8E4NV)
+    return values.to(torch.float8_e4m3fn)
+
+
+def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, PrecisionConfig]:
+    precision_config = make_precision_config(prepared)
+    out = make_output_buffer(prepared)
+    kernel = matmul if provider == "example" else reference_matmul
+    y = kernel(
+        a=prepared.x,
+        b=prepared.w,  # type: ignore[arg-type]
+        bias=prepared.bias,
+        a_ragged_metadata=prepared.ragged_metadata,
+        gather_indx=prepared.gather_indx,
+        precision_config=precision_config,
+        c=out,
+        fused_activation=prepared.fused_activation,
+    )
+    return y, precision_config
+
+
+def run_exact_reference(prepared: PreparedCase) -> tuple[torch.Tensor, PrecisionConfig]:
+    linear_precision = PrecisionConfig(
+        flex_ctx=FlexCtx(
+            lhs_data=InFlexData(dtype=prepared.out_dtype, scale=prepared.x_scale),
+            rhs_data=InFlexData(),
+            out_data=OutFlexData(),
+        ),
+        flexpoint_saturate_inf=True,
+        b_mx_scale=prepared.w_scale,
+        b_microblock_size=MXFP_BLOCK_SIZE.value,
+    )
+    linear = matmul_torch(
+        prepared.x,
+        prepared.w,
+        prepared.bias,
+        a_ragged_metadata=prepared.ragged_metadata,
+        gather_indx=prepared.gather_indx,
+        precision_config=linear_precision,
+    )
+    alpha, limit = prepared.fused_activation.fn_args
+    exact_out = exact_swiglu_torch(linear, float(alpha), float(limit))
+    precision_config = make_precision_config(prepared)
+    quantized = quantize_like_flexpoint(exact_out, precision_config.flex_ctx.out_data.expected_scale)
+    return quantized, precision_config
+
+
+def validate_outputs(
+    prepared: PreparedCase,
+    provider: str,
+    candidate: tuple[torch.Tensor, PrecisionConfig],
+    reference: tuple[torch.Tensor, PrecisionConfig],
+) -> None:
+    ref_y, ref_precision = reference
+    cand_y, cand_precision = candidate
+
+    ref_f32 = ref_y.to(torch.float32)
+    cand_f32 = cand_y.to(torch.float32)
+    abs_diff = (ref_f32 - cand_f32).abs()
+    max_abs = float(abs_diff.max().item()) if abs_diff.numel() else 0.0
+    mismatch_frac = 0.0 if abs_diff.numel() == 0 else float((abs_diff != 0).sum().item()) / abs_diff.numel()
+    if max_abs > 0.0625 or mismatch_frac > 1e-5:
+        raise AssertionError(
+            f"gpt-oss-120b-mm1-bs{prepared.batch_size}:{provider} "
+            f"failed exact-reference tolerance: max_abs={max_abs}, mismatch_frac={mismatch_frac}"
+        )
+
+    ref_scale = ref_precision.flex_ctx.out_data.actual_scale
+    cand_scale = cand_precision.flex_ctx.out_data.actual_scale
+    if ref_scale is not None or cand_scale is not None:
+        assert ref_scale is not None and cand_scale is not None
+        assert_close(
+            ref_scale.to(torch.float32),
+            cand_scale.to(torch.float32),
+            maxtol=1e-10,
+            rmstol=1e-10,
+            description=f"gpt-oss-120b-mm1-bs{prepared.batch_size}:{provider}:out_scale",
+            verbose=False,
+        )
+
+
+def count_active_tokens(prepared: PreparedCase) -> int:
+    return int(prepared.ragged_metadata.slice_sizes.sum().item())
+
+
+# ===-----------------------------------------------------------------------===#
+# Unit Tests
+# ===-----------------------------------------------------------------------===#
+
+
+def is_cuda():
+    return triton.runtime.driver.active.get_current_target().backend == "cuda"
+
+
+def is_blackwell():
+    return is_cuda() and torch.cuda.get_device_capability()[0] == 10
+
+
+@pytest.mark.parametrize("batch_size", [1024])
+@pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
+def test_op(batch_size):
+    prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+    exact = run_exact_reference(prepared)
+    validate_outputs(prepared, "reference", run_provider(prepared, "reference"), exact)
+    validate_outputs(prepared, "example", run_provider(prepared, "example"), exact)
+
+
+# ===-----------------------------------------------------------------------===#
+# Benchmarking
+# ===-----------------------------------------------------------------------===#
+
+providers = ["example", "reference"]
+bench_configs = [
+    triton.testing.Benchmark(
+        x_names=["batch_size"],
+        x_vals=GPT_OSS_120B_BATCH_SIZES,
+        line_arg="provider",
+        line_vals=providers,
+        line_names=providers,
+        styles=[("red", "-"), ("blue", "-")],
+        ylabel="TFLOPS",
+        plot_name=(
+            "GPT-OSS-120B MoE MM1 "
+            f"E={GPT_OSS_120B_NUM_EXPERTS} "
+            f"EP={GPT_OSS_120B_NUM_EXPERT_SHARDS} "
+            f"B={GPT_OSS_120B_MM1_SHAPE[0]}x{GPT_OSS_120B_MM1_SHAPE[1]}"
+        ),
+        args={},
+    )
+]
+
+
+@triton.testing.perf_report(bench_configs)
+def bench(batch_size, provider):
+    prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+    precision_config = make_precision_config(prepared)
+    out = make_output_buffer(prepared)
+    kernel = matmul if provider == "example" else reference_matmul
+
+    def run() -> torch.Tensor:
+        return kernel(
+            a=prepared.x,
+            b=prepared.w,  # type: ignore[arg-type]
+            bias=prepared.bias,
+            a_ragged_metadata=prepared.ragged_metadata,
+            gather_indx=prepared.gather_indx,
+            precision_config=precision_config,
+            c=out,
+            fused_activation=prepared.fused_activation,
+        )
+
+    ms = do_bench_cudagraph(run)
+    n_tokens = count_active_tokens(prepared)
+    k, n = GPT_OSS_120B_MM1_SHAPE
+    flops = 2 * n_tokens * k * n
+    return flops * 1e-12 / (ms * 1e-3)
+
+
+if __name__ == "__main__":
+    bench.run(save_path=".", print_data=True)
