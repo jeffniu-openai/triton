@@ -136,6 +136,15 @@ collecting the merge-base test files and comparing exact nodeids:
 ## Notes
 
 - These manifests reflect the current branch tip at the time of generation.
+- Post-census status update:
+  - after the later `TensorMemoryUtils.cpp` direct-planning fix, the
+    representative exact split-N TMEM nodeids that motivated the original
+    group-4 TMEM story now pass cleanly again:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+  - do not treat the current shard/group manifest counts as fully current
+    until those manifests are regenerated from a broader rerun.
 - The current `.txt` manifests normalize `pytest -q -rf` summary lines back to
   real nodeids by stripping any appended ` - AssertionError...` /
   ` - RuntimeError...` suffixes.

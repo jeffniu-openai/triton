@@ -4451,6 +4451,11 @@ computeTMemLdStEncodingInfoImpl(
                                      : physicalRows;
   bool hasZeroRowBasis = hasZeroBasisAlong(memLayout, kRow);
   bool hasZeroColBasis = hasZeroBasisAlong(memLayout, kCol);
+  bool useActiveMemLayoutForDirectPlanning =
+      hasZeroRowBasis && !hasZeroColBasis &&
+      logicalRows == activePhysicalRows && logicalCols == physicalCols;
+  LinearLayout directPlanningMemLayout =
+      useActiveMemLayoutForDirectPlanning ? activeMemLayout : memLayout;
   bool hasPackedHalfRowAndColSupport =
       hasZeroRowBasis && hasZeroColBasis &&
       logicalRows == activePhysicalRows * 2 &&
@@ -5017,7 +5022,7 @@ computeTMemLdStEncodingInfoImpl(
                                                    /*requireSurjective=*/false));
     }
   }
-  if (!canInvertAndComposeSafely(regLayout, memLayout)) {
+  if (!canInvertAndComposeSafely(regLayout, directPlanningMemLayout)) {
     if (emitError) {
       emitError() << "Failed to lower TMEM load/store: register layout image "
                      "is not contained in the descriptor view image.\n"
@@ -5026,7 +5031,7 @@ computeTMemLdStEncodingInfoImpl(
     }
     return failure();
   }
-  auto cvt = regLayout.invertAndCompose(memLayout);
+  auto cvt = regLayout.invertAndCompose(directPlanningMemLayout);
   cvt = squeezeTrivialBlock(std::move(cvt));
   bool hasBlockIn = cvt.hasInDim(kBlock);
   bool hasBlockOut = cvt.hasOutDim(kBlock);
@@ -5287,6 +5292,10 @@ computeTMemLdStEncodingInfoImpl(
                  << regLayout.toString() << "\n";
     llvm::errs() << "[halfrows-info] memLayout:\n"
                  << memLayout.toString() << "\n";
+    if (useActiveMemLayoutForDirectPlanning) {
+      llvm::errs() << "[halfrows-info] directPlanningMemLayout:\n"
+                   << directPlanningMemLayout.toString() << "\n";
+    }
     if (rowPlan) {
       llvm::errs() << "[halfrows-info] rowPlan warpRow0=" << rowPlan->warpRow0
                    << " warpRow1=" << rowPlan->warpRow1
@@ -5321,9 +5330,9 @@ computeTMemLdStEncodingInfoImpl(
     return (static_cast<uint32_t>(basis[0]) << 16) |
            static_cast<uint32_t>(basis[1]);
   };
-  auto getRowAnchorBasis = [&](int32_t logicalRow)
-      -> std::optional<SmallVector<int32_t>> {
-    return getLogicalRowAnchorBasis(memLayout, logicalRow);
+  auto getRowAnchorBasis =
+      [&](int32_t logicalRow) -> std::optional<SmallVector<int32_t>> {
+    return getLogicalRowAnchorBasis(directPlanningMemLayout, logicalRow);
   };
   auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
   auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);
@@ -5500,6 +5509,7 @@ computeTMemLdStEncodingInfoImpl(
       physicalRows == 128 && physicalCols == 32 &&
       hasZeroBasisAlong(originalMemLayout, kRow) &&
       !hasZeroBasisAlong(originalMemLayout, kCol) &&
+      !useActiveMemLayoutForDirectPlanning &&
       info->atom == TMemAccessAtom::I16x32bx2 && expectedWarp0Basis &&
       expectedWarp1Basis;
   if (isI16RowZeroM64DirectView) {
@@ -5531,7 +5541,8 @@ computeTMemLdStEncodingInfoImpl(
   bool isI32RowZeroM64DirectView =
       bitwidth == 32 && logicalRows == 64 && logicalCols == physicalCols &&
       physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
-      !hasZeroBasisAlong(originalMemLayout, kCol);
+      !hasZeroBasisAlong(originalMemLayout, kCol) &&
+      !useActiveMemLayoutForDirectPlanning;
   if (isI32RowZeroM64DirectView && info->atom == TMemAccessAtom::I32x32b &&
       info->warpBaseOffset0 == (32u << 16) &&
       info->warpBaseOffset1 == (64u << 16)) {
@@ -5544,7 +5555,8 @@ computeTMemLdStEncodingInfoImpl(
       bitwidth == 16 && memTy.getShape() == memTy.getAllocShape() &&
       logicalRows == 64 && logicalCols == physicalCols &&
       physicalRows == 128 && hasZeroBasisAlong(originalMemLayout, kRow) &&
-      hasZeroBasisAlong(originalMemLayout, kCol);
+      hasZeroBasisAlong(originalMemLayout, kCol) &&
+      !useActiveMemLayoutForDirectPlanning;
   if (isI16PackedRowZeroM64DirectView &&
       info->atom == TMemAccessAtom::I16x32bx2 &&
       info->warpBaseOffset0 == (32u << 16) &&

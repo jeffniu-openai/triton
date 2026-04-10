@@ -46,6 +46,29 @@ PY
 
 ## Current Classification Summary
 
+### Post-Census Repair Checkpoint
+
+- The first representative TMEM exact bucket from the census is now repaired
+  on the current worktree:
+  - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+  - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+- The fix was localized to `TensorMemoryUtils.cpp`: direct planning now uses
+  the active physical TMEM layout when a zero-row-basis analyzed view already
+  collapses to the logical shape, and the old row-zero direct-view repair
+  shims are disabled in that path.
+- The nearby one-CTA MMAv5 controls remain green:
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+- The remaining live representative branch-regression bucket is now narrower
+  and appears producer-side:
+  - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+  - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+- The exact manifest `.txt` files still reflect the pre-fix census, so they
+  remain useful for backlog shape but not as current pass/fail counts until a
+  broader rerun refreshes them.
+
 ### Excluded From The Branch Recovery Backlog
 
 - `python/test/unit/test_debug.py`
@@ -86,6 +109,12 @@ PY
   - the current row-plan-aware canonical-`M=64` family-selection /
     packet-decomposition path is collapsing a lifted support-band quotient bit
     into ordinary packet repetition
+  - status update:
+    - the direct split-N ld/st slice of this bucket is now fixed on exact
+      reruns;
+    - the remaining exact failures are the MMAv5 producer-side dot / matmul /
+      warp-specialization family, which should now be debugged without
+      reopening the recovered direct-planning path
 
 2. Unsupported-row-anchor compile bucket on the new planner
 - Why it is probably adjacent:
@@ -147,9 +176,19 @@ PY
 
 ## Current Execution Order
 
-1. Fix the common M64 TMEM planner / packet-decomposition regression.
+1. Preserve the repaired direct split-N TMEM path and attack the remaining
+   MMAv5 producer-side M64 bucket.
 - Validation ladder:
-  - the six representative exact nodeids above
+  - keep the repaired direct split-N controls green:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - then debug the remaining producer-side exacts:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
   - then the `8` exact `test_dot[...]` nodeids
   - then `python/test/unit/language/test_matmul.py`
   - then `python/test/unit/language/test_warp_specialization.py`

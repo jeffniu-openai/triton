@@ -103,23 +103,25 @@ is:
       not landable yet because the necessary reordered M64 views are not fully
       supported by the current TMEM API/backend surface
 
-3. Real TMEM split-N regression
-- Nodeids confirmed clean on an isolated GPU:
+3. Recovered direct split-N TMEM bucket
+- Exact nodeids rerun clean on an isolated GPU after the latest
+  `TensorMemoryUtils.cpp` planner fix:
   - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
   - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
 - Current result:
-  - descriptor-chain case: `4096 / 8192` mismatches
-  - split-N roundtrip case: `2048 / 2048` mismatches
+  - all three exact nodeids pass clean
 - Classification:
-  - `REAL_BUG`
+  - `FIXED_ON_CURRENT_WORKTREE`
 - Current interpretation:
-  - this is not shard contamination; both cases still fail on a clean isolated
-    rerun
-  - the current branch tip has regressed the previously green `M=64` split-N
-    TMEM family again
-  - nearby shard failures such as `test_block_m_64_mma[linear]` are not
-    reliable by themselves until rerun clean, because at least that one passes
-    in isolation after the shard failure
+  - the direct `M=64` split-N ld/st bug was in planner arithmetic, not in the
+    remaining MMAv5 producer-side buckets;
+  - the fix was to solve the direct planning query on the active physical TMEM
+    layout when the analyzed view carries a zero row basis but the active
+    layout already matches the logical shape; and
+  - the broad `test-gluon` shard manifests in this folder still reflect the
+    pre-fix census and must be regenerated after the next wider rerun before
+    their counts are treated as current state.
 
 4. Stale-negative / broadened-support bucket
 - Nodeid confirmed clean on an isolated GPU:

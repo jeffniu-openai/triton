@@ -176,6 +176,28 @@
   treated as compiler bugs; if they depend on implicit physical TMEM mapping,
   rewrite them to explicit descriptor/view composition first and only treat
   residual failures as compiler issues.
+- A later exact-rerun checkpoint has now repaired the representative direct
+  split-N TMEM bucket from the original census:
+  - `test_tmem_descriptor_chain_matrix[...]` is green again;
+  - `test_tmem_linear_roundtrip_splitn_shapes[...]` is green again; and
+  - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` is
+    green again.
+- The fix was planner-side and narrow:
+  - when a direct TMEM view analysis has a zero row basis but the active
+    physical layout already matches the logical shape, direct ld/st planning
+    must solve on the active layout instead of the lifted support image;
+  - row-anchor solving and safety checks now use that active direct-planning
+    layout; and
+  - the older row-zero direct-view repair shims must stay disabled in that
+    path.
+- This updates the branch story:
+  - the exact split-N ld/st regressions are no longer the live blocker; but
+  - the remaining representative unit failures are still red and now look like
+    a narrower MMAv5 producer-side bucket (`test_dot[...]`,
+    `test_simple_matmul[...]`, and warp-specialization forward).
+- The generated GB200 failure manifests still reflect the pre-fix census and
+  should be regenerated after the next broader rerun before their counts are
+  used as the current red total.
 - The executed GB200 census has now widened the red story beyond the original
   two `block_m_64` rewrite candidates:
   - the two reinterpret-contract rewrite candidates are still tracked; but

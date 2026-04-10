@@ -6215,3 +6215,41 @@ Open after this slice:
     runtime-matrix exact and worsened the direct split-N roundtrip case; so
   - the repo is back on the clean committed baseline before the next bugfix
     slice.
+
+## 2026-04-10: repaired the representative direct split-N TMEM bucket and narrowed the live branch backlog
+
+- Fixed the direct `M=64` split-N TMEM planner bug in
+  `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`:
+  - when a direct TMEM descriptor view has a zero row basis but the active
+    physical TMEM layout already matches the logical shape, direct `ld/st`
+    planning now composes against the active layout instead of the lifted
+    support image;
+  - logical row-anchor solving and safety checks now use the same active
+    direct-planning layout; and
+  - the old row-zero direct-view repair shims stay disabled on that path so
+    they do not reapply the wrong lifted-image arithmetic.
+- Exact validation after `make -j8`:
+  - passing:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - still failing:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+      with `CUDA error: misaligned address`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+      with `261757 / 524288` mismatches (`49.9%`)
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+      with `CUDA error: misaligned address`
+- Also revalidated that two nearby MMAv5 experiments are not part of the fix:
+  - a root-alloc query-type-before-raw-query change in `TensorMemoryToLLVM.cpp`
+    did not clear the remaining unit failures; and
+  - reordering canonical-family vs analyzed-view address arithmetic in
+    `MMAv5.cpp` also did not clear them.
+- Net result:
+  - the representative direct split-N TMEM ld/st bug is fixed;
+  - the remaining live branch-caused unit bucket is narrower and appears to be
+    MMAv5 producer-side, not generic direct TMEM planning; and
+  - the GB200 manifest files now need regeneration after the next broader rerun
+    before their aggregate counts are treated as current.
