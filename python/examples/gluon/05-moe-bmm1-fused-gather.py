@@ -37,6 +37,7 @@ BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_2 = 14
 BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_4 = 15
 BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_2 = 16
 BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_4 = 17
+BLOCK_SCHEDULE_BAND_N_20_ROW_MAJOR = 18
 
 BLOCK_SCHEDULE_STRATEGIES = {
     "row_major": BLOCK_SCHEDULE_ROW_MAJOR,
@@ -57,6 +58,7 @@ BLOCK_SCHEDULE_STRATEGIES = {
     "row_major_swizzle_4": BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_4,
     "n_major_swizzle_2": BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_2,
     "n_major_swizzle_4": BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_4,
+    "band_n_20_row_major": BLOCK_SCHEDULE_BAND_N_20_ROW_MAJOR,
 }
 
 BLOCK_SCHEDULE_STRATEGY_NAMES = {value: name for name, value in BLOCK_SCHEDULE_STRATEGIES.items()}
@@ -138,6 +140,13 @@ def planar_snake(lin_idx, m_tiles, n_tiles, minor_dim: gl.constexpr, tile_width:
 
 
 @gluon.jit
+def n_banded_row_major(lin_idx, m_tiles, n_tiles, band_n: gl.constexpr):
+    band_id = lin_idx // (m_tiles * band_n)
+    within_band = lin_idx % (m_tiles * band_n)
+    return within_band // band_n, band_id * band_n + (within_band % band_n)
+
+
+@gluon.jit
 def block_schedule_coords(
     pid_mn: gl.tensor,
     grid_m: gl.tensor,
@@ -181,8 +190,10 @@ def block_schedule_coords(
     if BLOCK_SCHEDULE_STRATEGY == 16:
         swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 2)
         return swizzled % grid_m, swizzled // grid_m
-    swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 4)
-    return swizzled % grid_m, swizzled // grid_m
+    if BLOCK_SCHEDULE_STRATEGY == 17:
+        swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 4)
+        return swizzled % grid_m, swizzled // grid_m
+    return n_banded_row_major(pid_mn, grid_m, GRID_N, 20)
 
 
 @gluon.jit
@@ -282,7 +293,7 @@ class KernelConfig:
     load_weight_regs: int = 48
     mma_regs: int = 24
     store_helper_regs: int = 16
-    block_schedule_strategy: int = BLOCK_SCHEDULE_ROW_MAJOR
+    block_schedule_strategy: int = BLOCK_SCHEDULE_BAND_N_20_ROW_MAJOR
 
 
 @aggregate

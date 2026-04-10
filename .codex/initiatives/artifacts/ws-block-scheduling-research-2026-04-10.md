@@ -342,3 +342,21 @@ Interpretation:
    - better W/scale locality
    - better persistent-stride behavior
 5. Keep `row_major` as the default unless a same-GPU rerun shows a clear win from an alternate strategy.
+
+### Promotion Note
+
+Follow-up work after this note was first written found a stronger candidate in an artifact-only workspace:
+
+- `band_n_20_row_major`
+
+That schedule keeps the inner traversal row-major, but restricts the live N footprint to 20-column bands. After repeated same-GPU paired analysis, it was promoted into the real example as the new default schedule while the old full-width row-major path stayed available for comparison.
+
+Clean real-repo compare on GPU 0 (`warmup=30`, `rep=1000`, exact validation):
+
+- explicit old `row_major = 0.3418 ms`
+- explicit `band_n_20_row_major = 0.3405 ms`
+
+Post-promotion benchmark on the aligned target bucket:
+
+- `ws_optimized = 0.3417 ms`
+- `gluon_optimized = 0.3432 ms`
