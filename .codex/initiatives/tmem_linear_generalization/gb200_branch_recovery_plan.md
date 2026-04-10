@@ -46,6 +46,45 @@ PY
 
 ## Current Classification Summary
 
+### Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
+
+- The merge-base-present `python/test/gluon/test_core.py::test_mma_shared_inputs[...]`
+  bucket is now closed at the exact-function level on the current branch.
+- Root cause:
+  - the current branch had widened the 16-bit unpacked recursion in
+    `getDistributedLayoutForTmemLdSt(...)` so far that ordinary direct MMAv5
+    accumulator loads were falling into the generic `I32x32b` builder.
+  - that changed their TTGIR physical layout and PTX family away from the
+    merge-base direct-load path.
+- Fix:
+  - keep that recursion only on the actual reinterpret/query-style
+    `I32x32b` path and leave direct loads on the standard bitwidth-packing
+    path.
+- Validation:
+  - `make -j8`
+  - representative current-fail / merge-base-pass exacts now pass
+  - fresh four-way current-head function rerun:
+    - group `1`
+      - `3830 passed, 490 skipped`
+    - group `2`
+      - `2954 passed, 1366 skipped`
+    - group `3`
+      - `1206 passed, 3114 skipped`
+    - group `4`
+      - `2584 passed, 1736 skipped`
+- Recovery consequence:
+  - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt` is now
+    refreshed to `0` nodeids.
+  - the older `4685`-nodeid MMAv5 manifest and the pre-fix full-group counts
+    are now stale historical artifacts for that function.
+  - the live old-mainline recovery queue now starts with:
+    1. `REAL_NEW_ON_BRANCH_REGRESSION`
+       - `python/examples/gluon/02-convolution.py`
+    2. `REAL_NEW_ON_BRANCH_REGRESSION`
+       - `python/examples/gluon/03-matmul-multicta.py`
+  - keep the branch-added PTX-expectation and stale-negative TMEM tails
+    outside the core recovery queue until the example regressions are reduced.
+
 ### Latest Full GB200 Census Refresh
 
 - The whole GB200 census has now been rerun on the current branch, so the

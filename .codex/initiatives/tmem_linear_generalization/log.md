@@ -6997,3 +6997,47 @@ Open after this slice:
     3. `python/examples/gluon/03-matmul-multicta.py`
   - keep the branch-added PTX-expectation / stale-negative TMEM tails and the
     preexisting Proton bucket separate while the MMAv5 regression is reduced
+
+## 2026-04-10: narrowing the 16-bit unpacked `I32x32b` recursion restores the full `test_mma_shared_inputs` surface
+- I reduced the representative merge-base-pass / current-head-fail
+  `python/test/gluon/test_core.py::test_mma_shared_inputs[...]` exacts with
+  real test-harness TTGIR/PTX captures and found the actual regression point in
+  `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`.
+- Root cause:
+  - the current branch had widened the 16-bit unpacked reinterpret rescue in
+    `getDistributedLayoutForTmemLdSt(...)` so far that ordinary direct MMAv5
+    accumulator loads were recursing into the generic `I32x32b` builder
+  - that changed the direct-load physical TTGIR layout and PTX family away
+    from the merge-base packed bitwidth-packing path
+- Fix:
+  - keep that recursion only on the actual reinterpret/query-style
+    `I32x32b` path when `!allowSplitNFastPath`
+  - leave ordinary direct loads on the standard bitwidth-packing path
+- Validation:
+  - `make -j8`
+  - representative exact reruns now pass:
+    - `False-ctas_per_cga0-1-1-1-64-0-0-warps0-16-False-True-acc_dtype3`
+    - `False-ctas_per_cga2-1-1-1-64-64-128-warps0-16-False-True-acc_dtype3`
+    - `False-ctas_per_cga2-2-4-1-64-32-32-warps2-16-True-True-acc_dtype7`
+    - `True-ctas_per_cga1-2-4-1-64-128-128-warps0-16-False-True-acc_dtype3`
+  - fresh four-way current-head function rerun:
+    - group `1`
+      - `3830 passed, 490 skipped`
+    - group `2`
+      - `2954 passed, 1366 skipped`
+    - group `3`
+      - `1206 passed, 3114 skipped`
+    - group `4`
+      - `2584 passed, 1736 skipped`
+- Manifest consequence:
+  - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt` is now
+    refreshed to `0` exact nodeids
+  - the older `4685`-nodeid MMAv5 manifest and the pre-fix broad-group counts
+    are now historical only for that function
+- Practical consequence:
+  - the live old-mainline GB200 recovery queue now starts with the example
+    regressions:
+    1. `python/examples/gluon/02-convolution.py`
+    2. `python/examples/gluon/03-matmul-multicta.py`
+  - keep the branch-added PTX-expectation / stale-negative TMEM tails
+    separate while the example regressions are reduced

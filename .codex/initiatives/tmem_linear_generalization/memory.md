@@ -182,10 +182,11 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-10 18:48 UTC)
+## Current Topline (2026-04-10 19:30 UTC)
 
-- The full GB200 branch census is now refreshed, which supersedes the older
-  intermediate reading that only descriptor-chain plus examples remained.
+- The broad GB200 census from `18:48 UTC` remains the last whole-lane snapshot,
+  but the primary merge-base-present MMAv5 compiler bucket from that census is
+  now closed by a targeted direct-load fix.
 - Current GB200 lane read:
   - green:
     - `make test-lit`
@@ -201,25 +202,19 @@
     - `make NUM_PROCS=24 test-gsan`
       - `20 / 20 passed`
     - `make test-microbenchmark`
-  - red:
+    - fresh four-way current-head function rerun:
+      - `pytest --splits 4 --group {1,2,3,4} -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+      - all four groups green
+  - still red / still open:
     - `make test-proton`
       - `11 failed, 114 passed`
       - same `11` failures on merge-base, so keep this bucket preexisting
-    - current-head `python/test/gluon/ + python/tutorials/gluon/` four-way
-      sweep
     - `python/examples/gluon/`
 - Current live branch-recovery backlog:
-  1. merge-base-present MMAv5 wrong-code bucket
-     - `python/test/gluon/test_core.py::test_mma_shared_inputs[...]`
-     - latest semantic manifest:
-       - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
-       - `4685` exact nodeids from the latest sweep
-     - representative exact reruns pass on merge-base and fail on the current
-       branch
-  2. merge-base-present convolution example regression
+  1. merge-base-present convolution example regression
      - `python/examples/gluon/02-convolution.py`
      - `48` exact `OutOfResources` failures
-  3. merge-base-present multicta example regression
+  2. merge-base-present multicta example regression
      - `python/examples/gluon/03-matmul-multicta.py`
      - `14` exact wrong-code failures
 - Current branch-added / contract-evolution tails to keep separate:
@@ -230,19 +225,39 @@
   - the two reinterpret-contract rewrite candidates:
     - `test_tmem_subslice_block_m_64[legacy]`
     - `test_tmem_subslice_block_m_64_parent_layout[linear]`
-- Contamination interpretation:
-  - the large MMAv5 shard bucket is not a trivial on-disk cache collision,
-    because the fresh four-way sweep used isolated per-GPU cache dirs and still
-    reproduced it
-  - but raw shard totals still overcount independent failures, because at least
-    one shard-failing exact passes in a fresh isolated current-head process
-  - treat that as a separate cache/global-state/device-contamination
-    investigation while the underlying MMAv5 compiler bug is being reduced
+- Latest MMAv5 closure:
+  - root cause:
+    - `getDistributedLayoutForTmemLdSt(...)` had widened the 16-bit unpacked
+      reinterpret rescue so far that ordinary direct MMAv5 accumulator loads
+      were recursing into the generic `I32x32b` builder.
+  - fix:
+    - keep that recursion only on the reinterpret/query-style `I32x32b` path
+      when `!allowSplitNFastPath`, and leave direct loads on the standard
+      bitwidth-packing path.
+  - validation:
+    - `make -j8`
+    - four representative current-fail / merge-base-pass exacts now pass
+    - full four-way `test_mma_shared_inputs` function rerun:
+      - group `1`
+        - `3830 passed, 490 skipped`
+      - group `2`
+        - `2954 passed, 1366 skipped`
+      - group `3`
+        - `1206 passed, 3114 skipped`
+      - group `4`
+        - `2584 passed, 1736 skipped`
+  - manifest consequence:
+    - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
+      is now refreshed to `0` exact nodeids
+    - the older `4685` MMAv5 manifest and the pre-fix full-group counts are
+      now historical only for that function until broader Gluon shards are
+      rerun on top of this fix
 - Immediate next move:
-  - document the refreshed GB200 census and exact manifests
-  - then start representative current-vs-merge-base MMAv5 comparisons to
-    reduce `test_mma_shared_inputs[...]` into structural subfamilies before
-    touching the examples lane
+  - checkpoint this MMAv5 direct-load fix in the initiative docs and git log
+  - then reduce the two example regressions, starting with
+    `python/examples/gluon/02-convolution.py`
+  - rerun broader Gluon slices after the example bucket or sooner if the
+    example diagnosis needs a fresh current-head file-level baseline
 
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is

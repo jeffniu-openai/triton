@@ -1654,14 +1654,15 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
               candidateLL,
               LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
                   LinearLayout::identity1D(2, rowColDims[1], dims[1]));
-          bitwidth == 16 && maybeQuot) {
-        // Unpacked 16-bit reinterpret queries should recurse into the generic
-        // 32-bit I32x32b builder. Letting the split-N fast path win here can
-        // synthesize the wrong family for the recovered support layout.
-        auto ret =
-            getDistributedLayoutForTmemLdSt(*maybeQuot, atom, numWarps, 32,
-                                            rowPlan,
-                                            /*allowSplitNFastPath=*/false);
+          bitwidth == 16 && atom == TMemAccessAtom::I32x32b &&
+          !allowSplitNFastPath && maybeQuot) {
+        // Keep the unpacked 16-bit reinterpret rescue on the generic 32-bit
+        // I32x32b builder, but do not let it preempt ordinary direct loads.
+        // Direct MMAv5 accumulator loads rely on the standard bitwidth-packing
+        // path below to preserve the legacy-equivalent packed row/warp layout.
+        auto ret = getDistributedLayoutForTmemLdSt(
+            *maybeQuot, TMemAccessAtom::I32x32b, numWarps, 32, rowPlan,
+            /*allowSplitNFastPath=*/false);
         if (!ret)
           return ret;
         auto castbbitwidth =

@@ -30,6 +30,26 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest MMAv5 Function Refresh (2026-04-10 19:30 UTC)
+
+- [gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt)
+  - `0` nodeids
+  - source:
+    - refreshed four-way current-head function rerun after the direct-load
+      family fix:
+      - `pytest --splits 4 --group 1 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+        - `3830 passed, 490 skipped`
+      - `pytest --splits 4 --group 2 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+        - `2954 passed, 1366 skipped`
+      - `pytest --splits 4 --group 3 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+        - `1206 passed, 3114 skipped`
+      - `pytest --splits 4 --group 4 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+        - `2584 passed, 1736 skipped`
+  - current interpretation:
+    - the old `4685`-nodeid MMAv5 manifest is now historical / pre-fix only
+    - broader Gluon shard counts from the last whole-lane census are stale for
+      this function until rerun on top of the new direct-load fix
+
 ### Latest Full GB200 Census Refresh (2026-04-10 18:48 UTC)
 
 - [gb200_current_branch_group1_latest_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group1_latest_failures.txt)
@@ -53,15 +73,14 @@ PY
     - latest isolated-cache current-head Gluon/tutorial sweep:
       - `pytest --splits 4 --group 4 python/test/gluon/ python/tutorials/gluon/`
 - [gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt)
-  - `4685` nodeids
+  - `0` nodeids
   - source:
-    - semantic extraction from the latest current-head group `1`, `2`, and `3`
-      logs
+    - refreshed four-way current-head function rerun after the direct-load
+      family fix
   - current interpretation:
-    - primary live current-head Gluon regression bucket
-    - merge-base-present and independently proven branch-caused by exact
-      reruns, but raw count still includes process/device fallout after bad
-      kernels
+    - refreshed to empty after the MMAv5 direct-load family fix
+    - keep the older pre-fix `4685`-nodeid extraction only as historical
+      reduction evidence, not as a live failure manifest
 - [gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt)
   - `1` nodeid
   - current interpretation:

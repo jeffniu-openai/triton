@@ -18,6 +18,53 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
+
+- The previous full-lane GB200 census remains the last whole-suite Gluon
+  snapshot, but the largest merge-base-present compiler bucket from that
+  census is now remeasured after a targeted direct-load fix.
+- Root cause:
+  - `getDistributedLayoutForTmemLdSt(...)` in
+    `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp` was letting the 16-bit
+    unpacked reinterpret rescue recurse into the generic `I32x32b` builder
+    even for ordinary direct MMAv5 accumulator loads.
+  - that drifted current-head direct loads away from the legacy-equivalent
+    packed bitwidth-packing path and changed the emitted TTGIR/PTX family for
+    representative old-mainline `test_mma_shared_inputs[...]` cases.
+- Fix:
+  - restrict that recursion to the actual reinterpret/query-style
+    `I32x32b` path:
+    - `bitwidth == 16`
+    - `atom == TMemAccessAtom::I32x32b`
+    - `!allowSplitNFastPath`
+  - ordinary direct MMAv5 accumulator loads now stay on the standard
+    bitwidth-packing path.
+- Validation:
+  - `make -j8`
+  - representative current-fail / merge-base-pass exacts now pass again:
+    - `False-ctas_per_cga0-1-1-1-64-0-0-warps0-16-False-True-acc_dtype3`
+    - `False-ctas_per_cga2-1-1-1-64-64-128-warps0-16-False-True-acc_dtype3`
+    - `False-ctas_per_cga2-2-4-1-64-32-32-warps2-16-True-True-acc_dtype7`
+    - `True-ctas_per_cga1-2-4-1-64-128-128-warps0-16-False-True-acc_dtype3`
+  - fresh four-way function rerun:
+    - `pytest --splits 4 --group 1 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+      - `3830 passed, 490 skipped`
+    - `pytest --splits 4 --group 2 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+      - `2954 passed, 1366 skipped`
+    - `pytest --splits 4 --group 3 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+      - `1206 passed, 3114 skipped`
+    - `pytest --splits 4 --group 4 -k 'test_mma_shared_inputs' python/test/gluon/test_core.py`
+      - `2584 passed, 1736 skipped`
+- Consequence:
+  - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt` is now
+    refreshed to `0` exact nodeids.
+  - the old `4685`-nodeid MMAv5 manifest and the pre-fix full-group counts are
+    now historical reduction artifacts for this function and must not be used
+    as the live backlog without rerunning the broader Gluon shards.
+  - confirmed current branch-recovery work now starts with the two example
+    regressions, while the branch-added PTX-expectation / stale-negative TMEM
+    tails remain separate.
+
 ## Latest Full GB200 Census Refresh (2026-04-10 18:48 UTC)
 
 - Current branch / baseline:
