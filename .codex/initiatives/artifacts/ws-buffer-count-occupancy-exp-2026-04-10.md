@@ -77,6 +77,48 @@ Additional candidate notes:
 - `BLOCK_M=32`, weight-buffer reductions to `w=2` were all materially worse than `x=2,w=3`.
 - `BLOCK_M=64`, even the not-under-half `x=2,w=3` candidate still regressed badly (`0.05006 ms` at `batch=1024` vs `0.04041 ms` default).
 
+### NCU Validation Of Actual CTA Concurrency
+
+Follow-up Nsight Compute profiling on the `batch=128` case checked whether the slowed `2x`-CTA experiment actually achieved more than one CTA resident per SM.
+
+Profiles:
+
+- default: `x=5, w=4, sms_factor=1`
+- under-half candidate: `x=4, w=3, sms_factor=1`
+- under-half candidate with doubled persistent CTA count: `x=4, w=3, sms_factor=2`
+
+Relevant counters:
+
+| Variant | Grid | Dynamic SMEM / block | Driver SMEM / block | Registers / thread | Waves / SM | `sm__ctas_active.avg.per_cycle_active` | `sm__warps_active.avg.per_cycle_active` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| default `x=5,w=4` | 152 | `151.78 KiB` | `1.02 KiB` | 128 | 1 | 1.00 | 15.90 |
+| candidate `x=4,w=3` | 152 | `115.90 KiB` | `1.02 KiB` | 128 | 1 | 1.00 | 15.91 |
+| candidate `x=4,w=3`, `2x` CTA | 304 | `115.90 KiB` | `1.02 KiB` | 128 | 2 | 1.00 | 15.83 |
+
+Occupancy section summary from NCU:
+
+- default:
+  - `Block Limit Registers = 1`
+  - `Block Limit Shared Mem = 1`
+  - `Achieved Occupancy = 25.20%`
+- candidate `x=4,w=3`:
+  - `Block Limit Registers = 1`
+  - `Block Limit Shared Mem = 1`
+  - `Achieved Occupancy = 25.16%`
+- candidate `x=4,w=3`, `2x` CTA:
+  - `Block Limit Registers = 1`
+  - `Block Limit Shared Mem = 1`
+  - `Achieved Occupancy = 26.92%`
+
+Interpretation:
+
+- The doubled launch grid only produced **more waves**, not **more concurrent CTAs per SM**.
+- `sm__ctas_active.avg.per_cycle_active = 1.00` for all three runs, so the machine still only had one CTA resident per SM on average.
+- The under-half candidate was only under half if counting dynamic SMEM alone. Once NCU's driver-side shared memory allocation is included, the total is still above half an SM (`115.90 KiB + 1.02 KiB > 116.224 KiB`), so shared memory still limits residency to one CTA.
+- Registers are an independent blocker anyway: `128` registers/thread keeps `Block Limit Registers = 1` for all three runs.
+
+So the original “virtually double `NUM_SMS` after lowering buffers” hypothesis does not hold for the current kernel. The slowdown is not “2x CTA residency failed to help”; it is that **2x CTA residency never actually happened**.
+
 ### Interpretation
 
 The current low-batch WS kernel is not overbuffered enough for this trade to work.
