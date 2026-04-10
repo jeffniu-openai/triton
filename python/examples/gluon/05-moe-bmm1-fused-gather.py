@@ -207,7 +207,7 @@ class PartitionArgs:
 
 
 @gluon.jit
-def _alloc_barrier_ring(num_bufs: gl.constexpr):
+def alloc_barrier_ring(num_bufs: gl.constexpr):
     bars = gl.allocate_shared_memory(gl.int64, [num_bufs, 1], mbarrier.MBarrierLayout())
     for i in gl.static_range(num_bufs):
         mbarrier.init(bars.index(i), count=1)
@@ -215,12 +215,12 @@ def _alloc_barrier_ring(num_bufs: gl.constexpr):
 
 
 @gluon.jit
-def _alloc_empty_ready_barriers(num_bufs: gl.constexpr):
-    return _alloc_barrier_ring(num_bufs), _alloc_barrier_ring(num_bufs)
+def alloc_empty_ready_barriers(num_bufs: gl.constexpr):
+    return alloc_barrier_ring(num_bufs), alloc_barrier_ring(num_bufs)
 
 
 @gluon.jit
-def _invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
+def invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
     for i in gl.static_range(num_bufs):
         mbarrier.invalidate(bars.index(i))
 
@@ -349,7 +349,7 @@ def mma_partition(p: PartitionArgs):
 
 
 @gluon.jit
-def _pack_e4m3x2(values):
+def pack_e4m3x2(values):
     return tl_core.inline_asm_elementwise(
         """
         {
@@ -367,7 +367,7 @@ def _pack_e4m3x2(values):
 
 
 @gluon.jit
-def _pack_u16x2(x0, x1):
+def pack_u16x2(x0, x1):
     return tl_core.inline_asm_elementwise(
         """
         mov.b32 $0, { $1, $2 };
@@ -381,13 +381,13 @@ def _pack_u16x2(x0, x1):
 
 
 @gluon.jit
-def _pack_packed_fp8x4(values):
+def pack_packed_fp8x4(values):
     lhs, rhs = gl.split(values.reshape((values.shape[0], values.shape[1] // 2, 2)))
-    return _pack_u16x2(lhs, rhs)
+    return pack_u16x2(lhs, rhs)
 
 
 @gluon.jit
-def _store_strided_2d(ptr, values, off_m, off_n, shape_m, slice_offset, stride_m, stride_n):
+def store_strided_2d(ptr, values, off_m, off_n, shape_m, slice_offset, stride_m, stride_n):
     layout: gl.constexpr = values.type.layout
     offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
     offs_n = off_n + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
@@ -398,7 +398,7 @@ def _store_strided_2d(ptr, values, off_m, off_n, shape_m, slice_offset, stride_m
 
 
 @gluon.jit
-def _store_packed_out(
+def store_packed_out(
     p: PartitionArgs,
     packed_out,
     off_m,
@@ -406,9 +406,9 @@ def _store_packed_out(
     shape_m,
     slice_offset,
 ):
-    _store_strided_2d(
+    store_strided_2d(
         p.out_ptr.cast(gl.pointer_type(gl.int32), bitcast=True),
-        _pack_packed_fp8x4(packed_out),
+        pack_packed_fp8x4(packed_out),
         off_m,
         out_off_n // 4,
         shape_m,
@@ -419,31 +419,31 @@ def _store_packed_out(
 
 
 @gluon.jit
-def _split_first_dim_in_half(values):
+def split_first_dim_in_half(values):
     return gl.split(values.reshape((2, values.shape[0] // 2, values.shape[1])).permute((1, 2, 0)))
 
 
 @gluon.jit
-def _split_first_dim_in_half_packed(values):
-    lhs, rhs = _split_first_dim_in_half(values.value)
+def split_first_dim_in_half_packed(values):
+    lhs, rhs = split_first_dim_in_half(values.value)
     return float2.Float2Tensor(lhs), float2.Float2Tensor(rhs)
 
 
 @gluon.jit
-def _split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
+def split_first_dim_packed_subtiles(values, subtile_factor: gl.constexpr):
     subtiles = (values,)
     for split_level in gl.static_range(5):
         if (1 << split_level) < subtile_factor:
             next_subtiles = ()
             for subtile_idx in gl.static_range(1 << split_level):
-                lhs, rhs = _split_first_dim_in_half_packed(subtiles[subtile_idx])
+                lhs, rhs = split_first_dim_in_half_packed(subtiles[subtile_idx])
                 next_subtiles += (lhs, rhs)
             subtiles = next_subtiles
     return subtiles
 
 
 @gluon.jit
-def _prepare_swiglu_fragment_from_packed(acc_packed, limit):
+def prepare_swiglu_fragment_from_packed(acc_packed, limit):
     gelu, linear = float2.unpack2(acc_packed)
     gelu = gl.minimum(gelu.to(gl.float32), limit)
     linear = tl_core.clamp(linear.to(gl.float32), -limit, limit)
@@ -451,7 +451,7 @@ def _prepare_swiglu_fragment_from_packed(acc_packed, limit):
 
 
 @gluon.jit
-def _finish_swiglu_fragment_packed(gelu, linear, alpha):
+def finish_swiglu_fragment_packed(gelu, linear, alpha):
     den = 1.0 + libdevice.exp(-alpha * gelu)
     activated = gelu / den
     activated_packed = float2.pack(activated, axis=1)
@@ -460,13 +460,13 @@ def _finish_swiglu_fragment_packed(gelu, linear, alpha):
 
 
 @gluon.jit
-def _pack_fp8_out_fragment(out_packed, out_recip):
+def pack_fp8_out_fragment(out_packed, out_recip):
     scaled_out_packed = out_packed * float2.full_like(out_packed, out_recip)
-    return _pack_e4m3x2(scaled_out_packed)
+    return pack_e4m3x2(scaled_out_packed)
 
 
 @gluon.constexpr_function
-def _store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.constexpr):
+def store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.constexpr):
     return gl.BlockedLayout(
         [frag_rows // helper_num_warps, 2],
         [1, 32],
@@ -476,14 +476,14 @@ def _store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.
 
 
 @gluon.jit
-def _enqueue_packed_fp8_fragment(
+def enqueue_packed_fp8_fragment(
     p: PartitionArgs,
     out_packed,
     out_recip,
     store_idx,
     store_phase,
 ):
-    payload = _pack_fp8_out_fragment(out_packed, out_recip)
+    payload = pack_fp8_out_fragment(out_packed, out_recip)
     empty_bar = p.store_empty_bars.index(store_idx)
     ready_bar = p.store_ready_bars.index(store_idx)
     mbarrier.wait(empty_bar, store_phase)
@@ -493,7 +493,7 @@ def _enqueue_packed_fp8_fragment(
 
 
 @gluon.jit
-def _epilogue_enqueue_from_acc_packed(
+def epilogue_enqueue_from_acc_packed(
     p: PartitionArgs,
     acc_packed,
     out_recip,
@@ -501,25 +501,25 @@ def _epilogue_enqueue_from_acc_packed(
     store_phase,
 ):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    acc_packed_subtiles = _split_first_dim_packed_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
+    acc_packed_subtiles = split_first_dim_packed_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
 
-    prepared_gelu, prepared_linear = _prepare_swiglu_fragment_from_packed(
+    prepared_gelu, prepared_linear = prepare_swiglu_fragment_from_packed(
         acc_packed_subtiles[0],
         p.SWIGLU_LIMIT,
     )
     ready_out_packed = acc_packed_subtiles[0]
     for frag_idx in gl.static_range(1, p.EPILOGUE_ROW_SUBTILE_FACTOR):
-        cur_gelu, cur_linear = _prepare_swiglu_fragment_from_packed(
+        cur_gelu, cur_linear = prepare_swiglu_fragment_from_packed(
             acc_packed_subtiles[frag_idx],
             p.SWIGLU_LIMIT,
         )
-        next_ready_out_packed = _finish_swiglu_fragment_packed(
+        next_ready_out_packed = finish_swiglu_fragment_packed(
             prepared_gelu,
             prepared_linear,
             p.SWIGLU_ALPHA,
         )
         if frag_idx > 1:
-            store_idx, store_phase = _enqueue_packed_fp8_fragment(
+            store_idx, store_phase = enqueue_packed_fp8_fragment(
                 p,
                 ready_out_packed,
                 out_recip,
@@ -530,19 +530,19 @@ def _epilogue_enqueue_from_acc_packed(
         prepared_gelu = cur_gelu
         prepared_linear = cur_linear
 
-    store_idx, store_phase = _enqueue_packed_fp8_fragment(
+    store_idx, store_phase = enqueue_packed_fp8_fragment(
         p,
         ready_out_packed,
         out_recip,
         store_idx,
         store_phase,
     )
-    last_out_packed = _finish_swiglu_fragment_packed(
+    last_out_packed = finish_swiglu_fragment_packed(
         prepared_gelu,
         prepared_linear,
         p.SWIGLU_ALPHA,
     )
-    store_idx, store_phase = _enqueue_packed_fp8_fragment(
+    store_idx, store_phase = enqueue_packed_fp8_fragment(
         p,
         last_out_packed,
         out_recip,
@@ -553,7 +553,7 @@ def _epilogue_enqueue_from_acc_packed(
 
 
 @gluon.jit
-def _load_biased_acc_packed(
+def load_biased_acc_packed(
     p: PartitionArgs,
     idx,
     phase,
@@ -589,7 +589,7 @@ def _load_biased_acc_packed(
 def epilogue_store_partition(p: PartitionArgs):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
-    store_layout: gl.constexpr = _store_helper_fragment_layout(frag_rows, gl.num_warps())
+    store_layout: gl.constexpr = store_helper_fragment_layout(frag_rows, gl.num_warps())
     gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
 
     store_idx = 0
@@ -606,7 +606,7 @@ def epilogue_store_partition(p: PartitionArgs):
             mbarrier.wait(ready_bar, store_phase)
             packed_fp8 = p.store_bufs.index(store_idx).load(store_layout)
             mbarrier.arrive(empty_bar)
-            _store_packed_out(
+            store_packed_out(
                 p,
                 packed_fp8,
                 frag_off_m,
@@ -641,7 +641,7 @@ def epilogue_partition(p: PartitionArgs):
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
-        idx, phase, acc_packed = _load_biased_acc_packed(
+        idx, phase, acc_packed = load_biased_acc_packed(
             p,
             idx,
             phase,
@@ -652,7 +652,7 @@ def epilogue_partition(p: PartitionArgs):
             acc_scale,
         )
 
-        store_idx, store_phase = _epilogue_enqueue_from_acc_packed(
+        store_idx, store_phase = epilogue_enqueue_from_acc_packed(
             p,
             acc_packed,
             out_recip,
@@ -733,7 +733,7 @@ def ws_matmul_kernel(
         [x_num_bufs, BLOCK_M, x_desc.block_type.shape[1]],
         x_desc.layout,
     )
-    x_empty_bars, x_ready_bars = _alloc_empty_ready_barriers(x_num_bufs)
+    x_empty_bars, x_ready_bars = alloc_empty_ready_barriers(x_num_bufs)
 
     w_num_bufs: gl.constexpr = W_NUM_BUFS
     w_bufs = gl.allocate_shared_memory(
@@ -746,14 +746,14 @@ def ws_matmul_kernel(
         [w_num_bufs] + scale_desc.block_type.shape,
         scale_desc.layout,
     )
-    w_empty_bars, w_ready_bars = _alloc_empty_ready_barriers(w_num_bufs)
+    w_empty_bars, w_ready_bars = alloc_empty_ready_barriers(w_num_bufs)
 
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], scale_layout)
 
     acc_num_bufs: gl.constexpr = 1
     acc_tmem = blackwell.allocate_tensor_memory(gl.float32, [acc_num_bufs, BLOCK_N, BLOCK_M], acc_layout)
-    acc_empty_bars, acc_ready_bars = _alloc_empty_ready_barriers(acc_num_bufs)
+    acc_empty_bars, acc_ready_bars = alloc_empty_ready_barriers(acc_num_bufs)
 
     gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     gl.static_assert(EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
@@ -764,7 +764,7 @@ def ws_matmul_kernel(
         [EPILOGUE_STORE_HELPER_DEPTH, frag_rows, out_packed_n],
         gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
     )
-    store_empty_bars, store_ready_bars = _alloc_empty_ready_barriers(EPILOGUE_STORE_HELPER_DEPTH)
+    store_empty_bars, store_ready_bars = alloc_empty_ready_barriers(EPILOGUE_STORE_HELPER_DEPTH)
 
     x_scale_tmem.store(gl.full((BLOCK_M, scale_k), 127, dtype=gl.uint8, layout=x_scale_tmem.get_reg_layout()))
 
@@ -845,14 +845,14 @@ def ws_matmul_kernel(
         [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
     )
 
-    _invalidate_barrier_ring(x_empty_bars, x_num_bufs)
-    _invalidate_barrier_ring(x_ready_bars, x_num_bufs)
-    _invalidate_barrier_ring(w_empty_bars, w_num_bufs)
-    _invalidate_barrier_ring(w_ready_bars, w_num_bufs)
-    _invalidate_barrier_ring(acc_empty_bars, acc_num_bufs)
-    _invalidate_barrier_ring(acc_ready_bars, acc_num_bufs)
-    _invalidate_barrier_ring(store_empty_bars, EPILOGUE_STORE_HELPER_DEPTH)
-    _invalidate_barrier_ring(store_ready_bars, EPILOGUE_STORE_HELPER_DEPTH)
+    invalidate_barrier_ring(x_empty_bars, x_num_bufs)
+    invalidate_barrier_ring(x_ready_bars, x_num_bufs)
+    invalidate_barrier_ring(w_empty_bars, w_num_bufs)
+    invalidate_barrier_ring(w_ready_bars, w_num_bufs)
+    invalidate_barrier_ring(acc_empty_bars, acc_num_bufs)
+    invalidate_barrier_ring(acc_ready_bars, acc_num_bufs)
+    invalidate_barrier_ring(store_empty_bars, EPILOGUE_STORE_HELPER_DEPTH)
+    invalidate_barrier_ring(store_ready_bars, EPILOGUE_STORE_HELPER_DEPTH)
 
 
 def matmul(

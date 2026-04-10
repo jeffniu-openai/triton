@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-10T01:12:43Z
+updated: 2026-04-10T01:23:54Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -68,6 +68,8 @@ That sandbox kernel is now implemented canonically in `python/examples/gluon/05-
 The live tree now keeps only the promoted helper-wavefront kernel in `python/examples/gluon/05-moe-bmm1-fused-gather.py` and the single `python/perf/matmul_ws_optimized.py` shim that re-exports it. The separate async-TMA-store and direct-`gl.store` comparison kernels were useful experiments, but they did not beat the helper baseline on the target bucket, so they were removed from the canonical example and benchmark harness during cleanup. Their measurements and SASS/NCU learnings are still retained in the execution log below for future resurrection if the design direction changes.
 
 The current cleanup pass also reduced the live example's internal scaffolding without changing the promoted helper-wavefront schedule. The now-fixed scheduling surface (`XCD_SWIZZLE=1`, `N_MAJOR=False`) has been removed from the live path, barrier allocation/invalidation is funneled through tiny ring helpers, the epilogue's repeated accumulator+bias load sequence is factored into one helper, and the Python wrapper now targets the single surviving kernel directly instead of carrying a pseudo-generic `_matmul_impl(...)` surface. The target bucket stayed flat-to-slightly-better after that refactor (`ws_optimized=0.3481 ms`, `gluon_optimized=0.3483 ms`, exact validation).
+
+After a later cosmetic sync from the user, the live example now uses public-style helper names without leading underscores. The benchmark-facing shim continues to export `ws_matmul_kernel_optimized` for compatibility, but it now points at the cosmetically renamed `ws_matmul_kernel` symbol from the example. The target bucket stayed flat after the rename-only pass (`ws_optimized=0.3486 ms`, `gluon_optimized=0.3486 ms`, exact validation).
 
 The current WS helper-wavefront kernel still uses a single accumulator buffer in TMEM. A direct experiment changing only `acc_num_bufs` from `1` to `2` in `ws_optimized` is not legal at the current `BLOCK_N x BLOCK_M = 256 x 128` accumulator tile: launch metadata reports TMEM use rising to `524` against a hardware limit of `512`. So future accumulator double-buffering work needs a tile/TMEM rebudget or a different accumulator ownership scheme, not just a larger `acc_num_bufs`.
 
@@ -465,6 +467,11 @@ That SASS note now also captures three follow-on conclusions that matter for fut
   - Validation: `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py python/perf/matmul_ws_optimized.py python/perf/bench_matmul_parrot_gather.py`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 1000 --validation-reference exact` -> `ws=0.3548 ms`, `ws_optimized=0.3481 ms`, `gluon_optimized=0.3483 ms`
   - Learnings: There was still a fair amount of fixed-shape scaffolding left in the standalone example even after removing the comparison kernels. The useful cleanup boundary was to simplify the live path around facts that are no longer configurable: `apply_block_schedule(...)` no longer carries the dead `XCD_SWIZZLE` and `N_MAJOR` branches, the kernel uses tiny barrier-ring allocation/invalidation helpers instead of open-coded loops, and the epilogue's accumulator handoff plus bias/add/pack sequence now lives in a single helper instead of being repeated inline. On the Python side, the example no longer carries a generic `_matmul_impl(...)` indirection now that there is only one surviving kernel and one output-descriptor shape. This reduced the file further and still came back flat-to-slightly-better on the target exact benchmark.
   - Plan updates: Keep future cleanup aimed at the live helper-wavefront path itself. Low-value work at this point is more historical experiment plumbing; higher-value cleanup is removing fixed-shape scaffolding and collapsing duplicated live-path sequences without perturbing codegen.
+- `2026-04-10` Completed: Dropped leading underscores from the remaining helper names after the user's cosmetic sync
+  - Artifact: `python/examples/gluon/05-moe-bmm1-fused-gather.py`, `python/perf/matmul_ws_optimized.py`
+  - Validation: `python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py python/perf/matmul_ws_optimized.py python/perf/bench_matmul_parrot_gather.py`; `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=python/triton_kernels python -m python.perf.bench_matmul_parrot_gather --batch-size 16384 --case-family non-parrot --kernel ws,ws_optimized,gluon_optimized --limit 1 --warmup 30 --rep 1000 --validation-reference exact` -> `ws=0.3550 ms`, `ws_optimized=0.3486 ms`, `gluon_optimized=0.3486 ms`
+  - Learnings: This was intentionally a naming-only cleanup. The remaining helper defs in the standalone example now use public-style names (`packE4m3x2` style cleanup was not needed; only the leading underscore was removed), and the benchmark-facing shim was adjusted to follow the example's already-renamed kernel symbol so the perf harness still imports the canonical example cleanly. The target bucket stayed flat and exact validation still passed, so the rename did not perturb the live helper-wavefront schedule.
+  - Plan updates: Keep further cleanup scoped to readability or duplication reduction and continue validating against the same target bucket after each pass; do not let purely cosmetic renames accidentally break the perf shim again.
 
 ## Next Up
 

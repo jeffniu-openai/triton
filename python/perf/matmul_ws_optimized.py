@@ -24,7 +24,7 @@ _example = _load_ws_optimized_example()
 KernelConfig = _example.KernelConfig
 get_operand_layout = _example.get_operand_layout
 make_operand_descriptor = _example.make_operand_descriptor
-ws_matmul_kernel_optimized = _example.ws_matmul_kernel_optimized
+ws_matmul_kernel_optimized = _example.ws_matmul_kernel
 matmul = _example.matmul
 
 __all__ = [
