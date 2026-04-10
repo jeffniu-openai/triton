@@ -7079,3 +7079,41 @@ Open after this slice:
     examples directory is rerun
 - The live old-mainline GB200 recovery queue now starts with:
   1. `python/examples/gluon/03-matmul-multicta.py`
+
+## 2026-04-10 22:25 UTC
+
+- Reduced the live `python/examples/gluon/03-matmul-multicta.py` regression to
+  a TMEM column-slice direct-ld/st planning bug.
+- Exact repro still fails:
+  - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+  - `9600 / 20000` mismatches (`48.0%`)
+- Current branch still falls back to the standalone query-type path and emits
+  the bad packed split-N family:
+  - TTGIR:
+    - `register=[[0,1],[0,2],[0,4],[0,16]]`
+    - `lane=[[1,0],[2,0],[4,0],[8,0],[0,8]]`
+  - PTX:
+    - two `tcgen05.ld.sync.aligned.16x32bx2.x8.b32`
+- Merge-base reference remains:
+  - TTGIR:
+    - `register=[[0,1],[0,2],[0,4],[0,8]]`
+    - `lane=[[1,0],[2,0],[4,0],[8,0],[0,16]]`
+  - PTX:
+    - one `tcgen05.ld.sync.aligned.16x32bx2.x16.b32`
+- Most important new structural finding:
+  - support-query and raw-query direct planning both still fail for the
+    `64x128 -> 64x32` TMEM slice
+  - the surviving support image is already collapsed to a partial
+    `64x32` row/col layout (`row={1,2,4,8,16}`, `col={1,2,4,8,16}`)
+  - the source slice root still has a non-injective TMEM query image with a
+    zero row basis:
+    - `row16 -> 0`
+    - `row32 -> 16`
+    - `row64 -> 32`
+  - this is now the real abstraction mismatch to fix, not generic MMA
+    semantics and not reinterpret-contract churn
+- Operational note:
+  - the worktree is intentionally left dirty with ongoing TMEM query-planning
+    experiments and trace hooks
+  - the latest detailed state is recorded in
+    `handoff_2026-04-09.md`

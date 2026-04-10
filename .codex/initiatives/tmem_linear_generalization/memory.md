@@ -4073,3 +4073,37 @@ rejection, not rescue
   2. then remeasure the branch-added / branch-changed Gluon tails
   3. keep examples and reinterpret-contract rewrites behind those compiler and
      API-frontier fixes
+
+## 2026-04-10: `03-matmul-multicta.py` is now narrowed to a TMEM column-slice direct-ld/st planner bug
+
+- The live old-mainline example regression is not a generic MMA semantic issue
+  and not a reinterpret-contract test:
+  - the kernel uses real TMEM view APIs:
+    - `acc_buf.slice(SPLIT_TILE_N * s, SPLIT_TILE_N)`
+- Exact current-head repro remains:
+  - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+  - `9600 / 20000` mismatches (`48.0%`)
+- Merge-base behavior for the failing slice:
+  - one packed load:
+    - `tcgen05.ld.sync.aligned.16x32bx2.x16.b32`
+  - TTGIR register layout:
+    - `register=[[0,1],[0,2],[0,4],[0,8]]`
+    - `lane=[[1,0],[2,0],[4,0],[8,0],[0,16]]`
+- Current branch behavior:
+  - two split loads:
+    - `tcgen05.ld.sync.aligned.16x32bx2.x8.b32`
+  - TTGIR register layout:
+    - `register=[[0,1],[0,2],[0,4],[0,16]]`
+    - `lane=[[1,0],[2,0],[4,0],[8,0],[0,8]]`
+- Current core diagnosis:
+  - support-query and raw-query direct planning for the `64x128 -> 64x32`
+    TMEM column slice still fail
+  - both Gluon and LLVM therefore fall back to the standalone query-type path,
+    which picks the bad packed split-N `x8` family
+  - the source slice projection is still rooted in a non-injective TMEM query
+    layout with a zero row basis, and the surviving support layout collapses
+    away too much of that parent row-zero structure before direct planning
+- Important implication for the next fix:
+  - the right target is the TMEM column-slice query/support construction itself
+  - do not keep tuning atom-order or M64 split-N heuristics while the real
+    support/raw query image is still wrong

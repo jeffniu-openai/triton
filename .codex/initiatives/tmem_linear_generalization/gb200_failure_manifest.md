@@ -494,3 +494,26 @@ collecting the merge-base test files and comparing exact nodeids:
         `9600 / 20000` mismatches (`48.0%`)
     - merge-base full-file rerun:
       - `82 passed, 14 skipped`
+
+## 2026-04-10 multicta follow-up classification
+
+- `python/examples/gluon/03-matmul-multicta.py`
+  - classification:
+    - real new branch regression
+  - representative exact:
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+  - merge-base status:
+    - `PASSED`
+  - current-head status:
+    - `FAILED`
+    - `9600 / 20000` mismatches (`48.0%`)
+  - narrowed root cause:
+    - support-query and raw-query direct planning for the TMEM
+      `64x128 -> 64x32` column slice still fail
+    - frontend and lowering therefore fall back to the standalone query-type
+      path and emit the bad packed split-N `x8` family
+    - the surviving support image has already collapsed away the parent
+      row-zero / upper-half structure needed by the direct planner
+  - not yet fixed:
+    - no current commit closes this bucket yet
+    - current code work is still dirty and under active reduction

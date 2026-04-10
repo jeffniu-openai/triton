@@ -895,3 +895,24 @@ PY
   - the earlier async-compile / `test_cache.py` hang did not reproduce in the
     fresh green unit rerun, so it stays on the side as a failure-induced
     contamination investigation rather than a primary blocker
+
+## 2026-04-10 examples-lane refinement: `03-matmul-multicta.py` is a TMEM column-slice planner bug
+
+- `02-convolution.py` is no longer the live examples blocker.
+- The active old-mainline examples bucket is now:
+  1. `python/examples/gluon/03-matmul-multicta.py`
+- Updated interpretation of that bucket:
+  - not a reinterpret-contract test
+  - not generic MMA semantics
+  - not yet a performance-only issue
+  - it is a real TMEM `64x128 -> 64x32` column-slice direct-ld/st planner bug
+- Immediate recovery order from here:
+  1. fix the column-slice raw/support query construction so the direct planner
+     sees the full parent row-zero structure instead of the collapsed partial
+     `64x32` support image
+  2. rerun the exact multicta repro until support/raw direct planning succeeds
+     or TTGIR/PTX returns to merge-base-class `x16`
+  3. rerun the full `python/examples/gluon/03-matmul-multicta.py` file
+  4. refresh `gb200_current_branch_examples_multicta_failures.txt`
+  5. rerun the full `python/examples/gluon/` directory so the aggregate
+     examples manifest becomes current again
