@@ -231,10 +231,22 @@ is:
 - `test-gluon` shard `3 / 4`
   - red
   - `1160 failed, 3251 passed, 2036 skipped, 19344 deselected`
-  - first useful failures:
-    - real `M=64` split-N TMEM wrong-code
-  - later `misaligned address` waves in the same shard are likely contamination
-    until rerun clean
+  - file split:
+    - `793` in `python/test/gluon/test_lowerings.py`
+    - `293` in `python/test/gluon/test_core.py`
+    - `72` in `python/test/gluon/test_fpsan.py`
+    - `1` in `python/test/gluon/test_frontend.py`
+    - `1` in `python/test/gluon/test_layout_format_view.py`
+  - dominant exact-family counts:
+    - `603` `test_reduce_layouts[...]`
+    - `176` `test_scan_layouts[...]`
+    - `64` `test_mma_scaled_tcgen05_copy[...]`
+    - `40` `test_tmem_reduction[...]`
+    - `32` `test_tmem_reduction_linear_layouts[...]`
+    - `27` `test_padded_shared_layout_subslice[...]`
+  - interpretation:
+    - this shard is a broad Gluon lowering/backend regression surface, not
+      just residual TMEM-runtime contamination
 - `test-gluon` shard `4 / 4`
   - red
   - `686 failed, 4911 passed, 849 skipped, 19345 deselected`
@@ -250,13 +262,15 @@ is:
     result is much broader than the original half-row clean-error family
 - `make test-proton`
   - red after the `llnl-hatchet` install removed the old import blocker
-  - `10 failed, 114 passed, 1 skipped`
-  - all observed failures were in `third_party/proton/test/test_profile.py`
+  - `11 failed, 31 passed, 2 skipped` on the exact-file rerun
+  - all observed failures are in `third_party/proton/test/test_profile.py`
   - current interpretation:
-    - this is now a real Proton/cudagraph-profile bucket rather than an
-      environment issue
-    - failures are concentrated in expected tree-shape / frame-name /
-      periodic-flush assertions for cudagraph profiling behavior
+    - local environment is no longer the blocker, but this is also not a new
+      branch-caused bucket
+    - the same `11` nodeids fail on merge-base after fixing the local-only
+      baseline `libproton.so` symlink
+    - keep it in the GB200 census, but do not keep it in the TMEM branch
+      recovery backlog
 
 ## Cross-Bucket PTX / TTGIR Clue
 
@@ -297,6 +311,22 @@ commands and run in a more diagnosable shape:
   - plugin tests under `python/test/unit/plugins/`
 
 Current results:
+
+- direct CI-target mirror:
+  - `make NUM_PROCS=24 test-unit`
+  - result:
+    - `162 failed, 14991 passed, 5492 skipped`
+  - exact-family counts from the completed xdist log:
+    - `64` `test_warp_specialize_attention_forward[...]`
+    - `64` `test_warp_specialize_attention_persistent_forward[...]`
+    - `18` `test_simple_matmul[...]`
+    - `8` `test_dot[...]`
+    - `4` `test_simple_persistent_matmul[...]`
+    - `3` `test_tensor_descriptor_reshape_matmul[...]`
+    - `1` `test_lhs_in_tmem[...]`
+  - this confirms the earlier shard-based read, with one important refinement:
+    - the warp-specialization bucket is larger than first recorded because the
+      persistent-forward half is red too, not just the forward half
 
 - unit shard `1 / 4`
   - green
@@ -352,17 +382,23 @@ Current results:
       - failure mode:
         - `ttng.tmem_store` unsupported register layout / row anchors `32,64`
           followed by `PassManager::run failed`
+      - merge-base classification:
+        - the full file passes on merge-base
+        - `2604 passed, 110 skipped`
+        - therefore this is a real new-on-branch compile bucket
     - `python/test/unit/language/test_warp_specialization.py`
-      - dedicated full-file inventory is still running
-      - current exact partial list already contains `40` failing
-        `test_warp_specialize_attention_forward[...]` nodeids
+      - the completed direct `make test-unit` log refines the earlier shard
+        read
+      - current exact family split is:
+        - `64` `test_warp_specialize_attention_forward[...]`
+        - `64` `test_warp_specialize_attention_persistent_forward[...]`
       - representative standalone failure:
         - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
         - `49.7%` mismatches
       - current pattern:
-        - the failures cluster in forward attention cases with `N=64`
-          and again line up with the broader `M=64` / Blackwell TMEM
-          regression surface rather than looking like random shard noise
+        - the failures cluster in attention cases with `N=64`
+        and again line up with the broader `M=64` / Blackwell TMEM
+        regression surface rather than looking like random shard noise
 
 Tail-command status:
 
@@ -474,11 +510,9 @@ Interim interpretation of the unit lane:
   - failure pattern:
     - failures span the `GN=64` family across all observed `GM in {16,32,64}`
       and `GK in {16,64,128}` combinations
-  - merge-base spot checks:
-    - `test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
-      passes on merge-base
-    - `test_cast_matmul[768-768-1024-64-64-128-float16-float32-float32]`
-      passes on merge-base
+  - merge-base exact rerun:
+    - the whole file is green on merge-base
+    - `1080 passed, 216 skipped`
   - current classification:
     - `REAL_NEW_ON_BRANCH_REGRESSION`
 

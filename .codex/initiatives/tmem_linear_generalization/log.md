@@ -6029,3 +6029,57 @@ Open after this slice:
   - this is the most plausible common root cause across the split-N TMEM
     regressions, the new runtime-matrix failures, and the broader
     tf32/tf32x3 matmul/dot wrong-code buckets
+
+## 2026-04-10: finished the current-branch GB200 census and converted more of the backlog from samples into full branch-vs-main facts
+
+- The current-branch GB200/NVIDIA CI census is now complete:
+  - `make NUM_PROCS=24 test-unit`
+    - `162 failed, 14991 passed, 5492 skipped`
+    - exact-family split from the completed xdist log:
+      - `64` `test_warp_specialize_attention_forward[...]`
+      - `64` `test_warp_specialize_attention_persistent_forward[...]`
+      - `18` `test_simple_matmul[...]`
+      - `8` `test_dot[...]`
+      - `4` `test_simple_persistent_matmul[...]`
+      - `3` `test_tensor_descriptor_reshape_matmul[...]`
+      - `1` `test_lhs_in_tmem[...]`
+  - `test-gluon` shard `3 / 4`
+    - `1160 failed, 3251 passed, 2036 skipped, 19344 deselected`
+    - file split:
+      - `793` `python/test/gluon/test_lowerings.py`
+      - `293` `python/test/gluon/test_core.py`
+      - `72` `python/test/gluon/test_fpsan.py`
+      - `1` `python/test/gluon/test_frontend.py`
+      - `1` `python/test/gluon/test_layout_format_view.py`
+    - dominant families:
+      - `603` `test_reduce_layouts[...]`
+      - `176` `test_scan_layouts[...]`
+      - `64` `test_mma_scaled_tcgen05_copy[...]`
+      - `40` `test_tmem_reduction[...]`
+      - `32` `test_tmem_reduction_linear_layouts[...]`
+- Merge-base full-file comparisons got materially sharper:
+  - `python/test/unit/language/test_tensor_descriptor.py`
+    - merge-base is fully green (`2604 passed, 110 skipped`)
+    - therefore all three current-branch
+      `test_tensor_descriptor_reshape_matmul[...]` failures are new-on-branch
+  - `python/test/regression/test_cast_matmul.py`
+    - merge-base is fully green (`1080 passed, 216 skipped`)
+    - therefore the current-branch `234`-failure regression bucket is entirely
+      new-on-branch
+- I also split the completed `test-gluon` shard-3 failures into
+  merge-base-existing vs branch-added/renamed names without running any extra
+  GPU work:
+  - `python/test/gluon/test_core.py`
+    - `203` failures are on functions that already exist on merge-base
+    - `90` failures are branch-added or renamed coverage
+  - `python/test/gluon/test_fpsan.py`
+    - `60` failures are on functions that already exist on merge-base
+    - `12` failures are branch-added or renamed coverage
+  - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+    - missing on merge-base, so branch-added
+- This changes the recovery shape:
+  - the branch-caused backlog is no longer just TMEM runtime-matrix and a few
+    unit tests
+  - it now includes broad new-on-branch matmul / warp-specialization /
+    lowering / reduction surfaces that still need exact merge-base reduction
+    before fix ordering is frozen

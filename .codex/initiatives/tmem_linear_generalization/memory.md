@@ -197,18 +197,31 @@
       portability and multicta matmul wrong-code.
 - Use `gb200_nvidia_ci_inventory.md` for the exact continuously updated red
   list and lane-by-lane census status.
-- The GB200 census has now widened through most of `make test-unit` as well:
-  - shard `1 / 4` green;
-  - shard `2 / 4` isolates tf32/tf32x3 `test_dot[...]` wrong-code;
-  - shard `3 / 4` isolates `test_matmul.py` wrong-code plus persistent-matmul
-    compile/pipeline failures;
-  - shard `4 / 4` isolates `test_tensor_descriptor_reshape_matmul[...]` and a
-    large warp-specialization attention wrong-code bucket;
+- The current-branch GB200 census is now complete through the whole CI target
+  stack we care about:
+  - `make test-unit` finishes at
+    `162 failed, 14991 passed, 5492 skipped`;
+  - the completed `test-unit` failing-family split is:
+    - `64` `test_warp_specialize_attention_forward[...]`
+    - `64` `test_warp_specialize_attention_persistent_forward[...]`
+    - `18` `test_simple_matmul[...]`
+    - `8` `test_dot[...]`
+    - `4` `test_simple_persistent_matmul[...]`
+    - `3` `test_tensor_descriptor_reshape_matmul[...]`
+    - `1` `test_lhs_in_tmem[...]`;
+  - `test-gluon` shard `3 / 4` finishes at
+    `1160 failed, 3251 passed, 2036 skipped, 19344 deselected`, dominated by:
+    - `603` `test_reduce_layouts[...]`
+    - `176` `test_scan_layouts[...]`
+    - `64` `test_mma_scaled_tcgen05_copy[...]`
+    - `40` `test_tmem_reduction[...]`
+    - `32` `test_tmem_reduction_linear_layouts[...]`;
+  - `test-gluon` shard `4 / 4` remains the large branch-added TMEM
+    runtime-matrix bucket;
   - `test_debug.py` is red even in serial because the harness itself forks and
     then touches CUDA;
-  - fused-attention, instrumentation, and plugin tail commands are green; and
-  - `python/triton_kernels/tests/` is still the remaining current-branch long
-    pole while the docs are being refreshed.
+  - fused-attention, instrumentation, plugin tests, and
+    `python/triton_kernels/tests/` are green.
 - Representative isolated reruns now confirm that the new unit buckets are
   standalone failures on this branch, not only broad-shard noise:
   - one `test_dot[...]` nodeid;
@@ -234,6 +247,16 @@
   - older-tree build drift requires local-only baseline shims (skip example
     plugins, skip legacy GSan runtime) before the baseline can be used for
     branch-vs-main classification.
+- Full-file merge-base results already sharpen the backlog further:
+  - `python/test/unit/language/test_tensor_descriptor.py` is fully green on
+    merge-base (`2604 passed, 110 skipped`), so the three current-branch
+    `test_tensor_descriptor_reshape_matmul[...]` failures are all new;
+  - `python/test/regression/test_cast_matmul.py` is fully green on merge-base
+    (`1080 passed, 216 skipped`), so the current-branch `234`-failure bucket
+    is entirely new-on-branch; and
+  - `third_party/proton/test/test_profile.py` still fails with the same `11`
+    nodeids on merge-base, so Proton is a census item but not a TMEM branch
+    recovery item.
 - The stale
   `test_tmem_runtime_matrix_block_descriptor_reports_clean_error[...]`
   expectation has already been updated to the current row-anchor diagnostic and
