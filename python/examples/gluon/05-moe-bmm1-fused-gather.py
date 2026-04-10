@@ -1093,9 +1093,6 @@ def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[Ra
 
     local_expts = expt_dist[local_rank]
     local_expts_hist = expt_hist[local_expts]
-    if local_expts_hist.sum() == 0:
-        local_expts_hist[torch.randint(0, len(local_expts_hist), size=())] = 1
-
     ragged_metadata = make_ragged_tensor_metadata(local_expts_hist, batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN)
     ragged_metadata.expected_slice_size = batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN // GPT_OSS_120B_NUM_EXPERTS
     combine_indx = sparse_logits.mask_metadata.col_sorted_indx
