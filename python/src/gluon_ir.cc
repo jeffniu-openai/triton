@@ -1806,9 +1806,6 @@ void init_gluon_ir(py::module &&m) {
             }
             return std::nullopt;
           }
-          maybeQueryLayout->layout =
-              ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-                  maybeQueryLayout->layout);
           return *maybeQueryLayout;
         };
         auto firstLegalLayoutForRawQuery =

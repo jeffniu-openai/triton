@@ -2770,7 +2770,7 @@ static bool isExactCanonicalContiguous32x32TMemViewType(MemDescType memTy) {
 
 static std::optional<std::string>
 getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
-    MemDescType memTy, std::optional<TMemLdStRowPlan> rowPlan) {
+    Value memDesc, MemDescType memTy, std::optional<TMemLdStRowPlan> rowPlan) {
   if (!memTy || !rowPlan)
     return std::nullopt;
 
@@ -2787,9 +2787,11 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
   };
 
   auto maybeMemLayout = [&]() -> std::optional<LinearLayout> {
-    if (isa<TensorMemoryEncodingAttr>(memTy.getEncoding()) &&
-        memTy.getShape() == memTy.getAllocShape()) {
-      return squeezeTrivialBlock(toLinearLayout(memTy));
+    std::string queryError;
+    if (auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+            memDesc, /*preserveNonCanonicalView=*/true, &queryError);
+        succeeded(maybeQuery)) {
+      return squeezeTrivialBlock(maybeQuery->layout);
     }
 
     std::string analysisError;
@@ -2867,7 +2869,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   if (!rowPlan)
     rowPlan = backingPlan;
   if (auto anchorReason =
-          getUnsupportedTMemLdStDescriptorViewRowAnchorReason(queryTy,
+          getUnsupportedTMemLdStDescriptorViewRowAnchorReason(memDesc, queryTy,
                                                               rowPlan)) {
     return unsupported(*anchorReason);
   }

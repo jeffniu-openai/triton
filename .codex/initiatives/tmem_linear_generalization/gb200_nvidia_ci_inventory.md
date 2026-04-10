@@ -18,6 +18,30 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Non-Surjective `[128,4]` Recovery Checkpoint (2026-04-10 18:45 UTC)
+
+- The shared `[128,4]` direct-view tail is now gone:
+  - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
+    - now `0` nodeids
+  - exact reruns now green:
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
+    - `test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+    - nearby parser control
+      `test_tensor_memory_linear_layout_warpx2_like_rows_parse[...]`
+      stays green
+- Root cause / fix summary:
+  - the raw-query helper already had a preserve-non-canonical-leaf path for
+    raw `tensor_memory_linear` descriptors
+  - the direct-view row-anchor diagnostic and Gluon raw-query wrapper were not
+    actually using that same preserved layout
+  - the fix makes both consume the same raw-query model, so the preserved
+    zero-row basis survives through the unsupported-view gate and the Gluon
+    raw-query path
+- Practical consequence:
+  - the live TMEM/compiler backlog is now reduced to the `12`-nodeid
+    descriptor-chain manifest, plus the separate examples lane.
+
 ## Latest Split-N Recovery Checkpoint (2026-04-10 18:20 UTC)
 
 - The dominant TMEM runtime bucket is now gone:

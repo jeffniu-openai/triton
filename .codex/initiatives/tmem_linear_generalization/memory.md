@@ -167,89 +167,70 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-10 18:20 UTC)
+## Current Topline (2026-04-10 18:45 UTC)
 
-- Current durable checkpoint:
-  - HEAD `181e369bd`
-  - worktree dirty in:
-    - `include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h`
-    - `lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp`
-    - `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp`
-- GB200 lane state confirmed again after rebuild:
+- Latest validated recovery slice:
+  - the shared non-surjective `[128, 4]` direct-view/raw-query gap is now
+    fixed in the active worktree
+  - the following exacts are green again:
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
+    - `test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+    - nearby parse-only control
+      `test_tensor_memory_linear_layout_warpx2_like_rows_parse[...]`
+- Current GB200 lane read:
   - `make test-lit`
     - green
     - `248 passed, 2 unsupported`
   - `make NUM_PROCS=24 test-unit`
     - green
-- The focused GB200 Gluon story has narrowed again:
-  - the earlier merge-base-present focused `test_core.py` exact bucket is no
-    longer live:
-    - `146 / 146` exacts now pass on the current branch
-  - the branch-added / branch-changed focused `test_core.py` tail reduces to:
-    - `12` clean descriptor-chain runtime failures
-      (`gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`)
-    - `0` split-N PTX-immediate expectation failures
-      (`gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
-      is now empty)
-    - the earlier `21` `variant_sweep` exacts all pass in isolation and are
-      now classified as shard fallout
-- The focused runtime-matrix / frontend story is now reduced too:
-  - `0`
-    `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]` exacts
-    remain red
-    (`gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
-    is now empty after a `208 passed` isolated rerun)
-  - the remaining non-splitn runtime-matrix tail is down to just the two
-    warpx2 candidate positives
-    (`gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`)
-  - the isolated frontend exact still fails with the same `tmem.get_reg_layout()`
-    unsupported-auto-layout symptom
-  - the earlier `test_fpsan.py` tail has rerun green and drops out of the live
-    red list
-- The remaining examples lane is still live on current head:
-  - `48 / 48` `02-convolution.py::test_op[...]` exacts still fail with the
-    same shared-memory `OutOfResources` symptom
-  - `14 / 14` `03-matmul-multicta.py::test_matmul_matches_torch[...]` exacts
-    still fail with wrong-code
-  - unlike the branch-added TMEM tests above, these example functions already
-    exist on merge-base, so treat them as regressions on old upstream coverage
-- Current active compiler bucket:
-  - non-surjective descriptor-view `get_reg_layout()` support for the warpx2
-    candidate positives and the isolated frontend exact
-    - all three now reduce to the same direct-view representability gap on
-      non-surjective `[128, 4]` views with required row anchors `32,64`
-    - this is now the next active fix slice
-  - descriptor-chain/reinterpret/view-composition lowering for the exact
-    `12`-nodeid focused-core manifest above
-    - this now appears to split into at least:
-      - packed `linear_m64_*` launch-fault cases
-      - mixed-layout scalar-family access-mapping cases where the PTX currently
-        matches a passing identity control too closely
-  - example recovery after the TMEM/core buckets are understood:
-    - shared-memory inflation in `02-convolution.py`
-    - wrong-code in `03-matmul-multicta.py`
-- Current non-correctness/stale buckets to keep separate:
-  - the two `block_m_64` reinterpret-contract rewrite candidates
+  - the split-N runtime bucket is green again:
+    - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+      is empty
+  - the shared warpx2/frontend representability tail is green again:
+    - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
+      is empty
+- Current live branch-caused TMEM/compiler backlog:
+  - `12` descriptor-chain exacts in
+    `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+  - that manifest still appears to split into two structural subfamilies:
+    - packed `linear_m64_*` launch-fault cases
+    - mixed-layout scalar-family access-mapping cases
+- Current separate regression lane after the TMEM/compiler bucket:
+  - `python/examples/gluon/02-convolution.py`
+    - `48` exact `OutOfResources` failures
+  - `python/examples/gluon/03-matmul-multicta.py`
+    - `14` exact wrong-code failures
+  - these example functions already exist on merge-base, so keep them tracked
+    separately from the branch-added TMEM coverage
+- Current non-recovery/stability buckets to keep separate:
+  - the two reinterpret-contract rewrite candidates:
+    - `test_tmem_subslice_block_m_64[legacy]`
+    - `test_tmem_subslice_block_m_64_parent_layout[linear]`
   - Proton failures, which remain preexisting on merge-base
-  - cache/xdist contamination investigation
-    - there is still no reproduced proof of a simple on-disk cache-key
-      collision; the current evidence is stronger for process/device
-      contamination after a bad kernel than for persistent cache-key aliasing
+  - cache/process contamination investigation, which still needs a proper
+    root-cause pass instead of environment workarounds
+- Immediate next move:
+  - checkpoint the `[128, 4]` recovery slice
+  - then capture fresh descriptor-chain traces and continue the remaining GB200
+    CI inventory / merge-base classification work
 
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is
   the GB200 lane from `.github/workflows/integration-tests-nvidia.yml`, as
   recorded in `gb200_nvidia_ci_inventory.md`.
 - This GB300 devbox is treated as representative for that Blackwell lane.
-- Superseding current-head note:
-  - as of `78196b4e4`, `make NUM_PROCS=24 test-unit` is fully green again;
-  - the older `134` / `182` / `2098` unit failure counts below are historical
-    checkpoints, not the live unit status.
+- Live lane status belongs in:
+  - `gb200_nvidia_ci_inventory.md`
+  - `gb200_failure_manifest.md`
+- The detailed checkpoint bullets below are retained as history and may mention
+  already-cleared intermediate counts; use the timestamped sections above and
+  the dedicated GB200 inventory docs for the current live state.
 - In the current phase, reinterpret-heavy TMEM tests are not automatically
   treated as compiler bugs; if they depend on implicit physical TMEM mapping,
   rewrite them to explicit descriptor/view composition first and only treat
   residual failures as compiler issues.
-- Latest current-head checkpoint:
+- Older historical checkpoint preserved below:
   - the explicit MMAv5 row-plan propagation patch is now the correct local
     baseline;
   - after `make -j8`, a fresh `make NUM_PROCS=24 test-unit` run is down to
@@ -262,7 +243,7 @@
     `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt` as the
     current exact manifest for this bucket rather than the older `182`/`2098`
     manifests.
-- Latest structural read:
+- Historical structural read:
   - the remaining unit failures now look like a root-preserving
     descriptor-view row-anchor bug rather than the older source-root MMAv5
     producer bug;
@@ -904,14 +885,25 @@
 - The current execution order is driven by the long-term plan near the top of
   this file, not by the older broad-fuzz milestones below.
 - Immediate implementation order:
-  - build the shared TMEM ld/st planner and remove duplicated frontend /
-    verifier / LLVM planning drift;
-  - make legacy TMEM `block_m_64` collapse onto the same physical-family plan
-    as the working TMEM-linear case;
-  - derive the parent-layout reinterpret packet decomposition from quotient
-    structure instead of packet/offset surgery;
-  - rewrite reinterpret-heavy TMEM intent tests to guaranteed descriptor/view
-    APIs once the lowering is stable;
+  - keep the GB200 inventory current first:
+    - finish the remaining lane/exact classification work against merge-base
+    - record flaky/cache/process-contamination evidence separately from real
+      branch-caused failures
+  - clear the live descriptor-chain bucket next:
+    - capture fresh TTGIR/PTX/query traces for one `linear_m64_*` exact and
+      one `linear_mixed_*` exact
+    - fix the underlying planner/lowering issue rather than adding more
+      family-specific surgery
+  - then move to the separate old-mainline regression lane:
+    - `02-convolution.py`
+    - `03-matmul-multicta.py`
+  - once the branch-caused GB200 reds are down to stable buckets, continue the
+    larger cleanup:
+    - shared TMEM ld/st planner extraction
+    - legacy/TMEM-linear planning unification
+    - quotient-driven reinterpret packet decomposition
+    - reinterpret-contract test rewrites where the old `_reinterpret`
+      dependence was never part of the API guarantee
   - then re-broaden validation through TMEM runtime, MMA/matmul,
     `triton_kernels`, and the wider suite.
 - The detailed post-cleanup saturation playbook lives in `fuzz_plan.md`.

@@ -6826,3 +6826,39 @@ Open after this slice:
     1. the shared non-surjective `[128, 4]` descriptor-view representability gap
     2. the `12` descriptor-chain exacts
     3. the examples lane
+
+## 2026-04-10: non-surjective `[128,4]` raw-query/direct-view preservation clears the warpx2/front-end tail
+- I fixed the remaining shared non-surjective `[128, 4]` direct-view gap by
+  making the verifier-side row-anchor diagnostic and the Gluon raw-query helper
+  consume the same preserved raw-query layout model.
+- Root cause:
+  - `inferStandaloneTMemLdStQueryLayoutImpl(..., preserveNonCanonicalView=true)`
+    already preserved the non-canonical TMEM leaf layout needed for these
+    direct views
+  - but the unsupported-view row-anchor diagnostic rebuilt a normalized
+    analysis layout and the Gluon raw-query helper immediately normalized away
+    the preserved zero-row basis
+  - the verifier and frontend were therefore rejecting a layout the raw-query
+    path was meant to keep alive
+- Fix:
+  - `getUnsupportedTMemLdStDescriptorViewRowAnchorReason(...)` now derives its
+    candidate layout from the preserved raw-query helper instead of rebuilding a
+    separate analysis layout
+  - `gluon_ir.cc::inferRawQueryLayout(...)` no longer re-normalizes the raw
+    query layout returned by that helper
+- Validation:
+  - `make -j8`
+  - exact reruns:
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
+    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
+    - `test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+    - `test_tensor_memory_linear_layout_warpx2_like_rows_parse[...]`
+  - result:
+    - `5 passed in 3.52s`
+  - post-fix manifest refresh:
+    - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+      remains `12 failed`
+- Practical consequence:
+  - the old warpx2/front-end representability tail is no longer a live bucket
+  - the live TMEM/compiler recovery backlog is now the `12`-nodeid
+    descriptor-chain manifest, followed by the separate examples lane

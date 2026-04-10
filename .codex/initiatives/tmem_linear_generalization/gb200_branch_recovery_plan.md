@@ -130,6 +130,17 @@ PY
   2. descriptor-chain cleanup, still split by `linear_m64_*` vs
      `linear_mixed_*`
   3. examples lane after the TMEM/compiler buckets are under control
+- Post-fix update:
+  - step `1` is now complete too
+  - the two warpx2 candidate-positive runtime-matrix exacts are green
+  - the isolated frontend `get_reg_layout()` exact is green
+  - the live TMEM/compiler backlog is therefore reduced to:
+    - the `12` descriptor-chain exacts
+    - then the separate examples lane
+- New immediate execution order:
+  1. descriptor-chain cleanup, still split by `linear_m64_*` vs
+     `linear_mixed_*`
+  2. examples lane after the TMEM/compiler bucket is under control
 
 ### Latest Dirty MMAv5 Row-Plan Propagation Checkpoint
 

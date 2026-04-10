@@ -120,15 +120,14 @@ PY
     - the old dominant split-N runtime bucket is now fully green
     - keep the old count only in the log/history, not in the live red set
 - [gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt)
-  - `2` nodeids
+  - `0` nodeids
   - source:
-    - isolated rerun of the remaining non-splitn runtime-matrix exacts after
-      the larger families were reduced green
+    - refreshed after the non-surjective `[128, 4]` raw-query/direct-view
+      preservation fix
   - current interpretation:
-    - both exacts fail at `tmem.get_reg_layout()` with
-      `TMEM layout 'auto' unsupported for descriptor view tensor_memory_descriptor<fp32, ['128', '4'], ...>`
-    - this looks adjacent to the remaining isolated frontend exact, not to the
-      larger split-N runtime misalignment bucket
+    - this manifest is now empty
+    - the paired frontend parse exact is green again too
+    - do not treat the older two-nodeid content as a live bucket anymore
 - [gb200_current_branch_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_regression_failures.txt)
   - `234` nodeids
   - source:
@@ -188,16 +187,15 @@ PY
   - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
     - now empty after the canonical `M=64` split-N lowering symmetry fix
   - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
-    - shared with the isolated frontend exact:
-      - non-surjective `[128, 4]` descriptor-view row-anchor representability
-        gap in `get_reg_layout()`
+    - now empty after the non-surjective `[128, 4]` raw-query/direct-view fix
   - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
     - at least two subfamilies:
       - packed `linear_m64_*` launch-fault cases
       - mixed-layout scalar-family access-mapping cases
 - Use the manifests as machine-readable rerun inputs, but use
   `gb200_nvidia_ci_inventory.md` and `gb200_branch_recovery_plan.md` for the
-  current trace-backed recovery ordering.
+  current trace-backed recovery ordering. The live TMEM/compiler recovery
+  bucket is now the `12`-nodeid descriptor-chain manifest above.
 
 ## Shard-3 Merge-Base Reduction Lists
 
