@@ -26,7 +26,7 @@ from triton_kernels.matmul import (
 )
 from triton_kernels.numerics import InFlexData, MAX_FINITE_FLOAT8E4NV, OutFlexData
 from triton_kernels.numerics_details.mxfp import MXFP_BLOCK_SIZE, downcast_to_mxfp
-from triton_kernels.swiglu import swiglu_fn
+from triton_kernels.swiglu import PrecisionConfig as SwiGLUPrecisionConfig, swiglu_fn, swiglu_torch
 from triton_kernels.tensor import (
     FP4,
     RaggedTensorMetadata,
@@ -1162,13 +1162,6 @@ def make_output_buffer(prepared: PreparedCase) -> torch.Tensor:
     return torch.zeros(prepared.out_shape, dtype=prepared.out_dtype, device=prepared.x.device)
 
 
-def swiglu(values: torch.Tensor, alpha: float, limit: float) -> torch.Tensor:
-    gelu = values[..., ::2].to(torch.float32).clamp(max=limit)
-    linear = values[..., 1::2].to(torch.float32).clamp(min=-limit, max=limit)
-    activated = gelu * torch.sigmoid(alpha * gelu)
-    return activated * (linear + 1.0)
-
-
 def quantize_like_flexpoint(values: torch.Tensor, expected_scale: torch.Tensor | None) -> torch.Tensor:
     if expected_scale is not None:
         values = values / expected_scale
@@ -1213,7 +1206,11 @@ def run_exact_reference(prepared: PreparedCase) -> tuple[torch.Tensor, Precision
         precision_config=linear_precision,
     )
     alpha, limit = prepared.fused_activation.fn_args
-    exact_out = swiglu(linear, float(alpha), float(limit))
+    exact_out = swiglu_torch(
+        linear.to(torch.float32),
+        float(alpha),
+        SwiGLUPrecisionConfig(limit=float(limit)),
+    )
     precision_config = make_precision_config(prepared)
     quantized = quantize_like_flexpoint(exact_out, precision_config.flex_ctx.out_data.expected_scale)
     return quantized, precision_config
