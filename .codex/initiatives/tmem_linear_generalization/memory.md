@@ -84,6 +84,13 @@
   - `test_mma_shared_inputs`
   - row/col-permuted TMEM runtime slices
   - descriptor-chain matrix cases.
+- 2026-04-10 GB200 stabilization note:
+  - the current branch-recovery front has moved in front of these
+    reinterpret-contract buckets
+  - keep the two `block_m_64` reinterpret cases visible as explicit-view /
+    missing-surface cleanup work, but do not let them displace the current
+    merge-base-present MMAv5 and examples regressions in the GB200 recovery
+    queue
 
 ### Phase 3: Rewrite Test Contracts Around Guaranteed APIs
 - Audit TMEM tests that currently rely on `_reinterpret` plus implicit
@@ -150,73 +157,92 @@
 - Keep the GB200/NVIDIA CI red list current in `gb200_nvidia_ci_inventory.md`
   and use that file as the current validation baseline for this Blackwell
   devbox phase.
-- Clear stale-expectation failures first so the remaining red list reflects
-  only real behavior changes.
-- Rewrite the reinterpret-heavy `block_m_64` tests to guaranteed descriptor
-  APIs before treating them as proven compiler bugs.
-- After the reinterpret-contract rewrite settles what still fails, finish the
-  shared-planner cleanup and remove the legacy-vs-linear `block_m_64`
-  divergence.
-- Then fix any remaining parent-layout reinterpret packet decomposition from
-  quotient structure.
+- First close the merge-base-present MMAv5
+  `python/test/gluon/test_core.py::test_mma_shared_inputs[...]` regression
+  bucket, using fresh isolated exact reruns and current-vs-merge-base TTGIR /
+  PTX / planner comparisons rather than raw shard totals.
+- Then close the two merge-base-present example regressions:
+  - `python/examples/gluon/02-convolution.py`
+  - `python/examples/gluon/03-matmul-multicta.py`
+- Keep the branch-added PTX-expectation and stale-negative TMEM tails separate
+  from the old-mainline recovery queue until the MMAv5/compiler bucket is
+  stable again.
+- Keep the reinterpret-heavy `block_m_64` tests visible as explicit
+  descriptor-view rewrite / missing-surface work rather than using them as the
+  first proof target for the current branch recovery.
+- Run the cache/process-contamination investigation in parallel with the MMAv5
+  work, but do not let it replace the core compiler diagnosis unless the fresh
+  process boundary proves the failure is purely harness-side.
 - Re-broaden through TMEM runtime, MMA/matmul, `triton_kernels`, and then the
-  broader suite.
+  broader suite once the current GB200 branch-recovery bucket is back under
+  control.
 - Continue the larger initiative mission after the local bug buckets are green:
   - `ld.red` expansion
   - `copy` `warpx2` completion
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-10 18:45 UTC)
+## Current Topline (2026-04-10 18:48 UTC)
 
-- Latest validated recovery slice:
-  - the shared non-surjective `[128, 4]` direct-view/raw-query gap is now
-    fixed in the active worktree
-  - the following exacts are green again:
-    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`
-    - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`
-    - `test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
-    - nearby parse-only control
-      `test_tensor_memory_linear_layout_warpx2_like_rows_parse[...]`
+- The full GB200 branch census is now refreshed, which supersedes the older
+  intermediate reading that only descriptor-chain plus examples remained.
 - Current GB200 lane read:
-  - `make test-lit`
-    - green
-    - `248 passed, 2 unsupported`
-  - `make NUM_PROCS=24 test-unit`
-    - green
-  - the split-N runtime bucket is green again:
-    - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
-      is empty
-  - the shared warpx2/frontend representability tail is green again:
-    - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
-      is empty
-- Current live branch-caused TMEM/compiler backlog:
-  - the previously live descriptor-chain bucket is now green again
-  - full `test_tmem_descriptor_chain_matrix` rerun:
-    - `26 passed in 15.94s`
-  - the old `12`-nodeid descriptor-chain manifest is now empty
-- Current separate regression lane after the TMEM/compiler bucket:
-  - `python/examples/gluon/02-convolution.py`
-    - `48` exact `OutOfResources` failures
-    - merge-base rerun is green:
-      - `48 passed in 7.30s`
-  - `python/examples/gluon/03-matmul-multicta.py`
-    - `14` exact wrong-code failures
-    - merge-base rerun is green:
-      - `82 passed, 14 skipped in 37.96s`
-  - these example functions already exist on merge-base, so keep them tracked
-    separately from the branch-added TMEM coverage
-- Current non-recovery/stability buckets to keep separate:
+  - green:
+    - `make test-lit`
+      - `248 passed, 2 unsupported`
+    - `make test-cpp`
+      - `240 / 240 passed`
+    - `make NUM_PROCS=24 test-unit`
+      - `15153 passed, 5492 skipped, 101 warnings`
+      - includes `python/triton_kernels/tests`
+        - `2377 passed, 3444 skipped`
+    - `make test-regression`
+      - `1090 passed, 216 skipped`
+    - `make NUM_PROCS=24 test-gsan`
+      - `20 / 20 passed`
+    - `make test-microbenchmark`
+  - red:
+    - `make test-proton`
+      - `11 failed, 114 passed`
+      - same `11` failures on merge-base, so keep this bucket preexisting
+    - current-head `python/test/gluon/ + python/tutorials/gluon/` four-way
+      sweep
+    - `python/examples/gluon/`
+- Current live branch-recovery backlog:
+  1. merge-base-present MMAv5 wrong-code bucket
+     - `python/test/gluon/test_core.py::test_mma_shared_inputs[...]`
+     - latest semantic manifest:
+       - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
+       - `4685` exact nodeids from the latest sweep
+     - representative exact reruns pass on merge-base and fail on the current
+       branch
+  2. merge-base-present convolution example regression
+     - `python/examples/gluon/02-convolution.py`
+     - `48` exact `OutOfResources` failures
+  3. merge-base-present multicta example regression
+     - `python/examples/gluon/03-matmul-multicta.py`
+     - `14` exact wrong-code failures
+- Current branch-added / contract-evolution tails to keep separate:
+  - `1` opinionated PTX-expectation exact:
+    - `gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt`
+  - `3` stale-negative / support-broadened exacts:
+    - `gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt`
   - the two reinterpret-contract rewrite candidates:
     - `test_tmem_subslice_block_m_64[legacy]`
     - `test_tmem_subslice_block_m_64_parent_layout[linear]`
-  - Proton failures, which remain preexisting on merge-base
-  - cache/process contamination investigation, which still needs a proper
-    root-cause pass instead of environment workarounds
+- Contamination interpretation:
+  - the large MMAv5 shard bucket is not a trivial on-disk cache collision,
+    because the fresh four-way sweep used isolated per-GPU cache dirs and still
+    reproduced it
+  - but raw shard totals still overcount independent failures, because at least
+    one shard-failing exact passes in a fresh isolated current-head process
+  - treat that as a separate cache/global-state/device-contamination
+    investigation while the underlying MMAv5 compiler bug is being reduced
 - Immediate next move:
-  - move to the two merge-base-green example regressions:
-    - `python/examples/gluon/02-convolution.py`
-    - `python/examples/gluon/03-matmul-multicta.py`
+  - document the refreshed GB200 census and exact manifests
+  - then start representative current-vs-merge-base MMAv5 comparisons to
+    reduce `test_mma_shared_inputs[...]` into structural subfamilies before
+    touching the examples lane
 
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is

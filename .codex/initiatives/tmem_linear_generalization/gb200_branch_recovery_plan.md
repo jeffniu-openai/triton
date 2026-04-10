@@ -46,6 +46,102 @@ PY
 
 ## Current Classification Summary
 
+### Latest Full GB200 Census Refresh
+
+- The whole GB200 census has now been rerun on the current branch, so the
+  recovery queue no longer stops at the earlier descriptor-chain checkpoint.
+- Current lane state:
+  - green:
+    - `make test-lit`
+    - `make test-cpp`
+    - `make NUM_PROCS=24 test-unit`
+    - `make test-regression`
+    - `make NUM_PROCS=24 test-gsan`
+    - `make test-microbenchmark`
+  - red:
+    - `make test-proton`
+      - same `11` exact failures on merge-base
+    - current-head `python/test/gluon/ + python/tutorials/gluon/` four-way
+      sweep
+    - `python/examples/gluon/`
+- Current branch-recovery backlog after merge-base classification:
+  1. `REAL_NEW_ON_BRANCH_REGRESSION`
+     - `python/test/gluon/test_core.py::test_mma_shared_inputs[...]`
+     - semantic manifest:
+       - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
+       - `4685` latest exact nodeids
+     - merge-base-present and independently proven branch-caused with exact
+       reruns:
+       - `False-ctas_per_cga0-1-1-1-64-0-0-warps0-16-False-True-acc_dtype3`
+       - `False-ctas_per_cga2-1-1-1-64-64-128-warps0-16-False-True-acc_dtype3`
+       - `False-ctas_per_cga2-2-4-1-64-32-32-warps2-16-True-True-acc_dtype7`
+       - `True-ctas_per_cga1-2-4-1-64-128-128-warps0-16-False-True-acc_dtype3`
+     - representative current-head symptom:
+       - wrong-code / `torch.testing.assert_close(...)` mismatches
+  2. `REAL_NEW_ON_BRANCH_REGRESSION`
+     - `python/examples/gluon/02-convolution.py`
+       - `48` exacts
+       - current symptom:
+         - `OutOfResources: shared memory, Required: 262208, Hardware limit: 232448`
+       - merge-base rerun:
+         - `48 passed in 7.30s`
+  3. `REAL_NEW_ON_BRANCH_REGRESSION`
+     - `python/examples/gluon/03-matmul-multicta.py`
+       - `14` exacts
+       - current symptom:
+         - wrong-code / `AssertionError: Tensor-likes are not close!`
+       - merge-base rerun:
+         - `82 passed, 14 skipped in 37.96s`
+- Current branch-added tails that stay visible but outside the core recovery
+  queue until the old-mainline regressions are under control:
+  - `BRANCH_CHANGED_COVERAGE_RED`
+    - `gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt`
+    - `1` exact
+    - absent on merge-base
+    - currently only an opinionated PTX-offset expectation mismatch
+  - `STALE_NEGATIVE_OR_SUPPORT_BROADENED`
+    - `gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt`
+    - `3` exacts
+    - absent on merge-base
+    - current failure is `Failed: DID NOT RAISE CompilationError`
+- Contamination / cache-sensitive interpretation:
+  - the large MMAv5 shard bucket is not explained by a trivial
+    `TRITON_CACHE_DIR` collision, because the refreshed four-way sweep used
+    isolated per-GPU caches and still reproduced it
+  - but raw shard counts overstate independent root causes:
+    - at least one shard-failing exact
+      `False-ctas_per_cga2-1-1-1-64-0-32-warps2-16-False-True-acc_dtype3`
+      passes in a fresh isolated current-head process
+  - current working hypothesis:
+    - a real MMAv5 correctness bug exists on the current branch, and later
+      shard failures are partly inflated by process/device contamination after
+      earlier bad kernels or by missing cache-key / global-state inputs
+- Immediate execution order from this refreshed state:
+  1. isolate one representative current-fail / merge-base-pass
+     `test_mma_shared_inputs[...]` exact from each visible subfamily
+  2. compare TTGIR / PTX / planner-side query traces on current branch vs
+     merge-base for those representatives
+  3. reduce the broad MMAv5 bucket to the smallest structural root causes
+     before touching the examples lane
+  4. fix the examples only after the MMAv5/compiler bucket is under control
+  5. revisit the branch-added PTX-expectation and stale-negative TMEM tails
+     afterward
+- Dedicated contamination-root-cause plan to keep separate from the compiler
+  fix loop:
+  1. build a two-nodeid same-process reproducer where the first exact poisons a
+     later one that otherwise passes in isolation
+  2. check whether the failure survives:
+     - a fresh Python process
+     - a fresh `TRITON_CACHE_DIR`
+     - a different GPU
+     - `CUDA_LAUNCH_BLOCKING=1`
+  3. if the failure only appears after a prior bad kernel, trace device/runtime
+     state reuse before blaming cache files
+  4. if the failure survives a fresh process with the same compiled artifact,
+     inspect compiler cache-key inputs and runtime-global state next
+  5. only add an environmental workaround if the actual missing invalidation or
+     state-reuse bug is understood and recorded
+
 ### Latest Validated State After Descriptor-Chain Recovery
 
 - The branch-only TMEM/compiler bucket is now clear:

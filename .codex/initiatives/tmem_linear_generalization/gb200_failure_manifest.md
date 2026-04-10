@@ -30,6 +30,51 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Full GB200 Census Refresh (2026-04-10 18:48 UTC)
+
+- [gb200_current_branch_group1_latest_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group1_latest_failures.txt)
+  - `4105` nodeids
+  - source:
+    - latest isolated-cache current-head Gluon/tutorial sweep:
+      - `pytest --splits 4 --group 1 python/test/gluon/ python/tutorials/gluon/`
+- [gb200_current_branch_group2_latest_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group2_latest_failures.txt)
+  - `265` nodeids
+  - source:
+    - latest isolated-cache current-head Gluon/tutorial sweep:
+      - `pytest --splits 4 --group 2 python/test/gluon/ python/tutorials/gluon/`
+- [gb200_current_branch_group3_latest_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group3_latest_failures.txt)
+  - `316` nodeids
+  - source:
+    - latest isolated-cache current-head Gluon/tutorial sweep:
+      - `pytest --splits 4 --group 3 python/test/gluon/ python/tutorials/gluon/`
+- [gb200_current_branch_group4_latest_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group4_latest_failures.txt)
+  - `3` nodeids
+  - source:
+    - latest isolated-cache current-head Gluon/tutorial sweep:
+      - `pytest --splits 4 --group 4 python/test/gluon/ python/tutorials/gluon/`
+- [gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt)
+  - `4685` nodeids
+  - source:
+    - semantic extraction from the latest current-head group `1`, `2`, and `3`
+      logs
+  - current interpretation:
+    - primary live current-head Gluon regression bucket
+    - merge-base-present and independently proven branch-caused by exact
+      reruns, but raw count still includes process/device fallout after bad
+      kernels
+- [gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt)
+  - `1` nodeid
+  - current interpretation:
+    - branch-added PTX-expectation tail
+    - absent on merge-base
+    - current failure is only an opinionated PTX immediate-offset mismatch
+- [gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt)
+  - `3` nodeids
+  - current interpretation:
+    - branch-added stale-negative / support-broadened tail
+    - absent on merge-base
+    - current failure is `Failed: DID NOT RAISE CompilationError`
+
 ### Refreshed Current-Head Unit Reduction
 
 - [gb200_current_branch_test_unit_matmul_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_unit_matmul_refresh_failures.txt)
@@ -92,10 +137,16 @@ PY
   - `1160` nodeids
   - source:
     - `python3 -m pytest -q -rf --tb=no --splits 4 --group 3 -k 'not test_tmem_subslice_block_m_64 and not test_tmem_subslice_block_m_64_parent_layout' python/test/gluon/ python/tutorials/gluon/`
+  - current interpretation:
+    - historical only
+    - superseded by `gb200_current_branch_group3_latest_failures.txt`
 - [gb200_current_branch_test_gluon_group4_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_group4_failures.txt)
   - `686` nodeids
   - source:
     - `python3 -m pytest -q -rf --tb=no --splits 4 --group 4 -k 'not test_tmem_subslice_block_m_64 and not test_tmem_subslice_block_m_64_parent_layout' python/test/gluon/ python/tutorials/gluon/`
+  - current interpretation:
+    - historical only
+    - superseded by `gb200_current_branch_group4_latest_failures.txt`
 - [gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt)
   - `0` nodeids
   - source:
@@ -134,9 +185,12 @@ PY
     - the paired frontend parse exact is green again too
     - do not treat the older two-nodeid content as a live bucket anymore
 - [gb200_current_branch_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_regression_failures.txt)
-  - `234` nodeids
+  - `0` nodeids
   - source:
-    - `python3 -m pytest -q -rf --tb=no python/test/regression/test_cast_matmul.py`
+    - fresh full `make test-regression` rerun at `1f0b0d01c`
+  - current interpretation:
+    - this manifest is now empty
+    - the old `234`-nodeid `test_cast_matmul.py` list is historical only
 - [gb200_current_branch_examples_gluon_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_gluon_failures.txt)
   - `62` nodeids
   - source:
@@ -166,6 +220,10 @@ PY
   - `11` nodeids
   - source:
     - `python3 -m pytest -q -rf --tb=no third_party/proton/test/test_profile.py`
+  - current interpretation:
+    - preexisting on merge-base
+    - fresh current-head and merge-base `make test-proton` reruns both report
+      the same `11` exact failures
 
 ## Classified Recovery Split Lists
 
@@ -180,10 +238,10 @@ PY
     - the current branch has no remaining GB200 `test-unit` exacts in the
       branch-recovery backlog
 - [gb200_branch_recovery_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_recovery_test_regression_failures.txt)
-  - `234` nodeids
+  - `0` nodeids
   - meaning:
-    - the exact `test_cast_matmul.py` failures; all exist and pass on
-      merge-base, so the whole manifest is branch-caused recovery work
+    - the current branch has no remaining GB200 `test-regression` exacts in
+      the branch-recovery backlog
 - [gb200_branch_changed_examples_gluon_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_changed_examples_gluon_failures.txt)
   - `62` nodeids
   - meaning:
@@ -205,8 +263,10 @@ PY
     - now empty after the memdesc-aware `M=64` plain-`32x32b` fix
 - Use the manifests as machine-readable rerun inputs, but use
   `gb200_nvidia_ci_inventory.md` and `gb200_branch_recovery_plan.md` for the
-  current trace-backed recovery ordering. The live GB200 recovery queue is now
-  the two example manifests below.
+  current trace-backed recovery ordering. The live GB200 recovery queue is now:
+  - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
+  - `gb200_current_branch_examples_convolution_failures.txt`
+  - `gb200_current_branch_examples_multicta_failures.txt`
 
 ## Shard-3 Merge-Base Reduction Lists
 

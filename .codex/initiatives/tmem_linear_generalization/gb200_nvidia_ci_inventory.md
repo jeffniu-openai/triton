@@ -18,6 +18,110 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Full GB200 Census Refresh (2026-04-10 18:48 UTC)
+
+- Current branch / baseline:
+  - `HEAD`:
+    - `1f0b0d01c`
+  - this refresh supersedes the older intermediate story that the live GB200
+    backlog was only descriptor-chain plus examples
+- Full GB200 lane state on the current branch:
+  - `make test-lit`
+    - green
+    - `248 passed, 2 unsupported`
+  - `make test-cpp`
+    - green
+    - `240 / 240 passed`
+  - `make NUM_PROCS=24 test-unit`
+    - green
+    - `15153 passed, 5492 skipped, 101 warnings`
+    - important sublane:
+      - `python/triton_kernels/tests`
+        - `2377 passed, 3444 skipped`
+  - `make test-regression`
+    - green
+    - `1090 passed, 216 skipped`
+  - `make NUM_PROCS=24 test-gsan`
+    - green
+    - `20 / 20 passed`
+  - `make test-microbenchmark`
+    - green
+  - `make test-proton`
+    - red
+    - `11 failed, 114 passed`
+    - merge-base rerun in `/root/code/triton-mergebase-ci` shows the same
+      `11` exact failures, so keep this bucket classified as preexisting
+- Full `python/test/gluon/ + python/tutorials/gluon/` current-head refresh
+  with isolated per-GPU caches:
+  - group `1 / 4`
+    - `4105 failed, 1329 passed, 1014 skipped, 19343 deselected`
+  - group `2 / 4`
+    - `265 failed, 2399 passed, 3784 skipped, 19343 deselected`
+  - group `3 / 4`
+    - `316 failed, 4091 passed, 2041 skipped, 19343 deselected`
+  - group `4 / 4`
+    - `3 failed, 5578 passed, 866 skipped, 19344 deselected`
+- Refreshed current-head Gluon/tutorial classification:
+  - real current-head merge-base-present regression bucket:
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[...]`
+    - semantic manifest:
+      - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
+      - `4685` exact nodeids from the latest four-way sweep
+    - merge-base proof:
+      - representative exact reruns pass on merge-base and fail on the current
+        branch:
+        - `False-ctas_per_cga0-1-1-1-64-0-0-warps0-16-False-True-acc_dtype3`
+        - `False-ctas_per_cga2-1-1-1-64-64-128-warps0-16-False-True-acc_dtype3`
+        - `False-ctas_per_cga2-2-4-1-64-32-32-warps2-16-True-True-acc_dtype7`
+        - `True-ctas_per_cga1-2-4-1-64-128-128-warps0-16-False-True-acc_dtype3`
+    - representative current-head symptom:
+      - wrong-code / `torch.testing.assert_close(...)` mismatch, not a clean
+        compile-time rejection
+  - branch-added opinionated PTX-expectation tail:
+    - `gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt`
+    - `1` exact
+    - absent on merge-base
+    - current symptom:
+      - PTX immediate-offset expectation `64` vs actual `1048576`
+  - branch-added stale-negative / support-broadened tail:
+    - `gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt`
+    - `3` exacts
+    - absent on merge-base
+    - current symptom:
+      - `Failed: DID NOT RAISE CompilationError`
+- Examples lane remains independently red on the current branch:
+  - `python/examples/gluon/02-convolution.py`
+    - `48 failed in 8.38s`
+    - stable symptom:
+      - `OutOfResources: shared memory, Required: 262208, Hardware limit: 232448`
+    - merge-base rerun:
+      - `48 passed in 7.30s`
+  - `python/examples/gluon/03-matmul-multicta.py`
+    - `14 failed, 68 passed, 14 skipped in 65.24s`
+    - stable symptom:
+      - wrong-code / `AssertionError: Tensor-likes are not close!`
+    - merge-base rerun:
+      - `82 passed, 14 skipped in 37.96s`
+- Cache / contamination note:
+  - the fresh four-way Gluon refresh used isolated per-GPU `TRITON_CACHE_DIR`
+    values and still reproduced the large `test_mma_shared_inputs[...]`
+    bucket, so this is not explained by a trivial on-disk cache collision
+  - however, raw shard counts still overstate independently failing exacts:
+    - one shard-failing exact
+      `False-ctas_per_cga2-1-1-1-64-0-32-warps2-16-False-True-acc_dtype3`
+      passes in a fresh isolated current-head process
+  - treat that as process/device contamination after bad kernels, or some
+    other missing cache-key / global-state reuse bug, until a dedicated
+    harness pass proves otherwise
+- Practical consequence:
+  - the live GB200 branch-recovery queue is now:
+    1. the merge-base-present MMAv5 `test_mma_shared_inputs[...]` bucket
+    2. the two merge-base-present example regressions
+    3. the branch-added PTX-expectation and stale-negative tails
+  - keep the separate reinterpret-contract rewrite candidates and the
+    preexisting Proton failures out of the branch-recovery queue while this
+    MMAv5 work is active
+
 ## Latest Descriptor-Chain Recovery Checkpoint (2026-04-10 20:35 UTC)
 
 - The branch-only TMEM/compiler bucket is now green again:

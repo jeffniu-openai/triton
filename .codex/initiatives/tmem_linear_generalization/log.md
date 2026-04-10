@@ -6927,3 +6927,73 @@ Open after this slice:
   - the branch-only TMEM/compiler GB200 backlog is now clear
   - the remaining live GB200 recovery work is the two old-mainline example
     regressions
+
+## 2026-04-10: refreshed full GB200 census re-opens the branch backlog around MMAv5 plus the old-mainline examples lane
+- I finished the whole current-head GB200 census instead of stopping at the
+  earlier descriptor-chain checkpoint:
+  - `make test-lit`
+    - `248 passed, 2 unsupported`
+  - `make test-cpp`
+    - `240 / 240 passed`
+  - `make NUM_PROCS=24 test-unit`
+    - green, including `python/triton_kernels/tests`
+      - `2377 passed, 3444 skipped`
+  - `make test-regression`
+    - `1090 passed, 216 skipped`
+  - `make NUM_PROCS=24 test-gsan`
+    - `20 / 20 passed`
+  - `make test-microbenchmark`
+    - green
+  - `make test-proton`
+    - `11 failed, 114 passed`
+    - merge-base rerun shows the same `11` failures, so Proton stays
+      classified as preexisting
+- A fresh four-way current-head `python/test/gluon/ + python/tutorials/gluon/`
+  sweep with isolated per-GPU caches gave:
+  - group `1 / 4`
+    - `4105 failed, 1329 passed, 1014 skipped, 19343 deselected`
+  - group `2 / 4`
+    - `265 failed, 2399 passed, 3784 skipped, 19343 deselected`
+  - group `3 / 4`
+    - `316 failed, 4091 passed, 2041 skipped, 19343 deselected`
+  - group `4 / 4`
+    - `3 failed, 5578 passed, 866 skipped, 19344 deselected`
+- I reduced those fresh shard results into current machine-readable manifests:
+  - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
+    - `4685` exact nodeids
+  - `gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt`
+    - `1` exact
+  - `gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt`
+    - `3` exacts
+- Merge-base/current-head classification from this refreshed state:
+  - real branch-caused merge-base-present MMAv5 bucket:
+    - representative exacts pass on merge-base and fail on current head:
+      - `False-ctas_per_cga0-1-1-1-64-0-0-warps0-16-False-True-acc_dtype3`
+      - `False-ctas_per_cga2-1-1-1-64-64-128-warps0-16-False-True-acc_dtype3`
+      - `False-ctas_per_cga2-2-4-1-64-32-32-warps2-16-True-True-acc_dtype7`
+      - `True-ctas_per_cga1-2-4-1-64-128-128-warps0-16-False-True-acc_dtype3`
+  - branch-added PTX-expectation tail:
+    - `test_tmem_linear_roundtrip_splitn_shapes[splitn_64x128-layout6-64-128-expected_offset_imms6]`
+    - absent on merge-base
+    - currently only an expectation mismatch (`64` vs `1048576`)
+  - branch-added stale-negative tail:
+    - three
+      `test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout[...]`
+      exacts
+    - absent on merge-base
+    - current failure is `Failed: DID NOT RAISE CompilationError`
+- Important contamination learning:
+  - the MMAv5 bucket is not explained by a trivial on-disk cache collision,
+    because the fresh four-way sweep used isolated per-GPU `TRITON_CACHE_DIR`
+    values and still reproduced it
+  - but the raw `4685` exact count still overstates independently failing root
+    causes, because at least one shard-failing exact
+    `False-ctas_per_cga2-1-1-1-64-0-32-warps2-16-False-True-acc_dtype3`
+    passes in a fresh isolated current-head process
+- Practical consequence:
+  - the live GB200 branch-recovery queue is now:
+    1. `test_mma_shared_inputs[...]`
+    2. `python/examples/gluon/02-convolution.py`
+    3. `python/examples/gluon/03-matmul-multicta.py`
+  - keep the branch-added PTX-expectation / stale-negative TMEM tails and the
+    preexisting Proton bucket separate while the MMAv5 regression is reduced
