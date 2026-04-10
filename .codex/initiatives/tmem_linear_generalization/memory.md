@@ -197,11 +197,65 @@
     is collapsing a backing `128`-row MMAv5 contract to the active `64`-row
     descriptor view too early for `memdesc_index` / higher-rank views; and
   - the next compiler fix should therefore target that planner logic directly.
-- Census still in flight:
-  - refreshed merge-base reruns of `test_matmul.py` and
-    `test_warp_specialization.py`
-  - refreshed current-head `python/triton_kernels/tests`
-  - keep those pending items explicit in the handoff until they complete.
+- The GB200 inventory is now closed for this pass:
+  - `make test-lit`
+    - `247 passed, 1 failed, 2 unsupported`
+    - lone exact failure:
+      - `test/TritonGPU/pipeline-lower-loop.mlir`
+    - merge-base `make test-lit` is green (`248 passed, 2 unsupported`), so
+      this lit red is branch-local old-mainline coverage
+  - current branch green lanes:
+    - `make test-cpp`
+    - `make test-gsan`
+    - `make test-regression`
+    - `make test-microbenchmark`
+    - `python/triton_kernels/tests`
+      - `2377 passed, 3444 skipped`
+    - isolated `python/test/gluon/test_lowerings.py`
+      - `4937 passed, 512 skipped`
+  - current branch non-green lanes:
+    - `make NUM_PROCS=24 test-unit`
+      - `134 failed, 15019 passed, 5492 skipped`
+      - exact current-head bucket remains:
+        - `3` `python/test/unit/language/test_matmul.py` nodeids
+        - `3` `python/test/unit/language/test_tensor_descriptor.py` nodeids
+        - `128` `python/test/unit/language/test_warp_specialization.py`
+          nodeids
+    - `make NUM_PROCS=24 test-gluon`
+      - independent current-head red buckets are now reduced to:
+        - focused `python/test/gluon/test_core.py`
+          - `332` exact nodeids
+          - `146` merge-base-present
+          - `186` branch-added / branch-changed
+        - focused `python/test/gluon/test_tmem_runtime_matrix.py`
+          - `413` exact nodeids
+          - all branch-added coverage
+        - isolated `python/test/gluon/test_fpsan.py`
+          - `1` exact branch-changed nodeid
+        - isolated `python/test/gluon/test_frontend.py`
+          - `1` exact branch-added nodeid
+        - `python/examples/gluon/02-convolution.py`
+          - `48` exact nodeids
+          - representative failure:
+            `OutOfResources` (`262208` shared-memory bytes requested vs
+            `232448` hardware limit)
+          - merge-base full-file rerun is green (`48 passed`)
+        - `python/examples/gluon/03-matmul-multicta.py`
+          - `14` exact nodeids
+          - representative failure:
+            `9600 / 20000` mismatches (`48.0%`)
+          - merge-base full-file rerun is green
+            (`82 passed, 14 skipped`)
+      - isolated green confirmations:
+        - `python/test/gluon/test_layout_format_view.py`
+        - `python/test/gluon/test_lowerings.py`
+      - implication:
+        - the raw shard-3 lowerings/layout tails were fallout, not independent
+          live buckets
+    - `make test-proton`
+      - `11` exact failures in `third_party/proton/test/test_profile.py`
+      - same exact bucket is red on merge-base, so keep treating it as
+        `PREEXISTING_ON_MERGE_BASE`
 - A later exact-rerun checkpoint has now repaired the representative direct
   split-N TMEM bucket from the original census:
   - `test_tmem_descriptor_chain_matrix[...]` is green again;
@@ -221,43 +275,45 @@
   - the remaining representative unit failures are still red and now look like
     a narrower MMAv5 producer-side bucket (`test_dot[...]`,
     `test_simple_matmul[...]`, and warp-specialization forward).
-- The generated GB200 failure manifests still reflect the pre-fix census and
-  should be regenerated after the next broader rerun before their counts are
-  used as the current red total.
-- The executed GB200 census has now widened the red story beyond the original
-  two `block_m_64` rewrite candidates:
-  - the two reinterpret-contract rewrite candidates are still tracked; but
-  - there is now also a real `M=64` split-N TMEM regression at the current
-    branch tip, confirmed by clean isolated reruns of descriptor-chain and
-    roundtrip exact nodeids; and
-  - the completed `test-gluon` shard `4 / 4` now shows a much larger
-    branch-added runtime-matrix bucket:
-    - `686 failed, 4911 passed, 849 skipped, 19345 deselected`;
-    - every failure is in `python/test/gluon/test_tmem_runtime_matrix.py`;
-    - the dominant families are split-N row/col-permuted, `ld.red`,
-      `ldst_scales`, and `cp` / scaled-MMA coverage; and
-  - there are also broader GB200 non-TMEM buckets outside the old reinterpret
-    debate:
-    - `python/test/regression/test_cast_matmul.py`;
-    - Proton cudagraph-profile failures after the environment blocker was
-      removed; and
-    - Gluon example failures split between Blackwell shared-memory-limit
-      portability and multicta matmul wrong-code.
+- The generated GB200 failure manifests are now split enough to drive fixes
+  directly:
+  - use `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt` for
+    the current exact unit bucket;
+  - use `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    plus its merge-base-present/missing splits for the current independent
+    shard-3 core bucket;
+  - use
+    `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+    for the dominant branch-added runtime-matrix bucket; and
+  - use the split example manifests for the two example files rather than the
+    older aggregate `62`-nodeid file.
 - Use `gb200_nvidia_ci_inventory.md` for the exact continuously updated red
   list and lane-by-lane census status.
 - Use `gb200_failure_manifest.md` and the adjacent generated `.txt` files when
   you need exact nodeid lists for the current-branch failures or the
   merge-base-existing shard-3 subsets.
-- The broad GB200 unit story has advanced past the older `162`-failure reduced
-  manifest:
-  - the direct CI-like run still finished red at
-    `2058 failed, 13095 passed, 5492 skipped`;
-  - a near-complete `--junitxml` rerun captured `2098` unique current-branch
-    unit failures across `12` files in
-    `gb200_current_branch_test_unit_xml_failures_2026-04-10.txt`; and
-  - the exact merge-base rerun of those same `2098` nodeids is fully
-    green/skip:
-    - `2083 passed, 15 skipped`.
+- The cache/census caveat also tightened:
+  - a simple on-disk `TRITON_CACHE_DIR` collision is not yet proven;
+  - the stronger current clue is process/worker/device contamination after bad
+    kernels or insufficient xdist isolation; and
+  - keep the dedicated harness investigation on the backlog, but do not let it
+    blur the now-isolated independent red buckets above.
+- Updated fix order from the completed GB200 inventory:
+  1. direct-view row-anchor representability:
+     - `test/TritonGPU/pipeline-lower-loop.mlir`
+     - `python/test/unit/language/test_matmul.py`
+     - `python/test/unit/language/test_tensor_descriptor.py`
+  2. higher-rank MMAv5-root warp-specialization bucket:
+     - `python/test/unit/language/test_warp_specialization.py`
+  3. merge-base-present focused `python/test/gluon/test_core.py` bucket
+  4. branch-added / branch-changed Gluon buckets:
+     - runtime-matrix
+     - focused core tail
+     - fpsan
+     - frontend
+  5. example portability / wrong-code cleanup
+  6. return to the reinterpret-contract rewrite candidates once the missing
+     explicit view/backend support is implemented
 - That means the broad unit XML surface is branch-local, but not all of it is
   a primary fresh root-cause bucket:
   - representative fresh exact nodeids from the XML-only tail files all pass

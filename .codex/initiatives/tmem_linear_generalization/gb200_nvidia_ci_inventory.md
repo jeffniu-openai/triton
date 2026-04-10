@@ -1017,3 +1017,82 @@ These stay in the nearest validation loop while the red list is being reduced.
   - isolated current-head `python/test/gluon/test_lowerings.py`
     - queued behind the now-finished shard `1 / 4`; waiting for the queue
       shell to hand off
+
+## 2026-04-10 Inventory Closure
+
+- The last pending isolated completions are now done:
+  - current-head `python/triton_kernels/tests`
+    - `2377 passed, 3444 skipped`
+  - isolated current-head `python/test/gluon/test_lowerings.py`
+    - `4937 passed, 512 skipped`
+- Final GB200 lane status for this pass:
+  - `make test-lit`
+    - red
+    - current branch:
+      - `247 passed, 1 failed, 2 unsupported`
+    - lone exact:
+      - `test/TritonGPU/pipeline-lower-loop.mlir`
+    - merge-base:
+      - `248 passed, 2 unsupported`
+  - `make test-cpp`
+    - green
+    - `240 / 240 passed`
+  - `make NUM_PROCS=24 test-unit`
+    - red
+    - `134 failed, 15019 passed, 5492 skipped`
+    - exact current-head red surface:
+      - `3` `test_matmul.py`
+      - `3` `test_tensor_descriptor.py`
+      - `128` `test_warp_specialization.py`
+  - `make NUM_PROCS=24 test-gluon`
+    - red
+    - independent current-head buckets now reduced to:
+      - focused `python/test/gluon/test_core.py`
+        - `332` exact nodeids
+        - `146` merge-base-present
+        - `186` branch-added / branch-changed
+      - focused `python/test/gluon/test_tmem_runtime_matrix.py`
+        - `413` exact branch-added nodeids
+      - isolated `python/test/gluon/test_fpsan.py`
+        - `1` exact branch-changed nodeid
+      - isolated `python/test/gluon/test_frontend.py`
+        - `1` exact branch-added nodeid
+      - `python/examples/gluon/02-convolution.py`
+        - `48` exact branch-changed nodeids
+        - representative failure:
+          `OutOfResources` (`262208` shared-memory bytes requested vs
+          `232448` hardware limit)
+        - merge-base full-file rerun is green (`48 passed`)
+      - `python/examples/gluon/03-matmul-multicta.py`
+        - `14` exact branch-changed nodeids
+        - representative failure:
+          `9600 / 20000` mismatches (`48.0%`)
+        - merge-base full-file rerun is green (`82 passed, 14 skipped`)
+    - isolated current-head green proofs:
+      - `python/test/gluon/test_layout_format_view.py`
+      - `python/test/gluon/test_lowerings.py`
+    - implication:
+      - the raw shard-3 lowerings/layout failures were fallout
+  - `make NUM_PROCS=24 test-gsan`
+    - green
+    - `20 / 20 passed`
+  - `make test-regression`
+    - green
+    - `1090 passed, 216 skipped`
+  - `make test-microbenchmark`
+    - green
+  - `make test-proton`
+    - red but preexisting
+    - `11 failed, 114 passed, 1 skipped`
+    - same exact nodeids are red on merge-base
+- The exact independent red list now drives the fix order directly:
+  1. `test/TritonGPU/pipeline-lower-loop.mlir`
+  2. the `134`-nodeid `test-unit` bucket
+  3. the merge-base-present focused `test_core.py` bucket
+  4. the branch-added / branch-changed Gluon tails
+  5. the examples lane
+- Harness caveat after the closure:
+  - the census no longer needs the older raw shard totals to choose fix order
+  - keep the cache/xdist investigation separate:
+    - current evidence still favors worker/process/device contamination over a
+      proven on-disk cache-key collision

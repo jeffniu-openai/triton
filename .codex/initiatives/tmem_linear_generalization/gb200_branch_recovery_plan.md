@@ -396,3 +396,74 @@ PY
   5. remaining branch-added / branch-changed shard-3 exacts
   6. only then return to the still-pending isolated `test_lowerings.py`
      result if it uncovers another independent bucket
+
+## 2026-04-10 Inventory Closure And Updated Fix Order
+
+- The last pending GB200 census jobs are now closed:
+  - current-head `python/triton_kernels/tests`
+    - `2377 passed, 3444 skipped`
+  - isolated current-head `python/test/gluon/test_lowerings.py`
+    - `4937 passed, 512 skipped`
+  - consequence:
+    - `triton_kernels` is not a current blocker
+    - the raw shard-3 `test_lowerings.py` failures were fallout only
+- The completed GB200 lane now splits cleanly into:
+  - real current branch red buckets:
+    - `test/TritonGPU/pipeline-lower-loop.mlir`
+    - `134` exact current-head unit nodeids
+    - focused `python/test/gluon/test_core.py`
+      - `332` exact independent nodeids
+      - `146` merge-base-present
+      - `186` branch-added / branch-changed
+    - focused `python/test/gluon/test_tmem_runtime_matrix.py`
+      - `413` exact branch-added nodeids
+    - isolated branch-changed tails:
+      - `python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e4m3-e2m1]`
+      - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+    - branch-changed examples:
+      - `48` exact `python/examples/gluon/02-convolution.py` nodeids
+      - `14` exact `python/examples/gluon/03-matmul-multicta.py` nodeids
+  - preexisting or excluded buckets:
+    - Proton `11` exact nodeids
+    - the two reinterpret-contract rewrite candidates
+    - stale-negative / broadened-support expectations
+- Updated recovery order:
+  1. direct-view row-anchor representability
+     - exact entry points:
+       - `test/TritonGPU/pipeline-lower-loop.mlir`
+       - `python/test/unit/language/test_matmul.py`
+       - `python/test/unit/language/test_tensor_descriptor.py`
+     - why first:
+       - smallest old-mainline compile bucket
+       - likely same root cause across lit + unit
+       - most direct path to shrinking `make test-lit` and part of
+         `make test-unit`
+     - exact lit repro:
+       - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v /root/code/triton-tmem-isolated/test/TritonGPU/pipeline-lower-loop.mlir`
+  2. higher-rank MMAv5-root warp-specialization bucket
+     - `python/test/unit/language/test_warp_specialization.py`
+     - still the dominant remaining old-mainline runtime unit surface
+  3. merge-base-present focused `python/test/gluon/test_core.py` bucket
+     - start with `test_mma_scaled_tcgen05_copy[...]`,
+       `test_tmem_reduction[...]`, `test_padded_shared_layout_subslice[...]`,
+       and `test_gather/scatter_padded[...]`
+  4. branch-added / branch-changed Gluon coverage
+     - focused runtime-matrix bucket
+     - focused core tail (`186`)
+     - FPSAN exact
+     - frontend exact
+  5. examples lane
+     - `02-convolution.py` shared-memory portability/resource bucket
+     - `03-matmul-multicta.py` wrong-code bucket
+  6. reinterpret-contract rewrites plus the missing explicit descriptor/view
+     support needed to express their intent cleanly
+- Cache / xdist investigation is still required, but it no longer blocks the
+  fix order above:
+  - current evidence is stronger for worker/process/device contamination after
+    bad kernels than for a simple on-disk `TRITON_CACHE_DIR` collision
+  - concrete harness plan:
+    1. reproduce a known shard-only failure in fresh serial processes
+    2. reproduce it again with xdist but distinct cache directories per worker
+    3. log device identity, cache key inputs, and compile artifact paths
+    4. only change cache-key semantics if the failure survives the fresh
+       process boundary and still tracks cache reuse

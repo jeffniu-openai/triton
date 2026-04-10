@@ -101,6 +101,19 @@ PY
   - `62` nodeids
   - source:
     - `python3 -m pytest -q -rf --tb=no python/examples/gluon/`
+- [gb200_current_branch_examples_convolution_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_convolution_failures.txt)
+  - `48` nodeids
+  - source:
+    - isolated current-head `python/examples/gluon/02-convolution.py`
+  - current interpretation:
+    - preferred exact manifest for the convolution half of the examples lane
+- [gb200_current_branch_examples_multicta_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_multicta_failures.txt)
+  - `14` nodeids
+  - source:
+    - isolated current-head `python/examples/gluon/03-matmul-multicta.py`
+  - current interpretation:
+    - preferred exact manifest for the multicta matmul half of the examples
+      lane
 - [gb200_current_branch_test_proton_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_proton_failures.txt)
   - `11` nodeids
   - source:
@@ -288,3 +301,35 @@ collecting the merge-base test files and comparing exact nodeids:
     frontend exact
   - the focused runtime-matrix slice fails independently with `413` exact
     failures, so the dominant branch-added group-4 families are also real
+
+## 2026-04-10 Inventory Closure
+
+- Final isolated current-head completions:
+  - `python/triton_kernels/tests`
+    - `2377 passed, 3444 skipped`
+  - `python/test/gluon/test_lowerings.py`
+    - `4937 passed, 512 skipped`
+- Implication:
+  - the raw shard-3 `test_lowerings.py` failures are fully explained as
+    fallout and should not be treated as a live independent bucket
+  - the remaining independently red `test-gluon` surface is now:
+    - focused `test_core.py` exact manifest
+    - focused `test_tmem_runtime_matrix.py` exact manifest
+    - one `test_fpsan.py` exact
+    - one `test_frontend.py` exact
+    - the split example manifests
+- Final example classification for this pass:
+  - `python/examples/gluon/02-convolution.py`
+    - current branch:
+      - `48` exact failures
+      - representative symptom:
+        `OutOfResources` (`262208` requested vs `232448` hardware limit)
+    - merge-base full-file rerun:
+      - `48 passed`
+  - `python/examples/gluon/03-matmul-multicta.py`
+    - current branch:
+      - `14` exact failures
+      - representative symptom:
+        `9600 / 20000` mismatches (`48.0%`)
+    - merge-base full-file rerun:
+      - `82 passed, 14 skipped`

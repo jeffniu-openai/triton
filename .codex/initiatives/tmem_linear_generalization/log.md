@@ -6476,3 +6476,65 @@ Open after this slice:
     frontend exact, with `test_layout_format_view.py` dropping out
   - the current unit row-anchor / warp-specialization buckets now have fresh
     merge-base file-level proof behind them
+
+## 2026-04-10: closed the remaining GB200 census loops and froze the final inventory-driven fix order
+
+- Finished the last pending isolated current-head runs:
+  - `python/triton_kernels/tests`
+    - `2377 passed, 3444 skipped`
+  - `python/test/gluon/test_lowerings.py`
+    - `4937 passed, 512 skipped`
+- Closed the examples lane against merge-base:
+  - current-head `python/examples/gluon/02-convolution.py`
+    - `48` exact failures
+    - representative failure:
+      `OutOfResources` (`262208` requested vs `232448` shared-memory limit)
+    - merge-base full-file rerun:
+      - `48 passed`
+  - current-head `python/examples/gluon/03-matmul-multicta.py`
+    - `14` exact failures
+    - representative failure:
+      `9600 / 20000` mismatches (`48.0%`)
+    - merge-base full-file rerun:
+      - `82 passed, 14 skipped`
+- Froze the final GB200 lane status for this pass:
+  - red:
+    - `make test-lit`
+      - lone exact:
+        `test/TritonGPU/pipeline-lower-loop.mlir`
+    - `make NUM_PROCS=24 test-unit`
+      - `134` exact current-head nodeids
+    - `make NUM_PROCS=24 test-gluon`
+      - focused `test_core.py`: `332`
+      - focused `test_tmem_runtime_matrix.py`: `413`
+      - isolated `test_fpsan.py`: `1`
+      - isolated `test_frontend.py`: `1`
+      - examples: `48 + 14`
+    - `make test-proton`
+      - same preexisting `11` exact nodeids as merge-base
+  - green:
+    - `make test-cpp`
+    - `make test-gsan`
+    - `make test-regression`
+    - `make test-microbenchmark`
+    - `python/triton_kernels/tests`
+    - isolated `python/test/gluon/test_lowerings.py`
+    - isolated `python/test/gluon/test_layout_format_view.py`
+- Added the split example manifests:
+  - `gb200_current_branch_examples_convolution_failures.txt`
+  - `gb200_current_branch_examples_multicta_failures.txt`
+- Updated recovery order after the closed census:
+  1. direct-view row-anchor representability:
+     - `test/TritonGPU/pipeline-lower-loop.mlir`
+     - `python/test/unit/language/test_matmul.py`
+     - `python/test/unit/language/test_tensor_descriptor.py`
+  2. higher-rank MMAv5-root `python/test/unit/language/test_warp_specialization.py`
+  3. merge-base-present focused `python/test/gluon/test_core.py` bucket
+  4. branch-added / branch-changed Gluon buckets
+  5. examples lane
+  6. reinterpret-contract rewrites after the missing explicit view support is
+     implemented
+- The cache/xdist note is now explicit in the log as well:
+  - the census no longer needs raw shard totals to choose fixes
+  - the current evidence still points more strongly at worker/process/device
+    contamination after bad kernels than at a proven on-disk cache collision
