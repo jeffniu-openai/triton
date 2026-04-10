@@ -18,7 +18,41 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
-## Current Verified Red List After `c6990c1e9` (2026-04-10 20:05 UTC)
+## Latest Descriptor-Chain Recovery Checkpoint (2026-04-10 20:35 UTC)
+
+- The branch-only TMEM/compiler bucket is now green again:
+  - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+    - now `0` nodeids
+  - fresh reruns:
+    - isolated real failures:
+      - `linear_m64_32x32b_4w`
+      - `linear_m64_32x32b_8w`
+      - both now pass
+    - full `test_tmem_descriptor_chain_matrix` surface:
+      - `26 passed in 15.94s`
+    - refreshed old `12`-nodeid manifest:
+      - `12 passed in 9.84s`
+- Root cause / fix summary:
+  - the memdesc-aware TMEM reg-layout selector still treated a user request for
+    `instr_variant="32x32b"` as a hard `I32x32b` atom requirement on rank-2
+    `M=64`, `f32` descriptor views
+  - that forced the plain `linear_m64 32x32b` views onto scalar `32x32b.x1`
+    raw-query lowering, while the passing split-N sibling already used the
+    packed `16x32bx2` direct family
+  - the fix centralizes requested-atom matching so those `M=64`, `f32`
+    descriptor-view `32x32b` requests may be satisfied by the packed
+    `I16x32bx2` direct family
+- Important contamination learning:
+  - a fresh-process isolation matrix showed that only the two plain
+    `linear_m64_32x32b_{4w,8w}` exacts were independently red
+  - the other `10` nodeids from the old descriptor-chain manifest already
+    passed in fresh processes and were fallout after the first CUDA fault
+- Practical consequence:
+  - the live GB200 branch backlog is now only the two example regressions:
+    - `python/examples/gluon/02-convolution.py`
+    - `python/examples/gluon/03-matmul-multicta.py`
+
+## Historical Verified Red List After `c6990c1e9` (2026-04-10 20:05 UTC)
 
 - Fresh isolated current-head reruns confirm that the live GB200 branch backlog
   is now:

@@ -191,11 +191,10 @@
     - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
       is empty
 - Current live branch-caused TMEM/compiler backlog:
-  - `12` descriptor-chain exacts in
-    `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
-  - that manifest still appears to split into two structural subfamilies:
-    - packed `linear_m64_*` launch-fault cases
-    - mixed-layout scalar-family access-mapping cases
+  - the previously live descriptor-chain bucket is now green again
+  - full `test_tmem_descriptor_chain_matrix` rerun:
+    - `26 passed in 15.94s`
+  - the old `12`-nodeid descriptor-chain manifest is now empty
 - Current separate regression lane after the TMEM/compiler bucket:
   - `python/examples/gluon/02-convolution.py`
     - `48` exact `OutOfResources` failures
@@ -215,9 +214,9 @@
   - cache/process contamination investigation, which still needs a proper
     root-cause pass instead of environment workarounds
 - Immediate next move:
-  - capture fresh descriptor-chain traces and fix that branch-only TMEM bucket
-    first
-  - then move to the two merge-base-green example regressions
+  - move to the two merge-base-green example regressions:
+    - `python/examples/gluon/02-convolution.py`
+    - `python/examples/gluon/03-matmul-multicta.py`
 
 ## Current GB200/NVIDIA CI Baseline
 - For the current stabilization phase, the source of truth for what is "red" is

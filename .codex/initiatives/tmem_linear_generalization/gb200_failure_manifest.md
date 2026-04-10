@@ -97,18 +97,20 @@ PY
   - source:
     - `python3 -m pytest -q -rf --tb=no --splits 4 --group 4 -k 'not test_tmem_subslice_block_m_64 and not test_tmem_subslice_block_m_64_parent_layout' python/test/gluon/ python/tutorials/gluon/`
 - [gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt)
-  - `12` nodeids
+  - `0` nodeids
   - source:
-    - isolated rerun of the `26` descriptor-chain exacts extracted from the
-      branch-added / branch-changed focused `test_core.py` shard reduction
+    - refreshed after the memdesc-aware `M=64` plain-`32x32b` atom-family fix
   - current interpretation:
-    - this is the current independent descriptor-chain runtime bug bucket
-    - fresh rerun at `c6990c1e9`:
-      - `12 failed in 3.73s`
-    - all `12` exacts fail cleanly with
-      `RuntimeError: CUDA error: misaligned address`
-    - the other `14` descriptor-chain exacts from the contaminated shard pass
-      in isolation and should not stay in the live red list
+    - this manifest is now empty
+    - full `test_tmem_descriptor_chain_matrix` rerun:
+      - `26 passed in 15.94s`
+    - refreshed old manifest rerun:
+      - `12 passed in 9.84s`
+    - fresh-process isolation showed only two independent prior failures:
+      - `linear_m64_32x32b_4w`
+      - `linear_m64_32x32b_8w`
+    - the remaining `10` old nodeids were fallout after those first CUDA
+      launch faults and should not be treated as independent bugs
 - [gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt)
   - `0` nodeids
   - source:
@@ -200,13 +202,11 @@ PY
   - `gb200_current_branch_test_tmem_runtime_matrix_warpx2_candidate_refresh_failures.txt`
     - now empty after the non-surjective `[128, 4]` raw-query/direct-view fix
   - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
-    - at least two subfamilies:
-      - packed `linear_m64_*` launch-fault cases
-      - mixed-layout scalar-family access-mapping cases
+    - now empty after the memdesc-aware `M=64` plain-`32x32b` fix
 - Use the manifests as machine-readable rerun inputs, but use
   `gb200_nvidia_ci_inventory.md` and `gb200_branch_recovery_plan.md` for the
-  current trace-backed recovery ordering. The live TMEM/compiler recovery
-  bucket is now the `12`-nodeid descriptor-chain manifest above.
+  current trace-backed recovery ordering. The live GB200 recovery queue is now
+  the two example manifests below.
 
 ## Shard-3 Merge-Base Reduction Lists
 

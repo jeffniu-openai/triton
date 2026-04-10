@@ -131,6 +131,23 @@ static void annotateMMAv5TMemOperandRootRowPlan(Value operand, Value acc) {
   ttng::copyExplicitTMemLdStRowPlan(operandAlloc, accAlloc);
 }
 
+static bool matchesRequestedTMemAtom(
+    ttg::MemDescType queryTy, std::optional<ttng::TMemAccessAtom> desiredAtom,
+    ttng::TMemAccessAtom actualAtom) {
+  if (!desiredAtom || actualAtom == *desiredAtom)
+    return true;
+  // On rank-2 M64 f32 TMEM descriptor views, the user-facing `32x32b` request
+  // names the logical direct family, not a promise that the final direct
+  // realization must stay on the scalar I32x32b atom. The packed 16x32bx2
+  // family is the direct realizable form for these layouts and should satisfy
+  // the same request when the planner finds it.
+  return queryTy && queryTy.getRank() == 2 && queryTy.getShape()[0] == 64 &&
+         queryTy.getElementTypeBitWidth() == 32 &&
+         !isa<ttng::TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()) &&
+         *desiredAtom == ttng::TMemAccessAtom::I32x32b &&
+         actualAtom == ttng::TMemAccessAtom::I16x32bx2;
+}
+
 struct GluonOpBuilder : public TritonOpBuilder {
   using TritonOpBuilder::TritonOpBuilder;
   // Construct an attribute or type while calling its verifier. Error messages
@@ -1287,8 +1304,7 @@ void init_gluon_ir(py::module &&m) {
             [&](ttg::MemDescType queryTy,
                 std::optional<ttng::TMemAccessAtom> desiredAtom,
                 ttng::TMemAccessAtom actualAtom) {
-              (void)queryTy;
-              return !desiredAtom || actualAtom == *desiredAtom;
+              return matchesRequestedTMemAtom(queryTy, desiredAtom, actualAtom);
             };
         auto firstLegalLayoutForType =
             [&](ttg::MemDescType queryTy,
@@ -1333,7 +1349,7 @@ void init_gluon_ir(py::module &&m) {
           if (!maybePlan ||
               !llvm::equal(maybePlan->regTy.getShape(), ArrayRef<int64_t>(shape)))
             return py::none();
-          if (desiredAtom && maybePlan->atom != *desiredAtom)
+          if (!matchesDesiredAtom(queryTy, desiredAtom, maybePlan->atom))
             return py::none();
           return layoutToGluon(maybePlan->regTy.getEncoding());
         };
@@ -1537,8 +1553,7 @@ void init_gluon_ir(py::module &&m) {
             [&](ttg::MemDescType queryTy,
                 std::optional<ttng::TMemAccessAtom> desiredAtom,
                 ttng::TMemAccessAtom actualAtom) {
-              (void)queryTy;
-              return !desiredAtom || actualAtom == *desiredAtom;
+              return matchesRequestedTMemAtom(queryTy, desiredAtom, actualAtom);
             };
         auto normalizeRegLayoutForAttr =
             [&](tt::LinearLayout layout) -> std::optional<tt::LinearLayout> {

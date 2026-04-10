@@ -46,7 +46,27 @@ PY
 
 ## Current Classification Summary
 
-### Current Verified Recovery Buckets After `c6990c1e9`
+### Latest Validated State After Descriptor-Chain Recovery
+
+- The branch-only TMEM/compiler bucket is now clear:
+  - `gb200_current_branch_test_core_branch_added_descriptor_chain_refresh_failures.txt`
+    - refreshed to `0` nodeids
+  - nearby validation:
+    - full `test_tmem_descriptor_chain_matrix`
+      - `26 passed in 15.94s`
+- Important reduction learning:
+  - the old `12`-nodeid descriptor-chain manifest was not `12` independent
+    bugs
+  - a fresh-process isolation matrix showed only:
+    - `linear_m64_32x32b_4w`
+    - `linear_m64_32x32b_8w`
+    were independently red
+  - the other `10` nodeids were fallout after those first CUDA launch faults
+- The next recovery queue is now just the old-mainline example regressions:
+  1. `python/examples/gluon/02-convolution.py`
+  2. `python/examples/gluon/03-matmul-multicta.py`
+
+### Historical Verified Recovery Buckets After `c6990c1e9`
 
 - Fresh isolated current-head reruns now reduce the actionable GB200 backlog
   to three concrete surfaces:

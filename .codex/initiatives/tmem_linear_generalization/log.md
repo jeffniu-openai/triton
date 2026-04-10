@@ -6887,3 +6887,43 @@ Open after this slice:
   - the older large shard/group counts should now be treated as historical
     reduction artifacts and cache/process-fallout evidence, not as the live
     red list
+
+## 2026-04-10: memdesc-aware M64 plain-`32x32b` requests must accept the packed direct family
+- I closed the last live branch-only TMEM/compiler bucket from the GB200
+  inventory:
+  - the plain `linear_m64` descriptor-chain exacts with
+    `instr_variant="32x32b"` for `4w` and `8w`
+- Root cause:
+  - the memdesc-aware TMEM reg-layout selector treated a `32x32b` request as a
+    hard `I32x32b` atom requirement even on rank-2 `M=64`, `f32`
+    descriptor views
+  - that forced those direct views onto scalar `32x32b.x1` raw-query lowering,
+    while the passing split-N sibling already used the packed `16x32bx2`
+    direct family
+- Fix:
+  - added a centralized requested-atom matching helper in `gluon_ir.cc`
+  - on rank-2 `M=64`, `f32` TMEM descriptor views, `instr_variant="32x32b"`
+    may now be satisfied by the packed `I16x32bx2` direct family
+  - wired that rule through both TMEM reg-layout selector entry points,
+    including physical-support fallback
+- Validation:
+  - `make -j8`
+  - repaired exacts:
+    - `linear_m64_32x32b_4w`
+    - `linear_m64_32x32b_8w`
+  - nearby controls:
+    - `linear_m64_32x32b_splitn_4w`
+    - `linear_mixed_32x32b_4w`
+  - full `test_tmem_descriptor_chain_matrix` surface:
+    - `26 passed in 15.94s`
+  - refreshed old descriptor-chain manifest:
+    - `12 passed in 9.84s`
+- Important contamination learning:
+  - a fresh-process isolation matrix showed only the two plain
+    `linear_m64_32x32b_{4w,8w}` exacts were independently red
+  - the other `10` nodeids from the old manifest were fallout after those
+    first CUDA launch faults
+- Practical consequence:
+  - the branch-only TMEM/compiler GB200 backlog is now clear
+  - the remaining live GB200 recovery work is the two old-mainline example
+    regressions
