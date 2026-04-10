@@ -56,6 +56,33 @@ PY
   - source:
     - `python3 -m pytest -q -rf --tb=no third_party/proton/test/test_profile.py`
 
+## Classified Recovery Split Lists
+
+- [gb200_preexisting_test_unit_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_preexisting_test_unit_failures.txt)
+  - `20` nodeids
+  - meaning:
+    - the `python/test/unit/test_debug.py` exact failures that are also red on
+      merge-base
+- [gb200_branch_recovery_test_unit_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_recovery_test_unit_failures.txt)
+  - `162` nodeids
+  - meaning:
+    - the current-branch `test-unit` failures that survive the preexisting
+      `test_debug.py` carve-out and therefore belong in the branch recovery
+      backlog
+- [gb200_branch_recovery_test_regression_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_recovery_test_regression_failures.txt)
+  - `234` nodeids
+  - meaning:
+    - the exact `test_cast_matmul.py` failures; all exist and pass on
+      merge-base, so the whole manifest is branch-caused recovery work
+- [gb200_branch_changed_examples_gluon_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_changed_examples_gluon_failures.txt)
+  - `62` nodeids
+  - meaning:
+    - the exact current-branch `python/examples/gluon/` failures
+  - note:
+    - these nodeids do not exist on merge-base as exact parametrized tests, so
+      this bucket is tracked as branch-changed coverage rather than an
+      identical old-mainline failure set
+
 ## Shard-3 Merge-Base Reduction Lists
 
 These lists were derived from the current-branch shard-3 exact nodeids by
@@ -98,6 +125,13 @@ collecting the merge-base test files and comparing exact nodeids:
   - `22` nodeids
 - [gb200_mergebase_present_test_gluon_layout_format_view_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_present_test_gluon_layout_format_view_group3_failures.txt)
   - `1` nodeid
+- [gb200_mergebase_present_test_gluon_lowerings_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_present_test_gluon_lowerings_group3_failures.txt)
+  - `793` nodeids
+  - meaning:
+    - every current-branch shard-3 `test_lowerings.py` failure also exists as
+      the same exact nodeid on merge-base
+- [gb200_mergebase_missing_test_gluon_lowerings_group3_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_mergebase_missing_test_gluon_lowerings_group3_failures.txt)
+  - `0` nodeids
 
 ## Notes
 
@@ -108,6 +142,11 @@ collecting the merge-base test files and comparing exact nodeids:
 - Branch-vs-main classification is now complete for most of the exact GB200
   surface; the remaining work is using those classifications to choose and fix
   the first core compiler buckets.
+- The examples bucket is the main place where the distinction between
+  exact-old-mainline and branch-changed coverage matters:
+  - the exact current-branch example nodeids are absent on merge-base; but
+  - the merge-base full-file rerun is green, so the branch-changed example
+    coverage is still real branch recovery work.
 - When a manifest corresponds to a preexisting-on-main bucket
   (`test_debug.py`, Proton), keep it for census completeness but do not treat
   it as branch recovery work.

@@ -188,10 +188,12 @@ The GB200 branch-vs-main classification is now strong enough to drive fixes:
   - unit dot / matmul / warp-specialization / tensor-descriptor reshape
   - `python/test/regression/test_cast_matmul.py`
   - merge-base-present shard-3 Gluon subsets
-  - exact `python/examples/gluon/` failure manifest
 - `BRANCH_ADDED_COVERAGE_RED`
   - `python/test/gluon/test_tmem_runtime_matrix.py`
-  - branch-added / branch-changed shard-3 Gluon subsets
+  - branch-added shard-3 Gluon subsets
+- `BRANCH_CHANGED_COVERAGE_RED`
+  - `python/examples/gluon/`
+  - branch-changed shard-3 Gluon subsets
 
 Use `gb200_failure_manifest.md` for the exact `.txt` lists and
 `gb200_branch_recovery_plan.md` for the prioritized fix order.
@@ -531,14 +533,15 @@ Interim interpretation of the unit lane:
       - `1080 passed, 216 skipped`
     - `python/test/gluon/test_lowerings.py`
       - `4937 passed, 512 skipped`
-    - current-branch examples exact failure manifest
-      - `62 / 62` pass on merge-base
   - exact current-branch subsets that are green on merge-base:
+    - the `162` non-debug nodeids from the current-branch unit failure
+      manifest
     - the `8` failing `test_dot[...]` nodeids from the current-branch unit
       manifest
     - the `185` merge-base-present shard-3 `test_core.py` nodeids
     - the `38` merge-base-present shard-3 `test_fpsan.py` nodeids
     - the `1` merge-base-present `test_layout_format_view.py` nodeid
+    - the `793` merge-base-present `test_lowerings.py` shard-3 nodeids
   - preexisting on merge-base:
     - `python/test/unit/test_debug.py`
       - same `20` nodeids fail on merge-base
@@ -553,6 +556,9 @@ Interim interpretation of the unit lane:
     - the `18` shard-3 `test_core.py` nodeids whose function exists on
       merge-base but whose exact parametrized nodeid does not
     - the `22` shard-3 `test_fpsan.py` nodeids in the same category
+    - the `62` failing `python/examples/gluon/` nodeids, whose exact
+      parametrizations do not exist on merge-base even though the merge-base
+      full-file rerun is green
 - This means the remaining work is no longer “figure out what is new.” It is:
   - fix the clearly new compiler/backend regressions; and
   - separately decide how to treat branch-added or branch-changed coverage that
@@ -575,10 +581,12 @@ Interim interpretation of the unit lane:
     - `18` `test_simple_matmul[...]`
     - `4` `test_simple_persistent_matmul[...]`
     - `1` `test_lhs_in_tmem[float32-False-64-128-32]`
-  - merge-base spot checks now cover all three sub-families:
-    - `test_simple_matmul[...]`: passes on merge-base
-    - `test_simple_persistent_matmul[...]`: passes on merge-base
-    - `test_lhs_in_tmem[float32-False-64-128-32]`: passes on merge-base
+  - merge-base exact rerun:
+    - all `23` current-branch failing nodeids are present inside the
+      merge-base unit manifest reduction
+    - the full `182`-nodeid merge-base unit rerun reduces to only the
+      preexisting `20` `test_debug.py` failures, so the `23 / 23` `test_matmul`
+      nodeids pass there
   - current classification:
     - `REAL_NEW_ON_BRANCH_REGRESSION`
 
@@ -589,6 +597,8 @@ Interim interpretation of the unit lane:
   - merge-base exact rerun:
     - the full file is green
     - `1599 passed, 202 skipped`
+    - the `128` current-branch failing nodeids are also covered by the
+      `182`-nodeid merge-base unit rerun and all pass there
   - current classification:
     - `REAL_NEW_ON_BRANCH_REGRESSION`
 
@@ -620,16 +630,24 @@ Interim interpretation of the unit lane:
       - repeated `OutOfResources` on shared memory
     - `14` failures in `python/examples/gluon/03-matmul-multicta.py`
       - wrong-code around `35%` to `48%` mismatches
-  - merge-base exact rerun of the current-branch failure manifest:
-    - `62 / 62` pass
+  - merge-base collect-only reduction:
+    - exact current-branch example nodeids present on merge-base: `0`
+    - exact current-branch example nodeids missing on merge-base: `62`
+  - merge-base full-file rerun:
+    - `130 passed, 14 skipped`
   - current classification:
-    - `REAL_NEW_ON_BRANCH_REGRESSION`
+    - `BRANCH_CHANGED_COVERAGE_RED`
 
 - `python/test/gluon/test_lowerings.py`
   - shard-3 current-branch failures:
     - `793` exact nodeids
     - dominated by `603` `test_reduce_layouts[...]` and `176`
       `test_scan_layouts[...]`
+  - merge-base collect-only reduction:
+    - exact current-branch shard-3 `test_lowerings.py` nodeids present on
+      merge-base: `793`
+    - exact current-branch shard-3 `test_lowerings.py` nodeids missing on
+      merge-base: `0`
   - merge-base exact rerun:
     - the full file is green
     - `4937 passed, 512 skipped`

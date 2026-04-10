@@ -266,8 +266,13 @@
     (`4937 passed, 512 skipped`), so the shard-3 `793`-failure lowering bucket
     is entirely new-on-branch;
   - the exact `8` failing `test_dot[...]` nodeids all pass on merge-base;
-  - the exact current-branch examples/gluon failure manifest (`62` nodeids) all
-    pass on merge-base;
+  - the `162` non-debug nodeids from the current-branch unit failure manifest
+    all pass on merge-base, so the remaining `test-unit` failures are branch
+    regressions once `test_debug.py` is carved out;
+  - the exact current-branch examples/gluon failure manifest (`62` nodeids) is
+    branch-changed coverage rather than an identical old-mainline nodeid set:
+    the exact nodeids do not exist on merge-base, but the merge-base full-file
+    rerun is green (`130 passed, 14 skipped`);
   - the exact merge-base-present shard-3 subsets all pass on merge-base:
     - `185 / 185` `test_core.py` nodeids
     - `38 / 38` `test_fpsan.py` nodeids

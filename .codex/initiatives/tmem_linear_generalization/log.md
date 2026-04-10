@@ -6173,3 +6173,45 @@ Open after this slice:
   - there is still no reproduced proof of a simple on-disk cache-key collision
   - if shard-only anomalies reappear, preserve the order and classify them
     against process/device contamination before redesigning cache behavior
+
+## 2026-04-10: finished the remaining GB200 merge-base reductions and corrected the examples classification
+
+- Completed the remaining exact or full-file merge-base checks needed to close
+  the GB200 inventory:
+  - the full current-branch `182`-nodeid unit manifest on merge-base reduces to
+    only the preexisting `20` `test_debug.py` failures, so the other `162`
+    unit nodeids are real new-on-branch regressions;
+  - the full current-branch regression manifest is green on merge-base
+    (`234 / 234`);
+  - the merge-base-present shard-3 subsets are freshly revalidated green:
+    - `185 / 185` `test_core.py`
+    - `38 / 38` `test_fpsan.py`
+    - `1 / 1` `test_layout_format_view.py`;
+  - current-branch shard-3 `test_lowerings.py` failures are now proven to be
+    `793 / 793` exact-present on merge-base, which matches the earlier
+    full-file-green merge-base rerun; and
+  - a fresh merge-base full-file rerun of `python/test/gluon/test_lowerings.py`
+    also stayed green (`4937 passed, 512 skipped`).
+- Corrected one important census mistake in the docs:
+  - the `python/examples/gluon/` failures are **not** an identical old-mainline
+    exact-nodeid set;
+  - merge-base collect-only shows the current-branch example nodeids are
+    `0` present / `62` missing; but
+  - the merge-base full-file rerun is green (`130 passed, 14 skipped`), so the
+    examples bucket is branch-changed coverage that still belongs in the
+    branch recovery backlog.
+- Added the new exact manifest splits that future sessions can reuse directly:
+  - `gb200_preexisting_test_unit_failures.txt`
+  - `gb200_branch_recovery_test_unit_failures.txt`
+  - `gb200_branch_recovery_test_regression_failures.txt`
+  - `gb200_branch_changed_examples_gluon_failures.txt`
+  - `gb200_mergebase_present_test_gluon_lowerings_group3_failures.txt`
+  - `gb200_mergebase_missing_test_gluon_lowerings_group3_failures.txt`
+- Also backed out the local `TensorMemoryToLLVM.cpp` raw-vs-query-type
+  heuristic experiment after capturing its results in the handoff:
+  - preferring raw-query over same-atom query-type helped one representative
+    large `test_simple_matmul[...]` case;
+  - the follow-up "smaller repetition image wins" heuristic regressed the
+    runtime-matrix exact and worsened the direct split-N roundtrip case; so
+  - the repo is back on the clean committed baseline before the next bugfix
+    slice.

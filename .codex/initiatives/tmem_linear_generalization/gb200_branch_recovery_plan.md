@@ -132,11 +132,16 @@ PY
 5. Example portability / launch-shape bucket
 - Source:
   - `python/examples/gluon/02-convolution.py`
+  - `python/examples/gluon/03-matmul-multicta.py`
 - Classification:
-  - `REAL_NEW_ON_BRANCH_REGRESSION`, but not the first correctness target
+  - `BRANCH_CHANGED_COVERAGE_RED`, but not the first correctness target
 - Failure mode:
   - `OutOfResources` due to `262208` requested shared memory vs `232448`
     hardware limit
+  - wrong-code in the multicta matmul example
+- Merge-base status:
+  - the exact current-branch example nodeids do not exist on merge-base
+  - the merge-base full-file rerun is green (`130 passed, 14 skipped`)
 - Priority:
   - after the core TMEM / matmul correctness surface is green
 
