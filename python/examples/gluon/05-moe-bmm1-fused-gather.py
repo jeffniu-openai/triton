@@ -40,7 +40,7 @@ from triton_kernels.tensor_details.layout import (
     make_default_matmul_mxfp4_w_layout,
     make_default_matmul_mxfp4_w_scale_layout,
 )
-from triton_kernels.testing import assert_close
+from triton_kernels.testing import alloc_rand, assert_close
 from triton_kernels.topk import topk
 
 
@@ -435,16 +435,6 @@ def pack_fp8_out_fragment(out_packed, out_recip):
     return pack_e4m3x2(scaled_out_packed)
 
 
-@gluon.constexpr_function
-def store_helper_fragment_layout(frag_rows: gl.constexpr, helper_num_warps: gl.constexpr):
-    return gl.BlockedLayout(
-        [frag_rows // helper_num_warps, 2],
-        [1, 32],
-        [helper_num_warps, 1],
-        [1, 0],
-    )
-
-
 @gluon.jit
 def _store_out_subtile(
     p: PartitionArgs,
@@ -560,7 +550,12 @@ def load_bias(
 def epilogue_store_partition(p: PartitionArgs):
     gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
     frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
-    store_layout: gl.constexpr = store_helper_fragment_layout(frag_rows, gl.num_warps())
+    store_layout: gl.constexpr = gl.BlockedLayout(
+        [frag_rows // gl.num_warps(), 2],
+        [1, 32],
+        [gl.num_warps(), 1],
+        [1, 0],
+    )
     gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
 
     store_idx = 0
@@ -1070,8 +1065,7 @@ class PreparedCase:
 
 def alloc_randn(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torch.Tensor:
     if dtype.itemsize == 1:
-        tmp = 2 ** -(torch.randint(4, 8, shape, device=device, dtype=torch.float16))
-        return tmp.to(dtype)
+        return alloc_rand(shape, device=device, dtype=dtype)
     return torch.randn(shape, device=device, dtype=dtype)
 
 
