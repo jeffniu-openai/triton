@@ -3395,3 +3395,25 @@ rejection, not rescue
   - after the branch-added TMEM coverage and reinterpret-rewrite buckets are
     set aside, there is still a broader Blackwell/TMEM lowering regression on
     this branch that must be fixed to restore GB200 CI parity with main
+
+## 2026-04-10: Proton is not branch-caused, and the simple shared-cache hypothesis did not reproduce
+
+- Exact merge-base classifications now sharpen the recovery backlog:
+  - new-on-branch:
+    - unit matmul (`simple`, `persistent`, and `lhs_in_tmem`)
+    - cast matmul regression coverage
+    - Gluon convolution and multicta examples
+    - previously established dot / tensor-descriptor / warp-specialization
+      buckets
+  - pre-existing on merge-base:
+    - the full Proton `test_profile.py` red set (`11` exact nodeids)
+- This matters for prioritization:
+  - Proton should drop out of the branch-caused TMEM recovery plan
+  - examples and regression tests stay in scope because they now have
+    merge-base proof that they are new breakage on this branch
+- Cache-collision status:
+  - a simple fresh-process shared-cache probe did not reproduce poisoning
+  - current evidence therefore points first at process/device contamination
+    after bad kernels, not at a trivial `TRITON_CACHE_DIR` collision
+  - if a future repro is truly cache-sensitive, it needs to survive a fresh
+    process boundary before the cache-key theory should drive design work

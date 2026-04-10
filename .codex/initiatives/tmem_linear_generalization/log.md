@@ -5952,3 +5952,48 @@ Open after this slice:
   - `test_matmul.py` failures cluster in `BLOCK_M=64`
   - `test_warp_specialization.py` failures cluster in `N=64`
   - `test_cast_matmul.py` failures cluster heavily in `GN=64`
+
+## 2026-04-10: finished most exact branch-vs-main classifications and ruled Proton out of the branch backlog
+
+- I finished the remaining exact reruns for most non-Gluon targets:
+  - `python/test/unit/language/test_matmul.py`
+    - `23 failed, 738 passed, 4780 skipped`
+    - exact split:
+      - `18` `test_simple_matmul[...]`
+      - `4` `test_simple_persistent_matmul[...]`
+      - `1` `test_lhs_in_tmem[...]`
+  - `python/test/regression/test_cast_matmul.py`
+    - `234` exact failing nodeids
+  - `python/examples/gluon/`
+    - `62` exact failing nodeids
+    - `48` in `02-convolution.py`
+    - `14` in `03-matmul-multicta.py`
+  - `third_party/proton/test/test_profile.py`
+    - `11 failed, 31 passed, 2 skipped`
+- Merge-base exact classification is now much sharper:
+  - new-on-branch:
+    - `test_lhs_in_tmem[float32-False-64-128-32]` passes on merge-base
+    - two distant `test_cast_matmul[...]` representatives pass on merge-base
+    - a second `test_warp_specialize_attention_forward[...]` representative in
+      the `128x64` shape family passes on merge-base
+    - representative failures from both `02-convolution.py` and
+      `03-matmul-multicta.py` pass on merge-base
+  - pre-existing-on-merge-base:
+    - the full `third_party/proton/test/test_profile.py` file fails with the
+      same `11` nodeids on merge-base after fixing the local-only baseline
+      `libproton.so` symlink
+- I also ran a shared-cache sanity probe for the suspected cache-collision
+  issue:
+  - run the known-bad split-N TMEM descriptor-chain test
+  - then run the known-good `test_block_m_64_mma[linear]`
+  - keep `TRITON_CACHE_DIR` identical but use fresh processes
+  - result:
+    - the failing split-N test still fails
+    - `test_block_m_64_mma[linear]` still passes immediately afterward
+  - conclusion:
+    - this does not reproduce simple on-disk cache poisoning
+    - the earlier shard-only anomalies are more likely process/device
+      contamination after a bad kernel than a trivial cache-key collision
+- Remaining current-branch exact inventories still running when I wrote this:
+  - `python/test/gluon/ python/tutorials/gluon/` shard `3 / 4`
+  - `python/test/gluon/ python/tutorials/gluon/` shard `4 / 4`

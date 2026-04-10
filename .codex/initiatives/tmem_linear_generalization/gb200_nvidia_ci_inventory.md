@@ -400,6 +400,78 @@ Interim interpretation of the unit lane:
   bigger current-branch red files, then comparing representative cases from
   each family.
 
+### Follow-Up Exact Classification (2026-04-10)
+
+- `python/test/unit/language/test_matmul.py`
+  - full exact rerun is now complete:
+    - `23 failed, 738 passed, 4780 skipped`
+  - exact family split:
+    - `18` `test_simple_matmul[...]`
+    - `4` `test_simple_persistent_matmul[...]`
+    - `1` `test_lhs_in_tmem[float32-False-64-128-32]`
+  - merge-base spot checks now cover all three sub-families:
+    - `test_simple_matmul[...]`: passes on merge-base
+    - `test_simple_persistent_matmul[...]`: passes on merge-base
+    - `test_lhs_in_tmem[float32-False-64-128-32]`: passes on merge-base
+  - current classification:
+    - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- `python/test/regression/test_cast_matmul.py`
+  - full exact rerun is complete:
+    - `234` exact failing nodeids
+  - failure pattern:
+    - failures span the `GN=64` family across all observed `GM in {16,32,64}`
+      and `GK in {16,64,128}` combinations
+  - merge-base spot checks:
+    - `test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+      passes on merge-base
+    - `test_cast_matmul[768-768-1024-64-64-128-float16-float32-float32]`
+      passes on merge-base
+  - current classification:
+    - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- `python/examples/gluon/`
+  - full exact rerun is complete:
+    - `62` exact failing nodeids
+  - exact family split:
+    - `48` failures in `python/examples/gluon/02-convolution.py`
+      - repeated `OutOfResources` on shared memory
+    - `14` failures in `python/examples/gluon/03-matmul-multicta.py`
+      - wrong-code around `35%` to `48%` mismatches
+  - merge-base spot checks:
+    - `python/examples/gluon/02-convolution.py::test_op[0-1-3-3-384-384-64-64-1]`
+      passes on merge-base
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+      passes on merge-base
+  - current classification:
+    - `REAL_NEW_ON_BRANCH_REGRESSION`
+
+- `third_party/proton/test/test_profile.py`
+  - current-branch exact rerun:
+    - `11 failed, 31 passed, 2 skipped`
+  - merge-base exact rerun:
+    - the same `11` nodeids fail on merge-base
+  - current classification:
+    - `PREEXISTING_ON_MERGE_BASE`
+  - implication:
+    - Proton should be removed from the branch-caused TMEM recovery backlog
+
+- shared-cache sanity probe
+  - probe shape:
+    - first run the known-bad split-N TMEM descriptor-chain test
+    - then run the known-good `test_block_m_64_mma[linear]`
+    - keep `CUDA_VISIBLE_DEVICES=0` and `TRITON_CACHE_DIR` identical but use a
+      fresh Python process for each run
+  - result:
+    - the split-N test still fails (`4096 / 8192`)
+    - `test_block_m_64_mma[linear]` still passes immediately afterward
+  - current interpretation:
+    - this does not reproduce simple on-disk JIT cache poisoning
+    - the earlier shard-only anomalies are more likely process / device
+      contamination after a bad kernel than a trivial cache-key collision
+    - keep the cache-collision hypothesis open only for future repros that
+      actually survive a fresh process boundary
+
 ### Noisy But Expected During `-s` Shard Runs
 
 - `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`
