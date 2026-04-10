@@ -154,6 +154,12 @@ collecting the merge-base test files and comparing exact nodeids:
 - The older `182`-nodeid unit manifest is still useful as the first reduced
   branch-recovery slice, but the newer `2098`-nodeid XML manifest is the
   current broad CI-like unit inventory.
+- The unit XML and regression manifests are now historical with respect to the
+  current dirty MMAv5 root-row-plan fix:
+  - they still prove branch-vs-merge-base classification; but
+  - they no longer reflect current-head counts for
+    `python/test/regression/test_cast_matmul.py`, and likely overcount the
+    current unit surface until a post-fix rerun refreshes them.
 - Fresh isolated current-branch reruns of representative exact nodeids from
   the XML-only tail files all pass:
   - `python/test/unit/language/test_standard.py::test_maximum_minium[maximum-int32]`

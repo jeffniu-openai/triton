@@ -6321,3 +6321,51 @@ Open after this slice:
      cluster;
   3. then handle the persistent-forward wrong-code sibling; and
   4. then revisit the compile-time row-anchor representability bucket.
+
+## 2026-04-10: the MMAv5 root-row-plan producer fix clears the old source-root unit/regression bucket
+
+- I replaced the stale accumulator-only framing with a shared MMAv5 root helper:
+  - `getMMAv5AccumulatorRootRowPlan(...)` became `getMMAv5RootRowPlan(...)`;
+  - the helper now documents the shared `M=64` root contract for mutable
+    accumulators and source-initialized operand roots; and
+  - it now accepts higher-rank TMEM roots when the trailing TMEM row dimension
+    is `64`.
+- I then applied that contract where the bug actually lived:
+  - `PromoteLHSToTMem.cpp` now sets the explicit root row plan on the
+    source-initialized non-mutable TMEM roots it creates; and
+  - the existing producer annotations in `AccelerateMatmul.cpp` and
+    `gluon_ir.cc` were retargeted to the shared helper.
+- Exact validation after `make -j8`:
+  - repaired:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+  - still green:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
+    - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+- File-level impact:
+  - `python/test/regression/test_cast_matmul.py` is now fully green again:
+    - `1080 passed, 216 skipped`
+  - `python/test/unit/language/test_matmul.py` is down to only three compile
+    failures:
+    - `test_simple_persistent_matmul[False-4-64-128-32]`
+    - `test_simple_persistent_matmul[False-4-64-16-16]`
+    - `test_simple_persistent_matmul[False-8-64-128-32]`
+- The remaining live current-head buckets are now cleaner:
+  - descriptor-view row-anchor materialization:
+    - `test_simple_persistent_matmul[...]`
+    - `test_tensor_descriptor_reshape_matmul[...]`
+  - warp-specialization higher-rank roots:
+    - forward still misaligned
+    - persistent-forward still `50.0%` wrong-code
+- Current interpretation:
+  - the missing explicit MMAv5 root row-plan metadata on source-initialized
+    roots was a real branch bug and a shared producer invariant, not an
+    accumulator-only quirk;
+  - the remaining warp-specialization bug is likely another producer path for
+    higher-rank roots; and
+  - the older unit/regression manifests are now historical counts that need a
+    post-fix refresh before they are treated as the current red total.

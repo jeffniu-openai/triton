@@ -71,13 +71,22 @@ PY
 
 ### Latest Dirty Worktree Checkpoint
 
-- The current dirty follow-up in
-  `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
-  disables the same-atom query-type preference for root TMEM ld/st lowering so
-  LLVM stays on the exact raw-query path first.
+- The current dirty follow-up has moved from the older LLVM raw-first
+  experiment to a producer-side MMAv5 root-row-plan fix:
+  - `getMMAv5RootRowPlan(...)` is now the shared helper for all `M=64` MMAv5
+    root TMEM families;
+  - `PromoteLHSToTMem` now annotates the source-initialized TMEM roots it
+    creates with the same explicit row-plan contract; and
+  - the helper now accepts higher-rank roots whose trailing TMEM row dimension
+    is `64`.
 - Exact impact on the current worktree:
   - repaired:
+    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
+    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
     - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
+    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+    - `python/test/regression/test_cast_matmul.py`
+      - `1080 passed, 216 skipped`
   - still green:
     - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
     - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
@@ -85,15 +94,15 @@ PY
     - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
     - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
   - still failing fresh:
-    - misaligned address:
-      - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
-      - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
+    - warp-specialization higher-rank roots:
       - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
-      - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+        - `CUDA error: misaligned address`
     - `50.0%` wrong-code:
       - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
     - compile-time row-anchor gap:
       - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+      - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-16-16]`
+      - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
       - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
 - The broad unit xdist XML surface is now fully classified against merge-base:
   - `2098` current-branch exact nodeids exist on merge-base; and
@@ -104,9 +113,13 @@ PY
     `test_autotuner.py`, `test_launch.py`, `test_bindings.py`, and
     `test_triton_to_gluon.py`
 - Current interpretation:
-  - the broad unit XML surface is branch-local, but the primary fix order is
-    still the smaller MMAv5/TMEM list above; the rest of the unit XML tail is
-    mainly fallout after bad kernels.
+  - the broad unit XML surface is branch-local, but it is now even more
+    clearly stale as a current-head count:
+    - the source-root MMAv5 slice is repaired;
+    - the remaining primary fixes are the higher-rank warp-specialization
+      producer path and the descriptor-view row-anchor materialization gap; and
+    - the rest of the unit XML tail is still most likely fallout after bad
+      kernels until a post-fix rerun refreshes the counts.
 
 ### Excluded From The Branch Recovery Backlog
 
@@ -125,41 +138,32 @@ PY
 
 ### Included In The Branch Recovery Backlog
 
-1. Common M64 TMEM planner / packet-decomposition regression
+1. Remaining higher-rank MMAv5 root producer bucket
 - Why it comes first:
-  - it matches the strongest cross-bucket PTX clue;
-  - it hits both old-mainline tests and branch-added TMEM coverage; and
-  - it is the best current common-cause theory for the branch-wide Blackwell
-    wrong-code surface.
+  - it is the largest remaining old-mainline correctness bucket after the
+    source-root fix;
+  - it still hits real standalone runtime failures on the current tree; and
+  - the current PTX / TTGIR evidence says higher-rank warp-specialization root
+    allocs are still not carrying the explicit MMAv5 row-plan contract.
 - Representative exact nodeids:
-  - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
-  - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
-  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[identity-identity-2-32x32b_splitn]`
-  - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
-  - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
   - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
-  - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
+  - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
 - Broader affected manifests / files:
-  - `gb200_current_branch_test_gluon_group4_failures.txt`
-  - `python/test/regression/test_cast_matmul.py`
-  - `python/examples/gluon/03-matmul-multicta.py`
-  - `python/test/gluon/test_lowerings.py`
-  - merge-base-present shard-3 `test_core.py` / `test_fpsan.py` failure lists
+  - `python/test/unit/language/test_warp_specialization.py`
+  - likely NVWS TMEM-root producer helpers:
+    - `third_party/nvidia/lib/Dialect/NVWS/Transforms/Utilities.cpp`
+    - `third_party/nvidia/lib/Dialect/NVWS/Transforms/HoistTmemStore.cpp`
 - Current root-cause hypothesis:
-  - the current row-plan-aware canonical-`M=64` family-selection /
-    packet-decomposition path is collapsing a lifted support-band quotient bit
-    into ordinary packet repetition
-  - status update:
-    - the direct split-N ld/st slice of this bucket is now fixed on exact
-      reruns;
-    - the remaining exact failures are the MMAv5 producer-side dot / matmul /
-      warp-specialization family, which should now be debugged without
-      reopening the recovered direct-planning path
+  - higher-rank TMEM root allocs created or rewritten inside warp
+    specialization still bypass the explicit MMAv5 root row-plan annotation,
+    so they lower with scalar `32x32b.x1`-style accesses instead of the
+    packed `16x32bx2` family used by the repaired source-root path
 
 2. Unsupported-row-anchor compile bucket on the new planner
 - Why it is probably adjacent:
-  - these failures hit `ttng.tmem_store` row anchors `32,64` and may be the
-    compile-time sibling of the same structural planner mistake
+  - these failures still hit `ttng.tmem_store` row anchors `32,64`, but they
+    now look like a separate direct-ld/st descriptor-view representability gap
+    after the source-root MMAv5 fix
 - Representative exact nodeids:
   - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
   - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
@@ -217,7 +221,7 @@ PY
 ## Current Execution Order
 
 1. Preserve the repaired direct split-N TMEM path and attack the remaining
-   MMAv5 producer-side M64 bucket.
+   MMAv5 producer-side higher-rank root bucket.
 - Validation ladder:
   - keep the repaired direct split-N controls green:
     - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
@@ -226,17 +230,14 @@ PY
     - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
     - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
   - then debug the remaining producer-side exacts:
-    - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
-    - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
     - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
-    - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
     - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
-  - only after those are reduced, rerun the full `2098`-nodeid unit XML
+  - then rerun `python/test/unit/language/test_warp_specialization.py`
+  - only after that bucket is reduced, rerun the full `2098`-nodeid unit XML
     manifest on the current branch to see how much of the xdist fallout clears
-  - then the `8` exact `test_dot[...]` nodeids
-  - then `python/test/unit/language/test_matmul.py`
-  - then `python/test/unit/language/test_warp_specialization.py`
-  - then `python/test/regression/test_cast_matmul.py`
+  - then rerun `python/test/unit/language/test_matmul.py` and
+    `python/test/unit/language/test_tensor_descriptor.py` to measure what is
+    left of the compile-time row-anchor bucket
   - then the nearest runtime-matrix families
 
 2. Re-check the compile-time row-anchor bucket.

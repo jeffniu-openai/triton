@@ -33,6 +33,7 @@
   - mark whether a failure is preexisting on merge-base, branch-added coverage, branch-changed coverage, a real new regression, or flake/cache-sensitive noise;
   - keep reinterpret-contract tests separate from proven compiler regressions until they are rewritten to explicit TMEM view APIs where appropriate; and
   - track performance-only deltas separately so correctness recovery stays first.
+- After each meaningful GB200 branch-recovery fix, explicitly mark which older manifests and aggregate counts are now stale, refresh the nearest exact/file-level reruns, and record the new current-head failing set before using any pre-fix counts for prioritization.
 - If a test looks cache-sensitive, verify whether the symptom survives a fresh process boundary before blaming `TRITON_CACHE_DIR`. Prefer root-causing missing cache-key inputs, process/device contamination after bad kernels, or compiler global-state reuse over relying on environmental workarounds.
 
 ## Python Sweep Best Practices

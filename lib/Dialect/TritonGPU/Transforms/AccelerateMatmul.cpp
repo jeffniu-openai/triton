@@ -94,7 +94,7 @@ static void annotateMMAv5AccumulatorRootRowPlan(
   if (!memTy) {
     return;
   }
-  if (auto plan = triton::nvidia_gpu::getMMAv5AccumulatorRootRowPlan(memTy))
+  if (auto plan = triton::nvidia_gpu::getMMAv5RootRowPlan(memTy))
     triton::nvidia_gpu::setExplicitTMemLdStRowPlan(alloc, *plan);
 }
 

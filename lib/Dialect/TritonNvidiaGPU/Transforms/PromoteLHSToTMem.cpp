@@ -5,6 +5,7 @@
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 #include "triton/Tools/Sys/GetEnv.hpp"
 
@@ -104,7 +105,9 @@ public:
       auto newTy = ty.cloneWithEncoding(newLayout);
       src = ttg::ConvertLayoutOp::create(rewriter, loc, newTy, src);
     }
-    Value tMemAlloc = TMEMAllocOp::create(rewriter, loc, lhsMemDescType, src);
+    auto tMemAlloc = TMEMAllocOp::create(rewriter, loc, lhsMemDescType, src);
+    if (auto plan = nvidia_gpu::getMMAv5RootRowPlan(lhsMemDescType))
+      nvidia_gpu::setExplicitTMemLdStRowPlan(tMemAlloc, *plan);
     tcGen5MMAOp.getAMutable().assign(tMemAlloc);
     return success();
   }

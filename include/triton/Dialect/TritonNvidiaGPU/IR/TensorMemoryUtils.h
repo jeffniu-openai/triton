@@ -96,8 +96,7 @@ struct TMemCopyPlan {
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
 
-std::optional<TMemLdStRowPlan>
-getMMAv5AccumulatorRootRowPlan(gpu::MemDescType memTy);
+std::optional<TMemLdStRowPlan> getMMAv5RootRowPlan(gpu::MemDescType memTy);
 
 void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan);
 

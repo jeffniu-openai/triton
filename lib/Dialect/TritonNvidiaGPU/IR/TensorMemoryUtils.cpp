@@ -1785,13 +1785,13 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   return planFromRowBits(rowBits, isZeroRowBasis);
 }
 
-std::optional<TMemLdStRowPlan>
-getMMAv5AccumulatorRootRowPlan(MemDescType memTy) {
-  // Raw MMAv5 accumulator ld/st needs the backing-tile row anchors for every
-  // M=64 accumulator family, not just f32. The tcgen05 f16 accumulator path
-  // uses the same physical tile contract and must carry the same explicit
-  // producer-owned row-plan metadata.
-  if (memTy.getRank() != 2 || memTy.getShape()[0] != 64) {
+std::optional<TMemLdStRowPlan> getMMAv5RootRowPlan(MemDescType memTy) {
+  // Raw MMAv5 root TMEM ld/st uses the backing-tile row anchors for every
+  // M=64 root family, including mutable accumulators and source-initialized
+  // operand roots. Canonical tensor_memory_linear encodings can otherwise look
+  // like 64-row logical tiles, but the hardware contract for these roots is
+  // still the full 128-row backing tile.
+  if (memTy.getRank() < 2 || memTy.getShape()[memTy.getRank() - 2] != 64) {
     return std::nullopt;
   }
   auto kBlock = StringAttr::get(memTy.getContext(), "block");

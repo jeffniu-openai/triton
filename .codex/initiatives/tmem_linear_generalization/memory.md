@@ -247,34 +247,53 @@
   - current interpretation:
     - the tail is mostly branch-local xdist/process fallout after a smaller
       set of primary MMAv5/TMEM failures.
-- The current dirty LLVM-side follow-up also repairs one representative
-  old-mainline unit matmul exact without reopening the repaired split-N TMEM
-  controls:
-  - `TensorMemoryToLLVM.cpp` now keeps root TMEM ld/st lowering on the exact
-    raw-query path instead of preferring the same-atom query-type rescue first;
-  - this restores
-    `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`; and
-  - the repaired split-N exact controls remain green:
-    - `test_tmem_descriptor_chain_matrix[...]`
-    - `test_tmem_linear_roundtrip_splitn_shapes[...]`
-    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[...]`
-    - `test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
-    - `test_block_m_64_mma[linear]`
-- The remaining fresh exact branch-local buckets on the current dirty tree are
-  now the real short list to fix:
-  - misaligned address:
+- The current dirty checkpoint has moved past the older LLVM raw-first probe.
+  The live local diff now fixes a producer-side MMAv5 root-row-plan bug:
+  - `getMMAv5RootRowPlan(...)` is the shared helper for all `M=64` MMAv5 root
+    TMEM families, not just mutable accumulators;
+  - `PromoteLHSToTMem` now annotates source-initialized operand roots with the
+    same explicit row-plan contract; and
+  - the helper now accepts higher-rank roots whose trailing TMEM row dimension
+    is `64`, because the hardware contract is still the full `128`-row backing
+    tile.
+- Fresh exact reruns after `make -j8` now show that the earlier old-mainline
+  unit/regression slice is recovered on the current dirty tree:
+  - passing exacts:
     - `python/test/unit/language/test_core.py::test_dot[1-64-64-64-4-False-False-none-tf32x3-float32-float32-1-None]`
     - `python/test/unit/language/test_matmul.py::test_lhs_in_tmem[float32-False-64-128-32]`
-    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+    - `python/test/unit/language/test_matmul.py::test_simple_matmul[True-False-4-1-64-512-32-2-float32-tensorfloat32]`
     - `python/test/regression/test_cast_matmul.py::test_cast_matmul[768-768-1024-16-64-16-bfloat16-float16-float16]`
-  - `50.0%` wrong-code:
-    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
-  - compile-time row-anchor gap:
+  - file-level reruns:
+    - `python/test/regression/test_cast_matmul.py` is fully green again:
+      `1080 passed, 216 skipped`
+    - `python/test/unit/language/test_matmul.py` is down to only
+      `3 failed, 758 passed, 4780 skipped`
+- The remaining fresh exact branch-local buckets on the current dirty tree are
+  now narrower and split into two structural families:
+  - descriptor-view row-anchor materialization gap:
     - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-128-32]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-4-64-16-16]`
+    - `python/test/unit/language/test_matmul.py::test_simple_persistent_matmul[False-8-64-128-32]`
     - `python/test/unit/language/test_tensor_descriptor.py::test_tensor_descriptor_reshape_matmul[float32]`
-      both still hit
+    - the older full-file rerun still says all three
+      `test_tensor_descriptor_reshape_matmul[...]` dtypes fail on this bucket
+    - representative error:
       `required row anchors 32,64 are not directly representable in the descriptor view`
-      before the software pipeliner asserts.
+      before the software pipeliner asserts
+  - warp-specialization higher-rank root bucket:
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_forward[True-4-False-3-64-64-1024-1024]`
+      still hits `CUDA error: misaligned address`
+    - `python/test/unit/language/test_warp_specialization.py::test_warp_specialize_attention_persistent_forward[False-8-True-2-128-64-1024-1024]`
+      still shows `65535 / 131072` mismatches (`50.0%`)
+    - current read:
+      the remaining producer-side bug is probably in another higher-rank TMEM
+      root producer path (likely NVWS helpers), not in the now-fixed
+      source-initialized root contract from `PromoteLHSToTMem`
+- The older broad unit XML and regression manifests are therefore no longer
+  current counts for the dirty worktree:
+  - they remain useful as pre-fix census evidence and merge-base proof; but
+  - their aggregate failure totals must be refreshed after the next broader
+    rerun before they are used as the current red total.
 - Keep the cache/collision story grounded in the actual probes:
   - there is still no reproduced proof of a simple on-disk cache-key
     collision; and
