@@ -3687,3 +3687,39 @@ rejection, not rescue
     are the next obvious reduction
   - convert the broad shard inventory into an independent exact-failure
     inventory first, then prioritize code changes from that reduced set
+
+## 2026-04-10: the isolated overnight reductions turned the broad GB200 census into concrete fix buckets
+
+- Fresh merge-base file-level proof is now complete for the live unit bucket:
+  - `python/test/unit/language/test_matmul.py`
+    - `761 passed, 4780 skipped`
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `1599 passed, 202 skipped`
+- Current-head shard `1 / 4` is green:
+  - `5433 passed, 1014 skipped, 19344 deselected`
+- The broad shard-3 story is now concretely reduced:
+  - real isolated core bucket:
+    - `332` exact failures from the focused TMEM/MMA `test_core.py` slice
+    - exact split:
+      - `146` merge-base-present nodeids
+      - `186` branch-added / branch-changed nodeids
+  - isolated FPSAN tail:
+    - `1` exact branch-changed failure
+  - isolated layout/frontend tail:
+    - `test_layout_format_view.py` is green
+    - `1` exact branch-added frontend failure remains
+- The dominant branch-added runtime-matrix families are independently red:
+  - focused slice result:
+    - `413 failed, 17 passed, 1360 deselected`
+  - dominant exact families:
+    - split-N row/col-permuted
+    - `ld.red` row-permuted
+    - `ldst_scales`
+    - scaled-MMA copy `warpx4`
+    - `cp_no_scales`
+- This materially changes the next-fix strategy:
+  - the old-mainline bucket is now not just unit/lit; it also includes the
+    merge-base-present subset of the isolated shard-3 core failures
+  - `test_layout_format_view.py` should drop out of the active red list
+  - the branch-added runtime-matrix work should be driven from the focused
+    `413`-nodeid manifest rather than from the full raw group-4 shard alone

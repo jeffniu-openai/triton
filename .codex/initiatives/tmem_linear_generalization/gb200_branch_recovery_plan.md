@@ -368,3 +368,31 @@ PY
   2. old-mainline warp-specialization higher-rank MMAv5-root bucket
   3. branch-added TMEM runtime-matrix bucket
   4. remaining isolated shard-3 exacts after the queued reductions land
+
+## 2026-04-10 Additional Isolated Reductions
+
+- The focused shard-3 reductions materially changed the backlog shape:
+  - isolated `test_core.py` TMEM/MMA slice:
+    - `332` exact independent failures
+    - `146` exact old-mainline nodeids
+    - `186` branch-added / branch-changed nodeids
+  - isolated `test_fpsan.py`:
+    - `1` exact branch-changed failure
+  - isolated `test_layout_format_view.py`:
+    - green
+  - isolated frontend tail:
+    - `1` exact branch-added failure
+- The focused branch-added runtime-matrix slice also fails independently:
+  - `413` exact failures across the dominant split-N / `ld.red` /
+    `ldst_scales` / `cp` families
+- Practical change in recovery order:
+  1. old-mainline unit/lit descriptor-view row-anchor bucket
+  2. old-mainline warp-specialization higher-rank MMAv5-root bucket
+  3. old-mainline shard-3 core slice:
+     - start with `test_mma_scaled_tcgen05_copy[...]`,
+       `test_tmem_reduction[...]`, `test_padded_shared_layout_subslice[...]`,
+       and the merge-base-present subset of the focused core manifest
+  4. branch-added runtime-matrix focus slice
+  5. remaining branch-added / branch-changed shard-3 exacts
+  6. only then return to the still-pending isolated `test_lowerings.py`
+     result if it uncovers another independent bucket

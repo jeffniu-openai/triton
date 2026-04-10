@@ -6436,3 +6436,43 @@ Open after this slice:
   - the raw shard totals are good census evidence but poor fix units
   - the next useful reduction is to identify which shard-3 families still fail
     independently in isolated fresh processes
+
+## 2026-04-10: fresh merge-base unit proof and isolated shard reductions materially narrowed the live GB200 backlog
+
+- Fresh merge-base file-level reruns are now complete and green:
+  - `python/test/unit/language/test_matmul.py`
+    - `761 passed, 4780 skipped`
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `1599 passed, 202 skipped`
+- Current-head shard `1 / 4` is now green:
+  - `5433 passed, 1014 skipped, 19344 deselected`
+- Isolated current-head shard-3 reductions now show which pieces are actually
+  independent:
+  - focused `python/test/gluon/test_core.py` TMEM/MMA slice:
+    - `332 failed, 12 passed, 17619 deselected`
+    - exact split:
+      - `146` merge-base-present nodeids
+      - `186` branch-added / branch-changed nodeids
+  - isolated `python/test/gluon/test_fpsan.py`:
+    - `1 failed, 66 passed, 19 skipped`
+    - lone exact:
+      - `test_tcgen05_mma_scaled[linear_identity-acc_layout1-e4m3-e2m1]`
+  - isolated `python/test/gluon/test_layout_format_view.py`:
+    - green
+  - isolated frontend tail:
+    - one exact branch-added failure:
+      `test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+- Focused branch-added runtime-matrix slice is independently red:
+  - `413 failed, 17 passed, 1360 deselected`
+  - dominant families:
+    - `208` split-N row/col-permuted
+    - `48` `ld.red` row-permuted
+    - `33` `ldst_scales`
+    - `32` scaled-MMA copy `warpx4`
+    - `30` `cp_no_scales`
+- Net effect:
+  - group `3 / 4` is no longer an opaque shard failure; it is now reduced to
+    a real `332`-nodeid core bucket, a single FPSAN exact, and a single
+    frontend exact, with `test_layout_format_view.py` dropping out
+  - the current unit row-anchor / warp-specialization buckets now have fresh
+    merge-base file-level proof behind them

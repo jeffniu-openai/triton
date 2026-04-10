@@ -255,3 +255,36 @@ collecting the merge-base test files and comparing exact nodeids:
   - shard `3 / 4` now has a durable branch-vs-main split, but it still needs
     isolated reruns before the raw `1252` nodeids are treated as independent
     bugs
+
+## 2026-04-10 Additional Isolated Reductions
+
+- Fresh merge-base full-file proofs:
+  - `python/test/unit/language/test_matmul.py`
+    - `761 passed, 4780 skipped`
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `1599 passed, 202 skipped`
+- New isolated current-head exact manifests:
+  - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    - `332` exact nodeids from the dominant shard-3 `test_core.py` TMEM/MMA
+      slice
+  - `gb200_mergebase_present_test_core_group3_focus_e70a3aa09_failures.txt`
+    - `146` exact old-mainline nodeids inside that focused core slice
+  - `gb200_mergebase_missing_test_core_group3_focus_e70a3aa09_failures.txt`
+    - `186` branch-added / branch-changed nodeids inside that focused core
+      slice
+  - `gb200_current_branch_test_fpsan_isolated_e70a3aa09_failures.txt`
+    - `1` exact nodeid
+  - `gb200_current_branch_test_layout_frontend_isolated_e70a3aa09_failures.txt`
+    - `1` exact nodeid
+  - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+    - `413` exact nodeids from the dominant branch-added runtime-matrix slice
+- Important current reading:
+  - the focused shard-3 core slice fails independently, so that bucket is
+    real and no longer just a poisoned-context suspicion
+  - the isolated FPSAN tail is down to one branch-changed exact:
+    - `python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e4m3-e2m1]`
+  - `python/test/gluon/test_layout_format_view.py` is green in isolation; the
+    remaining isolated non-core shard-3 tail is the single branch-added
+    frontend exact
+  - the focused runtime-matrix slice fails independently with `413` exact
+    failures, so the dominant branch-added group-4 families are also real

@@ -963,3 +963,57 @@ These stay in the nearest validation loop while the red list is being reduced.
   - isolated current-head `python/test/gluon/test_fpsan.py`
   - isolated current-head focused `python/test/gluon/test_core.py` slice for
     the dominant shard-3 TMEM/MMA families
+
+## 2026-04-10 Overnight Exact Reductions (Further)
+
+- Fresh merge-base file-level confirmation is now complete for the live unit
+  bucket:
+  - `python/test/unit/language/test_matmul.py`
+    - `761 passed, 4780 skipped`
+  - `python/test/unit/language/test_warp_specialization.py`
+    - `1599 passed, 202 skipped`
+  - implication:
+    - the current `134`-nodeid unit red surface is now backed by fresh
+      file-level merge-base proof, not just earlier spot checks
+- Current-head shard `1 / 4` is now green:
+  - `5433 passed, 1014 skipped, 19344 deselected`
+- Isolated shard-3 reductions now separate the real exact core from the shard
+  noise:
+  - focused `python/test/gluon/test_core.py` TMEM/MMA slice:
+    - `332 failed, 12 passed, 17619 deselected`
+    - exact split:
+      - `146` old-mainline exact nodeids
+      - `186` branch-added / branch-changed nodeids
+    - dominant independent families:
+      - `64` `test_mma_scaled_tcgen05_copy[...]`
+      - `60` `test_tmem_linear_roundtrip_variant_sweep[...]`
+      - `40` `test_tmem_reduction[...]`
+      - `32` `test_tmem_reduction_linear_layouts[...]`
+      - `26` `test_tmem_descriptor_chain_matrix[...]`
+  - isolated `python/test/gluon/test_fpsan.py`:
+    - `1 failed, 66 passed, 19 skipped`
+    - lone exact failure:
+      - `python/test/gluon/test_fpsan.py::test_tcgen05_mma_scaled[linear_identity-acc_layout1-e4m3-e2m1]`
+    - exact nodeid absent on merge-base, so this is branch-changed coverage
+  - isolated `python/test/gluon/test_layout_format_view.py` +
+    frontend tail:
+    - `python/test/gluon/test_layout_format_view.py` is green in isolation
+    - the remaining isolated tail is the single branch-added frontend exact:
+      - `python/test/gluon/test_frontend.py::test_tensor_memory_linear_layout_non_surjective_reg_layout_parses`
+- Focused branch-added runtime-matrix reduction is also independently red:
+  - focused `python/test/gluon/test_tmem_runtime_matrix.py` dominant-family
+    slice:
+    - `413 failed, 17 passed, 1360 deselected`
+  - dominant independent families:
+    - `208` split-N row/col-permuted
+    - `48` `ld.red` row-permuted linear-layout
+    - `33` `ldst_scales`
+    - `32` scaled-MMA copy `warpx4` geometry
+    - `30` `cp_no_scales`
+- Still running when this section was written:
+  - current-head `python/triton_kernels/tests`
+    - still clean so far, but still sharing GPU `3` with an older non-CI
+      `python/test/unit` shard
+  - isolated current-head `python/test/gluon/test_lowerings.py`
+    - queued behind the now-finished shard `1 / 4`; waiting for the queue
+      shell to hand off
