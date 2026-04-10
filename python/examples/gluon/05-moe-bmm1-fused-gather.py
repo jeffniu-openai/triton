@@ -19,51 +19,6 @@ from triton_kernels.tensor import RaggedTensorMetadata, Tensor
 from triton_kernels.tensor_details.dtype import FP4, UINT8
 
 
-BLOCK_SCHEDULE_ROW_MAJOR = 0
-BLOCK_SCHEDULE_N_MAJOR = 1
-BLOCK_SCHEDULE_GROUPED_M_4 = 2
-BLOCK_SCHEDULE_GROUPED_M_8 = 3
-BLOCK_SCHEDULE_GROUPED_M_16 = 4
-BLOCK_SCHEDULE_GROUPED_N_4 = 5
-BLOCK_SCHEDULE_GROUPED_N_8 = 6
-BLOCK_SCHEDULE_GROUPED_N_16 = 7
-BLOCK_SCHEDULE_SNAKE_M_4 = 8
-BLOCK_SCHEDULE_SNAKE_M_8 = 9
-BLOCK_SCHEDULE_SNAKE_M_16 = 10
-BLOCK_SCHEDULE_SNAKE_N_4 = 11
-BLOCK_SCHEDULE_SNAKE_N_8 = 12
-BLOCK_SCHEDULE_SNAKE_N_16 = 13
-BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_2 = 14
-BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_4 = 15
-BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_2 = 16
-BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_4 = 17
-BLOCK_SCHEDULE_BAND_N_20_ROW_MAJOR = 18
-
-BLOCK_SCHEDULE_STRATEGIES = {
-    "row_major": BLOCK_SCHEDULE_ROW_MAJOR,
-    "n_major": BLOCK_SCHEDULE_N_MAJOR,
-    "grouped_m_4": BLOCK_SCHEDULE_GROUPED_M_4,
-    "grouped_m_8": BLOCK_SCHEDULE_GROUPED_M_8,
-    "grouped_m_16": BLOCK_SCHEDULE_GROUPED_M_16,
-    "grouped_n_4": BLOCK_SCHEDULE_GROUPED_N_4,
-    "grouped_n_8": BLOCK_SCHEDULE_GROUPED_N_8,
-    "grouped_n_16": BLOCK_SCHEDULE_GROUPED_N_16,
-    "snake_m_4": BLOCK_SCHEDULE_SNAKE_M_4,
-    "snake_m_8": BLOCK_SCHEDULE_SNAKE_M_8,
-    "snake_m_16": BLOCK_SCHEDULE_SNAKE_M_16,
-    "snake_n_4": BLOCK_SCHEDULE_SNAKE_N_4,
-    "snake_n_8": BLOCK_SCHEDULE_SNAKE_N_8,
-    "snake_n_16": BLOCK_SCHEDULE_SNAKE_N_16,
-    "row_major_swizzle_2": BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_2,
-    "row_major_swizzle_4": BLOCK_SCHEDULE_ROW_MAJOR_SWIZZLE_4,
-    "n_major_swizzle_2": BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_2,
-    "n_major_swizzle_4": BLOCK_SCHEDULE_N_MAJOR_SWIZZLE_4,
-    "band_n_20_row_major": BLOCK_SCHEDULE_BAND_N_20_ROW_MAJOR,
-}
-
-BLOCK_SCHEDULE_STRATEGY_NAMES = {value: name for name, value in BLOCK_SCHEDULE_STRATEGIES.items()}
-
-
 @gluon.jit
 def advance(idx: gl.tensor, phase: gl.tensor, num_bufs: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
     next_idx = idx + 1
@@ -77,123 +32,15 @@ def unpack_block_schedule(schedule):
 
 
 @gluon.jit
-def grouped_launch(lin_idx, m_tiles, n_tiles, group_size: gl.constexpr, minor_dim: gl.constexpr):
-    major_size = n_tiles if minor_dim == 0 else m_tiles
-    minor_size = m_tiles if minor_dim == 0 else n_tiles
-
-    num_pid_in_group = group_size * major_size
-    group_id = lin_idx // num_pid_in_group
-    first_minor = group_id * group_size
-    group_minor_size = gl.minimum(minor_size - first_minor, group_size)
-    group_offset = lin_idx % num_pid_in_group
-    minor = first_minor + (group_offset % group_minor_size)
-    major = group_offset // group_minor_size
-
-    if minor_dim == 0:
-        return minor, major
-    return major, minor
-
-
-@gluon.jit
-def xcd_swizzle(block_id, grid_m, GRID_N: gl.constexpr, XCD_SWIZZLE: gl.constexpr):
-    if XCD_SWIZZLE == 1:
-        return block_id
-
-    num_blocks = grid_m * GRID_N
-    per_group = num_blocks // XCD_SWIZZLE
-    extra = num_blocks % XCD_SWIZZLE
-    group = block_id % XCD_SWIZZLE
-    return group * per_group + gl.minimum(group, extra) + block_id // XCD_SWIZZLE
-
-
-@gluon.jit
-def planar_snake(lin_idx, m_tiles, n_tiles, minor_dim: gl.constexpr, tile_width: gl.constexpr):
-    major_size = n_tiles if minor_dim == 0 else m_tiles
-    minor_size = m_tiles if minor_dim == 0 else n_tiles
-
-    full_minor_tiles = minor_size // tile_width
-    full_minor_size = full_minor_tiles * tile_width
-    full_elements = full_minor_tiles * tile_width * major_size
-
-    minor_tile_idx = lin_idx // (tile_width * major_size)
-
-    full_minor_within = lin_idx % tile_width
-    full_major_within = (lin_idx // tile_width) % major_size
-    full_minor = minor_tile_idx * tile_width + full_minor_within
-    full_major = gl.where((minor_tile_idx % 2) == 0, full_major_within, major_size - 1 - full_major_within)
-
-    partial_width = minor_size - full_minor_size
-    partial_width = gl.where(partial_width > 0, partial_width, 1)
-    partial_lin = lin_idx - full_elements
-    partial_minor_within = partial_lin % partial_width
-    partial_major_within = (partial_lin // partial_width) % major_size
-    partial_minor = minor_tile_idx * tile_width + partial_minor_within
-    partial_major = gl.where((minor_tile_idx % 2) == 0, partial_major_within, major_size - 1 - partial_major_within)
-
-    in_full_tile = lin_idx < full_elements
-    minor = gl.where(in_full_tile, full_minor, partial_minor)
-    major = gl.where(in_full_tile, full_major, partial_major)
-
-    if minor_dim == 0:
-        return minor, major
-    return major, minor
-
-
-@gluon.jit
-def n_banded_row_major(lin_idx, m_tiles, n_tiles, band_n: gl.constexpr):
+def banded_row_major(lin_idx, m_tiles, n_tiles, band_n: gl.constexpr):
     band_id = lin_idx // (m_tiles * band_n)
     within_band = lin_idx % (m_tiles * band_n)
     return within_band // band_n, band_id * band_n + (within_band % band_n)
 
 
 @gluon.jit
-def block_schedule_coords(
-    pid_mn: gl.tensor,
-    grid_m: gl.tensor,
-    GRID_N: gl.constexpr,
-    BLOCK_SCHEDULE_STRATEGY: gl.constexpr,
-) -> tuple[gl.tensor, gl.tensor]:
-    if BLOCK_SCHEDULE_STRATEGY == 0:
-        return pid_mn // GRID_N, pid_mn % GRID_N
-    if BLOCK_SCHEDULE_STRATEGY == 1:
-        return pid_mn % grid_m, pid_mn // grid_m
-    if BLOCK_SCHEDULE_STRATEGY == 2:
-        return grouped_launch(pid_mn, grid_m, GRID_N, 4, 0)
-    if BLOCK_SCHEDULE_STRATEGY == 3:
-        return grouped_launch(pid_mn, grid_m, GRID_N, 8, 0)
-    if BLOCK_SCHEDULE_STRATEGY == 4:
-        return grouped_launch(pid_mn, grid_m, GRID_N, 16, 0)
-    if BLOCK_SCHEDULE_STRATEGY == 5:
-        return grouped_launch(pid_mn, grid_m, GRID_N, 4, 1)
-    if BLOCK_SCHEDULE_STRATEGY == 6:
-        return grouped_launch(pid_mn, grid_m, GRID_N, 8, 1)
-    if BLOCK_SCHEDULE_STRATEGY == 7:
-        return grouped_launch(pid_mn, grid_m, GRID_N, 16, 1)
-    if BLOCK_SCHEDULE_STRATEGY == 8:
-        return planar_snake(pid_mn, grid_m, GRID_N, 0, 4)
-    if BLOCK_SCHEDULE_STRATEGY == 9:
-        return planar_snake(pid_mn, grid_m, GRID_N, 0, 8)
-    if BLOCK_SCHEDULE_STRATEGY == 10:
-        return planar_snake(pid_mn, grid_m, GRID_N, 0, 16)
-    if BLOCK_SCHEDULE_STRATEGY == 11:
-        return planar_snake(pid_mn, grid_m, GRID_N, 1, 4)
-    if BLOCK_SCHEDULE_STRATEGY == 12:
-        return planar_snake(pid_mn, grid_m, GRID_N, 1, 8)
-    if BLOCK_SCHEDULE_STRATEGY == 13:
-        return planar_snake(pid_mn, grid_m, GRID_N, 1, 16)
-    if BLOCK_SCHEDULE_STRATEGY == 14:
-        swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 2)
-        return swizzled // GRID_N, swizzled % GRID_N
-    if BLOCK_SCHEDULE_STRATEGY == 15:
-        swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 4)
-        return swizzled // GRID_N, swizzled % GRID_N
-    if BLOCK_SCHEDULE_STRATEGY == 16:
-        swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 2)
-        return swizzled % grid_m, swizzled // grid_m
-    if BLOCK_SCHEDULE_STRATEGY == 17:
-        swizzled = xcd_swizzle(pid_mn, grid_m, GRID_N, 4)
-        return swizzled % grid_m, swizzled // grid_m
-    return n_banded_row_major(pid_mn, grid_m, GRID_N, 20)
+def block_schedule_coords(pid_mn: gl.tensor, grid_m: gl.tensor, GRID_N: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
+    return banded_row_major(pid_mn, grid_m, GRID_N, 20)
 
 
 @gluon.jit
@@ -201,12 +48,11 @@ def apply_block_schedule(
     block_id: gl.tensor,
     grid_m: gl.tensor,
     GRID_N: gl.constexpr,
-    BLOCK_SCHEDULE_STRATEGY: gl.constexpr,
     slice_offsets: gl.tensor,
     block_schedule: gl.tensor,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
     pid_mn = block_id % (grid_m * GRID_N)
-    schedule_pid_m, pid_n = block_schedule_coords(pid_mn, grid_m, GRID_N, BLOCK_SCHEDULE_STRATEGY)
+    schedule_pid_m, pid_n = block_schedule_coords(pid_mn, grid_m, GRID_N)
 
     slice_idx, pid_m = unpack_block_schedule(gl.load(block_schedule + schedule_pid_m))
     slice_offset = gl.load(slice_offsets + slice_idx)
@@ -293,7 +139,6 @@ class KernelConfig:
     load_weight_regs: int = 48
     mma_regs: int = 24
     store_helper_regs: int = 16
-    block_schedule_strategy: int = BLOCK_SCHEDULE_BAND_N_20_ROW_MAJOR
 
 
 @aggregate
@@ -339,7 +184,6 @@ class PartitionArgs:
 
     grid_m: gl.tensor
     GRID_N: gl.constexpr
-    BLOCK_SCHEDULE_STRATEGY: gl.constexpr
     K_TILES: gl.constexpr
     SCALE_FLAT_N: gl.constexpr
     SCALE_BLOCK_N_DIV: gl.constexpr
@@ -368,7 +212,6 @@ class PartitionArgs:
             block_id=block_id,
             grid_m=self.grid_m,
             GRID_N=self.GRID_N,
-            BLOCK_SCHEDULE_STRATEGY=self.BLOCK_SCHEDULE_STRATEGY,
             slice_offsets=self.x_slice_offs,
             block_schedule=self.x_block_schedule,
         )
@@ -876,7 +719,6 @@ def ws_matmul_kernel(
     LOAD_WEIGHT_REGS: gl.constexpr,
     MMA_REGS: gl.constexpr,
     STORE_HELPER_REGS: gl.constexpr,
-    BLOCK_SCHEDULE_STRATEGY: gl.constexpr,
     EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
     EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
@@ -979,7 +821,6 @@ def ws_matmul_kernel(
         #
         grid_m=grid_m,
         GRID_N=grid_n,
-        BLOCK_SCHEDULE_STRATEGY=BLOCK_SCHEDULE_STRATEGY,
         K_TILES=k_tiles,
         SCALE_FLAT_N=scale_flat_n,
         SCALE_BLOCK_N_DIV=scale_block_n_div,
@@ -1034,7 +875,6 @@ def matmul(
     precision_config: PrecisionConfig,
     c: torch.Tensor,
     fused_activation: FusedActivation,
-    block_schedule_strategy: int = BLOCK_SCHEDULE_ROW_MAJOR,
 ):
     specs = fused_activation.specs
     assert specs.name == "swiglu"
@@ -1057,7 +897,7 @@ def matmul(
     _, _, n = b.shape
     m = gather_indx.shape[0]
 
-    config = KernelConfig(block_schedule_strategy=block_schedule_strategy)
+    config = KernelConfig()
 
     mxfp_block_size = 32
     scale_size_outer = 128
@@ -1130,7 +970,6 @@ def matmul(
         LOAD_WEIGHT_REGS=config.load_weight_regs,
         MMA_REGS=config.mma_regs,
         STORE_HELPER_REGS=config.store_helper_regs,
-        BLOCK_SCHEDULE_STRATEGY=config.block_schedule_strategy,
         EPILOGUE_ROW_SUBTILE_FACTOR=config.epilogue_row_subtile_factor,
         EPILOGUE_STORE_HELPER_DEPTH=config.epilogue_store_helper_depth,
         SCALE_SIZE_OUTER=scale_size_outer,

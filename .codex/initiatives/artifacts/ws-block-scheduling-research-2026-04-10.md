@@ -360,3 +360,13 @@ Post-promotion benchmark on the aligned target bucket:
 
 - `ws_optimized = 0.3417 ms`
 - `gluon_optimized = 0.3432 ms`
+
+### Cleanup Note
+
+The live repo code has since been cleaned back down to only the promoted banded traversal.
+
+- `python/examples/gluon/05-moe-bmm1-fused-gather.py` now keeps only the `band_n_20_row_major` path.
+- `python/perf/sweep_moe_bmm1_block_schedule.py` was deleted after promotion.
+- The artifact workspace under `.codex/initiatives/artifacts/ws-block-schedule-exp-2026-04-10/` remains the durable home for the broader schedule inventory, sweep harnesses, repeated paired analysis, and NCU outputs.
+
+That cleanup did not regress the target bucket. The same exact GPU 0 benchmark (`warmup=30`, `rep=1000`) moved from `ws_optimized = 0.3419 ms` pre-cleanup to `ws_optimized = 0.3394 ms` post-cleanup, with `gluon_optimized = 0.3429 ms` in both runs.
