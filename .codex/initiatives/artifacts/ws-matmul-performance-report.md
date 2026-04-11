@@ -218,6 +218,42 @@ PYTHONPATH=python/triton_kernels:python python python/examples/gluon/05-moe-bmm1
 If this exact `PYTHONPATH` is not set, the copied-workspace experiments can fail with import errors
 even though the code is present locally.
 
+The prompt-optimization loop exposed a second failure mode for copied workspaces: the repo snapshot
+can be logically correct while still being physically incomplete for runtime use. In this project,
+isolated workspaces copied from the active worktree were initially missing runtime source files
+needed by Triton itself, which caused:
+
+- `ModuleNotFoundError` on `triton.language.extra.cuda.libdevice`
+- `0 active drivers ([])` because the copied `triton.backends` tree exposed no Nvidia backend
+
+For an isolated workspace that is expected to run Triton examples locally, verify at minimum:
+
+1. `python/triton/language/extra/cuda/libdevice.py` is present
+2. `python/triton/backends/nvidia/` is present
+3. `PYTHONPATH=python/triton_kernels:python` resolves `triton` from the workspace copy
+4. `from triton.runtime import driver; driver.active` succeeds
+
+If any of those fail, fix the workspace recipe first. Do **not** treat the worker as blocked on the
+kernel until the sandbox can import Triton and create a CUDA driver.
+
+One more subtlety matters here: in the canonical Triton tree, some of these runtime paths are
+symlinks rather than ordinary directories. In particular:
+
+- `python/triton/backends/nvidia -> third_party/nvidia/backend`
+- `python/triton/language/extra/cuda -> third_party/nvidia/language/cuda`
+
+So a naive private-workspace copy can look fine while still being broken in one of two ways:
+
+- the symlink target points back outside the private workspace
+- the copy loses the target contents and keeps only an incomplete shadow
+
+For isolated-agent work, the safer workspace recipe is:
+
+- copy the repo snapshot
+- then explicitly dereference or overlay those Triton runtime symlink targets into the workspace
+
+Do not assume `rsync -a` or a simple file copy is sufficient.
+
 ### Environment Checklist
 
 Use this as a “do not start until this is true” checklist:
@@ -1537,6 +1573,43 @@ This round was useful because it tightened the acceptance contract:
 
 - if a change only retunes config selection or shallow buffering policy, it is guilty until the
   eight-point scorer proves it helpful
+
+### 12.10 Fast-Start Protocol For Isolated Agents
+
+The prompt-optimization loop showed that even a good report can still leave agents too open-ended.
+When an isolated worker is dropped into a private workspace with only this report, it should spend
+its first 30 minutes doing something like this:
+
+1. **prove the workspace command path works**
+   - from the workspace root, run:
+     ```bash
+     PYTHONPATH=python/triton_kernels:python python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py
+     ```
+2. **run one quick local benchmark sanity point before editing**
+   - use a representative batch point and confirm the example runs at all
+3. **choose one narrow kernel hypothesis**
+   - not a broad selector rewrite
+   - not a launch-grid/occupancy heuristic
+   - not benchmark-helper surgery
+4. **make one candidate edit**
+   - keep the diff small enough that cause and effect are interpretable
+5. **measure the candidate on more than one point before writing a success claim**
+   - if the candidate is only checked at one or two points, it is not ready to summarize
+
+The loop strongly suggests that a worker who does not get to step 4 quickly is unlikely to produce a
+useful candidate in that round.
+
+There is one important refinement after round 5:
+
+- if the workspace runtime is even slightly suspect, do **not** make the isolated worker responsible
+  for end-to-end benchmarking
+- instead, have the worker produce a small kernel diff and run the broad scorer centrally from a
+  known-good environment
+
+This separates:
+
+- proposal generation inside the isolated sandbox
+- trustworthy measurement in the canonical evaluation environment
 
 ---
 

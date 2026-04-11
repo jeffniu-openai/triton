@@ -154,3 +154,82 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - future rounds should use the revised report and judge candidates primarily by geometric speedup
     plus explicit worst-regression guardrails
 - Status: completed
+
+### Round 4
+
+- Report version: after the scoring-policy tightening from rounds 2 and 3
+- Workspaces:
+  - `r4a1`
+  - `r4a2`
+  - `r4a3`
+- Agents:
+  - `Descartes`
+  - `Kuhn`
+  - `Kepler`
+- Setup notes:
+  - each workspace is a fresh copy of the current mainline snapshot
+  - all initiative artifacts were removed from the workspace copy except the revised
+    `ws-matmul-performance-report.md`
+  - agents were given slightly different search biases to improve exploration diversity:
+    kernel-internal dataflow, epilogue/store-side execution, and low-batch tile/config
+  - all three were still instructed to treat the report as the only high-level guidance and to use
+    broad evidence rather than narrow spot checks
+- Final round outcome:
+  - no worker produced a usable candidate before shutdown
+  - no worker edited the kernel file before the round was culled
+- Prompt/report lessons from round 4:
+  - the report was still too open-ended for cold-start isolated workers
+  - future prompts need an explicit fast-start protocol rather than only principles and hard rules
+  - stalled workers should be terminated quickly and replaced with a more scaffolded prompt
+- Status: completed
+
+### Round 5
+
+- Report version: after the fast-start-protocol update
+- Planned adjustments:
+  - keep the same report-only setup, but give workers a more concrete initial execution protocol
+  - require an early sanity command, one narrow hypothesis, one small diff, and more than one
+    measurement before any success claim
+- Workspaces:
+  - `r5a1`
+  - `r5a2`
+- Agents:
+  - `Helmholtz`
+  - `Feynman`
+- Setup notes:
+  - same report-only isolation as earlier rounds
+  - prompt now includes an explicit fast-start protocol rather than only principles
+  - workers were explicitly told to avoid selector/launch-grid heuristics and to get to one small
+    kernel diff quickly
+- Early findings:
+  - the prompt itself improved, but the workspace recipe still had hidden runtime gaps
+  - copied workspaces initially lacked `python/triton/language/extra/cuda/libdevice.py`
+  - after fixing that, they still lacked `python/triton/backends/nvidia/`, which made Triton see
+    `0 active drivers`
+  - so round 5 was primarily useful for discovering that a report-only prompt still depends on a
+    runtime-complete sandbox recipe
+- Final round outcome:
+  - `r5a1`
+    - change type: small helper-store micro-optimization plus a local runtime import fix
+    - useful signal: the worker finally reached a real kernel diff once the sandbox runtime was
+      repaired
+    - rejection reason: the candidate bundled a runtime workaround, and the central scoring path was
+      still too fragile to treat the worker's local benchmark as authoritative
+  - `r5a2`
+    - change type: no usable kernel candidate before shutdown
+- Prompt/report lessons from round 5:
+  - the isolated workers should not own end-to-end benchmarking unless the sandbox runtime is known
+    to be complete
+  - the workspace recipe must explicitly dereference or overlay Triton runtime symlink targets
+  - future rounds should keep workers focused on producing a small kernel diff and leave broad
+    scoring to the main agent in a known-good environment
+- Status: completed
+
+### Round 6
+
+- Report version: after the sandbox-completeness and central-scoring refinement
+- Planned adjustments:
+  - create private workspaces with dereferenced Triton runtime symlink targets
+  - tell workers to propose one or two small kernel diffs only
+  - keep all broad ranking in the central scorer instead of delegating benchmarking to workers
+- Status: pending

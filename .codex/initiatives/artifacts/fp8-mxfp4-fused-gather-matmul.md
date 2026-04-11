@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-11T10:03:14Z
+updated: 2026-04-11T20:32:22Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -617,6 +617,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Independent scoring of a round-3 launch-grid candidate plus responsive/idle worker monitoring
   - Learnings: Round 3 produced a useful scoring lesson rather than a kernel improvement. A candidate that only changed the `BLOCK_M=128` launch-grid policy returned a *positive arithmetic mean* on one pass, but still had a *negative geometric mean* and a severe worst regression (`-27%` at one point). That made it clear that arithmetic mean speedup is not a safe promotion metric by itself when gains and losses are uneven. The report and loop log now explicitly prioritize geometric speedup and worst-regression guardrails, and the non-responsive workers were shut down rather than allowed to stall the loop indefinitely.
   - Plan updates: Future isolated rounds should start from the revised report, use geometric speedup plus worst-regression thresholds as the promotion gate, and cull unproductive workers faster.
+- `2026-04-11` Completed: Refined the prompt-optimization loop around sandbox completeness and central scoring
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`
+  - Validation: Fresh isolated rounds (`r4*`, `r5*`), direct sandbox import checks, worker monitoring, and manual diagnosis of missing Triton runtime pieces in copied workspaces
+  - Learnings: The next bottleneck in the prompt-optimization loop was not kernel quality but sandbox correctness. Copied private workspaces inherited incomplete Triton runtime trees because the canonical repo uses symlinked runtime paths such as `python/triton/backends/nvidia` and `python/triton/language/extra/cuda`. That created misleading worker failures (`ModuleNotFoundError` on `libdevice`, then `0 active drivers`). Round 5 also showed that once the runtime was repaired enough for a worker to produce a small kernel diff, it was still better to keep broad ranking in the main agent rather than trust worker-local benchmarking from an ad hoc sandbox. The report now documents the workspace-completeness checklist, the symlink-dereference requirement, and the stronger separation between isolated proposal generation and central scoring.
+  - Plan updates: Future prompt-optimization rounds should build private workspaces with dereferenced Triton runtime symlink targets from the start and ask workers for small kernel diffs only, with all broad evaluation performed centrally.
 
 ## Next Up
 
