@@ -43,13 +43,13 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 13:50 UTC, the latest pushed source/test checkpoint is
-  `c5bdb6d5c` on `origin/codex/tmem`.
+- As of 2026-04-11 14:00 UTC, the latest pushed source/test checkpoint is
+  `bf3dd781b` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
-  `c5bdb6d5c` slices were validated with focused direct-i8 MMA tests,
-  adjacent positive `tcgen05_mma` kind tests, the Blackwell conversion lit
-  test, and focused copy runtime exacts.
+  copy slices were validated with focused direct-i8 MMA tests, adjacent
+  positive `tcgen05_mma` kind tests, the Blackwell conversion lit test, and
+  focused copy runtime exacts.
 - A fresh four-way `python/test/gluon` sweep from `be3cba0cd` is green:
   - group 1:
     `5448 passed, 1002 skipped, 19348 deselected`
@@ -75,6 +75,21 @@ When resuming the initiative:
   - both variants assert the exact `tcgen05.cp.cta_group::1.128x128b` PTX/LLIR
     family;
   - the linear variant also checks the TTGIR contains `tensor_memory_linear`.
+- The standalone scaled `warpx4.32x128b` copy validation no longer depends on
+  `_reinterpret` after `bf3dd781b`:
+  - `test_tmem_copy_2d`, `test_tmem_runtime_matrix_cp_scales_warpx4`, and the
+    scales layout probe validate the copied data through supported logical
+    `TensorMemoryScalesLayout` loads;
+  - the tests still assert exact `tcgen05.cp.cta_group::1.warpx4.32x128b`
+    PTX/LLIR selection;
+  - they now assert no `ttg.memdesc_reinterpret` appears in TTGIR for those
+    kernels.
+- Do not treat scales physical-inspection aliases as ordinary equal-size
+  bitcasts: a direct `bitcast(...)` replacement exposed that the old dense
+  inspection view was larger than the logical scales descriptor. Use logical
+  scales loads for this test intent, and reserve physical bitcasts for the
+  explicit offset/slice/subview cases where total size and physical mapping are
+  equivalent.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
@@ -175,8 +190,7 @@ When resuming the initiative:
   intentionally reverted attention example tracked separately from supported
   bitcast API validation and the legacy M64 MMAv5 xfail visible as design debt.
   Continue the long-term `copy` saturation around TMEM-view destinations for
-  `128x256b` and scaled `warpx4.32x128b`, plus `ld.red`,
-  MMAv5/`mma_scaled`, and fuzzing phases.
+  `128x256b`, plus `ld.red`, MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 

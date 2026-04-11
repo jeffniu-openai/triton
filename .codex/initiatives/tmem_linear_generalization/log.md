@@ -7774,3 +7774,52 @@ Open after this slice:
     `offset/slice/subview -> bitcast` migration is ready;
   - continue long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
     stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 14:00 UTC
+
+- Committed and pushed scaled copy `_reinterpret` cleanup:
+  - `bf3dd781b`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - remove the old dense physical-inspection `_reinterpret` from the standalone
+    scaled `tcgen05.copy.warpx4.32x128b` validation kernels;
+  - keep the exact copy-family assertions intact.
+- Implementation:
+  - `python/test/gluon/test_core.py::test_tmem_copy_2d` now validates copied
+    scales through a supported logical `TensorMemoryScalesLayout` load;
+  - `python/test/gluon/test_tmem_runtime_matrix.py` applies the same pattern to
+    `test_tmem_runtime_matrix_cp_scales_warpx4` and the scales layout probe;
+  - the migrated tests assert no `ttg.memdesc_reinterpret` remains in their
+    TTGIR.
+- Probe result:
+  - replacing the old physical-inspection view with direct `bitcast(...)` is
+    not the correct supported operation for scales descriptors;
+  - the `(64, 16)` logical scales descriptor does not equal-size bitcast to the
+    old `(128, 32)` dense inspection shape;
+  - use logical scales loads for this validation intent, and reserve physical
+    bitcast for offset/slice/subview sources with equivalent total bit size and
+    exact physical TMEM mapping.
+- `128x256b` view-destination probe:
+  - a temporary `[2, 128, 256]` indexed parent positive probe failed with
+    tensor-memory OOR:
+    `Required: 1024, Hardware limit: 512`;
+  - this shape should not be treated as a positive target under the current
+    allocation model.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - scaled copy exacts:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-scales-logical-load-core PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_core.py::test_tmem_copy_2d' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe'`
+    - `4 passed in 3.85s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue `128x256b` TMEM-view saturation within TMEM-capacity limits;
+  - keep attention deferred to a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration;
+  - continue long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+    stale-negative cleanup, and heuristic cleanup.

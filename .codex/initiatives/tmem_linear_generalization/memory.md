@@ -146,7 +146,7 @@
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;
   - remaining copy work is saturation and missing-surface coverage, especially
-    TMEM-view destinations for `128x256b`, scales `warpx4.32x128b`,
+    TMEM-view destinations for `128x256b`, scaled-MMA copy geometries,
     `cta_group::2` combinations, and any additional deterministic `warpx2`
     user-visible paths;
   - keep `4x256b` out of the positive target set unless a future direct-PTX
@@ -272,7 +272,55 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 13:50 UTC)
+## Current Topline (2026-04-11 14:00 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `bf3dd781b` on `origin/codex/tmem`
+- This checkpoint migrates the standalone scaled `warpx4.32x128b`
+  `tcgen05.copy` validation off `_reinterpret`:
+  - `python/test/gluon/test_core.py::test_tmem_copy_2d`;
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4`;
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe`.
+- The supported replacement for these tests is a logical
+  `TensorMemoryScalesLayout` load after `tcgen05_copy`, not a physical
+  bitcast:
+  - the tests still assert exact
+    `tcgen05.cp.cta_group::1.warpx4.32x128b` PTX/LLIR selection;
+  - the output now checks the logical scales data directly against the input;
+  - each migrated scaled-copy test asserts no `ttg.memdesc_reinterpret` remains
+    in TTGIR.
+- Important conclusion from the failed bitcast probe:
+  - direct `tmem.bitcast(ttgl.int8, (128, 32), TensorMemoryLayout(...))` from a
+    `(64, 16)` `TensorMemoryScalesLayout` descriptor is not the right supported
+    operation;
+  - the old `_reinterpret` was a larger dense physical-inspection view over a
+    logical scales descriptor with broadcast/replicated semantics;
+  - keep the physical bitcast contract restricted to offset/slice/subview
+    sources whose total bit size and exact physical TMEM mapping are equivalent
+    to the requested dtype/shape/layout.
+- `128x256b` full indexed-view destination probe:
+  - a temporary `[2, 128, 256]` indexed parent probe failed at launch metadata
+    with `Required: 1024, Hardware limit: 512` tensor-memory OOR;
+  - do not add that full-parent shape as a positive test target unless the
+    allocation model changes.
+- Validation for `bf3dd781b`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - scaled copy exacts:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-scales-logical-load-core PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_core.py::test_tmem_copy_2d' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe'`
+    - `4 passed in 3.85s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue `128x256b` TMEM-view saturation only within shapes that fit the
+    512-unit TMEM allocation limit;
+  - keep attention reverted until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready;
+  - continue the long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+    stale-negative cleanup, and heuristic phases.
+
+## Prior Topline (2026-04-11 13:50 UTC)
 
 - Latest pushed source/test checkpoint:
   - `c5bdb6d5c` on `origin/codex/tmem`
@@ -1490,8 +1538,9 @@
 - High-value TMEM test gaps from the latest audit:
   - direct canonical TMEM-linear `128x128b` root copy coverage is now closed by
     `c5bdb6d5c`;
-  - TMEM view destinations for `128x256b` and scales `warpx4.32x128b` copy are
-    still under-tested;
+  - standalone scales `warpx4.32x128b` copy validation is now off
+    `_reinterpret` at `bf3dd781b`;
+  - TMEM view destinations for `128x256b` are still under-tested;
   - direct scaled MMAv5 via TMEM views remains a good next runtime target.
 - New PASS coverage:
   - executable `32x32b.x1` load/store is now covered for:
