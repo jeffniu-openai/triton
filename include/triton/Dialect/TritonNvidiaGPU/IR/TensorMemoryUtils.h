@@ -255,6 +255,10 @@ bool isDirectTMemCopyLayoutSupported(gpu::MemDescType memTy,
                                      TMemCopyFamily family,
                                      std::string *error = nullptr);
 
+bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
+                                            TMemCopyFamily family,
+                                            std::string *error = nullptr);
+
 std::optional<uint64_t>
 getDirectTMemCopySeedDescriptorImm(gpu::MemDescType srcTy,
                                    TMemCopyFamily family);

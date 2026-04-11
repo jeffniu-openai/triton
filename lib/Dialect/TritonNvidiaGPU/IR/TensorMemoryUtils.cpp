@@ -7141,6 +7141,82 @@ StringRef stringifyTMemCopyFamily(TMemCopyFamily family) {
   llvm_unreachable("unknown tcgen05.copy family");
 }
 
+bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
+                                            TMemCopyFamily family,
+                                            std::string *error) {
+  if (family != TMemCopyFamily::Warpx2_01_23_64x128b &&
+      family != TMemCopyFamily::Warpx2_02_13_64x128b)
+    return true;
+
+  auto setError = [&](Twine msg) {
+    if (error)
+      *error = msg.str();
+    return false;
+  };
+
+  if (srcTy.getRank() != 2 || srcTy.getShape()[1] != 4 ||
+      (srcTy.getShape()[0] != 128 && srcTy.getShape()[0] != 256)) {
+    return setError("warpx2 tcgen05.copy currently requires a 128x4 shared "
+                    "tile, or a 256x4 two-CTA shared tile with the canonical "
+                    "CTA block basis.");
+  }
+  if (srcTy.getElementType().getIntOrFloatBitWidth() != 32)
+    return setError("warpx2 tcgen05.copy currently requires 32-bit shared "
+                    "elements.");
+  if (!isa<triton::gpu::SharedLinearEncodingAttr>(srcTy.getEncoding())) {
+    return setError("warpx2 tcgen05.copy currently requires the canonical "
+                    "shared-linear source layout.");
+  }
+
+  auto shmemLl = toLinearLayout(srcTy);
+  auto *ctx = srcTy.getContext();
+  auto kOffset = StringAttr::get(ctx, "offset");
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!shmemLl.hasInDim(kOffset))
+    return setError("warpx2 tcgen05.copy shared layout has no offset dimension.");
+  for (auto dim : shmemLl.getInDimNames()) {
+    if (dim != kOffset && dim != kBlock) {
+      return setError("warpx2 tcgen05.copy shared layout may only use offset "
+                      "and block dimensions.");
+    }
+  }
+
+  constexpr int32_t expectedOffsetBases[][2] = {
+      {32, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0},
+      {4, 0},  {8, 0}, {16, 0}, {64, 0},
+  };
+  auto actualOffsetBases = shmemLl.getBases().lookup(kOffset);
+  if (actualOffsetBases.size() != std::size(expectedOffsetBases)) {
+    return setError("warpx2 tcgen05.copy currently supports only the "
+                    "canonical 128x4 shared-linear offset basis order.");
+  }
+  for (auto [actual, expected] :
+       llvm::zip(actualOffsetBases, llvm::ArrayRef(expectedOffsetBases))) {
+    if (!llvm::equal(actual, llvm::ArrayRef(expected))) {
+      return setError("warpx2 tcgen05.copy currently supports only the "
+                      "canonical 128x4 shared-linear offset basis order.");
+    }
+  }
+
+  auto blockBases = shmemLl.getBases().lookup(kBlock);
+  if (srcTy.getShape()[0] == 128) {
+    if (!llvm::all_of(blockBases, [](ArrayRef<int32_t> basis) {
+          return llvm::all_of(basis, [](int32_t v) { return v == 0; });
+        })) {
+      return setError("single-CTA warpx2 tcgen05.copy does not support a "
+                      "non-zero shared block basis.");
+    }
+    return true;
+  }
+
+  if (blockBases.size() != 1 ||
+      !llvm::equal(blockBases.front(), ArrayRef<int32_t>{128, 0})) {
+    return setError("two-CTA warpx2 tcgen05.copy requires the canonical "
+                    "shared block basis [[128, 0]].");
+  }
+  return true;
+}
+
 bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
                                      std::string *error) {
   if (family != TMemCopyFamily::Dense128x128b &&

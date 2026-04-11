@@ -301,6 +301,16 @@ def _make_tmem_copy_warpx2_tmem_layout_twocta():
     )
 
 
+def _make_tmem_copy_warpx2_tmem_layout_02_13_twocta():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
+        cols=[[0, 1], [0, 2]],
+        block_bases=[[128, 0]],
+        shape=[256, 4],
+        two_ctas=True,
+    )
+
+
 def _make_tmem_copy_warpx2_tmem_layout_02_13():
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
@@ -353,6 +363,14 @@ def _expected_tmem_copy_warpx2_01_23_twocta_output(inp: torch.Tensor) -> torch.T
 def _make_tmem_copy_128x128_shared_layout():
     return ttgl.SharedLinearLayout(
         offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        alignment=16,
+    )
+
+
+def _make_tmem_copy_128x128_shared_layout_twocta():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        block_bases=[[128, 0]],
         alignment=16,
     )
 
@@ -4502,51 +4520,65 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_canonical_codegen():
+@pytest.mark.parametrize(
+    "family,tmem_layout",
+    [
+        ("warpx2::01_23.64x128b", _make_tmem_copy_warpx2_tmem_layout()),
+        ("warpx2::02_13.64x128b", _make_tmem_copy_warpx2_tmem_layout_02_13()),
+    ],
+)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsupported(
+    family, tmem_layout, capfd
+):
     M = 128
     N = 4
     shared_layout = _make_tmem_copy_128x128_shared_layout()
-    tmem_layout = _make_tmem_copy_warpx2_tmem_layout()
     inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
     out = torch.empty((1, ), device="cuda", dtype=torch.int32)
 
-    compiled = tmem_copy_no_scales_warpx2_codegen_kernel[(1, )](
-        inp, out, shared_layout, tmem_layout, num_warps=4
-    )
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_copy_no_scales_warpx2_codegen_kernel[(1, )](
+            inp, out, shared_layout, tmem_layout, num_warps=4
+        )
 
-    assert int(out.item()) == 0
-    _assert_exact_cp_ptx_llir_match(
-        compiled,
-        ["tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"],
-    )
-    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttng.tmem_copy" in ttgir
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert f"maps to tcgen05.copy.{family}" in text
+    assert "canonical 128x4 shared-linear offset basis order" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen():
-    M = 128
+@pytest.mark.parametrize(
+    "family,tmem_layout",
+    [
+        ("warpx2::01_23.64x128b", _make_tmem_copy_warpx2_tmem_layout_twocta()),
+        ("warpx2::02_13.64x128b", _make_tmem_copy_warpx2_tmem_layout_02_13_twocta()),
+    ],
+)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported(
+    family, tmem_layout, capfd
+):
+    M = 256
     N = 4
-    shared_layout = _make_tmem_copy_128x128_shared_layout()
-    tmem_layout = _make_tmem_copy_warpx2_tmem_layout_02_13()
+    shared_layout = _make_tmem_copy_128x128_shared_layout_twocta()
     inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
-    out = torch.empty((1, ), device="cuda", dtype=torch.int32)
+    out = torch.empty_like(inp)
 
-    compiled = tmem_copy_no_scales_warpx2_codegen_kernel[(1, )](
-        inp, out, shared_layout, tmem_layout, num_warps=4
-    )
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_copy_no_scales_warpx2_twocta_kernel[(1, )](
+            inp, out, shared_layout, tmem_layout, num_warps=4, num_ctas=2
+        )
 
-    assert int(out.item()) == 0
-    _assert_exact_cp_ptx_llir_match(
-        compiled,
-        ["tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"],
-    )
-    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttng.tmem_copy" in ttgir
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert f"maps to tcgen05.copy.{family}" in text
+    assert "canonical 128x4 shared-linear offset basis order" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

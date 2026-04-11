@@ -283,12 +283,15 @@ Every fuzz case records:
   `128x256b` opcode checks; keep future dense two-CTA additions focused on
   new shapes/layouts rather than re-proving those two base families.
 - Special no-scales `cta_group::1` `warpx2::{01_23,02_13}.64x128b` paths are
-  covered by executable candidate tests and canonical-codegen exact tests.
+  covered by executable candidate tests with runtime oracles and exact commit
+  opcode checks. Dense shared-layout `warpx2` forms are clean negatives until a
+  correct descriptor/address model exists; they previously emitted opcodes but
+  copied wrong data.
 - No-scales `cta_group::2` `warpx2::01_23.64x128b` is covered by an
   executable public-layout test with exact copy and multicast commit opcodes.
   `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the first
-  public two-CTA candidate fails during shared descriptor-plan synthesis even
-  though the opcode is part of the documented inventory.
+  candidate shared layout fails during descriptor-plan synthesis, and the dense
+  shared-layout form is rejected to avoid known wrong-code.
 
 #### Scales / multicast positive matrix
 - scales payload layouts that are known to alias to legal TMEM scales tiles
@@ -320,11 +323,12 @@ Every fuzz case records:
 - When the backend cannot legalize a documented atom family but the layout math
   suggests it should exist, write a direct PTX microkernel to determine whether
   the ISA/toolchain accepts the opcode.
-- The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` cases and the
-  no-scales `cta_group::2 warpx2::01_23.64x128b` case are now covered through
-  the public backend path with exact commit opcode checks; reserve direct PTX
-  probes for remaining scales or two-CTA `warpx2::02_13` documentation/layout
-  gaps.
+- The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` candidate
+  cases and the no-scales `cta_group::2 warpx2::01_23.64x128b` case are now
+  covered through the public backend path with exact commit opcode checks;
+  reserve direct PTX probes for remaining scales or two-CTA `warpx2::02_13`
+  documentation/layout gaps. Dense shared-layout `warpx2` forms are negative
+  until descriptor synthesis can prove correct runtime semantics.
 
 #### Checks
 - Output matches input for no-scales copies.

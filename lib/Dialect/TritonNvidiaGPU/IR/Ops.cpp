@@ -1605,6 +1605,9 @@ LogicalResult TMEMCopyOp::verify() {
       if (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family,
                                            &layoutSupportError))
         return false;
+      if (!isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family,
+                                                 &layoutSupportError))
+        return false;
       return llvm::all_of(plan.messages, [&](const auto &message) {
         if (message.useDirectSeedDescriptor &&
             getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
@@ -1632,6 +1635,9 @@ LogicalResult TMEMCopyOp::verify() {
       (void)isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy,
                                             copyPlans.front().family,
                                             &layoutSupportError);
+      std::string sharedLayoutSupportError;
+      (void)isTMemCopySharedLayoutRuntimeSupported(
+          srcTy, copyPlans.front().family, &sharedLayoutSupportError);
       auto diag =
           emitOpError("The source shared layout maps to tcgen05.copy.")
           << family
@@ -1639,6 +1645,9 @@ LogicalResult TMEMCopyOp::verify() {
              "descriptor plan for it.";
       if (!layoutSupportError.empty()) {
         diag.attachNote() << layoutSupportError;
+      }
+      if (!sharedLayoutSupportError.empty()) {
+        diag.attachNote() << sharedLayoutSupportError;
       }
       diag.attachNote()
           << "Use the canonical shared layout for tcgen05.copy." << family

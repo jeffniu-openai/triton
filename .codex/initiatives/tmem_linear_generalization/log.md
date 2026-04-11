@@ -9623,3 +9623,43 @@ Open after this slice:
   - run hygiene, commit, and push this two-CTA `warpx2::01_23` coverage slice;
   - then continue either direct-PTX/layout probing for two-CTA `warpx2::02_13`
     and scales `warpx2`, or move to the next MMAv5 reachable-family gap.
+
+## 2026-04-11 19:53 UTC
+
+- Tightened no-scales `warpx2` copy lowering to avoid a codegen-only wrong-code
+  path.
+- Discovery:
+  - dense shared layouts could emit single-CTA `warpx2::{01_23,02_13}` opcodes
+    but did not copy the runtime data described by the existing candidate
+    oracles;
+  - dense shared two-CTA `warpx2::02_13` emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` but produced all-zero
+    output;
+  - simply extending the single-CTA `02_13` direct descriptor seed to the
+    two-CTA block-basis source also compiled but produced all-zero output, so
+    the real missing piece is a correct descriptor/address model, not a seed
+    shape toggle.
+- Source/test change:
+  - added `isTMemCopySharedLayoutRuntimeSupported(...)` and used it in the
+    verifier and LLVM copy-plan selection;
+  - for no-scales `warpx2`, only the known runtime-correct 128x4
+    shared-linear source layout, plus its canonical two-CTA block-basis form,
+    can proceed to descriptor planning;
+  - replaced the old dense shared `warpx2` codegen-only tests with clean
+    unsupported tests for both `01_23` and `02_13`;
+  - added two-CTA dense shared clean unsupported coverage for both `01_23` and
+    `02_13`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused `warpx2` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-restrict-slice-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `8 passed, 2526 deselected in 4.35s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-restrict-cp-broad-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `157 passed, 5 skipped, 2372 deselected in 42.63s`
+- Next:
+  - run hygiene, commit, and push this wrong-code-prevention slice;
+  - keep two-CTA `warpx2::02_13` and scales `warpx2` as descriptor/address
+    model frontiers rather than dense-layout opcode-substitution targets.

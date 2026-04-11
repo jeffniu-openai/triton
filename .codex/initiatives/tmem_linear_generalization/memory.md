@@ -70,7 +70,7 @@
   - focused copy/MMA commit exacts:
     `24 passed in 19.43s`
   - broad `tcgen05.cp` slice:
-    `155 passed, 5 skipped, 2372 deselected in 40.40s`
+    `157 passed, 5 skipped, 2372 deselected in 42.63s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
     `164 passed, 50 skipped, 2309 deselected in 98.38s (0:01:38)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
@@ -242,15 +242,19 @@
     is no longer believed to be live after the `[128,4]`
     raw-query/direct-view preservation fix; both candidate positives were
     recorded green in the latest docs;
-  - no-scales canonical-codegen coverage pins both `warpx2::01_23` and
-    `warpx2::02_13` as exact `cta_group::1.64x128b` opcode streams, with
-    exact single-CTA commit opcode checks;
+  - no-scales single-CTA `warpx2::{01_23,02_13}.64x128b` candidate positives
+    remain executable and covered with runtime oracles plus exact `cta_group::1`
+    copy and commit opcode checks;
   - no-scales two-CTA `warpx2::01_23.64x128b` is now executable through the
     public linear-layout path and is covered by exact `cta_group::2` copy and
     multicast commit opcode checks;
-  - a matching two-CTA `warpx2::02_13` public-layout probe still fails during
-    shared descriptor-plan synthesis, so keep it as a layout-surface / direct
-    PTX frontier rather than a clean ISA-impossible negative;
+  - dense shared-layout `warpx2` forms are now intentionally rejected for both
+    single-CTA and two-CTA cases; runtime probes showed that the old
+    codegen-only path could emit `warpx2` opcodes while copying wrong data
+    (including all-zero two-CTA `02_13` output);
+  - a matching two-CTA `warpx2::02_13` candidate shared layout still fails
+    during shared descriptor-plan synthesis, so keep it as a layout-surface /
+    direct-PTX frontier rather than a clean ISA-impossible negative;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail cleanly because no compatible scales descriptor plan can be

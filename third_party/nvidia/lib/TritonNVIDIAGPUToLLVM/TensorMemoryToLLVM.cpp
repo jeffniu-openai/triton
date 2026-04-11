@@ -1540,7 +1540,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   std::optional<TMemCopyPlan> selectedPlan;
   for (const auto &plan : copyPlans) {
     if (!isScales &&
-        !isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family))
+        (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family) ||
+         !isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family)))
       continue;
     SmallVector<PlannedCopyMessage, 2> candidateMessages;
     candidateMessages.reserve(plan.messages.size());
@@ -1600,9 +1601,21 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
              "memory allocation.";
       return failure();
     }
-    return op->emitOpError("failed to find valid tcgen05.copy layout from "
-                           "shared memory descriptor ")
-           << srcTy << " to tensor memory descriptor " << dstTy;
+    std::string layoutSupportError;
+    (void)isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy,
+                                          copyPlans.front().family,
+                                          &layoutSupportError);
+    std::string sharedLayoutSupportError;
+    (void)isTMemCopySharedLayoutRuntimeSupported(
+        srcTy, copyPlans.front().family, &sharedLayoutSupportError);
+    auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
+                                "from shared memory descriptor ")
+                << srcTy << " to tensor memory descriptor " << dstTy;
+    if (!layoutSupportError.empty())
+      diag.attachNote() << layoutSupportError;
+    if (!sharedLayoutSupportError.empty())
+      diag.attachNote() << sharedLayoutSupportError;
+    return failure();
   }
 
   bool twoCTAs = getModuleTwoCTAs(op);
