@@ -8575,6 +8575,34 @@ Open after this slice:
     copy/`tcgen05.cp` remaining surfaces, `ld.red` broader layout fuzzing, or
     MMAv5 / `mma_scaled` reachable-family coverage.
 
+## 2026-04-11 18:15 UTC
+
+- Broadened validation across the current-head `tcgen05.cp` runtime-matrix
+  slice.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `a950338f7`
+  - docs checkpoint before this validation refresh:
+    - `cd0e6b985`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad cp slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `152 passed, 5 skipped, 2042 deselected in 36.66s`
+- Interpretation:
+  - current copy coverage is green, including no-scales `warpx2` positives,
+    dense copy positives, 2-CTA copy, scaled `warpx4` copy paths, and clean
+    unsupported copy boundaries.
+- Next:
+  - move to `ld.red` broader layout fuzzing or MMAv5 / `mma_scaled`
+    reachable-family coverage.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

@@ -277,7 +277,29 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 18:05 UTC)
+## Current Topline (2026-04-11 18:15 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `a950338f7` on `origin/codex/tmem`
+- Latest pushed docs checkpoint before this validation refresh:
+  - `cd0e6b985` on `origin/codex/tmem`
+- Current-head `tcgen05.cp` runtime-matrix validation is green:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad cp slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `152 passed, 5 skipped, 2042 deselected in 36.66s`
+  - coverage includes current no-scales `warpx2` positives, dense copy
+    positives, 2-CTA copy, scaled `warpx4` copy paths, and clean unsupported
+    copy boundaries.
+- Next:
+  - move to `ld.red` broader layout fuzzing or MMAv5 / `mma_scaled`
+    reachable-family coverage;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 18:05 UTC)
 
 - Latest pushed source/test checkpoint:
   - `a950338f7` on `origin/codex/tmem`

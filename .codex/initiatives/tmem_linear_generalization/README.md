@@ -232,6 +232,14 @@ When resuming the initiative:
     `1082 passed, 437 skipped, 680 deselected in 1344.69s`;
   - skips are expected tensor-memory OOR / clean-boundary cases in lifted
     descriptor roundtrip and rank-5 families.
+- Current-head `tcgen05.cp` runtime-matrix validation is green:
+  - command:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+  - result:
+    `152 passed, 5 skipped, 2042 deselected in 36.66s`;
+  - this covers the current no-scales `warpx2` positives, dense copy
+    positives, 2-CTA copy, scaled `warpx4` copy paths, and clean unsupported
+    copy boundaries.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
