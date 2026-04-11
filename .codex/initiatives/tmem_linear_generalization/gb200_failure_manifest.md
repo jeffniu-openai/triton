@@ -30,6 +30,38 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Attention Revert And Two-CTA Assertion Refresh (2026-04-11 10:33 UTC)
+
+- [gb200_current_branch_examples_gluon_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_gluon_failures.txt)
+  - `1` nodeid
+  - current nodeid:
+    - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - current interpretation:
+    - the attention source was intentionally restored to its old
+      `_reinterpret` form at `13930b1ff`;
+    - the exact fails in `gluon_to_ttgir` with
+      `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'`;
+    - this supersedes the historical examples/Gluon green aggregate from
+      `4263ae61` / `49f1a0fd`.
+- [gb200_branch_changed_examples_gluon_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_branch_changed_examples_gluon_failures.txt)
+  - `1` nodeid
+  - current interpretation:
+    - same attention exact as above; the merge-base check for this exact was
+      green in the earlier classification, so keep it visible as a branch
+      changed/deferred migration target.
+- [gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt)
+  - `0` nodeids
+  - source:
+    - patched four-way `test_mma_shared_inputs` refresh after accepting the
+      current `twoCTAs` TTGIR type spelling:
+      - group 1: `3830 passed, 490 skipped`
+      - group 2: `2954 passed, 1366 skipped`
+      - group 3: `1206 passed, 3114 skipped`
+      - group 4: `2584 passed, 1736 skipped`
+  - current interpretation:
+    - the old assertion-only failures from pre-patch full `python/test/gluon`
+      shards are stale and should not be used as the live red list.
+
 ### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:44 UTC)
 
 - [gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt)
@@ -126,24 +158,23 @@ PY
     - the old three-nodeid half-row stale-negative manifest is historical; the
       current behavior is a clean unsupported-descriptor diagnostic
 
-### Latest Attention / Examples Refresh (2026-04-11 06:07 UTC)
+### Historical Attention / Examples Refresh (2026-04-11 06:07 UTC, Superseded)
 
 - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-  - current checkpoint status:
+  - historical checkpoint status:
     - `PASSED`
-  - current interpretation:
+  - historical interpretation:
     - fixed by migrating the unsupported `_reinterpret`-based f32 scratch ->
       bf16 P alias to the supported `slice/subview -> bitcast` TMEM descriptor
       API
-    - do not use any older examples aggregate count that includes this exact
-      as the live red list
+    - superseded at `13930b1ff`, where the attention source was reverted and
+      this exact became the current examples red again
 - Full examples aggregate:
   - `python/examples/gluon/`
   - `821 passed, 74 skipped in 134.89s`
-  - `gb200_current_branch_examples_gluon_failures.txt` is refreshed to `0`
-    nodeids.
-  - `gb200_branch_changed_examples_gluon_failures.txt` is refreshed to `0`
-    nodeids.
+  - historical only for current `HEAD`; the current examples/Gluon and
+    branch-changed examples manifests each contain the reverted attention
+    exact again.
   - `gb200_current_branch_examples_convolution_failures.txt` remains refreshed
     to `0` nodeids.
   - `gb200_current_branch_examples_multicta_failures.txt` is refreshed to `0`

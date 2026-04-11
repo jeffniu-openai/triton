@@ -43,8 +43,26 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 09:44 UTC, the latest pushed code/test checkpoint is
-  `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217` on `origin/codex/tmem`.
+- As of 2026-04-11 10:33 UTC, the latest pushed source checkpoint is
+  `13930b1ff` on `origin/codex/tmem`.
+- The supported descriptor bitcast API remains on the branch, but the
+  attention example migration has been intentionally reverted for now:
+  - `python/examples/gluon/01-attention-forward.py` is back to its pre-bitcast
+    `_reinterpret` form;
+  - the representative attention exact is red again with
+    `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'`;
+  - the old examples/Gluon green aggregate at `4263ae61` / `49f1a0fd` is
+    stale for current `HEAD`;
+  - future attention work must use a synchronization-aware supported
+    `offset/slice/subview -> bitcast` sequence, not private `_reinterpret`
+    behavior or lowering selectors.
+- The stale `test_mma_shared_inputs` two-CTA TTGIR spelling bucket is closed:
+  - current TMEM encoding text may spell the type field as `twoCTAs`, while
+    physical-layout and op attributes still use `two_ctas`;
+  - the assertion now accepts either spelling;
+  - patched four-way `test_mma_shared_inputs` refresh:
+    `3830 passed, 490 skipped`, `2954 passed, 1366 skipped`,
+    `1206 passed, 3114 skipped`, and `2584 passed, 1736 skipped`.
 - The focused persistent `python/triton_kernels/tests/test_matmul.py`
   shared-memory OOR bucket is fixed, and the full directory now has a green
   current-head rerun:
@@ -100,9 +118,11 @@ When resuming the initiative:
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
-- Next required durable step: continue staged validation with wider grouped
-  Gluon sweeps, and then the long-term `ld.red`, `copy`/`warpx2`,
-  MMAv5/`mma_scaled`, and fuzzing phases.
+- Next required durable step: refresh the wider grouped `python/test/gluon`
+  sweep from current `HEAD`, keeping the intentionally reverted attention
+  example separate from supported bitcast API validation. After that, continue
+  the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing
+  phases.
 
 ## Document Roles
 

@@ -46,6 +46,39 @@ PY
 
 ## Current Classification Summary
 
+### Latest Attention Revert And Two-CTA Assertion Refresh (2026-04-11 10:33 UTC)
+
+- Current pushed `HEAD`:
+  - `13930b1ff`
+- The attention example migration to the supported bitcast API was intentionally
+  backed out of `python/examples/gluon/01-attention-forward.py` at the user's
+  request while keeping the API/lowering support on the branch.
+- Current exact status:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - `FAILED` in `gluon_to_ttgir`
+  - symptom:
+    - `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'. Basis must be less than the out-dim size.`
+- Classification:
+  - current branch-changed examples red;
+  - deliberately deferred supported-view rewrite, not a request to preserve
+    private `_reinterpret` behavior in lowering.
+- Recovery consequence:
+  - the examples lane is no longer green at current `HEAD`;
+  - keep the attention exact separate from the supported bitcast API tests;
+  - next attention work should express the reuse as
+    `offset/slice/subview -> bitcast` while preserving the kernel's
+    synchronization intent.
+- The stale two-CTA spelling assertion in `test_mma_shared_inputs` is closed:
+  - group 1: `3830 passed, 490 skipped`
+  - group 2: `2954 passed, 1366 skipped`
+  - group 3: `1206 passed, 3114 skipped`
+  - group 4: `2584 passed, 1736 skipped`
+- Recovery consequence:
+  - the MMAv5 shared-input function surface remains refreshed to `0` exact
+    failures;
+  - rerun wider grouped `python/test/gluon` from current `HEAD` before using
+    any old full-shard counts for prioritization.
+
 ### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:44 UTC)
 
 - The persistent `python/triton_kernels/tests/test_matmul.py` shared-memory OOR
@@ -152,7 +185,7 @@ PY
     is refreshed to `0` nodeids;
   - older full Gluon shard counts remain stale until rerun from this new head.
 
-### Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC)
+### Historical Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC, Superseded)
 
 - The examples/Gluon refresh had exposed a current-branch regression in:
   - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
@@ -161,16 +194,17 @@ PY
     attention example;
   - fixed by migrating to a supported `slice/subview -> bitcast` TMEM
     descriptor API, not by preserving the old private reinterpret fallback.
-- Current exact status:
+- Historical exact status:
   - the attention exact is green on committed/pushed checkpoint
     `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`.
 - Broader examples status:
   - `python/examples/gluon/` is green:
     - `821 passed, 74 skipped in 134.89s`
 - Recovery consequence:
-  - the examples lane no longer has a live red list at the current checkpoint;
-  - the branch recovery plan should now move to staged broad validation
-    outside `python/examples/gluon/` before the long-term saturation phases.
+  - historical only: the attention source was reverted at `13930b1ff`, so the
+    examples lane has the attention exact red again at current `HEAD`;
+  - do not treat this superseded green aggregate as the live current-head
+    examples status.
 
 ### Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
 

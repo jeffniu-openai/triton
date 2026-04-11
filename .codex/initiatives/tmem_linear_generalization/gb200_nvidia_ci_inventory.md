@@ -18,6 +18,44 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Attention Revert And Two-CTA Assertion Refresh (2026-04-11 10:33 UTC)
+
+- Latest pushed source checkpoint:
+  - `13930b1ff` on `origin/codex/tmem`
+- The supported descriptor bitcast API remains on the branch, but the
+  attention example source has been restored to its pre-bitcast `_reinterpret`
+  state at the user's request.
+- Attention exact status at current `HEAD`:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - `FAILED` in `gluon_to_ttgir`
+  - symptom:
+    - `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'. Basis must be less than the out-dim size.`
+- Inventory consequence:
+  - the examples/Gluon green aggregate from `4263ae61` / `49f1a0fd` is stale
+    for current `HEAD`;
+  - `gb200_current_branch_examples_gluon_failures.txt` and
+    `gb200_branch_changed_examples_gluon_failures.txt` contain the attention
+    exact again;
+  - this is an intentional deferred migration target, not permission to add
+    ad-hoc lowering selectors for private `_reinterpret` behavior.
+- The stale two-CTA assertion bucket in
+  `python/test/gluon/test_core.py::test_mma_shared_inputs` is closed:
+  - current TTGIR type text may spell the field as `twoCTAs`;
+  - the assertion now accepts both `two_ctas` and `twoCTAs`;
+  - patched four-way function refresh:
+    - group 1: `3830 passed, 490 skipped`
+    - group 2: `2954 passed, 1366 skipped`
+    - group 3: `1206 passed, 3114 skipped`
+    - group 4: `2584 passed, 1736 skipped`
+- Inventory consequence:
+  - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt` remains
+    refreshed to `0` nodeids for the function-level surface;
+  - the interrupted full `python/test/gluon` shards that still saw this
+    assertion were pre-patch imports and are stale.
+- Next validation frontier:
+  - rerun wider grouped `python/test/gluon` from current `HEAD`, keeping the
+    known attention exact separate from the supported bitcast API tests.
+
 ## Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:44 UTC)
 
 - Latest pushed code/test checkpoint before this docs-only refresh:
@@ -153,7 +191,7 @@ lives in `gb200_branch_recovery_plan.md`.
   - the older full Gluon shard aggregate counts are still stale for
     prioritization until rerun from this new head.
 
-## Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC)
+## Historical Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC, Superseded)
 
 - A later examples/Gluon refresh found one current-branch attention exact red:
   - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
@@ -168,14 +206,16 @@ lives in `gb200_branch_recovery_plan.md`.
   - full `python/examples/gluon/` aggregate:
     - `821 passed, 74 skipped in 134.89s`
 - Inventory consequence:
-  - the examples lane is green at the current checkpoint;
+  - historical only: this examples-lane green result was superseded when the
+    attention source was reverted at `13930b1ff`;
   - `gb200_current_branch_examples_gluon_failures.txt`,
     `gb200_branch_changed_examples_gluon_failures.txt`,
     `gb200_current_branch_examples_convolution_failures.txt`, and
-    `gb200_current_branch_examples_multicta_failures.txt` are refreshed to
-    empty;
-  - continue with staged broad validation beyond the examples lane before
-    treating the whole GB200 recovery phase as closed.
+    `gb200_current_branch_examples_multicta_failures.txt` were refreshed to
+    empty at that historical checkpoint, but the first two now contain the
+    reverted attention exact again;
+  - continue with staged broad validation while keeping the attention migration
+    as an explicit deferred supported-view rewrite.
 
 ## Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
 

@@ -7550,3 +7550,49 @@ Open after this slice:
   - keep the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, fuzzing,
     stale-negative, and heuristic phases queued behind the current broad
     validation.
+
+## 2026-04-11 10:33 UTC
+
+- Closed a stale `test_mma_shared_inputs` assertion bucket found by a broader
+  `python/test/gluon` sweep:
+  - current TTGIR type text uses the camel-case field `twoCTAs`;
+  - older test text only searched for `two_ctas`;
+  - representative dumps still showed correct two-CTA lowering:
+    `.reqnctapercluster 2`, `tcgen05.alloc.cta_group::2`,
+    `fence.mbarrier_init.release.cluster`, and
+    `tcgen05.mma/commit.cta_group::2`.
+- Committed and pushed the assertion refresh:
+  - `165752b67`
+- Validation:
+  - representative exact:
+    - `1 passed in 4.39s`
+  - patched four-way `test_mma_shared_inputs` refresh:
+    - group 1: `3830 passed, 490 skipped, 13645 deselected in 1848.76s`
+    - group 2: `2954 passed, 1366 skipped, 13645 deselected in 1557.02s`
+    - group 3: `1206 passed, 3114 skipped, 13645 deselected in 447.28s`
+    - group 4: `2584 passed, 1736 skipped, 13645 deselected in 1325.71s`
+  - `git diff --check -- python/test/gluon/test_core.py`
+    - `PASSED`
+- Reverted `python/examples/gluon/01-attention-forward.py` to its pre-bitcast
+  `_reinterpret` form at the user's request:
+  - committed and pushed `13930b1ff`
+  - the supported descriptor bitcast API and focused tests remain on branch
+  - the attention exact is intentionally red again until a synchronization-aware
+    supported view/bitcast migration is done
+- Attention validation after the revert:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+    - `FAILED` in `gluon_to_ttgir`
+    - symptom:
+      - `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'. Basis must be less than the out-dim size.`
+- The older examples/Gluon green aggregate from the bitcast-migration
+  checkpoint is stale for current `HEAD`; the examples failure manifests now
+  contain the attention exact again.
+- The full `python/test/gluon` shards started before the regex patch were
+  interrupted as obsolete after one shard hit the stale `twoCTAs` assertion.
+- Next:
+  - rerun wider grouped `python/test/gluon` from current `HEAD`;
+  - keep attention migration deferred until it can use the supported
+    `offset/slice/subview -> bitcast` contract while preserving the kernel's
+    synchronization intent;
+  - then continue to `ld.red`, `copy`/`warpx2`, broader MMAv5/`mma_scaled`,
+    fuzzing, stale-negative cleanup, and heuristic phases.

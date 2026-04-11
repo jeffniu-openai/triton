@@ -203,17 +203,23 @@
 - The merge-base-present MMAv5 and multicta representative regressions remain
   locally closed by the current M64 producer-contract/source-column row-plan
   fix; keep their exacts in the focused guard set while broadening.
-- The current examples/Gluon aggregate refresh exposed a real current-branch
-  regression in `python/examples/gluon/01-attention-forward.py`:
-  `test_op[False-dtype0-True-128-1024-48-4]` failed on current `codex/tmem` but
-  passed on merge-base.
-- That attention exact is locally green again after adding a supported
-  `subslice/subview -> bitcast` TMEM descriptor API and migrating the
-  f32-to-bf16 P-storage alias to it.
-- The fix intentionally does not preserve private `_reinterpret` behavior:
-  load/store lowering uses the exact physical bitcast query, while MMAv5 typed
-  address planning uses the explicit result descriptor layout because packed
-  sub-32-bit physical bitcast queries can be non-surjective.
+- The attention example is intentionally back to its old `_reinterpret` state
+  after the user asked to stop editing that kernel for now:
+  - the supported `subslice/subview -> bitcast` API is still present and
+    validated by focused tests;
+  - the attention exact
+    `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+    is red again at `13930b1ff`;
+  - the failure is in `gluon_to_ttgir` with
+    `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'`;
+  - the examples/Gluon green aggregate recorded at `4263ae61` / `49f1a0fd`
+    is stale for current `HEAD`.
+- The bitcast API fix intentionally does not preserve private `_reinterpret`
+  behavior:
+  - load/store lowering uses the exact physical bitcast query for explicit
+    `tmem_physical_bitcast` roots;
+  - MMAv5 typed address planning uses the explicit result descriptor layout
+    because packed sub-32-bit physical bitcast queries can be non-surjective.
 - 2026-04-11 user clarification to preserve across contexts:
   - this is the original motivation for the project, not just a local
     attention workaround;
@@ -226,10 +232,21 @@
     - bitcast to the desired dtype, shape, and layout only when the bitcast is
       equal-size and preserves the exact physical TMEM mapping of the input
       descriptor.
-- The attention bitcast migration is now committed and pushed at
-  `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`, and the broader
-  `python/examples/gluon/` aggregate is green on that checkpoint
-  (`821 passed, 74 skipped in 134.89s`).
+- The attention bitcast migration committed at `4263ae61` is historical
+  evidence for the supported API, not current source state. Revisit the
+  attention kernel only when ready to express the reuse with the supported
+  operation sequence while preserving the kernel's synchronization intent.
+- The stale `test_mma_shared_inputs` two-CTA assertion bucket is closed at
+  `165752b67`:
+  - the current TTGIR type spelling is `twoCTAs`, while physical-layout and op
+    attributes may still use `two_ctas`;
+  - patched four-way function refresh:
+    - group 1: `3830 passed, 490 skipped`
+    - group 2: `2954 passed, 1366 skipped`
+    - group 3: `1206 passed, 3114 skipped`
+    - group 4: `2584 passed, 1736 skipped`
+  - the interrupted full `python/test/gluon` shards that still reported this
+    assertion were pre-patch imports and are obsolete.
 - Keep the now-closed `python/examples/gluon/02-convolution.py` checkpoint in
   mind during follow-up debugging:
   - the final fix was not another TMEM/PTX family change
@@ -243,8 +260,10 @@
 - Keep the reinterpret-heavy `block_m_64` tests visible as explicit
   descriptor-view rewrite / missing-surface work rather than using them as the
   first proof target for the current branch recovery.
-- Re-broaden through TMEM runtime, MMA/matmul, `triton_kernels`, and then the
-  broader suite now that the examples manifests are refreshed to empty.
+- Re-broaden through the wider grouped `python/test/gluon` sweep from current
+  `HEAD`, then continue through TMEM runtime, MMA/matmul, `triton_kernels`,
+  and the broader suite. Keep the attention example's known red exact separate
+  from the supported bitcast API validation.
 - Continue the larger initiative mission after the local bug buckets are green:
   - `ld.red` expansion
   - `copy` `warpx2` completion
