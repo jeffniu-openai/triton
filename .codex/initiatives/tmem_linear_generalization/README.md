@@ -37,6 +37,9 @@ When resuming the initiative:
   offset to the right TMEM region, slice/subview to the desired physical bits,
   then bitcast to the desired dtype/shape/layout only when total bit size and
   the exact physical TMEM mapping are preserved.
+- Operationally, the offset/subview step selects the actual physical TMEM bits
+  first; the bitcast only changes the descriptor's dtype/shape/layout view over
+  that already-selected physical image.
 - The bitcast step must not change which physical TMEM memory the input
   descriptor maps to; if the desired view is not equal-size and
   physical-mapping equivalent, use a different supported API that matches the
@@ -54,10 +57,10 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of the current-head validation checkpoint, the latest pushed source/test
-  checkpoint is `2ad0ccf5e` on `origin/codex/tmem`.
-- The full `python/test/gluon/test_tmem_runtime_matrix.py` file is green at
-  that checkpoint:
+- As of the current-head focused coverage checkpoint, the latest pushed
+  source/test checkpoint is `0ea8ac5b7` on `origin/codex/tmem`.
+- The latest full `python/test/gluon/test_tmem_runtime_matrix.py` file
+  validation checkpoint remains green:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
 - The preferred four-way heavy Gluon sweep over
   `python/test/gluon/test_core.py` and
@@ -341,6 +344,19 @@ When resuming the initiative:
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, with scaled-MMA copy
     helper coverage tracked separately.
+- The recorded 2-CTA TF32 TMA-fed shared-transpose issue is still live and now
+  has a durable repro:
+  - script:
+    `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`;
+  - command:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-repro-script PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`;
+  - current result:
+    both legacy and canonical TMEM-linear 2-CTA accumulators reproduce
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    / `PassManager::run failed`;
+  - direct non-TMA 2-CTA TF32 remains covered by the green direct-MMA slice, so
+    this is specifically a TMA-to-shared layout gap rather than a direct
+    accumulator-layout regression.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

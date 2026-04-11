@@ -129,6 +129,10 @@
 - That final bitcast is a size-and-physical-mapping-equivalent view operation.
   It must not move, remap, or select a different physical TMEM region than the
   input descriptor maps to.
+- In operational terms, the kernel must first select the right physical part of
+  TMEM by offset/subview. Only after that selection is exact may the descriptor
+  be bitcast to the desired dtype/shape/layout, and only if the bitcast's
+  physical image is identical to the selected input image.
 - The attention example is intentionally still reverted to `_reinterpret` until
   it can be migrated with this supported sequence. Its trick of reusing part of
   TMEM while the kernel knows the original use is inactive also requires the
@@ -215,6 +219,17 @@
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
     `bf16`, `f8e5m2`, and `f8e4m3`, with exact PTX/LLIR opcode checks for the
     expected instruction kind;
+  - the recorded 2-CTA TF32 TMA-fed shared-transpose issue still reproduces on
+    current head and is now captured by
+    `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`:
+    legal non-transposed TMA descriptors for B reach MMAv5 lowering and both
+    legacy and canonical-linear accumulators fail with
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    / `PassManager::run failed`;
+  - this does not invalidate the green direct 2-CTA TF32 runtime coverage; it
+    marks a TMA-to-shared layout materialization gap where TMA descriptors
+    cannot be transposed but the TF32 MMA lowering rejects the resulting
+    transposed shared operand;
   - the scaled-MMA copy-helper matrix also pins exact scaled-MMA opcode
     selection for 1-CTA and 2-CTA `warpx4` copy paths across
     format/geometry/accumulator-layout combinations;
@@ -223,8 +238,8 @@
     scaled-MMA copy-helper matrix (`52 passed`);
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
-    layout-family positives when discovered, and the recorded 2-CTA TF32
-    shared-transpose lowering follow-up if it still reproduces;
+    layout-family positives when discovered, and the now-confirmed 2-CTA TF32
+    TMA-fed shared-transpose lowering follow-up;
   - direct scaled MMAv5 through TMEM views remains a high-value runtime target,
     and the 2-CTA TF32 shared-transpose lowering failure should remain a
     compiler follow-up target rather than a settled ISA boundary.

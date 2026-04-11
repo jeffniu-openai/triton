@@ -9091,3 +9091,35 @@ Open after this slice:
 - Next:
   - commit and push this validation checkpoint;
   - continue operational fuzzing from `fuzz_plan.md`.
+
+## 2026-04-11 17:23 UTC
+
+- Rechecked the recorded 2-CTA TF32 TMA-fed shared-transpose follow-up after
+  broadening direct MMAv5 coverage.
+- Added a durable initiative repro script:
+  - `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+- Current result:
+  - with explicit `transposed=True` B TMA descriptors, the compiler rejects
+    earlier with the current TMA descriptor rule:
+    `TMA descriptor layout must not be transposed`;
+  - with legal non-transposed TMA descriptors, both legacy and canonical
+    TMEM-linear 2-CTA accumulator layouts reach MMAv5 lowering and fail with
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    / `PassManager::run failed`;
+  - the script treats that as the expected live repro and exits successfully
+    after printing both `legacy: reproduced expected failure` and
+    `linear: reproduced expected failure`.
+- Repro command:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-repro-script PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+- Interpretation:
+  - direct non-TMA 2-CTA TF32 remains green in the runtime matrix;
+  - this is a TMA-to-shared layout gap, not a stale direct accumulator-layout
+    negative;
+  - a real fix likely needs TMA-fed B materialized in a supported
+    TF32-compatible shared layout, or an equivalently principled backend path,
+    rather than another TMEM-layout special case.
+- Also sharpened the physical-bitcast contract in the durable docs:
+  - offset to the right physical TMEM region;
+  - subview/slice to the desired physical bits;
+  - then bitcast only when the dtype/shape/layout view is equal-size and maps
+    to the exact same physical TMEM image.
