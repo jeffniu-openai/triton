@@ -77,7 +77,7 @@
     `162 passed, 5 skipped, 2488 deselected in 40.88s`
     after adding the four nearby scales `warpx2` clean-negative layout probes
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `213 passed, 50 skipped, 2392 deselected in 122.55s (0:02:02)`
+    `222 passed, 50 skipped, 2407 deselected in 123.81s (0:02:03)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -385,6 +385,12 @@
     validating the accumulator-add path with exact PTX/LLIR opcode agreement;
   - current clean negatives confirm direct `i8` MMAv5 as a frontend diagnostic
     on Blackwell targets where PTXAS rejects it;
+  - plain MMAv5 TMEM-LHS subview coverage now spans `f16`, `tf32`, `bf16`,
+    `f8e5m2`, and `f8e4m3` for both legacy and canonical TMEM-linear
+    accumulator layouts; `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds`
+    slices the right half of a TMEM-linear operand-A parent and feeds the
+    subview directly to `tcgen05_mma`, with exact opcode, count, and commit
+    checks;
   - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
     for `mxf8f6f4`, `mxf4`, and `mxf4nvf4` format families, including
     accumulator subviews and selected tile-permuted accumulator layouts; the
@@ -420,11 +426,13 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `213 passed, 50 skipped, 2392 deselected`;
+    `222 passed, 50 skipped, 2407 deselected`;
     plain MMAv5 root and `use_acc` matrices now pin exact op counts
     (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), while
-    tile-permuted accumulator coverage pins fourfold counts and the wider-K
-    tile-permuted TMEM-LHS path pins `16` f16 ops;
+    tile-permuted accumulator coverage pins fourfold counts, the wider-K
+    tile-permuted TMEM-LHS path pins `16` f16 ops, and the TMEM-LHS subview
+    matrix now spans all supported plain kinds across legacy/canonical
+    accumulators with the same exact count expectations;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable

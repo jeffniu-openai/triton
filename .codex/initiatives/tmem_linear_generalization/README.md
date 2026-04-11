@@ -127,7 +127,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `487 passed, 2183 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `213 passed, 50 skipped, 2392 deselected`
+    `222 passed, 50 skipped, 2407 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -326,6 +326,14 @@ When resuming the initiative:
   expanded instruction counts: four times the root kind count for accumulator
   tile permutations, and `16` f16 ops for the wider-K tile-permuted TMEM-LHS
   path.
+- Plain MMAv5 TMEM-LHS subview coverage now spans all `MMA_PLAIN_KINDS` for
+  both legacy and canonical TMEM-linear accumulator layouts:
+  - `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds` slices the
+    right half of a TMEM-linear operand-A parent and feeds that subview directly
+    to `tcgen05_mma`;
+  - the matrix pins exact PTX/LLIR opcodes, expected instruction counts
+    (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), and the single-CTA
+    commit opcode for every supported plain kind.
 - Staged `ld/st` fuzzing has started with descriptor-chain `auto` coverage at
   `ebb23b697`:
   - the basic descriptor-composition matrix now covers `auto` instruction
@@ -486,18 +494,20 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-opcounts-broad-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-lhs-subslice-plain-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `213 passed, 50 skipped, 2392 deselected in 122.55s (0:02:02)`;
+    `222 passed, 50 skipped, 2407 deselected in 123.81s (0:02:03)`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
     and offset one-CTA accumulator subview format-matrix cases, the two-CTA
     cga-aware accumulator-subview matrix, tile-permuted plain-kind accumulators
-    at `128x128/tile_n=32` and `128x256/tile_n=64`, and two-CTA plain-kind
-    accumulators at `256x128` and `256x256`; it also covers both 1-CTA and
-    2-CTA `use_acc=True` plain-kind accumulator addition for all supported
-    plain kinds and both legacy/canonical accumulator layouts, plus TMA-fed
-    two-CTA TF32 when matrix B is loaded through a non-transposed `[N, K]` TMA
+    at `128x128/tile_n=32` and `128x256/tile_n=64`, the all-plain-kind
+    TMEM-LHS subview matrix for both legacy/canonical accumulator layouts, and
+    two-CTA plain-kind accumulators at `256x128` and `256x256`; it also covers
+    both 1-CTA and 2-CTA `use_acc=True` plain-kind accumulator addition for all
+    supported plain kinds and both legacy/canonical accumulator layouts, plus
+    TMA-fed two-CTA TF32 when matrix B is loaded through a non-transposed
+    `[N, K]` TMA
     descriptor and passed to MMAv5 as a shared-memory `permute((1, 0))` view.
     Scaled-MMA copy-helper coverage remains tracked separately.
 - Tile-permuted scaled-MMAv5 accumulator-subview clean-negative coverage now
