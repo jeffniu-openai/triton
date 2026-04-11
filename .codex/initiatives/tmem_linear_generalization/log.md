@@ -9281,3 +9281,17 @@ Open after this slice:
   - run hygiene, commit, and push this allocator-size coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`, leaving non-pow2
     allocator sizes and commit-mode saturation as later allocator work.
+
+
+## 2026-04-11 18:45 UTC
+
+- Restated the supported `_reinterpret` migration contract after the latest
+  clarification:
+  - offset to the right part of TMEM;
+  - slice/subview to the exact desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the total size
+    and physical TMEM mapping are identical to the already-selected input.
+- The bitcast is a descriptor metadata/view operation over an already exact
+  physical image. It must not select, move, or remap physical TMEM.
+- Attention remains intentionally deferred until its TMEM reuse can be
+  represented by this synchronization-aware supported API sequence.

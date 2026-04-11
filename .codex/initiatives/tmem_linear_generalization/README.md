@@ -40,6 +40,9 @@ When resuming the initiative:
 - Operationally, the offset/subview step selects the actual physical TMEM bits
   first; the bitcast only changes the descriptor's dtype/shape/layout view over
   that already-selected physical image.
+- This means the bitcast may express the desired dtype/shape/layout only after
+  the input descriptor already denotes exactly the same physical TMEM image; it
+  must not perform physical selection itself.
 - The bitcast step must not change which physical TMEM memory the input
   descriptor maps to; if the desired view is not equal-size and
   physical-mapping equivalent, use a different supported API that matches the

@@ -146,6 +146,10 @@
   TMEM by offset/subview. Only after that selection is exact may the descriptor
   be bitcast to the desired dtype/shape/layout, and only if the bitcast's
   physical image is identical to the selected input image.
+- The bitcast may therefore change descriptor metadata to the desired
+  dtype/shape/layout only when it is size-equivalent and
+  physical-mapping-equivalent to the already-selected input; it must not select
+  or remap physical TMEM.
 - The attention example is intentionally still reverted to `_reinterpret` until
   it can be migrated with this supported sequence. Its trick of reusing part of
   TMEM while the kernel knows the original use is inactive also requires the
