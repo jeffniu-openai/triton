@@ -445,7 +445,8 @@ Every fuzz case records:
 - TMEM-LHS subview format coverage currently includes the fp8-A reachable
   subset (`mxfp8/mxfp8` and `mxfp8/mxfp4`) for both legacy and canonical
   accumulator layouts; A-side fp4 scaled TMEM-LHS subviews are a known
-  wrong-code frontier, not a positive target yet
+  wrong-code frontier, not a positive target yet, and are pinned by
+  `experiments/probe_mma_scaled_lhs_subslice_formats.py`
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.

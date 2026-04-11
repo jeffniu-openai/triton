@@ -401,7 +401,10 @@
     fp8-A reachable subset: `mxfp8/mxfp8` and `mxfp8/mxfp4` for both legacy
     and canonical TMEM-linear accumulator layouts, with exact scaled-MMA,
     count, commit, and descriptor-view checks; A-side fp4 scaled TMEM-LHS
-    subviews remain a known wrong-code frontier from the 2026-04-11 probe;
+    subviews remain a known wrong-code frontier from the 2026-04-11 durable
+    probe artifact
+    `experiments/probe_mma_scaled_lhs_subslice_formats.py` / results
+    `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`;
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
     `bf16`, `f8e5m2`, and `f8e4m3` across both `128x128/tile_n=32` and
     `128x256/tile_n=64` accumulator layouts, with exact PTX/LLIR opcode checks

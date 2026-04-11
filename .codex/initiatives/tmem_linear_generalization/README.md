@@ -307,7 +307,10 @@ When resuming the initiative:
     subview directly to `tcgen05_mma_scaled`, and pins exact PTX/LLIR scaled
     MMA and commit opcodes;
   - A-side fp4 scaled TMEM-LHS subviews remain a known wrong-code frontier from
-    the 2026-04-11 probe and are not promoted to positive coverage.
+    the 2026-04-11 probe and are not promoted to positive coverage; the durable
+    reproduction is
+    `experiments/probe_mma_scaled_lhs_subslice_formats.py` with current results
+    in `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`.
 - Two-CTA direct scaled-MMAv5 accumulator-subview coverage is now present:
   - `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`
     reuses the cga-aware TMA/scales-copy topology, allocates a larger
