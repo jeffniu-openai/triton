@@ -41,6 +41,9 @@ When resuming the initiative:
   descriptor maps to; if the desired view is not equal-size and
   physical-mapping equivalent, use a different supported API that matches the
   real kernel intent.
+- Said another way, this is an offset/subview over the existing physical TMEM
+  allocation followed by a size-and-physical-mapping-equivalent type/view
+  reinterpretation, not a remapping or relocation operation.
 - Lowering-side fixes are still appropriate for supported APIs that miscompile,
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.
@@ -48,7 +51,7 @@ When resuming the initiative:
 ## Current Checkpoint
 
 - As of the current-head validation checkpoint, the latest pushed source/test
-  checkpoint is `330c64c05` on `origin/codex/tmem`.
+  checkpoint is `2ad0ccf5e` on `origin/codex/tmem`.
 - The full `python/test/gluon/test_tmem_runtime_matrix.py` file is green at
   that checkpoint:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
@@ -63,6 +66,18 @@ When resuming the initiative:
     `2694 passed, 2347 skipped, 15123 deselected`
   - group 4:
     `3314 passed, 1726 skipped, 15123 deselected, 1 xfailed`
+- The preferred four-way `python/triton_kernels/tests` sweep is green at
+  `2ad0ccf5e`:
+  - group 1:
+    `674 passed, 782 skipped, 4365 deselected`
+  - group 2:
+    `533 passed, 923 skipped, 4365 deselected`
+  - group 3:
+    `394 passed, 1062 skipped, 4365 deselected`
+  - group 4:
+    `776 passed, 677 skipped, 4368 deselected`
+  - aggregate:
+    `2377 passed, 3444 skipped, 17463 deselected`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1082 passed, 437 skipped, 680 deselected`

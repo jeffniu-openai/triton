@@ -8767,3 +8767,51 @@ Open after this slice:
   - inspect remaining staged `ld/st` stale-negative and explicit-only
     surfaces;
   - then broader validation and heuristic cleanup.
+
+## 2026-04-11 16:30 UTC
+
+- Ran the preferred four-way `python/triton_kernels/tests` sweep at current
+  head after the full runtime-matrix and heavy Gluon validation checkpoints.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `2ad0ccf5e`
+- Validation setup:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - split command shape:
+    - `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-triton-kernels-current PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <group> python/triton_kernels/tests`
+- Results:
+  - group 1 / GPU 0:
+    - `674 passed, 782 skipped, 4365 deselected in 1960.67s (0:32:40)`
+  - group 2 / GPU 1:
+    - `533 passed, 923 skipped, 4365 deselected in 1522.70s (0:25:22)`
+  - group 3 / GPU 2:
+    - `394 passed, 1062 skipped, 4365 deselected in 927.87s (0:15:27)`
+  - group 4 / GPU 3:
+    - `776 passed, 677 skipped, 4368 deselected in 431.27s (0:07:11)`
+  - aggregate:
+    - `2377 passed, 3444 skipped, 17463 deselected`
+- Interpretation:
+  - current head remains green through the `triton_kernels` validation tier;
+  - the staged `ld/st`, `tcgen05.cp`, `tcgen05.ld.red`, MMAv5, full
+    runtime-matrix, and heavy Gluon validation checkpoints did not introduce a
+    neighboring triton-kernels regression.
+- Reinterpret/migration invariant preserved for future contexts:
+  - this is a supported API migration from implicit `_reinterpret` behavior,
+    not an attention-specific lowering workaround;
+  - offset to the right part of TMEM, slice/subview to the desired physical
+    bits, then bitcast to the desired dtype/shape/layout only when total size
+    and exact physical TMEM mapping are preserved;
+  - the bitcast must not change which physical TMEM memory the input
+    descriptor maps to.
+- Next:
+  - commit and push this validation checkpoint;
+  - choose the next broad validation tier or start operational fuzzing from
+    `fuzz_plan.md`;
+  - keep attention deferred until the supported synchronization-aware
+    `offset/slice/subview -> bitcast` migration is ready.

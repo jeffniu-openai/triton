@@ -309,7 +309,40 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 18:25 UTC)
+## Current Topline (2026-04-11 16:30 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `2ad0ccf5e` on `origin/codex/tmem`
+- Current-head `python/triton_kernels/tests` four-way validation is green:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - split command shape:
+    `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-triton-kernels-current PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <group> python/triton_kernels/tests`
+  - group 1 / GPU 0:
+    - `674 passed, 782 skipped, 4365 deselected in 1960.67s (0:32:40)`
+  - group 2 / GPU 1:
+    - `533 passed, 923 skipped, 4365 deselected in 1522.70s (0:25:22)`
+  - group 3 / GPU 2:
+    - `394 passed, 1062 skipped, 4365 deselected in 927.87s (0:15:27)`
+  - group 4 / GPU 3:
+    - `776 passed, 677 skipped, 4368 deselected in 431.27s (0:07:11)`
+  - aggregate:
+    - `2377 passed, 3444 skipped, 17463 deselected`
+- The `_reinterpret` migration rule remains a supported API migration, not a
+  lowering patch target:
+  - offset to the right part of TMEM;
+  - slice/subview to the desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the result is
+    equal-size and physical-mapping equivalent to the input descriptor.
+- Next:
+  - choose the next broad validation tier or start operational fuzzing from
+    `fuzz_plan.md`;
+  - keep attention deferred until the synchronization-aware
+    `offset/slice/subview -> bitcast` migration can preserve the kernel's
+    real TMEM reuse contract.
+
+## Prior Topline (2026-04-11 18:25 UTC)
 
 - Latest pushed source/test checkpoint:
   - `a950338f7` on `origin/codex/tmem`
