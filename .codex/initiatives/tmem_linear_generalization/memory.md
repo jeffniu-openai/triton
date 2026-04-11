@@ -251,10 +251,10 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 07:15 UTC)
+## Current Topline (2026-04-11 07:25 UTC)
 
 - The latest pushed code/test checkpoint before this docs-only refresh is
-  `5b619c9e3dfd5ca3479f644dada7813bd198e34a` on `codex/tmem`, pushed to
+  `42f62fb143630512aff9a45b7b3846a02d9935fa` on `codex/tmem`, pushed to
   `origin/codex/tmem`.
 - The latest code checkpoint closes the live M64 row/col-permuted split-N
   direct ld/st bucket without converting it to a clean negative:
@@ -304,12 +304,33 @@
   - exact stale TTGIR assertion refresh:
     - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized`
     - `1 passed in 3.31s`
+  - focused `test_core.py` TMEM/MMA manifest refresh:
+    - initial rerun of the old `332` nodeids found only two stale expectations:
+      - the legacy `64x128` split-N PTX packet offset is now the row-encoded
+        `1048576`, matching adjacent direct TMEM atom coverage;
+      - the block-basis `ld.red` negative now reports the clean descriptor-view
+        diagnostic `TMEM layout '32x32b' unsupported for descriptor view`.
+    - exact post-refresh rerun:
+      - `2 passed in 3.46s`
+    - full focused manifest rerun with the refreshed diagnostic nodeid:
+      - `332 passed in 125.78s`
+    - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+      is now refreshed to `0` nodeids.
   - `git diff --check`
     - `PASSED`
 - Next:
-  - continue staged broad validation through MMA/matmul, `triton_kernels`,
-    then the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`,
-    fuzzing, stale-negative, and heuristic phases.
+  - continue staged broad validation through `triton_kernels`, wider grouped
+    Gluon sweeps, then the long-term `ld.red`, `copy`/`warpx2`,
+    MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.
+
+## Prior Topline (2026-04-11 07:15 UTC)
+
+- Latest pushed code/test checkpoint was
+  `5b619c9e3dfd5ca3479f644dada7813bd198e34a` on `codex/tmem`, pushed to
+  `origin/codex/tmem`.
+- The full branch-added TMEM runtime-matrix file had just been refreshed
+  beyond the old `413`-nodeid failing manifest, with only a stale TTGIR
+  assertion remaining before the exact assertion refresh.
 
 ## Prior Topline (2026-04-11 06:51 UTC)
 

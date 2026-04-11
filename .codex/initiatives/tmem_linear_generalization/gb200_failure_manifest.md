@@ -30,6 +30,25 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
+
+- [gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt)
+  - `0` nodeids
+  - source:
+    - old focused manifest rerun:
+      - `330 passed, 2 failed in 132.02s`
+    - stale expectations refreshed in
+      `42f62fb143630512aff9a45b7b3846a02d9935fa`
+    - exact post-refresh rerun:
+      - `2 passed in 3.46s`
+    - full focused manifest rerun with the refreshed diagnostic nodeid:
+      - `332 passed in 125.78s`
+  - current interpretation:
+    - the old `332`-nodeid focused `test_core.py` TMEM/MMA manifest is stale
+    - the only intermediate failures were stale expected text/offset values,
+      not new compiler/runtime bugs
+    - this focus bucket has no live exact failures at this checkpoint
+
 ### Latest Runtime-Matrix File Refresh (2026-04-11 07:15 UTC)
 
 - [gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt)

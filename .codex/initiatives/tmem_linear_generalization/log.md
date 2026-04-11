@@ -7423,3 +7423,46 @@ Open after this slice:
 - Next:
   - continue staged validation into MMA/matmul and `triton_kernels` rather than
     treating the initiative as done.
+
+## 2026-04-11 07:25 UTC
+
+- Refreshed the old focused `test_core.py` TMEM/MMA current-branch manifest:
+  - input manifest:
+    - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    - `332` nodeids before refresh
+  - initial current-head rerun:
+    - `330 passed, 2 failed in 132.02s`
+  - both failures were stale expectations, not new compiler/runtime bugs:
+    - `test_tmem_linear_roundtrip_splitn_shapes[splitn_64x128-layout6-64-128-expected_offset_imms6]`
+      expected the second legacy `16x32bx2.x32` packet offset to be `64`;
+      current lowering correctly emits the row-encoded `1048576`, matching
+      nearby direct TMEM atom expectations;
+    - `test_tmem_reduction_linear_reports_clean_error[layout1-128-64-...]`
+      expected the older CTA-per-CGA diagnostic; current behavior reports the
+      cleaner descriptor-view diagnostic
+      `TMEM layout '32x32b' unsupported for descriptor view`.
+- Committed and pushed the stale expectation refresh:
+  - `42f62fb143630512aff9a45b7b3846a02d9935fa`
+  - remote branch:
+    - `origin/codex/tmem`
+- Validation after the test refresh:
+  - exact stale-expectation rerun:
+    - `2 passed in 3.46s`
+  - full focused manifest rerun with the refreshed diagnostic nodeid:
+    - `332 passed in 125.78s`
+  - `git diff --check -- python/test/gluon/test_core.py`
+    - `PASSED`
+- Manifest consequence:
+  - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    is refreshed from the stale `332` exacts to `0` nodeids.
+- Preserved `_reinterpret` migration invariant for the next sessions:
+  - offset to the intended TMEM region;
+  - slice/subview to the desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the operation is
+    equal-size and preserves the exact physical mapping of the input
+    descriptor.
+- Next:
+  - refresh the docs/manifest checkpoint for this validation result;
+  - continue staged broad validation through `triton_kernels`, wider grouped
+    Gluon sweeps, and then the long-term `ld.red`, `copy`/`warpx2`,
+    MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.

@@ -46,6 +46,31 @@ PY
 
 ## Current Classification Summary
 
+### Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
+
+- The old focused `test_core.py` TMEM/MMA current-branch manifest is now
+  locally reduced to zero live exact failures at the current checkpoint.
+- Old manifest rerun:
+  - `332` nodeids
+  - `330 passed, 2 failed in 132.02s`
+- The two failures were stale expectations, not recovery blockers:
+  - legacy `64x128` split-N roundtrip expected packet offset `64`; current
+    correct expectation is the row-encoded `1048576`
+  - block-basis `ld.red` negative expected the older CTA-per-CGA diagnostic;
+    current correct expectation is
+    `TMEM layout '32x32b' unsupported for descriptor view`
+- Exact post-refresh rerun:
+  - `2 passed in 3.46s`
+- Full focused manifest rerun with the refreshed diagnostic nodeid:
+  - `332 passed in 125.78s`
+- Recovery consequence:
+  - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    is refreshed from the stale `332` nodeids to `0` nodeids;
+  - this focused branch-added/changed `test_core.py` bucket is no longer the
+    next recovery target;
+  - continue staged validation with `triton_kernels` and wider grouped Gluon
+    sweeps from current head before moving to the long-term saturation phases.
+
 ### Latest Runtime-Matrix File Refresh (2026-04-11 07:15 UTC)
 
 - The branch-added `python/test/gluon/test_tmem_runtime_matrix.py` file is now

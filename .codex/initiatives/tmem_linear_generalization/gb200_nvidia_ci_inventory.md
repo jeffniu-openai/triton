@@ -18,6 +18,35 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
+
+- Latest pushed code/test checkpoint before this docs-only refresh:
+  - `42f62fb143630512aff9a45b7b3846a02d9935fa`
+- Focused current-head remeasurement:
+  - old manifest:
+    - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    - `332` nodeids before refresh
+  - initial rerun:
+    - `330 passed, 2 failed in 132.02s`
+- Both failures were stale expectations:
+  - legacy `64x128` split-N roundtrip now expects the row-encoded
+    `1048576` packet offset instead of the old immediate-like `64` value;
+  - the block-basis `ld.red` negative now expects the clean unsupported
+    descriptor-view diagnostic:
+    - `TMEM layout '32x32b' unsupported for descriptor view`
+- Exact post-refresh rerun:
+  - `2 passed in 3.46s`
+- Full focused manifest rerun with the refreshed diagnostic nodeid:
+  - `332 passed in 125.78s`
+- Inventory consequences:
+  - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+    is refreshed from the stale `332` nodeids to `0` nodeids;
+  - the old merge-base-present / merge-base-missing split files for this focus
+    list are historical reduction artifacts and should not be used as the
+    live branch-red list without a fresh rerun;
+  - the next validation frontier remains `triton_kernels` and wider grouped
+    Gluon sweeps from current head.
+
 ## Latest Runtime-Matrix File Refresh (2026-04-11 07:15 UTC)
 
 - Latest pushed code/test checkpoint before this docs-only refresh:

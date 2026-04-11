@@ -43,9 +43,9 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 07:15 UTC, the latest pushed code/test checkpoint before
+- As of 2026-04-11 07:25 UTC, the latest pushed code/test checkpoint before
   this docs-only refresh is
-  `5b619c9e3dfd5ca3479f644dada7813bd198e34a` on `origin/codex/tmem`.
+  `42f62fb143630512aff9a45b7b3846a02d9935fa` on `origin/codex/tmem`.
 - The M64 row/col-permuted split-N direct ld/st bucket remains closed as a
   positive hardware surface:
   - exact row-permuted `16x32bx2` warp anchors that would lower to misaligned
@@ -66,14 +66,24 @@ When resuming the initiative:
 - The old `413`-nodeid branch-added runtime-matrix manifest is now refreshed
   to empty:
   - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+- The old `332`-nodeid focused `test_core.py` TMEM/MMA manifest is also now
+  refreshed to empty:
+  - the full focused manifest rerun passed:
+    - `332 passed in 125.78s`
+  - the only intermediate issues were stale expectations for:
+    - the row-encoded `1048576` PTX offset in the legacy `64x128` split-N
+      roundtrip;
+    - the current clean unsupported descriptor-view diagnostic for a block
+      basis `ld.red` negative.
+  - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
 - The supported `_reinterpret` migration invariant remains:
   - offset to the right TMEM region;
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
-- Next required durable step: continue staged validation toward MMA/matmul,
-  `triton_kernels`, and the long-term `ld.red`, `copy`/`warpx2`,
-  MMAv5/`mma_scaled`, and fuzzing phases.
+- Next required durable step: continue staged validation toward
+  `triton_kernels`, wider grouped Gluon sweeps, and the long-term `ld.red`,
+  `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 
