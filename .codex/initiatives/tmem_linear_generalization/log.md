@@ -10563,3 +10563,32 @@ Open after this slice:
   - broader higher-rank `ld/st` selector:
     `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-higher-rank-ldst-broad-after-direct-rank-guard PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and higher_rank'`
     -> `144 passed, 1 skipped, 2521 deselected in 73.43s (0:01:13)`.
+
+## 2026-04-11 explicit `ld.red` layout min/max coverage
+
+- Generalized `tmem_ld_red_explicit_layout_kernel` with a `red_op` constexpr so
+  the explicit-layout path covers both `load_min(layout=...)` and
+  `load_max(layout=...)`.
+- Expanded `test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants`
+  over `red_op in {min, max}` for compatible explicit variants `auto`,
+  `32x32b`, `16x32bx2`, and `32x32b_splitn`.
+- The test continues to require loaded-tensor preservation, PyTorch row
+  reduction agreement, PTX/LLIR opcode equality, exact wait ordering, and the
+  canonical `32x32b.x128` reduction family. Explicit N-sharded clean negatives
+  remain pinned through the min path.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    -> passed, ninja reported no work to do;
+  - syntax:
+    `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    -> passed;
+  - hygiene before docs:
+    `git diff --check`
+    -> passed;
+  - focused explicit min/max slice:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-explicit-minmax-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported`
+    -> `11 passed in 8.57s`;
+  - broad current-head `ld_red` selector:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-minmax-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    -> `487 passed, 2183 deselected in 482.92s (0:08:02)`.

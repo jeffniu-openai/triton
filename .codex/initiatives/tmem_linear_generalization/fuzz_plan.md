@@ -269,6 +269,9 @@ Every fuzz case records:
 - PTX and LLIR use the same `tcgen05.ld.red` opcode stream.
 - Current positives pin exact offset immediates: `[0]` for `N <= 128` and
   `[0, 64, 128, 192]` for `N=256`.
+- Explicit compatible register-layout variants now cover both min and max for
+  `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`; modifiers remain covered
+  by the broader inferred-layout modifier matrix.
 - Positive runtime-matrix `ld.red` tests assert exactly one `wait <store>`
   before reduction loads, exactly one `wait <load>` after `ld.red`, and the
   PTX/LLIR ordering `store -> wait.store -> ld.red -> wait.load`.

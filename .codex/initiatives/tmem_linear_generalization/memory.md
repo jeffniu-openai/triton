@@ -120,7 +120,7 @@
   - focused row/column N-sweep exact:
     `144 passed in 113.29s (0:01:53)`
   - broad `ld_red` slice:
-    `476 passed, 2179 deselected in 439.38s (0:07:19)`
+    `487 passed, 2183 deselected in 482.92s (0:08:02)`
   - tile-permuted, pure column, pure row, and non-identity row/column
     cross-product permutations now cover `128x{64,128,256}` where each family
     is well-defined and still emit the expected `32x32b` reduction-family
@@ -370,7 +370,7 @@
     `ld.red` before redval consumption;
   - explicit reduction-load layout coverage now proves compatible explicit
     variants `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` still emit the
-    canonical `32x32b.x128.min.f32` reduction opcode, while explicit
+    canonical `32x32b.x128.{min,max}.f32` reduction opcodes, while explicit
     N-sharded variants `16x64b`, `16x128b`, and `16x256b` report the dedicated
     clean `N dimension sharded across threads` verifier diagnostic;
   - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
@@ -6435,3 +6435,32 @@ rejection, not rescue
 - Next: run hygiene, commit, push, then continue the next saturation frontier
   from the long-term plan (`ld.red` broader fuzzing, copy `warpx2`, or
   MMAv5/scaled-MMAv5 reachable-family work).
+
+## 2026-04-11 23:29 UTC: explicit `ld.red` layout coverage includes min/max
+
+- Generalized `tmem_ld_red_explicit_layout_kernel` so compatible explicit
+  register-layout variants exercise both `tmem.load_min(layout=...)` and
+  `tmem.load_max(layout=...)`.
+- Positive explicit variants remain:
+  - `auto`
+  - `32x32b`
+  - `16x32bx2`
+  - `32x32b_splitn`
+- Each positive variant preserves the loaded tensor, matches the PyTorch row
+  reduction for the selected op, and still emits the canonical
+  `tcgen05.ld.red.sync.aligned.32x32b.x128.{min,max}.f32` opcode family.
+- The explicit N-sharded clean-negative variants still use the min path and
+  still report the dedicated `N dimension sharded across threads` diagnostic.
+- Validation:
+  - build: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed (`ninja: no work to do`);
+  - syntax: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - hygiene: `git diff --check` passed before docs update;
+  - focused explicit min/max slice:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-explicit-minmax-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported`
+    -> `11 passed in 8.57s`;
+  - broad current-head `ld_red` selector:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-minmax-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    -> `487 passed, 2183 deselected in 482.92s (0:08:02)`.
+- Next: run final hygiene, commit and push this explicit min/max `ld.red`
+  coverage slice, then continue copy `warpx2` or MMAv5/scaled-MMAv5 frontier
+  work.

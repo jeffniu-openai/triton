@@ -125,7 +125,7 @@ When resuming the initiative:
   - broad `tcgen05.cp`:
     `162 passed, 5 skipped, 2488 deselected`
   - broad `tcgen05.ld.red`:
-    `476 passed, 2179 deselected`
+    `487 passed, 2183 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
     `213 passed, 50 skipped, 2392 deselected`
   - scaled-MMA copy-helper matrix:
@@ -263,10 +263,13 @@ When resuming the initiative:
 - `ld.red` explicit reduction-load layout coverage is expanded:
   - compatible explicit variants `auto`, `32x32b`, `16x32bx2`, and
     `32x32b_splitn` all execute correctly and still canonicalize to the exact
-    `tcgen05.ld.red.sync.aligned.32x32b.x128.min.f32` opcode;
+    `tcgen05.ld.red.sync.aligned.32x32b.x128.{min,max}.f32` opcodes;
   - explicit N-sharded variants `16x64b`, `16x128b`, and `16x256b` are pinned
     as clean unsupported cases with the dedicated `N dimension sharded across
-    threads` diagnostic and register-layout note.
+    threads` diagnostic and register-layout note;
+  - focused min/max explicit-layout validation: `11 passed in 8.57s`;
+  - broad `ld_red` validation: `487 passed, 2183 deselected in 482.92s
+    (0:08:02)`.
 - Scaled-MMAv5 copy-matrix instruction coverage is tightened by `3374bbf12`:
   - the runtime-matrix scaled copy tests still assert exact
     `tcgen05.cp.cta_group::{1,2}.warpx4.32x128b` PTX/LLIR streams;
@@ -470,7 +473,7 @@ When resuming the initiative:
   - command:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-wait-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
   - result:
-    `476 passed, 2179 deselected in 439.38s (0:07:19)`;
+    `487 passed, 2183 deselected in 482.92s (0:08:02)`;
   - this covers identity, tile-permuted `128x{64,128,256}` including the
     minimal `N=64, tile_n=16` case, pure column-permuted
     `128x{64,128,256}`, pure row-permuted `128x{64,128,256}`, row/column
