@@ -7251,3 +7251,21 @@ Open after this slice:
     the intended TMEM view explicitly.
 - No code fix has been committed for this checkpoint. The lowering-side
   selector experiment was removed before continuing.
+
+## 2026-04-11 05:21 UTC
+
+- Reverted the local attention-kernel experiment and left
+  `python/examples/gluon/01-attention-forward.py` at `HEAD` for now.
+- Recorded the user clarification that the attention issue should be handled as
+  a supported-API migration, not as preservation of private `_reinterpret`
+  behavior:
+  - any production/example/test code relying on `_reinterpret` plus
+    compiler-specific physical-layout knowledge is a migration target;
+  - the desired API shape is an explicit `subslice/subview -> bitcast`
+    operation:
+    - first offset/slice/subview to the desired physical TMEM bits;
+    - then bitcast to the desired dtype, shape, and layout;
+    - require the bitcast to preserve total size and the exact physical memory
+      mapping of the input descriptor;
+  - reserve lowering fixes for cases where those supported APIs miscompile.
+- Documentation-only checkpoint; no build or test was run for this entry.

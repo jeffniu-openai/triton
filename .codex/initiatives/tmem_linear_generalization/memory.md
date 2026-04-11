@@ -211,6 +211,18 @@
   f32-to-bf16 TMEM `_reinterpret` path relies on compiler-specific physical
   packing behavior. Migrate it to supported linear-layout/view APIs with the
   same intent instead of patching TMEM lowering to prefer the old fallback.
+- 2026-04-11 user clarification to preserve across contexts:
+  - this is the original motivation for the project, not just a local
+    attention workaround;
+  - any code that implicitly relies on `_reinterpret` behavior based on
+    compiler knowledge should move to supported APIs;
+  - the supported operation should be a well-defined
+    `subslice/subview -> bitcast` sequence:
+    - offset to the intended TMEM region;
+    - slice/subview it to the desired physical bits;
+    - bitcast to the desired dtype, shape, and layout only when the bitcast is
+      equal-size and preserves the exact physical TMEM mapping of the input
+      descriptor.
 - After the attention migration is green, refresh the aggregate GB200
   manifests and rerun broader examples/Gluon shards on top of the checkpoint
   commit before declaring the branch-recovery phase done.

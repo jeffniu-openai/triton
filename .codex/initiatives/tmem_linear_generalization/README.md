@@ -26,6 +26,21 @@ When resuming the initiative:
 - use `fuzz_plan.md` once the current planner/cleanup blockers are green and
   broad saturation work is the next task.
 
+## Current Project Invariant
+
+- `_reinterpret` is not an escape hatch for relying on whichever physical TMEM
+  lowering the compiler happens to choose.
+- Production kernels, examples, and tests that currently depend on private
+  `_reinterpret` behavior or compiler-specific physical-layout knowledge are
+  migration targets.
+- The intended replacement is a supported descriptor operation sequence:
+  offset/slice/subview to the desired physical TMEM bits, then bitcast to the
+  desired dtype/shape/layout only when the bitcast preserves the exact physical
+  mapping and total size.
+- Lowering-side fixes are still appropriate for supported APIs that miscompile,
+  but do not add ad-hoc selectors just to preserve old `_reinterpret`
+  accidents.
+
 ## Document Roles
 
 - `memory.md`
