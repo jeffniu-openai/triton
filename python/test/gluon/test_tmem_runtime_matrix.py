@@ -1000,6 +1000,36 @@ def tmem_scales_ldst_variant_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.
 
 
 @gluon.jit
+def tmem_ld_red_explicit_layout_kernel(
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, load_variant: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=layout)
+    store_layout: ttgl.constexpr = tmem.get_reg_layout()
+    value = ttgl.convert_layout(value, store_layout)
+    tmem.store(value)
+
+    load_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=load_variant)
+    output, reduced = tmem.load_min(layout=load_layout)
+    output = ttgl.convert_layout(output, global_layout)
+    ttgl.store(out_ptr + offs, output)
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_copy_no_scales_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
                                swizzle: ttgl.constexpr):
     tmem_layout: ttgl.constexpr = TensorMemoryLayout(
@@ -4254,6 +4284,47 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
     assert "tensor_memory_linear" in ttgir
 
     _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
+def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(load_variant):
+    M = N = 128
+    layout = _make_tmem_linear_layout(M, N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
+        inp, out, red, layout, load_variant, num_warps=4
+    )
+
+    torch.testing.assert_close(inp, out, atol=0, rtol=0)
+    torch.testing.assert_close(torch.min(inp, dim=1).values, red, atol=1e-5, rtol=1e-5)
+    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", "min", False, tl.PropagateNan.NONE)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("load_variant", ["16x64b", "16x128b", "16x256b"])
+def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported(load_variant, capfd):
+    M = N = 128
+    layout = _make_tmem_linear_layout(M, N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as err:
+        tmem_ld_red_explicit_layout_kernel[(1, )](
+            inp, out, red, layout, load_variant, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "tmem_load reduction with N dimension sharded across threads is not supported" in text
+    assert "Reduction requires all N elements to reside in the register dimension and M to be unsharded" in text
+    assert "Got register layout" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

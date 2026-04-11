@@ -365,8 +365,13 @@
     immediates (`[0]` for `N <= 128`, `[0, 64, 128, 192]` for `N=256`) plus
     exactly one `wait.store` before reduction loads and one `wait.load` after
     `ld.red` before redval consumption;
+  - explicit reduction-load layout coverage now proves compatible explicit
+    variants `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` still emit the
+    canonical `32x32b.x128.min.f32` reduction opcode, while explicit
+    N-sharded variants `16x64b`, `16x128b`, and `16x256b` report the dedicated
+    clean `N dimension sharded across threads` verifier diagnostic;
   - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
-    for N-sharded or otherwise unsupported reductions.
+    for other unsupported reduction surfaces.
 - `tcgen05.mma` / `tcgen05.mma_scaled`:
   - current runtime coverage now includes plain `f16`, `tf32`, `bf16`,
     `f8e5m2`, and `f8e4m3` for both 1-CTA and 2-CTA, each across legacy and

@@ -260,6 +260,13 @@ When resuming the initiative:
   - plain identity `256x{32,64,128,256}` TMEM-linear source layouts are pinned
     as clean unsupported cases with the same actionable software-reduction
     diagnostic.
+- `ld.red` explicit reduction-load layout coverage is expanded:
+  - compatible explicit variants `auto`, `32x32b`, `16x32bx2`, and
+    `32x32b_splitn` all execute correctly and still canonicalize to the exact
+    `tcgen05.ld.red.sync.aligned.32x32b.x128.min.f32` opcode;
+  - explicit N-sharded variants `16x64b`, `16x128b`, and `16x256b` are pinned
+    as clean unsupported cases with the dedicated `N dimension sharded across
+    threads` diagnostic and register-layout note.
 - Scaled-MMAv5 copy-matrix instruction coverage is tightened by `3374bbf12`:
   - the runtime-matrix scaled copy tests still assert exact
     `tcgen05.cp.cta_group::{1,2}.warpx4.32x128b` PTX/LLIR streams;

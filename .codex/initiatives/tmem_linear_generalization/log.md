@@ -10463,3 +10463,63 @@ Open after this slice:
    - true scales `warpx2` descriptor/direct-PTX research;
    - broader `ld.red` layout fuzzing;
    - another bounded MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 `ld.red` explicit reduction-load layout coverage
+
+### Branch / HEAD / Worktree
+- branch:
+  - `codex/tmem`
+- latest pushed checkpoint before this source/test update:
+  - `50cb3cdc6`
+- source/test edits:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+- docs/status edits:
+  - `README.md`
+  - `memory.md`
+  - `log.md`
+  - `handoff_2026-04-09.md`
+  - `fuzz_plan.md`
+
+### Current Status
+- Added a runtime-matrix kernel that calls `tmem.load_min(layout=...)` with an
+  explicit register layout rather than relying on reduction-layout inference.
+- Positive explicit variants:
+  - `auto`
+  - `32x32b`
+  - `16x32bx2`
+  - `32x32b_splitn`
+- These all execute correctly, preserve the source tensor and PyTorch row-wise
+  minimum, and still emit the exact canonical
+  `tcgen05.ld.red.sync.aligned.32x32b.x128.min.f32` PTX/LLIR opcode stream.
+- Clean-negative explicit variants:
+  - `16x64b`
+  - `16x128b`
+  - `16x256b`
+- These reach the dedicated verifier diagnostic for explicit N-sharded
+  reduction-load layouts:
+  - `tmem_load reduction with N dimension sharded across threads is not supported`
+  - `Reduction requires all N elements to reside in the register dimension and M to be unsharded`
+  - `Got register layout`
+- This closes the recorded N-sharded explicit-register-layout `ld.red` negative
+  slice without changing lowering behavior.
+
+### Validation
+- Build:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `PASSED`, ninja reported no work to do
+- Syntax:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+  - `PASSED`
+- Focused explicit-layout slice:
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-explicit-layout-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported`
+  - `7 passed in 5.85s`
+- Broad current-head `ld_red` selector:
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-explicit-layout-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+  - `483 passed, 2179 deselected in 447.08s (0:07:27)`
+
+### Next Concrete Steps
+1. Commit and push this `ld.red` explicit-layout coverage slice to
+   `origin/codex/tmem`.
+2. Continue broader `ld/st` or `ld.red` fuzzing, true scales `warpx2`, two-CTA
+   `warpx2::02_13` descriptor synthesis, or another bounded MMAv5 /
+   scaled-MMAv5 reachable-family gap.

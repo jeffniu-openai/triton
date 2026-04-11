@@ -272,7 +272,8 @@ Every fuzz case records:
 #### Negative frontier
 - integer reduction with `NaN`
 - unpacked formats
-- N-sharded register layouts
+- additional N-sharded register layouts beyond the explicit `16x64b`,
+  `16x128b`, and `16x256b` clean-negative coverage
 - plain identity `256xN` source layouts, which are not the current direct
   `tcgen05.ld.red` source form and should keep the clean software-reduction
   diagnostic unless the planner grows a real positive lowering
