@@ -8959,3 +8959,29 @@ Open after this slice:
 - Next:
   - commit and push this validation checkpoint;
   - continue operational fuzzing from `fuzz_plan.md`.
+
+## 2026-04-11 17:02 UTC
+
+- Ran the broad current-head `tcgen05.cp` runtime-matrix refresh after the
+  `ld/st` fuzz additions.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `efdd93c67`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad `tcgen05.cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad-after-ldst-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `152 passed, 5 skipped, 2068 deselected in 37.08s`
+- Interpretation:
+  - the copy surface remains green at current head;
+  - the selected copy tests are unchanged, while the deselected count increased
+    because of the new `ld/st` runtime-matrix cases.
+- Next:
+  - commit and push this validation checkpoint;
+  - continue operational fuzzing from `fuzz_plan.md`.

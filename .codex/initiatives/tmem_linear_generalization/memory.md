@@ -309,7 +309,26 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:00 UTC)
+## Current Topline (2026-04-11 17:02 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `efdd93c67` on `origin/codex/tmem`
+- Broad current-head `tcgen05.cp` runtime-matrix validation is green:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - command:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad-after-ldst-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+  - result:
+    - `152 passed, 5 skipped, 2068 deselected in 37.08s`
+- This refresh confirms the copy surface is still green after the recent
+  `ld/st` fuzz additions.
+- Next:
+  - commit and push this docs validation checkpoint;
+  - continue operational fuzzing from `fuzz_plan.md`, likely `ld.red`,
+    additional copy-family saturation, or broader MMA/scaled-MMA probes.
+
+## Prior Topline (2026-04-11 17:00 UTC)
 
 - Latest pushed source/test checkpoint:
   - `ee4fdec29` on `origin/codex/tmem`

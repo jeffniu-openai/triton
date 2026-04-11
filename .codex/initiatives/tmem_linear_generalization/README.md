@@ -90,9 +90,9 @@ When resuming the initiative:
     `690 passed, 60 skipped`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
-    `1082 passed, 437 skipped, 680 deselected`
+    `1104 passed, 441 skipped, 680 deselected`
   - broad `tcgen05.cp`:
-    `152 passed, 5 skipped, 2042 deselected`
+    `152 passed, 5 skipped, 2068 deselected`
   - broad `tcgen05.ld.red`:
     `208 passed, 1991 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
@@ -297,9 +297,9 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad-after-ldst-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `152 passed, 5 skipped, 2042 deselected in 36.66s`;
+    `152 passed, 5 skipped, 2068 deselected in 37.08s`;
   - this covers the current no-scales `warpx2` positives, dense copy
     positives, 2-CTA copy, scaled `warpx4` copy paths, and clean unsupported
     copy boundaries.
