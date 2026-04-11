@@ -346,21 +346,23 @@ class AttentionProgram:
 @gluon.jit
 def _borrow_s_as_p(config, s_tmem):
     p_tmem = s_tmem.slice(0, config.BLOCK_N // 2)
-    return p_tmem.bitcast(config.dtype, config.qk_shape, config.p_tmem_layout)
+    return p_tmem._reinterpret(config.dtype, config.qk_shape, config.p_tmem_layout)
 
 
 @gluon.jit
 def _borrow_s_as_alpha(config, s_tmem):
     alpha_tmem = s_tmem.slice(config.BLOCK_N // 2, 1)
-    return alpha_tmem.bitcast(gl.float32, [config.SPLIT_M, 1])
+    alpha_layout: gl.constexpr = TensorMemoryLayout([config.SPLIT_M, 1], col_stride=1)
+    return alpha_tmem._reinterpret(gl.float32, [config.SPLIT_M, 1], alpha_layout)
 
 
 @gluon.jit
 def _borrow_s_for_epilogue(config, s_tmem):
     m_i_tmem = s_tmem.slice(config.BLOCK_N // 2 + 1, 1)
     l_i_tmem = s_tmem.slice(config.BLOCK_N // 2 + 2, 1)
-    m_i_tmem = m_i_tmem.bitcast(gl.float32, [config.SPLIT_M, 1])
-    l_i_tmem = l_i_tmem.bitcast(gl.float32, [config.SPLIT_M, 1])
+    layout: gl.constexpr = TensorMemoryLayout([config.SPLIT_M, 1], col_stride=1)
+    m_i_tmem = m_i_tmem._reinterpret(gl.float32, [config.SPLIT_M, 1], layout)
+    l_i_tmem = l_i_tmem._reinterpret(gl.float32, [config.SPLIT_M, 1], layout)
     return m_i_tmem, l_i_tmem
 
 
@@ -550,17 +552,13 @@ def _apply_causal_mask(qk, col_limit_right):
 
 
 @gluon.jit
-def _compute_and_store_exp2(config, qk, s_tmem):
-    SIZE: gl.constexpr = qk.shape[1] // config.SPLIT_EXP_FACTOR
-    TMEM_COLS_PER_PART: gl.constexpr = SIZE * config.dtype.primitive_bitwidth // gl.float32.primitive_bitwidth
-    p_part_tmem_layout: gl.constexpr = TensorMemoryLayout((config.SPLIT_M, SIZE), col_stride=1)
+def _compute_and_store_exp2(config, qk, p_tmem):
+    SIZE: gl.constexpr = p_tmem.shape[1] // config.SPLIT_EXP_FACTOR
     qks = _split_n(qk, config.SPLIT_EXP_FACTOR)
     ps = ()
     for i in gl.static_range(config.SPLIT_EXP_FACTOR):
         p = gl.exp2(qks[i])
-        p_tmem = s_tmem.slice(i * TMEM_COLS_PER_PART, TMEM_COLS_PER_PART).bitcast(
-            config.dtype, [config.SPLIT_M, SIZE], p_part_tmem_layout)
-        p_tmem.store(p.to(config.dtype))
+        p_tmem.slice(i * SIZE, SIZE).store(p.to(config.dtype))
         ps = ps + (p, )
     return _join_n(ps)
 
@@ -620,7 +618,8 @@ def _softmax_inner_loop(tile_id: gl.constexpr, config, prog,  #
         # FIXME: When using FADD2 reductions, ptxas misbehaves and spills far
         # below the register limit in the FADD2, FMUL2, EX2 section. Subtile by
         # 4 to minimize the spilling.
-        p = _compute_and_store_exp2(config, qk, s_tmem)
+        p_tmem = _borrow_s_as_p(config, s_tmem)
+        p = _compute_and_store_exp2(config, qk, p_tmem)
 
         mbarrier.arrive(s_bar, count=1)
         _, corr_bar, corr_producer = corr_producer.acquire()
