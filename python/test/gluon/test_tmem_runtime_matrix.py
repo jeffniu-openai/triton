@@ -935,7 +935,7 @@ def tmem_block_descriptor_compile_kernel(layout: ttgl.constexpr, reinterpret_lay
 
 
 @gluon.jit
-def tmem_ldst_subword16_variant_kernel(
+def tmem_ldst_subword_variant_kernel(
     in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
     instr_variant: ttgl.constexpr
 ):
@@ -2486,24 +2486,41 @@ CP_SCALES_WARPX4_GEOMETRY_CASES = [
     )
 ]
 
-SUBWORD16_LDST_SHAPE_MAP = {
-    "auto": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
-    "32x32b": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
-    "16x64b": {64: "16x64b.x16.b32", 128: "16x64b.x32.b32", 256: "16x64b.x64.b32"},
-    "16x128b": {64: "16x128b.x8.b32", 128: "16x128b.x16.b32", 256: "16x128b.x32.b32"},
-    "16x256b": {64: "16x256b.x4.b32", 128: "16x256b.x8.b32", 256: "16x256b.x16.b32"},
+SUBWORD_LDST_SHAPE_MAP_BY_BITS = {
+    16: {
+        "auto": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
+        "32x32b": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
+        "16x64b": {64: "16x64b.x16.b32", 128: "16x64b.x32.b32", 256: "16x64b.x64.b32"},
+        "16x128b": {64: "16x128b.x8.b32", 128: "16x128b.x16.b32", 256: "16x128b.x32.b32"},
+        "16x256b": {64: "16x256b.x4.b32", 128: "16x256b.x8.b32", 256: "16x256b.x16.b32"},
+    },
+    8: {
+        "auto": {64: "32x32b.x16.b32", 128: "32x32b.x32.b32", 256: "32x32b.x64.b32"},
+        "32x32b": {64: "32x32b.x16.b32", 128: "32x32b.x32.b32", 256: "32x32b.x64.b32"},
+        "16x64b": {64: "16x64b.x8.b32", 128: "16x64b.x16.b32", 256: "16x64b.x32.b32"},
+        "16x128b": {64: "16x128b.x4.b32", 128: "16x128b.x8.b32", 256: "16x128b.x16.b32"},
+        "16x256b": {64: "16x256b.x2.b32", 128: "16x256b.x4.b32", 256: "16x256b.x8.b32"},
+    },
 }
 
-SUBWORD16_LDST_DTYPES = (
-    ("f16", torch.float16),
-    ("bf16", torch.bfloat16),
-    ("i16", torch.int16),
+SUBWORD_LDST_DTYPES = (
+    ("f16", torch.float16, 16),
+    ("bf16", torch.bfloat16, 16),
+    ("i16", torch.int16, 16),
+    ("i8", torch.int8, 8),
 )
 
-SUBWORD16_LDST_CASES = [
-    (dtype_name, torch_dtype, "identity", n, variant, SUBWORD16_LDST_SHAPE_MAP[variant][n])
-    for (dtype_name, torch_dtype), n, variant in product(
-        SUBWORD16_LDST_DTYPES, (64, 128, 256), LDST_VARIANTS
+SUBWORD_LDST_CASES = [
+    (
+        dtype_name,
+        torch_dtype,
+        "identity",
+        n,
+        variant,
+        SUBWORD_LDST_SHAPE_MAP_BY_BITS[bitwidth][variant][n],
+    )
+    for (dtype_name, torch_dtype, bitwidth), n, variant in product(
+        SUBWORD_LDST_DTYPES, (64, 128, 256), LDST_VARIANTS
     )
 ]
 
@@ -3779,8 +3796,8 @@ def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant,expected_shape", SUBWORD16_LDST_CASES)
-def test_tmem_runtime_matrix_ldst_subword_16bit_pack_unpack(
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant,expected_shape", SUBWORD_LDST_CASES)
+def test_tmem_runtime_matrix_ldst_subword_pack_unpack(
     dtype_name, torch_dtype, layout_name, n, variant, expected_shape
 ):
     m = 128
@@ -3788,7 +3805,7 @@ def test_tmem_runtime_matrix_ldst_subword_16bit_pack_unpack(
     inp = torch.arange(m * n, dtype=torch_dtype, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_subword16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    compiled = tmem_ldst_subword_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
@@ -3809,7 +3826,7 @@ def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, 
     inp = torch.arange(m * n, dtype=torch.float16, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_subword16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    compiled = tmem_ldst_subword_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)

@@ -9982,3 +9982,36 @@ Open after this slice:
   - continue with generic i8 subword exploration, broader ld/st fuzzing,
     two-CTA `warpx2::02_13`, scales `warpx2`, or another bounded MMAv5 /
     scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 21:20 UTC
+
+- Added direct i8 to the plain subword `ld/st` matrix.
+- Source/test change:
+  - renamed `tmem_ldst_subword16_variant_kernel` to
+    `tmem_ldst_subword_variant_kernel`;
+  - split the expected opcode map by element bitwidth so 16-bit dtypes use the
+    existing `x32/x64/x128` families and i8 uses the corresponding half-width
+    `x16/x32/x64` families;
+  - extended `SUBWORD_LDST_CASES` to include `i8` alongside `f16`, `bf16`, and
+    `i16` over identity `128x{64,128,256}` layouts and variants
+    `{auto,32x32b,16x64b,16x128b,16x256b}`.
+- Coverage boundary:
+  - the direct identity subword dtype set from the fuzz plan is now covered;
+  - specialized one-column pack/unpack and padded i8 edge cases remain future
+    subword work.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused subword plus adjacent x1 f16 slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-subword-all-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_subword_pack_unpack python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f16_roundtrip`
+    - `66 passed in 18.12s`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this i8 subword coverage slice;
+  - continue with specialized subword edge cases, broader ld/st fuzzing,
+    two-CTA `warpx2::02_13`, scales `warpx2`, or another bounded MMAv5 /
+    scaled-MMAv5 reachable-family gap.
