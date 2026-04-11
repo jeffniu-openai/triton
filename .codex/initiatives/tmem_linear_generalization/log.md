@@ -8257,3 +8257,32 @@ Open after this slice:
   - inspect remaining staged `ld/st` stale-negative and explicit-only
     surfaces;
   - then broader validation and heuristic cleanup.
+
+## 2026-04-11 16:10 UTC
+
+- Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:
+  - `572fb25b2`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add `auto` instruction-selection coverage to the remaining simple
+    higher-rank dim0-slice positive matrices.
+- Implementation:
+  - `LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES` now uses
+    `LDST_VARIANTS`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - higher-rank dim0-slice positive matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-dim0-slice-auto-positive PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_positive_lifted_layout'`
+    - `20 passed in 11.56s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect remaining staged `ld/st` stale-negative and explicit-only
+    surfaces;
+  - then broader validation and heuristic cleanup.

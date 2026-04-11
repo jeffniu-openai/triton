@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 16:00 UTC, the latest pushed source/test checkpoint is
-  `7c1a6f63b` on `origin/codex/tmem`.
+- As of 2026-04-11 16:10 UTC, the latest pushed source/test checkpoint is
+  `572fb25b2` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -167,6 +167,12 @@ When resuming the initiative:
     `RuntimeError` about translated row-half TMEM origins;
   - the tests still require a descriptor-view diagnostic and guard against
     PassManager/assertion crashes.
+- Higher-rank dim0-slice positive `ld/st` views now include `auto` after
+  `572fb25b2`:
+  - single-CTA identity and two-CTA block lifted-layout dim0-slice matrices now
+    use `LDST_VARIANTS`;
+  - the tests validate functional output plus full-tile and narrowed-subview
+    PTX/LLIR opcode agreement.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
