@@ -94,7 +94,10 @@
   - raw live TMEM totals `96`, `192`, and `384` are covered as allocation-pass
     boundaries that round to supported module allocation sizes `128`, `256`,
     and `512`; literal non-pow2 `tcgen05.alloc` immediates are not expected.
-- Current-head `tcgen05.ld.red` row/column-permuted coverage is green:
+- Current-head `tcgen05.ld.red` tile/permutation coverage is green:
+  - focused tile-permuted exact, now including the valid minimal
+    `N=64, tile_n=16` case:
+    `32 passed in 22.37s`
   - focused pure-column permutation exact:
     `72 passed in 50.45s`
   - focused pure-row N-sweep exact:
@@ -102,10 +105,11 @@
   - focused row/column N-sweep exact:
     `144 passed in 113.29s (0:01:53)`
   - broad `ld_red` slice:
-    `468 passed, 2045 deselected in 331.45s (0:05:31)`
-  - pure column, pure row, and non-identity row/column cross-product
-    permutations now cover `128x{64,128,256}` and still emit the expected
-    `32x32b` reduction-family opcodes.
+    `476 passed, 2055 deselected in 368.86s (0:06:08)`
+  - tile-permuted, pure column, pure row, and non-identity row/column
+    cross-product permutations now cover `128x{64,128,256}` where each family
+    is well-defined and still emit the expected `32x32b` reduction-family
+    opcodes.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:

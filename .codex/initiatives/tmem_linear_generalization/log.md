@@ -9563,3 +9563,27 @@ Open after this slice:
   - run final hygiene, commit, and push this two-CTA scaled-MMA coverage slice;
   - continue with copy/`warpx2` probing, targeted `ld.red` exotic/mixed-frontier
     probes, or the next MMAv5 reachable-family gap.
+
+## 2026-04-11 19:36 UTC
+
+- Added the valid minimal tile-permuted `tcgen05.ld.red` positive case.
+- Source/test change:
+  - extended `LD_RED_TILE_PERMUTED_CASES` with `N=64, tile_n=16`, expected to
+    emit `tcgen05.ld.red.sync.aligned.32x32b.x64.*.f32`;
+  - intentionally did not use `tile_n=32` at `N=64`, because the tile
+    permutation helper swaps the `tile_n` bit with the next higher column bit,
+    which does not exist for `N=64`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused tile-permuted `ld.red` exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-tileperm-n64-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout`
+    - `32 passed in 22.37s`
+  - broad current-head `ld_red` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-tileperm-n64-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `476 passed, 2055 deselected in 368.86s (0:06:08)`
+- Next:
+  - run hygiene, commit, and push this `ld.red` tile-permutation coverage slice;
+  - continue copy/`warpx2` probing or another targeted `ld.red` exotic/mixed
+    frontier.

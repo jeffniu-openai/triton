@@ -2457,6 +2457,7 @@ LD_RED_MODIFIER_CASES = [
 ]
 
 LD_RED_TILE_PERMUTED_CASES = [
+    (64, 16, 4, "32x32b.x64"),
     (128, 32, 4, "32x32b.x128"),
     (256, 32, 4, "32x32b.x64"),
     (256, 64, 4, "32x32b.x64"),
