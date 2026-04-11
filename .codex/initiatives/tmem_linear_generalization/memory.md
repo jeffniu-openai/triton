@@ -262,9 +262,10 @@
     negative;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
-    then fail cleanly because no compatible scales descriptor plan can be
-    synthesized; do not treat that candidate as a live public scales `warpx2`
-    path;
+    then fail because no compatible scales descriptor plan can be synthesized;
+    a 2026-04-11 bounded probe of nearby shared-linear basis orders still found
+    only `warpx4` classifications, so do not treat that candidate as a live
+    public scales `warpx2` path;
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;
   - no-scales dense `cta_group::2` copy coverage now pins both
@@ -464,7 +465,33 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 20:23 UTC)
+## Current Topline (2026-04-11 20:26 UTC)
+
+- Latest pushed checkpoint before this probe:
+  - `97f18d07b` on `origin/codex/tmem`
+- Ran a bounded scales `warpx2` shared-linear layout classification probe using
+  `tmem_copy_scales_layout_probe_kernel` and six nearby offset-basis orders:
+  - current `warpx4` layout: passes and emits two
+    `tcgen05.cp.cta_group::1.warpx4.32x128b` copies;
+  - historical `warpx2_candidate`;
+  - no-scales-like column-tail order;
+  - row-32 after column bases;
+  - row-32 after low-row bases;
+  - column-first / row-tail order.
+- Result:
+  - no probed public `TensorMemoryScalesLayout` case classified as
+    `warpx2::{01_23,02_13}`;
+  - the failed nearby layouts still mapped to `tcgen05.copy.warpx4.32x128b` and
+    failed descriptor-plan synthesis for tensor-memory scales;
+  - this reinforces that scales `warpx2` needs a different descriptor/address
+    representation or a direct PTX documentation probe, not a small basis-order
+    tweak of the current public scales copy probe.
+- Next:
+  - continue either the two-CTA `warpx2::02_13` descriptor/address-model fix,
+    a deeper direct-PTX scales `warpx2` probe, or the TMA-fed 2-CTA TF32
+    shared-transpose compiler follow-up.
+
+## Prior Topline (2026-04-11 20:23 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `fc35a1c20` on `origin/codex/tmem`

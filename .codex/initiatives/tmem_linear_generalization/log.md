@@ -9833,3 +9833,28 @@ Open after this slice:
   - continue either the two-CTA `warpx2::02_13` descriptor/address-model fix
     itself, the scales `warpx2` descriptor search, or the TMA-fed 2-CTA TF32
     shared-transpose compiler follow-up.
+
+
+## 2026-04-11 20:26 UTC
+
+- Ran a bounded scales `warpx2` shared-linear layout classification probe.
+- Probe setup:
+  - kernel: `tmem_copy_scales_layout_probe_kernel`;
+  - cache: `/tmp/triton-cache-scales-warpx2-layout-probe`;
+  - checked the current passing `warpx4` layout plus five nearby reordered
+    shared-linear offset-basis layouts intended to test whether public
+    `TensorMemoryScalesLayout` could classify as `warpx2::{01_23,02_13}`.
+- Result:
+  - the current `warpx4` layout still passes and emits two
+    `tcgen05.cp.cta_group::1.warpx4.32x128b` copies;
+  - the historical `warpx2_candidate`, no-scales-like column-tail order,
+    row-32-after-columns order, row-32-after-low-rows order, and
+    column-first/row-tail order all still mapped to
+    `tcgen05.copy.warpx4.32x128b` and failed descriptor-plan synthesis;
+  - no nearby public scales shared-linear basis order produced a `warpx2`
+    classification.
+- Consequence:
+  - scales `warpx2` is still not a small basis-order tweak of the current public
+    scales probe;
+  - next useful scales work is either a deeper direct-PTX documentation probe or
+    a different descriptor/address representation.

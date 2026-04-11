@@ -305,7 +305,9 @@ Every fuzz case records:
 - Do not use the historical public-layout "warpx2 candidate" as proof of a
   scales `warpx2` path: it currently classifies as `warpx4.32x128b` under
   `TensorMemoryScalesLayout` because the scales layout carries broadcast row
-  bases, then fails cleanly in scales descriptor-plan synthesis.
+  bases. A bounded 2026-04-11 basis-order probe of nearby shared-linear
+  layouts also found only `warpx4` classifications before descriptor-plan
+  synthesis failed.
 
 #### Shared-layout search strategy
 - Generate shared linear layouts by basis mutation rather than random dense
