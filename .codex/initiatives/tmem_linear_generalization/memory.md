@@ -277,7 +277,31 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:40 UTC)
+## Current Topline (2026-04-11 16:50 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `6d44718e7` on `origin/codex/tmem`
+- Row/column cross-product permuted `ld/st` layouts now include `auto`
+  instruction selection:
+  - `LDST_ROWCOL_PERMUTED_CASES` now uses `LDST_VARIANTS`;
+  - this reaches both direct ld/st and descriptor-chain composition sweeps;
+  - focused validation ran only the newly added auto parametrizations.
+- Validation for `6d44718e7`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - row/column direct + descriptor-chain auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rowcol-permuted-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_rowcol_permuted_layout_sweep' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep' -k auto`
+    - `96 passed, 384 deselected in 54.69s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect descriptor-roundtrip row/column explicit-only `ld/st` coverage;
+  - then continue broader validation and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 16:40 UTC)
 
 - Latest pushed source/test checkpoint:
   - `20f2c8db8` on `origin/codex/tmem`

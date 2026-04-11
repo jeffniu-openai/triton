@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 16:40 UTC, the latest pushed source/test checkpoint is
-  `20f2c8db8` on `origin/codex/tmem`.
+- As of 2026-04-11 16:50 UTC, the latest pushed source/test checkpoint is
+  `6d44718e7` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -189,6 +189,12 @@ When resuming the initiative:
   - direct exotic, descriptor-chain exotic, and clean unsupported block-layout
     matrices use `LDST_VARIANTS`;
   - validation covers positive opcode agreement and clean negative diagnostics.
+- Row/column cross-product permuted `ld/st` layouts now include `auto` after
+  `6d44718e7`:
+  - `LDST_ROWCOL_PERMUTED_CASES` uses `LDST_VARIANTS`;
+  - this reaches direct ld/st and descriptor-chain composition sweeps;
+  - focused validation ran the newly added auto parametrizations across the
+    row/column permutation cross-product.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

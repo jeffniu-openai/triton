@@ -8343,6 +8343,33 @@ Open after this slice:
     explicit-only `ld/st` surfaces;
   - then broader validation and heuristic cleanup.
 
+## 2026-04-11 16:50 UTC
+
+- Committed and pushed row/column cross-product permuted `ld/st` auto coverage:
+  - `6d44718e7`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add `auto` instruction-selection coverage to
+    `LDST_ROWCOL_PERMUTED_CASES`.
+- Implementation:
+  - `LDST_ROWCOL_PERMUTED_CASES` now uses `LDST_VARIANTS`;
+  - this reaches both direct ld/st and descriptor-chain composition sweeps.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - row/column direct + descriptor-chain auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rowcol-permuted-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_rowcol_permuted_layout_sweep' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep' -k auto`
+    - `96 passed, 384 deselected in 54.69s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect descriptor-roundtrip row/column explicit-only `ld/st` coverage;
+  - then broader validation and heuristic cleanup.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:
