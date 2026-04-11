@@ -53,8 +53,17 @@
 - Current-head phase-boundary validation at `330c64c05` is green for the full
   `python/test/gluon/test_tmem_runtime_matrix.py` file:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
+- Current-head four-way heavy Gluon validation at `be14fedc5` is green for
+  `python/test/gluon/test_core.py` plus
+  `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - group 1: `4407 passed, 634 skipped, 15123 deselected`
+  - group 2: `2528 passed, 2513 skipped, 15123 deselected`
+  - group 3: `2694 passed, 2347 skipped, 15123 deselected`
+  - group 4: `3314 passed, 1726 skipped, 15123 deselected, 1 xfailed`
 - The skips are expected tensor-memory OOR / boundary classifications from the
   expanded descriptor-view and rank-5 matrices, not new red tests.
+- The group-4 xfail is the known legacy M64 MMAv5 producer-family design-debt
+  marker, not a new failure.
 - This full-file checkpoint incorporates the staged `ld/st` auto expansion,
   broad `tcgen05.cp`, broad `tcgen05.ld.red`, true `tcgen05.mma`, direct
   `mma_scaled`, and scaled-MMA copy-helper validation slices recorded in the

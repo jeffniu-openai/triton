@@ -8702,6 +8702,43 @@ Open after this slice:
     phase, keeping long-term `tcgen05` saturation work recorded but not
     treating the current deterministic MMA surface as blocking.
 
+## 2026-04-11 20:00 UTC
+
+- Ran the preferred four-way heavy Gluon sweep over `test_core.py` and
+  `test_tmem_runtime_matrix.py` at current head.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `be14fedc5`
+- Validation setup:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - split command shape:
+    - `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-current-gluon-heavy PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <group> python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+- Results:
+  - group 1 / GPU 0:
+    - `4407 passed, 634 skipped, 15123 deselected in 2215.06s (0:36:55)`
+  - group 2 / GPU 1:
+    - `2528 passed, 2513 skipped, 15123 deselected in 1313.49s (0:21:53)`
+  - group 3 / GPU 2:
+    - `2694 passed, 2347 skipped, 15123 deselected in 1272.59s (0:21:12)`
+  - group 4 / GPU 3:
+    - `3314 passed, 1726 skipped, 15123 deselected, 1 xfailed in 2554.67s (0:42:34)`
+- Interpretation:
+  - the current head remains green across the heavy TMEM Gluon sweep;
+  - the one xfail is the known legacy M64 MMAv5 producer-family design-debt
+    marker;
+  - the new runtime-matrix coverage did not destabilize the adjacent
+    `test_core.py` TMEM/MMA surface.
+- Next:
+  - commit and push this validation checkpoint;
+  - continue to the next broad validation tier or start operational fuzzing /
+    stale-negative cleanup using `fuzz_plan.md`.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

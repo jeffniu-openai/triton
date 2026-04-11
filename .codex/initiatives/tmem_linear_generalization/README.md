@@ -52,6 +52,17 @@ When resuming the initiative:
 - The full `python/test/gluon/test_tmem_runtime_matrix.py` file is green at
   that checkpoint:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
+- The preferred four-way heavy Gluon sweep over
+  `python/test/gluon/test_core.py` and
+  `python/test/gluon/test_tmem_runtime_matrix.py` is green at `be14fedc5`:
+  - group 1:
+    `4407 passed, 634 skipped, 15123 deselected`
+  - group 2:
+    `2528 passed, 2513 skipped, 15123 deselected`
+  - group 3:
+    `2694 passed, 2347 skipped, 15123 deselected`
+  - group 4:
+    `3314 passed, 1726 skipped, 15123 deselected, 1 xfailed`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1082 passed, 437 skipped, 680 deselected`
