@@ -255,8 +255,9 @@ def _make_scales_shared_layout_warpx4():
 
 def _make_scales_shared_layout_warpx2_candidate():
     # Historical warpx2 probe candidate. Through the public descriptor API this
-    # currently reaches a clean unsupported descriptor-plan path rather than a
-    # live tcgen05.copy.warpx2 lowering.
+    # classifies as warpx4 under TensorMemoryScalesLayout because scales expose
+    # broadcast row bases, then reaches a clean unsupported descriptor-plan path
+    # rather than a live tcgen05.copy.warpx2 lowering.
     return ttgl.SharedLinearLayout(
         offset_bases=[[32, 0], [0, 1], [1, 0], [0, 2], [0, 4], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]
     )
@@ -3735,7 +3736,7 @@ def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_
     text = str(excinfo.value) + captured.err + captured.out
 
     if expected_status == "CLEAN_UNSUPPORTED":
-        assert "maps to tcgen05.copy." in text
+        assert "maps to tcgen05.copy.warpx4.32x128b" in text
         assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
         assert "Use a shared layout that lowers to tcgen05.copy." in text
         assert "same descriptor family" in text

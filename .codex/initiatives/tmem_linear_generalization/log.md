@@ -9190,3 +9190,33 @@ Open after this slice:
   - run hygiene, commit, and push this copy coverage slice;
   - continue copy saturation with scales `warpx2` search, or pivot to another
     bounded scaled-MMA/MMA frontier.
+
+## 2026-04-11 17:40 UTC
+
+- Tightened the classification of the historical scales `warpx2` copy
+  candidate.
+- Source/test change:
+  - updated `_make_scales_shared_layout_warpx2_candidate`'s comment;
+  - tightened `test_tmem_runtime_matrix_cp_scales_layout_probe` to assert that
+    the candidate maps to `tcgen05.copy.warpx4.32x128b`, not merely some
+    `tcgen05.copy` family.
+- Finding:
+  - under public `TensorMemoryScalesLayout`, the candidate classifies as
+    `warpx4.32x128b` because the scales layout exposes broadcast row bases;
+  - it then hits the clean scales descriptor-plan diagnostic;
+  - it should not be treated as evidence of a reachable public scales
+    `warpx2` lowering.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused historical candidate:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scales-warpx2-candidate-family-final PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe -k warpx2_candidate`
+    - `1 passed, 1 deselected in 3.14s`
+  - full scales layout-probe pair:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scales-layout-probe-family-final PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe`
+    - `2 passed in 3.03s`
+- Next:
+  - run hygiene, commit, and push this classification slice;
+  - true scales `warpx2` remains a direct-PTX/documentation or new public
+    layout search item.

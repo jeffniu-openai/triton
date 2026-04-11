@@ -182,6 +182,11 @@
     recorded green in the latest docs;
   - no-scales canonical-codegen coverage now pins both `warpx2::01_23` and
     `warpx2::02_13` as exact `cta_group::1.64x128b` opcode streams;
+  - the historical scales `warpx2` probe candidate is now known to classify as
+    `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
+    then fail cleanly because no compatible scales descriptor plan can be
+    synthesized; do not treat that candidate as a live public scales `warpx2`
+    path;
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;
   - no-scales dense `cta_group::2` copy coverage now pins both
@@ -194,7 +199,9 @@
     boundary;
   - remaining copy work is saturation and missing-surface coverage, especially
     scaled-MMA copy geometries and any additional deterministic `warpx2`
-    user-visible paths that fit TMEM;
+    user-visible paths that fit TMEM; true scales `warpx2` remains a separate
+    documentation/direct-PTX or new-public-layout question, not proven by the
+    historical candidate;
   - keep `4x256b` out of the positive target set unless a future direct-PTX
     probe proves a deterministic compiler contract.
 - `tcgen05.ld/st` and `tcgen05.ld.red`:

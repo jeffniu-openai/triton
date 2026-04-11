@@ -278,6 +278,10 @@ Every fuzz case records:
   - `.warpx4.32x128b`
   - `.warpx2::{02_13,01_23}.64x128b` once legalization finds executable cases
 - `cta_group in {1, 2}`
+- Do not use the historical public-layout "warpx2 candidate" as proof of a
+  scales `warpx2` path: it currently classifies as `warpx4.32x128b` under
+  `TensorMemoryScalesLayout` because the scales layout carries broadcast row
+  bases, then fails cleanly in scales descriptor-plan synthesis.
 
 #### Shared-layout search strategy
 - Generate shared linear layouts by basis mutation rather than random dense
