@@ -1752,7 +1752,7 @@ LDST_HIGHER_RANK_INDEX_CASES = [
 
 LDST_HIGHER_RANK_SLICE_CASES = [
     (layout_name, n, variant)
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
@@ -1762,7 +1762,7 @@ LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
 
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
     (layout_name, n, variant)
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_OOR_CASES = [
