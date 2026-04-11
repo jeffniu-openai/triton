@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 17:10 UTC, the latest pushed source/test checkpoint is
-  `be193b6c6` on `origin/codex/tmem`.
+- As of 2026-04-11 17:20 UTC, the latest pushed source/test checkpoint is
+  `4fe7a44de` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -209,6 +209,11 @@ When resuming the initiative:
   - two-CTA rank-5 cases add `auto` to the existing explicit subset;
   - focused validation shows all new auto cases hit the existing clean
     tensor-memory OOR skip boundary.
+- F16 subword ld/st pack/unpack coverage now includes `auto` after
+  `4fe7a44de`:
+  - `F16_LDST_CASES` uses `LDST_VARIANTS`;
+  - the `auto` shape expectations match the explicit `32x32b` f16 packet
+    family.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

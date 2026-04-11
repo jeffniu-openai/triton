@@ -8463,6 +8463,34 @@ Open after this slice:
     fixed offset patterns as intentional exact-family coverage or add explicit
     auto companions where useful.
 
+## 2026-04-11 17:20 UTC
+
+- Committed and pushed f16 subword ld/st auto coverage:
+  - `4fe7a44de`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add `auto` instruction selection to the f16 subword pack/unpack ld/st
+    matrix.
+- Implementation:
+  - `F16_LDST_SHAPE_MAP` now has auto expectations matching `32x32b`;
+  - `F16_LDST_CASES` now uses `LDST_VARIANTS`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - f16 subword auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-f16-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack' -k auto`
+    - `3 passed, 12 deselected in 3.60s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue classifying remaining fixed-opcode ld/st tests such as x1, fixed
+    offset patterns, and scales exact-family coverage as intentional or add
+    explicit auto companions where useful.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

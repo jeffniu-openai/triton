@@ -277,7 +277,31 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:10 UTC)
+## Current Topline (2026-04-11 17:20 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `4fe7a44de` on `origin/codex/tmem`
+- F16 subword ld/st pack/unpack coverage now includes `auto` instruction
+  selection:
+  - `F16_LDST_SHAPE_MAP` has `auto` expectations matching the explicit
+    `32x32b` f16 packet shapes;
+  - `F16_LDST_CASES` now uses `LDST_VARIANTS`.
+- Validation for `4fe7a44de`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - f16 subword auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-f16-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack' -k auto`
+    - `3 passed, 12 deselected in 3.60s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue classifying remaining fixed-opcode ld/st tests such as x1, fixed
+    offset patterns, and scales exact-family coverage as intentional or add
+    explicit auto companions where useful;
+  - then continue broader validation and heuristic cleanup.
+
+## Prior Topline (2026-04-11 17:10 UTC)
 
 - Latest pushed source/test checkpoint:
   - `be193b6c6` on `origin/codex/tmem`
