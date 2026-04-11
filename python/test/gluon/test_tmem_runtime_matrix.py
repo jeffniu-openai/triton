@@ -1101,7 +1101,7 @@ def tmem_copy_no_scales_twocta_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, c
 
 
 @gluon.jit
-def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
+def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr, tmem_layout: ttgl.constexpr):
     N: ttgl.constexpr = 4
     blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
     offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
@@ -1114,8 +1114,8 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
         alignment=16,
     )
     smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], layout=smem_layout)
-    tmem_layout: ttgl.constexpr = TensorMemoryLayout((M, N), col_stride=1)
     tmem = allocate_tensor_memory(ttgl.int32, [M, N], layout=tmem_layout)
+    tmem_reg_layout: ttgl.constexpr = tmem.get_reg_layout()
 
     barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(barrier, count=1)
@@ -1125,8 +1125,7 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
     tcgen05_commit(barrier)
     mbarrier.wait(barrier, phase=0)
 
-    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
-    output = tmem.load(reg_layout)
+    output = tmem.load(tmem_reg_layout)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(output, blocked))
 
 
@@ -1820,7 +1819,10 @@ CP_NO_SCALES_SWIZZLE_CASES = [
     for (m, n, block_n) in ((128, 128, 128), (128, 256, 256), (256, 128, 64))
 ]
 
-CP_NO_SCALES_128X128_CASES = (128, )
+CP_NO_SCALES_128X128_CASES = [
+    ("legacy", 128),
+    ("linear", 128),
+]
 
 CP_SCALES_WARPX4_FORMAT_PAIRS = [
     ("mxfp8", "mxfp8"),
@@ -3863,16 +3865,22 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("M", CP_NO_SCALES_128X128_CASES)
-def test_tmem_runtime_matrix_cp_128x128(M):
+@pytest.mark.parametrize("layout_kind,M", CP_NO_SCALES_128X128_CASES)
+def test_tmem_runtime_matrix_cp_128x128(layout_kind, M):
     N = 4
     inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
     out = torch.empty_like(inp)
+    if layout_kind == "legacy":
+        layout = TensorMemoryLayout((M, N), col_stride=1)
+    else:
+        layout = _make_tmem_linear_layout(M, N)
 
-    compiled = tmem_copy_128x128_kernel[(1, )](inp, out, M, num_warps=4)
+    compiled = tmem_copy_128x128_kernel[(1, )](inp, out, M, layout, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x128b"] * (M // 128))
+    if layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
