@@ -5036,7 +5036,8 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view(n):
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
-def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format, b_format):
+@pytest.mark.parametrize("slice_start", (0, 64))
+def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format, b_format, slice_start):
     m = k = 128
     n = 64
     vec_size = 16 if a_format == "nvfp4" else 32
@@ -5058,7 +5059,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format
         a_scale,
         b_scale,
         _make_tmem_linear_layout(m, 128),
-        64,
+        slice_start,
         vec_size,
         a_elem_per_byte,
         b_elem_per_byte,

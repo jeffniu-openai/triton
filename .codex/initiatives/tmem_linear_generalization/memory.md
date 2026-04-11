@@ -72,9 +72,15 @@
   - broad `tcgen05.cp` slice:
     `154 passed, 5 skipped, 2109 deselected in 39.30s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `149 passed, 50 skipped, 2069 deselected in 87.15s (0:01:27)`
+    `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, with PTX and LLIR opcode agreement.
+- Current-head scaled-MMAv5 accumulator-subview format coverage is green:
+  - focused slice-start matrix:
+    `10 passed in 6.86s`
+  - the matrix now covers both `slice_start=0` and `slice_start=64` for
+    `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and
+    `nvfp4/nvfp4`, with exact PTX/LLIR opcode agreement and numeric checks.
 - Current-head tensor-memory allocation rounding coverage is green:
   - lit exact:
     `PASS: TRITON :: TritonNvidiaGPU/test_tensor_memory_allocation.mlir`
@@ -268,7 +274,10 @@
     on Blackwell targets where PTXAS rejects it;
   - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
     for `mxf8f6f4`, `mxf4`, and `mxf4nvf4` format families, including
-    accumulator subviews and selected tile-permuted accumulator layouts;
+    accumulator subviews and selected tile-permuted accumulator layouts; the
+    positive accumulator-subview format matrix now covers both root-aligned
+    `slice_start=0` and offset `slice_start=64` subviews across the five
+    supported format pairs;
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
     `bf16`, `f8e5m2`, and `f8e4m3`, with exact PTX/LLIR opcode checks for the
     expected instruction kind;
@@ -295,7 +304,7 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `149 passed, 50 skipped, 2057 deselected`;
+    `154 passed, 50 skipped, 2069 deselected`;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable

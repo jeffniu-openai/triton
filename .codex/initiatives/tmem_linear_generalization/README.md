@@ -108,7 +108,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `149 passed, 50 skipped, 2069 deselected`
+    `154 passed, 50 skipped, 2069 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected`
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -232,6 +232,9 @@ When resuming the initiative:
   - it validates numeric output, exact PTX/LLIR
     `mxf8f6f4` / `mxf4` / `mxf4nvf4` scaled-MMA opcodes, and the
     `ttg.memdesc_subslice` + `tensor_memory_linear` accumulator path.
+- That direct scaled-MMAv5 accumulator-subview format matrix now covers both
+  `slice_start=0` and `slice_start=64`, so the same format/opcode assertions
+  exercise root-aligned and offset accumulator subviews.
 - Plain MMAv5 kind saturation now includes f16 in the explicit 1-CTA and
   2-CTA kind matrices after `7766be003`:
   - `MMA_PLAIN_KINDS` covers `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
@@ -371,11 +374,12 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-scaled-tile-negative PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-slice-start-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `149 passed, 50 skipped, 2057 deselected in 87.10s`;
+    `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
-    direct MMA surfaces plus direct scaled-MMA view cases, with scaled-MMA copy
+    direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
+    and offset accumulator subview format-matrix cases; scaled-MMA copy
     helper coverage tracked separately.
 - Tile-permuted scaled-MMAv5 accumulator-subview clean-negative coverage now
   spans the same format pairs as the positive direct subview matrix:

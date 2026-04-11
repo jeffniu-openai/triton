@@ -368,6 +368,9 @@ Every fuzz case records:
 - scale factor subtype / position combinations allowed by the verifier
 - canonical TMEM-linear accumulator and scale layouts equivalent to supported
   legacy layouts
+- accumulator subview starts that preserve the same supported physical family,
+  currently including root-aligned `slice_start=0` and offset `slice_start=64`
+  direct subviews across the proven format pairs
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.
@@ -451,7 +454,8 @@ Every fuzz case records:
     layouts
   - `cp` `cta_group::2` coverage and any reachable `warpx2` cases
   - `mma` runtime coverage beyond the already-proven anchor cases
-  - `mma_scaled` runtime coverage beyond the current minimal cases
+  - `mma_scaled` runtime coverage beyond the current minimal and accumulator
+    slice-start anchors
   - specialized standalone/malformed commit configurations beyond the current
     runtime and allocation-pass anchors
 

@@ -9350,3 +9350,29 @@ Open after this slice:
 - Next:
   - run hygiene, commit, and push this allocation-rounding coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`.
+
+## 2026-04-11 18:50 UTC
+
+- Broadened direct scaled-MMAv5 accumulator-subview format coverage across
+  subview starts.
+- Source/test change:
+  - parameterized
+    `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix` over
+    `slice_start in (0, 64)`;
+  - the test now exercises both root-aligned and offset accumulator subviews for
+    the existing five supported format pairs while preserving the exact
+    PTX/LLIR opcode and numeric checks.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused scaled-MMA subview format matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-slice-start-format PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix`
+    - `10 passed in 6.86s`
+  - broad current-head direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-slice-start-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`
+- Next:
+  - run hygiene, commit, and push this scaled-MMA coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`, likely another bounded
+    MMA/scaled-MMA reachable-family probe or a copy/`ld.red` saturation slice.
