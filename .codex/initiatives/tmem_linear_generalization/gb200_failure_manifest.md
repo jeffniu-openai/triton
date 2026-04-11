@@ -30,6 +30,24 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Runtime-Matrix File Refresh (2026-04-11 07:15 UTC)
+
+- [gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt)
+  - `0` nodeids
+  - source:
+    - full `python/test/gluon/test_tmem_runtime_matrix.py` rerun:
+      - `1437 passed, 354 skipped, 1 failed in 1226.69s`
+    - the single failure was:
+      - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized[128]`
+    - exact post-fix rerun:
+      - `1 passed in 3.31s`
+  - current interpretation:
+    - the old `413`-nodeid focused runtime-matrix manifest is stale
+    - the only remaining file-level issue was a stale TTGIR text assertion
+      that now checks `ttng.tmem_physical_layout`
+    - the runtime-matrix branch-added bucket has no live exact failures at
+      this checkpoint
+
 ### Latest M64 Row/Col Split-N And Half-Row Refresh (2026-04-11 06:51 UTC)
 
 - [gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt)

@@ -46,6 +46,32 @@ PY
 
 ## Current Classification Summary
 
+### Latest Runtime-Matrix File Refresh (2026-04-11 07:15 UTC)
+
+- The branch-added `python/test/gluon/test_tmem_runtime_matrix.py` file is now
+  locally reduced to zero live exact failures at the current checkpoint.
+- Full-file run from the M64 split-N checkpoint:
+  - `1437 passed, 354 skipped, 1 failed in 1226.69s`
+- The single failure was stale expectation coverage, not a compiler/runtime
+  correctness bug:
+  - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized[128]`
+  - runtime output and exact `tcgen05.cp.cta_group::1.128x128b` opcode were
+    correct
+  - TTGIR now prints the canonical physical mapping as
+    `ttng.tmem_physical_layout` on the legacy `tensor_memory_encoding` root
+    for this indexed-view path
+- Exact post-fix rerun:
+  - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized`
+  - `1 passed in 3.31s`
+- Recovery consequence:
+  - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+    is refreshed from the stale `413` nodeids to `0` nodeids;
+  - the branch-added runtime-matrix focus slice is no longer the next recovery
+    target;
+  - continue staged validation with MMA/matmul and `triton_kernels`, while the
+    broader whole-`test-gluon` shard counts remain stale until rerun from
+    current head.
+
 ### Latest M64 Row/Col Split-N And Half-Row Refresh (2026-04-11 06:51 UTC)
 
 - The branch-added M64 row/col-permuted split-N runtime-matrix bucket is now

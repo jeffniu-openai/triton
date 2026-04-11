@@ -7388,3 +7388,38 @@ Open after this slice:
   - then continue staged broad validation before the long-term `ld.red`,
     `copy`/`warpx2`, MMAv5/`mma_scaled`, fuzzing, stale-negative, and
     heuristic phases.
+
+## 2026-04-11 07:15 UTC
+
+- Pushed the M64 split-N checkpoint:
+  - `58017e4133c00d9e21955c56c1b599789b79f498`
+  - remote branch:
+    - `origin/codex/tmem`
+- Ran the full branch-added TMEM runtime matrix:
+  - `CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 TRITON_CACHE_DIR=/tmp/triton-cache-tmem-runtime-full-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py`
+  - result before assertion refresh:
+    - `1437 passed, 354 skipped, 1 failed in 1226.69s`
+- The single failure was not a runtime mismatch or lowering regression:
+  - nodeid:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized[128]`
+  - expected stale TTGIR text:
+    - `tensor_memory_linear`
+  - current correct TTGIR marker:
+    - `ttng.tmem_physical_layout` on a legacy `tensor_memory_encoding` root
+  - exact `tcgen05.cp.cta_group::1.128x128b` opcode and runtime output were
+    already correct.
+- Committed and pushed the assertion refresh:
+  - `5b619c9e3dfd5ca3479f644dada7813bd198e34a`
+  - remote branch:
+    - `origin/codex/tmem`
+- Validation after the assertion refresh:
+  - `CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-indexed-view-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized'`
+    - `1 passed in 3.31s`
+  - `git diff --check -- python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+- Manifest consequence:
+  - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+    is refreshed from the stale `413` exacts to `0` nodeids.
+- Next:
+  - continue staged validation into MMA/matmul and `triton_kernels` rather than
+    treating the initiative as done.

@@ -43,32 +43,37 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 06:51 UTC, the local checkpoint on top of
-  `49f1a0fd2e1b2e8ed7d144c470bc7838b2b5ff4a` closes the live
-  M64 row/col-permuted split-N direct ld/st bucket.
-- The fix keeps those layouts positive where hardware execution is proven:
-  - reject exact row-permuted `16x32bx2` warp anchors that would lower to
-    misaligned one-row PTX addresses;
-  - select the canonical aligned M64 split-N register layout for simple
-    row/col-permuted `64xN` f32 TMEM-linear roots;
-  - give backend default-layout selection the same fallback so conversions do
-    not hit an empty-compatible-layout assertion.
+- As of 2026-04-11 07:15 UTC, the latest pushed code/test checkpoint before
+  this docs-only refresh is
+  `5b619c9e3dfd5ca3479f644dada7813bd198e34a` on `origin/codex/tmem`.
+- The M64 row/col-permuted split-N direct ld/st bucket remains closed as a
+  positive hardware surface:
+  - exact row-permuted `16x32bx2` warp anchors that would lower to misaligned
+    one-row PTX addresses are rejected;
+  - simple row/col-permuted `64xN` f32 TMEM-linear roots select the canonical
+    aligned M64 split-N register layout;
+  - backend default-layout selection has the same fallback, so conversions do
+    not hit the empty-compatible-layout assertion.
+- The full `python/test/gluon/test_tmem_runtime_matrix.py` file was refreshed
+  from this branch:
+  - full-file rerun before the final assertion refresh:
+    `1437 passed, 354 skipped, 1 failed in 1226.69s`;
+  - the only failure was a stale TTGIR text assertion in
+    `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized[128]`;
+  - that test now checks the stable `ttng.tmem_physical_layout` marker on the
+    legacy `tensor_memory_encoding` view path, and the exact nodeid rerun
+    passes.
+- The old `413`-nodeid branch-added runtime-matrix manifest is now refreshed
+  to empty:
+  - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
 - The supported `_reinterpret` migration invariant remains:
   - offset to the right TMEM region;
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
-- Local validation for this checkpoint:
-  - build passed;
-  - full row/col-permuted M64 split-N sweep plus auto guards:
-    `226 passed`;
-  - split-N/clean-negative guard set:
-    `45 passed`;
-  - `git diff --check` passed.
-- Next required durable step: commit and push this checkpoint, refresh the
-  current GB200/TMEM runtime status from the new head, then continue staged
-  validation toward MMA/matmul, `triton_kernels`, and the long-term `ld.red`,
-  `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
+- Next required durable step: continue staged validation toward MMA/matmul,
+  `triton_kernels`, and the long-term `ld.red`, `copy`/`warpx2`,
+  MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 

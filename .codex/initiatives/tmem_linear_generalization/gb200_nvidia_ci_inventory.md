@@ -18,6 +18,34 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Runtime-Matrix File Refresh (2026-04-11 07:15 UTC)
+
+- Latest pushed code/test checkpoint before this docs-only refresh:
+  - `5b619c9e3dfd5ca3479f644dada7813bd198e34a`
+- Full-file current-head remeasurement:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+  - command:
+    - `CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 TRITON_CACHE_DIR=/tmp/triton-cache-tmem-runtime-full-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_tmem_runtime_matrix.py`
+  - result before the final assertion refresh:
+    - `1437 passed, 354 skipped, 1 failed in 1226.69s`
+- The lone failure was a stale TTGIR spelling assertion:
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized[128]`
+  - current codegen/runtime was already correct:
+    - exact `tcgen05.cp.cta_group::1.128x128b` opcode
+    - correct runtime output
+  - the stable invariant is now `ttng.tmem_physical_layout` on the legacy
+    `tensor_memory_encoding` root for this indexed-view canonicalization path.
+- Exact post-fix rerun:
+  - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized`
+  - `1 passed in 3.31s`
+- Inventory consequences:
+  - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+    is refreshed from the stale `413` nodeids to `0` nodeids;
+  - the branch-added TMEM runtime-matrix bucket no longer has a live red list
+    at this checkpoint;
+  - older whole-`test-gluon` shard counts still remain stale until the grouped
+    Gluon lane is rerun from current head.
+
 ## Latest M64 Row/Col Split-N And Half-Row Refresh (2026-04-11 06:51 UTC)
 
 - Current local checkpoint on top of:

@@ -251,13 +251,13 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 06:51 UTC)
+## Current Topline (2026-04-11 07:15 UTC)
 
-- Base `HEAD` before this checkpoint is
-  `49f1a0fd2e1b2e8ed7d144c470bc7838b2b5ff4a` on `codex/tmem`, pushed to
+- The latest pushed code/test checkpoint before this docs-only refresh is
+  `5b619c9e3dfd5ca3479f644dada7813bd198e34a` on `codex/tmem`, pushed to
   `origin/codex/tmem`.
-- The current checkpoint closes the live M64 row/col-permuted split-N direct
-  ld/st bucket without converting it to a clean negative:
+- The latest code checkpoint closes the live M64 row/col-permuted split-N
+  direct ld/st bucket without converting it to a clean negative:
   - invalid exact row-permuted `16x32bx2` warp anchors are now rejected before
     they can lower to PTX with misaligned one-row addresses;
   - simple row/col-permuted `64xN` f32 TMEM-linear roots select the canonical
@@ -275,7 +275,22 @@
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype, shape, and layout only when the result is
     equal-size and preserves the input descriptor's exact physical mapping.
-- Validation on the local checkpoint:
+- The full branch-added TMEM runtime-matrix file is now refreshed beyond the
+  old `413`-nodeid failing manifest:
+  - full-file run from the M64 split-N checkpoint:
+    - `1437 passed, 354 skipped, 1 failed in 1226.69s`
+  - the only failing node was:
+    - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized[128]`
+  - root cause:
+    - stale TTGIR spelling expectation; the indexed view now exposes the
+      canonical physical layout as `ttng.tmem_physical_layout` on a legacy
+      `tensor_memory_encoding` root rather than printing a
+      `tensor_memory_linear` encoding on that path
+  - follow-up exact rerun after the assertion refresh:
+    - `1 passed in 3.31s`
+  - `gb200_current_branch_test_tmem_runtime_matrix_focus_e70a3aa09_failures.txt`
+    is now refreshed to `0` nodeids.
+- Validation on the current pushed checkpoints:
   - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
     - `PASSED`
   - row/col-permuted M64 split-N exact:
@@ -286,14 +301,23 @@
   - split-N immediates / auto / explicit guards plus half-row and exotic
     clean-negative guards:
     - `45 passed in 5.32s`
+  - exact stale TTGIR assertion refresh:
+    - `test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized`
+    - `1 passed in 3.31s`
   - `git diff --check`
     - `PASSED`
 - Next:
-  - commit and push this checkpoint to `origin/codex/tmem`;
-  - refresh the current GB200/TMEM runtime status from this new head;
-  - continue staged broad validation through TMEM runtime, MMA/matmul,
-    `triton_kernels`, then the long-term `ld.red`, `copy`/`warpx2`,
-    MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.
+  - continue staged broad validation through MMA/matmul, `triton_kernels`,
+    then the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`,
+    fuzzing, stale-negative, and heuristic phases.
+
+## Prior Topline (2026-04-11 06:51 UTC)
+
+- Base `HEAD` before this checkpoint is
+  `49f1a0fd2e1b2e8ed7d144c470bc7838b2b5ff4a` on `codex/tmem`, pushed to
+  `origin/codex/tmem`.
+- The checkpoint closed the live M64 row/col-permuted split-N direct ld/st
+  bucket without converting it to a clean negative.
 
 ## Prior Topline (2026-04-11 05:12 UTC)
 
