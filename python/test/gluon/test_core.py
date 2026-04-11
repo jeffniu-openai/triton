@@ -1863,14 +1863,11 @@ def test_tmem_copy_2d():
 
     smem_h = 64
     smem_w = 16
-    num_rows = 128
-    num_cols = smem_h * smem_w // 32
 
     @gluon.jit
-    def kernel(in_ptr, out_ptr, smem_h: ttgl.constexpr, smem_w: ttgl.constexpr, num_rows: ttgl.constexpr,
-               num_cols: ttgl.constexpr):
+    def kernel(in_ptr, out_ptr, smem_h: ttgl.constexpr, smem_w: ttgl.constexpr):
         in_ptrs = in_ptr + ttgl.arange(0, smem_h)[:, None] * smem_w + ttgl.arange(0, smem_w)[None, :]
-        out_ptrs = out_ptr + ttgl.arange(0, num_rows)[:, None] * num_cols + ttgl.arange(0, num_cols)[None, :]
+        out_ptrs = out_ptr + ttgl.arange(0, smem_h)[:, None] * smem_w + ttgl.arange(0, smem_w)[None, :]
 
         blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
         value = ttgl.load(ttgl.set_auto_layout(in_ptrs, blocked))
@@ -1888,32 +1885,22 @@ def test_tmem_copy_2d():
         tcgen05_copy(smem, tmem)
         tcgen05_commit(barrier)
         mbarrier.wait(barrier, phase=0)
-        tmem_alias: ttgl.constexpr = TensorMemoryLayout((num_rows, num_cols), col_stride=1)
-        tmem = tmem._reinterpret(ttgl.int8, (num_rows, num_cols), tmem_alias)
-        value = tmem.load(blocked)
-        ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked), value)
+        reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+        value = tmem.load(reg_layout)
+        ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked), ttgl.convert_layout(value, blocked))
 
     torch.manual_seed(0)
     x = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8).to(device)
     #x = torch.arange(smem_h * smem_w, dtype=torch.int8, device=device).reshape(smem_h, smem_w)
-    z_tri = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8).to(device)
-    compiled = kernel[(1, )](x, z_tri, smem_h, smem_w, num_rows, num_cols)
+    z_tri = torch.empty_like(x)
+    compiled = kernel[(1, )](x, z_tri, smem_h, smem_w)
 
-    # offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]],
-    # Split into contiguous shmem chunks
-    x_res = x.reshape(2, 32, 2, 2, 4)
-    # Put tmem cols first then rows
-    x_res = x_res.permute(1, 2, 3, 0, 4)
-    # Reshape as 32xnum_cols
-    x_res = x_res.reshape(num_rows // 4, num_cols)
-
-    warps = torch.chunk(z_tri, chunks=4, dim=0)
-    for warp in warps:
-        torch.testing.assert_close(x_res, warp)
+    torch.testing.assert_close(z_tri, x)
 
     expected = ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2
     assert _extract_tcgen05_cp_opcodes(compiled.asm["ptx"]) == expected
     assert _extract_tcgen05_cp_opcodes(compiled.asm["llir"]) == expected
+    assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -1133,11 +1133,9 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr, tmem_layout: tt
 def tmem_copy_scales_warpx4_kernel(in_ptr, out_ptr):
     SMEM_H: ttgl.constexpr = 64
     SMEM_W: ttgl.constexpr = 16
-    NUM_ROWS: ttgl.constexpr = 128
-    NUM_COLS: ttgl.constexpr = (SMEM_H * SMEM_W) // 32
 
     in_ptrs = in_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
-    out_ptrs = out_ptr + ttgl.arange(0, NUM_ROWS)[:, None] * NUM_COLS + ttgl.arange(0, NUM_COLS)[None, :]
+    out_ptrs = out_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
 
     blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
     value = ttgl.load(ttgl.set_auto_layout(in_ptrs, blocked))
@@ -1156,10 +1154,8 @@ def tmem_copy_scales_warpx4_kernel(in_ptr, out_ptr):
     tcgen05_commit(barrier)
     mbarrier.wait(barrier, phase=0)
 
-    tmem_alias: ttgl.constexpr = TensorMemoryLayout((NUM_ROWS, NUM_COLS), col_stride=1)
-    alias_view = tmem._reinterpret(ttgl.int8, (NUM_ROWS, NUM_COLS), tmem_alias)
-    reg_layout: ttgl.constexpr = alias_view.get_reg_layout()
-    value = alias_view.load(reg_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    value = tmem.load(reg_layout)
     ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked),
                ttgl.convert_layout(value, blocked))
 
@@ -1168,11 +1164,9 @@ def tmem_copy_scales_warpx4_kernel(in_ptr, out_ptr):
 def tmem_copy_scales_layout_probe_kernel(in_ptr, out_ptr, smem_layout: ttgl.constexpr):
     SMEM_H: ttgl.constexpr = 64
     SMEM_W: ttgl.constexpr = 16
-    NUM_ROWS: ttgl.constexpr = 128
-    NUM_COLS: ttgl.constexpr = (SMEM_H * SMEM_W) // 32
 
     in_ptrs = in_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
-    out_ptrs = out_ptr + ttgl.arange(0, NUM_ROWS)[:, None] * NUM_COLS + ttgl.arange(0, NUM_COLS)[None, :]
+    out_ptrs = out_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
 
     blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
     value = ttgl.load(ttgl.set_auto_layout(in_ptrs, blocked))
@@ -1188,10 +1182,8 @@ def tmem_copy_scales_layout_probe_kernel(in_ptr, out_ptr, smem_layout: ttgl.cons
     tcgen05_commit(barrier)
     mbarrier.wait(barrier, phase=0)
 
-    tmem_alias: ttgl.constexpr = TensorMemoryLayout((NUM_ROWS, NUM_COLS), col_stride=1)
-    alias_view = tmem._reinterpret(ttgl.int8, (NUM_ROWS, NUM_COLS), tmem_alias)
-    reg_layout: ttgl.constexpr = alias_view.get_reg_layout()
-    value = alias_view.load(reg_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    value = tmem.load(reg_layout)
     ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked),
                ttgl.convert_layout(value, blocked))
 
@@ -3435,17 +3427,14 @@ def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupporte
 @pytest.mark.parametrize("name,smem_layout,expected_status", CP_SCALES_LAYOUT_PROBE_CASES)
 def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_status, capfd):
     smem_h, smem_w = 64, 16
-    num_rows = 128
-    num_cols = smem_h * smem_w // 32
     inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")
-    out = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
 
     if expected_status == "PASS":
         compiled = tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
-        expected = inp.reshape(2, 32, 2, 2, 4).permute(1, 2, 3, 0, 4).reshape(num_rows // 4, num_cols)
-        for warp in torch.chunk(out, chunks=4, dim=0):
-            torch.testing.assert_close(expected, warp, atol=0, rtol=0)
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
         _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
+        assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
         return
 
     with pytest.raises(Exception) as excinfo:
@@ -3886,18 +3875,15 @@ def test_tmem_runtime_matrix_cp_128x128(layout_kind, M):
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_cp_scales_warpx4():
     smem_h, smem_w = 64, 16
-    num_rows = 128
-    num_cols = smem_h * smem_w // 32
     inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")
-    out = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
 
     compiled = tmem_copy_scales_warpx4_kernel[(1, )](inp, out)
 
-    expected = inp.reshape(2, 32, 2, 2, 4).permute(1, 2, 3, 0, 4).reshape(num_rows // 4, num_cols)
-    for warp in torch.chunk(out, chunks=4, dim=0):
-        torch.testing.assert_close(expected, warp, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
+    assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
