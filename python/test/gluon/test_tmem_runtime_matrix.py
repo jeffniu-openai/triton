@@ -1805,7 +1805,7 @@ LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
 ]
 
 LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
-    ("mmav5_twocta", n, variant) for n, variant in product((64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    ("mmav5_twocta", n, variant) for n, variant in product((64, 128, 256), LDST_VARIANTS)
 ]
 
 BLOCKED_FALLBACK_CASES = [
