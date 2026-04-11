@@ -9951,3 +9951,34 @@ Open after this slice:
   - continue with the two-CTA `warpx2::02_13` descriptor/address-model fix,
     a deeper direct-PTX scales `warpx2` probe, or another bounded MMAv5 /
     scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 21:05 UTC
+
+- Broadened direct 16-bit subword `ld/st` coverage beyond f16.
+- Source/test change:
+  - generalized `tmem_ldst_subword16_variant_kernel` to allocate TMEM with
+    `in_ptr.dtype.element_ty` instead of hard-coding `ttgl.float16`;
+  - replaced the f16-only subword case table with `SUBWORD16_LDST_CASES`;
+  - `test_tmem_runtime_matrix_ldst_subword_16bit_pack_unpack` now covers
+    `f16`, `bf16`, and `i16` over identity `128x{64,128,256}` layouts and
+    variants `{auto,32x32b,16x64b,16x128b,16x256b}`.
+- Coverage boundary:
+  - this closes the direct 16-bit subword gap for the plain identity matrix;
+  - generic i8 subword remains a separate future target outside the current
+    tensor-memory-scales i8 ld/st paths.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused 16-bit subword plus adjacent x1 f16 slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-subword16-focused-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_subword_16bit_pack_unpack python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f16_roundtrip`
+    - `51 passed in 15.08s`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this subword coverage slice;
+  - continue with generic i8 subword exploration, broader ld/st fuzzing,
+    two-CTA `warpx2::02_13`, scales `warpx2`, or another bounded MMAv5 /
+    scaled-MMAv5 reachable-family gap.

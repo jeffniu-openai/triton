@@ -935,10 +935,12 @@ def tmem_block_descriptor_compile_kernel(layout: ttgl.constexpr, reinterpret_lay
 
 
 @gluon.jit
-def tmem_ldst_f16_variant_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
-                                 instr_variant: ttgl.constexpr):
+def tmem_ldst_subword16_variant_kernel(
+    in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
+    instr_variant: ttgl.constexpr
+):
     offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
-    tmem = allocate_tensor_memory(ttgl.float16, [M, N], layout)
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout)
     reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
     value = ttgl.load(in_ptr + offs)
     tmem.store(ttgl.convert_layout(value, reg_layout))
@@ -2484,7 +2486,7 @@ CP_SCALES_WARPX4_GEOMETRY_CASES = [
     )
 ]
 
-F16_LDST_SHAPE_MAP = {
+SUBWORD16_LDST_SHAPE_MAP = {
     "auto": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
     "32x32b": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
     "16x64b": {64: "16x64b.x16.b32", 128: "16x64b.x32.b32", 256: "16x64b.x64.b32"},
@@ -2492,9 +2494,17 @@ F16_LDST_SHAPE_MAP = {
     "16x256b": {64: "16x256b.x4.b32", 128: "16x256b.x8.b32", 256: "16x256b.x16.b32"},
 }
 
-F16_LDST_CASES = [
-    ("identity", n, variant, F16_LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), LDST_VARIANTS)
+SUBWORD16_LDST_DTYPES = (
+    ("f16", torch.float16),
+    ("bf16", torch.bfloat16),
+    ("i16", torch.int16),
+)
+
+SUBWORD16_LDST_CASES = [
+    (dtype_name, torch_dtype, "identity", n, variant, SUBWORD16_LDST_SHAPE_MAP[variant][n])
+    for (dtype_name, torch_dtype), n, variant in product(
+        SUBWORD16_LDST_DTYPES, (64, 128, 256), LDST_VARIANTS
+    )
 ]
 
 X1_F16_LDST_CASES = [
@@ -3769,14 +3779,16 @@ def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape", F16_LDST_CASES)
-def test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack(layout_name, n, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant,expected_shape", SUBWORD16_LDST_CASES)
+def test_tmem_runtime_matrix_ldst_subword_16bit_pack_unpack(
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape
+):
     m = 128
     layout = LDST_LAYOUTS[layout_name](n)
-    inp = torch.arange(m * n, dtype=torch.float16, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch_dtype, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_f16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    compiled = tmem_ldst_subword16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
@@ -3797,7 +3809,7 @@ def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, 
     inp = torch.arange(m * n, dtype=torch.float16, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_f16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    compiled = tmem_ldst_subword16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)

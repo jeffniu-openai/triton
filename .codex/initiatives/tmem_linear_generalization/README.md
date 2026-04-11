@@ -70,6 +70,9 @@ When resuming the initiative:
   first selects columns `64:128` of the original f32 TMEM tile, then bitcasts
   that already-selected physical image to an f16 view, and verifies only the
   selected physical half is overwritten.
+- Direct 16-bit subword `ld/st` instruction-selection coverage now spans
+  `f16`, `bf16`, and `i16` over identity `128x{64,128,256}` layouts and every
+  public variant in `{auto,32x32b,16x64b,16x128b,16x256b}`.
 - As of the latest focused coverage checkpoint, the current source/test slices
   add runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
   `relinquish_alloc_permit`, `dealloc`, and `wait`, including pow2 alloc-size

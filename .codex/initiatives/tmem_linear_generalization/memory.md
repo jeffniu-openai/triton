@@ -57,6 +57,8 @@
   green:
   - focused lifetime exacts:
     `11 passed in 5.56s`
+  - focused 16-bit subword exacts after broadening beyond f16:
+    `51 passed in 15.08s`
   - broad `ld/st` slice:
     `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`
   - the new runtime anchors assert exact PTX/LLIR `tcgen05.alloc`,
@@ -307,6 +309,10 @@
     and `384` are now pinned as allocation-pass rounding boundaries; remaining
     allocator fuzzing is specialized standalone/malformed commit configurations
     rather than a missing first runtime anchor;
+  - direct 16-bit subword `ld/st` now covers `f16`, `bf16`, and `i16` over
+    identity `128x{64,128,256}` layouts and every public instruction variant,
+    with exact PTX/LLIR opcode agreement; generic i8 subword coverage remains a
+    separate future surface from the current tensor-memory-scales i8 paths;
   - direct higher-rank access is still future work: higher-rank descriptors
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;

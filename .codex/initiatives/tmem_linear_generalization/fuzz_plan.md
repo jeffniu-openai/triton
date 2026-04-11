@@ -188,6 +188,9 @@ Every fuzz case records:
 - subword families:
   - `dtype in {f16, bf16, i16, i8}`
   - packed, unpacked, and padded one-column cases
+  - current direct 16-bit coverage now includes `f16`, `bf16`, and `i16` for
+    identity `128x{64,128,256}` across all public variants; generic i8 subword
+    remains future work outside the existing tensor-memory-scales i8 paths
 
 #### Positive view chains
 - plain TMEM load/store
