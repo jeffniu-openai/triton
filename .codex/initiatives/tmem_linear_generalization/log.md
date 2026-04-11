@@ -10166,3 +10166,38 @@ Open after this slice:
   - continue a deeper two-CTA `warpx2::02_13` descriptor/address-model probe,
     scales `warpx2` probing, broader `ld.red` fuzzing, or a bounded MMAv5 /
     scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:20 UTC
+
+- Ran a deeper temporary direct-seed probe for the canonical public two-CTA
+  no-scales `warpx2::02_13.64x128b` copy frontier.
+- Temporary probe hooks:
+  - locally allowed `getDirectTMemCopySeedDescriptorImm(...)` to accept the
+    canonical `[256,4]` source with shared block basis `[[128, 0]]`;
+  - added temporary environment-controlled knobs for `tmemDwordDelta`,
+    `directSourceOffsetB128`, and the two known descriptor seed fields;
+  - rebuilt with
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`.
+- Probe result:
+  - aligned `tmemDwordDelta=0` with source offsets in the valid range emits
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` and moves data, but it
+    duplicates each source-column pair, e.g. offset `32` starts with
+    `[64, 192, 64, 192]` / `[66, 194, 66, 194]` instead of preserving the
+    adjacent source-column bit as one-CTA `02_13` does;
+  - the previous `tmemDwordDelta=4` direct-seed route remains all-zero across
+    source offsets;
+  - unaligned deltas `1`, `2`, and `3` trap with CUDA misaligned-address
+    errors;
+  - sweeping the known descriptor seed bit/field around the one-CTA seed did
+    not recover the missing 4-byte source-column bit; high field values fault.
+- Cleanup / validation:
+  - restored `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` to `HEAD`;
+  - rebuilt successfully with the same `make -j8` command;
+  - exact clean unsupported boundary remains green:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-after-direct-probes PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    - `1 passed in 3.14s`
+- Consequence:
+  - two-CTA `warpx2::02_13` still needs real descriptor/address-message
+    synthesis, a different public layout, or a direct PTX contract that proves
+    the source-column bit is representable; do not promote the current
+    direct-seed route.

@@ -416,7 +416,11 @@ When resuming the initiative:
     `warpx2::02_13` canonical-shared clean unsupported boundary, dense-shared
     `warpx2` clean negatives, dense copy positives, 2-CTA `128x128b` /
     `128x256b` copy, scaled `warpx4` copy paths, exact scaled-copy commit
-    opcodes, and clean unsupported copy boundaries.
+    opcodes, and clean unsupported copy boundaries; a follow-up direct-seed
+    probe found that aligned `tmemDwordDelta=0` moves data for two-CTA
+    `02_13` but duplicates each source-column pair, `tmemDwordDelta=4` is the
+    known all-zero path, unaligned deltas trap, and the known seed fields do not
+    recover the missing source-column bit.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-offsets-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;

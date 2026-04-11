@@ -279,6 +279,12 @@
     `warpx2::02_13` case compiled and emitted
     `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but runtime output was
     entirely zero; that path is confirmed wrong-code, not a verifier-only gap;
+  - a follow-up direct-seed sweep narrowed the failure: aligned
+    `tmemDwordDelta=0` moves data but duplicates each source-column pair (for
+    example first rows look like `[64, 192, 64, 192]` rather than
+    `[64, 192, 65, 193]`), `tmemDwordDelta=4` remains all-zero, unaligned
+    deltas trap with misaligned-address errors, and sweeping the known seed
+    fields did not restore the missing 4-byte source-column bit;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail because no compatible scales descriptor plan can be synthesized;

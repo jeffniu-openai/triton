@@ -298,7 +298,9 @@ Every fuzz case records:
   `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the
   canonical candidate shared layout is pinned as a clean descriptor-plan
   unsupported case, and the dense shared-layout form is rejected to avoid
-  known wrong-code.
+  known wrong-code. A direct-seed sweep found that the aligned address variant
+  can move data but loses the source-column bit, while the old `+4` TMEM dword
+  delta is all-zero and unaligned deltas trap.
 
 #### Scales / multicast positive matrix
 - scales payload layouts that are known to alias to legal TMEM scales tiles
@@ -339,7 +341,10 @@ Every fuzz case records:
   covered as a clean descriptor-plan unsupported boundary. Reserve direct PTX
   probes for remaining scales or two-CTA `warpx2::02_13` documentation/layout
   gaps. Dense shared-layout `warpx2` forms are negative until descriptor
-  synthesis can prove correct runtime semantics.
+  synthesis can prove correct runtime semantics. For two-CTA `02_13`, do not
+  promote a direct-seed path unless it preserves both the row mapping and the
+  4-byte source-column bit; the current direct-seed variants either duplicate
+  columns, return zeros, or fault.
 
 #### Checks
 - Output matches input for no-scales copies.
