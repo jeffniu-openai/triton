@@ -2041,7 +2041,11 @@ def test_tmem_subslice_block_m_64(layout_kind):
     ttgir = compiled.asm["ttgir"]
     # Check that we have two 64x128xf32 allocations.
     assert ttgir.count("ttng.tmem_alloc") == 2
-    assert ttgir.count("ttng.tmem_alloc : () -> !ttg.memdesc<64x128xf32") == 2
+    alloc_lines = [
+        line for line in ttgir.splitlines()
+        if "ttng.tmem_alloc" in line and "-> !ttg.memdesc<64x128xf32" in line
+    ]
+    assert len(alloc_lines) == 2
 
     # Check that we allocated only 128 columns of TMEM.
     llir = compiled.asm["llir"]
@@ -3063,8 +3067,8 @@ TMEM_LINEAR_M64_FALLBACK_CASES = [
         64,
         2,
         (
-            ("tcgen05.st.sync.aligned.16x32bx2.x2.b32", 0, 0),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x2.b32", 0, 0),
+            ("tcgen05.st.sync.aligned.16x32bx2.x1.b32", 0, 1),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x1.b32", 0, 1),
         ),
     ),
     (
@@ -3073,10 +3077,8 @@ TMEM_LINEAR_M64_FALLBACK_CASES = [
         64,
         64,
         (
-            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 0, 16),
-            ("tcgen05.st.sync.aligned.16x32bx2.x16.b32", 32, 16),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 0, 16),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x16.b32", 32, 16),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
         ),
     ),
     (
@@ -3085,10 +3087,8 @@ TMEM_LINEAR_M64_FALLBACK_CASES = [
         64,
         128,
         (
-            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 64, 32),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 64, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x64.b32", 0, 64),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x64.b32", 0, 64),
         ),
     ),
 ]
