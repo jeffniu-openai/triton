@@ -120,12 +120,13 @@
   - focused row/column N-sweep exact:
     `144 passed in 113.29s (0:01:53)`
   - broad `ld_red` slice:
-    `476 passed, 2173 deselected in 466.66s (0:07:46)`
+    `476 passed, 2179 deselected in 439.38s (0:07:19)`
   - tile-permuted, pure column, pure row, and non-identity row/column
     cross-product permutations now cover `128x{64,128,256}` where each family
     is well-defined and still emit the expected `32x32b` reduction-family
     opcodes with exact offset immediates: `[0]` for `N <= 128` and
-    `[0, 64, 128, 192]` for `N=256`.
+    `[0, 64, 128, 192]` for `N=256`, and exactly one store wait before
+    reduction loads plus one load wait after `ld.red` before redval use.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -344,7 +345,9 @@
     query frame are positive `32x32b`, while plain identity
     `256x{32,64,128,256}` source layouts are clean unsupported cases;
   - positive `ld.red` runtime tests now also pin the exact PTX/LLIR offset
-    immediates: `[0]` for `N <= 128` and `[0, 64, 128, 192]` for `N=256`;
+    immediates (`[0]` for `N <= 128`, `[0, 64, 128, 192]` for `N=256`) plus
+    exactly one `wait.store` before reduction loads and one `wait.load` after
+    `ld.red` before redval consumption;
   - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
     for N-sharded or otherwise unsupported reductions.
 - `tcgen05.mma` / `tcgen05.mma_scaled`:
@@ -6271,3 +6274,31 @@ rejection, not rescue
   - continue with either true scales `warpx2` descriptor/direct-PTX research,
     two-CTA `warpx2::02_13` descriptor/address synthesis, broader `ld.red`
     fuzzing, or another bounded MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:58 UTC: LD.RED positives now assert wait ordering
+
+- Latest pushed checkpoint before this source/test update:
+  - `781e9d8e1` on `origin/codex/tmem`
+- Source/test change:
+  - `_assert_ld_red_opcode_pairs(...)` now extracts PTX/LLIR once, then checks
+    exact `tcgen05.ld.red` opcode/offset pairs as before;
+  - every positive runtime-matrix `ld.red` case now also asserts exactly one
+    PTX `tcgen05.wait::st.sync.aligned;`, one PTX
+    `tcgen05.wait::ld.sync.aligned;`, one LLIR `wait.st` tail call, and one
+    LLIR `wait.ld` tail call;
+  - the helper pins ordering as
+    `tcgen05.st -> wait.st -> tcgen05.ld.red -> wait.ld` in both PTX and LLIR.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - broad `tcgen05.ld.red` selector:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-wait-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `476 passed, 2179 deselected in 439.38s (0:07:19)`
+- Next:
+  - commit and push this ISA-contract coverage slice;
+  - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
+    fuzzing, or the next MMAv5 / scaled-MMAv5 reachable-family gap.

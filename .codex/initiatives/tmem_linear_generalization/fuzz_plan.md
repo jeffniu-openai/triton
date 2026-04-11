@@ -265,7 +265,9 @@ Every fuzz case records:
 - PTX and LLIR use the same `tcgen05.ld.red` opcode stream.
 - Current positives pin exact offset immediates: `[0]` for `N <= 128` and
   `[0, 64, 128, 192]` for `N=256`.
-- A wait is present before redval consumption.
+- Positive runtime-matrix `ld.red` tests assert exactly one `wait <store>`
+  before reduction loads, exactly one `wait <load>` after `ld.red`, and the
+  PTX/LLIR ordering `store -> wait.store -> ld.red -> wait.load`.
 
 #### Negative frontier
 - integer reduction with `NaN`

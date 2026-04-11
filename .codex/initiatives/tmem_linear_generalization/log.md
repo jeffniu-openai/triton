@@ -10280,3 +10280,30 @@ Open after this slice:
   - commit and push this copy-boundary coverage slice;
   - continue true scales `warpx2`, two-CTA `warpx2::02_13`, `ld.red` fuzzing,
     or the next MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:58 UTC
+
+- Pinned the `tcgen05.ld.red` wait/order contract in the runtime-matrix positive
+  helper.
+- Source/test change:
+  - `_assert_ld_red_opcode_pairs(...)` now checks the same PTX/LLIR reduction
+    opcode-offset pairs as before and additionally asserts one store wait, one
+    load wait, and the order `store -> wait.store -> ld.red -> wait.load` in
+    both PTX and LLIR.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - broad `tcgen05.ld.red` selector:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-wait-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `476 passed, 2179 deselected in 439.38s (0:07:19)`
+- Consequence:
+  - the fuzz-plan requirement that redval consumption is protected by a wait is
+    now executable coverage across the whole positive `ld.red` matrix.
+- Next:
+  - commit and push this ISA-contract coverage slice;
+  - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
+    fuzzing, or the next MMAv5 / scaled-MMAv5 reachable-family gap.

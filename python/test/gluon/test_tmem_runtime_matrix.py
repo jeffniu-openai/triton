@@ -2756,19 +2756,31 @@ LD_RED_EXPECTED_OFFSETS = {32: [0], 64: [0], 128: [0], 256: [0, 64, 128, 192]}
 
 
 def _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan):
+    ptx = compiled.asm["ptx"]
+    llir = compiled.asm["llir"]
     ptx_red_pairs = [
         pair
-        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        for pair in _extract_tcgen05_opcode_offsets(ptx, opcodes=("ld", ))
         if ".ld.red." in pair[0]
     ]
     llir_red_pairs = [
         pair
-        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
+        for pair in _extract_tcgen05_opcode_offsets(llir, opcodes=("ld", ))
         if ".ld.red." in pair[0]
     ]
     assert ptx_red_pairs == llir_red_pairs
     assert len(ptx_red_pairs) == LD_RED_EXPECTED_OP_COUNT[N]
     assert [offset for _, offset in ptx_red_pairs] == LD_RED_EXPECTED_OFFSETS[N]
+    assert ptx.count("tcgen05.wait::st.sync.aligned;") == 1
+    assert ptx.count("tcgen05.wait::ld.sync.aligned;") == 1
+    assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.st()") == 1
+    assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.ld()") == 1
+    assert ptx.index("tcgen05.st.sync.aligned") < ptx.index("tcgen05.wait::st.sync.aligned")
+    assert ptx.index("tcgen05.wait::st.sync.aligned") < ptx.index("tcgen05.ld.red.sync.aligned")
+    assert ptx.index("tcgen05.ld.red.sync.aligned") < ptx.index("tcgen05.wait::ld.sync.aligned")
+    assert llir.index("tcgen05.st.sync.aligned") < llir.index("@llvm.nvvm.tcgen05.wait.st()")
+    assert llir.index("@llvm.nvvm.tcgen05.wait.st()") < llir.index("tcgen05.ld.red.sync.aligned")
+    assert llir.index("tcgen05.ld.red.sync.aligned") < llir.index("@llvm.nvvm.tcgen05.wait.ld()")
     ptx_red_ops = [op for op, _ in ptx_red_pairs]
     expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
     assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
