@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-11T21:47:03Z
+updated: 2026-04-11T23:02:37Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -627,6 +627,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Fresh dereferenced workspaces `r6a1`/`r6a2`; sandbox checks that `driver.active` succeeds, `triton.language.extra.cuda.libdevice.exp` exists, the example imports, and a quick local benchmark point runs (`batch=128` sanity point in `r6a1` measured `0.03267 ms`)
   - Learnings: The environment problem had two layers. First, private workspaces copied from the active worktree needed explicit overlays of the Triton runtime symlink targets. Second, the canonical environment itself had a local shadow-package trap: an untracked `third_party/nvidia/language/cuda/libdevice/` directory shadowed the tracked `libdevice.py` module and made `libdevice.exp` disappear during JIT dependency resolution. Removing that shadow directory and introducing a dedicated workspace-maker script restored a functional isolated sandbox workflow. The example was also switched to import `triton.language.extra.libdevice`, which avoids depending on the fragile shadowed path.
   - Plan updates: Restart the prompt-optimization loop from round 6 using the new workspace-maker script and central scoring only.
+- `2026-04-11` Completed: Closed round 6 and tightened worker sanity requirements
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`
+  - Validation: Central scoring / compilation of the two round-6 candidate diffs from fresh fixed workspaces
+  - Learnings: Round 6 is the first promptopt round that reliably produced small, interpretable kernel diffs instead of environment failures or vague heuristics. Both candidates targeted the helper-store path and both failed at real Triton compilation despite passing `python -m py_compile`. One introduced a tensor/scalar mismatch in the helper-store mask path, and the other introduced an incompatible `Float2Tensor` broadcast. So the loop has now learned another concrete rule: `py_compile` is only a syntax check and is not a meaningful post-edit sanity gate for Triton/Gluon kernels. Future workers need to prove at least one real kernel invocation after editing before their candidate is worth central scoring.
+  - Plan updates: Start round 7 from the same environment-fixed, proposal-only setup, but require one actual edited-kernel invocation as a worker-side sanity check before a candidate can be reported.
 
 ## Next Up
 

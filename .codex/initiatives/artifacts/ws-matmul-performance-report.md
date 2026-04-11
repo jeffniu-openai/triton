@@ -1629,6 +1629,20 @@ This separates:
 - proposal generation inside the isolated sandbox
 - trustworthy measurement in the canonical evaluation environment
 
+One final refinement from round 6:
+
+- `python -m py_compile` is only a syntax check
+- for Triton/Gluon kernels it does **not** prove the edited kernel can actually JIT-compile
+
+Two round-6 candidates made tiny, plausible store-path changes and both passed `py_compile`, but the
+central evaluator rejected them immediately at real compilation time:
+
+- one introduced a tensor/scalar type mismatch in the helper-store mask path
+- one introduced an incompatible `Float2Tensor` broadcast shape
+
+So any future worker-side “sanity check” should include at least one real kernel invocation after
+editing, not just Python syntax validation.
+
 ---
 
 ## 13. Open Problems and Suggested Next Steps

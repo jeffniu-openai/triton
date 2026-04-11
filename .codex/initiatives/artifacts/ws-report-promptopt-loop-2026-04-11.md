@@ -253,4 +253,26 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - workers are now asked for one or two small kernel diffs only
   - runtime/import patching is explicitly forbidden
   - local benchmarking is optional sanity only; central scoring remains authoritative
-- Status: in progress
+- Final round outcome:
+  - `r6a1`
+    - change type: hoist helper-store descriptor pointer/stride/chunk math out of the inner store
+    - result: rejected at real kernel compilation
+    - reason: introduced a tensor/scalar type mismatch in the helper-store mask path
+  - `r6a2`
+    - change type: reuse a precomputed reciprocal fill for packed FP8 store fragments
+    - result: rejected at real kernel compilation
+    - reason: introduced an incompatible `Float2Tensor` broadcast shape
+- Prompt/report lessons from round 6:
+  - asking for small diffs worked; both workers finally proposed interpretable kernel changes
+  - `py_compile` is not an adequate sanity check for Triton/Gluon code
+  - future workers need one real post-edit kernel invocation before they report a candidate
+- Status: completed
+
+### Round 7
+
+- Report version: after the “real kernel invocation, not just py_compile” update
+- Planned adjustments:
+  - keep the fixed workspace-maker and proposal-only contract
+  - require one actual edited-kernel invocation as a worker-side sanity gate
+  - continue using central scoring as the authority for promotion
+- Status: pending
