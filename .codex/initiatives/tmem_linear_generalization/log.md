@@ -10307,3 +10307,34 @@ Open after this slice:
   - commit and push this ISA-contract coverage slice;
   - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
     fuzzing, or the next MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:59 UTC
+
+- Pinned exact plain MMAv5 instruction counts in runtime-matrix coverage.
+- Source/test change:
+  - added root plain-kind expected counts: `f16=2`, `bf16=2`, `tf32=4`,
+    `f8e5m2=1`, and `f8e4m3=1`;
+  - the 1-CTA and 2-CTA root/use-acc plain-kind matrices now assert those
+    counts along with PTX/LLIR opcode equality and exact commit opcodes;
+  - TMA-fed two-CTA f16/TF32 positives and the direct f16 descriptor-view
+    positives now also assert expected counts;
+  - tile-permuted accumulator coverage uses a separate fourfold count model,
+    and the wider-K tile-permuted TMEM-LHS path pins `16` f16 ops.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - first broad direct MMA / direct scaled-MMA selector:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-opcounts-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - failed only because tile-permuted accumulator/LHS cases correctly emit
+      expanded counts; root counts were too narrow for that family.
+  - corrected broad selector:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-opcounts-broad-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `213 passed, 50 skipped, 2392 deselected in 122.55s (0:02:02)`
+- Next:
+  - commit and push this MMAv5 instruction-count coverage slice;
+  - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
+    fuzzing, or another MMAv5 / scaled-MMAv5 reachable-family gap.

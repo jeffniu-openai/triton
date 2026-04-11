@@ -393,7 +393,9 @@ Every fuzz case records:
 #### Checks
 - Result matches the reference matmul, including accumulator add when
   `use_acc=true`.
-- PTX and LLIR use the same `tcgen05.mma` opcode family.
+- PTX and LLIR use the same `tcgen05.mma` opcode family, with exact op counts
+  pinned for the plain-kind root matrices and the tile-permuted accumulator /
+  TMEM-LHS coverage.
 - `commit` opcode family and multicast suffix are correct.
 - TMEM accumulator layout must remain canonical TMEM-linear in TTGIR when the
   source came from `TensorMemoryLinearLayout`.

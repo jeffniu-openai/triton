@@ -77,7 +77,7 @@
     `162 passed, 5 skipped, 2488 deselected in 40.88s`
     after adding the four nearby scales `warpx2` clean-negative layout probes
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `213 passed, 50 skipped, 2388 deselected in 120.83s (0:02:00)`
+    `213 passed, 50 skipped, 2392 deselected in 122.55s (0:02:02)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -395,7 +395,11 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `213 passed, 50 skipped, 2388 deselected`;
+    `213 passed, 50 skipped, 2392 deselected`;
+    plain MMAv5 root and `use_acc` matrices now pin exact op counts
+    (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), while
+    tile-permuted accumulator coverage pins fourfold counts and the wider-K
+    tile-permuted TMEM-LHS path pins `16` f16 ops;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
@@ -6302,3 +6306,35 @@ rejection, not rescue
   - commit and push this ISA-contract coverage slice;
   - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
     fuzzing, or the next MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:59 UTC: Plain MMAv5 instruction counts are pinned
+
+- Latest pushed checkpoint before this source/test update:
+  - `732f8b60a` on `origin/codex/tmem`
+- Source/test change:
+  - added `MMA_PLAIN_KIND_EXPECTED_OP_COUNTS` for the root plain-kind MMAv5
+    matrix: `f16=2`, `bf16=2`, `tf32=4`, `f8e5m2=1`, and `f8e4m3=1`;
+  - the one-CTA and two-CTA root/use-acc plain-kind tests now assert those
+    counts in addition to PTX/LLIR opcode equality and exact commit opcodes;
+  - TMA-fed two-CTA f16/TF32 positives and the direct f16 descriptor-view
+    positives also pin their expected counts;
+  - tile-permuted accumulator coverage has a separate fourfold count model, and
+    the wider-K tile-permuted TMEM-LHS path pins `16` f16 ops.
+- Probe note:
+  - an initial broad run using the root counts for tile-permuted paths failed
+    only on the tile-permuted families; that clarified the correct separate
+    count model before the final validation rerun.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - broad direct MMA / direct scaled-MMA selector:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-opcounts-broad-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `213 passed, 50 skipped, 2392 deselected in 122.55s (0:02:02)`
+- Next:
+  - commit and push this MMAv5 instruction-count coverage slice;
+  - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
+    fuzzing, or another MMAv5 / scaled-MMAv5 reachable-family gap.

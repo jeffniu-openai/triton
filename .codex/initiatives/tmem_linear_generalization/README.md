@@ -124,7 +124,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `476 passed, 2179 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `213 passed, 50 skipped, 2388 deselected`
+    `213 passed, 50 skipped, 2392 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -289,11 +289,17 @@ When resuming the initiative:
     `cta_group::1` and `cta_group::2`;
   - the `cta_group::2` kind matrix covers both `256x128` and `256x256`
     accumulator shapes.
-  - the tests continue to assert exact PTX/LLIR opcode agreement.
+  - the tests continue to assert exact PTX/LLIR opcode agreement and now pin
+    exact root op counts: `f16=2`, `bf16=2`, `tf32=4`, and
+    `f8e5m2/f8e4m3=1`.
 - Plain MMAv5 `use_acc=True` coverage now spans all `MMA_PLAIN_KINDS`
   across both 1-CTA and 2-CTA paths, for both legacy and canonical
   TMEM-linear accumulator layouts, validating runtime accumulator addition
-  plus exact PTX/LLIR opcode agreement.
+  plus exact PTX/LLIR opcode agreement and the same exact root op counts.
+- Plain MMAv5 tile-permuted accumulator coverage now also pins its expected
+  expanded instruction counts: four times the root kind count for accumulator
+  tile permutations, and `16` f16 ops for the wider-K tile-permuted TMEM-LHS
+  path.
 - Staged `ld/st` fuzzing has started with descriptor-chain `auto` coverage at
   `ebb23b697`:
   - the basic descriptor-composition matrix now covers `auto` instruction
@@ -442,9 +448,9 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tma-tf32-positive-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-opcounts-broad-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `213 passed, 50 skipped, 2388 deselected in 120.83s (0:02:00)`;
+    `213 passed, 50 skipped, 2392 deselected in 122.55s (0:02:02)`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
     and offset one-CTA accumulator subview format-matrix cases, the two-CTA

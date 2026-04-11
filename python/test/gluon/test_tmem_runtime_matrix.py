@@ -5125,6 +5125,18 @@ MMA_CASES = [
 
 MMA_PLAIN_KINDS = ("f16", "tf32", "bf16", "f8e5m2", "f8e4m3")
 
+MMA_PLAIN_KIND_EXPECTED_OP_COUNTS = {
+    "f16": 2,
+    "tf32": 4,
+    "bf16": 2,
+    "f8e5m2": 1,
+    "f8e4m3": 1,
+}
+MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
+    kind: count * 4 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
+}
+MMA_LHS_TILE_PERMUTED_EXPECTED_OP_COUNT = 16
+
 MMA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind)
     for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
@@ -5209,6 +5221,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
+    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -5254,6 +5267,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind):
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
+    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -5403,6 +5417,7 @@ def test_tmem_runtime_matrix_mma_twocta(name, layout_kind):
     llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_mma_ops == llir_mma_ops
     assert ptx_mma_ops
+    assert len(ptx_mma_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS["f16"]
     assert all(op == "tcgen05.mma.cta_group::2.kind::f16" for op in ptx_mma_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -5469,6 +5484,7 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind, block
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
+    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -5538,6 +5554,7 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc(kind, acc_layout_kin
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
+    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -5662,6 +5679,7 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_lay
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
+    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS["tf32"]
     assert all(op == "tcgen05.mma.cta_group::2.kind::tf32" for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -5736,6 +5754,7 @@ def test_tmem_runtime_matrix_mma_acc_tile_permuted(n, tile_n):
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     assert ptx_ops
+    assert len(ptx_ops) == MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS["f16"]
     assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
@@ -5775,6 +5794,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind, n, tile_n):
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
+    assert len(mma_ops) == MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS[kind]
     assert all(op == expected_kind for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
@@ -5800,6 +5820,7 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted():
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     assert ptx_ops
+    assert len(ptx_ops) == MMA_LHS_TILE_PERMUTED_EXPECTED_OP_COUNT
     assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
@@ -5825,6 +5846,7 @@ def test_tmem_runtime_matrix_mma_lhs_subslice_view():
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     assert ptx_ops
+    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS["f16"]
     assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
     assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
