@@ -1815,6 +1815,12 @@ LDST_TWOCTA_DESCRIPTOR_CASES = [
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
+ALLOC_LIFETIME_LDST_CASES = [
+    ("identity", 1, 1, 128, n, n) for n in (32, 64, 128, 256, 512)
+] + [
+    ("block_two_ctas", 2, 2, 256, n, n) for n in (32, 64, 128, 256, 512)
+]
+
 PERMUTED_LAYOUT_KINDS = ("identity", "rotate1", "even_odd", "reverse")
 PERMUTED_ROW_COL_LAYOUT_KINDS = list(product(PERMUTED_LAYOUT_KINDS, PERMUTED_LAYOUT_KINDS))
 
@@ -2372,13 +2378,10 @@ def test_tmem_runtime_matrix_ldst(layout_name, n, variant, expected_shape):
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(
-    "layout_name,cta_group,num_ctas,m,n",
-    [
-        ("identity", 1, 1, 128, 128),
-        ("block_two_ctas", 2, 2, 256, 128),
-    ],
+    "layout_name,cta_group,num_ctas,m,n,alloc_size",
+    ALLOC_LIFETIME_LDST_CASES,
 )
-def test_tmem_runtime_matrix_alloc_lifetime_ldst(layout_name, cta_group, num_ctas, m, n):
+def test_tmem_runtime_matrix_alloc_lifetime_ldst(layout_name, cta_group, num_ctas, m, n, alloc_size):
     if cta_group == 1:
         layout = LDST_LAYOUTS[layout_name](n)
     else:
@@ -2395,7 +2398,7 @@ def test_tmem_runtime_matrix_alloc_lifetime_ldst(layout_name, cta_group, num_cta
     _assert_exact_tmem_lifetime_ptx_llir_match(
         compiled,
         cta_group=cta_group,
-        alloc_size=128,
+        alloc_size=alloc_size,
         expect_cluster_sync=cta_group == 2,
     )
 

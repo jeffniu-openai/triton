@@ -56,14 +56,16 @@
 - Current-head broad `ld/st` validation after the allocator-lifetime anchors is
   green:
   - focused lifetime exacts:
-    `3 passed in 3.58s`
+    `11 passed in 5.56s`
   - broad `ld/st` slice:
-    `1106 passed, 441 skipped, 713 deselected in 1225.74s (0:20:25)`
+    `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`
   - the new runtime anchors assert exact PTX/LLIR `tcgen05.alloc`,
     `tcgen05.relinquish_alloc_permit`, `tcgen05.dealloc`, and
     `tcgen05.wait::{st,ld}` emission for single-CTA and two-CTA ld/st kernels;
-    they also check two-CTA cluster arrive/wait before dealloc and a
-    source-initialized `allocate_tensor_memory(..., value=...)` roundtrip.
+    they cover alloc/dealloc size immediates `32, 64, 128, 256, 512` for
+    both CTA groups, check two-CTA cluster arrive/wait before dealloc, and
+    keep a source-initialized `allocate_tensor_memory(..., value=...)`
+    roundtrip.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -221,9 +223,10 @@
     two-CTA, MMAv5-like, M64/split-N, and descriptor-view chains;
   - allocator/lifetime runtime anchoring now covers exact single-CTA and
     two-CTA `alloc` / `relinquish_alloc_permit` / `dealloc` / `wait` emission
-    on ld/st kernels plus a source-initialized allocation roundtrip; remaining
-    allocator fuzzing is broader size and commit-mode saturation rather than a
-    missing first runtime anchor;
+    on ld/st kernels, pow2 alloc/dealloc size immediates
+    `32, 64, 128, 256, 512`, and a source-initialized allocation roundtrip;
+    remaining allocator fuzzing is non-pow2 size and commit-mode saturation
+    rather than a missing first runtime anchor;
   - direct higher-rank access is still future work: higher-rank descriptors
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;

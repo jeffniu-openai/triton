@@ -151,10 +151,11 @@ Every fuzz case records:
 - For 2 CTA kernels, cluster sync is present before dealloc and `commit` uses
   `cta_group::2`.
 - Current runtime anchors cover single-CTA and two-CTA ld/st allocation
-  lifetimes, exact PTX/LLIR alloc/relinquish/dealloc/wait emission, two-CTA
-  cluster sync before dealloc, and one source-initialized allocation roundtrip.
-  Remaining allocator fuzzing is size and commit-mode saturation beyond these
-  first anchors.
+  lifetimes, exact PTX/LLIR alloc/relinquish/dealloc/wait emission, pow2
+  alloc/dealloc size immediates `32, 64, 128, 256, 512`, two-CTA cluster sync
+  before dealloc, and one source-initialized allocation roundtrip. Remaining
+  allocator fuzzing is non-pow2 size and commit-mode saturation beyond these
+  anchors.
 
 #### Negative matrix
 - `size > 512`
@@ -448,8 +449,8 @@ Every fuzz case records:
   - `cp` `cta_group::2` coverage and any reachable `warpx2` cases
   - `mma` runtime coverage beyond the already-proven anchor cases
   - `mma_scaled` runtime coverage beyond the current minimal cases
-  - broader alloc/dealloc lifetime size and commit-mode saturation beyond the
-    current runtime anchors
+  - non-pow2 alloc/dealloc size probes (`96`, `192`, `384`) and commit-mode
+    saturation beyond the current runtime anchors
 
 ## Immediate Next Code Changes
 - Near-term code changes should focus on the planner/lowering core, not on

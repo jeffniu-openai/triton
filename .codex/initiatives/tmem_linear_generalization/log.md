@@ -9251,3 +9251,33 @@ Open after this slice:
   - run hygiene, commit, and push this allocator-lifetime coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`, likely another bounded
     MMAv5/scaled-MMAv5 or copy surface.
+
+
+## 2026-04-11 18:31 UTC
+
+- Broadened the allocator-lifetime ld/st anchors across pow2 allocation sizes.
+- Source/test change:
+  - added `ALLOC_LIFETIME_LDST_CASES`;
+  - expanded `test_tmem_runtime_matrix_alloc_lifetime_ldst` to cover both
+    `cta_group::1` and `cta_group::2` at alloc/dealloc size immediates
+    `32, 64, 128, 256, 512`.
+- Probe result before adding the matrix:
+  - simple TMEM-linear / block two-CTA ld/st kernels reach pow2 sizes for both
+    CTA groups;
+  - the non-pow2 fuzz-plan sizes `96`, `192`, and `384` are not reachable via
+    this simple power-of-two `arange` / linear-layout path and remain future
+    specialized allocator probes.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused lifetime size matrix plus source-init exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-size-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_alloc_lifetime_ldst python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_alloc_source_initialization_lifetime`
+    - `11 passed in 5.56s`
+  - broad current-head `ldst` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-size-ldst-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+    - `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`
+- Next:
+  - run hygiene, commit, and push this allocator-size coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`, leaving non-pow2
+    allocator sizes and commit-mode saturation as later allocator work.

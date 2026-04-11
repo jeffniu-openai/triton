@@ -57,9 +57,10 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of the latest focused coverage checkpoint, the current source/test slice
-  adds runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
-  `relinquish_alloc_permit`, `dealloc`, and `wait`.
+- As of the latest focused coverage checkpoint, the current source/test slices
+  add runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
+  `relinquish_alloc_permit`, `dealloc`, and `wait`, including pow2 alloc-size
+  immediates for both CTA groups.
 - The latest full `python/test/gluon/test_tmem_runtime_matrix.py` file
   validation checkpoint remains green:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
@@ -98,7 +99,7 @@ When resuming the initiative:
     `690 passed, 60 skipped`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
-    `1106 passed, 441 skipped, 713 deselected`
+    `1114 passed, 441 skipped, 713 deselected`
   - broad `tcgen05.cp`:
     `154 passed, 5 skipped, 2098 deselected`
   - broad `tcgen05.ld.red`:
@@ -111,6 +112,8 @@ When resuming the initiative:
   - single-CTA and two-CTA ld/st kernels assert exact PTX/LLIR
     `tcgen05.alloc`, `tcgen05.relinquish_alloc_permit`, `tcgen05.dealloc`,
     and `tcgen05.wait::{st,ld}` emission;
+  - both CTA groups cover alloc/dealloc size immediates
+    `32, 64, 128, 256, 512`;
   - the two-CTA case asserts cluster arrive/wait before dealloc;
   - a source-initialized `allocate_tensor_memory(..., value=...)` kernel
     round-trips the initialized values through a TMEM load.
@@ -331,9 +334,9 @@ When resuming the initiative:
 - Combined current-head `ld/st` runtime-matrix validation is green after the
   staged auto expansions and allocator-lifetime anchors:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-ldst-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-size-ldst-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
   - result:
-    `1106 passed, 441 skipped, 713 deselected in 1225.74s (0:20:25)`;
+    `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`;
   - skips are expected tensor-memory OOR / clean-boundary cases in lifted
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
