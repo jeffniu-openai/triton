@@ -48,7 +48,10 @@ When resuming the initiative:
 ## Current Checkpoint
 
 - As of the current-head validation checkpoint, the latest pushed source/test
-  checkpoint is `57133ade7` on `origin/codex/tmem`.
+  checkpoint is `330c64c05` on `origin/codex/tmem`.
+- The full `python/test/gluon/test_tmem_runtime_matrix.py` file is green at
+  that checkpoint:
+  - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1082 passed, 437 skipped, 680 deselected`

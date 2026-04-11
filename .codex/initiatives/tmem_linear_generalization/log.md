@@ -8671,6 +8671,37 @@ Open after this slice:
     keeping attention deferred to the supported synchronization-aware
     offset/slice/subview-to-bitcast migration.
 
+## 2026-04-11 19:10 UTC
+
+- Ran the full current-head TMEM runtime matrix as a phase-boundary validation
+  after the staged `ld/st` auto expansion and the focused `cp`, `ld.red`, and
+  MMA validation checkpoints.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `330c64c05`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - full runtime matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-runtime-matrix-full-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py`
+    - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
+- Interpretation:
+  - the combined runtime matrix is green at current head;
+  - the skip count is expected tensor-memory OOR / boundary coverage from the
+    expanded descriptor-view and rank-5 matrices;
+  - the focused surface checks did not hide an interaction failure when the
+    full file was run together.
+- Next:
+  - commit and push this validation checkpoint;
+  - continue to the next staged broad-validation/fuzzing and heuristic-cleanup
+    phase, keeping long-term `tcgen05` saturation work recorded but not
+    treating the current deterministic MMA surface as blocking.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

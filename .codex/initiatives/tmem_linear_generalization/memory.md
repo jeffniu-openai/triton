@@ -49,6 +49,17 @@
   - wider pytest/lit suites
   - multi-GPU grouped sweeps where appropriate.
 
+### Current Validation State
+- Current-head phase-boundary validation at `330c64c05` is green for the full
+  `python/test/gluon/test_tmem_runtime_matrix.py` file:
+  - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
+- The skips are expected tensor-memory OOR / boundary classifications from the
+  expanded descriptor-view and rank-5 matrices, not new red tests.
+- This full-file checkpoint incorporates the staged `ld/st` auto expansion,
+  broad `tcgen05.cp`, broad `tcgen05.ld.red`, true `tcgen05.mma`, direct
+  `mma_scaled`, and scaled-MMA copy-helper validation slices recorded in the
+  log.
+
 ### Phase 1: Core Logic Cleanup
 - Unify TMEM ld/st planning into one shared structural planner consumed by:
   - Gluon descriptor/layout selection
