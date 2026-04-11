@@ -1693,7 +1693,7 @@ LDST_TWOCTA_CASES = [
 
 LDST_TWOCTA_DESCRIPTOR_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
 PERMUTED_LAYOUT_KINDS = ("identity", "rotate1", "even_odd", "reverse")
