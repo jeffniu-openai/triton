@@ -1675,7 +1675,6 @@ LDST_TWOCTA_LAYOUTS = {
 }
 
 LDST_VARIANTS = ("auto", "32x32b", "16x64b", "16x128b", "16x256b")
-LDST_EXPLICIT_VARIANTS = ("32x32b", "16x64b", "16x128b", "16x256b")
 
 LDST_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
@@ -1774,11 +1773,6 @@ LDST_TWOCTA_HIGHER_RANK_OOR_CASES = [
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
     ("block_two_ctas", variant) for variant in LDST_VARIANTS
-]
-
-LDST_HIGHER_RANK_POSITIVE_CASES = [
-    ("identity", n, variant, LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), LDST_EXPLICIT_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
