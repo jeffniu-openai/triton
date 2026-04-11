@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-10T23:08:47Z
+updated: 2026-04-11T09:40:34Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -92,6 +92,8 @@ The latest GPT-OSS low-batch research changed the next implementation priority m
 One more post-landing sweep pass uncovered a smaller selector bug: the live policy switched from `(64, 4)` to `(128, 8)` too early, which created an avoidable dip around `batch=1280..1536`. Direct same-process A/Bs showed that `block_m=64, row_subtile=4` stays materially better through `slice_size=58` (`batch=1856`) and only loses once `slice_size` reaches `60` (`batch=1920`). Extending that boundary fixed the mid-batch pocket. The refreshed full sweep now has the example ahead of the reference at every GPT-OSS batch point, with the narrowest remaining edge around `batch=3072` and `3584` still positive at about `0.53%` and `0.55%`.
 
 The later merged-loader cleanup is no longer the only viable producer topology. I restored the older separate activation loader plus weight+scale loader on top of the current low-batch selector and helper-wavefront epilogue, then compared it directly against the merged-loader baseline from `9ae413dfa0`. The result is a wash in the broad sense: the split-loader version remains ahead of the reference across the full GPT-OSS sweep and stays in the same overall performance band as the merged-loader version, but the deltas are mixed rather than uniformly positive. On the `rep=1000` sweep it is better through much of the low and mid range (`2048` `0.03986 ms` vs merged `0.04062 ms`, `3072` `0.03986 ms` vs `0.04075 ms`, `7168` `0.05361 ms` vs `0.05568 ms`) and slightly worse in a few higher buckets (`25600` `0.15777 ms` vs `0.15644 ms`, `30720` `0.18300 ms` vs `0.18196 ms`). Direct `rep=3000` A/Bs on representative points showed the same pattern: `7168` favored the split loader by about `3.6%`, while `21504`, `25600`, and `30720` favored the merged loader by about `0.7%`, `1.2%`, and `0.6%` respectively. So the merged single-load topology is not a durable sweep-level performance win by itself; it is mostly a structural simplification.
+
+There is now also a long-form synthesis report at `.codex/initiatives/artifacts/ws-matmul-performance-report.md`. Unlike the main initiative, that document is intentionally tutorial and redundant: it explains the kernel architecture, chronology of major experiments, measurement workflow, NCU/SASS/PTX methodology, practical command recipes, and the decision logic behind the surviving design. It should now be the recommended first read for a future agent who needs to continue this work without the full chat history.
 
 ### Systems Involved
 
@@ -600,6 +602,11 @@ The later merged-loader cleanup is no longer the only viable producer topology. 
   - Validation: Temporary no-repo-edit harness on GPU 0 for `batch=128` / `batch=384` with exact `reference_matmul` validation; `do_bench_cudagraph(..., rep=1000)` on `BLOCK_M=16` and `BLOCK_M=32` reduced-buffer candidates; targeted `ncu` metric runs for `batch=128`, `x=3,w=3`, doubled persistent grid, `maxnreg=64` and `maxnreg=48`
   - Learnings: The first candidate that really reached about 2 CTAs per SM was the smallest low-batch regime: `BLOCK_M=16`, `x=3,w=3`, doubled launch grid / `NUM_SMS`, plus a forced register cap. With `maxnreg=64` or `48`, the kernel compiled to `64` / `48` registers per thread, kept shared memory at `114.88 KiB` per block, and NCU reported `launch__occupancy_limit_registers = 2`, `launch__occupancy_limit_shared_mem = 2`, and `sm__ctas_active.avg.per_cycle_active ~= 1.85`. So the hardware really did admit nearly two CTAs per SM in that regime. The best runtime point was `maxnreg=48`, `sms_factor=2`, at `0.03449 ms`, which is materially better than the same stripped-down kernel at `1x` (`0.03695 ms`) but still slightly slower than the live default (`0.03416 ms`). The next regime (`BLOCK_M=32`, `batch=384`) remained decisively negative even after the same treatment: `x=2,w=3,maxnreg=64,sms_factor=2` measured `0.04756 ms` versus a `0.03596 ms` live default.
   - Plan updates: The occupancy question is now answered more precisely. Real 2-CTA residency is possible in the smallest `BLOCK_M=16` regime, but the best reachable point still loses to the buffered default. Do not land buffer-reduction plus register-cap occupancy tuning in the live example unless a future workload values that trade more than GPT-OSS MM1 does.
+- `2026-04-11` Completed: Started a comprehensive performance report / playbook artifact for future agents
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`
+  - Validation: Cross-checked against the main initiative plus the specialized artifacts for epilogue SASS, low-batch performance, split-K design, block scheduling, occupancy, and PTX float2 notes; two independent report reviews focused on technical completeness and pedagogy/reproducibility
+  - Learnings: The report needs to be deliberately more redundant than the initiative itself to be useful. The strongest additions were an explicit environment/prerequisites section, a clearer explanation of the difference between official benchmark-path promotion and same-prepared-case A/B controls, concrete NCU/SASS/PTX command recipes, an experiment-to-evidence map, and explicit mention of the promoted `band_n_20_row_major` schedule plus the already-designed but deferred two-kernel split-K plan. This now gives future agents a single high-context onboarding document rather than forcing them to reconstruct the work by reading every artifact in isolation.
+  - Plan updates: Continue filling this report as future work happens and use it as the preferred onboarding / handoff document. Keep the main initiative focused on state, sequencing, and decisions, while the report remains the tutorial-style “how and why” companion.
 
 ## Next Up
 
