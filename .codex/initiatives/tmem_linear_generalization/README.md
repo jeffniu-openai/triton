@@ -108,7 +108,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `468 passed, 2045 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `154 passed, 50 skipped, 2069 deselected`
+    `164 passed, 50 skipped, 2309 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -236,6 +236,15 @@ When resuming the initiative:
 - That direct scaled-MMAv5 accumulator-subview format matrix now covers both
   `slice_start=0` and `slice_start=64`, so the same format/opcode assertions
   exercise root-aligned and offset accumulator subviews.
+- Two-CTA direct scaled-MMAv5 accumulator-subview coverage is now present:
+  - `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`
+    reuses the cga-aware TMA/scales-copy topology, allocates a larger
+    TMEM-linear accumulator parent, slices it to the `cta_group::2` MMA result
+    tile, and covers both `slice_start=0` and `slice_start=128`;
+  - it validates numeric output, exact PTX/LLIR scaled-MMA opcodes for the same
+    five format pairs, exact `tcgen05.cp.cta_group::2.warpx4.32x128b` scale
+    copies, exact multicast `tcgen05.commit.cta_group::2`, and
+    `ttg.memdesc_subslice` + `tensor_memory_linear` + `two_ctas` TTGIR.
 - Plain MMAv5 kind saturation now includes f16 in the explicit 1-CTA and
   2-CTA kind matrices after `7766be003`:
   - `MMA_PLAIN_KINDS` covers `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
@@ -377,13 +386,14 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-slice-start-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-twocta-subview-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`;
+    `164 passed, 50 skipped, 2309 deselected in 98.38s (0:01:38)`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
-    and offset accumulator subview format-matrix cases; scaled-MMA copy
-    helper coverage tracked separately.
+    and offset one-CTA accumulator subview format-matrix cases and the new
+    two-CTA cga-aware accumulator-subview matrix; scaled-MMA copy helper
+    coverage tracked separately.
 - Tile-permuted scaled-MMAv5 accumulator-subview clean-negative coverage now
   spans the same format pairs as the positive direct subview matrix:
   - `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,

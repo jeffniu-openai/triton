@@ -72,16 +72,22 @@
   - broad `tcgen05.cp` slice:
     `154 passed, 5 skipped, 2354 deselected in 40.46s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`
+    `164 passed, 50 skipped, 2309 deselected in 98.38s (0:01:38)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
 - Current-head scaled-MMAv5 accumulator-subview format coverage is green:
-  - focused slice-start matrix:
+  - focused one-CTA slice-start matrix:
     `10 passed in 6.86s`
-  - the matrix now covers both `slice_start=0` and `slice_start=64` for
-    `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and
-    `nvfp4/nvfp4`, with exact PTX/LLIR opcode agreement and numeric checks.
+  - focused two-CTA cga-aware accumulator-subview matrix:
+    `10 passed in 6.33s`
+  - the one-CTA matrix covers both `slice_start=0` and `slice_start=64`; the
+    two-CTA matrix covers both `slice_start=0` and `slice_start=128` using a
+    larger TMEM-linear accumulator parent sliced to the `cta_group::2` result
+    tile;
+  - both matrices cover `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
+    `mxfp4/mxfp8`, and `nvfp4/nvfp4`, with exact PTX/LLIR opcode agreement and
+    numeric checks.
 - Current-head tensor-memory allocation rounding coverage is green:
   - lit exact:
     `PASS: TRITON :: TritonNvidiaGPU/test_tensor_memory_allocation.mlir`
@@ -114,7 +120,8 @@
 - This full-file checkpoint incorporates the staged `ld/st` auto expansion,
   broad `tcgen05.cp`, broad `tcgen05.ld.red`, true `tcgen05.mma`, direct
   `mma_scaled`, and scaled-MMA copy-helper validation slices recorded in the
-  log.
+  log; the newest direct scaled-MMA slice has additionally validated the
+  two-CTA cga-aware accumulator-subview matrix.
 
 ### Phase 1: Core Logic Cleanup
 - Unify TMEM ld/st planning into one shared structural planner consumed by:

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+from dataclasses import replace
 from itertools import product
 
 import pytest
@@ -33,11 +34,15 @@ from triton._C.libtriton.gluon_ir import make_cga_layout
 from python.test.gluon.test_core import (
     _expected_scaled_cp_opcode,
     _expected_scaled_mma_opcode,
+    make_operand_descriptor,
+    make_output_descriptor,
+    make_scales_descriptor,
     mma_kernel,
     _run_tmem_reduction_case,
     mma_scaled_tcgen05_copy,
     random_quantized_tensor,
     swizzle_scales_packed_block,
+    unswizzle_scales_shared_memory,
 )
 
 
@@ -1767,6 +1772,199 @@ def tmem_mma_scaled_acc_subslice_format_kernel(
     offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
     offs = offs_m * N + offs_n
     ttgl.store(out_ptr + offs, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
+def mma_scaled_tcgen05_acc_subslice_copy_kernel(
+    a_desc,
+    b_desc,
+    c_desc,
+    a_scale_desc,
+    b_scale_desc,
+    VEC_SIZE: ttgl.constexpr,
+    block_layout_c: ttgl.constexpr,
+    acc_parent_layout: ttgl.constexpr,
+    PARENT_N: ttgl.constexpr,
+    slice_start: ttgl.constexpr,
+    multicast: ttgl.constexpr,
+):
+    A_IS_FP4: ttgl.constexpr = a_desc.dtype == ttgl.uint8
+    B_IS_FP4: ttgl.constexpr = b_desc.dtype == ttgl.uint8
+    A_ELEM_PER_BYTE: ttgl.constexpr = 2 if A_IS_FP4 else 1
+    B_ELEM_PER_BYTE: ttgl.constexpr = 2 if B_IS_FP4 else 1
+    BLOCK_M: ttgl.constexpr = c_desc.block_type.shape[0]
+    BLOCK_N: ttgl.constexpr = c_desc.block_type.shape[1]
+    BLOCK_K: ttgl.constexpr = a_desc.block_type.shape[1] * A_ELEM_PER_BYTE
+    K = a_desc.shape[1] * A_ELEM_PER_BYTE
+
+    a_smem = ttgl.allocate_shared_memory(a_desc.dtype, a_desc.block_type.shape, a_desc.layout)
+    b_smem = ttgl.allocate_shared_memory(b_desc.dtype, b_desc.block_type.shape, b_desc.layout)
+
+    num_ctas: ttgl.constexpr = ttgl.num_ctas()
+    two_ctas: ttgl.constexpr = num_ctas > 1
+    scale_layout_a: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[1, 0]] if two_ctas else [])
+    scale_layout_b: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[0, 0]] if two_ctas else [])
+    a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [BLOCK_M, BLOCK_K // VEC_SIZE], scale_layout_a)
+    b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [BLOCK_N, BLOCK_K // VEC_SIZE], scale_layout_b)
+    acc_parent = allocate_tensor_memory(ttgl.float32, [BLOCK_M, PARENT_N], acc_parent_layout)
+    acc_tmem = acc_parent.slice(slice_start, BLOCK_N, dim=1)
+
+    tma_bar = mbarrier.allocate_mbarrier(two_ctas=two_ctas)
+    mma_bar = mbarrier.allocate_mbarrier()
+    mbarrier.init(tma_bar, count=1)
+    mbarrier.init(mma_bar, count=1)
+
+    phase_tma = 0
+    phase_mma = 0
+    off_m = ttgl.program_id(0) * BLOCK_M
+    off_n = ttgl.program_id(1) * BLOCK_N
+
+    a_scale_smem = ttgl.allocate_shared_memory(a_scale_desc.dtype, a_scale_desc.block_type.shape, a_scale_desc.layout)
+    b_scale_smem = ttgl.allocate_shared_memory(b_scale_desc.dtype, b_scale_desc.block_type.shape, b_scale_desc.layout)
+    REP_M: ttgl.constexpr = a_scale_desc.block_type.shape[1]
+    REP_N: ttgl.constexpr = b_scale_desc.block_type.shape[1]
+    A_REP_K: ttgl.constexpr = a_scale_desc.block_type.shape[2]
+    B_REP_K: ttgl.constexpr = b_scale_desc.block_type.shape[2]
+    off_m_a_scale = ttgl.program_id(0) * REP_M
+    off_n_b_scale = ttgl.program_id(1) * REP_N
+
+    for k in range(0, K, BLOCK_K):
+        off_k_a = k // A_ELEM_PER_BYTE
+        off_k_b = k // B_ELEM_PER_BYTE
+        off_k_a_scale = (k // BLOCK_K) * A_REP_K
+        off_k_b_scale = (k // BLOCK_K) * B_REP_K
+
+        EXPECTED_BYTES: ttgl.constexpr = (
+            a_desc.nbytes_per_cta
+            + b_desc.nbytes_per_cta
+            + a_scale_desc.nbytes_per_cta
+            + b_scale_desc.nbytes_per_cta
+        )
+        mbarrier.expect(tma_bar, EXPECTED_BYTES)
+        tma.async_copy_global_to_shared(a_desc, [off_m, off_k_a], tma_bar, a_smem)
+        tma.async_copy_global_to_shared(b_desc, [off_n, off_k_b], tma_bar, b_smem)
+        tma.async_copy_global_to_shared(a_scale_desc, [0, off_m_a_scale, off_k_a_scale, 0, 0], tma_bar, a_scale_smem)
+        tma.async_copy_global_to_shared(
+            b_scale_desc,
+            [0, off_n_b_scale, off_k_b_scale, 0, 0],
+            tma_bar,
+            b_scale_smem,
+            multicast=multicast,
+        )
+        mbarrier.wait(tma_bar, phase_tma, deps=[a_smem, b_smem, a_scale_smem, b_scale_smem])
+        phase_tma ^= 1
+
+        a_scale = unswizzle_scales_shared_memory(a_scale_smem, BLOCK_M, BLOCK_K, VEC_SIZE)
+        b_scale = unswizzle_scales_shared_memory(b_scale_smem, BLOCK_N, BLOCK_K, VEC_SIZE)
+        tcgen05_copy(a_scale, a_scale_tmem)
+        tcgen05_copy(b_scale, b_scale_tmem)
+
+        a_format: ttgl.constexpr = "e2m1" if A_IS_FP4 else "e4m3"
+        b_format: ttgl.constexpr = "e2m1" if B_IS_FP4 else "e4m3"
+        tcgen05_mma_scaled(
+            a_smem,
+            b_smem.permute((1, 0)),
+            acc_tmem,
+            a_scale_tmem,
+            b_scale_tmem,
+            a_format,
+            b_format,
+            use_acc=(k != 0),
+        )
+        tcgen05_commit(mma_bar)
+        mbarrier.wait(mma_bar, phase_mma)
+        phase_mma ^= 1
+
+    mbarrier.invalidate(tma_bar)
+    mbarrier.invalidate(mma_bar)
+    acc = acc_tmem.load()
+    if two_ctas:
+        acc = ttgl.convert_layout(acc, block_layout_c)
+    acc = acc.to(c_desc.dtype)
+    acc_smem = ttgl.allocate_shared_memory(c_desc.dtype, c_desc.block_type.shape, c_desc.layout)
+    acc_smem.store(acc)
+    tma.async_copy_shared_to_global(c_desc, [off_m, off_n], acc_smem)
+    tma.store_wait(0)
+
+
+def mma_scaled_tcgen05_acc_subslice_copy(
+    A,
+    B,
+    A_scale,
+    B_scale,
+    VEC_SIZE,
+    BLOCK_M,
+    BLOCK_N,
+    BLOCK_K,
+    PARENT_N,
+    slice_start,
+    num_ctas,
+    multicast,
+):
+    M, N = A.shape[0], B.shape[0]
+    mixed_prec = A.dtype != B.dtype
+    two_ctas = num_ctas > 1
+    warps = [4, 1]
+    num_warps = warps[0] * warps[1]
+
+    ctas_per_cga = (2, 1) if two_ctas else None
+    cta_order = (1, 0) if two_ctas else None
+    cta_split = (2, 1) if two_ctas else None
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, 0) if two_ctas else None
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, 0) if two_ctas else None
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0) if two_ctas else None
+
+    cga_layout_a_scale = [[0, 1, 0, 0, 0]] if two_ctas else None
+    cga_layout_b_scale = [[0, 0, 0, 0, 0]] if two_ctas else None
+
+    a_desc = make_operand_descriptor(A, BLOCK_M, BLOCK_K, mixed_prec, cga_layout=cga_layout_a)
+    b_desc = make_operand_descriptor(B, BLOCK_N, BLOCK_K, mixed_prec, cga_layout=cga_layout_b)
+    c_desc = make_output_descriptor(M, N, torch.float16, BLOCK_M, BLOCK_N, cga_layout=cga_layout_c)
+    a_scale_desc = make_scales_descriptor(A_scale, BLOCK_M, BLOCK_K, VEC_SIZE, cga_layout=cga_layout_a_scale)
+    b_scale_desc = make_scales_descriptor(B_scale, BLOCK_N, BLOCK_K, VEC_SIZE, cga_layout=cga_layout_b_scale)
+
+    a_scale_layout = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=0,
+        element_bitwidth=8,
+        rank=5,
+        cga_layout=cga_layout_a_scale,
+    )
+    b_scale_layout = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=0,
+        element_bitwidth=8,
+        rank=5,
+        cga_layout=cga_layout_b_scale,
+    )
+    a_scale_desc = replace(a_scale_desc, layout=a_scale_layout)
+    b_scale_desc = replace(b_scale_desc, layout=b_scale_layout)
+
+    block_layout_c = (
+        ttgl.BlockedLayout([1, 8], [1, 32], warps_per_cta=warps, order=[1, 0], cga_layout=cga_layout_c)
+        if two_ctas
+        else None
+    )
+    acc_parent_layout = (
+        _make_tmem_linear_layout_mmav5_twocta(BLOCK_M, PARENT_N)
+        if two_ctas
+        else _make_tmem_linear_layout(BLOCK_M, PARENT_N)
+    )
+
+    compiled = mma_scaled_tcgen05_acc_subslice_copy_kernel[(triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N))](
+        a_desc,
+        b_desc,
+        c_desc,
+        a_scale_desc,
+        b_scale_desc,
+        VEC_SIZE,
+        block_layout_c,
+        acc_parent_layout,
+        PARENT_N,
+        slice_start,
+        num_warps=num_warps,
+        num_ctas=num_ctas,
+        multicast=multicast,
+    )
+    return c_desc.base, compiled
 
 
 LDST_SHAPE_MAP = {
@@ -5197,6 +5395,54 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
+@pytest.mark.parametrize("slice_start", (0, 128))
+def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
+    a_format, b_format, slice_start
+):
+    block_m = 256
+    block_n = 128
+    block_k = 128
+    parent_n = 256
+    vec_size = 16 if a_format == "nvfp4" else 32
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(block_m, block_k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(block_n, block_k, b_format)
+    a_scale = swizzle_scales_packed_block(a_scale, vec_size)
+    b_scale = swizzle_scales_packed_block(b_scale, vec_size)
+
+    out, compiled = mma_scaled_tcgen05_acc_subslice_copy(
+        a,
+        b,
+        a_scale,
+        b_scale,
+        vec_size,
+        block_m,
+        block_n,
+        block_k,
+        parent_n,
+        slice_start,
+        num_ctas=2,
+        multicast=False,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
+    assert cp_ops
+    assert all(op == _expected_scaled_cp_opcode(2) for op in cp_ops)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 2) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "two_ctas" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

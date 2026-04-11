@@ -9527,3 +9527,39 @@ Open after this slice:
   - run hygiene, commit, and push this `warpx2` commit-anchor slice;
   - continue copy/`warpx2` probing, MMAv5 reachable-family work, or targeted
     `ld.red` exotic/mixed-frontier probes.
+
+## 2026-04-11 19:26 UTC
+
+- Added two-CTA direct scaled-MMAv5 accumulator-subview coverage.
+- Source/test change:
+  - added `mma_scaled_tcgen05_acc_subslice_copy_kernel`, which reuses the
+    proven cga-aware TMA/scales-copy topology, allocates a larger TMEM-linear
+    accumulator parent, then slices it to the `cta_group::2` MMA result tile;
+  - added `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`;
+  - the test covers the five proven format pairs
+    (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`,
+    `nvfp4/nvfp4`) at `slice_start=0` and `slice_start=128`;
+  - each case checks numeric output, exact PTX/LLIR scaled-MMA opcode agreement,
+    exact `tcgen05.cp.cta_group::2.warpx4.32x128b` scale-copy opcodes, exact
+    multicast `tcgen05.commit.cta_group::2`, and
+    `ttg.memdesc_subslice` + `tensor_memory_linear` + `two_ctas` TTGIR.
+- This closes the previously recorded topology-aware direct two-CTA scaled-MMA
+  accumulator-subview probe gap; the earlier failed probe used one-CTA local
+  register layouts in a two-CTA launch context.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused two-CTA scaled-MMA accumulator-subview matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-twocta-subview-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`
+    - `10 passed in 6.33s`
+  - broad current-head direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-twocta-subview-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `164 passed, 50 skipped, 2309 deselected in 98.38s (0:01:38)`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+- Next:
+  - run final hygiene, commit, and push this two-CTA scaled-MMA coverage slice;
+  - continue with copy/`warpx2` probing, targeted `ld.red` exotic/mixed-frontier
+    probes, or the next MMAv5 reachable-family gap.

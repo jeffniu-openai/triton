@@ -374,8 +374,9 @@ Every fuzz case records:
 - canonical TMEM-linear accumulator and scale layouts equivalent to supported
   legacy layouts
 - accumulator subview starts that preserve the same supported physical family,
-  currently including root-aligned `slice_start=0` and offset `slice_start=64`
-  direct subviews across the proven format pairs
+  currently including one-CTA root-aligned `slice_start=0` and offset
+  `slice_start=64` direct subviews plus two-CTA cga-aware `slice_start=0` and
+  `slice_start=128` direct subviews across the proven format pairs
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.
