@@ -18,21 +18,29 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
-## Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:02 UTC)
+## Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC)
 
 - A later examples/Gluon refresh found one current-branch attention exact red:
   - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-- Current dirty-worktree status:
-  - this exact is locally green after the supported TMEM descriptor bitcast API
-    and attention migration.
+- Current committed checkpoint:
+  - `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`
+  - pushed to `origin/codex/tmem`
+  - this exact is green after the supported TMEM descriptor bitcast API and
+    attention migration.
 - Validation:
   - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
     - `PASSED`
+  - full `python/examples/gluon/` aggregate:
+    - `821 passed, 74 skipped in 134.89s`
 - Inventory consequence:
-  - the exact should drop out of the live examples red list after the checkpoint
-    commit;
-  - the broader examples/Gluon aggregate and generated manifests still need a
-    fresh rerun before the full examples lane can be marked green.
+  - the examples lane is green at the current checkpoint;
+  - `gb200_current_branch_examples_gluon_failures.txt`,
+    `gb200_branch_changed_examples_gluon_failures.txt`,
+    `gb200_current_branch_examples_convolution_failures.txt`, and
+    `gb200_current_branch_examples_multicta_failures.txt` are refreshed to
+    empty;
+  - continue with staged broad validation beyond the examples lane before
+    treating the whole GB200 recovery phase as closed.
 
 ## Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
 

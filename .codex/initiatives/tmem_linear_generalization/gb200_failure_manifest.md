@@ -30,20 +30,28 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
-### Latest Attention Exact Refresh (2026-04-11 06:02 UTC)
+### Latest Attention / Examples Refresh (2026-04-11 06:07 UTC)
 
 - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-  - current dirty-worktree status:
+  - current checkpoint status:
     - `PASSED`
   - current interpretation:
     - fixed by migrating the unsupported `_reinterpret`-based f32 scratch ->
       bf16 P alias to the supported `slice/subview -> bitcast` TMEM descriptor
       API
     - do not use any older examples aggregate count that includes this exact
-      as the live red list after the checkpoint commit
-  - remaining manifest work:
-    - rerun the broader examples/Gluon aggregate and regenerate/update the
-      examples manifests on top of the checkpoint commit
+      as the live red list
+- Full examples aggregate:
+  - `python/examples/gluon/`
+  - `821 passed, 74 skipped in 134.89s`
+  - `gb200_current_branch_examples_gluon_failures.txt` is refreshed to `0`
+    nodeids.
+  - `gb200_branch_changed_examples_gluon_failures.txt` is refreshed to `0`
+    nodeids.
+  - `gb200_current_branch_examples_convolution_failures.txt` remains refreshed
+    to `0` nodeids.
+  - `gb200_current_branch_examples_multicta_failures.txt` is refreshed to `0`
+    nodeids.
 
 ### Latest MMAv5 Function Refresh (2026-04-10 19:30 UTC)
 
@@ -226,15 +234,13 @@ PY
     - this manifest is now empty
     - the old `234`-nodeid `test_cast_matmul.py` list is historical only
 - [gb200_current_branch_examples_gluon_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_gluon_failures.txt)
-  - `62` nodeids
+  - `0` nodeids
   - source:
-    - `python3 -m pytest -q -rf --tb=no python/examples/gluon/`
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gluon-after-bitcast-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/examples/gluon`
   - current interpretation:
-    - historical / stale after the `2026-04-10 19:46 UTC`
-      `02-convolution.py` recovery checkpoint
-    - do not use this aggregate `62`-nodeid file as the live examples red
-      list again until `python/examples/gluon/` is rerun on top of the
-      convolution fix
+    - refreshed empty after the attention bitcast migration checkpoint
+    - latest current-head rerun:
+      - `821 passed, 74 skipped in 134.89s`
 - [gb200_current_branch_examples_convolution_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_convolution_failures.txt)
   - `0` nodeids
   - source:
@@ -255,6 +261,8 @@ PY
     - refreshed empty after the TMEM column-subview direct-lowering fix
     - latest current-head rerun:
       - `82 passed, 14 skipped in 58.66s`
+    - remains empty after the full `python/examples/gluon/` aggregate refresh:
+      - `821 passed, 74 skipped in 134.89s`
     - fresh merge-base rerun at `7f61ac734` remains:
       - `82 passed, 14 skipped in 37.96s`
     - the older `14` nodeids are historical only
@@ -285,13 +293,13 @@ PY
     - the current branch has no remaining GB200 `test-regression` exacts in
       the branch-recovery backlog
 - [gb200_branch_changed_examples_gluon_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_branch_changed_examples_gluon_failures.txt)
-  - `62` nodeids
+  - `0` nodeids
   - meaning:
-    - the exact current-branch `python/examples/gluon/` failures
+    - the exact current-branch `python/examples/gluon/` failures after the
+      attention bitcast migration checkpoint
   - note:
-    - these nodeids do not exist on merge-base as exact parametrized tests, so
-      this bucket is tracked as branch-changed coverage rather than an
-      identical old-mainline failure set
+    - refreshed empty by the current-head examples aggregate:
+      - `821 passed, 74 skipped in 134.89s`
 
 ## Current Underlying-Bucket Refinement
 
@@ -305,7 +313,9 @@ PY
     - now empty after the memdesc-aware `M=64` plain-`32x32b` fix
 - Use the manifests as machine-readable rerun inputs, but use
   `gb200_nvidia_ci_inventory.md` and `gb200_branch_recovery_plan.md` for the
-  current trace-backed recovery ordering. The live GB200 recovery queue is now:
+  current trace-backed recovery ordering. The examples-lane live recovery
+  queue is now empty; keep these empty guard manifests available while
+  continuing staged broad validation:
   - `gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt`
   - `gb200_current_branch_examples_convolution_failures.txt`
   - `gb200_current_branch_examples_multicta_failures.txt`

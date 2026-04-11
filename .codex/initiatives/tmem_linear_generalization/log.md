@@ -7323,3 +7323,23 @@ Open after this slice:
   - commit and push this checkpoint;
   - rerun the broader examples/Gluon aggregate and refresh the GB200 manifests
     on top of the checkpoint commit.
+
+## 2026-04-11 06:07 UTC
+
+- Committed and pushed the supported TMEM descriptor bitcast checkpoint:
+  - `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`
+  - remote branch:
+    - `origin/codex/tmem`
+- Re-ran the full examples/Gluon aggregate on top of that checkpoint:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gluon-after-bitcast-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/examples/gluon`
+  - `821 passed, 74 skipped in 134.89s`
+- Refreshed the examples-lane GB200 manifests to empty:
+  - `gb200_current_branch_examples_gluon_failures.txt`
+  - `gb200_branch_changed_examples_gluon_failures.txt`
+  - `gb200_current_branch_examples_convolution_failures.txt`
+  - `gb200_current_branch_examples_multicta_failures.txt`
+- Current consequence:
+  - the examples lane has no live current-head red list at this checkpoint;
+  - continue staged broad validation through TMEM runtime, MMA/matmul, and
+    `triton_kernels` before moving into the long-term `ld.red`,
+    `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.

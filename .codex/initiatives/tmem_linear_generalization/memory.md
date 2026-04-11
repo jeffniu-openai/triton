@@ -226,9 +226,10 @@
     - bitcast to the desired dtype, shape, and layout only when the bitcast is
       equal-size and preserves the exact physical TMEM mapping of the input
       descriptor.
-- After committing the attention bitcast migration, refresh the aggregate GB200
-  manifests and rerun broader examples/Gluon shards on top of the checkpoint
-  commit before declaring the branch-recovery phase done.
+- The attention bitcast migration is now committed and pushed at
+  `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`, and the broader
+  `python/examples/gluon/` aggregate is green on that checkpoint
+  (`821 passed, 74 skipped in 134.89s`).
 - Keep the now-closed `python/examples/gluon/02-convolution.py` checkpoint in
   mind during follow-up debugging:
   - the final fix was not another TMEM/PTX family change
@@ -243,18 +244,18 @@
   descriptor-view rewrite / missing-surface work rather than using them as the
   first proof target for the current branch recovery.
 - Re-broaden through TMEM runtime, MMA/matmul, `triton_kernels`, and then the
-  broader suite once the current GB200 manifests are refreshed.
+  broader suite now that the examples manifests are refreshed to empty.
 - Continue the larger initiative mission after the local bug buckets are green:
   - `ld.red` expansion
   - `copy` `warpx2` completion
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 06:02 UTC)
+## Current Topline (2026-04-11 06:07 UTC)
 
-- `HEAD` is `60e5017783ef9ec1b32c18eea9f1b7d4d7be9918` on `codex/tmem`; the
-  current worktree is dirty with the supported TMEM bitcast API, attention
-  migration, tests, and docs for the next checkpoint commit.
+- `HEAD` is `4263ae61b80e4f20e5c372a3c2cf5a7538d67620` on `codex/tmem`,
+  pushed to `origin/codex/tmem`; the code checkpoint with the supported TMEM
+  bitcast API, attention migration, and focused tests is committed.
 - New supported API:
   - `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)`
   - semantics: the source descriptor must already identify the intended
@@ -295,11 +296,12 @@
     - `11 passed`
   - `git diff --check`
     - `PASSED`
+  - full examples/Gluon aggregate after the checkpoint commit:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gluon-after-bitcast-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/examples/gluon`
+    - `821 passed, 74 skipped in 134.89s`
 - Next:
-  - commit and push this checkpoint to `origin/codex/tmem`;
-  - refresh the examples/Gluon aggregate and GB200 manifests on top of the
-    checkpoint commit;
-  - then continue the staged broad validation plan before moving to the
+  - commit and push the docs-only manifest refresh;
+  - continue the staged broad validation plan before moving to the
     long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing
     phases.
 

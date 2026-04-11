@@ -46,7 +46,7 @@ PY
 
 ## Current Classification Summary
 
-### Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:02 UTC)
+### Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC)
 
 - The examples/Gluon refresh had exposed a current-branch regression in:
   - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
@@ -56,11 +56,15 @@ PY
   - fixed by migrating to a supported `slice/subview -> bitcast` TMEM
     descriptor API, not by preserving the old private reinterpret fallback.
 - Current exact status:
-  - the attention exact is locally green on the dirty checkpoint worktree.
+  - the attention exact is green on committed/pushed checkpoint
+    `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`.
+- Broader examples status:
+  - `python/examples/gluon/` is green:
+    - `821 passed, 74 skipped in 134.89s`
 - Recovery consequence:
-  - do not keep this exact in the live red list after the checkpoint commit;
-  - the broader examples/Gluon aggregate is still stale and must be rerun before
-    declaring the examples lane green.
+  - the examples lane no longer has a live red list at the current checkpoint;
+  - the branch recovery plan should now move to staged broad validation
+    outside `python/examples/gluon/` before the long-term saturation phases.
 
 ### Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
 

@@ -43,16 +43,22 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 06:02 UTC, a supported
-  `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)` API is staged
-  in the worktree.
+- As of 2026-04-11 06:07 UTC, the supported
+  `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)` API is
+  committed and pushed at `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`.
 - The attention example's f32 scratch -> bf16 P alias has been migrated to the
-  supported `slice/subview -> bitcast` pattern, and the formerly red exact
-  `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-  is locally green.
-- The next required durable step is to commit/push the checkpoint, then refresh
-  the broader examples/Gluon aggregate and GB200 manifests on top of that
-  commit.
+  supported `slice/subview -> bitcast` pattern:
+  - first offset/slice/subview to the intended physical TMEM bits;
+  - then bitcast to the desired dtype, shape, and layout;
+  - require equal total size and exact preservation of the input descriptor's
+    physical TMEM mapping.
+- The formerly red attention exact and the full `python/examples/gluon/`
+  aggregate are locally green on that checkpoint:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - `python/examples/gluon/`: `821 passed, 74 skipped in 134.89s`
+- The next required durable step is staged broader validation beyond the
+  examples lane: TMEM runtime/MMA-matmul/triton-kernels slices, then the
+  long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 
