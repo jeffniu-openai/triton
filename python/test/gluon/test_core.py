@@ -1401,7 +1401,7 @@ def test_mma_shared_inputs(bitwidth, transpose_a, transpose_b, acc_dtype, warps,
     )
 
     has_two_ctas_layout = re.search(
-        r"#ttng\.tensor_memory(?:_linear|_encoding)<[^>\n]*two_ctas",
+        r"#ttng\.tensor_memory(?:_linear|_encoding)<[^>\n]*(?:two_ctas|twoCTAs)",
         compiled.asm["ttgir"],
     ) is not None
     assert two_ctas == has_two_ctas_layout
