@@ -37,14 +37,18 @@ When resuming the initiative:
   offset to the right TMEM region, slice/subview to the desired physical bits,
   then bitcast to the desired dtype/shape/layout only when total bit size and
   the exact physical TMEM mapping are preserved.
+- The bitcast step must not change which physical TMEM memory the input
+  descriptor maps to; if the desired view is not equal-size and
+  physical-mapping equivalent, use a different supported API that matches the
+  real kernel intent.
 - Lowering-side fixes are still appropriate for supported APIs that miscompile,
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.
 
 ## Current Checkpoint
 
-- As of 2026-04-11 15:50 UTC, the latest pushed source/test checkpoint is
-  `e2d793726` on `origin/codex/tmem`.
+- As of 2026-04-11 16:00 UTC, the latest pushed source/test checkpoint is
+  `7c1a6f63b` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -155,6 +159,14 @@ When resuming the initiative:
   - single-CTA and two-CTA higher-rank index, multidimensional-slice, and
     dim0-slice resource-boundary tests all use `LDST_VARIANTS`;
   - validation confirms these remain clean tensor-memory OOR boundaries.
+- Higher-rank half-row clean errors now include `auto` after `7c1a6f63b`:
+  - single-CTA and two-CTA lifted half-row clean-negative matrices now use
+    `LDST_VARIANTS`;
+  - explicit variants keep the existing unsupported-layout `CompilationError`
+    contract, while `auto` may report the direct descriptor parser
+    `RuntimeError` about translated row-half TMEM origins;
+  - the tests still require a descriptor-view diagnostic and guard against
+    PassManager/assertion crashes.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

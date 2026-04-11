@@ -236,6 +236,9 @@
     - bitcast to the desired dtype, shape, and layout only when the bitcast is
       equal-size and preserves the exact physical TMEM mapping of the input
       descriptor.
+  - the bitcast must not change the actual physical TMEM memory the input
+    descriptor maps to; otherwise use a different supported view/API that
+    expresses the kernel's real intent.
 - The attention bitcast migration committed at `4263ae61` is historical
   evidence for the supported API, not current source state. Revisit the
   attention kernel only when ready to express the reuse with the supported
@@ -274,7 +277,37 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 15:50 UTC)
+## Current Topline (2026-04-11 16:00 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `7c1a6f63b` on `origin/codex/tmem`
+- Higher-rank half-row `ld/st` clean-error matrices now include `auto`
+  instruction selection:
+  - `LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES` now uses
+    `LDST_VARIANTS`;
+  - explicit variants still raise the unsupported-layout `CompilationError`,
+    while `auto` can reach the direct descriptor parser and raise the clean
+    `RuntimeError` about lifted row-half views translating the TMEM row origin;
+  - both diagnostic paths must mention descriptor views and must not expose
+    PassManager/assertion crashes.
+- Validation for `7c1a6f63b`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - higher-rank half-row clean-error matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-half-row-auto-clean-error-r2 PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout'`
+    - `30 passed in 4.47s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect remaining staged `ld/st` stale-negative and explicit-only
+    surfaces;
+  - then continue broader validation and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 15:50 UTC)
 
 - Latest pushed source/test checkpoint:
   - `e2d793726` on `origin/codex/tmem`

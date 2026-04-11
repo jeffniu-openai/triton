@@ -8217,3 +8217,43 @@ Open after this slice:
 - Next:
   - inspect remaining staged `ld/st` stale-negative surfaces;
   - then broader validation and heuristic cleanup.
+
+## 2026-04-11 16:00 UTC
+
+- Committed and pushed higher-rank half-row `ld/st` clean-error auto coverage:
+  - `7c1a6f63b`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add `auto` instruction-selection coverage to the higher-rank lifted
+    half-row clean-negative matrices after the OOR guard auto expansion.
+- Implementation:
+  - `LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES` now uses
+    `LDST_VARIANTS`;
+  - the tests accept either the existing explicit unsupported-layout
+    `CompilationError` or the auto/parser `RuntimeError` about lifted row-half
+    TMEM views translating the row origin, while still requiring a
+    descriptor-view diagnostic and rejecting PassManager/assertion crashes.
+- Reinterpret/migration invariant recorded again for future contexts:
+  - supported migrations from implicit `_reinterpret` behavior should first
+    offset to the right part of TMEM, then slice/subview to the desired
+    physical bits, then bitcast to the desired dtype/shape/layout only when
+    total size and exact physical TMEM mapping are preserved;
+  - the bitcast is not allowed to change which physical TMEM memory the input
+    descriptor maps to.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - higher-rank half-row clean-error matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-half-row-auto-clean-error-r2 PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout'`
+    - `30 passed in 4.47s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect remaining staged `ld/st` stale-negative and explicit-only
+    surfaces;
+  - then broader validation and heuristic cleanup.
