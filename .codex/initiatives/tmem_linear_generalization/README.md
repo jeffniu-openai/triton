@@ -290,9 +290,9 @@ When resuming the initiative:
 - Combined current-head `ld/st` runtime-matrix validation is green after the
   staged auto expansions:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad-after-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
   - result:
-    `1082 passed, 437 skipped, 680 deselected in 1344.69s`;
+    `1104 passed, 441 skipped, 680 deselected in 1278.98s (0:21:18)`;
   - skips are expected tensor-memory OOR / clean-boundary cases in lifted
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:

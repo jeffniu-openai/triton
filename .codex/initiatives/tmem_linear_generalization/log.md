@@ -8931,3 +8931,31 @@ Open after this slice:
 - Next:
   - run hygiene, commit, and push this scales-auto fuzzing slice;
   - continue operational fuzzing from `fuzz_plan.md`.
+
+## 2026-04-11 17:00 UTC
+
+- Ran the broad post-fuzz `ld/st` runtime-matrix refresh after the fixed-offset,
+  rank-5, and scales-auto coverage additions.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `ee4fdec29`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad `ld/st` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad-after-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+    - `1104 passed, 441 skipped, 680 deselected in 1278.98s (0:21:18)`
+- Interpretation:
+  - the recent `ld/st` fuzz additions compose cleanly with the full current
+    runtime-matrix `ld/st` surface;
+  - the skip increase versus the previous broad run is expected from expanding
+    two-CTA rank-5 full-variant clean OOR coverage;
+  - no new wrong-code, assertion, parser, or PassManager failure appeared.
+- Next:
+  - commit and push this validation checkpoint;
+  - continue operational fuzzing from `fuzz_plan.md`.

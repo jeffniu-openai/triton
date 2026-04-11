@@ -309,7 +309,26 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:37 UTC)
+## Current Topline (2026-04-11 17:00 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `ee4fdec29` on `origin/codex/tmem`
+- Broad post-fuzz `ld/st` runtime-matrix validation is green:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - command:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad-after-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+  - result:
+    - `1104 passed, 441 skipped, 680 deselected in 1278.98s (0:21:18)`
+- This broad refresh includes the recent fixed-offset `auto`, two-CTA rank-5
+  full-variant, and scales `auto` coverage.
+- Next:
+  - commit and push this docs validation checkpoint;
+  - continue operational fuzzing from `fuzz_plan.md`, likely moving from
+    `ld/st` tails to `ld.red`, `cp`, or alloc/lifetime exact coverage.
+
+## Prior Topline (2026-04-11 16:37 UTC)
 
 - Latest source/test checkpoint in progress:
   - `f899dda05` plus local `python/test/gluon/test_tmem_runtime_matrix.py`
