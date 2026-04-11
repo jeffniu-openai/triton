@@ -1409,6 +1409,25 @@ two-point check. The lesson is simple:
 - a candidate does not graduate from “interesting idea” to “real win” until the central scorer says
   so
 
+**Rule 7: arithmetic mean speedup alone is not a safe promotion metric.**
+
+One round-3 candidate changed only the launch-grid policy for the `BLOCK_M=128` path. On one
+scoring pass it reported a positive arithmetic mean speedup, but the rest of the summary made the
+problem obvious:
+
+- geometric speedup vs baseline: negative
+- wins: only `3 / 8`
+- worst regression: severe double-digit loss
+
+That combination means the arithmetic mean was being dominated by a few large apparent gains while
+the candidate was still globally unsafe. Promotion should therefore use:
+
+- correctness
+- cudagraph safety
+- geometric or otherwise distribution-aware summary
+- explicit worst-regression guardrails
+- then arithmetic mean only as a secondary descriptive number
+
 ### 12.1 Do Not Treat the Approximate Reference As Exact
 
 This caused real confusion early.

@@ -33,6 +33,7 @@ Primary score:
 
 Secondary metrics:
 
+- geometric speedup
 - number of winning points
 - worst regression
 - exact correctness vs reference on the same prepared inputs
@@ -114,4 +115,27 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - add an explicit hard rule against two-point spot checks for selector or buffering policy changes
   - make “broad-sweep scorer first, narrative second” even more explicit
   - respawn fresh isolated workers from a clean workspace snapshot with the revised report only
-- Status: pending
+- Workspaces:
+  - `r3a1`
+  - `r3a2`
+  - `r3a3`
+- Agents:
+  - `Sartre`
+  - `Faraday`
+  - `Cicero`
+- Setup notes:
+  - each workspace is a fresh copy of the current mainline snapshot
+  - all initiative artifacts were removed from the workspace copy except the revised
+    `ws-matmul-performance-report.md`
+  - each worker was explicitly told to treat the workspace as the entire world and to use
+    workspace-local `PYTHONPATH=python/triton_kernels:python` commands
+- Early findings:
+  - `r3a1` produced a launch-grid tweak that allowed up to two persistent CTAs per SM on the
+    `BLOCK_M=128` path
+  - one score pass came back with a *positive arithmetic mean* but a *negative geometric mean* and
+    a severe worst regression (`-27%` at one point)
+  - that is strong evidence that arithmetic mean alone is too easy to fool when a candidate
+    redistributes performance unevenly
+  - the loop should therefore treat geometric speedup and worst-regression guardrails as more
+    important than arithmetic mean when deciding whether a candidate is real
+- Status: in progress
