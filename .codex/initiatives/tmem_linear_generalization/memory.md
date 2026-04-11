@@ -145,10 +145,12 @@
     recorded green in the latest docs;
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;
+  - fit `128x256b` indexed-view coverage is broadened by `7075f31fc`, while
+    the full `[2, 128, 256]` parent is captured as a tensor-memory OOR
+    boundary;
   - remaining copy work is saturation and missing-surface coverage, especially
-    TMEM-view destinations for `128x256b`, scaled-MMA copy geometries,
-    `cta_group::2` combinations, and any additional deterministic `warpx2`
-    user-visible paths;
+    scaled-MMA copy geometries, `cta_group::2` combinations, and any
+    additional deterministic `warpx2` user-visible paths that fit TMEM;
   - keep `4x256b` out of the positive target set unless a future direct-PTX
     probe proves a deterministic compiler contract.
 - `tcgen05.ld/st` and `tcgen05.ld.red`:
@@ -272,7 +274,42 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 14:00 UTC)
+## Current Topline (2026-04-11 14:10 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `7075f31fc` on `origin/codex/tmem`
+- This checkpoint broadens `tcgen05.copy` indexed-view coverage for the
+  `128x256b` family within the TMEM capacity limit:
+  - positive view shape stays `[128, 128]`, which fits the lifted indexed
+    parent and still selects `tcgen05.cp.cta_group::1.128x256b`;
+  - payloads now cover `f32` and `i32`;
+  - shared layouts now cover 32, 64, and 128-byte NVMMA swizzles;
+  - the existing `128x128b` indexed-view case remains in the same parameterized
+    test.
+- Full `[2, 128, 256]` indexed parent status:
+  - now has an explicit runtime-matrix OOR guard;
+  - failure boundary is `out of resource: tensor memory`, with the probed
+    launch metadata reporting `Required: 1024, Hardware limit: 512`;
+  - do not promote this shape to a positive target unless the allocation model
+    changes.
+- Validation for `7075f31fc`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - indexed-view copy exacts plus full-parent OOR guard:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-128x256-view-saturation PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view_full_128x256_reports_tmem_oor'`
+    - `8 passed in 4.67s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - copy coverage has closed the recently recorded direct `128x128b`, scaled
+    `warpx4.32x128b` reinterpret-debt, and fit `128x256b` indexed-view gaps;
+  - continue the long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+    stale-negative cleanup, and heuristic phases;
+  - keep any further copy work constrained to descriptor shapes that fit the
+    512-unit TMEM allocation budget.
+
+## Prior Topline (2026-04-11 14:00 UTC)
 
 - Latest pushed source/test checkpoint:
   - `bf3dd781b` on `origin/codex/tmem`

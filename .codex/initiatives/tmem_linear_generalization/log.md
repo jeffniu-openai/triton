@@ -7823,3 +7823,42 @@ Open after this slice:
     `offset/slice/subview -> bitcast` migration;
   - continue long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
     stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 14:10 UTC
+
+- Committed and pushed `128x256b` indexed-view copy saturation:
+  - `7075f31fc`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - broaden positive `tcgen05.cp.cta_group::1.128x256b` view-destination
+    coverage within the 512-unit TMEM allocation budget;
+  - capture the full `[2, 128, 256]` indexed parent as an explicit OOR
+    boundary instead of relying on handoff prose.
+- Implementation:
+  - `CP_LINEAR_INDEXED_VIEW_CASES` now covers the `128x256b` opcode for f32 and
+    i32 payloads across 32, 64, and 128-byte shared swizzles;
+  - the positive view shape remains `[128, 128]`, which still selects
+    `128x256b` and fits the lifted indexed parent;
+  - added
+    `test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view_full_128x256_reports_tmem_oor`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - indexed-view copy exacts and OOR guard:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-128x256-view-saturation PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view_full_128x256_reports_tmem_oor'`
+    - `8 passed in 4.67s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Current copy-surface read:
+  - direct canonical linear `128x128b` root coverage is closed;
+  - standalone scaled `warpx4.32x128b` copy validation is off `_reinterpret`;
+  - fit `128x256b` indexed-view coverage is broadened;
+  - further copy positives should be constrained to descriptor shapes that fit
+    TMEM.
+- Next:
+  - resume the queued `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+    stale-negative cleanup, and heuristic cleanup phases.

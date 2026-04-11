@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 14:00 UTC, the latest pushed source/test checkpoint is
-  `bf3dd781b` on `origin/codex/tmem`.
+- As of 2026-04-11 14:10 UTC, the latest pushed source/test checkpoint is
+  `7075f31fc` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy slices were validated with focused direct-i8 MMA tests, adjacent
@@ -90,6 +90,12 @@ When resuming the initiative:
   scales loads for this test intent, and reserve physical bitcasts for the
   explicit offset/slice/subview cases where total size and physical mapping are
   equivalent.
+- `128x256b` indexed-view copy coverage is broadened by `7075f31fc`:
+  - the fit positive view shape `[128, 128]` now covers f32 and i32 payloads
+    across 32, 64, and 128-byte shared swizzles;
+  - the full `[2, 128, 256]` indexed parent is recorded as a tensor-memory OOR
+    boundary (`Required: 1024, Hardware limit: 512`) instead of a positive
+    target.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
@@ -189,8 +195,9 @@ When resuming the initiative:
 - Next required durable step: continue the remaining recovery queue with the
   intentionally reverted attention example tracked separately from supported
   bitcast API validation and the legacy M64 MMAv5 xfail visible as design debt.
-  Continue the long-term `copy` saturation around TMEM-view destinations for
-  `128x256b`, plus `ld.red`, MMAv5/`mma_scaled`, and fuzzing phases.
+  Continue the long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+  stale-negative cleanup, and heuristic phases, with any remaining copy work
+  limited to shapes that fit the TMEM allocation budget.
 
 ## Document Roles
 
