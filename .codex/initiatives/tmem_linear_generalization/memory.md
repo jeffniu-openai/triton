@@ -95,6 +95,12 @@
 ### Phase 3: Rewrite Test Contracts Around Guaranteed APIs
 - Audit TMEM tests that currently rely on `_reinterpret` plus implicit
   knowledge of the compiler's physical TMEM mapping.
+- Treat production/example kernels the same way: any `_reinterpret` usage that
+  only works because today the compiler happens to pick a particular physical
+  TMEM lowering is a migration target, not a lowering bug to paper over.
+- The intended replacement is supported descriptor/view construction expressed
+  through linear-layout/view APIs with the same semantic intent. Do not add
+  ad-hoc lowering selectors just to preserve old `_reinterpret` behavior.
 - For intent tests, rewrite kernels to use explicit guaranteed descriptor/view
   composition:
   - `slice`
@@ -194,12 +200,20 @@
 - Keep the GB200/NVIDIA CI red list current in `gb200_nvidia_ci_inventory.md`
   and use that file as the current validation baseline for this Blackwell
   devbox phase.
-- The merge-base-present MMAv5 and multicta representative regressions are
+- The merge-base-present MMAv5 and multicta representative regressions remain
   locally closed by the current M64 producer-contract/source-column row-plan
   fix; keep their exacts in the focused guard set while broadening.
-- Next refresh the aggregate GB200 manifests and rerun broader examples/Gluon
-  shards on top of the checkpoint commit before declaring the branch-recovery
-  phase done.
+- The current examples/Gluon aggregate refresh exposed a real current-branch
+  regression in `python/examples/gluon/01-attention-forward.py`:
+  `test_op[False-dtype0-True-128-1024-48-4]` fails on current `codex/tmem` but
+  passes on merge-base.
+- Treat that attention issue as an explicit API migration: the kernel's
+  f32-to-bf16 TMEM `_reinterpret` path relies on compiler-specific physical
+  packing behavior. Migrate it to supported linear-layout/view APIs with the
+  same intent instead of patching TMEM lowering to prefer the old fallback.
+- After the attention migration is green, refresh the aggregate GB200
+  manifests and rerun broader examples/Gluon shards on top of the checkpoint
+  commit before declaring the branch-recovery phase done.
 - Keep the now-closed `python/examples/gluon/02-convolution.py` checkpoint in
   mind during follow-up debugging:
   - the final fix was not another TMEM/PTX family change
@@ -220,6 +234,32 @@
   - `copy` `warpx2` completion
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
+
+## Current Topline (2026-04-11 05:12 UTC)
+
+- `HEAD` is `220565b20e5a3cfc71333b32da06a34cb4596f90` on `codex/tmem`, with
+  the M64 / split-N producer-contract fix committed and pushed to
+  `origin/codex/tmem`.
+- A full `python/examples/gluon/` refresh on top of that commit found one
+  current-branch failure:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - current branch: fails with large numerical mismatch
+  - merge-base `11ee1144a737006921231bbd3386c187812c38e1`: passes
+- Root-cause classification:
+  - the attention example reuses an f32 TMEM scratch tile as bf16 P storage via
+    `_reinterpret`;
+  - that usage depends on compiler-selected physical packing behavior and is
+    not a supported semantic contract;
+  - the branch now exposes the issue because support-query lowering sees the
+    explicit reinterpret support image and emits the unpacked store family,
+    while the old fallback happened to emit packed stores.
+- Direction:
+  - do not commit an ad-hoc TMEM lowering selector to preserve this UB;
+  - migrate the attention code, and any similar `_reinterpret` usages found in
+    production/example paths, to supported linear-layout/view APIs that express
+    the intended descriptor/view manipulation directly.
+- After the attention migration is green, rerun the examples/Gluon aggregate,
+  refresh the GB200 manifests, and continue the staged broad validation plan.
 
 ## Current Topline (2026-04-11 04:44 UTC)
 

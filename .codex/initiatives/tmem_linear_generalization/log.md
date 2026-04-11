@@ -7227,3 +7227,27 @@ Open after this slice:
 - Follow-up:
   - refresh the aggregate GB200 manifests / broader examples-Gluon status on
     top of the checkpoint commit, then continue staged broad validation.
+
+## 2026-04-11 05:12 UTC
+
+- The full `python/examples/gluon/` refresh on top of
+  `220565b20e5a3cfc71333b32da06a34cb4596f90` exposed one real
+  current-branch regression:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - current branch: failed with a large numerical mismatch
+  - merge-base `11ee1144a737006921231bbd3386c187812c38e1`: passed
+- Reduction:
+  - the failing path stores bf16 P values through an f32 TMEM scratch tile that
+    the example reinterprets as bf16 with `_reinterpret`;
+  - current support-query lowering sees the explicit reinterpret support image
+    and emits `tcgen05.st...unpack::16b`;
+  - disabling support-query lowering makes the exact pass because the fallback
+    happens to emit packed `.b32` stores.
+- Decision:
+  - this is classified as unsupported `_reinterpret` contract debt in the
+    attention example, not a reason to add an ad-hoc lowering preference;
+  - migrate the attention usage, and any similar production/example usages
+    found during this slice, to supported linear-layout/view APIs that express
+    the intended TMEM view explicitly.
+- No code fix has been committed for this checkpoint. The lowering-side
+  selector experiment was removed before continuing.
