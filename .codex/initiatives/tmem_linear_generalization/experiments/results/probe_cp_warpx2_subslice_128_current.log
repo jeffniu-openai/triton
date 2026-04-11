@@ -1,0 +1,4 @@
+candidate_layouts=384 parent_rows=128 starts=[0, 32, 64]
+successful_compiles=0
+failures clean_unsupported=1152 bug_like=0 unknown=0
+no warpx2 opcodes observed

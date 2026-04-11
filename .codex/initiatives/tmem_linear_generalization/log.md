@@ -10388,3 +10388,21 @@ Open after this slice:
 - The bitcast must not select a different TMEM region or change the underlying
   physical mapping. Attention remains deferred until the supported migration
   can also preserve its deliberate synchronization/reuse discipline.
+
+## 2026-04-11 scales `warpx2` subslice probe refresh
+
+- Updated `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py` so it captures file-descriptor stdout/stderr around each compile. MLIR/C++ diagnostics bypass Python `redirect_stderr`, so the old harness counted verifier-side clean errors as `unknown` and dumped hundreds of diagnostic lines.
+- The harness now classifies the current tensor-memory-scales descriptor-plan diagnostic and `The split offset may not touch the tile` as clean unsupported probe outcomes.
+- Refreshed bounded probe:
+  - command:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-warpx2-subslice-384-current PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py --parent-rows 128 --max-layouts 384 > .codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_warpx2_subslice_128_current.log 2>&1`
+  - result artifact:
+    `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_warpx2_subslice_128_current.log`
+  - summary:
+    `candidate_layouts=384 parent_rows=128 starts=[0, 32, 64]`, `successful_compiles=0`, `failures clean_unsupported=1152 bug_like=0 unknown=0`, `no warpx2 opcodes observed`.
+- Consequence: the public scales shared-linear subslice search still does not expose a `warpx2` path. True scales `warpx2` remains a descriptor/address representation or direct-PTX documentation task, not a layout-basis-order tweak in the current public scales API.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed (`ninja: no work to do`);
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_subslice.py` passed;
+  - `git diff --check` passed before the docs update.
+- Next: continue the no-scales two-CTA `warpx2::02_13` descriptor/address-model frontier or move to the next bounded MMAv5 / scaled-MMAv5 reachable-family gap.

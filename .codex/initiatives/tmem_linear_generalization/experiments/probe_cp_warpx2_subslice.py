@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import io
 import itertools
+import os
 import re
+import sys
+import tempfile
 
 import torch
 
@@ -32,6 +34,27 @@ CP_OPCODE_RE = re.compile(
 
 def extract_tcgen05_cp_opcodes(asm: str):
     return CP_OPCODE_RE.findall(asm)
+
+
+@contextlib.contextmanager
+def capture_fd_output():
+    sys.stdout.flush()
+    sys.stderr.flush()
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    capture = tempfile.TemporaryFile(mode="w+b")
+    try:
+        os.dup2(capture.fileno(), 1)
+        os.dup2(capture.fileno(), 2)
+        yield capture
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os.dup2(saved_stdout, 1)
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+        capture.seek(0)
 
 
 @gluon.jit
@@ -151,9 +174,9 @@ def main():
     for idx, bases in enumerate(layouts):
         layout = ttgl.SharedLinearLayout(offset_bases=bases, alignment=16)
         for start_row in start_rows:
-            fail_log = io.StringIO()
-            try:
-                with contextlib.redirect_stderr(fail_log), contextlib.redirect_stdout(fail_log):
+            compile_exc = None
+            with capture_fd_output() as captured_output:
+                try:
                     compiled = probe_scales_copy_subslice_kernel[(1,)](
                         inp,
                         out,
@@ -162,9 +185,19 @@ def main():
                         start_row,
                         num_warps=4,
                     )
-            except Exception as exc:
-                failure_text = f"{exc}\n{fail_log.getvalue()}"
-                if "failed to find valid tcgen05.copy layout" in failure_text:
+                except Exception as exc:
+                    compile_exc = exc
+            diagnostic_text = captured_output.read().decode("utf-8", errors="replace")
+            captured_output.close()
+            if compile_exc is not None:
+                failure_text = f"{compile_exc}\n{diagnostic_text}"
+                clean_tokens = (
+                    "failed to find valid tcgen05.copy layout",
+                    "could not synthesize a compatible shared-memory descriptor plan",
+                    "This is reported as cleanly unsupported",
+                    "The split offset may not touch the tile",
+                )
+                if any(token in failure_text for token in clean_tokens):
                     clean_unsupported += 1
                 elif any(
                     token in failure_text.lower()

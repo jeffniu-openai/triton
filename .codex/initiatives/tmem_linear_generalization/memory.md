@@ -295,7 +295,10 @@
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail because no compatible scales descriptor plan can be synthesized;
     a 2026-04-11 bounded probe of nearby shared-linear basis orders still found
-    only `warpx4` classifications, so do not treat that candidate as a live
+    only `warpx4` classifications, and a refreshed FD-capturing subslice probe
+    over 384 parent-row shared-linear basis interleavings and starts `[0, 32,
+    64]` produced `1152` clean unsupported outcomes with no unknowns, bug-like
+    failures, or `warpx2` opcodes, so do not treat that candidate as a live
     public scales `warpx2` path;
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;

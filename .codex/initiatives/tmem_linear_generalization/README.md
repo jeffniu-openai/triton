@@ -225,10 +225,13 @@ When resuming the initiative:
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales
   descriptor-plan diagnostic, now from `TMEMCopyOp` verification rather than
   falling through to late LLVM lowering. `CP_SCALES_LAYOUT_PROBE_CASES` now also
-  pins four nearby shared-linear basis-order variants as clean unsupported; all of them
-  still map to `warpx4.32x128b` descriptor-plan failures rather than public
-  `warpx2` scales lowering. The `warpx4` control remains the positive copy
-  path for this public scales surface.
+  pins four nearby shared-linear basis-order variants as clean unsupported; all
+  of them still map to `warpx4.32x128b` descriptor-plan failures rather than
+  public `warpx2` scales lowering. A refreshed FD-capturing subslice probe over
+  384 parent-row shared-linear basis interleavings and starts `[0, 32, 64]`
+  likewise found `1152` clean unsupported outcomes, zero unknown or bug-like
+  failures, and no `warpx2` opcode. The `warpx4` control remains the positive
+  copy path for this public scales surface.
 - No-scales `cta_group::2` dense copy coverage now includes both dense
   families:
   - `tcgen05.cp.cta_group::2.128x128b` for the fixed `256x4` two-CTA
