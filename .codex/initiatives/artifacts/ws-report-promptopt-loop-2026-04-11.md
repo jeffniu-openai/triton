@@ -138,4 +138,19 @@ This prevents agents from “winning” by changing local benchmark helpers or d
     redistributes performance unevenly
   - the loop should therefore treat geometric speedup and worst-regression guardrails as more
     important than arithmetic mean when deciding whether a candidate is real
-- Status: in progress
+- Final round outcome:
+  - `r3a1`
+    - change type: launch-grid tweak allowing up to two CTAs/SM on the `BLOCK_M=128` path
+    - result: rejected
+    - reason: unstable and not promotable; one pass showed a positive arithmetic mean, but the
+      geometric mean was negative and the worst regression was severe
+  - `r3a2`
+    - change type: no usable candidate produced before shutdown
+  - `r3a3`
+    - change type: no usable candidate produced before shutdown
+- Prompt/report lessons from round 3:
+  - arithmetic mean speedup alone is too easy to game or misread
+  - non-responsive workers should be culled quickly instead of allowing the loop to stall
+  - future rounds should use the revised report and judge candidates primarily by geometric speedup
+    plus explicit worst-regression guardrails
+- Status: completed

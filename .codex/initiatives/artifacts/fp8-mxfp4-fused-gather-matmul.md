@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-11T09:55:43Z
+updated: 2026-04-11T10:03:14Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -612,6 +612,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Baseline scorer sanity against the current mainline example (`~0%` as expected); independent scoring of isolated agent candidates over representative batches `128,256,512,1024,2048,8192,16384,31744`
   - Learnings: The first two prompt-optimization rounds were more valuable as negative signal than as direct performance progress. Round 1 showed that the report needed explicit cudagraph-safety rules and stronger warnings against host-side selector heuristics. Round 2 showed that large-point spot checks are not enough: a helper-depth tweak looked healthy at `8192` and `16384` but lost overall on the eight-point scorer (`-0.0677%` mean, `3/8` wins, worst `-0.4463%`). The loop is therefore refining the report by teaching future agents what *not* to trust: occupancy rationale without scoring, selector heuristics without broad sweeps, and narrow hand-picked timing instead of the central evaluator.
   - Plan updates: Keep the loop running in fresh isolated workspaces from the revised report. Treat the central scorer as the promotion gate, and update the report after each round so later agents inherit the sharper constraints.
+- `2026-04-11` Completed: Tightened prompt-optimization acceptance after an unstable round-3 launch-grid candidate
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`
+  - Validation: Independent scoring of a round-3 launch-grid candidate plus responsive/idle worker monitoring
+  - Learnings: Round 3 produced a useful scoring lesson rather than a kernel improvement. A candidate that only changed the `BLOCK_M=128` launch-grid policy returned a *positive arithmetic mean* on one pass, but still had a *negative geometric mean* and a severe worst regression (`-27%` at one point). That made it clear that arithmetic mean speedup is not a safe promotion metric by itself when gains and losses are uneven. The report and loop log now explicitly prioritize geometric speedup and worst-regression guardrails, and the non-responsive workers were shut down rather than allowed to stall the loop indefinitely.
+  - Plan updates: Future isolated rounds should start from the revised report, use geometric speedup plus worst-regression thresholds as the promotion gate, and cull unproductive workers faster.
 
 ## Next Up
 
