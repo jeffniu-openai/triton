@@ -1427,11 +1427,39 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
     return failure();
   }
 
+  TMemLdStQueryLayout workingQuery = srcQuery;
   auto maybeSrcInv = computeLeftInverseLayout(ll, error);
   if (failed(maybeSrcInv)) {
-    if (error && error->empty())
-      *error = "unsupported tensor memory memdesc_reinterpret view";
-    return failure();
+    // Descriptor subviews can retain inactive zero support bases. A physical
+    // bitcast still preserves the same physical image, so normalize only when
+    // the normalized view is injective and still exactly covers srcShape.
+    auto normalized = normalizeTensorMemoryLinearLayoutForAnalysis(ll);
+    std::string normalizedError;
+    auto normalizedInv = computeLeftInverseLayout(normalized, &normalizedError);
+    if (succeeded(normalizedInv) &&
+        normalized.getNumOutDims() == ll.getNumOutDims() &&
+        llvm::equal(normalized.getOutDimSizes(), layoutSrcShape) &&
+        static_cast<int64_t>(normalized.getTotalInDimSize()) ==
+            product<int64_t>(layoutSrcShape)) {
+      workingQuery = TMemLdStQueryLayout{
+          normalized, srcQuery.twoCTAs,
+          remapTMemLdStQueryOrigin(srcQuery, normalized,
+                                   /*deltaCoords=*/{})};
+      ll = normalized;
+      maybeSrcInv = std::move(normalizedInv);
+      if (error)
+        error->clear();
+    } else {
+      if (error && error->empty())
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      if (debug) {
+        llvm::errs() << "[tmem-ldst] reinterpret normalized src inverse fail "
+                        "layout:\n"
+                     << normalized.toString() << "\nerr=" << normalizedError
+                     << "\n";
+      }
+      return failure();
+    }
   }
 
   auto linearizeRowMajorCoordsLocal = [&](ArrayRef<int64_t> shape,
@@ -1584,7 +1612,7 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
   SmallVector<std::pair<StringAttr, int32_t>> srcOriginSparse;
   srcOriginSparse.reserve(ll.getNumInDims());
   auto srcInDims = llvm::to_vector(ll.getInDimNames());
-  for (auto [dim, value] : llvm::zip_equal(srcInDims, srcQuery.origin))
+  for (auto [dim, value] : llvm::zip_equal(srcInDims, workingQuery.origin))
     srcOriginSparse.push_back({dim, value});
   auto srcOriginCoords =
       ll.apply(makeFullLinearLayoutCoords(srcInDims, srcOriginSparse));
@@ -1606,7 +1634,7 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
   dstOrigin.reserve(dstLayout->getNumInDims());
   for (auto dim : dstLayout->getInDimNames())
     dstOrigin.push_back(lookupLinearLayoutCoord(dstOriginCoords, dim));
-  auto result = TMemLdStQueryLayout{*dstLayout, srcQuery.twoCTAs,
+  auto result = TMemLdStQueryLayout{*dstLayout, workingQuery.twoCTAs,
                                     std::move(dstOrigin)};
   if (debug) {
     llvm::errs() << "[tmem-ldst] reinterpret srcShape=";
