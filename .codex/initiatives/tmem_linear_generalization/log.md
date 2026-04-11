@@ -10086,3 +10086,25 @@ Open after this slice:
   - commit and push this padded-i8/canonicalizer slice;
   - continue broader `ld/st` validation, two-CTA `warpx2::02_13`, scales
     `warpx2`, or another bounded MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 22:15 UTC
+
+- Ran the broad current-head `ld/st` runtime-matrix refresh after the subword
+  coverage expansion and padded-i8 canonicalizer fix.
+- Validated checkpoint:
+  - `a566a63b9` on `origin/codex/tmem`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad `ld/st` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-broad-after-subword-refresh PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+    - `1181 passed, 441 skipped, 1027 deselected in 1340.05s (0:22:20)`
+- Consequence:
+  - the direct subword matrix, x1 subword matrix, padded i8 x1 positives, and
+    canonicalizer assertion fix are now covered by the broad `ld/st` slice.
+- Next:
+  - commit and push this docs validation checkpoint;
+  - continue with the two-CTA `warpx2::02_13` descriptor/address-model
+    frontier, deeper scales `warpx2` probing, broader `ld.red` fuzzing, or a
+    bounded MMAv5 / scaled-MMAv5 reachable-family gap.

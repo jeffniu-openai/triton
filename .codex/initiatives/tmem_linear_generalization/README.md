@@ -118,7 +118,7 @@ When resuming the initiative:
     `690 passed, 60 skipped`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
-    `1114 passed, 441 skipped, 713 deselected`
+    `1181 passed, 441 skipped, 1027 deselected`
   - broad `tcgen05.cp`:
     `158 passed, 5 skipped, 2417 deselected`
   - broad `tcgen05.ld.red`:
@@ -392,11 +392,12 @@ When resuming the initiative:
   - `test_tmem_runtime_matrix_ldst_scales_variant_sweep` pins those exact
     PTX/LLIR streams across the existing scales variant matrix.
 - Combined current-head `ld/st` runtime-matrix validation is green after the
-  staged auto expansions and allocator-lifetime anchors:
+  staged auto expansions, allocator-lifetime anchors, and subword coverage
+  expansions:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-size-ldst-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-broad-after-subword-refresh PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
   - result:
-    `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`;
+    `1181 passed, 441 skipped, 1027 deselected in 1340.05s (0:22:20)`;
   - skips are expected tensor-memory OOR / clean-boundary cases in lifted
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:

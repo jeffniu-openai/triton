@@ -53,8 +53,8 @@
 - Current-head phase-boundary validation at `330c64c05` is green for the full
   `python/test/gluon/test_tmem_runtime_matrix.py` file:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
-- Current-head broad `ld/st` validation after the allocator-lifetime anchors is
-  green:
+- Current-head broad `ld/st` validation after the allocator-lifetime anchors and
+  subword coverage expansions is green:
   - focused lifetime exacts:
     `11 passed in 5.56s`
   - focused subword exacts after broadening beyond f16:
@@ -62,7 +62,7 @@
   - focused x1 subword exacts after adding padded i8 cases:
     `88 passed in 22.36s`
   - broad `ld/st` slice:
-    `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`
+    `1181 passed, 441 skipped, 1027 deselected in 1340.05s (0:22:20)`
   - the new runtime anchors assert exact PTX/LLIR `tcgen05.alloc`,
     `tcgen05.relinquish_alloc_permit`, `tcgen05.dealloc`, and
     `tcgen05.wait::{st,ld}` emission for single-CTA and two-CTA ld/st kernels;
@@ -6164,3 +6164,24 @@ rejection, not rescue
   - keep legacy M64 MMAv5 producer-family semantics visible as design debt;
   - then resume long-term `ld.red`, `copy`/`warpx2`, broader
     MMAv5/`mma_scaled`, fuzzing, stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 22:15 UTC: Broad LD/ST refresh is green after subword expansion
+
+- Latest pushed source/test checkpoint before this docs validation refresh:
+  - `a566a63b9` on `origin/codex/tmem`
+- The broad current-head `ld/st` runtime-matrix slice is green after the recent
+  direct subword and x1 subword coverage expansion:
+  - command:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-broad-after-subword-refresh PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+  - result:
+    - `1181 passed, 441 skipped, 1027 deselected in 1340.05s (0:22:20)`
+- Consequence:
+  - the focused subword additions are validated at the broad `ld/st` slice
+    level, not just by exact nodeids;
+  - the skip count remains the expected clean-boundary/OOR surface from
+    descriptor roundtrip and rank-5 families.
+- Next:
+  - commit and push this docs validation checkpoint;
+  - continue with the two-CTA `warpx2::02_13` descriptor/address-model
+    frontier, deeper scales `warpx2` probing, broader `ld.red` fuzzing, or a
+    bounded MMAv5 / scaled-MMAv5 reachable-family gap.
