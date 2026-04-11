@@ -346,6 +346,8 @@ Every fuzz case records:
 #### Positive matrix
 - `kind in {f16, tf32, f8f6f4, i8}`
 - `cta_group in {1, 2}`
+- current two-CTA plain-kind matrix covers `blockN in {128, 256}` for legacy
+  and canonical TMEM-linear accumulator layouts
 - `use_acc in {false, true}`
 - `multicast in {false, true}` where supported
 - accumulator layout family:

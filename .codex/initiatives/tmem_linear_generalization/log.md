@@ -9693,3 +9693,37 @@ Open after this slice:
   - run hygiene, commit, and push this MMA coverage slice;
   - continue with the two-CTA `warpx2::02_13` / scales `warpx2`
     descriptor-address frontier or another MMAv5 reachable-family gap.
+
+## 2026-04-11 20:05 UTC
+
+- Widened two-CTA plain MMAv5 kind coverage to `N=256`.
+- Probe result before promotion:
+  - two-CTA tile-permuted accumulator layouts are not a bounded positive right
+    now: the `128x128/tile_n=32` form hits the existing repeated-N MMAv5
+    diagnostic, and smaller tile permutations fail the MMAv5-compatible layout
+    check; keep these as unsupported frontier cases unless the planner grows a
+    principled path.
+  - regular two-CTA MMAv5-compatible accumulator layouts passed for `N=256`
+    across every supported plain kind and both legacy/canonical accumulator
+    spellings.
+- Source/test change:
+  - `MMA_TWOCTA_PLAIN_KIND_CASES` now carries `block_n` and spans `128` and
+    `256`;
+  - `test_tmem_runtime_matrix_mma_twocta_plain_kinds` now runs the existing
+    exact opcode/runtime assertions for both `256x128` and `256x256`
+    accumulator shapes.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused widened two-CTA kind matrix:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-n256-kind-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_plain_kinds`
+    - `20 passed in 8.58s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-n256-kind-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `179 passed, 50 skipped, 2320 deselected in 96.84s (0:01:36)`
+- Next:
+  - run hygiene, commit, and push this two-CTA MMA coverage slice;
+  - continue with the two-CTA `warpx2::02_13` / scales `warpx2`
+    descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
+    compiler follow-up.

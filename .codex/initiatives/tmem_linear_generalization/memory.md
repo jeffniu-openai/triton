@@ -72,7 +72,7 @@
   - broad `tcgen05.cp` slice:
     `157 passed, 5 skipped, 2372 deselected in 42.63s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `169 passed, 50 skipped, 2320 deselected in 100.62s (0:01:40)`
+    `179 passed, 50 skipped, 2320 deselected in 96.84s (0:01:36)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -307,7 +307,8 @@
 - `tcgen05.mma` / `tcgen05.mma_scaled`:
   - current runtime coverage now includes plain `f16`, `tf32`, `bf16`,
     `f8e5m2`, and `f8e4m3` for both 1-CTA and 2-CTA, each across legacy and
-    canonical TMEM-linear accumulator layouts;
+    canonical TMEM-linear accumulator layouts; the two-CTA plain-kind matrix
+    covers both `256x128` and `256x256` accumulator shapes;
   - current clean negatives confirm direct `i8` MMAv5 as a frontend diagnostic
     on Blackwell targets where PTXAS rejects it;
   - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
@@ -343,7 +344,7 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `169 passed, 50 skipped, 2320 deselected`;
+    `179 passed, 50 skipped, 2320 deselected`;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
@@ -455,7 +456,47 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 19:58 UTC)
+## Current Topline (2026-04-11 20:05 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `21c9d4712` on `origin/codex/tmem`
+- Two-CTA plain MMAv5 accumulator kind coverage is widened from only
+  `256x128` to cover both:
+  - `256x128`
+  - `256x256`
+- The widened two-CTA matrix spans all supported plain operand kinds and both
+  legacy and canonical TMEM-linear accumulator layouts:
+  - `f16`
+  - `tf32`
+  - `bf16`
+  - `f8e5m2`
+  - `f8e4m3`
+- Each case validates runtime numerics, exact
+  `tcgen05.mma.cta_group::2.kind::*` PTX/LLIR opcode agreement, multicast
+  commit emission, `two_ctas` TTGIR, and `tensor_memory_linear` for the
+  canonical layout cases.
+- Probe note: two-CTA tile-permuted accumulator layouts are not a quick positive
+  at this point. The `128x128/tile_n=32` form fails through the existing
+  repeated-N MMAv5 diagnostic, while smaller tile permutations fail the
+  MMAv5-compatible layout check; keep that as a clean unsupported frontier
+  unless the planner grows a principled two-CTA tile-permutation path.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused widened two-CTA kind matrix:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-n256-kind-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_plain_kinds`
+    - `20 passed in 8.58s`
+  - broad direct MMA/scaled-MMA slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-n256-kind-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `179 passed, 50 skipped, 2320 deselected in 96.84s (0:01:36)`
+- Next:
+  - commit and push this two-CTA MMA coverage slice;
+  - continue either the two-CTA `warpx2::02_13` / scales `warpx2`
+    descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
+    compiler follow-up.
+
+## Prior Topline (2026-04-11 19:58 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `1b2e83595` on `origin/codex/tmem`
