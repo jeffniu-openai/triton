@@ -120,7 +120,7 @@ When resuming the initiative:
   - broad `ld/st`:
     `1181 passed, 441 skipped, 1027 deselected`
   - broad `tcgen05.cp`:
-    `158 passed, 5 skipped, 2417 deselected`
+    `162 passed, 5 skipped, 2488 deselected`
   - broad `tcgen05.ld.red`:
     `476 passed, 2173 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
@@ -220,9 +220,11 @@ When resuming the initiative:
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales
-  descriptor-plan diagnostic. A 2026-04-11 bounded probe of nearby
-  shared-linear basis orders still found only `warpx4` classifications, not
-  public `warpx2` scales lowering.
+  descriptor-plan diagnostic. `CP_SCALES_LAYOUT_PROBE_CASES` now also pins four
+  nearby shared-linear basis-order variants as clean unsupported; all of them
+  still map to `warpx4.32x128b` descriptor-plan failures rather than public
+  `warpx2` scales lowering. The `warpx4` control remains the positive copy
+  path for this public scales surface.
 - No-scales `cta_group::2` dense copy coverage now includes both dense
   families:
   - `tcgen05.cp.cta_group::2.128x128b` for the fixed `256x4` two-CTA
@@ -408,9 +410,9 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-boundary-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-after-scales-warpx2-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `158 passed, 5 skipped, 2417 deselected in 40.42s`;
+    `162 passed, 5 skipped, 2488 deselected in 40.88s`;
   - this covers the current no-scales `warpx2` positives with exact commit
     opcodes, including the two-CTA `warpx2::01_23` path, the new two-CTA
     `warpx2::02_13` canonical-shared clean unsupported boundary, dense-shared
@@ -420,7 +422,9 @@ When resuming the initiative:
     probe found that aligned `tmemDwordDelta=0` moves data for two-CTA
     `02_13` but duplicates each source-column pair, `tmemDwordDelta=4` is the
     known all-zero path, unaligned deltas trap, and the known seed fields do not
-    recover the missing source-column bit.
+    recover the missing source-column bit; it also covers the historical scales
+    `warpx2` candidate and four nearby basis-order variants as clean unsupported
+    `warpx4.32x128b` descriptor-plan failures.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-offsets-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;

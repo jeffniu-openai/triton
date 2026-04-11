@@ -10244,3 +10244,39 @@ Open after this slice:
   - continue with scales `warpx2`, deeper two-CTA `warpx2::02_13` descriptor
     synthesis, broader `ld.red` fuzzing, or the next MMAv5 / scaled-MMAv5
     reachable-family gap.
+
+## 2026-04-11 23:55 UTC
+
+- Pinned the bounded scales `warpx2` public-layout search as test coverage.
+- Source/test change:
+  - added four nearby `SharedLinearLayout` basis-order variants to
+    `CP_SCALES_LAYOUT_PROBE_CASES`;
+  - retained the existing `warpx4` positive control and historical
+    `warpx2_candidate` clean negative;
+  - the new variants are all `CLEAN_UNSUPPORTED` because they still classify as
+    `tcgen05.copy.warpx4.32x128b` and then hit the tensor-memory-scales
+    descriptor-plan diagnostic.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - focused scales layout probe:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scales-warpx2-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe`
+    - `6 passed in 3.40s`
+  - focused `warpx2` selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-after-scales-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `13 passed, 2642 deselected in 4.49s`
+  - broad `tcgen05.cp` selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-after-scales-warpx2-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `162 passed, 5 skipped, 2488 deselected in 40.88s`
+- Consequence:
+  - basis-order tweaks around the current public scales copy surface do not
+    reach scales `warpx2`; true scales `warpx2` remains a descriptor/address
+    representation or direct-PTX documentation task.
+- Next:
+  - commit and push this copy-boundary coverage slice;
+  - continue true scales `warpx2`, two-CTA `warpx2::02_13`, `ld.red` fuzzing,
+    or the next MMAv5 / scaled-MMAv5 reachable-family gap.

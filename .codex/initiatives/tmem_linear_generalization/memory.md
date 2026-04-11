@@ -74,7 +74,8 @@
   - focused copy/MMA commit exacts:
     `24 passed in 19.43s`
   - broad `tcgen05.cp` slice:
-    `158 passed, 5 skipped, 2417 deselected in 40.42s`
+    `162 passed, 5 skipped, 2488 deselected in 40.88s`
+    after adding the four nearby scales `warpx2` clean-negative layout probes
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
     `213 passed, 50 skipped, 2388 deselected in 120.83s (0:02:00)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
@@ -6229,3 +6230,44 @@ rejection, not rescue
   - keep the two-CTA `warpx2::02_13` public-layout case as a clean unsupported
     descriptor/address-model frontier; do not unblock it by extending the
     current direct-seed helper alone.
+
+## 2026-04-11 22:45 UTC: Nearby scales warpx2 public-layout variants are pinned clean unsupported
+
+- Latest pushed checkpoint before this source/test update:
+  - `468230aeb` on `origin/codex/tmem`
+- Source/test change:
+  - expanded `CP_SCALES_LAYOUT_PROBE_CASES` with four nearby
+    `SharedLinearLayout` basis-order variants around the historical scales
+    `warpx2_candidate`;
+  - each new variant is intentionally marked `CLEAN_UNSUPPORTED`, while the
+    existing `warpx4` control remains the positive exact-copy path.
+- Current behavior:
+  - the historical candidate and the four nearby variants all classify through
+    the public scales layout surface as `tcgen05.copy.warpx4.32x128b` and then
+    fail descriptor-plan synthesis for tensor-memory scales;
+  - none of the committed public-layout variants reaches
+    `warpx2::{01_23,02_13}.64x128b`;
+  - true scales `warpx2` remains a descriptor/address-representation or direct
+    PTX documentation frontier, not something unlocked by small basis-order
+    tweaks in the current public scales copy probe.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - focused scales layout probe:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scales-warpx2-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe`
+    - `6 passed in 3.40s`
+  - focused `warpx2` selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-after-scales-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `13 passed, 2642 deselected in 4.49s`
+  - broad `tcgen05.cp` selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-after-scales-warpx2-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `162 passed, 5 skipped, 2488 deselected in 40.88s`
+- Next:
+  - commit and push this copy-boundary coverage slice;
+  - continue with either true scales `warpx2` descriptor/direct-PTX research,
+    two-CTA `warpx2::02_13` descriptor/address synthesis, broader `ld.red`
+    fuzzing, or another bounded MMAv5 / scaled-MMAv5 reachable-family gap.

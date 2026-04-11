@@ -268,6 +268,30 @@ def _make_scales_shared_layout_warpx2_candidate():
     )
 
 
+def _make_scales_shared_layout_warpx2_no_scales_like_column_tail():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[32, 0], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 1], [0, 2], [0, 4], [0, 8]]
+    )
+
+
+def _make_scales_shared_layout_warpx2_row32_after_columns():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [0, 4], [0, 8], [32, 0], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0]]
+    )
+
+
+def _make_scales_shared_layout_warpx2_row32_after_low_rows():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 8]]
+    )
+
+
+def _make_scales_shared_layout_warpx2_column_first_row_tail():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [0, 4], [0, 8], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]]
+    )
+
+
 def _make_tmem_copy_warpx2_shared_layout():
     return ttgl.SharedLinearLayout(
         offset_bases=[[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]],
@@ -2883,6 +2907,26 @@ LDST_EXPECTED_OFFSETS_128x256 = {
 CP_SCALES_LAYOUT_PROBE_CASES = [
     ("warpx4", _make_scales_shared_layout_warpx4(), "PASS"),
     ("warpx2_candidate", _make_scales_shared_layout_warpx2_candidate(), "CLEAN_UNSUPPORTED"),
+    (
+        "warpx2_no_scales_like_column_tail",
+        _make_scales_shared_layout_warpx2_no_scales_like_column_tail(),
+        "CLEAN_UNSUPPORTED",
+    ),
+    (
+        "warpx2_row32_after_columns",
+        _make_scales_shared_layout_warpx2_row32_after_columns(),
+        "CLEAN_UNSUPPORTED",
+    ),
+    (
+        "warpx2_row32_after_low_rows",
+        _make_scales_shared_layout_warpx2_row32_after_low_rows(),
+        "CLEAN_UNSUPPORTED",
+    ),
+    (
+        "warpx2_column_first_row_tail",
+        _make_scales_shared_layout_warpx2_column_first_row_tail(),
+        "CLEAN_UNSUPPORTED",
+    ),
 ]
 
 CP_LINEAR_EXOTIC_UNSUPPORTED_CASES = [
