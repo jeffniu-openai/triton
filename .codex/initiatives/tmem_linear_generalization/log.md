@@ -9220,3 +9220,34 @@ Open after this slice:
   - run hygiene, commit, and push this classification slice;
   - true scales `warpx2` remains a direct-PTX/documentation or new public
     layout search item.
+
+## 2026-04-11 18:05 UTC
+
+- Added explicit runtime-matrix allocator-lifetime coverage.
+- Source/test change:
+  - added `_assert_exact_tmem_lifetime_ptx_llir_match`;
+  - added `test_tmem_runtime_matrix_alloc_lifetime_ldst` for single-CTA and
+    two-CTA ld/st kernels;
+  - added `tmem_alloc_source_init_kernel` and
+    `test_tmem_runtime_matrix_alloc_source_initialization_lifetime`.
+- Coverage now pins:
+  - exact PTX/LLIR `tcgen05.alloc.cta_group::{1,2}`;
+  - exact `tcgen05.relinquish_alloc_permit.cta_group::{1,2}`;
+  - exact `tcgen05.dealloc.cta_group::{1,2}`;
+  - `tcgen05.wait::{st,ld}` / LLVM wait intrinsic emission;
+  - two-CTA cluster arrive/wait before dealloc;
+  - source-initialized `allocate_tensor_memory(..., value=...)` roundtrip.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused lifetime exacts:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_alloc_lifetime_ldst python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_alloc_source_initialization_lifetime`
+    - `3 passed in 3.58s`
+  - broad current-head `ldst` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-ldst-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+    - `1106 passed, 441 skipped, 713 deselected in 1225.74s (0:20:25)`
+- Next:
+  - run hygiene, commit, and push this allocator-lifetime coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`, likely another bounded
+    MMAv5/scaled-MMAv5 or copy surface.

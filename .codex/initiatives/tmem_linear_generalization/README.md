@@ -57,8 +57,9 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of the current-head focused coverage checkpoint, the latest pushed
-  source/test checkpoint is `0ea8ac5b7` on `origin/codex/tmem`.
+- As of the latest focused coverage checkpoint, the current source/test slice
+  adds runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
+  `relinquish_alloc_permit`, `dealloc`, and `wait`.
 - The latest full `python/test/gluon/test_tmem_runtime_matrix.py` file
   validation checkpoint remains green:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
@@ -97,15 +98,22 @@ When resuming the initiative:
     `690 passed, 60 skipped`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
-    `1104 passed, 441 skipped, 680 deselected`
+    `1106 passed, 441 skipped, 713 deselected`
   - broad `tcgen05.cp`:
-    `153 passed, 5 skipped, 2088 deselected`
+    `154 passed, 5 skipped, 2098 deselected`
   - broad `tcgen05.ld.red`:
     `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `144 passed, 50 skipped, 2057 deselected`
+    `149 passed, 50 skipped, 2057 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected`
+- Allocator/lifetime coverage now has explicit runtime anchors:
+  - single-CTA and two-CTA ld/st kernels assert exact PTX/LLIR
+    `tcgen05.alloc`, `tcgen05.relinquish_alloc_permit`, `tcgen05.dealloc`,
+    and `tcgen05.wait::{st,ld}` emission;
+  - the two-CTA case asserts cluster arrive/wait before dealloc;
+  - a source-initialized `allocate_tensor_memory(..., value=...)` kernel
+    round-trips the initialized values through a TMEM load.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -321,11 +329,11 @@ When resuming the initiative:
   - `test_tmem_runtime_matrix_ldst_scales_variant_sweep` pins those exact
     PTX/LLIR streams across the existing scales variant matrix.
 - Combined current-head `ld/st` runtime-matrix validation is green after the
-  staged auto expansions:
+  staged auto expansions and allocator-lifetime anchors:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad-after-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-lifetime-ldst-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
   - result:
-    `1104 passed, 441 skipped, 680 deselected in 1278.98s (0:21:18)`;
+    `1106 passed, 441 skipped, 713 deselected in 1225.74s (0:20:25)`;
   - skips are expected tensor-memory OOR / clean-boundary cases in lifted
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:

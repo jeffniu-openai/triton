@@ -150,6 +150,11 @@ Every fuzz case records:
 - `wait <load>` is present after `tmem_load` and before any redval use.
 - For 2 CTA kernels, cluster sync is present before dealloc and `commit` uses
   `cta_group::2`.
+- Current runtime anchors cover single-CTA and two-CTA ld/st allocation
+  lifetimes, exact PTX/LLIR alloc/relinquish/dealloc/wait emission, two-CTA
+  cluster sync before dealloc, and one source-initialized allocation roundtrip.
+  Remaining allocator fuzzing is size and commit-mode saturation beyond these
+  first anchors.
 
 #### Negative matrix
 - `size > 512`
@@ -443,8 +448,8 @@ Every fuzz case records:
   - `cp` `cta_group::2` coverage and any reachable `warpx2` cases
   - `mma` runtime coverage beyond the already-proven anchor cases
   - `mma_scaled` runtime coverage beyond the current minimal cases
-  - explicit runtime checks for alloc/dealloc lifetime instructions and their
-    exact LLVM/PTX emission
+  - broader alloc/dealloc lifetime size and commit-mode saturation beyond the
+    current runtime anchors
 
 ## Immediate Next Code Changes
 - Near-term code changes should focus on the planner/lowering core, not on

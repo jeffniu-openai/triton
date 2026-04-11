@@ -351,6 +351,52 @@ def _assert_exact_cp_ptx_llir_match(compiled, expected_ops=None):
     return ptx_ops
 
 
+def _assert_exact_tmem_lifetime_ptx_llir_match(compiled, cta_group: int, alloc_size: int,
+                                               expect_cluster_sync: bool = False):
+    alloc = f"tcgen05.alloc.cta_group::{cta_group}.sync.aligned.shared::cta.b32"
+    relinquish = f"tcgen05.relinquish_alloc_permit.cta_group::{cta_group}.sync.aligned"
+    dealloc = f"tcgen05.dealloc.cta_group::{cta_group}.sync.aligned.b32"
+    ptx = compiled.asm["ptx"]
+    llir = compiled.asm["llir"]
+
+    assert re.search(rf"{re.escape(alloc)} \[[^\]]+\], {alloc_size};", ptx)
+    assert re.search(rf"{re.escape(alloc)} \[\$1\], {alloc_size};", llir)
+    assert ptx.count(alloc) == 1
+    assert llir.count(alloc) == 1
+
+    assert ptx.count(relinquish) == 1
+    assert llir.count(relinquish) == 1
+
+    assert re.search(rf"{re.escape(dealloc)} [^;]+, {alloc_size};", ptx)
+    assert re.search(rf"{re.escape(dealloc)} \$1, {alloc_size};", llir)
+    assert ptx.count(dealloc) == 1
+    assert llir.count(dealloc) == 1
+
+    assert ptx.count("tcgen05.wait::st.sync.aligned;") == 1
+    assert ptx.count("tcgen05.wait::ld.sync.aligned;") == 1
+    assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.st()") == 1
+    assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.ld()") == 1
+
+    assert ptx.index(alloc) < ptx.index(relinquish)
+    assert ptx.index("tcgen05.st.sync.aligned") < ptx.index("tcgen05.wait::st.sync.aligned")
+    assert ptx.index("tcgen05.ld.sync.aligned") < ptx.index("tcgen05.wait::ld.sync.aligned")
+    assert llir.index(alloc) < llir.index(relinquish)
+    assert llir.index("tcgen05.st.sync.aligned") < llir.index("@llvm.nvvm.tcgen05.wait.st()")
+    assert llir.index("tcgen05.ld.sync.aligned") < llir.index("@llvm.nvvm.tcgen05.wait.ld()")
+
+    if expect_cluster_sync:
+        assert (
+            ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < ptx.index(dealloc)
+        )
+        assert (
+            llir.index("@llvm.nvvm.barrier.cluster.arrive.aligned")
+            < llir.index("@llvm.nvvm.barrier.cluster.wait.aligned") < llir.index(dealloc)
+        )
+    else:
+        assert "barrier.cluster.arrive.aligned" not in ptx
+        assert "@llvm.nvvm.barrier.cluster.arrive.aligned" not in llir
+
+
 def _run_isolated_python_child(child: str, cache_prefix: str):
     def run_child():
         with tempfile.TemporaryDirectory(prefix=cache_prefix) as cache_dir:
@@ -559,6 +605,20 @@ def tmem_ldst_auto_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.const
     tmem.store(ttgl.convert_layout(value, reg_layout))
     value = tmem.load(reg_layout)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+
+@gluon.jit
+def tmem_alloc_source_init_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 128], [32, 1], [4, 1], [0, 1])
+    offs = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))[:, None] * N + ttgl.arange(
+        0, N, ttgl.SliceLayout(0, reg_layout)
+    )[None, :]
+    value = ttgl.load(in_ptr + offs)
+    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout, value=value)
+    value = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, value)
 
 
 @gluon.jit
@@ -2308,6 +2368,52 @@ def test_tmem_runtime_matrix_ldst(layout_name, n, variant, expected_shape):
     assert all(op in (expected_st, expected_ld) for op in observed_opcodes)
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "layout_name,cta_group,num_ctas,m,n",
+    [
+        ("identity", 1, 1, 128, 128),
+        ("block_two_ctas", 2, 2, 256, 128),
+    ],
+)
+def test_tmem_runtime_matrix_alloc_lifetime_ldst(layout_name, cta_group, num_ctas, m, n):
+    if cta_group == 1:
+        layout = LDST_LAYOUTS[layout_name](n)
+    else:
+        layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_variant_kernel[(1, )](
+        inp, out, layout, m, n, "32x32b", num_warps=4, num_ctas=num_ctas
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_ldst_ptx_llir_match(compiled)
+    _assert_exact_tmem_lifetime_ptx_llir_match(
+        compiled,
+        cta_group=cta_group,
+        alloc_size=128,
+        expect_cluster_sync=cta_group == 2,
+    )
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_alloc_source_initialization_lifetime():
+    m = 128
+    n = 128
+    layout = _make_tmem_linear_layout(m, n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_alloc_source_init_kernel[(1, )](inp, out, layout, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    assert "ttng.tmem_alloc %" in compiled.asm["ttgir"]
+    _assert_ldst_ptx_llir_match(compiled)
+    _assert_exact_tmem_lifetime_ptx_llir_match(compiled, cta_group=1, alloc_size=128)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
