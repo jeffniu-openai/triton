@@ -359,6 +359,16 @@ def _assert_exact_mma_ptx_llir_match(compiled, expected_ops=None):
     return ptx_ops
 
 
+def _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=None):
+    ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert ops
+    if expected_count is not None:
+        assert len(ops) == expected_count
+    expected = _expected_scaled_mma_opcode("mxfp8", "mxfp8", 1)
+    assert all(op == expected for op in ops)
+    return ops
+
+
 def _assert_clean_unsupported_descriptor_view(text: str, expected_text: str):
     assert expected_text in text
     assert "reshape or permute so TMEM columns stay contiguous" not in text
@@ -4449,12 +4459,7 @@ def test_tmem_runtime_matrix_mma_scaled_minimal():
     expected = torch.matmul(a_ref, b_ref)
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
-    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_mma_ops == llir_mma_ops
-    assert ptx_mma_ops
-    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in ptx_mma_ops)
-    assert all("block_scale.scale_vec::" in op for op in ptx_mma_ops)
+    _assert_exact_mxf8f6f4_scaled_mma(compiled)
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
 
 
@@ -4475,12 +4480,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_blockn64_direct_layout():
     expected = torch.matmul(a_ref, b_ref)
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
-    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_mma_ops == llir_mma_ops
-    assert len(ptx_mma_ops) == 4
-    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in ptx_mma_ops)
-    assert all("block_scale.scale_vec::" in op for op in ptx_mma_ops)
+    _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=4)
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
 
 
@@ -4501,12 +4501,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout():
     expected = torch.matmul(a_ref, b_ref)
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
-    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_mma_ops == llir_mma_ops
-    assert len(ptx_mma_ops) == 4
-    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in ptx_mma_ops)
-    assert all("block_scale.scale_vec::" in op for op in ptx_mma_ops)
+    _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=4)
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
 
 
@@ -4539,12 +4534,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view(n):
     expected = torch.matmul(a_ref, b_ref)
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
-    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_mma_ops == llir_mma_ops
-    assert len(ptx_mma_ops) == 4
-    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in ptx_mma_ops)
-    assert all("block_scale.scale_vec::" in op for op in ptx_mma_ops)
+    _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=4)
     assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
@@ -4570,12 +4560,7 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view():
     expected = torch.matmul(a_ref, b_ref)
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
-    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_mma_ops == llir_mma_ops
-    assert ptx_mma_ops
-    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in ptx_mma_ops)
-    assert all("block_scale.scale_vec::" in op for op in ptx_mma_ops)
+    _assert_exact_mxf8f6f4_scaled_mma(compiled)
     assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
@@ -4597,12 +4582,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_direct_layout():
     expected = torch.matmul(a_ref, b_ref)
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
-    ptx_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
-    llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
-    assert ptx_mma_ops == llir_mma_ops
-    assert len(ptx_mma_ops) == 16
-    assert all(op.startswith("tcgen05.mma.cta_group::1.kind::") for op in ptx_mma_ops)
-    assert all("block_scale.scale_vec::" in op for op in ptx_mma_ops)
+    _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=16)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
 
