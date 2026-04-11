@@ -9376,3 +9376,39 @@ Open after this slice:
   - run hygiene, commit, and push this scaled-MMA coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`, likely another bounded
     MMA/scaled-MMA reachable-family probe or a copy/`ld.red` saturation slice.
+
+## 2026-04-11 18:54 UTC
+
+- Added exact `tcgen05.commit` opcode assertions to the scaled-MMA copy-helper
+  runtime paths.
+- Source/test change:
+  - added `_expected_commit_opcode(cta_group)`;
+  - `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix` now
+    asserts the exact commit opcode for both `cta_group::1` and `cta_group::2`;
+  - `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep`
+    now asserts the same commit contract across geometry, multicast, CTA-group,
+    and accumulator-layout combinations.
+- Coverage note:
+  - one-CTA scaled copy-helper kernels use
+    `tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64`;
+  - two-CTA scaled copy-helper kernels use
+    `tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64`.
+- Probe note:
+  - a direct two-CTA scaled-MMA accumulator-subview probe failed before compile
+    because the local register layouts were still one-CTA, so that remains a
+    larger kernel/topology follow-up rather than this checkpoint's bounded
+    coverage target.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused scaled-MMA copy-helper matrix:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-copy-commit-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep`
+    - `52 passed in 15.62s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-copy-commit-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `154 passed, 5 skipped, 2114 deselected in 39.60s`
+- Next:
+  - run hygiene, commit, and push this scaled-copy commit-anchor slice;
+  - continue operational fuzzing from `fuzz_plan.md`, with direct two-CTA
+    scaled-MMA left as a topology-aware follow-up.

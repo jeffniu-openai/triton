@@ -155,7 +155,8 @@ Every fuzz case records:
   alloc/dealloc size immediates `32, 64, 128, 256, 512`, two-CTA cluster sync
   before dealloc, one source-initialized allocation roundtrip, exact
   commit-opcode anchors for single-CTA non-multicast plus two-CTA multicast
-  copy/MMA paths, and allocation-pass rounding boundaries for raw live totals
+  copy/MMA paths including scaled-MMA copy-helper kernels, and allocation-pass
+  rounding boundaries for raw live totals
   `96`, `192`, and `384` to supported module sizes `128`, `256`, and `512`.
   Remaining allocator fuzzing is specialized standalone/malformed commit
   configurations beyond these anchors.

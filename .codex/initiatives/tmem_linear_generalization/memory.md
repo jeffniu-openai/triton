@@ -70,11 +70,12 @@
   - focused copy/MMA commit exacts:
     `24 passed in 19.43s`
   - broad `tcgen05.cp` slice:
-    `154 passed, 5 skipped, 2109 deselected in 39.30s`
+    `154 passed, 5 skipped, 2114 deselected in 39.60s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
     `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
-    commit for copy/MMA paths, with PTX and LLIR opcode agreement.
+    commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
+    PTX and LLIR opcode agreement.
 - Current-head scaled-MMAv5 accumulator-subview format coverage is green:
   - focused slice-start matrix:
     `10 passed in 6.86s`
@@ -251,7 +252,8 @@
     on ld/st kernels, pow2 alloc/dealloc size immediates
     `32, 64, 128, 256, 512`, and a source-initialized allocation roundtrip;
     exact commit opcode anchoring now covers single-CTA non-multicast and
-    two-CTA multicast copy/MMA paths; raw non-pow2 live totals `96`, `192`,
+    two-CTA multicast copy/MMA paths, including scaled-MMA copy-helper kernels;
+    raw non-pow2 live totals `96`, `192`,
     and `384` are now pinned as allocation-pass rounding boundaries; remaining
     allocator fuzzing is specialized standalone/malformed commit configurations
     rather than a missing first runtime anchor;
@@ -299,8 +301,8 @@
     marks a TMA-to-shared layout materialization gap where TMA descriptors
     cannot be transposed but the TF32 MMA lowering rejects the resulting
     transposed shared operand;
-  - the scaled-MMA copy-helper matrix also pins exact scaled-MMA opcode
-    selection for 1-CTA and 2-CTA `warpx4` copy paths across
+  - the scaled-MMA copy-helper matrix also pins exact copy, scaled-MMA, and
+    commit opcode selection for 1-CTA and 2-CTA `warpx4` copy paths across
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:

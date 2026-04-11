@@ -104,13 +104,13 @@ When resuming the initiative:
   - broad `ld/st`:
     `1114 passed, 441 skipped, 713 deselected`
   - broad `tcgen05.cp`:
-    `154 passed, 5 skipped, 2109 deselected`
+    `154 passed, 5 skipped, 2114 deselected`
   - broad `tcgen05.ld.red`:
     `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
     `154 passed, 50 skipped, 2069 deselected`
   - scaled-MMA copy-helper matrix:
-    `52 passed, 2147 deselected`
+    `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
   - single-CTA and two-CTA ld/st kernels assert exact PTX/LLIR
     `tcgen05.alloc`, `tcgen05.relinquish_alloc_permit`, `tcgen05.dealloc`,
@@ -356,12 +356,13 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-twocta-128x128 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-copy-commit-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `154 passed, 5 skipped, 2098 deselected in 39.69s`;
+    `154 passed, 5 skipped, 2114 deselected in 39.60s`;
   - this covers the current no-scales `warpx2` positives, dense copy
     positives, 2-CTA `128x128b` / `128x256b` copy, scaled `warpx4` copy
-    paths, and clean unsupported copy boundaries.
+    paths, exact scaled-copy commit opcodes, and clean unsupported copy
+    boundaries.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
     `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-after-256-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;

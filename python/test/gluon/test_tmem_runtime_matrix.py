@@ -368,6 +368,13 @@ def _assert_exact_commit_ptx_llir_match(compiled, expected_ops=None):
     return ptx_ops
 
 
+def _expected_commit_opcode(cta_group: int):
+    if cta_group == 2:
+        return "tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"
+    assert cta_group == 1
+    return "tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64"
+
+
 def _assert_exact_tmem_lifetime_ptx_llir_match(compiled, cta_group: int, alloc_size: int,
                                                expect_cluster_sync: bool = False):
     alloc = f"tcgen05.alloc.cta_group::{cta_group}.sync.aligned.shared::cta.b32"
@@ -4414,6 +4421,7 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(a_forma
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(num_ctas)])
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -4456,6 +4464,7 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep(
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(num_ctas)])
 
 
 MMA_CASES = [
