@@ -251,13 +251,15 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 09:02 UTC)
+## Current Topline (2026-04-11 09:44 UTC)
 
-- The latest pushed code/test checkpoint before this docs-only refresh is
+- The latest pushed code/test checkpoint remains
   `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217` on `codex/tmem`, pushed to
   `origin/codex/tmem`.
+- The latest pushed docs checkpoint before this refresh is
+  `4f6f3a8f6e1fc42ad7f785c24f4b925eb36e1f8e8`.
 - The persistent `python/triton_kernels/tests/test_matmul.py` shared-memory
-  OOR bucket is locally closed at the focused-slice level:
+  OOR bucket is now closed at the full-directory level:
   - before this fix, a full `python/triton_kernels/tests` rerun on the branch
     reported `8 failed, 1270 passed, 1840 skipped`;
   - all eight failures were persistent Blackwell matmul variants whose shared
@@ -270,17 +272,26 @@
     descriptor type, while explicit `tmem_physical_bitcast` roots still use the
     preserved physical query because exact physical mapping is the API
     contract.
-- Focused validation for the OOR bucket:
+- Validation for the OOR bucket:
   - representative exact:
     - `1 passed in 5.38s`
     - metadata returned to `shared=214120`, `tmem_size=512`
   - focused persistent fp8/mxfp4 matmul slice:
     - `16 passed, 6 skipped in 31.85s`
+  - full 4-way `python/triton_kernels/tests` refresh:
+    - group 1:
+      - `674 passed, 782 skipped, 4365 deselected in 2296.49s`
+    - group 2:
+      - `533 passed, 923 skipped, 4365 deselected in 1863.14s`
+    - group 3:
+      - `394 passed, 1062 skipped, 4365 deselected in 1192.94s`
+    - group 4:
+      - `776 passed, 677 skipped, 4368 deselected in 555.61s`
+    - aggregate:
+      - `2377 passed, 3444 skipped`
+      - `0 failed`
   - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
     is recorded as `0` nodeids.
-- The full `python/triton_kernels/tests` directory has not been rerun after
-  `ab8ff6e64`; keep that as optional follow-up validation before treating the
-  broader lane as saturated.
 - The latest code checkpoint closes the live M64 row/col-permuted split-N
   direct ld/st bucket without converting it to a clean negative:
   - invalid exact row-permuted `16x32bx2` warp anchors are now rejected before
@@ -322,6 +333,8 @@
     - `2 passed`
   - persistent `triton_kernels` matmul focused OOR slice:
     - `16 passed, 6 skipped`
+  - full `python/triton_kernels/tests` 4-way refresh:
+    - `2377 passed, 3444 skipped`
   - row/col-permuted M64 split-N exact:
     - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
     - `PASSED`
@@ -348,11 +361,19 @@
   - `git diff --check`
     - `PASSED`
 - Next:
-  - optionally rerun the full `python/triton_kernels/tests` directory from
-    `ab8ff6e64`;
-  - continue staged broad validation through wider grouped Gluon sweeps;
+  - continue staged broad validation through wider grouped Gluon sweeps from
+    current head;
   - then resume the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`,
     fuzzing, stale-negative, and heuristic phases.
+
+## Prior Topline (2026-04-11 09:02 UTC)
+
+- Latest pushed code/test checkpoint was
+  `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217` on `codex/tmem`, pushed to
+  `origin/codex/tmem`.
+- The persistent `python/triton_kernels/tests/test_matmul.py` shared-memory
+  OOR bucket had been closed at the focused-slice level, before the full
+  4-way `python/triton_kernels/tests` refresh landed.
 
 ## Prior Topline (2026-04-11 07:25 UTC)
 

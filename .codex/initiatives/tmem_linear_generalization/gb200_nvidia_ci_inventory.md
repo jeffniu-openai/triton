@@ -18,7 +18,7 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
-## Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:02 UTC)
+## Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:44 UTC)
 
 - Latest pushed code/test checkpoint before this docs-only refresh:
   - `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217`
@@ -49,13 +49,23 @@ lives in `gb200_branch_recovery_plan.md`.
     - `1 passed in 5.38s`
   - focused persistent fp8/mxfp4 matmul slice:
     - `16 passed, 6 skipped in 31.85s`
+  - full 4-way `python/triton_kernels/tests` refresh:
+    - group 1:
+      - `674 passed, 782 skipped, 4365 deselected in 2296.49s`
+    - group 2:
+      - `533 passed, 923 skipped, 4365 deselected in 1863.14s`
+    - group 3:
+      - `394 passed, 1062 skipped, 4365 deselected in 1192.94s`
+    - group 4:
+      - `776 passed, 677 skipped, 4368 deselected in 555.61s`
+    - aggregate:
+      - `2377 passed, 3444 skipped`
+      - `0 failed`
 - Inventory consequences:
   - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
-    records this focused OOR bucket as `0` nodeids;
-  - older whole-directory `python/triton_kernels/tests` counts are stale for
-    this bucket until the full directory is rerun from `ab8ff6e64`;
-  - the next validation frontier is wider grouped Gluon sweeps and optional
-    full `python/triton_kernels/tests` refresh.
+    records this bucket as `0` nodeids;
+  - older whole-directory `python/triton_kernels/tests` counts are stale;
+  - the next validation frontier is wider grouped Gluon sweeps.
 
 ## Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
 

@@ -43,11 +43,11 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 09:02 UTC, the latest pushed code/test checkpoint before
-  this docs-only refresh is
+- As of 2026-04-11 09:44 UTC, the latest pushed code/test checkpoint is
   `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217` on `origin/codex/tmem`.
 - The focused persistent `python/triton_kernels/tests/test_matmul.py`
-  shared-memory OOR bucket is fixed:
+  shared-memory OOR bucket is fixed, and the full directory now has a green
+  current-head rerun:
   - root cause was ordinary replayed `ttng.tmem_subslice` loads/stores using
     the exact preserved physical query and therefore selecting a root-width
     register family for a shape-local replay slice;
@@ -63,6 +63,8 @@ When resuming the initiative:
     `1 passed`, metadata back to `shared=214120`
   - focused persistent fp8/mxfp4 matmul slice:
     `16 passed, 6 skipped`
+  - full 4-way `python/triton_kernels/tests` refresh:
+    `2377 passed, 3444 skipped`
 - The M64 row/col-permuted split-N direct ld/st bucket remains closed as a
   positive hardware surface:
   - exact row-permuted `16x32bx2` warp anchors that would lower to misaligned
@@ -98,9 +100,9 @@ When resuming the initiative:
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
-- Next required durable step: continue staged validation with an optional full
-  `python/triton_kernels/tests` rerun, wider grouped Gluon sweeps, and then the
-  long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
+- Next required durable step: continue staged validation with wider grouped
+  Gluon sweeps, and then the long-term `ld.red`, `copy`/`warpx2`,
+  MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 

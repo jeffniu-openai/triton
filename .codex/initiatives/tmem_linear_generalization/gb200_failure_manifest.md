@@ -30,7 +30,7 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
-### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:02 UTC)
+### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:44 UTC)
 
 - [gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt)
   - `0` nodeids
@@ -47,12 +47,24 @@ PY
       - `1 passed in 5.38s`
       - metadata returned to `shared=214120`;
     - focused persistent fp8/mxfp4 matmul slice:
-      - `16 passed, 6 skipped in 31.85s`.
+      - `16 passed, 6 skipped in 31.85s`;
+    - full 4-way `python/triton_kernels/tests` refresh:
+      - group 1:
+        - `674 passed, 782 skipped, 4365 deselected in 2296.49s`
+      - group 2:
+        - `533 passed, 923 skipped, 4365 deselected in 1863.14s`
+      - group 3:
+        - `394 passed, 1062 skipped, 4365 deselected in 1192.94s`
+      - group 4:
+        - `776 passed, 677 skipped, 4368 deselected in 555.61s`
+      - aggregate:
+        - `2377 passed, 3444 skipped`
+        - `0 failed`.
   - current interpretation:
-    - the focused OOR bucket is fixed at this checkpoint;
-    - the full `python/triton_kernels/tests` directory has not been rerun
-      after `ab8ff6e64`, so older whole-directory counts should not be used as
-      current-head truth without a fresh rerun.
+    - the focused OOR bucket and full `python/triton_kernels/tests` directory
+      are green at this checkpoint;
+    - the older `8 failed, 1270 passed, 1840 skipped` whole-directory count is
+      historical only.
 
 ### Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
 

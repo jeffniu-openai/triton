@@ -46,10 +46,10 @@ PY
 
 ## Current Classification Summary
 
-### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:02 UTC)
+### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:44 UTC)
 
 - The persistent `python/triton_kernels/tests/test_matmul.py` shared-memory OOR
-  bucket is fixed at the focused-slice level.
+  bucket is fixed at the full-directory level.
 - Before the fix:
   - full `python/triton_kernels/tests` current-head rerun:
     - `8 failed, 1270 passed, 1840 skipped`
@@ -74,12 +74,13 @@ PY
     - metadata returned to `shared=214120`
   - focused persistent fp8/mxfp4 matmul slice:
     - `16 passed, 6 skipped in 31.85s`
+  - full 4-way `python/triton_kernels/tests` refresh:
+    - `2377 passed, 3444 skipped`
+    - `0 failed`
 - Recovery consequence:
   - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
     is `0` nodeids;
-  - the full `python/triton_kernels/tests` directory remains optional
-    follow-up validation rather than a current blocker until rerun from the
-    fixed checkpoint.
+  - `python/triton_kernels/tests` is no longer a current blocker.
 
 ### Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
 

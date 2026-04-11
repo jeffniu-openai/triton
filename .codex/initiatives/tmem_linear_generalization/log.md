@@ -7520,3 +7520,33 @@ Open after this slice:
     full `python/triton_kernels/tests` refresh;
   - then resume the queued long-term `ld.red`, `copy`/`warpx2`,
     MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.
+
+## 2026-04-11 09:44 UTC
+
+- Promoted the focused persistent matmul OOR proof to a full
+  `python/triton_kernels/tests` current-head refresh on `ab8ff6e64` /
+  docs head `4f6f3a8f6`:
+  - ran one `pytest-split` shard per GB300 with distinct caches:
+    - `CUDA_VISIBLE_DEVICES=0 ... --splits 4 --group 1 python/triton_kernels/tests`
+      - `674 passed, 782 skipped, 4365 deselected in 2296.49s`
+    - `CUDA_VISIBLE_DEVICES=1 ... --splits 4 --group 2 python/triton_kernels/tests`
+      - `533 passed, 923 skipped, 4365 deselected in 1863.14s`
+    - `CUDA_VISIBLE_DEVICES=2 ... --splits 4 --group 3 python/triton_kernels/tests`
+      - `394 passed, 1062 skipped, 4365 deselected in 1192.94s`
+    - `CUDA_VISIBLE_DEVICES=3 ... --splits 4 --group 4 python/triton_kernels/tests`
+      - `776 passed, 677 skipped, 4368 deselected in 555.61s`
+  - aggregate:
+    - `2377 passed, 3444 skipped`
+    - `0 failed`
+- Consequence:
+  - the earlier full-directory `8 failed, 1270 passed, 1840 skipped` count is
+    stale;
+  - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
+    remains empty and now has a full-directory proof, not only a focused-slice
+    proof.
+- Next:
+  - commit and push this docs refresh;
+  - continue with wider grouped Gluon sweeps from current head;
+  - keep the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, fuzzing,
+    stale-negative, and heuristic phases queued behind the current broad
+    validation.
