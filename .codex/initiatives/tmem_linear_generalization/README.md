@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 17:20 UTC, the latest pushed source/test checkpoint is
-  `4fe7a44de` on `origin/codex/tmem`.
+- As of 2026-04-11 17:30 UTC, the latest pushed source/test checkpoint is
+  `c475eecc0` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -214,6 +214,11 @@ When resuming the initiative:
   - `F16_LDST_CASES` uses `LDST_VARIANTS`;
   - the `auto` shape expectations match the explicit `32x32b` f16 packet
     family.
+- X1 f32 direct and descriptor-chain ld/st roundtrips now include `auto` after
+  `c475eecc0`:
+  - `X1_F32_LDST_VARIANTS` covers `auto` and explicit `32x32b`;
+  - validation covers one-CTA linear, one-CTA legacy, and two-CTA linear
+    layouts with exact `32x32b.x1.b32` opcode expectations.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

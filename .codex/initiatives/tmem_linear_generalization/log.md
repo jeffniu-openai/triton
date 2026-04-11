@@ -8491,6 +8491,34 @@ Open after this slice:
     offset patterns, and scales exact-family coverage as intentional or add
     explicit auto companions where useful.
 
+## 2026-04-11 17:30 UTC
+
+- Committed and pushed x1 f32 direct/descriptor-chain ld/st auto coverage:
+  - `c475eecc0`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add auto companions to the x1 f32 direct and descriptor-chain roundtrip
+    tests.
+- Implementation:
+  - added `X1_F32_LDST_VARIANTS = ("auto", "32x32b")`;
+  - direct auto uses `tmem_ldst_auto_kernel`;
+  - descriptor-chain auto passes `auto` through the existing descriptor-chain
+    kernel.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - x1 f32 auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-x1-f32-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f32_roundtrip' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip' -k auto`
+    - `6 passed, 6 deselected in 4.11s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - classify x1 f16, fixed offset patterns, and scales exact-family coverage.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

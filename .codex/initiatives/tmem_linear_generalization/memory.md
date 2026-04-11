@@ -277,7 +277,30 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:20 UTC)
+## Current Topline (2026-04-11 17:30 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `c475eecc0` on `origin/codex/tmem`
+- X1 f32 direct and descriptor-chain ld/st roundtrips now include `auto`
+  instruction selection:
+  - `X1_F32_LDST_VARIANTS` covers `auto` and explicit `32x32b`;
+  - direct auto uses the no-variant `tmem_ldst_auto_kernel` path;
+  - descriptor-chain auto passes through `get_reg_layout(instr_variant="auto")`;
+  - exact opcode expectations remain `32x32b.x1.b32`.
+- Validation for `c475eecc0`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - x1 f32 auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-x1-f32-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f32_roundtrip' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip' -k auto`
+    - `6 passed, 6 deselected in 4.11s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - classify x1 f16, fixed offset patterns, and scales exact-family coverage;
+  - then continue broader validation and heuristic cleanup.
+
+## Prior Topline (2026-04-11 17:20 UTC)
 
 - Latest pushed source/test checkpoint:
   - `4fe7a44de` on `origin/codex/tmem`
