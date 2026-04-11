@@ -212,6 +212,10 @@
   slice/subview it to the exact desired bits, then bitcast to the desired dtype,
   shape, and layout only when that bitcast is size-equivalent and preserves the
   same physical mapping.
+- Equivalently, the bitcast is allowed only when its desired dtype, shape, and
+  layout are size-equivalent and physical-mapping-equivalent to the already
+  sliced/subviewed TMEM descriptor; the bitcast must not perform physical
+  selection or remapping.
 - The bitcast may therefore change descriptor metadata to the desired
   dtype/shape/layout only when it is size-equivalent and
   physical-mapping-equivalent to the already-selected input; it must not select

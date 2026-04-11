@@ -10373,3 +10373,18 @@ Open after this slice:
   - commit and push this scales-copy verifier checkpoint;
   - continue true scales `warpx2` descriptor/direct-PTX research or two-CTA
     `warpx2::02_13` descriptor/address synthesis.
+
+## 2026-04-11 post-verifier reminder: supported `_reinterpret` replacement contract
+
+- Re-recorded the user's clarified contract for migrating implicit
+  `_reinterpret` TMEM uses:
+  - offset to the right part of TMEM;
+  - slice/subview to the desired physical bit image;
+  - then bitcast to the desired dtype, shape, and layout only when the bitcast
+    is size-equivalent and physical-mapping-equivalent to that sliced
+    descriptor.
+- This is a supported descriptor/view API migration from private compiler
+  behavior, not an attention-kernel lowering workaround.
+- The bitcast must not select a different TMEM region or change the underlying
+  physical mapping. Attention remains deferred until the supported migration
+  can also preserve its deliberate synchronization/reuse discipline.

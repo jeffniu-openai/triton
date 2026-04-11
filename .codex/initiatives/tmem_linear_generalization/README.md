@@ -47,6 +47,9 @@ When resuming the initiative:
   right part of TMEM, then takes the subview that denotes the exact desired
   bits, then performs a size-and-physical-mapping-equivalent bitcast to the
   desired dtype, shape, and layout.
+- Equivalently: offset to the right part of TMEM, slice/subview to the desired
+  bit image, then bitcast only to a dtype/shape/layout view whose total size
+  and physical mapping are equivalent to that sliced descriptor.
 - The bitcast step must not change which physical TMEM memory the input
   descriptor maps to; if the desired view is not equal-size and
   physical-mapping equivalent, use a different supported API that matches the
