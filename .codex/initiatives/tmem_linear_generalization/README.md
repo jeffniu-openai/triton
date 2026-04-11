@@ -44,6 +44,10 @@ When resuming the initiative:
 - Said another way, this is an offset/subview over the existing physical TMEM
   allocation followed by a size-and-physical-mapping-equivalent type/view
   reinterpretation, not a remapping or relocation operation.
+- The attention example remains a deferred migration target: it deliberately
+  reuses part of TMEM while the kernel knows that region is not otherwise live,
+  so the eventual supported rewrite must preserve both the synchronization
+  discipline and the physical `offset/subview -> bitcast` contract.
 - Lowering-side fixes are still appropriate for supported APIs that miscompile,
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.

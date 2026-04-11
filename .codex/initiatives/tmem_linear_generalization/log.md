@@ -8960,6 +8960,29 @@ Open after this slice:
   - commit and push this validation checkpoint;
   - continue operational fuzzing from `fuzz_plan.md`.
 
+## 2026-04-11 17:03 UTC
+
+- Recorded the clarified supported `_reinterpret` migration contract.
+- Durable design rule:
+  - offset to the correct physical TMEM region;
+  - slice/subview to the exact desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the total bit
+    size and exact physical TMEM mapping are preserved.
+- The physical bitcast is not a remap:
+  - it must not change which physical TMEM memory the input descriptor maps to;
+  - if the desired view is not size-and-physical-mapping equivalent, the kernel
+    needs a different supported descriptor/view sequence that expresses the
+    real intent.
+- Attention-specific note:
+  - leave `python/examples/gluon/01-attention-forward.py` in its reverted
+    `_reinterpret` state for now;
+  - its future migration must preserve the kernel's synchronization/lifetime
+    reasoning because it reuses part of TMEM only while that region is known to
+    be inactive.
+- Next:
+  - commit and push this docs-only clarification;
+  - resume operational fuzzing from `fuzz_plan.md`.
+
 ## 2026-04-11 17:02 UTC
 
 - Ran the broad current-head `tcgen05.cp` runtime-matrix refresh after the

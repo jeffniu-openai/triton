@@ -121,6 +121,19 @@
 - The intended replacement is supported descriptor/view construction expressed
   through linear-layout/view APIs with the same semantic intent. Do not add
   ad-hoc lowering selectors just to preserve old `_reinterpret` behavior.
+- The concrete supported replacement pattern for physical TMEM aliases is:
+  - offset to the correct physical TMEM region;
+  - slice/subview that region down to the exact desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the total bit
+    size and exact physical TMEM mapping are preserved.
+- That final bitcast is a size-and-physical-mapping-equivalent view operation.
+  It must not move, remap, or select a different physical TMEM region than the
+  input descriptor maps to.
+- The attention example is intentionally still reverted to `_reinterpret` until
+  it can be migrated with this supported sequence. Its trick of reusing part of
+  TMEM while the kernel knows the original use is inactive also requires the
+  synchronization/lifetime discipline to be preserved, not only the view
+  arithmetic.
 - For intent tests, rewrite kernels to use explicit guaranteed descriptor/view
   composition:
   - `slice`
@@ -309,7 +322,25 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:02 UTC)
+## Current Topline (2026-04-11 17:03 UTC)
+
+- Latest pushed checkpoint before this docs update:
+  - `4521dfe1a` on `origin/codex/tmem`
+- No source code changed in this checkpoint.
+- The supported `_reinterpret` migration contract has been restated explicitly:
+  - choose the correct physical TMEM region first;
+  - slice/subview to the desired physical bits;
+  - bitcast only when the new dtype/shape/layout has the same total bit size
+    and the same physical TMEM mapping as the input descriptor.
+- Keep the attention kernel reverted for now. Its future migration needs a
+  synchronization-aware supported descriptor sequence because it deliberately
+  reappropriates part of TMEM while it knows that memory is otherwise inactive.
+- Next:
+  - commit and push this contract clarification;
+  - continue operational fuzzing from `fuzz_plan.md`, likely `ld.red`,
+    additional copy-family saturation, or broader MMA/scaled-MMA probes.
+
+## Prior Topline (2026-04-11 17:02 UTC)
 
 - Latest pushed source/test checkpoint:
   - `efdd93c67` on `origin/codex/tmem`
