@@ -9123,3 +9123,36 @@ Open after this slice:
   - subview/slice to the desired physical bits;
   - then bitcast only when the dtype/shape/layout view is equal-size and maps
     to the exact same physical TMEM image.
+
+## 2026-04-11 17:29 UTC
+
+- Added scaled-MMAv5 tile-permuted accumulator-subview format clean-negative
+  coverage.
+- Source/test change:
+  - added
+    `test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported`;
+  - the test covers the existing scaled format pair matrix:
+    `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
+    `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - each case uses a tile-permuted parent accumulator layout whose subview
+    would require repeated `N=32` scaled MMAv5 instructions.
+- Discovery:
+  - this is a clean unsupported frontier, not a positive target;
+  - the compiler reports the dedicated diagnostic that public tensor-memory
+    scales expose matrix-B scale fragments at 64-column alignment;
+  - the cases do not fall through to `PassManager::run failed` or assertions.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused new clean-negative matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-tile-format-clean-negative-final PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported`
+    - `5 passed in 3.74s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-scaled-tile-negative PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `149 passed, 50 skipped, 2057 deselected in 87.10s (0:01:27)`
+- Next:
+  - run hygiene, commit, and push this coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`, likely copy
+    `cta_group::2` / scales `warpx2` search or another bounded scaled-MMA
+    frontier.

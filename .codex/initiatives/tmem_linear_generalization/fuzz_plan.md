@@ -361,6 +361,10 @@ Every fuzz case records:
 
 #### Negative frontier
 - unsupported TMEM-linear accumulator or scale layouts
+- tile-permuted accumulator subviews that would require repeated `N=32`
+  block-scaled MMAv5 instructions; these should keep the clean diagnostic
+  explaining that public tensor-memory scales expose matrix-B scale fragments
+  only at 64-column alignment
 - transpose on `mxf4` / `mxf4nvf4`
 - unsupported scale-factor subindices
 

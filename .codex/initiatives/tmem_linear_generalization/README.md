@@ -338,12 +338,19 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-tile-kind PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-scaled-tile-negative PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `144 passed, 50 skipped, 2057 deselected in 88.38s`;
+    `149 passed, 50 skipped, 2057 deselected in 87.10s`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, with scaled-MMA copy
     helper coverage tracked separately.
+- Tile-permuted scaled-MMAv5 accumulator-subview clean-negative coverage now
+  spans the same format pairs as the positive direct subview matrix:
+  - `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
+    `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - each case confirms the repeated `N=32` tile-permuted layout fails with the
+    dedicated `matrix-B scale fragments at 64-column alignment` diagnostic and
+    does not fall through to a PassManager/assertion crash.
 - The recorded 2-CTA TF32 TMA-fed shared-transpose issue is still live and now
   has a durable repro:
   - script:

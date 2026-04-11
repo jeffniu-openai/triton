@@ -219,6 +219,13 @@
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
     `bf16`, `f8e5m2`, and `f8e4m3`, with exact PTX/LLIR opcode checks for the
     expected instruction kind;
+  - tile-permuted scaled-MMAv5 accumulator-subview clean negatives now cover
+    the same format pairs as the positive scaled subview matrix:
+    `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
+    `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+    these repeated-`N=32` forms are intentionally rejected because the public
+    tensor-memory scales layout exposes matrix-B scale fragments at 64-column
+    alignment;
   - the recorded 2-CTA TF32 TMA-fed shared-transpose issue still reproduces on
     current head and is now captured by
     `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`:
@@ -233,9 +240,10 @@
   - the scaled-MMA copy-helper matrix also pins exact scaled-MMA opcode
     selection for 1-CTA and 2-CTA `warpx4` copy paths across
     format/geometry/accumulator-layout combinations;
-  - current-head validation at `57133ade7` is green for the true
-    `test_tmem_runtime_matrix_mma*` slice (`64 passed`) and the
-    scaled-MMA copy-helper matrix (`52 passed`);
+  - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
+    at the latest focused coverage checkpoint:
+    `149 passed, 50 skipped, 2057 deselected`;
+    the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
     layout-family positives when discovered, and the now-confirmed 2-CTA TF32
