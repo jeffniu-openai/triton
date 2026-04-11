@@ -76,7 +76,7 @@
   - broad `tcgen05.cp` slice:
     `158 passed, 5 skipped, 2417 deselected in 40.42s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `211 passed, 50 skipped, 2321 deselected in 117.79s (0:01:57)`
+    `213 passed, 50 skipped, 2388 deselected in 120.83s (0:02:00)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -373,30 +373,34 @@
     these repeated-`N=32` forms are intentionally rejected because the public
     tensor-memory scales layout exposes matrix-B scale fragments at 64-column
     alignment;
-  - the recorded 2-CTA TF32 TMA-fed shared-transpose issue is now pinned as a
+  - TMA-fed 2-CTA TF32 now has a positive reachable path:
+    `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor`
+    loads matrix B through a non-transposed `[N, K]` TMA descriptor, passes the
+    resulting shared descriptor to MMAv5 as `permute((1, 0))`, and validates
+    exact `tcgen05.mma.cta_group::2.kind::tf32` plus multicast commit opcodes
+    for both legacy and canonical TMEM-linear accumulators;
+  - the original default `[K, N]` TMA-fed 2-CTA TF32 case remains pinned as a
     clean verifier negative by
     `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`:
-    legal non-transposed TMA descriptors for B are rejected with
+    TMA descriptors themselves cannot be transposed, so the compiler still
+    rejects that descriptor shape with
     `tcgen05.mma does not support transposed float32 operands in shared memory`
     before LLVM lowering, with no `PassManager::run failed` or assertion;
-  - this does not invalidate the green direct 2-CTA TF32 runtime coverage; it
-    marks a TMA-to-shared layout materialization gap where TMA descriptors
-    cannot be transposed but the TF32 MMA lowering rejects the resulting
-    transposed shared operand;
   - the scaled-MMA copy-helper matrix also pins exact copy, scaled-MMA, and
     commit opcode selection for 1-CTA and 2-CTA `warpx4` copy paths across
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `209 passed, 50 skipped, 2320 deselected`;
+    `213 passed, 50 skipped, 2388 deselected`;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
-    layout-family positives when discovered, and the now-confirmed 2-CTA TF32
-    TMA-fed shared-transpose lowering follow-up;
+    layout-family positives when discovered, and broader TMA-fed TF32
+    materialization work beyond the now-covered `[N, K]` plus shared-permute
+    route;
   - direct scaled MMAv5 through TMEM views remains a high-value runtime target,
-    and the 2-CTA TF32 shared-transpose lowering failure should remain a
-    compiler follow-up target rather than a settled ISA boundary.
+    and the default `[K, N]` TMA-fed TF32 boundary should remain a
+    compiler/API follow-up target rather than a settled ISA boundary.
 
 ### Phase 5: Performance And Selection Heuristics
 - Where multiple codegen paths are legal, add or refine heuristics so the

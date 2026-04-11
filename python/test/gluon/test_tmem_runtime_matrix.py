@@ -1505,6 +1505,37 @@ def tmem_mma_twocta_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: ttgl.constexpr, BL
 
 
 @gluon.jit
+def tmem_mma_twocta_tma_b_transposed_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: ttgl.constexpr,
+                                            BLOCK_N: ttgl.constexpr, acc_tmem_layout: ttgl.constexpr,
+                                            blocked_c: ttgl.constexpr):
+    smem_a = ttgl.allocate_shared_memory(a_desc.dtype, a_desc.block_shape, a_desc.layout)
+    smem_b = ttgl.allocate_shared_memory(b_desc.dtype, b_desc.block_shape, b_desc.layout)
+    mma_b = smem_b.permute((1, 0))
+
+    tma_bar = mbarrier.allocate_mbarrier(two_ctas=acc_tmem_layout.two_ctas)
+    mbarrier.init(tma_bar, count=1)
+    mma_bar = mbarrier.allocate_mbarrier()
+    mbarrier.init(mma_bar, count=tcgen05_mma_barrier_count([smem_a, mma_b], True))
+
+    mbarrier.expect(tma_bar, a_desc.nbytes_per_cta + b_desc.nbytes_per_cta)
+    tma.async_copy_global_to_shared(a_desc, [0, 0], tma_bar, smem_a, multicast=True)
+    tma.async_copy_global_to_shared(b_desc, [0, 0], tma_bar, smem_b, multicast=True)
+    mbarrier.wait(tma_bar, phase=0, deps=[smem_a, smem_b])
+    mbarrier.invalidate(tma_bar)
+
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [BLOCK_M, BLOCK_N], acc_tmem_layout)
+    tcgen05_mma(smem_a, mma_b, acc_tmem, use_acc=False, multicast=True, mbarriers=[mma_bar])
+    mbarrier.wait(mma_bar, phase=0, deps=[smem_a, mma_b])
+    mbarrier.invalidate(mma_bar)
+
+    out = acc_tmem.load()
+    out = ttgl.convert_layout(out, blocked_c)
+    out_offs_m = ttgl.arange(0, BLOCK_M)[:, None]
+    out_offs_n = ttgl.arange(0, BLOCK_N)[None, :]
+    ttgl.store(out_ptrs + out_offs_m * BLOCK_N + out_offs_n, out)
+
+
+@gluon.jit
 def tmem_mma_kernel(a_ptr, b_ptr, c_ptr, out_ptr, layout: ttgl.constexpr, use_acc: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -5518,6 +5549,71 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_
     assert "tcgen05.mma does not support transposed float32 operands in shared memory" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_layout_kind):
+    ctas_per_cga = [2, 1]
+    block_m = 128 * ctas_per_cga[0]
+    block_n = 128
+    block_k = 32
+
+    cta_split = [ctas_per_cga[0], ctas_per_cga[1]]
+    cta_order = [1, 0]
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, 0)
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga, cta_split, cta_order, 0)
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
+
+    shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([block_m, block_k], ttgl.float32, cga_layout=cga_layout_a)
+    shared_layout_b = ttgl.NVMMASharedLayout.get_default_for([block_n, block_k], ttgl.float32, cga_layout=cga_layout_b)
+
+    a = _round_to_tf32(torch.randn((block_m, block_k), dtype=torch.float32, device="cuda"))
+    b = _round_to_tf32(torch.randn((block_n, block_k), dtype=torch.float32, device="cuda"))
+    out = torch.empty((block_m, block_n), dtype=torch.float32, device="cuda")
+
+    a_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(a, [block_m, block_k], shared_layout_a)
+    b_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(b, [block_n, block_k], shared_layout_b)
+
+    if acc_layout_kind == "legacy":
+        acc_layout = TensorMemoryLayout(
+            block=(128, block_n // ctas_per_cga[1]),
+            col_stride=1,
+            two_ctas=True,
+            cga_layout=cga_layout_c,
+        )
+    else:
+        acc_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+
+    blocked_c = ttgl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
+                                   cga_layout=cga_layout_c)
+
+    compiled = tmem_mma_twocta_tma_b_transposed_kernel[(1, )](
+        a_desc,
+        b_desc,
+        out,
+        block_m,
+        block_n,
+        acc_layout,
+        blocked_c,
+        num_warps=4,
+        num_ctas=2,
+    )
+
+    torch.testing.assert_close(out, torch.matmul(a.to(torch.float32), b.to(torch.float32).T), atol=5e-4, rtol=5e-3)
+
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    assert all(op == "tcgen05.mma.cta_group::2.kind::tf32" for op in ptx_ops)
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
+    assert "ttg.memdesc_trans" in compiled.asm["ttgir"]
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

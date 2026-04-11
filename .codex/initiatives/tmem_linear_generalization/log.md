@@ -10201,3 +10201,46 @@ Open after this slice:
     synthesis, a different public layout, or a direct PTX contract that proves
     the source-column bit is representable; do not promote the current
     direct-seed route.
+
+## 2026-04-11 23:40 UTC
+
+- Broadened `tcgen05.mma` runtime-matrix coverage for the TMA-fed two-CTA TF32
+  path.
+- Source/test change:
+  - added `tmem_mma_twocta_tma_b_transposed_kernel`, which loads matrix B via
+    a non-transposed `[N, K]` TMA descriptor and passes `smem_b.permute((1, 0))`
+    to `tcgen05_mma`;
+  - added
+    `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor` for
+    both legacy and canonical TMEM-linear two-CTA accumulators;
+  - the test checks numerics against `A @ B.T`, exact
+    `tcgen05.mma.cta_group::2.kind::tf32` PTX/LLIR opcode agreement, the
+    two-CTA multicast commit opcode, and the shared-memory memdesc transpose in
+    TTGIR.
+- Boundary retained:
+  - the existing default `[K, N]` B TMA descriptor test remains a clean
+    unsupported case because TMA descriptors cannot be transposed directly;
+  - that test still requires the frontend/verifier diagnostic
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    without `PassManager::run failed` or assertions.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - new TMA-fed TF32 positive:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-tma-tf32-b-transposed-test PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor`
+    - `2 passed in 3.83s`
+  - existing TMA-fed TF32 clean negative:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-twocta-tma-tf32-negative-after-positive PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    - `2 passed in 3.05s`
+  - broad direct MMA / direct scaled-MMA runtime-matrix selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tma-tf32-positive-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `213 passed, 50 skipped, 2388 deselected in 120.83s (0:02:00)`
+- Next:
+  - commit and push this TMA-fed TF32 coverage slice;
+  - continue with scales `warpx2`, deeper two-CTA `warpx2::02_13` descriptor
+    synthesis, broader `ld.red` fuzzing, or the next MMAv5 / scaled-MMAv5
+    reachable-family gap.
