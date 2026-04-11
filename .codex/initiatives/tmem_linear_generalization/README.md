@@ -43,22 +43,32 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 06:07 UTC, the supported
-  `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)` API is
-  committed and pushed at `4263ae61b80e4f20e5c372a3c2cf5a7538d67620`.
-- The attention example's f32 scratch -> bf16 P alias has been migrated to the
-  supported `slice/subview -> bitcast` pattern:
-  - first offset/slice/subview to the intended physical TMEM bits;
-  - then bitcast to the desired dtype, shape, and layout;
-  - require equal total size and exact preservation of the input descriptor's
-    physical TMEM mapping.
-- The formerly red attention exact and the full `python/examples/gluon/`
-  aggregate are locally green on that checkpoint:
-  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-  - `python/examples/gluon/`: `821 passed, 74 skipped in 134.89s`
-- The next required durable step is staged broader validation beyond the
-  examples lane: TMEM runtime/MMA-matmul/triton-kernels slices, then the
-  long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
+- As of 2026-04-11 06:51 UTC, the local checkpoint on top of
+  `49f1a0fd2e1b2e8ed7d144c470bc7838b2b5ff4a` closes the live
+  M64 row/col-permuted split-N direct ld/st bucket.
+- The fix keeps those layouts positive where hardware execution is proven:
+  - reject exact row-permuted `16x32bx2` warp anchors that would lower to
+    misaligned one-row PTX addresses;
+  - select the canonical aligned M64 split-N register layout for simple
+    row/col-permuted `64xN` f32 TMEM-linear roots;
+  - give backend default-layout selection the same fallback so conversions do
+    not hit an empty-compatible-layout assertion.
+- The supported `_reinterpret` migration invariant remains:
+  - offset to the right TMEM region;
+  - slice/subview to the desired physical bits;
+  - bitcast to the desired dtype/shape/layout only when equal-size and
+    physical-mapping equivalent to the input descriptor.
+- Local validation for this checkpoint:
+  - build passed;
+  - full row/col-permuted M64 split-N sweep plus auto guards:
+    `226 passed`;
+  - split-N/clean-negative guard set:
+    `45 passed`;
+  - `git diff --check` passed.
+- Next required durable step: commit and push this checkpoint, refresh the
+  current GB200/TMEM runtime status from the new head, then continue staged
+  validation toward MMA/matmul, `triton_kernels`, and the long-term `ld.red`,
+  `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 

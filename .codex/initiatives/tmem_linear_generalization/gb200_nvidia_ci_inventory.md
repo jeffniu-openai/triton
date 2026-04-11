@@ -18,6 +18,35 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest M64 Row/Col Split-N And Half-Row Refresh (2026-04-11 06:51 UTC)
+
+- Current local checkpoint on top of:
+  - `49f1a0fd2e1b2e8ed7d144c470bc7838b2b5ff4a`
+- Fix summary:
+  - M64 row/col-permuted split-N direct ld/st remains a positive surface;
+  - misaligned exact `16x32bx2` warp anchors are rejected before PTX lowering;
+  - simple row/col-permuted `64xN` f32 TMEM-linear roots select the canonical
+    aligned M64 split-N register layout;
+  - direct half-row and higher-rank row-half descriptor views now report clean
+    unsupported diagnostics.
+- Validation:
+  - build:
+    - `make -j8`
+    - `PASSED`
+  - full row/col-permuted M64 split-N sweep plus auto guards:
+    - `226 passed in 35.56s`
+  - split-N controls plus half-row and exotic clean-negative guards:
+    - `45 passed in 5.32s`
+- Inventory consequence:
+  - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+    remains refreshed to `0` nodeids;
+  - `gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+    remains refreshed to `0` nodeids;
+  - `gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt`
+    is now refreshed to `0` nodeids;
+  - the older full Gluon shard aggregate counts are still stale for
+    prioritization until rerun from this new head.
+
 ## Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC)
 
 - A later examples/Gluon refresh found one current-branch attention exact red:

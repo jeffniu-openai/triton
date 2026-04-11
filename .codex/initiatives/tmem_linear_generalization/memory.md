@@ -251,59 +251,49 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 06:07 UTC)
+## Current Topline (2026-04-11 06:51 UTC)
 
-- `HEAD` is `4263ae61b80e4f20e5c372a3c2cf5a7538d67620` on `codex/tmem`,
-  pushed to `origin/codex/tmem`; the code checkpoint with the supported TMEM
-  bitcast API, attention migration, and focused tests is committed.
-- New supported API:
-  - `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)`
-  - semantics: the source descriptor must already identify the intended
-    physical TMEM region; the bitcast preserves total bits and physical mapping
-    while changing dtype/shape and optionally using an explicit equivalent
-    typed TMEM layout.
-- Attention migration:
-  - `_borrow_s_as_p` now slices the f32 scratch tile to the physical P-storage
-    region and bitcasts it to bf16 with the existing MMAv5-compatible P layout;
-  - split-exp stores now slice each f32 scratch partition first, then bitcast
-    only that physical subregion to the bf16 partition view;
-  - one-column f32 scratch aliases for alpha/epilogue are also expressed
-    through `bitcast`.
-- Lowering boundary:
-  - ld/st support queries for marked physical bitcasts use the exact physical
-    query so f32-to-f16/bf16 views pack into selected TMEM dwords instead of
-    expanding through `unpack::16b`;
-  - MMAv5 TMEM operand address planning uses the explicit result descriptor
-    layout for marked physical bitcasts because the exact physical query may be
-    non-surjective for packed subword columns.
-- Validation:
+- Base `HEAD` before this checkpoint is
+  `49f1a0fd2e1b2e8ed7d144c470bc7838b2b5ff4a` on `codex/tmem`, pushed to
+  `origin/codex/tmem`.
+- The current checkpoint closes the live M64 row/col-permuted split-N direct
+  ld/st bucket without converting it to a clean negative:
+  - invalid exact row-permuted `16x32bx2` warp anchors are now rejected before
+    they can lower to PTX with misaligned one-row addresses;
+  - simple row/col-permuted `64xN` f32 TMEM-linear roots select the canonical
+    aligned M64 split-N register layout when the exact physical view layout is
+    not directly usable;
+  - the backend default-layout path has the same canonical fallback so
+    `convert_layout` does not hit the empty-compatible-layout assertion.
+- Clean-negative boundary tightened in the same slice:
+  - direct half-row and higher-rank row-half descriptor views now fail early
+    with an actionable unsupported-descriptor diagnostic instead of reaching a
+    later invalid layout or bad packet decomposition.
+- The supported bitcast contract remains the durable `_reinterpret` migration
+  rule:
+  - offset to the right part of TMEM;
+  - slice/subview to the desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the result is
+    equal-size and preserves the input descriptor's exact physical mapping.
+- Validation on the local checkpoint:
   - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
     - `PASSED`
-  - parser bitcast tests:
-    - `python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_ir`
-    - `python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_explicit_layout_ir`
-    - `python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_size_mismatch_reports_clean_error`
-    - `3 passed`
-  - focused runtime bitcast tests:
-    - `python/test/gluon/test_core.py::test_tmem_physical_bitcast_preserves_subview_mapping`
-    - `python/test/gluon/test_core.py::test_tmem_physical_bitcast_mma_lhs`
-    - `2 passed`
-  - attention exact:
-    - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - row/col-permuted M64 split-N exact:
+    - `test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
     - `PASSED`
-  - existing TMEM runtime view matrix:
-    - `python/test/gluon/test_core.py::test_tmem_linear_runtime_views`
-    - `11 passed`
+  - full row/col-permuted M64 split-N sweep plus new auto-selection guards:
+    - `226 passed in 35.56s`
+  - split-N immediates / auto / explicit guards plus half-row and exotic
+    clean-negative guards:
+    - `45 passed in 5.32s`
   - `git diff --check`
     - `PASSED`
-  - full examples/Gluon aggregate after the checkpoint commit:
-    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-examples-gluon-after-bitcast-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/examples/gluon`
-    - `821 passed, 74 skipped in 134.89s`
 - Next:
-  - commit and push the docs-only manifest refresh;
-  - continue the staged broad validation plan before moving to the
-    long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing
-    phases.
+  - commit and push this checkpoint to `origin/codex/tmem`;
+  - refresh the current GB200/TMEM runtime status from this new head;
+  - continue staged broad validation through TMEM runtime, MMA/matmul,
+    `triton_kernels`, then the long-term `ld.red`, `copy`/`warpx2`,
+    MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.
 
 ## Prior Topline (2026-04-11 05:12 UTC)
 

@@ -46,6 +46,25 @@ PY
 
 ## Current Classification Summary
 
+### Latest M64 Row/Col Split-N And Half-Row Refresh (2026-04-11 06:51 UTC)
+
+- The branch-added M64 row/col-permuted split-N runtime-matrix bucket is now
+  locally green:
+  - full explicit sweep plus auto guards:
+    - `226 passed in 35.56s`
+- The branch-added half-row stale-negative exacts that remained in the old
+  manifest are now green under the new clean unsupported-descriptor contract:
+  - split-N controls plus half-row and exotic clean-negative guards:
+    - `45 passed in 5.32s`
+- Recovery consequence:
+  - `gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt`
+    stays at `0` nodeids;
+  - `gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt`
+    stays at `0` nodeids;
+  - `gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt`
+    is refreshed to `0` nodeids;
+  - older full Gluon shard counts remain stale until rerun from this new head.
+
 ### Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:07 UTC)
 
 - The examples/Gluon refresh had exposed a current-branch regression in:

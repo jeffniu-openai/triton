@@ -6,6 +6,7 @@ from triton.experimental import gluon
 from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
+from triton.experimental.gluon.language._layouts import DistributedLinearLayout
 from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout, _finalize_splitn_tmem_reg_layout
 
 from . import tma
@@ -73,6 +74,66 @@ def _strip_zero_reg_bases_from_layout(layout):
     )
 
 
+def _is_power_of_two(value):
+    return isinstance(value, int) and value > 0 and (value & (value - 1)) == 0
+
+
+def _is_simple_m64_splitn_tmem_layout(layout, n):
+    if not isinstance(layout, TensorMemoryLinearLayout):
+        return False
+    if layout.two_ctas or layout.block_bases:
+        return False
+
+    rows = [list(basis) for basis in layout.rows]
+    cols = [list(basis) for basis in layout.cols]
+    if len(rows) != 7 or len(cols) != n.bit_length() - 1:
+        return False
+
+    row_values = []
+    zero_rows = 0
+    for basis in rows:
+        if len(basis) != 2 or basis[1] != 0:
+            return False
+        if basis[0] == 0:
+            zero_rows += 1
+        else:
+            row_values.append(basis[0])
+    if zero_rows != 1 or sorted(row_values) != [1, 2, 4, 8, 16, 32]:
+        return False
+
+    col_values = []
+    for basis in cols:
+        if len(basis) != 2 or basis[0] != 0:
+            return False
+        col_values.append(basis[1])
+    return sorted(col_values) == [1 << bit for bit in range(n.bit_length() - 1)]
+
+
+def _canonical_m64_splitn_reg_layout(shape, num_warps, layout):
+    if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
+        return None
+    n = shape[1]
+    if n < 2 or not _is_power_of_two(n):
+        return None
+    if not _is_simple_m64_splitn_tmem_layout(layout, n):
+        return None
+
+    lane_split_col = n // 4 if n >= 4 else 0
+    reg_bases = []
+    col = 1
+    while col < n:
+        if col != lane_split_col:
+            reg_bases.append([0, col])
+        col *= 2
+    return DistributedLinearLayout(
+        reg_bases=reg_bases,
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [0, lane_split_col]],
+        warp_bases=[[16, 0], [32, 0]],
+        block_bases=[],
+        shape=[64, n],
+    )
+
+
 def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
     num_warps = _unwrap_if_constexpr(num_warps)
     shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.shape)]
@@ -87,13 +148,17 @@ def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
         return None
 
     splitn_layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
-        desc.handle, num_warps, "32x32b"
+        desc.handle, num_warps, "32x32b_splitn"
     )
     if splitn_layout is not None:
         # The handle-aware memdesc query already returns the final split-N
         # register layout. Only the pure type-based fallback needs the Python
         # basis rewrite that materializes the split-N half-column basis in the
         # frontend-visible layout.
+        return splitn_layout
+
+    splitn_layout = _canonical_m64_splitn_reg_layout(shape, num_warps, layout)
+    if splitn_layout is not None:
         return splitn_layout
 
     try:
@@ -451,14 +516,21 @@ class tensor_memory_descriptor(base_value):
             if not splitn_direct_fallback:
                 raise ValueError(str(e)) from e
         if layout is None and splitn_direct_fallback:
-            layout = _compute_tmem_reg_layout(
-                self.dtype,
-                self.shape,
-                self.type.alloc_shape,
-                self.layout,
-                num_warps,
-                requested_variant,
-            )
+            try:
+                layout = _compute_tmem_reg_layout(
+                    self.dtype,
+                    self.shape,
+                    self.type.alloc_shape,
+                    self.layout,
+                    num_warps,
+                    requested_variant,
+                )
+            except ValueError as e:
+                layout = _canonical_m64_splitn_reg_layout(
+                    list(self.shape), num_warps, self.layout
+                )
+                if layout is None:
+                    raise ValueError(str(e)) from e
         if layout is not None and requested_variant in ("32x32b_splitn", "16x32bx2"):
             layout = _finalize_splitn_tmem_reg_layout(
                 layout,

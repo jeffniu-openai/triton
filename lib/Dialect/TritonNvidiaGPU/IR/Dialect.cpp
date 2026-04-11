@@ -1438,6 +1438,59 @@ static bool matchesCanonicalContiguousM64LinearView(const LinearLayout &ll) {
   return true;
 }
 
+static bool matchesSimplePermutedM64SplitNLinearView(const LinearLayout &ll) {
+  if (ll.getNumOutDims() != 2 || ll.getNumInDims() != 2)
+    return false;
+  auto *ctx = (*ll.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) ||
+      ll.getInDimSize(kRow) != 128)
+    return false;
+
+  auto outDims = to_vector(ll.getOutDimNames());
+  int64_t n = ll.getInDimSize(kCol);
+  if (n < 2 || !llvm::isPowerOf2_64(n) ||
+      ll.getOutDimSize(outDims[0]) != 64 ||
+      ll.getOutDimSize(outDims[1]) != n)
+    return false;
+
+  std::array<bool, 6> seenRows = {};
+  unsigned zeroRows = 0;
+  for (unsigned bit = 0; bit < ll.getInDimSizeLog2(kRow); ++bit) {
+    auto basis = ll.getBasis(kRow, bit);
+    if (basis.size() != 2 || basis[1] != 0)
+      return false;
+    if (basis[0] == 0) {
+      ++zeroRows;
+      continue;
+    }
+    if (basis[0] < 0 || basis[0] > 32 ||
+        !llvm::isPowerOf2_32(static_cast<uint32_t>(basis[0])))
+      return false;
+    unsigned rowBit = llvm::Log2_32(static_cast<uint32_t>(basis[0]));
+    if (rowBit >= seenRows.size() || seenRows[rowBit])
+      return false;
+    seenRows[rowBit] = true;
+  }
+  if (zeroRows != 1 || !llvm::all_of(seenRows, [](bool seen) { return seen; }))
+    return false;
+
+  SmallVector<bool> seenCols(ll.getInDimSizeLog2(kCol), false);
+  for (unsigned bit = 0; bit < ll.getInDimSizeLog2(kCol); ++bit) {
+    auto basis = ll.getBasis(kCol, bit);
+    if (basis.size() != 2 || basis[0] != 0 || basis[1] <= 0 ||
+        basis[1] >= n ||
+        !llvm::isPowerOf2_32(static_cast<uint32_t>(basis[1])))
+      return false;
+    unsigned colBit = llvm::Log2_32(static_cast<uint32_t>(basis[1]));
+    if (colBit >= seenCols.size() || seenCols[colBit])
+      return false;
+    seenCols[colBit] = true;
+  }
+  return llvm::all_of(seenCols, [](bool seen) { return seen; });
+}
+
 static std::optional<LinearLayout>
 getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n,
                                 unsigned numWarps) {
@@ -2518,6 +2571,17 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
     return LinearEncodingAttr::get(ctx, std::move(*layout));
   }
   auto layouts = getTmemCompatibleLayouts(memType, numWarps);
+  if (layouts.empty() &&
+      !isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
+      memType.getRank() == 2 && memType.getElementTypeBitWidth() == 32 &&
+      memType.getShape() == memType.getAllocShape() &&
+      memType.getShape()[0] == 64) {
+    auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+    if (matchesSimplePermutedM64SplitNLinearView(raw)) {
+      if (auto canonical = getCanonicalM64SplitNLayout(memType, numWarps))
+        return LinearEncodingAttr::get(ctx, std::move(*canonical));
+    }
+  }
   assert(!layouts.empty() &&
          "expected at least one TMEM-compatible register layout");
   return layouts.front();
@@ -2801,8 +2865,22 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
   if (!isScales && memType.getElementTypeBitWidth() == 32 &&
       memType.getRank() == 2 && memType.getShape() == memType.getAllocShape() &&
       memType.getShape()[0] == 64) {
-    if (auto canonicalSplitN = getCanonicalM64SplitNLayout(memType, numWarps))
+    if (auto canonicalSplitN = getCanonicalM64SplitNLayout(memType, numWarps)) {
+      auto before = layouts.size();
       tryPushUniqueLayout(*canonicalSplitN);
+      if (layouts.size() == before) {
+        auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+        if (matchesSimplePermutedM64SplitNLinearView(raw)) {
+          if (auto candidateEncoding =
+                  tryGetLinearEncodingAttr(memType.getContext(),
+                                           *canonicalSplitN);
+              candidateEncoding &&
+              !llvm::is_contained(layouts, *candidateEncoding)) {
+            layouts.push_back(*candidateEncoding);
+          }
+        }
+      }
+    }
   }
 
   auto isCompatible = [&](const LinearLayout &layout) {

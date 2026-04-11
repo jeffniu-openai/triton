@@ -359,6 +359,14 @@ def _assert_clean_cta_per_cga_mismatch(text: str, layout_ctas: int, required_cta
     assert f"Layout has {layout_ctas} CTAs per CGA, but the context requires {required_ctas} CTAs per CGA." in text
 
 
+def _assert_clean_cta_per_cga_mismatch_or_descriptor_unsupported(text: str, layout_ctas: int, required_ctas: int):
+    if "Result has an invalid layout:" in text:
+        _assert_clean_cta_per_cga_mismatch(text, layout_ctas, required_ctas)
+        return
+    assert "TMEM layout" in text
+    assert "unsupported for descriptor view" in text
+
+
 def _assert_clean_tmem_oor(text: str, required: int, hardware_limit: int):
     assert "out of resource: tensor memory" in text
     assert f"Required: {required}" in text
@@ -1707,6 +1715,11 @@ M64_ROWCOL_PERMUTED_CASES = [
     )
 ]
 
+M64_ROWCOL_PERMUTED_AUTO_CASES = [
+    ("rotate1", "identity", 2),
+    ("reverse", "even_odd", 128),
+]
+
 LDST_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, ), ("32x32b", "16x64b", "16x128b", "16x256b"))
@@ -2120,7 +2133,7 @@ def test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported(layout
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    _assert_clean_cta_per_cga_mismatch(text, layout_ctas=2, required_ctas=1)
+    _assert_clean_cta_per_cga_mismatch_or_descriptor_unsupported(text, layout_ctas=2, required_ctas=1)
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
@@ -2939,6 +2952,24 @@ def test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep(row_perm_kind, 
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert observed_opcodes
+    assert all("16x32bx2" in op for op in observed_opcodes)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n", M64_ROWCOL_PERMUTED_AUTO_CASES)
+def test_tmem_runtime_matrix_splitn_rowcol_permuted_auto_selects_16x32bx2(row_perm_kind, col_perm_kind, n):
+    m = 64
+    layout = _make_tmem_linear_layout_m64_permuted(n, row_perm_kind, col_perm_kind)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)

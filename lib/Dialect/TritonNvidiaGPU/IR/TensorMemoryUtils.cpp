@@ -3527,6 +3527,14 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
                        "TMEM load/store: exact canonical 32x32 subviews from "
                        "larger TMEM tiles are not directly representable");
   }
+  if (isDirectHalfRowsSubview(memDesc) ||
+      isHigherRankHalfRowsSubview(memDesc)) {
+    return unsupported("unsupported tensor memory descriptor view for direct "
+                       "tcgen05.ld/st: lifted row-half TMEM views translate "
+                       "the TMEM row origin and are not directly realizable by "
+                       "tcgen05.ld/st packets. Access the full backing tile or "
+                       "reshape/copy so the TMEM rows stay materializable.");
+  }
 
   std::string supportError;
   if (getTMemLdStSupportQueryPlan(memDesc, &supportError)) {
@@ -5063,7 +5071,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
            basis[1] % static_cast<int32_t>(tileN) == 0;
   };
   auto warpBasesAlignToWholeTile = [&](TMemAccessAtom atom) {
-    if (atom != TMemAccessAtom::I32x32b)
+    if (atom != TMemAccessAtom::I32x32b &&
+        atom != TMemAccessAtom::I16x32bx2)
       return true;
     auto tile = getTileLayout(ctx, atom, unpacked, /*withWarp=*/false);
     unsigned tileRows = tile.getOutDimSize(kRow);
@@ -5216,6 +5225,8 @@ lowerTMemLdSt(const LinearLayout &cvt, int maxnreg, int bitwidth,
   }
 
   auto tryI16x32bx2 = [&]() -> std::optional<TMemLdStEncodingInfo> {
+    if (!warpBasesAlignToWholeTile(TMemAccessAtom::I16x32bx2))
+      return std::nullopt;
     // Quotient by the smaller tile and then, if possible, we set the
     // secondHalfOffset to the last kLane basis
     auto tile = getTileLayout(ctx, TMemAccessAtom::I16x32bx2, unpacked,
@@ -6640,6 +6651,22 @@ computeTMemLdStEncodingInfoImpl(
     info->warpBaseOffset1 = halvePackedTMemRowOffset(info->warpBaseOffset1);
     info->warpRow0 /= 2;
     info->warpRow1 /= 2;
+  }
+
+  auto tmemWarpBasisAlignsToInstruction =
+      [](TMemAccessAtom atom, ArrayRef<int32_t> basis) {
+        if (atom != TMemAccessAtom::I16x32bx2)
+          return true;
+        return basis.size() == 2 && basis[0] % 16 == 0;
+      };
+  if (!tmemWarpBasisAlignsToInstruction(info->atom, warpBasis0) ||
+      !tmemWarpBasisAlignsToInstruction(info->atom, warpBasis1)) {
+    if (emitError) {
+      emitError() << "Failed to lower TMEM load/store: selected "
+                     "16x32bx2 warp anchors are not aligned to 16-row "
+                     "message tiles.";
+    }
+    return failure();
   }
 
   auto regInputDim = *regLayout.getInDimNames().begin();

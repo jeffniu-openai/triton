@@ -7343,3 +7343,48 @@ Open after this slice:
   - continue staged broad validation through TMEM runtime, MMA/matmul, and
     `triton_kernels` before moving into the long-term `ld.red`,
     `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
+
+## 2026-04-11 06:51 UTC
+
+- Closed the live M64 row/col-permuted split-N direct ld/st bucket as a
+  positive surface rather than turning it into a clean negative:
+  - exact row-permuted `16x32bx2` candidates whose warp anchors land on
+    non-16-row TMEM offsets now fail selection before lowering to misaligned
+    PTX addresses;
+  - simple row/col-permuted `64xN` f32 TMEM-linear roots fall back to the
+    canonical aligned M64 split-N register layout when the exact view layout is
+    not directly packetizable;
+  - backend default-layout selection has the same fallback so `convert_layout`
+    no longer reaches the empty-compatible-layout assertion for this family.
+- Added targeted auto-selection coverage for row/col-permuted M64 split-N
+  roots, in addition to the existing explicit `32x32b_splitn` /
+  `16x32bx2` sweep.
+- Tightened clean-negative handling for direct half-row and higher-rank
+  row-half descriptor views:
+  - they now report an unsupported descriptor-view diagnostic early;
+  - this preserves the boundary that higher-rank descriptors should be sliced,
+    indexed, or reshaped to materializable 2D views before direct ld/st.
+- Re-recorded the supported bitcast contract in the current handoff/memory:
+  - offset to the right part of TMEM;
+  - slice/subview to the desired physical bits;
+  - bitcast only when dtype/shape/layout changes are equal-size and preserve
+    the input descriptor's exact physical mapping.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - exact row-permuted split-N repro:
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep[rotate1-identity-2-32x32b_splitn]`
+    - `PASSED`
+  - full row/col-permuted M64 split-N sweep plus auto guards:
+    - `226 passed in 35.56s`
+  - split-N immediates / auto / explicit controls plus half-row and exotic
+    clean-negative guards:
+    - `45 passed in 5.32s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this checkpoint to `origin/codex/tmem`;
+  - refresh the current GB200/TMEM runtime status from the new head;
+  - then continue staged broad validation before the long-term `ld.red`,
+    `copy`/`warpx2`, MMAv5/`mma_scaled`, fuzzing, stale-negative, and
+    heuristic phases.

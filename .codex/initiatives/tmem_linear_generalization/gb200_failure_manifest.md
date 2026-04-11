@@ -30,6 +30,29 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest M64 Row/Col Split-N And Half-Row Refresh (2026-04-11 06:51 UTC)
+
+- [gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_tmem_runtime_matrix_splitn_rowcol_refresh_failures.txt)
+  - `0` nodeids
+  - source:
+    - full row/col-permuted M64 split-N sweep plus auto guards:
+      - `226 passed in 35.56s`
+  - current interpretation:
+    - the M64 row/col-permuted split-N direct ld/st bucket is a positive
+      supported surface at this checkpoint
+- [gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_core_branch_added_splitn_expectation_refresh_failures.txt)
+  - `0` nodeids
+  - current interpretation:
+    - remains refreshed empty at this checkpoint
+- [gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_halfrow_stale_negative_failures.txt)
+  - `0` nodeids
+  - source:
+    - half-row and exotic clean-negative guard rerun included in the
+      `45 passed` focused guard set
+  - current interpretation:
+    - the old three-nodeid half-row stale-negative manifest is historical; the
+      current behavior is a clean unsupported-descriptor diagnostic
+
 ### Latest Attention / Examples Refresh (2026-04-11 06:07 UTC)
 
 - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
