@@ -59,8 +59,8 @@
     `11 passed in 5.56s`
   - focused subword exacts after broadening beyond f16:
     `66 passed in 18.12s`
-  - focused x1 subword exacts after broadening beyond f16:
-    `82 passed in 19.72s`
+  - focused x1 subword exacts after adding padded i8 cases:
+    `88 passed in 22.36s`
   - broad `ld/st` slice:
     `1114 passed, 441 skipped, 713 deselected in 1218.65s (0:20:18)`
   - the new runtime anchors assert exact PTX/LLIR `tcgen05.alloc`,
@@ -315,10 +315,11 @@
     identity `128x{64,128,256}` layouts and every public instruction variant,
     with exact PTX/LLIR opcode agreement;
   - x1 subword `ld/st` now covers `f16`, `bf16`, and `i16` packed plus
-    legacy unpacked layouts, and packed `i8` linear/legacy layouts, for `auto`
-    and explicit `32x32b`; padded i8 x1 layouts remain a diagnostic/future
-    surface after the probe found assertion-style failures for some padded
-    forms;
+    legacy unpacked layouts, and packed plus padded `i8` linear/legacy layouts,
+    for `auto` and explicit `32x32b`; the padded i8 assertion-style probe
+    failure was fixed by making the store-source convert canonicalizer bail out
+    when no compatible TMEM layout exists instead of asking for an asserting
+    default layout;
   - direct higher-rank access is still future work: higher-rank descriptors
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;

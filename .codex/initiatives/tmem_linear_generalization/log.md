@@ -10050,3 +10050,39 @@ Open after this slice:
   - continue with padded i8 diagnostic cleanup, broader ld/st fuzzing, two-CTA
     `warpx2::02_13`, scales `warpx2`, or another bounded MMAv5 / scaled-MMAv5
     reachable-family gap.
+
+## 2026-04-11 21:50 UTC
+
+- Fixed the padded i8 x1 `ld/st` assertion path and promoted the covered cases
+  to positives.
+- Root cause:
+  - `CanonicalizeConvertFromTMEMStore` asked
+    `getDefaultLayoutForTmemLdSt(...)` for a preferred destination layout before
+    checking whether the destination memdesc had any compatible TMEM layouts;
+  - padded i8 x1 forms with no immediate compatible default hit the assertion
+    inside `getDefaultLayoutForTmemLdSt` during rewrite, before verifier or
+    lowering could handle the case.
+- Source/test change:
+  - the canonicalizer now queries `getTmemCompatibleLayouts(...)` first and
+    bails out when the list is empty, leaving unsupported descriptors to the
+    normal verifier/lowering diagnostic path;
+  - added padded i8 x1 positives for legacy stride-2 and stride-4 layouts to
+    `X1_SUBWORD_LDST_CASES`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused x1 subword exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-x1-subword-padded-i8 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_subword_roundtrip`
+    - `28 passed in 7.27s`
+  - focused subword plus x1 subword slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-subword-padded-i8-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_subword_pack_unpack python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_subword_roundtrip`
+    - `88 passed in 22.36s`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this padded-i8/canonicalizer slice;
+  - continue broader `ld/st` validation, two-CTA `warpx2::02_13`, scales
+    `warpx2`, or another bounded MMAv5 / scaled-MMAv5 reachable-family gap.

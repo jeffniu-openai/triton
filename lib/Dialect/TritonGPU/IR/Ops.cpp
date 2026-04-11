@@ -132,8 +132,13 @@ struct CanonicalizeConvertFromTMEMStore
           .succeeded();
     };
 
-    auto preferredEncoding = nvidia_gpu::getDefaultLayoutForTmemLdSt(
+    auto compatibleLayouts = nvidia_gpu::getTmemCompatibleLayouts(
         op.getDst().getType(), lookupNumWarps(op));
+    // Unsupported TMEM descriptors should flow to verifier/lowering diagnostics;
+    // this canonicalizer is only allowed to erase trivially safe conversions.
+    if (compatibleLayouts.empty())
+      return failure();
+    auto preferredEncoding = compatibleLayouts.front();
     if (layoutsEqual(convertType, convertType.getEncoding(), preferredEncoding) &&
         !layoutsEqual(srcType, srcType.getEncoding(), preferredEncoding)) {
       return failure();

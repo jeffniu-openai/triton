@@ -2565,6 +2565,33 @@ X1_SUBWORD_LDST_CASES = [
         "32x32b.x1.b32",
         "32x32b.x1.b32",
     ),
+    (
+        "i8",
+        torch.int8,
+        "legacy_padded_stride2",
+        4,
+        lambda: TensorMemoryLayout((128, 4), col_stride=2),
+        "32x32b.x1.b32",
+        "32x32b.x1.b32",
+    ),
+    (
+        "i8",
+        torch.int8,
+        "legacy_padded_stride4_n2",
+        2,
+        lambda: TensorMemoryLayout((128, 2), col_stride=4),
+        "32x32b.x2.b32",
+        "32x32b.x2.b32",
+    ),
+    (
+        "i8",
+        torch.int8,
+        "legacy_padded_stride4_n4",
+        4,
+        lambda: TensorMemoryLayout((128, 4), col_stride=4),
+        "32x32b.x4.b32",
+        "32x32b.x4.b32",
+    ),
 ]
 
 X1_SUBWORD_LDST_VARIANTS = ("auto", "32x32b")
