@@ -185,7 +185,8 @@ The practical local-import command pattern throughout this project was:
 
 ```bash
 cd /root/code/triton-ws-opt
-PYTHONPATH=python/triton_kernels python python/examples/gluon/05-moe-bmm1-fused-gather.py
+PYTHONPATH=python/triton_kernels:python \
+python python/examples/gluon/05-moe-bmm1-fused-gather.py
 ```
 
 For test work, the common pattern was:
@@ -194,7 +195,7 @@ For test work, the common pattern was:
 cd /root/code/triton
 make
 cd /root/code/triton-ws-opt
-PYTHONPATH=python/triton_kernels pytest -s --tb=short \
+PYTHONPATH=python/triton_kernels:python pytest -s --tb=short \
   python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op
 ```
 
@@ -205,6 +206,17 @@ Important practical note:
   `init_routing_data(...)`
 
 That means a future agent can reproduce most of the work from the repo checkout alone.
+
+When working in a copied private workspace rather than the canonical repo checkout, use the same
+pattern but keep everything workspace-local:
+
+```bash
+cd /path/to/private/workspace
+PYTHONPATH=python/triton_kernels:python python python/examples/gluon/05-moe-bmm1-fused-gather.py
+```
+
+If this exact `PYTHONPATH` is not set, the copied-workspace experiments can fail with import errors
+even though the code is present locally.
 
 ### Environment Checklist
 
@@ -1324,6 +1336,79 @@ That is exactly why the specialized side notes exist.
 
 This section is intentionally blunt.
 
+### 12.0 Hard Rules For Any New Optimization Attempt
+
+If a future agent ignores this subsection, it will probably waste time or produce a candidate that
+looks plausible but is not promotable.
+
+**Rule 1: the timed path must stay cudagraph-safe.**
+
+Do not put any of the following inside `matmul(...)` or any function it calls on the hot path:
+
+- `.cpu()`
+- `.item()` on device values
+- host-side quantile/statistics over CUDA tensors
+- shape-dependent Python control flow derived from device reads
+
+Even if the idea sounds good, it is invalid for this workflow if it breaks the official benchmark
+path.
+
+**Rule 2: do not retune selector heuristics based only on theory.**
+
+By the end of this project, the low-batch selector and its boundaries were already empirically
+tuned. New selector logic must be justified by:
+
+- same-GPU timing
+- the official benchmark path
+- and ideally a sweep, not a single point
+
+“This should improve occupancy” or “this should better reflect slice distribution” is not enough.
+
+**Rule 3: theoretical occupancy is not performance evidence.**
+
+The occupancy work already showed all of the classic traps:
+
+- under-half dynamic SMEM was not the same as under-half effective SMEM
+- more waves was not the same as more concurrent CTAs
+- real 2-CTA residency still did not beat the buffered default
+
+So if a future change is justified only by occupancy reasoning, it should be assumed weak until the
+scorer proves otherwise.
+
+**Rule 4: the scorer outranks the rationale.**
+
+A candidate can have a compelling technical story and still be wrong for this workload. The ranking
+policy should therefore be:
+
+1. correctness
+2. cudagraph compatibility
+3. measured speedup on the representative set
+4. only then profiling and explanation
+
+**Rule 5: do not count benchmark-helper changes as kernel wins.**
+
+When comparing candidates, use a central evaluator that prepares inputs from the current mainline
+example and runs the candidate kernel on those same prepared inputs. Otherwise an agent can “win” by
+changing the data distribution or helper path rather than the kernel.
+
+**Rule 6: two-point spot checks are not enough for selector or buffering changes.**
+
+One prompt-optimization agent changed only the store-helper depth policy, checked two large batch
+points, and looked plausibly healthy there. The central eight-point scorer still showed a net loss:
+
+- mean speedup vs baseline: `-0.0677%`
+- geometric speedup vs baseline: `-0.0680%`
+- wins: `3 / 8`
+- worst regression: `-0.4463%`
+
+The main regressions were at mid-size points (`512`, `1024`), which were invisible in the narrow
+two-point check. The lesson is simple:
+
+- large-point spot checks can miss real regressions
+- selector and buffering policy changes must be ranked on a representative sweep
+- a candidate does not graduate from “interesting idea” to “real win” until the central scorer says
+  so
+
 ### 12.1 Do Not Treat the Approximate Reference As Exact
 
 This caused real confusion early.
@@ -1385,6 +1470,54 @@ For sub-1% deltas:
 - use paired analysis
 
 Without that, you are just fitting noise.
+
+### 12.8 What Round-1 Prompt-Optimization Agents Got Wrong
+
+The first isolated-agent round in this project produced two informative failures:
+
+1. one agent changed the low-batch selector by reading CUDA slice statistics on the host inside the
+   hot path
+2. another agent introduced an occupancy-driven selector fallback without any same-GPU timing and
+   it measured as noise-flat against baseline
+
+The key lessons are:
+
+- agents need to be told explicitly that cudagraph safety is part of correctness for this workflow
+- agents need to be told explicitly that “heuristic improvement” without measurement is not useful
+- the report must direct them toward changes that affect kernel execution, not host-side decision
+  logic built on unmeasured intuition
+
+If a future agent proposes a selector rewrite first, that should be treated as a warning sign that
+the report or task still is not constraining the search tightly enough.
+
+### 12.9 What Round-2 Prompt-Optimization Agents Got Wrong
+
+The next round produced a subtler failure.
+
+One agent changed only the helper-ring depth policy:
+
+- `EPILOGUE_STORE_HELPER_DEPTH` became a function of `EPILOGUE_ROW_SUBTILE_FACTOR`
+- the agent spot-checked only two large points (`8192`, `16384`)
+- those spot checks looked fine and led to a positive written summary
+
+But the central evaluator still rejected the candidate:
+
+- mean speedup vs baseline: `-0.0677%`
+- geometric speedup vs baseline: `-0.0680%`
+- wins: `3 / 8`
+- worst regression: `-0.4463%` at `512`
+
+The key lessons are:
+
+- a narrow large-batch check can be actively misleading
+- selector-only or buffering-only tweaks need broad scoring, not narrative confidence
+- the report must keep steering agents away from “cheap heuristic polish” unless the sweep proves a
+  real across-the-board win
+
+This round was useful because it tightened the acceptance contract:
+
+- if a change only retunes config selection or shallow buffering policy, it is guilty until the
+  eight-point scorer proves it helpful
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-11T09:40:34Z
+updated: 2026-04-11T09:55:43Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -607,6 +607,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Cross-checked against the main initiative plus the specialized artifacts for epilogue SASS, low-batch performance, split-K design, block scheduling, occupancy, and PTX float2 notes; two independent report reviews focused on technical completeness and pedagogy/reproducibility
   - Learnings: The report needs to be deliberately more redundant than the initiative itself to be useful. The strongest additions were an explicit environment/prerequisites section, a clearer explanation of the difference between official benchmark-path promotion and same-prepared-case A/B controls, concrete NCU/SASS/PTX command recipes, an experiment-to-evidence map, and explicit mention of the promoted `band_n_20_row_major` schedule plus the already-designed but deferred two-kernel split-K plan. This now gives future agents a single high-context onboarding document rather than forcing them to reconstruct the work by reading every artifact in isolation.
   - Plan updates: Continue filling this report as future work happens and use it as the preferred onboarding / handoff document. Keep the main initiative focused on state, sequencing, and decisions, while the report remains the tutorial-style “how and why” companion.
+- `2026-04-11` Completed: Started a report-driven prompt-optimization loop for isolated agents
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`, `.codex/initiatives/artifacts/ws-report-promptopt-eval.py`
+  - Validation: Baseline scorer sanity against the current mainline example (`~0%` as expected); independent scoring of isolated agent candidates over representative batches `128,256,512,1024,2048,8192,16384,31744`
+  - Learnings: The first two prompt-optimization rounds were more valuable as negative signal than as direct performance progress. Round 1 showed that the report needed explicit cudagraph-safety rules and stronger warnings against host-side selector heuristics. Round 2 showed that large-point spot checks are not enough: a helper-depth tweak looked healthy at `8192` and `16384` but lost overall on the eight-point scorer (`-0.0677%` mean, `3/8` wins, worst `-0.4463%`). The loop is therefore refining the report by teaching future agents what *not* to trust: occupancy rationale without scoring, selector heuristics without broad sweeps, and narrow hand-picked timing instead of the central evaluator.
+  - Plan updates: Keep the loop running in fresh isolated workspaces from the revised report. Treat the central scorer as the promotion gate, and update the report after each round so later agents inherit the sharper constraints.
 
 ## Next Up
 
