@@ -18,6 +18,45 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:02 UTC)
+
+- Latest pushed code/test checkpoint before this docs-only refresh:
+  - `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217`
+- Focused current-head remeasurement:
+  - before the fix, a full `python/triton_kernels/tests` rerun reported
+    `8 failed, 1270 passed, 1840 skipped`;
+  - failures were persistent Blackwell matmul variants with shared-memory
+    metadata above the `232448` byte hardware limit;
+  - the representative bad compile artifact used `shared=278632`, while the
+    good/fixed artifact uses `shared=214120`.
+- Root cause:
+  - ordinary split-load/store replay constructed shape-local
+    `ttng.tmem_subslice` descriptors;
+  - layout selection nevertheless used the preserved full/root physical query;
+  - the selected register family forced a `ttg.convert_layout` scratch before
+    the persistent matmul epilogue.
+- Fix summary:
+  - ordinary replayed subslices select register layouts from the subview-local
+    descriptor type;
+  - explicit `tmem_physical_bitcast` roots still use the preserved physical
+    query, matching the supported physical bitcast API contract.
+- Validation:
+  - build:
+    - `PASSED`
+  - lit:
+    - `2 passed`
+  - representative OOR repro:
+    - `1 passed in 5.38s`
+  - focused persistent fp8/mxfp4 matmul slice:
+    - `16 passed, 6 skipped in 31.85s`
+- Inventory consequences:
+  - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
+    records this focused OOR bucket as `0` nodeids;
+  - older whole-directory `python/triton_kernels/tests` counts are stale for
+    this bucket until the full directory is rerun from `ab8ff6e64`;
+  - the next validation frontier is wider grouped Gluon sweeps and optional
+    full `python/triton_kernels/tests` refresh.
+
 ## Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
 
 - Latest pushed code/test checkpoint before this docs-only refresh:

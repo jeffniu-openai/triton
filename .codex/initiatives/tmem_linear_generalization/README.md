@@ -43,9 +43,26 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 07:25 UTC, the latest pushed code/test checkpoint before
+- As of 2026-04-11 09:02 UTC, the latest pushed code/test checkpoint before
   this docs-only refresh is
-  `42f62fb143630512aff9a45b7b3846a02d9935fa` on `origin/codex/tmem`.
+  `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217` on `origin/codex/tmem`.
+- The focused persistent `python/triton_kernels/tests/test_matmul.py`
+  shared-memory OOR bucket is fixed:
+  - root cause was ordinary replayed `ttng.tmem_subslice` loads/stores using
+    the exact preserved physical query and therefore selecting a root-width
+    register family for a shape-local replay slice;
+  - replayed subslices now use the subview-local descriptor type for register
+    layout selection;
+  - only explicit `tmem_physical_bitcast` roots use the preserved physical
+    query, keeping the supported physical bitcast contract intact.
+- Validation for the latest code checkpoint:
+  - build: `PASSED`
+  - lit `tmem_layouts.mlir` and `tritongpu_to_llvm_blackwell.mlir`:
+    `2 passed`
+  - representative persistent matmul OOR repro:
+    `1 passed`, metadata back to `shared=214120`
+  - focused persistent fp8/mxfp4 matmul slice:
+    `16 passed, 6 skipped`
 - The M64 row/col-permuted split-N direct ld/st bucket remains closed as a
   positive hardware surface:
   - exact row-permuted `16x32bx2` warp anchors that would lower to misaligned
@@ -81,9 +98,9 @@ When resuming the initiative:
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
-- Next required durable step: continue staged validation toward
-  `triton_kernels`, wider grouped Gluon sweeps, and the long-term `ld.red`,
-  `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
+- Next required durable step: continue staged validation with an optional full
+  `python/triton_kernels/tests` rerun, wider grouped Gluon sweeps, and then the
+  long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 

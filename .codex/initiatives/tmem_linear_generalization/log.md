@@ -7466,3 +7466,57 @@ Open after this slice:
   - continue staged broad validation through `triton_kernels`, wider grouped
     Gluon sweeps, and then the long-term `ld.red`, `copy`/`warpx2`,
     MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.
+
+## 2026-04-11 09:02 UTC
+
+- Closed the persistent `python/triton_kernels/tests/test_matmul.py`
+  shared-memory OOR bucket introduced by the explicit physical-layout plumbing:
+  - a full `python/triton_kernels/tests` rerun before this fix had
+    `8 failed, 1270 passed, 1840 skipped`;
+  - the failures were stable Blackwell `OutOfResources` errors in persistent
+    matmul variants with `block_m=128`, where shared-memory metadata rose
+    above the `232448` byte hardware limit;
+  - bisecting exact nodeids pointed to `6a09bd54e`, where ordinary replayed
+    `ttng.tmem_subslice` loads/stores started asking
+    `inferStandaloneTMemRegLayoutQueryType(...)` for an exact preserved
+    physical query;
+  - that made a shape-local `128x128` replay slice select a root-width-like
+    register family, inserted an unnecessary `ttg.convert_layout` scratch
+    before the epilogue reshape, and raised representative shared memory from
+    `214120` bytes to `278632` bytes.
+- Fix:
+  - split-load/store replay now selects register layouts from the subview's
+    own `MemDescType` for ordinary replayed slices;
+  - only descriptors rooted at explicit `tmem_physical_bitcast` use the exact
+    preserved physical query, matching the supported
+    `offset/slice/subview -> bitcast` contract;
+  - the bitcast-root check follows descriptor views and TMEM forwarding edges
+    with cycle protection;
+  - affected lit descriptors were refreshed to the current preserved physical
+    subview verifier contract.
+- Validation:
+  - committed and pushed code/test checkpoint:
+    - `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217`
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `2 passed`
+  - representative OOR repro:
+    - `1 passed in 5.38s`
+    - compile metadata returned to `shared=214120`, `tmem_size=512`
+  - focused persistent fp8/mxfp4 matmul slice:
+    - `16 passed, 6 skipped in 31.85s`
+  - `git diff --check`
+    - `PASSED`
+- Manifest consequence:
+  - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
+    records this focused OOR bucket as refreshed to `0` nodeids;
+  - the full `python/triton_kernels/tests` directory has not yet been rerun
+    after this fix, so use the focused slice as the current OOR-bucket proof
+    and keep full-directory or grouped sweeps as follow-up validation.
+- Next:
+  - commit and push the docs/manifest refresh;
+  - continue staged validation with wider grouped Gluon sweeps and any desired
+    full `python/triton_kernels/tests` refresh;
+  - then resume the queued long-term `ld.red`, `copy`/`warpx2`,
+    MMAv5/`mma_scaled`, fuzzing, stale-negative, and heuristic phases.

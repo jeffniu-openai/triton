@@ -46,6 +46,41 @@ PY
 
 ## Current Classification Summary
 
+### Latest `triton_kernels` Persistent Matmul OOR Refresh (2026-04-11 09:02 UTC)
+
+- The persistent `python/triton_kernels/tests/test_matmul.py` shared-memory OOR
+  bucket is fixed at the focused-slice level.
+- Before the fix:
+  - full `python/triton_kernels/tests` current-head rerun:
+    - `8 failed, 1270 passed, 1840 skipped`
+  - representative failure:
+    - `OutOfResources` with shared metadata such as `278632` bytes against the
+      `232448` byte Blackwell limit.
+- Classification:
+  - real branch regression in layout-selection policy for replayed TMEM
+    subslice loads/stores;
+  - not an ISA boundary and not a case for preserving private `_reinterpret`
+    behavior.
+- Fix:
+  - ordinary replayed `ttng.tmem_subslice` descriptors use the shape-local
+    subview type for register-layout selection;
+  - explicit `tmem_physical_bitcast` descriptor chains keep the exact
+    preserved physical query.
+- Validation:
+  - code/test checkpoint:
+    - `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217`
+  - representative exact:
+    - `1 passed in 5.38s`
+    - metadata returned to `shared=214120`
+  - focused persistent fp8/mxfp4 matmul slice:
+    - `16 passed, 6 skipped in 31.85s`
+- Recovery consequence:
+  - `gb200_current_branch_triton_kernels_matmul_oor_refresh_failures.txt`
+    is `0` nodeids;
+  - the full `python/triton_kernels/tests` directory remains optional
+    follow-up validation rather than a current blocker until rerun from the
+    fixed checkpoint.
+
 ### Latest Focused `test_core.py` Manifest Refresh (2026-04-11 07:25 UTC)
 
 - The old focused `test_core.py` TMEM/MMA current-branch manifest is now
