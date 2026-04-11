@@ -9727,3 +9727,48 @@ Open after this slice:
   - continue with the two-CTA `warpx2::02_13` / scales `warpx2`
     descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
     compiler follow-up.
+
+
+## 2026-04-11 20:12 UTC
+
+- Added 1-CTA plain MMAv5 `use_acc=True` runtime coverage.
+- Source/test change:
+  - added `tmem_mma_plain_kind_use_acc_kernel`, which initializes a TMEM
+    accumulator from a register `C` tile, runs `tcgen05_mma(..., use_acc=True)`,
+    and stores the result back for a `matmul(A, B) + C` oracle;
+  - added `test_tmem_runtime_matrix_mma_plain_kinds_use_acc` across every
+    supported plain kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`) and both
+    legacy/canonical TMEM-linear accumulator layout spellings;
+  - each case checks runtime numerics, exact PTX/LLIR `tcgen05.mma` kind
+    agreement, exact single-CTA commit opcode emission, and `tensor_memory_linear`
+    TTGIR for canonical layouts.
+- User-level reinterpret contract re-recorded:
+  - code that relies on implicit `_reinterpret` behavior from compiler physical
+    layout knowledge should migrate to supported descriptor/view APIs;
+  - the physical alias sequence is offset to the right TMEM region,
+    slice/subview to the exact desired bits, then bitcast to the desired dtype,
+    shape, and layout only when total size and physical mapping are preserved;
+  - the bitcast is not allowed to select, remap, or relocate physical TMEM.
+- TMA-fed 2-CTA TF32 probe result remains a compiler/layout-materialization
+  follow-up:
+  - raw `smem_b.permute((1, 0))` after TMA fails verifier shape checks;
+  - `smem_b.permute((1, 0)).reshape((BLOCK_K, BLOCK_N))` fails the RHS
+    CTASplit-along-K check;
+  - leaving the legal non-transposed TMA descriptor reproduces the original
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    / `PassManager::run failed` error;
+  - no small user-kernel descriptor-view patch was found.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused 1-CTA `use_acc=True` plain-kind matrix:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-use-acc-kind-focused-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_use_acc`
+    - `10 passed in 6.69s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-use-acc-kind-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `189 passed, 50 skipped, 2320 deselected in 106.20s (0:01:46)`
+- Next after this coverage slice is committed and pushed:
+  - continue either the two-CTA `warpx2::02_13` / scales `warpx2`
+    descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
+    compiler follow-up.

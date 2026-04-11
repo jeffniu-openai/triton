@@ -344,11 +344,14 @@ Every fuzz case records:
 ### 5. `mma`
 
 #### Positive matrix
-- `kind in {f16, tf32, f8f6f4, i8}`
+- `kind in {f16, tf32, bf16, f8e5m2, f8e4m3}` for current positive plain MMA
+  runtime coverage; direct `i8` remains a clean frontend/ptxas-negative
+  boundary on the current Blackwell target.
 - `cta_group in {1, 2}`
 - current two-CTA plain-kind matrix covers `blockN in {128, 256}` for legacy
   and canonical TMEM-linear accumulator layouts
-- `use_acc in {false, true}`
+- `use_acc in {false, true}`; current 1-CTA `use_acc=true` coverage spans all
+  supported plain kinds and both legacy/canonical accumulator layouts.
 - `multicast in {false, true}` where supported
 - accumulator layout family:
   - legacy TMEM layout

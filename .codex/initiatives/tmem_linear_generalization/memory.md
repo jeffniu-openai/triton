@@ -72,7 +72,7 @@
   - broad `tcgen05.cp` slice:
     `157 passed, 5 skipped, 2372 deselected in 42.63s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `179 passed, 50 skipped, 2320 deselected in 96.84s (0:01:36)`
+    `189 passed, 50 skipped, 2320 deselected in 106.20s (0:01:46)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -191,6 +191,10 @@
   TMEM by offset/subview. Only after that selection is exact may the descriptor
   be bitcast to the desired dtype/shape/layout, and only if the bitcast's
   physical image is identical to the selected input image.
+- Said as an implementation invariant: offset to the right part of TMEM,
+  slice/subview it to the exact desired bits, then bitcast to the desired dtype,
+  shape, and layout only when that bitcast is size-equivalent and preserves the
+  same physical mapping.
 - The bitcast may therefore change descriptor metadata to the desired
   dtype/shape/layout only when it is size-equivalent and
   physical-mapping-equivalent to the already-selected input; it must not select
@@ -309,6 +313,9 @@
     `f8e5m2`, and `f8e4m3` for both 1-CTA and 2-CTA, each across legacy and
     canonical TMEM-linear accumulator layouts; the two-CTA plain-kind matrix
     covers both `256x128` and `256x256` accumulator shapes;
+  - current 1-CTA `use_acc=True` plain-kind coverage spans all supported plain
+    kinds and both legacy/canonical accumulator layouts, validating the
+    accumulator-add path with exact PTX/LLIR opcode agreement;
   - current clean negatives confirm direct `i8` MMAv5 as a frontend diagnostic
     on Blackwell targets where PTXAS rejects it;
   - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
@@ -344,7 +351,7 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `179 passed, 50 skipped, 2320 deselected`;
+    `189 passed, 50 skipped, 2320 deselected`;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
@@ -456,7 +463,50 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 20:05 UTC)
+## Current Topline (2026-04-11 20:12 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `f1e77e81b` on `origin/codex/tmem`
+- Added 1-CTA plain MMAv5 `use_acc=True` runtime coverage for every supported
+  plain operand kind and both accumulator layout spellings:
+  - `f16`
+  - `tf32`
+  - `bf16`
+  - `f8e5m2`
+  - `f8e4m3`
+  - legacy `TensorMemoryLayout`
+  - canonical TMEM-linear layout
+- The new kernel initializes the accumulator from a register `C` tile, runs
+  `tcgen05_mma(..., use_acc=True)`, and checks `matmul(A, B) + C` numerics.
+- Each case asserts PTX/LLIR opcode agreement, the exact single-CTA commit
+  opcode, and `tensor_memory_linear` TTGIR for canonical accumulator layouts.
+- TMA-fed 2-CTA TF32 quick-probe note:
+  - `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+    remains the durable repro;
+  - raw `smem_b.permute((1, 0))` after TMA fails verifier shape checks;
+  - `smem_b.permute((1, 0)).reshape((BLOCK_K, BLOCK_N))` fails the RHS
+    CTASplit-along-K check;
+  - leaving the legal non-transposed TMA descriptor reproduces the original
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    / `PassManager::run failed` error;
+  - this remains a TMA-to-shared layout materialization follow-up, not a small
+    user-kernel descriptor-view patch.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused 1-CTA `use_acc=True` plain-kind matrix:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-use-acc-kind-focused-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_use_acc`
+    - `10 passed in 6.69s`
+  - broad direct MMA/scaled-MMA slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-use-acc-kind-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `189 passed, 50 skipped, 2320 deselected in 106.20s (0:01:46)`
+- Next:
+  - after committing and pushing this coverage slice, continue either the
+    two-CTA `warpx2::02_13` / scales `warpx2` descriptor-address frontier or
+    the TMA-fed 2-CTA TF32 shared-transpose compiler follow-up.
+
+## Prior Topline (2026-04-11 20:05 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `21c9d4712` on `origin/codex/tmem`

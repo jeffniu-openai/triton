@@ -1540,6 +1540,41 @@ def tmem_mma_kernel(a_ptr, b_ptr, c_ptr, out_ptr, layout: ttgl.constexpr, use_ac
 
 
 @gluon.jit
+def tmem_mma_plain_kind_use_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr,
+                                       K: ttgl.constexpr, block_layout_a: ttgl.constexpr,
+                                       block_layout_b: ttgl.constexpr, acc_layout: ttgl.constexpr,
+                                       shared_layout_a: ttgl.constexpr, shared_layout_b: ttgl.constexpr):
+    a_offs_m = ttgl.arange(0, M)[:, None]
+    a_offs_k = ttgl.arange(0, K)[None, :]
+    b_offs_k = ttgl.arange(0, K)[:, None]
+    b_offs_n = ttgl.arange(0, N)[None, :]
+
+    a = ttgl.load(ttgl.set_auto_layout(a_ptr + a_offs_m * K + a_offs_k, block_layout_a))
+    b = ttgl.load(ttgl.set_auto_layout(b_ptr + b_offs_k * N + b_offs_n, block_layout_b))
+    operand_dtype: ttgl.constexpr = a.dtype
+
+    smem_a = ttgl.allocate_shared_memory(operand_dtype, [M, K], shared_layout_a)
+    smem_b = ttgl.allocate_shared_memory(operand_dtype, [K, N], shared_layout_b)
+    smem_a.store(a)
+    smem_b.store(b)
+
+    c_offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    c = ttgl.load(c_ptr + c_offs)
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
+    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=True, mbarriers=[bar])
+    mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
+    mbarrier.invalidate(bar)
+
+    out = acc_tmem.load()
+    ttgl.store(out_ptr + c_offs, out)
+
+
+@gluon.jit
 def tmem_mma_scaled_minimal_kernel(out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, K: ttgl.constexpr, a, b, a_scale,
                                    b_scale):
     reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
@@ -4994,6 +5029,51 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
     )
 
     ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
+    assert ptx_ops
+    assert ptx_ops == llir_ops
+    assert all(op == expected_kind for op in ptx_ops)
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64"],
+    )
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,acc_layout_kind", MMA_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind):
+    m = n = 128
+    k = 32
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    c = torch.randn((m, n), device="cuda", dtype=torch.float32)
+    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
+
+    compiled = tmem_mma_plain_kind_use_acc_kernel[(1, )](
+        a,
+        b,
+        c,
+        out,
+        m,
+        n,
+        k,
+        block_layout_a,
+        block_layout_b,
+        acc_layout,
+        shared_layout_a,
+        shared_layout_b,
+        num_warps=4,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32)) + c
     torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
 
     ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
