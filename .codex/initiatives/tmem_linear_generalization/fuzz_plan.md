@@ -226,6 +226,10 @@ Every fuzz case records:
 - layouts with no supported TMEM register layout
 - descriptor chains that break TMEM column contiguity
 - known broadcasted higher-rank TMEM subviews until lowering is extended
+- direct higher-rank TMEM `ld/st` access: current contract requires callers to
+  index/slice/reshape higher-rank descriptors to a 2D view before direct
+  `get_reg_layout`, `load`, `load_red`, or `store`; non-2D direct access must
+  stay a clean diagnostic until a true direct higher-rank lowering is designed
 - any case where CGA block bases differ between memdesc and register layouts
 
 ### 3. `ld.red`

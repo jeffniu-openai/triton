@@ -479,6 +479,14 @@ class tensor_memory_descriptor(base_value):
     def __str__(self) -> str:
         return str(self.type)
 
+    def _require_rank2_tmem_ldst(self, op_name: str) -> None:
+        if len(self.shape) != 2:
+            raise ValueError(
+                f"direct TMEM {op_name} requires a rank-2 descriptor view; "
+                "index, slice, or reshape higher-rank TMEM descriptors to a 2D "
+                "view before calling get_reg_layout(), load(), or store()."
+            )
+
     @builtin
     def get_reg_layout(self, num_warps=None, instr_variant="auto", _semantic: GluonSemantic = None, _generator=None):
         """
@@ -499,6 +507,7 @@ class tensor_memory_descriptor(base_value):
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
+        self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
         splitn_direct_fallback = requested_variant in ("32x32b_splitn", "16x32bx2")
         prefer_type_only_m64_splitn = (
             num_warps == 4
@@ -576,6 +585,7 @@ class tensor_memory_descriptor(base_value):
         Returns:
             tensor: A distributed tensor containing the loaded data.
         """
+        self._require_rank2_tmem_ldst("load")
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
             layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
@@ -595,6 +605,7 @@ class tensor_memory_descriptor(base_value):
         #   red_op: MIN/MAX reduction operation
         #   abs (bool): If True, reduce absolute values.
         #   propagate_nan (NONE): If ALL, propagate NaN in specified reduction operation.
+        self._require_rank2_tmem_ldst("reduction load")
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
         if layout is None:
@@ -668,6 +679,7 @@ class tensor_memory_descriptor(base_value):
             value (tensor): The tensor to store.
             pred (bool): Scalar predicate. Operation is skipped if predicate is False. Defaults to True.
         """
+        self._require_rank2_tmem_ldst("store")
         pred = _unwrap_if_constexpr(pred)
         pred = _semantic.to_tensor(pred)
         assert value.shape == self.shape, f"source shape {value.shape} does not match destination shape {self.shape}"

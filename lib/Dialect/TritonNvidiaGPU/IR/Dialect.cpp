@@ -1710,7 +1710,8 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
       squeezed = squeezed.squeezeOuts(kBlock);
 
     auto dims = to_vector(squeezed.getOutDimNames());
-    assert(dims.size() == 2);
+    if (dims.size() != 2)
+      return std::nullopt;
     auto rowColDims = to_vector(squeezed.getInDimNames());
     bool hasBlockDim = llvm::is_contained(rowColDims, kBlock);
     if (hasBlockDim && squeezed.getInDimSize(kBlock) > 1) {
@@ -1964,7 +1965,8 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
                                               unsigned numWarps,
                                               int bitwidth) {
   auto dims = to_vector(ll.getOutDimNames());
-  assert(dims.size() == 2);
+  if (dims.size() != 2)
+    return std::nullopt;
   auto rowColDims = to_vector(ll.getInDimNames());
   auto *ctx = dims[0].getContext();
   auto kBlock = StringAttr::get(ctx, "block");

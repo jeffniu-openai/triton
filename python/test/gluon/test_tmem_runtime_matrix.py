@@ -931,6 +931,30 @@ def tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel(in_ptr, out_ptr, 
 
 
 @gluon.jit
+def tmem_ldst_direct_higher_rank_get_reg_layout_kernel(out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                                       N: ttgl.constexpr, instr_variant: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    _ = tmem.get_reg_layout(instr_variant=instr_variant)
+
+
+@gluon.jit
+def tmem_ldst_direct_higher_rank_load_kernel(out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                             N: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 128], [32, 1], [4, 1], [0, 1])
+    _ = tmem.load(reg_layout)
+
+
+@gluon.jit
+def tmem_ldst_direct_higher_rank_store_kernel(out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                              N: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1, 1], [1, 32, 1], [4, 1, 1], [2, 1, 0])
+    value = ttgl.full([2, M, N], 0.0, ttgl.float32, layout=reg_layout)
+    tmem.store(value)
+
+
+@gluon.jit
 def tmem_ldst_blocked_fallback_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -2394,6 +2418,13 @@ LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
     ("mmav5_twocta", n, variant) for n, variant in product((64, 128, 256), LDST_VARIANTS)
 ]
 
+LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES = [
+    ("get_reg_layout_auto", "auto", "direct TMEM auto register layout query"),
+    ("get_reg_layout_explicit", "16x128b", "direct TMEM 16x128b register layout query"),
+    ("load", None, "direct TMEM load"),
+    ("store", None, "direct TMEM store"),
+]
+
 BLOCKED_FALLBACK_CASES = [
     ("identity", _make_tmem_linear_layout(128, 128)),
     ("mixed", _make_tmem_linear_layout_mixed(128, 128)),
@@ -3813,6 +3844,33 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_report
     assert "descriptor view" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("operation,variant,expected_prefix", LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES)
+def test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error(operation, variant, expected_prefix):
+    m = 128
+    n = 128
+    layout = _lift_tmem_layout(LDST_LAYOUTS["identity"](n), [2])
+    out = torch.empty((1, ), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(CompilationError) as excinfo:
+        if operation.startswith("get_reg_layout"):
+            tmem_ldst_direct_higher_rank_get_reg_layout_kernel[(1, )](
+                out, layout, m, n, variant, num_warps=4
+            )
+        elif operation == "load":
+            tmem_ldst_direct_higher_rank_load_kernel[(1, )](out, layout, m, n, num_warps=4)
+        else:
+            tmem_ldst_direct_higher_rank_store_kernel[(1, )](out, layout, m, n, num_warps=4)
+
+    msg = str(excinfo.value)
+    assert expected_prefix in msg
+    assert "requires a rank-2 descriptor view" in msg
+    assert "index, slice, or reshape higher-rank TMEM descriptors to a 2D view" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+    assert "dims.size()" not in msg
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

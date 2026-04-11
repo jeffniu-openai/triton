@@ -350,6 +350,18 @@ When resuming the initiative:
   - single-CTA and two-CTA higher-rank index, multidimensional-slice, and
     dim0-slice resource-boundary tests all use `LDST_VARIANTS`;
   - validation confirms these remain clean tensor-memory OOR boundaries.
+- Direct higher-rank `ld/st` access is now pinned as a clean unsupported
+  boundary:
+  - direct rank-3 `get_reg_layout`, explicit `load`, and explicit `store`
+    attempts fail in the Gluon descriptor API with a 2D-only diagnostic telling
+    users to index/slice/reshape higher-rank TMEM descriptors to a 2D view;
+  - the C++ `getDistributedLayoutForTmemLdSt` planners return no layout for
+    non-2D physical TMEM layouts instead of reaching the old `dims.size() == 2`
+    assertion;
+  - focused validation: `4 passed in 3.14s`, plus adjacent higher-rank indexed
+    and dim0-slice positives `30 passed in 25.88s`;
+  - broader `ldst and higher_rank` validation: `144 passed, 1 skipped,
+    2521 deselected in 73.43s (0:01:13)`.
 - Higher-rank half-row clean errors now include `auto` after `7c1a6f63b`:
   - single-CTA and two-CTA lifted half-row clean-negative matrices now use
     `LDST_VARIANTS`;

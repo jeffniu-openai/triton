@@ -350,9 +350,12 @@
     failure was fixed by making the store-source convert canonicalizer bail out
     when no compatible TMEM layout exists instead of asking for an asserting
     default layout;
-  - direct higher-rank access is still future work: higher-rank descriptors
-    should be sliced/indexed/reshaped to 2D before access, and unsupported
-    direct higher-rank access should stay a clean negative;
+  - direct higher-rank access is still future work, but the current clean
+    boundary is now pinned: rank-3 direct `get_reg_layout`, explicit `load`,
+    and explicit `store` fail with the frontend 2D-only diagnostic, while the
+    C++ ld/st layout planners return `std::nullopt` instead of asserting on
+    non-2D physical layouts; higher-rank descriptors should be
+    sliced/indexed/reshaped to 2D before access;
   - `ld.red` now has modifier saturation over identity, tile-permuted, and
     row/column-permuted supported non-sharded families; pure column, pure row,
     and non-identity row/column cross-product positives span
@@ -6395,3 +6398,40 @@ rejection, not rescue
   - commit and push this scales-copy verifier checkpoint;
   - continue true scales `warpx2` descriptor/direct-PTX research or two-CTA
     `warpx2::02_13` descriptor/address synthesis.
+
+## 2026-04-11 23:16 UTC: direct higher-rank `ld/st` clean boundary pinned
+
+- While checking the remaining `ld/st` fuzz/stale-negative surface, a temporary
+  direct rank-3 TMEM probe found a hard C++ abort in
+  `getDistributedLayoutForTmemLdSt`: the planner asserted `dims.size() == 2`
+  during `tmem.get_reg_layout()` on a higher-rank descriptor.
+- Fixed the current unsupported boundary instead of trying to lower direct
+  higher-rank access:
+  - `tensor_memory_descriptor.get_reg_layout`, `load`, reduction `load`, and
+    `store` now reject non-rank-2 TMEM descriptors in the Gluon descriptor API
+    with an actionable message to index/slice/reshape to a 2D view before
+    access;
+  - the generic and legacy-anchored C++ ld/st layout planners now return
+    `std::nullopt` for non-2D output layouts instead of asserting, so lower
+    layers keep the same clean-unsupported semantics if reached directly.
+- Added `test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error`:
+  - direct rank-3 `get_reg_layout(auto)`;
+  - direct rank-3 `get_reg_layout(16x128b)`;
+  - direct rank-3 explicit `load`;
+  - direct rank-3 explicit `store`.
+- Validation:
+  - build: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
+  - syntax: `python3 -m py_compile python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py` passed;
+  - syntax: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - focused direct higher-rank clean errors:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-direct-highrank-clean PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error`
+    -> `4 passed in 3.14s`;
+  - adjacent higher-rank positives:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-higher-rank-positive-after-direct-rank-guard PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout`
+    -> `30 passed in 25.88s`;
+  - broader higher-rank `ld/st` selector:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-higher-rank-ldst-broad-after-direct-rank-guard PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and higher_rank'`
+    -> `144 passed, 1 skipped, 2521 deselected in 73.43s (0:01:13)`.
+- Next: run hygiene, commit, push, then continue the next saturation frontier
+  from the long-term plan (`ld.red` broader fuzzing, copy `warpx2`, or
+  MMAv5/scaled-MMAv5 reachable-family work).

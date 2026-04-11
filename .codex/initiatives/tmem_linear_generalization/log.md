@@ -10523,3 +10523,43 @@ Open after this slice:
 2. Continue broader `ld/st` or `ld.red` fuzzing, true scales `warpx2`, two-CTA
    `warpx2::02_13` descriptor synthesis, or another bounded MMAv5 /
    scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 direct higher-rank `ld/st` clean boundary
+
+- Mined the remaining `ld/st` higher-rank fuzz surface after the explicit
+  `ld.red` layout checkpoint.
+- Found that the old probe named `direct_highrank_layout` actually indexed down
+  to a rank-2 descriptor before access, so it did not exercise direct
+  higher-rank `ld/st`.
+- A temporary direct rank-3 probe reproduced a hard abort in
+  `getDistributedLayoutForTmemLdSt`: `assert(dims.size() == 2)` fired during
+  direct `tmem.get_reg_layout()` on a rank-3 TMEM descriptor.
+- Fixed the unsupported boundary:
+  - Gluon `tensor_memory_descriptor` now rejects non-rank-2 direct
+    `get_reg_layout`, `load`, reduction `load`, and `store` calls with a clean
+    2D-only message instructing users to index/slice/reshape higher-rank TMEM
+    descriptors before direct access;
+  - generic and legacy-anchored C++ ld/st planner helpers now return
+    `std::nullopt` for non-2D layouts instead of asserting.
+- Added runtime-matrix coverage for direct rank-3 `get_reg_layout(auto)`,
+  direct rank-3 `get_reg_layout(16x128b)`, direct explicit `load`, and direct
+  explicit `store` clean errors.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    -> passed;
+  - syntax:
+    `python3 -m py_compile python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`
+    -> passed;
+  - syntax:
+    `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    -> passed;
+  - focused direct higher-rank clean error exact:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-direct-highrank-clean PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error`
+    -> `4 passed in 3.14s`;
+  - adjacent positive higher-rank access exacts:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-higher-rank-positive-after-direct-rank-guard PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout`
+    -> `30 passed in 25.88s`;
+  - broader higher-rank `ld/st` selector:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-higher-rank-ldst-broad-after-direct-rank-guard PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst and higher_rank'`
+    -> `144 passed, 1 skipped, 2521 deselected in 73.43s (0:01:13)`.
