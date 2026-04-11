@@ -1708,7 +1708,7 @@ LDST_PERMUTED_CASES = [
 LDST_ROWCOL_PERMUTED_CASES = [
     (row_perm_kind, col_perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
     for (row_perm_kind, col_perm_kind), n, variant in product(
-        PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_EXPLICIT_VARIANTS
+        PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_VARIANTS
     )
 ]
 
