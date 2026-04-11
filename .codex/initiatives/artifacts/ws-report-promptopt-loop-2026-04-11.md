@@ -246,4 +246,11 @@ This prevents agents from “winning” by changing local benchmark helpers or d
 - Workspaces:
   - `r6a1`
   - `r6a2`
-- Status: ready to launch workers
+- Agents:
+  - `James`
+  - `Fermat`
+- Current prompt differences:
+  - workers are now asked for one or two small kernel diffs only
+  - runtime/import patching is explicitly forbidden
+  - local benchmarking is optional sanity only; central scoring remains authoritative
+- Status: in progress
