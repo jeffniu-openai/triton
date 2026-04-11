@@ -8429,6 +8429,40 @@ Open after this slice:
   - keep attention deferred until a synchronization-aware supported
     `offset/slice/subview -> bitcast` migration is ready.
 
+## 2026-04-11 17:10 UTC
+
+- Committed and pushed rank-5 descriptor-roundtrip `ld/st` auto boundary
+  coverage:
+  - `be193b6c6`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add auto instruction selection to the active rank-5 descriptor-roundtrip
+    matrices.
+- Implementation:
+  - `LDST_DESCRIPTOR_RANK5_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_DESCRIPTOR_RANK5_CASES` adds `auto` to the existing explicit
+    subset.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - rank-5 descriptor-roundtrip auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rank5-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_rank5_roundtrip' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip' -k auto`
+    - `4 skipped, 12 deselected in 4.94s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Interpretation:
+  - all newly added auto rank-5 cases hit the clean tensor-memory OOR skip
+    boundary;
+  - this is boundary classification, not positive opcode coverage.
+- Next:
+  - classify remaining fixed-opcode ld/st tests such as f16/subword, x1, and
+    fixed offset patterns as intentional exact-family coverage or add explicit
+    auto companions where useful.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

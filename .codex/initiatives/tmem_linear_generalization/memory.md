@@ -277,7 +277,33 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:05 UTC)
+## Current Topline (2026-04-11 17:10 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `be193b6c6` on `origin/codex/tmem`
+- Rank-5 descriptor-roundtrip `ld/st` boundary coverage now includes `auto`
+  instruction selection:
+  - `LDST_DESCRIPTOR_RANK5_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_DESCRIPTOR_RANK5_CASES` adds `auto` to the existing explicit
+    subset;
+  - all newly added auto rank-5 parametrizations hit the clean tensor-memory
+    OOR skip boundary.
+- Validation for `be193b6c6`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - rank-5 descriptor-roundtrip auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rank5-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_rank5_roundtrip' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip' -k auto`
+    - `4 skipped, 12 deselected in 4.94s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - classify remaining fixed-opcode ld/st tests such as f16/subword, x1, and
+    fixed offset patterns as intentional exact-family coverage or add explicit
+    auto companions where useful;
+  - then continue broader validation and heuristic cleanup.
+
+## Prior Topline (2026-04-11 17:05 UTC)
 
 - Latest pushed source/test checkpoint:
   - `a487942ac` on `origin/codex/tmem`
