@@ -284,6 +284,11 @@ Every fuzz case records:
   new shapes/layouts rather than re-proving those two base families.
 - Special no-scales `cta_group::1` `warpx2::{01_23,02_13}.64x128b` paths are
   covered by executable candidate tests and canonical-codegen exact tests.
+- No-scales `cta_group::2` `warpx2::01_23.64x128b` is covered by an
+  executable public-layout test with exact copy and multicast commit opcodes.
+  `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the first
+  public two-CTA candidate fails during shared descriptor-plan synthesis even
+  though the opcode is part of the documented inventory.
 
 #### Scales / multicast positive matrix
 - scales payload layouts that are known to alias to legal TMEM scales tiles
@@ -315,10 +320,11 @@ Every fuzz case records:
 - When the backend cannot legalize a documented atom family but the layout math
   suggests it should exist, write a direct PTX microkernel to determine whether
   the ISA/toolchain accepts the opcode.
-- The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` cases are now
-  covered through the public backend path with exact single-CTA commit opcode
-  checks; reserve direct PTX probes for remaining scales or two-CTA `warpx2`
-  documentation gaps.
+- The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` cases and the
+  no-scales `cta_group::2 warpx2::01_23.64x128b` case are now covered through
+  the public backend path with exact commit opcode checks; reserve direct PTX
+  probes for remaining scales or two-CTA `warpx2::02_13` documentation/layout
+  gaps.
 
 #### Checks
 - Output matches input for no-scales copies.

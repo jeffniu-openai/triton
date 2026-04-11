@@ -9587,3 +9587,39 @@ Open after this slice:
   - run hygiene, commit, and push this `ld.red` tile-permutation coverage slice;
   - continue copy/`warpx2` probing or another targeted `ld.red` exotic/mixed
     frontier.
+
+## 2026-04-11 19:42 UTC
+
+- Added executable no-scales two-CTA `tcgen05.cp.warpx2::01_23` coverage.
+- Source/test change:
+  - added two-CTA `SharedLinearLayout` and `TensorMemoryLinearLayout` helpers for
+    the public `warpx2::01_23` path;
+  - added `tmem_copy_no_scales_warpx2_twocta_kernel`;
+  - added `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive`;
+  - the oracle records the actual two-CTA packet mapping: within each CTA half,
+    output columns read source row offsets `0, 32, 16, 48`, while the source
+    column is selected by the local row band.
+- Probe result before promotion:
+  - two-CTA public `warpx2::01_23` emits
+    `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b` and the expected multicast
+    commit;
+  - the analogous public `warpx2::02_13` candidate still fails during shared
+    descriptor-plan synthesis, so it remains a layout-surface / direct-PTX
+    frontier instead of a clean ISA-impossible negative.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused two-CTA `warpx2::01_23` exact:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-twocta-positive-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive`
+    - `1 passed in 3.86s`
+  - focused `warpx2` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-twocta-slice PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `6 passed, 2526 deselected in 4.21s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-twocta-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `155 passed, 5 skipped, 2372 deselected in 40.40s`
+- Next:
+  - run hygiene, commit, and push this two-CTA `warpx2::01_23` coverage slice;
+  - then continue either direct-PTX/layout probing for two-CTA `warpx2::02_13`
+    and scales `warpx2`, or move to the next MMAv5 reachable-family gap.

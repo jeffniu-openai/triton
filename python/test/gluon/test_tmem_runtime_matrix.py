@@ -283,6 +283,24 @@ def _make_tmem_copy_warpx2_tmem_layout():
     )
 
 
+def _make_tmem_copy_warpx2_shared_layout_twocta():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]],
+        block_bases=[[128, 0]],
+        alignment=16,
+    )
+
+
+def _make_tmem_copy_warpx2_tmem_layout_twocta():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
+        cols=[[0, 1], [0, 2]],
+        block_bases=[[128, 0]],
+        shape=[256, 4],
+        two_ctas=True,
+    )
+
+
 def _make_tmem_copy_warpx2_tmem_layout_02_13():
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
@@ -314,6 +332,21 @@ def _expected_tmem_copy_warpx2_02_13_output(inp: torch.Tensor) -> torch.Tensor:
         expected[row, 1] = inp[src_base + 32, src_cols[0]]
         expected[row, 2] = inp[src_base, src_cols[1]]
         expected[row, 3] = inp[src_base + 32, src_cols[1]]
+    return expected
+
+
+def _expected_tmem_copy_warpx2_01_23_twocta_output(inp: torch.Tensor) -> torch.Tensor:
+    assert tuple(inp.shape) == (256, 4)
+    expected = torch.empty_like(inp)
+    for row in range(inp.shape[0]):
+        cta_base = 128 * (row // 128)
+        local_row = row % 128
+        src_base = cta_base + ((local_row % 32) // 2)
+        src_col = (local_row // 64) + (0 if local_row % 2 == 0 else 2)
+        expected[row, 0] = inp[src_base, src_col]
+        expected[row, 1] = inp[src_base + 32, src_col]
+        expected[row, 2] = inp[src_base + 16, src_col]
+        expected[row, 3] = inp[src_base + 48, src_col]
     return expected
 
 
@@ -1236,6 +1269,40 @@ def tmem_copy_no_scales_warpx2_codegen_kernel(in_ptr, out_ptr, shared_layout: tt
     mbarrier.invalidate(barrier)
 
     ttgl.store(out_ptr, 0)
+
+
+@gluon.jit
+def tmem_copy_no_scales_warpx2_twocta_kernel(in_ptr, out_ptr, shared_layout: ttgl.constexpr, tmem_layout: ttgl.constexpr):
+    M: ttgl.constexpr = 256
+    N: ttgl.constexpr = 4
+    shared_reg_layout: ttgl.constexpr = ttgl.DistributedLinearLayout(
+        reg_bases=[[0, 1], [0, 2]],
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
+        warp_bases=[[32, 0], [64, 0]],
+        block_bases=[[128, 0]],
+        shape=[M, N],
+    )
+    in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, shared_reg_layout))
+    in_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, shared_reg_layout))
+    in_offs = in_offs_m[:, None] * N + in_offs_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=tmem_layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=shared_layout, value=value)
+    fence_async_shared(cluster=True)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out = tmem.load(reg_layout)
+    out_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    out_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_offs_m[:, None] * N + out_offs_n[None, :]
+    ttgl.store(out_ptr + out_offs, out)
 
 
 @gluon.jit
@@ -4400,6 +4467,35 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive():
         ["tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"],
     )
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive():
+    M = 256
+    N = 4
+    shared_layout = _make_tmem_copy_warpx2_shared_layout_twocta()
+    tmem_layout = _make_tmem_copy_warpx2_tmem_layout_twocta()
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_copy_no_scales_warpx2_twocta_kernel[(1, )](
+        inp, out, shared_layout, tmem_layout, num_warps=4, num_ctas=2
+    )
+
+    expected = _expected_tmem_copy_warpx2_01_23_twocta_output(inp)
+    assert not torch.equal(out, inp)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(
+        compiled,
+        ["tcgen05.cp.cta_group::2.warpx2::01_23.64x128b"],
+    )
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
+    ptx = compiled.asm["ptx"]
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert "tcgen05.cp.cta_group::2.warpx2::02_13" not in ptx
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_copy" in ttgir
