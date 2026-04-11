@@ -1702,7 +1702,7 @@ PERMUTED_ROW_COL_LAYOUT_KINDS = list(product(PERMUTED_LAYOUT_KINDS, PERMUTED_LAY
 
 LDST_PERMUTED_CASES = [
     (perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
-    for perm_kind, n, variant in product(PERMUTED_LAYOUT_KINDS, (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for perm_kind, n, variant in product(PERMUTED_LAYOUT_KINDS, (64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_ROWCOL_PERMUTED_CASES = [
