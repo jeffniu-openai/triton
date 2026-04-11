@@ -274,7 +274,43 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 14:30 UTC)
+## Current Topline (2026-04-11 14:40 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `5e3b2ae87` on `origin/codex/tmem`
+- This checkpoint tightens exact opcode coverage for direct scaled-MMAv5
+  TMEM-view runtime tests:
+  - the minimal direct scaled-MMA kernel;
+  - direct accumulator block-N 64 and block-N 32 layouts;
+  - accumulator subviews for `N=32` and `N=64`;
+  - the TMEM LHS subview;
+  - the tile-permuted accumulator layout.
+- These tests now assert PTX/LLIR agreement and exact
+  `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`
+  selection instead of only checking for a generic `block_scale.scale_vec`
+  suffix.
+- Validation for `5e3b2ae87`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused direct scaled-MMA view opcode slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-direct-view-exact PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_minimal or mma_scaled_acc_blockn64_direct_layout or mma_scaled_acc_blockn32_direct_layout or mma_scaled_acc_subslice_view or mma_scaled_lhs_subslice_view or mma_scaled_acc_tile_permuted_64_direct_layout'`
+    - `7 passed, 1896 deselected in 7.77s`
+  - `git diff --check`
+    - `PASSED`
+- Boundary:
+  - these direct-view kernels still hardcode e5m2/e5m2 and therefore only pin
+    the `mxf8f6f4` scaled-MMA family;
+  - broader direct-view format coverage for `mxf4` and `mxf4nvf4` remains open.
+- Next:
+  - continue direct scaled-MMAv5 TMEM-view format broadening where it can be
+    expressed cleanly;
+  - then continue staged `ld/st` fuzzing, stale-negative cleanup, and
+    heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 14:30 UTC)
 
 - Latest pushed source/test checkpoint:
   - `3374bbf12` on `origin/codex/tmem`

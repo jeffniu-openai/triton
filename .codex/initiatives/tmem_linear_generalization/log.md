@@ -7934,3 +7934,44 @@ Open after this slice:
   - continue direct scaled-MMAv5 TMEM-view runtime coverage and broader
     MMAv5/`mma_scaled` saturation;
   - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 14:40 UTC
+
+- Committed and pushed direct scaled-MMAv5 TMEM-view opcode coverage:
+  - `5e3b2ae87`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - tighten the direct scaled-MMA runtime-matrix view tests from generic
+    `block_scale.scale_vec` checks to exact `mxf8f6f4.scale_vec::1X` opcode
+    checks.
+- Implementation:
+  - added `_assert_exact_mxf8f6f4_scaled_mma`;
+  - applied it to:
+    - `test_tmem_runtime_matrix_mma_scaled_minimal`;
+    - `test_tmem_runtime_matrix_mma_scaled_acc_blockn64_direct_layout`;
+    - `test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout`;
+    - `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view`;
+    - `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view`;
+    - `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_direct_layout`;
+  - preserved the existing expected instruction counts for the block-N and
+    tile-permuted tests.
+- Boundary:
+  - these direct-view kernels still hardcode e5m2/e5m2, so the exact opcode is
+    `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`;
+  - direct-view `mxf4` and `mxf4nvf4` format broadening remains future work.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused direct scaled-MMA view opcode slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-direct-view-exact PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_minimal or mma_scaled_acc_blockn64_direct_layout or mma_scaled_acc_blockn32_direct_layout or mma_scaled_acc_subslice_view or mma_scaled_lhs_subslice_view or mma_scaled_acc_tile_permuted_64_direct_layout'`
+    - `7 passed, 1896 deselected in 7.77s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue direct scaled-MMAv5 TMEM-view format broadening where cleanly
+    expressible;
+  - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.

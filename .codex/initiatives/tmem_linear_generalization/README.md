@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 14:30 UTC, the latest pushed source/test checkpoint is
-  `3374bbf12` on `origin/codex/tmem`.
+- As of 2026-04-11 14:40 UTC, the latest pushed source/test checkpoint is
+  `5e3b2ae87` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -110,6 +110,12 @@ When resuming the initiative:
   - the same format/CTA/geometry/accumulator-layout matrix now also asserts
     exact `tcgen05.mma.cta_group::{1,2}.kind::{mxf8f6f4,mxf4,mxf4nvf4}.block_scale.scale_vec::*`
     opcode selection for PTX and LLIR.
+- Direct scaled-MMAv5 TMEM-view tests now pin exact `mxf8f6f4` scaled-MMA
+  opcodes after `5e3b2ae87`:
+  - this covers the existing minimal, block-N direct-layout, accumulator
+    subview, LHS subview, and tile-permuted accumulator runtime tests;
+  - these direct-view kernels still hardcode e5m2/e5m2, so direct-view format
+    broadening for `mxf4` / `mxf4nvf4` remains open.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
