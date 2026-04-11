@@ -160,10 +160,10 @@
   - direct higher-rank access is still future work: higher-rank descriptors
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;
-  - `ld.red` has real positive coverage for tile-permuted and pure
-    row/col-permuted layouts, but still needs modifier/layout saturation over
-    supported non-sharded families and clean diagnostics for N-sharded or
-    otherwise unsupported reductions.
+  - `ld.red` now has modifier saturation over identity, tile-permuted, and
+    pure row/col-permuted supported non-sharded families at `eac11c719`;
+  - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
+    for N-sharded or otherwise unsupported reductions.
 - `tcgen05.mma` / `tcgen05.mma_scaled`:
   - existing runtime coverage includes plain `f16`, `tf32`, `f8f6f4`,
     `bf16 -> kind::f16`, several 2-CTA plain kinds, and targeted scaled-MMAv5
@@ -274,7 +274,34 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 14:10 UTC)
+## Current Topline (2026-04-11 14:20 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `eac11c719` on `origin/codex/tmem`
+- This checkpoint expands `ld.red` modifier saturation:
+  - introduces `LD_RED_MODIFIER_CASES` with all four legal modifier pairs:
+    plain, propagate-NaN, abs, and abs+propagate-NaN;
+  - applies the full modifier matrix to identity, tile-permuted,
+    column-permuted, and row-permuted positive linear layouts;
+  - applies the same modifier matrix to mixed-layout clean negatives, which
+    continue to use the dedicated
+    `tmem_load reduction source layout is not directly tcgen05.ld.red-compatible`
+    diagnostic.
+- Validation for `eac11c719`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused runtime-matrix `ld.red` slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ld-red-modifier-saturation PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py' -k 'ld_red_'`
+    - `208 passed, 1695 deselected in 132.40s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue broader MMAv5/`mma_scaled` runtime coverage;
+  - continue staged `ld/st` fuzzing after the targeted MMAv5 surfaces;
+  - keep clean negatives only for true unsupported layouts or resource limits.
+
+## Prior Topline (2026-04-11 14:10 UTC)
 
 - Latest pushed source/test checkpoint:
   - `7075f31fc` on `origin/codex/tmem`

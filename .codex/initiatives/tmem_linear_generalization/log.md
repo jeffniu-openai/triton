@@ -7862,3 +7862,34 @@ Open after this slice:
 - Next:
   - resume the queued `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
     stale-negative cleanup, and heuristic cleanup phases.
+
+## 2026-04-11 14:20 UTC
+
+- Committed and pushed `ld.red` modifier saturation:
+  - `eac11c719`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - expand the runtime-matrix `ld.red` layout-family tests from the previous
+    two diagonal modifier pairs to all four legal `{abs} x {propagate_nan}`
+    combinations;
+  - keep the clean-negative mixed-layout diagnostics covered across the same
+    modifier matrix.
+- Implementation:
+  - added `LD_RED_MODIFIER_CASES`;
+  - applied it to identity, tile-permuted, column-permuted, row-permuted, and
+    mixed clean-negative `ld.red` tests.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused runtime-matrix `ld.red` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ld-red-modifier-saturation PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py' -k 'ld_red_'`
+    - `208 passed, 1695 deselected in 132.40s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - move to broader MMAv5/`mma_scaled` runtime coverage, then staged `ld/st`
+    fuzzing and stale-negative cleanup.

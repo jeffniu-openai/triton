@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 14:10 UTC, the latest pushed source/test checkpoint is
-  `7075f31fc` on `origin/codex/tmem`.
+- As of 2026-04-11 14:20 UTC, the latest pushed source/test checkpoint is
+  `eac11c719` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy slices were validated with focused direct-i8 MMA tests, adjacent
@@ -96,6 +96,13 @@ When resuming the initiative:
   - the full `[2, 128, 256]` indexed parent is recorded as a tensor-memory OOR
     boundary (`Required: 1024, Hardware limit: 512`) instead of a positive
     target.
+- `ld.red` modifier saturation is expanded by `eac11c719`:
+  - positive identity, tile-permuted, column-permuted, and row-permuted linear
+    layouts now cover all four legal modifier pairs:
+    plain, propagate-NaN, abs, and abs+propagate-NaN;
+  - mixed unsupported layouts check the same modifier matrix and continue to
+    report the dedicated `tmem_load reduction source layout is not directly
+    tcgen05.ld.red-compatible` diagnostic.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
@@ -195,9 +202,9 @@ When resuming the initiative:
 - Next required durable step: continue the remaining recovery queue with the
   intentionally reverted attention example tracked separately from supported
   bitcast API validation and the legacy M64 MMAv5 xfail visible as design debt.
-  Continue the long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
-  stale-negative cleanup, and heuristic phases, with any remaining copy work
-  limited to shapes that fit the TMEM allocation budget.
+  Continue broader MMAv5/`mma_scaled`, staged `ld/st` fuzzing, stale-negative
+  cleanup, and heuristic phases, with any remaining copy work limited to
+  shapes that fit the TMEM allocation budget.
 
 ## Document Roles
 
