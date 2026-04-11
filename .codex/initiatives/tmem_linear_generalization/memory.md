@@ -165,12 +165,24 @@
   - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
     for N-sharded or otherwise unsupported reductions.
 - `tcgen05.mma` / `tcgen05.mma_scaled`:
-  - existing runtime coverage includes plain `f16`, `tf32`, `f8f6f4`,
-    `bf16 -> kind::f16`, several 2-CTA plain kinds, and targeted scaled-MMAv5
-    cases;
-  - remaining work is broad kind/layout/CTA saturation: sweep plain `f16`,
-    `tf32`, `f8f6f4`, confirm `i8` as clean unsupported where PTXAS rejects
-    it, then broaden scaled `mxf8f6f4`, `mxf4`, and `mxf4nvf4`;
+  - current runtime coverage now includes plain `f16`, `tf32`, `bf16`,
+    `f8e5m2`, and `f8e4m3` for both 1-CTA and 2-CTA, each across legacy and
+    canonical TMEM-linear accumulator layouts;
+  - current clean negatives confirm direct `i8` MMAv5 as a frontend diagnostic
+    on Blackwell targets where PTXAS rejects it;
+  - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
+    for `mxf8f6f4`, `mxf4`, and `mxf4nvf4` format families, including
+    accumulator subviews and selected tile-permuted accumulator layouts;
+  - the scaled-MMA copy-helper matrix also pins exact scaled-MMA opcode
+    selection for 1-CTA and 2-CTA `warpx4` copy paths across
+    format/geometry/accumulator-layout combinations;
+  - current-head validation at `57133ade7` is green for the true
+    `test_tmem_runtime_matrix_mma*` slice (`64 passed`) and the
+    scaled-MMA copy-helper matrix (`52 passed`);
+  - remaining MMA work is not an immediate red-test blocker; it is broader
+    fuzz/saturation beyond the deterministic matrix, additional reachable
+    layout-family positives when discovered, and the recorded 2-CTA TF32
+    shared-transpose lowering follow-up if it still reproduces;
   - direct scaled MMAv5 through TMEM views remains a high-value runtime target,
     and the 2-CTA TF32 shared-transpose lowering failure should remain a
     compiler follow-up target rather than a settled ISA boundary.

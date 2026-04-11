@@ -8630,6 +8630,47 @@ Open after this slice:
 - Next:
   - move to MMAv5 / `mma_scaled` reachable-family coverage.
 
+## 2026-04-11 18:35 UTC
+
+- Broadened validation across the current-head true `tcgen05.mma` /
+  direct `mma_scaled` runtime-matrix slice and the scaled-MMA copy-helper
+  instruction matrix.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `57133ade7`
+- Collection:
+  - true `test_tmem_runtime_matrix_mma*` selector:
+    - `64/2199 tests collected`
+  - scaled-MMA copy-helper selector:
+    - `52/2199 tests collected`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - true MMA/direct scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k test_tmem_runtime_matrix_mma`
+    - `64 passed, 2135 deselected in 20.10s`
+  - scaled-MMA copy-helper matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-scaled-mma-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp_scales_warpx4_via_scaled_mma`
+    - `52 passed, 2147 deselected in 15.20s`
+- Interpretation:
+  - current deterministic MMAv5 coverage is green across plain 1-CTA and
+    2-CTA kinds, supported linear/legacy accumulator layouts, direct
+    accumulator/LHS view cases, scaled direct view cases, and scaled-MMA
+    copy-helper opcode matrices;
+  - no immediate `tcgen05.mma` instruction-coverage hole is blocking the next
+    project phase, though broader fuzz/saturation and recorded follow-up
+    layout-family investigations remain long-term work.
+- Next:
+  - commit and push this validation checkpoint;
+  - continue staged broad validation / fuzzing and heuristic cleanup while
+    keeping attention deferred to the supported synchronization-aware
+    offset/slice/subview-to-bitcast migration.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

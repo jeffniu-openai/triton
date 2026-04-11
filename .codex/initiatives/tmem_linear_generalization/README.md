@@ -47,9 +47,19 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 18:05 UTC, the latest pushed source/test checkpoint is
-  `a950338f7` on `origin/codex/tmem`; the latest docs checkpoint before this
-  validation refresh is `016f489a3`.
+- As of the current-head validation checkpoint, the latest pushed source/test
+  checkpoint is `57133ade7` on `origin/codex/tmem`.
+- The current-head runtime-matrix saturation slices are green:
+  - broad `ld/st`:
+    `1082 passed, 437 skipped, 680 deselected`
+  - broad `tcgen05.cp`:
+    `152 passed, 5 skipped, 2042 deselected`
+  - broad `tcgen05.ld.red`:
+    `208 passed, 1991 deselected`
+  - true `tcgen05.mma` / direct `mma_scaled`:
+    `64 passed, 2135 deselected`
+  - scaled-MMA copy-helper matrix:
+    `52 passed, 2147 deselected`
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
