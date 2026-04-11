@@ -1635,6 +1635,7 @@ LDST_SHAPE_MAP = {
 }
 
 LDST_SUBVIEW_SHAPE_MAP = {
+    "auto": {32: "32x32b.x32.b32", 64: "32x32b.x64.b32", 128: "32x32b.x128.b32"},
     "32x32b": {32: "32x32b.x32.b32", 64: "32x32b.x64.b32", 128: "32x32b.x128.b32"},
     "16x64b": {32: "16x64b.x16.b32", 64: "16x64b.x32.b32", 128: "16x64b.x64.b32"},
     "16x128b": {32: "16x128b.x8.b32", 64: "16x128b.x16.b32", 128: "16x128b.x32.b32"},
@@ -1746,7 +1747,7 @@ LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
 
 LDST_HIGHER_RANK_INDEX_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_SLICE_CASES = [
@@ -1756,7 +1757,7 @@ LDST_HIGHER_RANK_SLICE_CASES = [
 
 LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
