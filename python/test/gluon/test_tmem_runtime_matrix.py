@@ -1683,7 +1683,7 @@ LDST_CASES = [
 
 LDST_DESCRIPTOR_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_CASES = [
