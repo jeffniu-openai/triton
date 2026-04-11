@@ -277,7 +277,33 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:30 UTC)
+## Current Topline (2026-04-11 16:40 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `20f2c8db8` on `origin/codex/tmem`
+- Exotic `ld/st` layout matrices now include `auto` instruction selection:
+  - `LDST_EXOTIC_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_EXOTIC_DESCRIPTOR_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_EXOTIC_UNSUPPORTED_CASES` now uses `LDST_VARIANTS`;
+  - this covers direct positive, descriptor-chain positive, and clean
+    unsupported block-layout negative paths.
+- Validation for `20f2c8db8`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - exotic direct/descriptor/unsupported matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-exotic-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_exotic_linear_layouts' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions_exotic_layouts' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported'`
+    - `75 passed in 42.51s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect the larger row/column cross-product and descriptor-roundtrip
+    explicit-only `ld/st` surfaces;
+  - then continue broader validation and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 16:30 UTC)
 
 - Latest pushed source/test checkpoint:
   - `c83d358e4` on `origin/codex/tmem`

@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 16:30 UTC, the latest pushed source/test checkpoint is
-  `c83d358e4` on `origin/codex/tmem`.
+- As of 2026-04-11 16:40 UTC, the latest pushed source/test checkpoint is
+  `20f2c8db8` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -185,6 +185,10 @@ When resuming the initiative:
     tests;
   - validation covers numerical behavior, `tensor_memory_linear` IR, and exact
     PTX/LLIR opcode agreement.
+- Exotic `ld/st` layout matrices now include `auto` after `20f2c8db8`:
+  - direct exotic, descriptor-chain exotic, and clean unsupported block-layout
+    matrices use `LDST_VARIANTS`;
+  - validation covers positive opcode agreement and clean negative diagnostics.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
