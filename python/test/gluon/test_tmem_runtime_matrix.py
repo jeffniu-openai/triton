@@ -3927,6 +3927,29 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_canonical_codegen():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen():
+    M = 128
+    N = 4
+    shared_layout = _make_tmem_copy_128x128_shared_layout()
+    tmem_layout = _make_tmem_copy_warpx2_tmem_layout_02_13()
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty((1, ), device="cuda", dtype=torch.int32)
+
+    compiled = tmem_copy_no_scales_warpx2_codegen_kernel[(1, )](
+        inp, out, shared_layout, tmem_layout, num_warps=4
+    )
+
+    assert int(out.item()) == 0
+    _assert_exact_cp_ptx_llir_match(
+        compiled,
+        ["tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"],
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen():
     child = textwrap.dedent(f"""
         import torch

@@ -8992,6 +8992,33 @@ Open after this slice:
   - run hygiene, commit, and push this coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`.
 
+## 2026-04-11 17:14 UTC
+
+- Added symmetric no-scales `tcgen05.cp` `warpx2::02_13` canonical-codegen
+  coverage.
+- Source/test change:
+  - added
+    `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen`;
+  - the test uses the canonical `128x128` shared layout with the
+    `warpx2::02_13` TMEM-linear destination and checks the exact
+    `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b` PTX/LLIR opcode stream.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - exact new codegen test:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-warpx2-0213-codegen-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen`
+    - `1 passed in 3.48s`
+  - focused `warpx2` slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-cp-warpx2-focused-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `5 passed, 2241 deselected in 3.98s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-warpx2-0213 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `153 passed, 5 skipped, 2088 deselected in 37.11s`
+- Next:
+  - run hygiene, commit, and push this copy coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
+
 ## 2026-04-11 17:03 UTC
 
 - Recorded the clarified supported `_reinterpret` migration contract.

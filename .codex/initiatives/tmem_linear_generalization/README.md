@@ -96,7 +96,7 @@ When resuming the initiative:
   - broad `ld/st`:
     `1104 passed, 441 skipped, 680 deselected`
   - broad `tcgen05.cp`:
-    `152 passed, 5 skipped, 2068 deselected`
+    `153 passed, 5 skipped, 2088 deselected`
   - broad `tcgen05.ld.red`:
     `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
@@ -155,6 +155,10 @@ When resuming the initiative:
   - the full `[2, 128, 256]` indexed parent is recorded as a tensor-memory OOR
     boundary (`Required: 1024, Hardware limit: 512`) instead of a positive
     target.
+- No-scales `warpx2` copy exact coverage now includes both canonical codegen
+  tails:
+  - `warpx2::01_23.64x128b`;
+  - `warpx2::02_13.64x128b`.
 - `ld.red` modifier saturation is expanded by `eac11c719`:
   - positive identity, tile-permuted, column-permuted, and row-permuted linear
     layouts now cover all four legal modifier pairs:
@@ -308,9 +312,9 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-current-broad-after-ldst-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-warpx2-0213 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `152 passed, 5 skipped, 2068 deselected in 37.08s`;
+    `153 passed, 5 skipped, 2088 deselected in 37.11s`;
   - this covers the current no-scales `warpx2` positives, dense copy
     positives, 2-CTA copy, scaled `warpx4` copy paths, and clean unsupported
     copy boundaries.

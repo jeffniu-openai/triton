@@ -264,6 +264,8 @@ Every fuzz case records:
 - TMEM destinations:
   - legacy `TensorMemoryLayout`
   - canonical TMEM-linear equivalent
+- Special no-scales `cta_group::1` `warpx2::{01_23,02_13}.64x128b` paths are
+  covered by executable candidate tests and canonical-codegen exact tests.
 
 #### Scales / multicast positive matrix
 - scales payload layouts that are known to alias to legal TMEM scales tiles
@@ -291,7 +293,9 @@ Every fuzz case records:
 - When the backend cannot legalize a documented atom family but the layout math
   suggests it should exist, write a direct PTX microkernel to determine whether
   the ISA/toolchain accepts the opcode.
-- Use this first for `warpx2::{02_13,01_23}.64x128b`.
+- The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` cases are now
+  covered through the public backend path; reserve direct PTX probes for
+  remaining scales or two-CTA `warpx2` documentation gaps.
 
 #### Checks
 - Output matches input for no-scales copies.

@@ -176,6 +176,8 @@
     is no longer believed to be live after the `[128,4]`
     raw-query/direct-view preservation fix; both candidate positives were
     recorded green in the latest docs;
+  - no-scales canonical-codegen coverage now pins both `warpx2::01_23` and
+    `warpx2::02_13` as exact `cta_group::1.64x128b` opcode streams;
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;
   - fit `128x256b` indexed-view coverage is broadened by `7075f31fc`, while
@@ -326,7 +328,32 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:09 UTC)
+## Current Topline (2026-04-11 17:14 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `30feed55c` on `origin/codex/tmem`
+- No-scales `tcgen05.cp` `warpx2` canonical-codegen coverage is now symmetric:
+  - existing `warpx2::01_23.64x128b` canonical codegen stayed green;
+  - new `warpx2::02_13.64x128b` canonical codegen is green.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - exact new codegen test:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-warpx2-0213-codegen-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen`
+    - `1 passed in 3.48s`
+  - focused `warpx2` slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-cp-warpx2-focused-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `5 passed, 2241 deselected in 3.98s`
+  - broad current-head `cp` slice:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-warpx2-0213 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `153 passed, 5 skipped, 2088 deselected in 37.11s`
+- Next:
+  - commit and push this copy coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`, likely broader
+    MMA/scaled-MMA probes or the more involved two-CTA/scales copy search.
+
+## Prior Topline (2026-04-11 17:09 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `d734f940a` on `origin/codex/tmem`
