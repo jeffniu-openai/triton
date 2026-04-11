@@ -8189,3 +8189,31 @@ Open after this slice:
   - continue staged `ld/st` fuzzing on clean-negative and stale-negative
     descriptor-view surfaces;
   - then stale-negative cleanup and heuristic cleanup.
+
+## 2026-04-11 15:50 UTC
+
+- Committed and pushed higher-rank `ld/st` OOR guard auto coverage:
+  - `e2d793726`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add `auto` instruction-selection coverage to higher-rank resource-boundary
+    tests after the positive higher-rank auto matrices were broadened.
+- Implementation:
+  - `LDST_HIGHER_RANK_OOR_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_OOR_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES` now uses `LDST_VARIANTS`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - higher-rank OOR guard matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-higher-rank-oor-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index_reports_tmem_oor' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_report_tmem_oor' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_tmem_oor' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_tmem_oor' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_report_tmem_oor' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_reports_tmem_oor'`
+    - `55 passed in 49.62s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect remaining staged `ld/st` stale-negative surfaces;
+  - then broader validation and heuristic cleanup.

@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 15:40 UTC, the latest pushed source/test checkpoint is
-  `81b4e5a9d` on `origin/codex/tmem`.
+- As of 2026-04-11 15:50 UTC, the latest pushed source/test checkpoint is
+  `e2d793726` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -151,6 +151,10 @@ When resuming the initiative:
     for `N = 64, 128`;
   - the tests continue to check functional output, PTX/LLIR agreement, and the
     expected reshape/transpose/split/join IR markers.
+- Higher-rank clean OOR guards now include `auto` after `e2d793726`:
+  - single-CTA and two-CTA higher-rank index, multidimensional-slice, and
+    dim0-slice resource-boundary tests all use `LDST_VARIANTS`;
+  - validation confirms these remain clean tensor-memory OOR boundaries.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
