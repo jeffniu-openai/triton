@@ -8519,6 +8519,33 @@ Open after this slice:
 - Next:
   - classify x1 f16, fixed offset patterns, and scales exact-family coverage.
 
+## 2026-04-11 17:40 UTC
+
+- Committed and pushed x1 f16 ld/st auto coverage:
+  - `a950338f7`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add auto companions to the x1 f16 roundtrip matrix.
+- Implementation:
+  - added `X1_F16_LDST_VARIANTS = ("auto", "32x32b")`;
+  - the existing expected opcode shapes are reused for both variants.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - x1 f16 auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-x1-f16-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f16_roundtrip' -k auto`
+    - `3 passed, 3 deselected in 3.45s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - classify remaining fixed-offset and scales exact-family ld/st tests as
+    intentional exact-opcode coverage or add auto companions if they test
+    instruction selection rather than a particular explicit family.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

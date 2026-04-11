@@ -277,7 +277,30 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:30 UTC)
+## Current Topline (2026-04-11 17:40 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `a950338f7` on `origin/codex/tmem`
+- X1 f16 ld/st roundtrips now include `auto` instruction selection:
+  - `X1_F16_LDST_VARIANTS` covers `auto` and explicit `32x32b`;
+  - the auto cases preserve the expected `32x32b.x1` f16 packet shapes,
+    including `unpack::16b` / `pack::16b` for the legacy unpacked layout.
+- Validation for `a950338f7`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - x1 f16 auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-x1-f16-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_f16_roundtrip' -k auto`
+    - `3 passed, 3 deselected in 3.45s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - classify remaining fixed-offset and scales exact-family ld/st tests as
+    intentional exact-opcode coverage or add auto companions if they test
+    instruction selection rather than a particular explicit family;
+  - then continue broader validation and heuristic cleanup.
+
+## Prior Topline (2026-04-11 17:30 UTC)
 
 - Latest pushed source/test checkpoint:
   - `c475eecc0` on `origin/codex/tmem`
