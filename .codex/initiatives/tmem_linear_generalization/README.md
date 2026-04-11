@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 16:50 UTC, the latest pushed source/test checkpoint is
-  `6d44718e7` on `origin/codex/tmem`.
+- As of 2026-04-11 17:00 UTC, the latest pushed source/test checkpoint is
+  `00139772b` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -195,6 +195,11 @@ When resuming the initiative:
   - this reaches direct ld/st and descriptor-chain composition sweeps;
   - focused validation ran the newly added auto parametrizations across the
     row/column permutation cross-product.
+- Row/column descriptor-roundtrip `ld/st` boundary coverage now includes
+  `auto` after `00139772b`:
+  - `LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES` uses `LDST_VARIANTS`;
+  - focused validation shows the new auto parametrizations all hit the existing
+    clean tensor-memory OOR skip boundary for lifted roundtrip shapes.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

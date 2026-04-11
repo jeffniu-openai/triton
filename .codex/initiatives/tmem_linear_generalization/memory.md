@@ -277,7 +277,31 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:50 UTC)
+## Current Topline (2026-04-11 17:00 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `00139772b` on `origin/codex/tmem`
+- Row/column descriptor-roundtrip `ld/st` boundary coverage now includes
+  `auto` instruction selection:
+  - `LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES` now uses `LDST_VARIANTS`;
+  - the newly added auto parametrizations all hit the existing clean
+    tensor-memory OOR skip boundary for lifted roundtrip shapes.
+- Validation for `00139772b`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - row/column descriptor-roundtrip auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rowcol-roundtrip-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_roundtrip_rowcol_permuted_sweeps' -k auto`
+    - `48 skipped, 192 deselected in 37.78s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - rescan for remaining `LDST_EXPLICIT_VARIANTS` runtime-matrix surfaces;
+  - then continue broader validation and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 16:50 UTC)
 
 - Latest pushed source/test checkpoint:
   - `6d44718e7` on `origin/codex/tmem`

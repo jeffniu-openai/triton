@@ -8370,6 +8370,37 @@ Open after this slice:
   - inspect descriptor-roundtrip row/column explicit-only `ld/st` coverage;
   - then broader validation and heuristic cleanup.
 
+## 2026-04-11 17:00 UTC
+
+- Committed and pushed row/column descriptor-roundtrip `ld/st` auto boundary
+  coverage:
+  - `00139772b`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add `auto` instruction-selection entries to the row/column permuted
+    descriptor-roundtrip matrix.
+- Implementation:
+  - `LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES` now uses `LDST_VARIANTS`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - row/column descriptor-roundtrip auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rowcol-roundtrip-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_roundtrip_rowcol_permuted_sweeps' -k auto`
+    - `48 skipped, 192 deselected in 37.78s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Interpretation:
+  - the auto cases all hit the existing tensor-memory OOR skip boundary for
+    lifted roundtrip shapes;
+  - this is boundary classification, not new positive runtime opcode coverage.
+- Next:
+  - rescan for remaining `LDST_EXPLICIT_VARIANTS` runtime-matrix surfaces;
+  - then broader validation and heuristic cleanup.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:
