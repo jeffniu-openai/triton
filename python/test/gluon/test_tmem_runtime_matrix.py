@@ -411,7 +411,14 @@ def _extract_tcgen05_mma_opcodes(asm: str):
 
 
 def _make_mma_plain_kind_inputs(kind: str, m: int, n: int, k: int):
-    if kind == "tf32":
+    if kind == "f16":
+        a = torch.randn((m, k), device="cuda", dtype=torch.float16)
+        b = torch.randn((k, n), device="cuda", dtype=torch.float16)
+        shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=16, rank=2)
+        shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=16, rank=2)
+        expected_kind = "tcgen05.mma.cta_group::1.kind::f16"
+        atol, rtol = 1e-1, 8e-2
+    elif kind == "tf32":
         a = _round_to_tf32(torch.randn((m, k), device="cuda", dtype=torch.float32))
         b = _round_to_tf32(torch.randn((k, n), device="cuda", dtype=torch.float32))
         shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=128, transposed=False, element_bitwidth=32, rank=2)
@@ -425,7 +432,7 @@ def _make_mma_plain_kind_inputs(kind: str, m: int, n: int, k: int):
         shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=16, rank=2)
         expected_kind = "tcgen05.mma.cta_group::1.kind::f16"
         atol, rtol = 1e-1, 1e-1
-    else:
+    elif kind in ("f8e5m2", "f8e4m3"):
         fp8_dtype = torch.float8_e5m2 if kind == "f8e5m2" else torch.float8_e4m3fn
         a = torch.randint(20, 40, (m, k), device="cuda", dtype=torch.uint8).view(fp8_dtype)
         b = torch.randint(20, 40, (k, n), device="cuda", dtype=torch.uint8).view(fp8_dtype)
@@ -433,11 +440,22 @@ def _make_mma_plain_kind_inputs(kind: str, m: int, n: int, k: int):
         shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
         expected_kind = "tcgen05.mma.cta_group::1.kind::f8f6f4"
         atol, rtol = 1e-1, 1e-1
+    else:
+        raise ValueError(f"unsupported MMA kind: {kind}")
     return a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol
 
 
 def _make_mma_twocta_plain_kind_inputs(kind: str, m: int, n: int, k: int, cga_layout_a, cga_layout_b):
-    if kind == "tf32":
+    if kind == "f16":
+        a = torch.randn((m, k), device="cuda", dtype=torch.float16)
+        b = torch.randn((k, n), device="cuda", dtype=torch.float16)
+        shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([m, k], ttgl.float16, cga_layout=cga_layout_a)
+        shared_layout_b = ttgl.NVMMASharedLayout.get_default_for(
+            [k, n], ttgl.float16, transposed=True, cga_layout=cga_layout_b
+        )
+        expected_kind = "tcgen05.mma.cta_group::2.kind::f16"
+        atol, rtol = 1e-1, 8e-2
+    elif kind == "tf32":
         a = _round_to_tf32(torch.randn((m, k), device="cuda", dtype=torch.float32))
         b = _round_to_tf32(torch.randn((k, n), device="cuda", dtype=torch.float32))
         shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([m, k], ttgl.float32, cga_layout=cga_layout_a)
@@ -455,7 +473,7 @@ def _make_mma_twocta_plain_kind_inputs(kind: str, m: int, n: int, k: int, cga_la
         )
         expected_kind = "tcgen05.mma.cta_group::2.kind::f16"
         atol, rtol = 1e-1, 1e-1
-    else:
+    elif kind in ("f8e5m2", "f8e4m3"):
         fp8_dtype = torch.float8_e5m2 if kind == "f8e5m2" else torch.float8_e4m3fn
         gluon_dtype = ttgl.float8e5 if kind == "f8e5m2" else ttgl.float8e4nv
         a = torch.randint(20, 40, (m, k), device="cuda", dtype=torch.uint8).view(fp8_dtype)
@@ -466,6 +484,8 @@ def _make_mma_twocta_plain_kind_inputs(kind: str, m: int, n: int, k: int, cga_la
         )
         expected_kind = "tcgen05.mma.cta_group::2.kind::f8f6f4"
         atol, rtol = 1e-1, 1e-1
+    else:
+        raise ValueError(f"unsupported MMA kind: {kind}")
     return a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol
 
 
@@ -4121,9 +4141,11 @@ MMA_CASES = [
     ("linear_use_acc", _make_tmem_linear_layout(128, 128), True),
 ]
 
+MMA_PLAIN_KINDS = ("f16", "tf32", "bf16", "f8e5m2", "f8e4m3")
+
 MMA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind)
-    for kind, acc_layout_kind in product(("tf32", "bf16", "f8e5m2", "f8e4m3"), ("legacy", "linear"))
+    for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
 ]
 
 MMA_TWOCTA_CASES = [
@@ -4133,7 +4155,7 @@ MMA_TWOCTA_CASES = [
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind)
-    for kind, acc_layout_kind in product(("tf32", "bf16", "f8e5m2", "f8e4m3"), ("legacy", "linear"))
+    for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
 ]
 
 MMA_TILE_PERMUTED_CASES = [
