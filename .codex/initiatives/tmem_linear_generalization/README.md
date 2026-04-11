@@ -106,7 +106,7 @@ When resuming the initiative:
   - broad `tcgen05.cp`:
     `154 passed, 5 skipped, 2114 deselected`
   - broad `tcgen05.ld.red`:
-    `228 passed, 2017 deselected`
+    `276 passed, 2045 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
     `154 passed, 50 skipped, 2069 deselected`
   - scaled-MMA copy-helper matrix:
@@ -365,13 +365,13 @@ When resuming the initiative:
     boundaries.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-after-256-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-colperm-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
   - result:
-    `228 passed, 2017 deselected in 139.83s`;
-  - this covers identity, tile-permuted, column-permuted, row-permuted, all
-    legal modifier pairs, reduction-friendly row-256 positives, clean
-    unsupported identity row-256 layouts, and clean unsupported mixed-layout
-    negatives.
+    `276 passed, 2045 deselected in 192.56s (0:03:12)`;
+  - this covers identity, tile-permuted, pure column-permuted
+    `128x{64,128,256}`, row-permuted, all legal modifier pairs,
+    reduction-friendly row-256 positives, clean unsupported identity row-256
+    layouts, and clean unsupported mixed-layout negatives.
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:

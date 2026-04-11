@@ -9412,3 +9412,32 @@ Open after this slice:
   - run hygiene, commit, and push this scaled-copy commit-anchor slice;
   - continue operational fuzzing from `fuzz_plan.md`, with direct two-CTA
     scaled-MMA left as a topology-aware follow-up.
+
+## 2026-04-11 19:00 UTC
+
+- Broadened pure column-permuted `tcgen05.ld.red` positive coverage.
+- Source/test change:
+  - added `LD_RED_COL_PERMUTED_SHAPES` for `N=64`, `N=128`, and `N=256`;
+  - expanded `test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout` so
+    each non-identity column permutation runs across those N sizes, both
+    reduction ops, and all legal modifier pairs.
+- Probe result before promotion:
+  - `N=64` pure column permutations emit one
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` op;
+  - `N=256` pure column permutations emit four
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` ops;
+  - no non-`32x32b` reduction atom was discovered.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused expanded column-permuted `ld.red` exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-colperm-expanded PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout`
+    - `72 passed in 50.45s`
+  - broad current-head `ld_red` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-colperm-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `276 passed, 2045 deselected in 192.56s (0:03:12)`
+- Next:
+  - run hygiene, commit, and push this `ld.red` coverage slice;
+  - continue `ld.red` layout fuzzing or move to copy/`warpx2` or MMAv5 reachable
+    families.

@@ -237,6 +237,8 @@ Every fuzz case records:
   - row-256 reduction-friendly physical forms where the source layout still
     has a 128-row reduction block and carries the high row bit through the
     column/query frame
+  - pure column-permuted `128x{64,128,256}` layouts, which are now proven to
+    emit `32x32b` reduction-family opcodes across legal modifiers
   - any additional TMEM-linear family that compile-only search proves emits
     legal reduction code
 

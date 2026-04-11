@@ -2270,10 +2270,17 @@ LD_RED_ROWCOL_PERMUTED_CASES = [
     if not (row_perm_kind == "identity" and col_perm_kind == "identity")
 ]
 
+LD_RED_COL_PERMUTED_SHAPES = [
+    (64, "32x32b.x64"),
+    (128, "32x32b.x128"),
+    (256, "32x32b.x64"),
+]
+
 LD_RED_COL_PERMUTED_CASES = [
-    (col_perm_kind, "32x32b.x128")
+    (col_perm_kind, n, expected_shape)
     for col_perm_kind in PERMUTED_LAYOUT_KINDS
     if col_perm_kind != "identity"
+    for n, expected_shape in LD_RED_COL_PERMUTED_SHAPES
 ]
 
 LD_RED_ROW_PERMUTED_CASES = [
@@ -3718,11 +3725,11 @@ def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
-@pytest.mark.parametrize("col_perm_kind,expected_shape", LD_RED_COL_PERMUTED_CASES)
+@pytest.mark.parametrize("col_perm_kind,N,expected_shape", LD_RED_COL_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout(
-    red_op, use_abs, propagate_nan, col_perm_kind, expected_shape
+    red_op, use_abs, propagate_nan, col_perm_kind, N, expected_shape
 ):
-    M = N = 128
+    M = 128
     num_warps = 4
     layout = _make_tmem_linear_layout_permuted(M, N, "identity", col_perm_kind)
     compiled = _run_tmem_reduction_case(
