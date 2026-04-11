@@ -6251,7 +6251,8 @@ rejection, not rescue
 - Current behavior:
   - the historical candidate and the four nearby variants all classify through
     the public scales layout surface as `tcgen05.copy.warpx4.32x128b` and then
-    fail descriptor-plan synthesis for tensor-memory scales;
+    fail descriptor-plan synthesis for tensor-memory scales; that failure is now
+    emitted by `TMEMCopyOp` verification before late LLVM lowering;
   - none of the committed public-layout variants reaches
     `warpx2::{01_23,02_13}.64x128b`;
   - true scales `warpx2` remains a descriptor/address-representation or direct
@@ -6338,3 +6339,37 @@ rejection, not rescue
   - commit and push this MMAv5 instruction-count coverage slice;
   - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
     fuzzing, or another MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:59 UTC: Scales copy descriptor-plan failures are verified early
+
+- Latest pushed checkpoint before this source/test update:
+  - `ad814241d` on `origin/codex/tmem`
+- Source/compiler change:
+  - `TMEMCopyOp::verify()` now applies the existing shared-descriptor feasibility
+    check to tensor-memory-scales copies after family recognition and swizzle
+    validation;
+  - if no plan can synthesize a compatible shared-memory descriptor, the scales
+    branch emits the same clean `maps to tcgen05.copy.<family>` diagnostic and
+    notes that the case is rejected before late LLVM lowering.
+- Test change:
+  - renamed the old scales unsupported-layout parse/bug exact to
+    `test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error`;
+  - it now asserts the descriptor-plan diagnostic, the same-family guidance,
+    the late-LLVM-lowering note, and no `PassManager::run failed` or assertion.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - focused scales copy verifier slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scales-verifier-focused-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error`
+    - `7 passed in 3.39s`
+  - broad `tcgen05.cp` selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-scales-verifier-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `162 passed, 5 skipped, 2488 deselected in 40.99s`
+- Next:
+  - commit and push this scales-copy verifier checkpoint;
+  - continue true scales `warpx2` descriptor/direct-PTX research or two-CTA
+    `warpx2::02_13` descriptor/address synthesis.

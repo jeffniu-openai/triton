@@ -1588,6 +1588,21 @@ LogicalResult TMEMCopyOp::verify() {
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() != 0) {
       return emitOpError("The source should not be swizzled for now");
     }
+    if (!llvm::any_of(copyPlans, canBuildSharedDescriptorPlan)) {
+      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
+      auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
+                  << family
+                  << ", but Triton could not synthesize a compatible "
+                     "shared-memory descriptor plan for tensor memory scales.";
+      diag.attachNote()
+          << "Use a shared layout that lowers to tcgen05.copy." << family
+          << ", or reshape / permute the shared tile until it lowers to the "
+             "same descriptor family.";
+      diag.attachNote()
+          << "This is reported as cleanly unsupported instead of falling "
+             "through to late LLVM lowering.";
+      return failure();
+    }
   } else {
     if (getSrc().getType().getShape() != getDst().getType().getShape()) {
       return emitOpError(

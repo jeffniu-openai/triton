@@ -4461,7 +4461,7 @@ def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_bug_cp_scales_unsupported_layout_raises_runtimeerror_parse(capfd):
+def test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error(capfd):
     smem_h, smem_w = 64, 16
     num_rows = 128
     num_cols = smem_h * smem_w // 32
@@ -4469,20 +4469,18 @@ def test_tmem_runtime_matrix_bug_cp_scales_unsupported_layout_raises_runtimeerro
     out = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8, device="cuda")
     smem_layout = _make_scales_shared_layout_warpx2_candidate()
 
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(Exception) as excinfo:
         tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
 
     captured = capfd.readouterr()
-    text = captured.err + captured.out
+    text = str(excinfo.value) + captured.err + captured.out
     assert "maps to tcgen05.copy." in text
     assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
     assert "Use a shared layout that lowers to tcgen05.copy." in text
     assert "same descriptor family" in text
+    assert "late LLVM lowering" in text
+    assert "PassManager::run failed" not in text
     assert "Assertion" not in text
-    assert (
-        "error encountered during parsing" in str(excinfo.value)
-        or "PassManager::run failed" in str(excinfo.value)
-    )
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

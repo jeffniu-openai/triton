@@ -220,8 +220,9 @@ When resuming the initiative:
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales
-  descriptor-plan diagnostic. `CP_SCALES_LAYOUT_PROBE_CASES` now also pins four
-  nearby shared-linear basis-order variants as clean unsupported; all of them
+  descriptor-plan diagnostic, now from `TMEMCopyOp` verification rather than
+  falling through to late LLVM lowering. `CP_SCALES_LAYOUT_PROBE_CASES` now also
+  pins four nearby shared-linear basis-order variants as clean unsupported; all of them
   still map to `warpx4.32x128b` descriptor-plan failures rather than public
   `warpx2` scales lowering. The `warpx4` control remains the positive copy
   path for this public scales surface.
@@ -416,9 +417,9 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-after-scales-warpx2-nearby-cases PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-scales-verifier-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `162 passed, 5 skipped, 2488 deselected in 40.88s`;
+    `162 passed, 5 skipped, 2488 deselected in 40.99s`;
   - this covers the current no-scales `warpx2` positives with exact commit
     opcodes, including the two-CTA `warpx2::01_23` path, the new two-CTA
     `warpx2::02_13` canonical-shared clean unsupported boundary, dense-shared
@@ -430,7 +431,7 @@ When resuming the initiative:
     known all-zero path, unaligned deltas trap, and the known seed fields do not
     recover the missing source-column bit; it also covers the historical scales
     `warpx2` candidate and four nearby basis-order variants as clean unsupported
-    `warpx4.32x128b` descriptor-plan failures.
+    verifier-side `warpx4.32x128b` descriptor-plan failures.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-wait-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;

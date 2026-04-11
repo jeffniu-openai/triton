@@ -317,8 +317,10 @@ Every fuzz case records:
   `TensorMemoryScalesLayout` because the scales layout carries broadcast row
   bases. `CP_SCALES_LAYOUT_PROBE_CASES` now also pins four nearby basis-order
   variants as clean unsupported, and all of them still classify as `warpx4`
-  before descriptor-plan synthesis fails. Treat true scales `warpx2` as a
-  descriptor/address-representation or direct-PTX documentation frontier.
+  before descriptor-plan synthesis fails. Unsupported scales copy layouts now
+  report this boundary from `TMEMCopyOp` verification instead of late LLVM
+  lowering. Treat true scales `warpx2` as a descriptor/address-representation
+  or direct-PTX documentation frontier.
 
 #### Shared-layout search strategy
 - Generate shared linear layouts by basis mutation rather than random dense

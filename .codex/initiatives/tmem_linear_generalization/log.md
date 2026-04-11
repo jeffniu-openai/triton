@@ -10338,3 +10338,38 @@ Open after this slice:
   - commit and push this MMAv5 instruction-count coverage slice;
   - continue true scales `warpx2`, two-CTA `warpx2::02_13`, broader `ld.red`
     fuzzing, or another MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 23:59 UTC
+
+- Moved tensor-memory-scales `tcgen05.copy` descriptor-plan failures into
+  `TMEMCopyOp` verification.
+- Source/compiler change:
+  - the scales branch now reuses the existing shared-descriptor feasibility
+    check after copy-family recognition and swizzle validation;
+  - unsupported scales layouts emit the `maps to tcgen05.copy.<family>` clean
+    diagnostic with same-family guidance and a note that they are rejected
+    before late LLVM lowering.
+- Test change:
+  - renamed the old scales unsupported-layout parse/bug exact to
+    `test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error`;
+  - it now asserts the verifier diagnostic and no `PassManager::run failed` or
+    assertion. The Python wrapper can still prefix verifier failures with
+    `error encountered during parsing`, so the test does not use that prefix as
+    the cleanliness boundary.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - syntax:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - focused scales copy verifier slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scales-verifier-focused-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_layout_probe python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error`
+    - `7 passed in 3.39s`
+  - broad `tcgen05.cp` selector:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-scales-verifier-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `162 passed, 5 skipped, 2488 deselected in 40.99s`
+- Next:
+  - commit and push this scales-copy verifier checkpoint;
+  - continue true scales `warpx2` descriptor/direct-PTX research or two-CTA
+    `warpx2::02_13` descriptor/address synthesis.
