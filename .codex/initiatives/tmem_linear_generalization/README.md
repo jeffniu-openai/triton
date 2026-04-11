@@ -63,7 +63,7 @@ When resuming the initiative:
 - As of the latest focused coverage checkpoint, the current source/test slices
   add runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
   `relinquish_alloc_permit`, `dealloc`, and `wait`, including pow2 alloc-size
-  immediates for both CTA groups.
+  immediates for both CTA groups, plus exact `tcgen05.commit` opcode anchors.
 - The latest full `python/test/gluon/test_tmem_runtime_matrix.py` file
   validation checkpoint remains green:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
@@ -104,11 +104,11 @@ When resuming the initiative:
   - broad `ld/st`:
     `1114 passed, 441 skipped, 713 deselected`
   - broad `tcgen05.cp`:
-    `154 passed, 5 skipped, 2098 deselected`
+    `154 passed, 5 skipped, 2109 deselected`
   - broad `tcgen05.ld.red`:
     `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `149 passed, 50 skipped, 2057 deselected`
+    `149 passed, 50 skipped, 2069 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected`
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -120,6 +120,11 @@ When resuming the initiative:
   - the two-CTA case asserts cluster arrive/wait before dealloc;
   - a source-initialized `allocate_tensor_memory(..., value=...)` kernel
     round-trips the initialized values through a TMEM load.
+- Commit-opcode coverage now has exact PTX/LLIR anchors:
+  - single-CTA MMA pins
+    `tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64`;
+  - two-CTA copy and MMA pin
+    `tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused

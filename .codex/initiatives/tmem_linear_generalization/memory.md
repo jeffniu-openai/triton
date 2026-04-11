@@ -66,6 +66,15 @@
     both CTA groups, check two-CTA cluster arrive/wait before dealloc, and
     keep a source-initialized `allocate_tensor_memory(..., value=...)`
     roundtrip.
+- Current-head commit-opcode exact coverage is green:
+  - focused copy/MMA commit exacts:
+    `24 passed in 19.43s`
+  - broad `tcgen05.cp` slice:
+    `154 passed, 5 skipped, 2109 deselected in 39.30s`
+  - broad true `tcgen05.mma` / direct `mma_scaled` slice:
+    `149 passed, 50 skipped, 2069 deselected in 87.15s (0:01:27)`
+  - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
+    commit for copy/MMA paths, with PTX and LLIR opcode agreement.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -229,8 +238,10 @@
     two-CTA `alloc` / `relinquish_alloc_permit` / `dealloc` / `wait` emission
     on ld/st kernels, pow2 alloc/dealloc size immediates
     `32, 64, 128, 256, 512`, and a source-initialized allocation roundtrip;
-    remaining allocator fuzzing is non-pow2 size and commit-mode saturation
-    rather than a missing first runtime anchor;
+    exact commit opcode anchoring now covers single-CTA non-multicast and
+    two-CTA multicast copy/MMA paths; remaining allocator fuzzing is non-pow2
+    size and specialized standalone/malformed commit configurations rather
+    than a missing first runtime anchor;
   - direct higher-rank access is still future work: higher-rank descriptors
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;

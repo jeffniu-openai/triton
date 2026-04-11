@@ -351,6 +351,23 @@ def _assert_exact_cp_ptx_llir_match(compiled, expected_ops=None):
     return ptx_ops
 
 
+def _extract_tcgen05_commit_opcodes(asm: str):
+    pattern = re.compile(
+        r"(tcgen05\.commit\.cta_group::\d+\.mbarrier::arrive::one\.shared::cluster"
+        r"(?:\.multicast::cluster)?\.b64)"
+    )
+    return pattern.findall(asm)
+
+
+def _assert_exact_commit_ptx_llir_match(compiled, expected_ops=None):
+    ptx_ops = _extract_tcgen05_commit_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_commit_opcodes(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    if expected_ops is not None:
+        assert ptx_ops == list(expected_ops)
+    return ptx_ops
+
+
 def _assert_exact_tmem_lifetime_ptx_llir_match(compiled, cta_group: int, alloc_size: int,
                                                expect_cluster_sync: bool = False):
     alloc = f"tcgen05.alloc.cta_group::{cta_group}.sync.aligned.shared::cta.b32"
@@ -4123,6 +4140,7 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen():
         import torch
         from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryLayout
         from python.test.gluon.test_tmem_runtime_matrix import (
+            _assert_exact_commit_ptx_llir_match,
             _assert_exact_cp_ptx_llir_match,
             _make_2cta_cga_layout,
             _make_tmem_linear_layout_mmav5_twocta,
@@ -4160,10 +4178,10 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen():
             first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x256b")
             first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x256b")
 
-            assert ptx.count("tcgen05.commit.cta_group::2") == 1
-            assert llir.count("tcgen05.commit.cta_group::2") == 1
-            assert "tcgen05.commit.cta_group::1" not in ptx
-            assert "tcgen05.commit.cta_group::1" not in llir
+            _assert_exact_commit_ptx_llir_match(
+                compiled,
+                ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+            )
             assert "tcgen05.cp.cta_group::1" not in ptx
             assert ptx.count("fence.proxy.async.shared::cluster") == 1
             assert ptx.count("barrier.cluster.arrive.aligned;") == 2
@@ -4189,6 +4207,7 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen():
         import torch
         from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryLayout
         from python.test.gluon.test_tmem_runtime_matrix import (
+            _assert_exact_commit_ptx_llir_match,
             _assert_exact_cp_ptx_llir_match,
             _make_2cta_cga_layout,
             _make_tmem_linear_layout_mmav5_twocta,
@@ -4222,10 +4241,10 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen():
             first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x128b")
             first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x128b")
 
-            assert ptx.count("tcgen05.commit.cta_group::2") == 1
-            assert llir.count("tcgen05.commit.cta_group::2") == 1
-            assert "tcgen05.commit.cta_group::1" not in ptx
-            assert "tcgen05.commit.cta_group::1" not in llir
+            _assert_exact_commit_ptx_llir_match(
+                compiled,
+                ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+            )
             assert "tcgen05.cp.cta_group::1" not in ptx
             assert ptx.count("fence.proxy.async.shared::cluster") == 1
             assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
@@ -4529,8 +4548,10 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
     assert ptx_ops
     assert ptx_ops == llir_ops
     assert all(op == expected_kind for op in ptx_ops)
-    assert "tcgen05.commit.cta_group::1" in compiled.asm["ptx"]
-    assert "tcgen05.commit.cta_group::1" in compiled.asm["llir"]
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64"],
+    )
     if acc_layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
@@ -4676,9 +4697,10 @@ def test_tmem_runtime_matrix_mma_twocta(name, layout_kind):
     assert ptx_mma_ops == llir_mma_ops
     assert ptx_mma_ops
     assert all(op == "tcgen05.mma.cta_group::2.kind::f16" for op in ptx_mma_ops)
-    assert "tcgen05.commit.cta_group::2" in compiled.asm["ptx"]
-    assert "tcgen05.commit.cta_group::2" in compiled.asm["llir"]
-    assert ".multicast::cluster" in compiled.asm["ptx"]
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -4741,8 +4763,10 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind):
     assert ptx_ops
     assert ptx_ops == llir_ops
     assert all(op == expected_kind for op in ptx_ops)
-    assert "tcgen05.commit.cta_group::2" in compiled.asm["ptx"]
-    assert "tcgen05.commit.cta_group::2" in compiled.asm["llir"]
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
     assert "two_ctas" in compiled.asm["ttgir"]
     if acc_layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]

@@ -9283,7 +9283,7 @@ Open after this slice:
     allocator sizes and commit-mode saturation as later allocator work.
 
 
-## 2026-04-11 18:45 UTC
+## 2026-04-11 18:40 UTC
 
 - Restated the supported `_reinterpret` migration contract after the latest
   clarification:
@@ -9295,3 +9295,33 @@ Open after this slice:
   physical image. It must not select, move, or remap physical TMEM.
 - Attention remains intentionally deferred until its TMEM reuse can be
   represented by this synchronization-aware supported API sequence.
+
+## 2026-04-11 18:42 UTC
+
+- Added exact `tcgen05.commit` opcode anchors to the runtime matrix.
+- Source/test change:
+  - added `_extract_tcgen05_commit_opcodes` and
+    `_assert_exact_commit_ptx_llir_match`;
+  - tightened two-CTA copy tests to assert the exact multicast commit opcode;
+  - tightened single-CTA and two-CTA MMA tests to assert exact commit opcode
+    PTX/LLIR agreement.
+- Discovery:
+  - two-CTA copy emits
+    `tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64`,
+    matching the two-CTA MMA multicast form.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused commit exacts:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-commit-exacts-focused-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_codegen python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_plain_kinds`
+    - `24 passed in 19.43s`
+  - broad `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-commit-exacts-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `154 passed, 5 skipped, 2109 deselected in 39.30s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-commit-exacts-mma-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `149 passed, 50 skipped, 2069 deselected in 87.15s (0:01:27)`
+- Next:
+  - run hygiene, commit, and push this commit-opcode coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
