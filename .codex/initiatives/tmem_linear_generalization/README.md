@@ -47,8 +47,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 16:20 UTC, the latest pushed source/test checkpoint is
-  `8f622b938` on `origin/codex/tmem`.
+- As of 2026-04-11 16:30 UTC, the latest pushed source/test checkpoint is
+  `c83d358e4` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -178,6 +178,13 @@ When resuming the initiative:
   - the unsupported matrix uses `LDST_VARIANTS`;
   - validation confirms auto still fails through the clean CTA-per-CGA mismatch
     path rather than PassManager/assertion crashes.
+- Same-row/column permuted `ld/st` layouts now include `auto` after
+  `c83d358e4`:
+  - `LDST_PERMUTED_CASES` uses `LDST_VARIANTS`;
+  - this reaches both direct ld/st and descriptor-chain composition runtime
+    tests;
+  - validation covers numerical behavior, `tensor_memory_linear` IR, and exact
+    PTX/LLIR opcode agreement.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
