@@ -59,6 +59,21 @@ def _check_tensor_memory_layout_ctas(builder, two_ctas, cga_layout=None):
         )
 
 
+def _target_compute_capability(builder):
+    options = getattr(builder, "options", None)
+    if options is None or getattr(options, "backend_name", None) != "cuda":
+        return None
+    arch = getattr(options, "arch", None)
+    if isinstance(arch, str) and arch.startswith("sm") and arch[2:].isdigit():
+        return int(arch[2:])
+    return None
+
+
+def _format_sm_name(capability):
+    suffix = "a" if capability >= 90 else ""
+    return f"sm_{capability}{suffix}"
+
+
 def _strip_zero_reg_bases_from_layout(layout):
     if not hasattr(layout, "reg_bases") or not hasattr(layout, "lane_bases") or not hasattr(layout, "warp_bases"):
         return layout
@@ -843,6 +858,14 @@ def tcgen05_mma(a, b, acc, *, use_acc=True, pred=True, multicast=False, mbarrier
         mbarriers (Sequence[shared_memory_descriptor], optional): Barriers to signal when the operation is complete. If omitted, the operation still executes asynchronously and must be synchronized later via tcgen05_commit and mbarrier.wait before reading the result. Defaults to None.
         mbarrier_preds (Sequence[bool], optional): Predicates for barriers. Defaults to None.
     """
+    capability = _target_compute_capability(_semantic.builder)
+    if (capability is not None and capability >= 103 and a.dtype in (ttgl.int8, ttgl.uint8) and
+            b.dtype in (ttgl.int8, ttgl.uint8) and acc.dtype == ttgl.int32):
+        raise ValueError(
+            f"direct tcgen05_mma kind::i8 is not supported on {_format_sm_name(capability)} by current Blackwell "
+            "lowering. Use tt.dot so the compiler can select a supported MMA version."
+        )
+
     use_acc = _semantic.to_tensor(use_acc)
     pred = _semantic.to_tensor(pred)
 

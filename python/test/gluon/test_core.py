@@ -1498,7 +1498,7 @@ def test_tcgen05_mma_plain_kind_runtime(kind):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tcgen05_mma_plain_kind_i8_reports_clean_error():
+def test_tcgen05_mma_plain_kind_i8_reports_clean_error(capfd):
     M = N = 128
     K = 32
     num_warps = 4
@@ -1513,7 +1513,7 @@ def test_tcgen05_mma_plain_kind_i8_reports_clean_error():
     shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
     acc_layout = TensorMemoryLayout((M, N), col_stride=1)
 
-    with pytest.raises(triton.runtime.errors.PTXASError) as excinfo:
+    with pytest.raises(Exception) as excinfo:
         mma_kernel[(1, )](
             a,
             b,
@@ -1533,9 +1533,10 @@ def test_tcgen05_mma_plain_kind_i8_reports_clean_error():
             num_warps=num_warps,
         )
 
-    msg = str(excinfo.value)
-    assert "kind::i8" in msg
-    assert "not supported on .target" in msg
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "direct tcgen05_mma kind::i8 is not supported on sm_" in msg
+    assert "current Blackwell lowering" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 

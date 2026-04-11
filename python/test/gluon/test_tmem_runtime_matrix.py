@@ -4060,7 +4060,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind):
+def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, capfd):
     m = n = 128
     k = 32
     a = torch.randint(-8, 8, (m, k), device="cuda", dtype=torch.int8)
@@ -4073,7 +4073,7 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind):
     shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
     acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
 
-    with pytest.raises(triton.runtime.errors.PTXASError) as excinfo:
+    with pytest.raises(Exception) as excinfo:
         mma_kernel[(1, )](
             a,
             b,
@@ -4093,9 +4093,10 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind):
             num_warps=4,
         )
 
-    msg = str(excinfo.value)
-    assert "kind::i8" in msg
-    assert "not supported on .target" in msg
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "direct tcgen05_mma kind::i8 is not supported on sm_" in msg
+    assert "current Blackwell lowering" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 
