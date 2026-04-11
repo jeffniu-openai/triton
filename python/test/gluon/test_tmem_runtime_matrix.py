@@ -32,6 +32,7 @@ from triton.experimental.gluon.language.nvidia.hopper import mbarrier, tma
 from triton._C.libtriton.gluon_ir import make_cga_layout
 from python.test.gluon.test_core import (
     _expected_scaled_cp_opcode,
+    _expected_scaled_mma_opcode,
     mma_kernel,
     _run_tmem_reduction_case,
     mma_scaled_tcgen05_copy,
@@ -343,6 +344,15 @@ def _extract_tcgen05_cp_opcodes(asm: str):
 def _assert_exact_cp_ptx_llir_match(compiled, expected_ops=None):
     ptx_ops = _extract_tcgen05_cp_opcodes(compiled.asm["ptx"])
     llir_ops = _extract_tcgen05_cp_opcodes(compiled.asm["llir"])
+    assert ptx_ops == llir_ops
+    if expected_ops is not None:
+        assert ptx_ops == list(expected_ops)
+    return ptx_ops
+
+
+def _assert_exact_mma_ptx_llir_match(compiled, expected_ops=None):
+    ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
+    llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     if expected_ops is not None:
         assert ptx_ops == list(expected_ops)
@@ -3945,6 +3955,9 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(a_forma
     expected = _expected_scaled_cp_opcode(num_ctas)
     expected_count = 64 // vec_size
     _assert_exact_cp_ptx_llir_match(compiled, [expected] * expected_count)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -3984,6 +3997,9 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep(
     cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
     assert cp_ops
     assert all(op == expected for op in cp_ops)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
 
 
 MMA_CASES = [
