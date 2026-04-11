@@ -1998,6 +1998,8 @@ X1_F16_LDST_CASES = [
      "32x32b.x1.pack::16b.b32"),
 ]
 
+X1_F16_LDST_VARIANTS = ("auto", "32x32b")
+
 X1_F32_LDST_CASES = [
     ("linear_onecta", 128, 1, lambda: _make_tmem_linear_layout(128, 1)),
     ("legacy_onecta", 128, 1, lambda: TensorMemoryLayout((128, 1), col_stride=1)),
@@ -3170,13 +3172,14 @@ def test_tmem_runtime_matrix_ldst_subword_f16_pack_unpack(layout_name, n, varian
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind,layout_factory,expected_st,expected_ld", X1_F16_LDST_CASES)
-def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, expected_st, expected_ld):
+@pytest.mark.parametrize("variant", X1_F16_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, expected_st, expected_ld, variant):
     m, n = 128, 2
     layout = layout_factory()
     inp = torch.arange(m * n, dtype=torch.float16, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_f16_variant_kernel[(1, )](inp, out, layout, m, n, "32x32b", num_warps=4)
+    compiled = tmem_ldst_f16_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
