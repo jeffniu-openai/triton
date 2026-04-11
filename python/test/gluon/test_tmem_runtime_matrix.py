@@ -1933,6 +1933,13 @@ LD_RED_LINEAR_CASES = [
 
 LD_RED_EXPECTED_OP_COUNT = {32: 1, 64: 1, 128: 1, 256: 4}
 
+LD_RED_MODIFIER_CASES = [
+    (False, tl.PropagateNan.NONE),
+    (False, tl.PropagateNan.ALL),
+    (True, tl.PropagateNan.NONE),
+    (True, tl.PropagateNan.ALL),
+]
+
 LD_RED_TILE_PERMUTED_CASES = [
     (128, 32, 4, "32x32b.x128"),
     (256, 32, 4, "32x32b.x64"),
@@ -3231,7 +3238,7 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip(layout_name,
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,M,N,num_warps,expected_shape", LD_RED_LINEAR_CASES)
 def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, propagate_nan, layout_name, M, N, num_warps,
                                                            expected_shape):
@@ -3276,7 +3283,7 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("N,tile_n,num_warps,expected_shape", LD_RED_TILE_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
     red_op, use_abs, propagate_nan, N, tile_n, num_warps, expected_shape
@@ -3318,7 +3325,7 @@ def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("col_perm_kind,expected_shape", LD_RED_COL_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout(
     red_op, use_abs, propagate_nan, col_perm_kind, expected_shape
@@ -3361,7 +3368,7 @@ def test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout(
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("row_perm_kind,col_perm_kind,expected_shape", LD_RED_ROW_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout(
     red_op, use_abs, propagate_nan, row_perm_kind, col_perm_kind, expected_shape
@@ -3404,7 +3411,7 @@ def test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout(
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", [(False, tl.PropagateNan.NONE), (True, tl.PropagateNan.ALL)])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("M,N,num_warps", LD_RED_MIXED_CASES)
 def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupported(
     red_op, use_abs, propagate_nan, M, N, num_warps, capfd
