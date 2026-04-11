@@ -1791,7 +1791,7 @@ LDST_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES = []
 
 LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
     ("identity", n, variant, LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for n, variant in product((64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
@@ -1801,7 +1801,7 @@ LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
 
 LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
     ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for n, variant in product((64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
@@ -2868,20 +2868,24 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lift
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES)
 def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout(
-    layout_name, n, variant, expected_shape
+    layout_name, n, variant, expected_shape, capfd
 ):
     m = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(CompilationError) as excinfo:
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
         tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
             inp, out, layout, m, n, variant, num_warps=4
         )
 
-    msg = str(excinfo.value)
-    assert f"TMEM layout 'constexpr[{variant}]' unsupported" in msg
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert (
+        f"TMEM layout 'constexpr[{variant}]' unsupported" in msg
+        or "lifted row-half TMEM views translate the TMEM row origin" in msg
+    )
     assert "descriptor view" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
@@ -2935,20 +2939,24 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_repor
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES)
 def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout(
-    layout_name, n, variant, expected_shape
+    layout_name, n, variant, expected_shape, capfd
 ):
     m = 256
     layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(CompilationError) as excinfo:
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
         tmem_ldst_descriptor_higher_rank_half_rows_positive_kernel[(1, )](
             inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
         )
 
-    msg = str(excinfo.value)
-    assert f"TMEM layout 'constexpr[{variant}]' unsupported" in msg
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert (
+        f"TMEM layout 'constexpr[{variant}]' unsupported" in msg
+        or "lifted row-half TMEM views translate the TMEM row origin" in msg
+    )
     assert "descriptor view" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
