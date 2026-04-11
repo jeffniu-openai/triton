@@ -350,8 +350,9 @@ Every fuzz case records:
 - `cta_group in {1, 2}`
 - current two-CTA plain-kind matrix covers `blockN in {128, 256}` for legacy
   and canonical TMEM-linear accumulator layouts
-- `use_acc in {false, true}`; current 1-CTA `use_acc=true` coverage spans all
-  supported plain kinds and both legacy/canonical accumulator layouts.
+- `use_acc in {false, true}`; current 1-CTA and 2-CTA `use_acc=true`
+  coverage spans all supported plain kinds and both legacy/canonical
+  accumulator layouts.
 - `multicast in {false, true}` where supported
 - accumulator layout family:
   - legacy TMEM layout

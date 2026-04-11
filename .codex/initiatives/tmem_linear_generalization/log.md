@@ -9772,3 +9772,33 @@ Open after this slice:
   - continue either the two-CTA `warpx2::02_13` / scales `warpx2`
     descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
     compiler follow-up.
+
+
+## 2026-04-11 20:20 UTC
+
+- Added 2-CTA plain MMAv5 `use_acc=True` runtime coverage.
+- Source/test change:
+  - added `tmem_mma_twocta_plain_kind_use_acc_kernel`, which loads A/B through
+    cga-aware block layouts, stores them to cga-aware shared memory, initializes
+    a two-CTA TMEM accumulator from a register `C` tile, and runs
+    `tcgen05_mma(..., use_acc=True, multicast=True)`;
+  - added `test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc` across all
+    supported plain kinds, both legacy/canonical accumulator layout spellings,
+    and both current two-CTA accumulator shapes (`256x128`, `256x256`);
+  - each case checks `matmul(A, B) + C` numerics, PTX/LLIR `tcgen05.mma` kind
+    agreement, exact multicast commit opcode emission, `two_ctas` TTGIR, and
+    `tensor_memory_linear` TTGIR for canonical layouts.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused 2-CTA `use_acc=True` plain-kind matrix:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-use-acc-kind-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc`
+    - `20 passed in 17.18s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-use-acc-kind-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `209 passed, 50 skipped, 2320 deselected in 117.66s (0:01:57)`
+- Next after this coverage slice is committed and pushed:
+  - continue either the two-CTA `warpx2::02_13` / scales `warpx2`
+    descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
+    compiler follow-up.
