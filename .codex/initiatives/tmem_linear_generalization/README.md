@@ -120,6 +120,10 @@ When resuming the initiative:
   - the two-CTA case asserts cluster arrive/wait before dealloc;
   - a source-initialized `allocate_tensor_memory(..., value=...)` kernel
     round-trips the initialized values through a TMEM load.
+- Tensor-memory allocation rounding coverage now pins raw live TMEM totals
+  `96`, `192`, and `384` as rounded boundaries to supported module allocation
+  sizes `128`, `256`, and `512`; literal non-pow2 `tcgen05.alloc` immediates
+  are not the compiler contract.
 - Commit-opcode coverage now has exact PTX/LLIR anchors:
   - single-CTA MMA pins
     `tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64`;

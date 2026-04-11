@@ -9325,3 +9325,28 @@ Open after this slice:
 - Next:
   - run hygiene, commit, and push this commit-opcode coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`.
+
+## 2026-04-11 18:45 UTC
+
+- Added tensor-memory allocation-pass rounding coverage for raw non-pow2 live
+  TMEM totals.
+- Source/test change:
+  - extended `test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir` with
+    `round_total_96_to_128`, `round_total_192_to_256`, and
+    `round_total_384_to_512`.
+- Discovery:
+  - `-triton-tensor-memory-allocation` rounds raw live totals to the supported
+    module allocation sizes `{0, 32, 64, 128, 256, 512}` before the NVGPU to
+    LLVM pass emits `tcgen05.alloc`;
+  - therefore `96`, `192`, and `384` are allocation-pass rounding boundaries,
+    not literal runtime alloc immediates.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - lit allocation pass exact:
+    - `BUILD_DIR=$(PYTHONPATH=./python python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); ninja -C "$BUILD_DIR" triton-opt && cd "$BUILD_DIR" && lit -v test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir`
+    - `PASS: TRITON :: TritonNvidiaGPU/test_tensor_memory_allocation.mlir`
+- Next:
+  - run hygiene, commit, and push this allocation-rounding coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`.

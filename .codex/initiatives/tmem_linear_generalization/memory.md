@@ -75,6 +75,12 @@
     `149 passed, 50 skipped, 2069 deselected in 87.15s (0:01:27)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, with PTX and LLIR opcode agreement.
+- Current-head tensor-memory allocation rounding coverage is green:
+  - lit exact:
+    `PASS: TRITON :: TritonNvidiaGPU/test_tensor_memory_allocation.mlir`
+  - raw live TMEM totals `96`, `192`, and `384` are covered as allocation-pass
+    boundaries that round to supported module allocation sizes `128`, `256`,
+    and `512`; literal non-pow2 `tcgen05.alloc` immediates are not expected.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -239,9 +245,10 @@
     on ld/st kernels, pow2 alloc/dealloc size immediates
     `32, 64, 128, 256, 512`, and a source-initialized allocation roundtrip;
     exact commit opcode anchoring now covers single-CTA non-multicast and
-    two-CTA multicast copy/MMA paths; remaining allocator fuzzing is non-pow2
-    size and specialized standalone/malformed commit configurations rather
-    than a missing first runtime anchor;
+    two-CTA multicast copy/MMA paths; raw non-pow2 live totals `96`, `192`,
+    and `384` are now pinned as allocation-pass rounding boundaries; remaining
+    allocator fuzzing is specialized standalone/malformed commit configurations
+    rather than a missing first runtime anchor;
   - direct higher-rank access is still future work: higher-rank descriptors
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;

@@ -338,3 +338,58 @@ tt.func @mma_lhs_tmem(
 }
 
 }
+
+// -----
+
+#tmem32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 32, colStride = 1>
+#tmem64 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 64, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 0 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // Raw live TMEM total is 64 + 32 = 96 columns; the allocation pass rounds the
+  // module request up to the next supported tcgen05.alloc immediate.
+  // CHECK: ttg.tensor_memory_size = 128
+  // CHECK-LABEL: @round_total_96_to_128
+  tt.func public @round_total_96_to_128() {
+    // CHECK: ttng.tmem_alloc {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32}
+    %0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x64xf32, #tmem64, #ttng.tensor_memory, mutable>
+    // CHECK: ttng.tmem_alloc {tensor_memory_col_offset = 64 : i32, tensor_memory_row_offset = 0 : i32}
+    %1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xf32, #tmem32, #ttng.tensor_memory, mutable>
+    "use"(%0, %1) : (!ttg.memdesc<128x64xf32, #tmem64, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xf32, #tmem32, #ttng.tensor_memory, mutable>) -> ()
+    tt.return
+  }
+}
+
+// -----
+
+#tmem64 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 64, colStride = 1>
+#tmem128 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 0 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // Raw live TMEM total is 128 + 64 = 192 columns; it rounds to 256.
+  // CHECK: ttg.tensor_memory_size = 256
+  // CHECK-LABEL: @round_total_192_to_256
+  tt.func public @round_total_192_to_256() {
+    // CHECK: ttng.tmem_alloc {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32}
+    %0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem128, #ttng.tensor_memory, mutable>
+    // CHECK: ttng.tmem_alloc {tensor_memory_col_offset = 128 : i32, tensor_memory_row_offset = 0 : i32}
+    %1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x64xf32, #tmem64, #ttng.tensor_memory, mutable>
+    "use"(%0, %1) : (!ttg.memdesc<128x128xf32, #tmem128, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x64xf32, #tmem64, #ttng.tensor_memory, mutable>) -> ()
+    tt.return
+  }
+}
+
+// -----
+
+#tmem128 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#tmem256 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 0 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // Raw live TMEM total is 256 + 128 = 384 columns; it rounds to 512.
+  // CHECK: ttg.tensor_memory_size = 512
+  // CHECK-LABEL: @round_total_384_to_512
+  tt.func public @round_total_384_to_512() {
+    // CHECK: ttng.tmem_alloc {tensor_memory_col_offset = 0 : i32, tensor_memory_row_offset = 0 : i32}
+    %0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x256xf32, #tmem256, #ttng.tensor_memory, mutable>
+    // CHECK: ttng.tmem_alloc {tensor_memory_col_offset = 256 : i32, tensor_memory_row_offset = 0 : i32}
+    %1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem128, #ttng.tensor_memory, mutable>
+    "use"(%0, %1) : (!ttg.memdesc<128x256xf32, #tmem256, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x128xf32, #tmem128, #ttng.tensor_memory, mutable>) -> ()
+    tt.return
+  }
+}
