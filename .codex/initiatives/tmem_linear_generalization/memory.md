@@ -119,11 +119,12 @@
   - focused row/column N-sweep exact:
     `144 passed in 113.29s (0:01:53)`
   - broad `ld_red` slice:
-    `476 passed, 2055 deselected in 368.86s (0:06:08)`
+    `476 passed, 2173 deselected in 466.66s (0:07:46)`
   - tile-permuted, pure column, pure row, and non-identity row/column
     cross-product permutations now cover `128x{64,128,256}` where each family
     is well-defined and still emit the expected `32x32b` reduction-family
-    opcodes.
+    opcodes with exact offset immediates: `[0]` for `N <= 128` and
+    `[0, 64, 128, 192]` for `N=256`.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -335,6 +336,8 @@
     `256x{32,64,128}` layouts with the extra row bit carried in the column
     query frame are positive `32x32b`, while plain identity
     `256x{32,64,128,256}` source layouts are clean unsupported cases;
+  - positive `ld.red` runtime tests now also pin the exact PTX/LLIR offset
+    immediates: `[0]` for `N <= 128` and `[0, 64, 128, 192]` for `N=256`;
   - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
     for N-sharded or otherwise unsupported reductions.
 - `tcgen05.mma` / `tcgen05.mma_scaled`:

@@ -263,6 +263,8 @@ Every fuzz case records:
 - The reduction result matches the PyTorch reduction with correct `abs` and
   `NaN` semantics.
 - PTX and LLIR use the same `tcgen05.ld.red` opcode stream.
+- Current positives pin exact offset immediates: `[0]` for `N <= 128` and
+  `[0, 64, 128, 192]` for `N=256`.
 - A wait is present before redval consumption.
 
 #### Negative frontier

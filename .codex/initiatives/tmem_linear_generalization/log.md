@@ -10135,3 +10135,34 @@ Open after this slice:
   - the current clean unsupported diagnostic is protecting a real wrong-code
     direct-seed path; a future fix needs a better descriptor/address model or a
     different proven public layout, not just a broader seed guard.
+
+## 2026-04-11 22:55 UTC
+
+- Tightened `tcgen05.ld.red` runtime-matrix ISA coverage by asserting exact
+  PTX/LLIR opcode-offset pairs for every positive reduction test.
+- Source/test change:
+  - added `LD_RED_EXPECTED_OFFSETS = {32: [0], 64: [0], 128: [0], 256: [0, 64, 128, 192]}`;
+  - factored duplicated positive `ld.red` opcode checks into
+    `_assert_ld_red_opcode_pairs(...)`;
+  - the helper now checks PTX/LLIR opcode-offset equality, expected op count,
+    exact offset immediates, expected `32x32b` shape, reduction op, `.f32`,
+    `.abs`, and `.NaN` modifiers.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused positive `ld.red` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-offsets-positive-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red and not unsupported'`
+    - `448 passed, 2201 deselected in 464.61s (0:07:44)`
+  - broad `ld.red` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-offsets-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `476 passed, 2173 deselected in 466.66s (0:07:46)`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this LD.RED offset-immediate coverage slice;
+  - continue a deeper two-CTA `warpx2::02_13` descriptor/address-model probe,
+    scales `warpx2` probing, broader `ld.red` fuzzing, or a bounded MMAv5 /
+    scaled-MMAv5 reachable-family gap.

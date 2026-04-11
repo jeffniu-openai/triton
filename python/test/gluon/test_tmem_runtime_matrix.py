@@ -2697,6 +2697,36 @@ LD_RED_LINEAR_CASES = [
 ]
 
 LD_RED_EXPECTED_OP_COUNT = {32: 1, 64: 1, 128: 1, 256: 4}
+LD_RED_EXPECTED_OFFSETS = {32: [0], 64: [0], 128: [0], 256: [0, 64, 128, 192]}
+
+
+def _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan):
+    ptx_red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    llir_red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    assert ptx_red_pairs == llir_red_pairs
+    assert len(ptx_red_pairs) == LD_RED_EXPECTED_OP_COUNT[N]
+    assert [offset for _, offset in ptx_red_pairs] == LD_RED_EXPECTED_OFFSETS[N]
+    ptx_red_ops = [op for op, _ in ptx_red_pairs]
+    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
+    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
+    assert all(op.endswith(".f32") for op in ptx_red_ops)
+    if use_abs:
+        assert all(".abs." in op for op in ptx_red_ops)
+    else:
+        assert all(".abs." not in op for op in ptx_red_ops)
+    if propagate_nan == tl.PropagateNan.ALL:
+        assert all(".NaN." in op for op in ptx_red_ops)
+    else:
+        assert all(".NaN." not in op for op in ptx_red_ops)
+
 
 LD_RED_MODIFIER_CASES = [
     (False, tl.PropagateNan.NONE),
@@ -4136,25 +4166,7 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops
-    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
-    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
-    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
-    assert all(op.endswith(".f32") for op in ptx_red_ops)
-    if use_abs:
-        assert all(".abs." in op for op in ptx_red_ops)
-    else:
-        assert all(".abs." not in op for op in ptx_red_ops)
-    if propagate_nan == tl.PropagateNan.ALL:
-        assert all(".NaN." in op for op in ptx_red_ops)
-    else:
-        assert all(".NaN." not in op for op in ptx_red_ops)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -4178,25 +4190,7 @@ def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops
-    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
-    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
-    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
-    assert all(op.endswith(".f32") for op in ptx_red_ops)
-    if use_abs:
-        assert all(".abs." in op for op in ptx_red_ops)
-    else:
-        assert all(".abs." not in op for op in ptx_red_ops)
-    if propagate_nan == tl.PropagateNan.ALL:
-        assert all(".NaN." in op for op in ptx_red_ops)
-    else:
-        assert all(".NaN." not in op for op in ptx_red_ops)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -4221,25 +4215,7 @@ def test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops
-    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
-    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
-    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
-    assert all(op.endswith(".f32") for op in ptx_red_ops)
-    if use_abs:
-        assert all(".abs." in op for op in ptx_red_ops)
-    else:
-        assert all(".abs." not in op for op in ptx_red_ops)
-    if propagate_nan == tl.PropagateNan.ALL:
-        assert all(".NaN." in op for op in ptx_red_ops)
-    else:
-        assert all(".NaN." not in op for op in ptx_red_ops)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -4264,25 +4240,7 @@ def test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops
-    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
-    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
-    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
-    assert all(op.endswith(".f32") for op in ptx_red_ops)
-    if use_abs:
-        assert all(".abs." in op for op in ptx_red_ops)
-    else:
-        assert all(".abs." not in op for op in ptx_red_ops)
-    if propagate_nan == tl.PropagateNan.ALL:
-        assert all(".NaN." in op for op in ptx_red_ops)
-    else:
-        assert all(".NaN." not in op for op in ptx_red_ops)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -4307,25 +4265,7 @@ def test_tmem_runtime_matrix_ld_red_pure_row_permuted_n_sweep(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops
-    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
-    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
-    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
-    assert all(op.endswith(".f32") for op in ptx_red_ops)
-    if use_abs:
-        assert all(".abs." in op for op in ptx_red_ops)
-    else:
-        assert all(".abs." not in op for op in ptx_red_ops)
-    if propagate_nan == tl.PropagateNan.ALL:
-        assert all(".NaN." in op for op in ptx_red_ops)
-    else:
-        assert all(".NaN." not in op for op in ptx_red_ops)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -4350,25 +4290,7 @@ def test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
 
-    ptx_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    llir_red_ops = [
-        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
-    ]
-    assert ptx_red_ops == llir_red_ops
-    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
-    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
-    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
-    assert all(op.endswith(".f32") for op in ptx_red_ops)
-    if use_abs:
-        assert all(".abs." in op for op in ptx_red_ops)
-    else:
-        assert all(".abs." not in op for op in ptx_red_ops)
-    if propagate_nan == tl.PropagateNan.ALL:
-        assert all(".NaN." in op for op in ptx_red_ops)
-    else:
-        assert all(".NaN." not in op for op in ptx_red_ops)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
