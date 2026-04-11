@@ -10015,3 +10015,38 @@ Open after this slice:
   - continue with specialized subword edge cases, broader ld/st fuzzing,
     two-CTA `warpx2::02_13`, scales `warpx2`, or another bounded MMAv5 /
     scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 21:35 UTC
+
+- Broadened x1/narrow subword `ld/st` coverage beyond f16.
+- Probe result:
+  - `bf16` and `i16` x1 layouts match the existing f16 packed/unpacked opcode
+    contracts;
+  - packed `i8` x1 works for `n=4` linear and legacy `col_stride=1`;
+  - padded i8 probes using some stride-2/stride-4 forms exposed assertion-style
+    failures, so those stay as diagnostic/future work rather than positives.
+- Source/test change:
+  - replaced `X1_F16_LDST_CASES` / `X1_F16_LDST_VARIANTS` with
+    `X1_SUBWORD_LDST_CASES` / `X1_SUBWORD_LDST_VARIANTS`;
+  - renamed the test to `test_tmem_runtime_matrix_ldst_x1_subword_roundtrip`;
+  - coverage now spans `f16`, `bf16`, and `i16` packed plus legacy-unpacked
+    cases, and packed `i8` linear/legacy cases, for `auto` and `32x32b`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused x1 subword exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-x1-subword-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_subword_roundtrip`
+    - `22 passed in 5.79s`
+  - focused subword plus x1 subword slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-subword-and-x1-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_subword_pack_unpack python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_subword_roundtrip`
+    - `82 passed in 19.72s`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this x1 subword coverage slice;
+  - continue with padded i8 diagnostic cleanup, broader ld/st fuzzing, two-CTA
+    `warpx2::02_13`, scales `warpx2`, or another bounded MMAv5 / scaled-MMAv5
+    reachable-family gap.

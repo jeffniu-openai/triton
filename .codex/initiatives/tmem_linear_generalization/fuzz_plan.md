@@ -189,8 +189,10 @@ Every fuzz case records:
   - `dtype in {f16, bf16, i16, i8}`
   - packed, unpacked, and padded one-column cases
   - current direct coverage now includes `f16`, `bf16`, `i16`, and `i8` for
-    identity `128x{64,128,256}` across all public variants; specialized
-    one-column pack/unpack and padded i8 cases remain future work
+    identity `128x{64,128,256}` across all public variants
+  - current x1 coverage includes `f16`, `bf16`, and `i16` packed/unpacked
+    cases plus packed `i8` x1 cases for `auto` and `32x32b`; padded i8 x1
+    layouts remain future diagnostic/cleanup work
 
 #### Positive view chains
 - plain TMEM load/store

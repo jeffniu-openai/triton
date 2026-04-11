@@ -2524,14 +2524,50 @@ SUBWORD_LDST_CASES = [
     )
 ]
 
-X1_F16_LDST_CASES = [
-    ("linear_packed", lambda: _make_tmem_linear_layout(128, 2), "32x32b.x1.b32", "32x32b.x1.b32"),
-    ("legacy_packed", lambda: TensorMemoryLayout((128, 2), col_stride=1), "32x32b.x1.b32", "32x32b.x1.b32"),
-    ("legacy_unpacked", lambda: TensorMemoryLayout((128, 2), col_stride=2), "32x32b.x1.unpack::16b.b32",
-     "32x32b.x1.pack::16b.b32"),
+X1_SUBWORD_LDST_16BIT_DTYPES = (
+    ("f16", torch.float16),
+    ("bf16", torch.bfloat16),
+    ("i16", torch.int16),
+)
+
+X1_SUBWORD_LDST_16BIT_LAYOUTS = (
+    ("linear_packed", 2, lambda: _make_tmem_linear_layout(128, 2), "32x32b.x1.b32", "32x32b.x1.b32"),
+    ("legacy_packed", 2, lambda: TensorMemoryLayout((128, 2), col_stride=1), "32x32b.x1.b32", "32x32b.x1.b32"),
+    (
+        "legacy_unpacked",
+        2,
+        lambda: TensorMemoryLayout((128, 2), col_stride=2),
+        "32x32b.x1.unpack::16b.b32",
+        "32x32b.x1.pack::16b.b32",
+    ),
+)
+
+X1_SUBWORD_LDST_CASES = [
+    (dtype_name, torch_dtype, layout_kind, n, layout_factory, expected_st, expected_ld)
+    for dtype_name, torch_dtype in X1_SUBWORD_LDST_16BIT_DTYPES
+    for layout_kind, n, layout_factory, expected_st, expected_ld in X1_SUBWORD_LDST_16BIT_LAYOUTS
+] + [
+    (
+        "i8",
+        torch.int8,
+        "linear_packed",
+        4,
+        lambda: _make_tmem_linear_layout(128, 4),
+        "32x32b.x1.b32",
+        "32x32b.x1.b32",
+    ),
+    (
+        "i8",
+        torch.int8,
+        "legacy_packed",
+        4,
+        lambda: TensorMemoryLayout((128, 4), col_stride=1),
+        "32x32b.x1.b32",
+        "32x32b.x1.b32",
+    ),
 ]
 
-X1_F16_LDST_VARIANTS = ("auto", "32x32b")
+X1_SUBWORD_LDST_VARIANTS = ("auto", "32x32b")
 
 X1_F32_LDST_CASES = [
     ("linear_onecta", 128, 1, lambda: _make_tmem_linear_layout(128, 1)),
@@ -3818,12 +3854,23 @@ def test_tmem_runtime_matrix_ldst_subword_pack_unpack(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_kind,layout_factory,expected_st,expected_ld", X1_F16_LDST_CASES)
-@pytest.mark.parametrize("variant", X1_F16_LDST_VARIANTS)
-def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, expected_st, expected_ld, variant):
-    m, n = 128, 2
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,layout_kind,n,layout_factory,expected_st,expected_ld", X1_SUBWORD_LDST_CASES
+)
+@pytest.mark.parametrize("variant", X1_SUBWORD_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_subword_roundtrip(
+    dtype_name,
+    torch_dtype,
+    layout_kind,
+    n,
+    layout_factory,
+    expected_st,
+    expected_ld,
+    variant,
+):
+    m = 128
     layout = layout_factory()
-    inp = torch.arange(m * n, dtype=torch.float16, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch_dtype, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_subword_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)

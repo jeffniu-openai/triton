@@ -73,6 +73,8 @@ When resuming the initiative:
 - Direct subword `ld/st` instruction-selection coverage now spans `f16`,
   `bf16`, `i16`, and `i8` over identity `128x{64,128,256}` layouts and every
   public variant in `{auto,32x32b,16x64b,16x128b,16x256b}`.
+- Narrow x1 subword `ld/st` coverage now spans `f16`, `bf16`, and `i16`
+  packed/unpacked cases plus packed `i8` x1 cases for `auto` and `32x32b`.
 - As of the latest focused coverage checkpoint, the current source/test slices
   add runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
   `relinquish_alloc_permit`, `dealloc`, and `wait`, including pow2 alloc-size
