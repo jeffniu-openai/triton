@@ -9019,6 +9019,30 @@ Open after this slice:
   - run hygiene, commit, and push this copy coverage slice;
   - continue operational fuzzing from `fuzz_plan.md`.
 
+## 2026-04-11 17:19 UTC
+
+- Broadened tile-permuted MMAv5 accumulator coverage across all supported plain
+  operand kinds.
+- Source/test change:
+  - added `MMA_TILE_PERMUTED_KIND_CASES`;
+  - added
+    `test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc`;
+  - the test covers `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3` with a
+    tile-permuted TMEM-linear accumulator and exact PTX/LLIR opcode checks.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused tile-permuted kind matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-permuted-kind-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc`
+    - `5 passed in 5.10s`
+  - direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-tile-kind PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `144 passed, 50 skipped, 2057 deselected in 88.38s (0:01:28)`
+- Next:
+  - run hygiene, commit, and push this coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
+
 ## 2026-04-11 17:03 UTC
 
 - Recorded the clarified supported `_reinterpret` migration contract.

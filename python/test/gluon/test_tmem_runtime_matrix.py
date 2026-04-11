@@ -4267,6 +4267,8 @@ MMA_TILE_PERMUTED_CASES = [
     (256, 64),
 ]
 
+MMA_TILE_PERMUTED_KIND_CASES = MMA_PLAIN_KINDS
+
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout,use_acc", MMA_CASES)
@@ -4610,6 +4612,46 @@ def test_tmem_runtime_matrix_mma_acc_tile_permuted(n, tile_n):
     assert ptx_ops == llir_ops
     assert ptx_ops
     assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind", MMA_TILE_PERMUTED_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind):
+    m = n = 128
+    k = 32
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
+
+    compiled = mma_kernel[(1, )](
+        a,
+        b,
+        out,
+        m,
+        n,
+        k,
+        block_layout_a,
+        block_layout_b,
+        (),
+        acc_layout,
+        shared_layout_a,
+        shared_layout_b,
+        ttgl.float32,
+        False,
+        True,
+        num_warps=4,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert all(op == expected_kind for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 

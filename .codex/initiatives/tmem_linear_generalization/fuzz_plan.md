@@ -318,6 +318,8 @@ Every fuzz case records:
 - accumulator layout family:
   - legacy TMEM layout
   - canonical TMEM-linear equivalent
+  - tile-permuted canonical TMEM-linear accumulators for all supported plain
+    operand kinds
 - A operand:
   - shared-memory path
   - TMEM path where the op and backend support it

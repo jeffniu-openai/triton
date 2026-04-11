@@ -212,6 +212,9 @@
   - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
     for `mxf8f6f4`, `mxf4`, and `mxf4nvf4` format families, including
     accumulator subviews and selected tile-permuted accumulator layouts;
+  - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
+    `bf16`, `f8e5m2`, and `f8e4m3`, with exact PTX/LLIR opcode checks for the
+    expected instruction kind;
   - the scaled-MMA copy-helper matrix also pins exact scaled-MMA opcode
     selection for 1-CTA and 2-CTA `warpx4` copy paths across
     format/geometry/accumulator-layout combinations;
@@ -328,7 +331,35 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:14 UTC)
+## Current Topline (2026-04-11 17:19 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `8deb0fcad` on `origin/codex/tmem`
+- Tile-permuted MMAv5 accumulator coverage is broadened across all supported
+  plain operand kinds:
+  - `f16`
+  - `tf32`
+  - `bf16`
+  - `f8e5m2`
+  - `f8e4m3`
+- The new test checks runtime numerics plus exact PTX/LLIR
+  `tcgen05.mma.cta_group::1.kind::*` opcode agreement.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused tile-permuted kind matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-permuted-kind-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc`
+    - `5 passed in 5.10s`
+  - direct MMA/scaled-MMA slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-tile-kind PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `144 passed, 50 skipped, 2057 deselected in 88.38s (0:01:28)`
+- Next:
+  - commit and push this MMA coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`, likely remaining
+    scaled-MMA direct-view or two-CTA TF32/shared-transpose follow-up probes.
+
+## Prior Topline (2026-04-11 17:14 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `30feed55c` on `origin/codex/tmem`

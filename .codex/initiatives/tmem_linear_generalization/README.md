@@ -100,7 +100,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `64 passed, 2135 deselected`
+    `144 passed, 50 skipped, 2057 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected`
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
@@ -179,6 +179,11 @@ When resuming the initiative:
   - the same format/CTA/geometry/accumulator-layout matrix now also asserts
     exact `tcgen05.mma.cta_group::{1,2}.kind::{mxf8f6f4,mxf4,mxf4nvf4}.block_scale.scale_vec::*`
     opcode selection for PTX and LLIR.
+- Tile-permuted MMAv5 accumulator coverage now spans all plain supported
+  operand kinds:
+  - `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
+  - each path checks PTX/LLIR opcode equality and the expected
+    `tcgen05.mma` kind.
 - Direct scaled-MMAv5 TMEM-view tests now pin exact `mxf8f6f4` scaled-MMA
   opcodes after `5e3b2ae87`:
   - this covers the existing minimal, block-N direct-layout, accumulator
@@ -327,6 +332,15 @@ When resuming the initiative:
     legal modifier pairs, reduction-friendly row-256 positives, clean
     unsupported identity row-256 layouts, and clean unsupported mixed-layout
     negatives.
+- Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
+  green:
+  - command:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-direct-after-tile-kind PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+  - result:
+    `144 passed, 50 skipped, 2057 deselected in 88.38s`;
+  - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
+    direct MMA surfaces plus direct scaled-MMA view cases, with scaled-MMA copy
+    helper coverage tracked separately.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
