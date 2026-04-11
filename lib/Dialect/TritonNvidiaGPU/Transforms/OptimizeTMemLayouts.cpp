@@ -256,6 +256,64 @@ getDirectSupportTMemTensorType(Value memDesc, int numWarps) {
   return std::nullopt;
 }
 
+static bool isRootedAtTMemPhysicalBitcast(Value memDesc) {
+  SmallPtrSet<Value, 4> seen;
+  Value cur = memDesc;
+  while (cur && seen.insert(cur).second) {
+    if (auto reinterpret = cur.getDefiningOp<ttg::MemDescReinterpretOp>()) {
+      if (reinterpret->hasAttr("tmem_physical_bitcast"))
+        return true;
+      cur = reinterpret.getSrc();
+      continue;
+    }
+    if (auto op = cur.getDefiningOp<TMEMSubSliceOp>()) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = cur.getDefiningOp<ttg::MemDescSubsliceOp>()) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = cur.getDefiningOp<ttg::MemDescIndexOp>()) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = cur.getDefiningOp<ttg::MemDescReshapeOp>()) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = cur.getDefiningOp<ttg::MemDescTransOp>()) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto forwarded = getTMemForwardingSource(cur)) {
+      cur = forwarded;
+      continue;
+    }
+    break;
+  }
+  return false;
+}
+
+static gpu::MemDescType getReplaySliceRegLayoutQueryType(Value memDesc) {
+  gpu::MemDescType memTy = cast<gpu::MemDescType>(memDesc.getType());
+  // Split replay materializes ordinary TMEM subview loads/stores.  Those
+  // should use the shape-local subview type for register-layout selection; an
+  // exact preserved physical query is only part of the explicit physical
+  // bitcast contract.
+  if (!isRootedAtTMemPhysicalBitcast(memDesc))
+    return memTy;
+
+  std::string layoutQueryError;
+  if (auto maybeQueryTy =
+          nvidia_gpu::inferStandaloneTMemRegLayoutQueryType(
+              memDesc, &layoutQueryError);
+      succeeded(maybeQueryTy)) {
+    return *maybeQueryTy;
+  }
+  return memTy;
+}
+
 static RankedTensorType getLeadingSliceSplitFriendlyType(MLIRContext *ctx,
                                                          Type elementType,
                                                          ArrayRef<int64_t> shape,
@@ -454,15 +512,8 @@ public:
                                               nOffset, splitNSize);
 
       // Choose a layout compatible with the slice size.
-      gpu::MemDescType subSliceType =
-          cast<gpu::MemDescType>(subSlice.getType());
-      gpu::MemDescType layoutQueryTy = subSliceType;
-      std::string layoutQueryError;
-      if (auto maybeQueryTy =
-              nvidia_gpu::inferStandaloneTMemRegLayoutQueryType(
-                  subSlice, &layoutQueryError);
-          succeeded(maybeQueryTy))
-        layoutQueryTy = *maybeQueryTy;
+      gpu::MemDescType layoutQueryTy =
+          getReplaySliceRegLayoutQueryType(subSlice);
       auto distLayout =
           nvidia_gpu::getDefaultLayoutForTmemLdSt(layoutQueryTy, numWarps);
 
@@ -562,14 +613,8 @@ public:
 
     auto createSlice = [&](TypedValue<RankedTensorType> input, int offset) {
       auto subSlice = TMEMSubSliceOp::create(b, loc, tmem, offset, splitNSize);
-      auto subSliceType = cast<gpu::MemDescType>(subSlice.getType());
-      gpu::MemDescType layoutQueryTy = subSliceType;
-      std::string layoutQueryError;
-      if (auto maybeQueryTy =
-              nvidia_gpu::inferStandaloneTMemRegLayoutQueryType(
-                  subSlice, &layoutQueryError);
-          succeeded(maybeQueryTy))
-        layoutQueryTy = *maybeQueryTy;
+      gpu::MemDescType layoutQueryTy =
+          getReplaySliceRegLayoutQueryType(subSlice);
       auto distLayout =
           nvidia_gpu::getDefaultLayoutForTmemLdSt(layoutQueryTy, numWarps);
       auto newType = input.getType().cloneWithEncoding(distLayout);
