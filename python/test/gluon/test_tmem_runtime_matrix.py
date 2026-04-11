@@ -1784,7 +1784,7 @@ LDST_HIGHER_RANK_POSITIVE_CASES = [
 
 LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
     ("identity", n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for n, variant in product((64, 128), LDST_EXPLICIT_VARIANTS)
+    for n, variant in product((64, 128), LDST_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES = []
@@ -1796,7 +1796,7 @@ LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
     ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for n, variant in product((64, 128), LDST_EXPLICIT_VARIANTS)
+    for n, variant in product((64, 128), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
