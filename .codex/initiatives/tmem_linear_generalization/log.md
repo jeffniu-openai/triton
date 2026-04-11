@@ -8401,6 +8401,34 @@ Open after this slice:
   - rescan for remaining `LDST_EXPLICIT_VARIANTS` runtime-matrix surfaces;
   - then broader validation and heuristic cleanup.
 
+## 2026-04-11 17:05 UTC
+
+- Committed and pushed cleanup of the stale explicit-only ld/st symbols:
+  - `a487942ac`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - remove unused artifacts left behind after the staged ld/st auto expansions.
+- Implementation:
+  - deleted unused `LDST_HIGHER_RANK_POSITIVE_CASES`;
+  - deleted now-unused `LDST_EXPLICIT_VARIANTS`.
+- Validation:
+  - no stale symbols:
+    - `rg -n "LDST_EXPLICIT_VARIANTS|LDST_HIGHER_RANK_POSITIVE_CASES" python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`, no matches
+  - syntax:
+    - `PYTHONPATH=python:. python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - choose the next non-ld/st saturation surface or broaden validation for the
+    staged ld/st auto coverage;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

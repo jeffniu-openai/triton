@@ -277,7 +277,29 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:00 UTC)
+## Current Topline (2026-04-11 17:05 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `a487942ac` on `origin/codex/tmem`
+- Cleanup:
+  - removed the unused `LDST_HIGHER_RANK_POSITIVE_CASES` list;
+  - removed the now-unused `LDST_EXPLICIT_VARIANTS` tuple;
+  - active runtime-matrix ld/st auto-coverage scans no longer find a false
+    explicit-only case list.
+- Validation for `a487942ac`:
+  - `rg -n "LDST_EXPLICIT_VARIANTS|LDST_HIGHER_RANK_POSITIVE_CASES" python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`, no matches
+  - `PYTHONPATH=python:. python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `PASSED`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - choose the next non-ld/st saturation surface or broaden validation for the
+    staged ld/st auto coverage;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 17:00 UTC)
 
 - Latest pushed source/test checkpoint:
   - `00139772b` on `origin/codex/tmem`
