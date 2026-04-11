@@ -30,6 +30,39 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
+
+- Latest pushed source checkpoint:
+  - `85d8dbbf4`
+- Latest wider group-3 evidence:
+  - a `python/test/gluon` group-3 sweep started before `47a07a37d` /
+    `85d8dbbf4` ended with:
+    - `3 failed, 4406 passed, 2041 skipped, 19348 deselected`
+  - exact failures from that run:
+    - `python/test/gluon/test_core.py::test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - current interpretation:
+    - the old `316`-nodeid `gb200_current_branch_group3_latest_failures.txt`
+      is historical for M64 prioritization;
+    - this three-nodeid grouped result is also stale for these exacts after
+      `85d8dbbf4`.
+- Focused current-head exact status after `85d8dbbf4`:
+  - `test_tmem_subslice_block_m_64[legacy]`
+  - `test_tmem_subslice_block_m_64[linear]`
+  - `test_tmem_subslice_block_m_64_parent_layout[legacy]`
+  - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `4 passed`
+  - `test_block_m_64_mma[legacy]`
+  - `test_block_m_64_mma[linear]`
+    - `1 passed, 1 xfailed`
+- Current interpretation:
+  - no live current-head failing exact remains in this M64 focused set;
+  - the xfailed legacy MMAv5 parameter is producer-family design debt, not a
+    physical-bitcast failure;
+  - do not use the pre-fix group-3 failure count for prioritization without a
+    fresh grouped rerun from `85d8dbbf4`.
+
 ### Latest Attention Revert And Two-CTA Assertion Refresh (2026-04-11 10:33 UTC)
 
 - [gb200_current_branch_examples_gluon_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_gluon_failures.txt)

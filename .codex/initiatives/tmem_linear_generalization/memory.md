@@ -4481,3 +4481,79 @@ rejection, not rescue
   - the next real work item is a producer-owned physical TMEM contract, or an
     equivalent value-aware MMAv5/view-offset model, so slice-after-store TMEM
     consumers can preserve the actual physical family selected by the store.
+
+## 2026-04-11 12:10 UTC: M64 subview physical bitcast is supported; legacy MMAv5 family debt is isolated
+
+- Latest pushed source checkpoint:
+  - `85d8dbbf4` on `origin/codex/tmem`
+- The supported physical bitcast path now handles M64 subviews with inactive
+  zero support bases:
+  - `inferTMemReinterpretQueryLayout(...)` retries source inversion on
+    `normalizeTensorMemoryLinearLayoutForAnalysis(...)` when the normalized
+    view is injective and exactly covers the source descriptor shape;
+  - narrowed subviews can carry physical origins outside the reduced layout's
+    in-dim size, so reinterpret/view-origin remapping now preserves those
+    physical row/col origins by name instead of applying the reduced layout and
+    dropping high column bits;
+  - dtype-changing physical bitcast scales the column origin by
+    source/destination bitwidth when using that physical-origin fallback.
+- Tests now encode the intended migration contract:
+  - `test_tmem_subslice_block_m_64` and
+    `test_tmem_subslice_block_m_64_parent_layout` use
+    `slice(...).bitcast(...)` for the f32-subview to f16-full-view case and
+    assert the `tmem_physical_bitcast` marker;
+  - the 2-column f32 stores use direct supported subview stores, because the
+    old legacy `TensorMemoryLayout((64, 2), col_stride=1)` reinterpret is not
+    physical-mapping equivalent to a legacy M64 column subview;
+  - parameterized kernels now pass layout objects as explicit `ttgl.constexpr`
+    arguments so Gluon JIT cache keys distinguish legacy and linear variants.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - lit:
+    - `test/TritonNvidiaGPU/tmem_layouts.mlir`
+    - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `2 passed`
+  - existing physical-bitcast controls:
+    - `test_tmem_physical_bitcast_preserves_subview_mapping`
+    - `test_tmem_physical_bitcast_mma_lhs`
+    - `2 passed`
+  - M64 supported subview/bitcast exacts:
+    - `test_tmem_subslice_block_m_64[legacy]`
+    - `test_tmem_subslice_block_m_64[linear]`
+    - `test_tmem_subslice_block_m_64_parent_layout[legacy]`
+    - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `4 passed`
+  - block-M=64 MMA cache-key / current behavior exacts:
+    - `test_block_m_64_mma[legacy]`
+    - `test_block_m_64_mma[linear]`
+    - `1 passed, 1 xfailed`
+  - temp M64 bitcast repro:
+    - `/tmp/repro_tmem_bitcast_m64.py`
+    - `PASSED`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Grouped Gluon consequence:
+  - the group-3 sweep that started before this checkpoint reduced the stale
+    group-3 red set to exactly:
+    - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `test_block_m_64_mma[legacy]`
+    - `test_block_m_64_mma[linear]`
+    - `3 failed, 4406 passed, 2041 skipped, 19348 deselected`
+  - focused reruns after `85d8dbbf4` close those exact failures at current
+    head, with the legacy MMAv5 parameter recorded as xfail.
+- Remaining design debt:
+  - legacy M64 `64x64` layout sugar still lacks producer-visible
+    physical-family semantics for MMAv5 consumers;
+  - this is now isolated to the xfailed legacy parameter, while the explicit
+    linear M64 layout passes in the same process;
+  - do not treat the legacy xfail as closure of the producer-family problem.
+- Next:
+  - rerun wider grouped `python/test/gluon` from `85d8dbbf4`;
+  - keep the attention `_reinterpret` migration deferred until it can use a
+    synchronization-aware supported subview/bitcast sequence;
+  - after broad validation is stable, resume `ld.red`, `copy`/`warpx2`,
+    broader MMAv5/`mma_scaled`, fuzzing, stale-negative cleanup, and
+    heuristic cleanup.

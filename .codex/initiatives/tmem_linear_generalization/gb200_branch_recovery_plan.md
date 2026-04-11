@@ -46,6 +46,32 @@ PY
 
 ## Current Classification Summary
 
+### Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
+
+- Source checkpoint:
+  - `85d8dbbf4`
+- Closed at focused current-head scope:
+  - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+  - `test_block_m_64_mma[linear]`
+- How:
+  - physical bitcast query inference now handles normalized M64 subview layouts
+    and out-of-range physical origins;
+  - M64 tests use supported `slice/subview -> bitcast` where the physical
+    mapping is equivalent;
+  - same-shape f32 2-column writes use direct supported subviews;
+  - Gluon kernels pass layout objects as explicit `ttgl.constexpr` args so
+    legacy/linear parameterization does not reuse the wrong cached kernel.
+- Current legacy status:
+  - `test_block_m_64_mma[legacy]` is xfailed, not fixed;
+  - reason:
+    - legacy M64 `64x64` layout sugar still needs producer-visible
+      physical-family semantics for MMAv5 consumers.
+- Recovery-plan consequence:
+  - do not keep prioritizing stale group-3 M64 failures as bitcast bugs;
+  - keep the legacy MMAv5 producer-family problem in the longer design queue;
+  - rerun wider grouped `python/test/gluon` from `85d8dbbf4` before the next
+    GB200 prioritization call.
+
 ### Latest Attention Revert And Two-CTA Assertion Refresh (2026-04-11 10:33 UTC)
 
 - Current pushed `HEAD`:

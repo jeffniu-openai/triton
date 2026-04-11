@@ -18,6 +18,60 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
+
+- Latest pushed source checkpoint:
+  - `85d8dbbf4` on `origin/codex/tmem`
+- Scope:
+  - M64 subview physical bitcast;
+  - stale group-3 M64 behavior failures;
+  - Gluon JIT cache-key hygiene for parameterized M64 layout tests.
+- Grouped validation context:
+  - a `python/test/gluon` group-3 sweep started before `47a07a37d` /
+    `85d8dbbf4` finished with:
+    - `3 failed, 4406 passed, 2041 skipped, 19348 deselected`
+  - exact failures:
+    - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `test_block_m_64_mma[legacy]`
+    - `test_block_m_64_mma[linear]`
+  - this supersedes the old `316`-nodeid group-3 manifest for M64
+    prioritization, but is itself stale for those exacts after `85d8dbbf4`.
+- Fix summary:
+  - physical bitcast query inference now normalizes inactive zero support bases
+    before inversion when the normalized source view still exactly covers the
+    source descriptor shape;
+  - narrowed subview origins that are outside the reduced layout's in-dim size
+    are preserved as physical row/col origins rather than being applied through
+    the reduced layout;
+  - dtype-changing physical bitcast scales the physical column origin by
+    source/destination bitwidth under that fallback;
+  - tests migrated from private `_reinterpret` to supported
+    `slice/subview -> bitcast` only for physical-mapping-equivalent view
+    changes.
+- Focused current-head validation after `85d8dbbf4`:
+  - build:
+    - `PASSED`
+  - lit:
+    - `2 passed`
+  - existing physical-bitcast controls:
+    - `2 passed`
+  - M64 subview/physical-bitcast exacts:
+    - `4 passed`
+  - block-M=64 MMA exacts:
+    - `1 passed, 1 xfailed`
+  - temp M64 bitcast repro:
+    - `PASSED`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Inventory consequences:
+  - the M64 exact failures from the latest group-3 sweep are closed at
+    focused current-head scope;
+  - the legacy M64 MMAv5 parameter is now an explicit xfail for remaining
+    producer-visible physical-family design debt;
+  - rerun grouped `python/test/gluon` from `85d8dbbf4` before replacing the
+    broader group manifests with a new whole-shard green/red count.
+
 ## Latest Attention Revert And Two-CTA Assertion Refresh (2026-04-11 10:33 UTC)
 
 - Latest pushed source checkpoint:

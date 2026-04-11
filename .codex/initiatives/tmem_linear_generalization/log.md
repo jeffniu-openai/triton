@@ -7596,3 +7596,58 @@ Open after this slice:
     synchronization intent;
   - then continue to `ld.red`, `copy`/`warpx2`, broader MMAv5/`mma_scaled`,
     fuzzing, stale-negative cleanup, and heuristic phases.
+
+## 2026-04-11 12:10 UTC
+
+- Pushed two M64 physical-bitcast checkpoints:
+  - `47a07a37d`
+    - added normalized source-query inversion for physical bitcast views whose
+      source subview keeps inactive zero support bases;
+  - `85d8dbbf4`
+    - preserved out-of-range physical row/col origins for narrowed subviews;
+    - migrated M64 subview `_reinterpret` tests to supported descriptor
+      bitcast where the requested mapping is equivalent;
+    - switched same-shape f32 2-column writes to direct supported subview
+      stores rather than forcing a non-equivalent legacy bitcast layout;
+    - passed layout objects as explicit constexpr kernel arguments in the
+      parameterized M64 tests.
+- The grouped `python/test/gluon` group-3 rerun that started before these
+  commits finished with:
+  - `3 failed, 4406 passed, 2041 skipped, 19348 deselected in 1925.45s`
+  - exact failures:
+    - `test_tmem_subslice_block_m_64_parent_layout[linear]`
+    - `test_block_m_64_mma[legacy]`
+    - `test_block_m_64_mma[linear]`
+  - interpretation:
+    - this result is pre-`85d8dbbf4` for the M64 fixes and should be treated
+      as stale for those exact nodeids.
+- Focused current-head validation after `85d8dbbf4`:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - lit:
+    - `test/TritonNvidiaGPU/tmem_layouts.mlir`
+    - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `2 passed`
+  - existing physical-bitcast controls:
+    - `2 passed`
+  - M64 subview/physical-bitcast exacts:
+    - `4 passed`
+  - block-M=64 MMA exacts:
+    - `1 passed, 1 xfailed`
+  - temp M64 bitcast repro:
+    - `/tmp/repro_tmem_bitcast_m64.py`
+    - `PASSED`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Current remaining M64 status:
+  - supported linear M64 block-M=64 MMA passes in the same process as the
+    legacy parameter;
+  - legacy M64 `64x64` layout sugar is xfailed because it still needs
+    producer-visible physical-family semantics for MMAv5 consumers.
+- Next:
+  - refresh wider grouped `python/test/gluon` from `85d8dbbf4`;
+  - keep the legacy M64 MMAv5 xfail visible as design debt;
+  - keep attention migration deferred to a supported synchronization-aware
+    subview/bitcast rewrite.

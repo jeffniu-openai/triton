@@ -43,8 +43,30 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 10:33 UTC, the latest pushed source checkpoint is
-  `13930b1ff` on `origin/codex/tmem`.
+- As of 2026-04-11 12:10 UTC, the latest pushed source checkpoint is
+  `85d8dbbf4` on `origin/codex/tmem`.
+- The supported M64 subview/physical-bitcast slice is now checkpointed:
+  - `47a07a37d` added normalized source-query inversion for physical bitcast
+    views whose source subview keeps inactive zero support bases;
+  - `85d8dbbf4` preserved out-of-range physical row/col origins for narrowed
+    subviews, migrated the M64 `_reinterpret` tests to supported
+    `slice/subview -> bitcast` where the mapping is equivalent, and made
+    parameterized kernels pass layouts as explicit constexpr arguments so
+    Gluon cache keys distinguish legacy and linear variants.
+- The wider grouped `python/test/gluon` group-3 rerun that started before
+  these two checkpoints reduced the stale current-head red set to:
+  - `test_tmem_subslice_block_m_64_parent_layout[linear]`;
+  - `test_block_m_64_mma[legacy]`;
+  - `test_block_m_64_mma[linear]`;
+  - result: `3 failed, 4406 passed, 2041 skipped, 19348 deselected`.
+- Focused current-head reruns after `85d8dbbf4` close that exact M64 set:
+  - subview/physical-bitcast exacts:
+    `4 passed`;
+  - `test_block_m_64_mma[legacy]` / `[linear]`:
+    `1 passed, 1 xfailed`;
+  - the xfail is deliberate design debt for legacy M64 `64x64` layout sugar
+    lacking producer-visible physical-family semantics for MMAv5 consumers;
+    the linear supported layout passes in the same process.
 - The supported descriptor bitcast API remains on the branch, but the
   attention example migration has been intentionally reverted for now:
   - `python/examples/gluon/01-attention-forward.py` is back to its pre-bitcast
@@ -118,11 +140,11 @@ When resuming the initiative:
   - slice/subview to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
-- Next required durable step: refresh the wider grouped `python/test/gluon`
-  sweep from current `HEAD`, keeping the intentionally reverted attention
-  example separate from supported bitcast API validation. After that, continue
-  the long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing
-  phases.
+- Next required durable step: rerun the wider grouped `python/test/gluon`
+  sweep from `85d8dbbf4`, keeping the intentionally reverted attention example
+  separate from supported bitcast API validation and keeping the legacy M64
+  MMAv5 xfail visible as a design-debt item. After that, continue the
+  long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles
 
