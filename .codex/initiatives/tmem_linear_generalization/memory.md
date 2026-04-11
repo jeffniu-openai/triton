@@ -88,13 +88,17 @@
   - raw live TMEM totals `96`, `192`, and `384` are covered as allocation-pass
     boundaries that round to supported module allocation sizes `128`, `256`,
     and `512`; literal non-pow2 `tcgen05.alloc` immediates are not expected.
-- Current-head `tcgen05.ld.red` column-permuted coverage is green:
+- Current-head `tcgen05.ld.red` row/column-permuted coverage is green:
   - focused pure-column permutation exact:
     `72 passed in 50.45s`
+  - focused pure-row N-sweep exact:
+    `48 passed in 31.75s`
   - broad `ld_red` slice:
-    `276 passed, 2045 deselected in 192.56s (0:03:12)`
-  - pure column permutations now cover `128x{64,128,256}` and still emit the
-    expected `32x32b` reduction-family opcodes.
+    `324 passed, 2045 deselected in 225.19s (0:03:45)`
+  - pure column permutations now cover `128x{64,128,256}`; pure row
+    permutations now add `128x{64,256}` beside the existing `128x128`
+    row/column cross-product, and all still emit the expected `32x32b`
+    reduction-family opcodes.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -269,7 +273,9 @@
     direct higher-rank access should stay a clean negative;
   - `ld.red` now has modifier saturation over identity, tile-permuted, and
     pure row/col-permuted supported non-sharded families; pure column-permuted
-    positives now span `128x{64,128,256}` and all legal modifier pairs;
+    positives span `128x{64,128,256}`, and pure row-permuted positives cover
+    `128x{64,256}` in addition to the existing `128x128` row/column
+    cross-product;
   - `ld.red` now also pins the row-256 source boundary: reduction-friendly
     `256x{32,64,128}` layouts with the extra row bit carried in the column
     query frame are positive `32x32b`, while plain identity
