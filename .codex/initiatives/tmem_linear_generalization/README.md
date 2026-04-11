@@ -34,21 +34,22 @@ When resuming the initiative:
   `_reinterpret` behavior or compiler-specific physical-layout knowledge are
   migration targets.
 - The intended replacement is a supported descriptor operation sequence:
-  offset/slice/subview to the desired physical TMEM bits, then bitcast to the
-  desired dtype/shape/layout only when the bitcast preserves the exact physical
-  mapping and total size.
+  offset to the right TMEM region, slice/subview to the desired physical bits,
+  then bitcast to the desired dtype/shape/layout only when total bit size and
+  the exact physical TMEM mapping are preserved.
 - Lowering-side fixes are still appropriate for supported APIs that miscompile,
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.
 
 ## Current Checkpoint
 
-- As of 2026-04-11 13:40 UTC, the latest pushed source/test checkpoint is
-  `57a06c29b` on `origin/codex/tmem`.
+- As of 2026-04-11 13:50 UTC, the latest pushed source/test checkpoint is
+  `c5bdb6d5c` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
-  recorded at `77c43f696` / source `be3cba0cd`; the new `57a06c29b` slice was
-  validated with focused direct-i8 negative tests, adjacent positive
-  `tcgen05_mma` kind tests, and the Blackwell conversion lit test.
+  recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
+  `c5bdb6d5c` slices were validated with focused direct-i8 MMA tests,
+  adjacent positive `tcgen05_mma` kind tests, the Blackwell conversion lit
+  test, and focused copy runtime exacts.
 - A fresh four-way `python/test/gluon` sweep from `be3cba0cd` is green:
   - group 1:
     `5448 passed, 1002 skipped, 19348 deselected`
@@ -66,6 +67,14 @@ When resuming the initiative:
   lowering with a clean frontend diagnostic, while the generic
   `compute-capability=100` `ttng.tc_gen5_mma` i8 conversion coverage remains
   intact.
+- The direct canonical TMEM-linear `128x128b` copy root coverage gap is closed
+  by `c5bdb6d5c`:
+  - `test_tmem_runtime_matrix_cp_128x128` now runs both the legacy
+    `TensorMemoryLayout` destination and canonical `_make_tmem_linear_layout`
+    destination;
+  - both variants assert the exact `tcgen05.cp.cta_group::1.128x128b` PTX/LLIR
+    family;
+  - the linear variant also checks the TTGIR contains `tensor_memory_linear`.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
@@ -158,14 +167,15 @@ When resuming the initiative:
       basis `ld.red` negative.
   - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
 - The supported `_reinterpret` migration invariant remains:
-  - offset to the right TMEM region;
-  - slice/subview to the desired physical bits;
+  - offset to the right part of TMEM;
+  - slice/subview it to the desired physical bits;
   - bitcast to the desired dtype/shape/layout only when equal-size and
     physical-mapping equivalent to the input descriptor.
 - Next required durable step: continue the remaining recovery queue with the
   intentionally reverted attention example tracked separately from supported
   bitcast API validation and the legacy M64 MMAv5 xfail visible as design debt.
-  After that, continue the long-term `ld.red`, `copy`/`warpx2`,
+  Continue the long-term `copy` saturation around TMEM-view destinations for
+  `128x256b` and scaled `warpx4.32x128b`, plus `ld.red`,
   MMAv5/`mma_scaled`, and fuzzing phases.
 
 ## Document Roles

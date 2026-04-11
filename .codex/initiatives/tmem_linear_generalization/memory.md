@@ -143,10 +143,12 @@
     is no longer believed to be live after the `[128,4]`
     raw-query/direct-view preservation fix; both candidate positives were
     recorded green in the latest docs;
+  - direct canonical TMEM-linear `128x128b` root coverage is now closed by
+    `c5bdb6d5c`;
   - remaining copy work is saturation and missing-surface coverage, especially
-    canonical TMEM-linear `128x128b`, TMEM-view destinations for `128x256b`,
-    scales `warpx4.32x128b`, `cta_group::2` combinations, and any additional
-    deterministic `warpx2` user-visible paths;
+    TMEM-view destinations for `128x256b`, scales `warpx4.32x128b`,
+    `cta_group::2` combinations, and any additional deterministic `warpx2`
+    user-visible paths;
   - keep `4x256b` out of the positive target set unless a future direct-PTX
     probe proves a deterministic compiler contract.
 - `tcgen05.ld/st` and `tcgen05.ld.red`:
@@ -270,7 +272,49 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 13:40 UTC)
+## Current Topline (2026-04-11 13:50 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `c5bdb6d5c` on `origin/codex/tmem`
+- This checkpoint closes the direct canonical TMEM-linear `128x128b` copy root
+  coverage gap:
+  - `tmem_copy_128x128_kernel` now takes its TMEM layout as an explicit
+    `ttgl.constexpr`;
+  - `test_tmem_runtime_matrix_cp_128x128` runs both the legacy
+    `TensorMemoryLayout((M, N), col_stride=1)` destination and the canonical
+    `_make_tmem_linear_layout(M, N)` destination;
+  - both variants assert exact `tcgen05.cp.cta_group::1.128x128b` PTX/LLIR
+    selection;
+  - the canonical linear variant also asserts `tensor_memory_linear` appears in
+    TTGIR.
+- Validation for `c5bdb6d5c`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - direct copy exact:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-128x128-linear-direct PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_128x128'`
+    - `2 passed in 3.44s`
+  - nearby copy controls:
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-nearby-controls PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive'`
+    - `4 passed in 4.53s`
+  - `git diff --check`
+    - `PASSED`
+- The supported `_reinterpret` migration invariant is now phrased as:
+  - offset to the right part of TMEM;
+  - slice/subview it to the desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when the operation is
+    equal-size and preserves the exact physical TMEM mapping of the input
+    descriptor.
+- Next:
+  - keep attention reverted until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready;
+  - keep legacy M64 MMAv5 producer-family semantics as explicit design debt;
+  - continue copy saturation for TMEM-view destinations on `128x256b` and
+    scaled `warpx4.32x128b`;
+  - continue the long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+    stale-negative cleanup, and heuristic phases.
+
+## Prior Topline (2026-04-11 13:40 UTC)
 
 - Latest pushed source/test checkpoint:
   - `57a06c29b` on `origin/codex/tmem`
@@ -1444,8 +1488,8 @@
   - unpredicated cross-CTA `ttng.wait_barrier` lowering no longer crashes when
     the leader predicate must be synthesized in LLVM lowering.
 - High-value TMEM test gaps from the latest audit:
-  - executable linear `128x128b` copy coverage exists only for legacy TMEM,
-    not canonical TMEM-linear;
+  - direct canonical TMEM-linear `128x128b` root copy coverage is now closed by
+    `c5bdb6d5c`;
   - TMEM view destinations for `128x256b` and scales `warpx4.32x128b` copy are
     still under-tested;
   - direct scaled MMAv5 via TMEM views remains a good next runtime target.

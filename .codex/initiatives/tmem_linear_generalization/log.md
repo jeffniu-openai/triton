@@ -7726,3 +7726,51 @@ Open after this slice:
     direct-API behavior after `57a06c29b`;
   - the full four-way Gluon sweep remains the previous green proof until a
     future broad rerun is needed for another source-changing slice.
+
+## 2026-04-11 13:50 UTC
+
+- Committed and pushed direct canonical TMEM-linear `128x128b` copy coverage:
+  - `c5bdb6d5c`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - close the high-value gap where executable direct `128x128b` root copy
+    coverage existed only through the legacy TMEM layout path;
+  - keep the slice coverage-only and separate from attention, `ld.red`, and
+    scaled-copy work.
+- Implementation:
+  - `tmem_copy_128x128_kernel` now accepts its TMEM layout as an explicit
+    `ttgl.constexpr`;
+  - `test_tmem_runtime_matrix_cp_128x128` runs both the legacy
+    `TensorMemoryLayout` destination and canonical `_make_tmem_linear_layout`
+    destination;
+  - both variants assert exact `tcgen05.cp.cta_group::1.128x128b` PTX/LLIR
+    selection;
+  - the canonical linear variant additionally asserts `tensor_memory_linear`
+    appears in TTGIR.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - direct copy exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-128x128-linear-direct PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_128x128'`
+    - `2 passed in 3.44s`
+  - nearby copy controls:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-nearby-controls PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive'`
+    - `4 passed in 4.53s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Durable interpretation:
+  - the supported `_reinterpret` replacement contract is:
+    offset to the right part of TMEM, slice/subview it to the desired physical
+    bits, then bitcast to the desired dtype/shape/layout only when total size
+    and exact physical mapping are equivalent.
+- Next:
+  - continue copy saturation for TMEM-view destinations on `128x256b` and
+    scaled `warpx4.32x128b`;
+  - keep attention reverted until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready;
+  - continue long-term `ld.red`, broader MMAv5/`mma_scaled`, fuzzing,
+    stale-negative cleanup, and heuristic cleanup.
