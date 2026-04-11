@@ -8092,3 +8092,38 @@ Open after this slice:
   - continue staged `ld/st` fuzzing across two-CTA, higher-rank, and stale
     negative descriptor-view surfaces;
   - then stale-negative cleanup and heuristic cleanup.
+
+## 2026-04-11 15:20 UTC
+
+- Committed and pushed two-CTA descriptor-chain `ld/st` auto coverage:
+  - `ca9f94760`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - add symmetric `auto` instruction-selection coverage to the two-CTA
+    descriptor-composition and descriptor-roundtrip matrices.
+- Implementation:
+  - `LDST_TWOCTA_DESCRIPTOR_CASES` now uses `LDST_VARIANTS` instead of only
+    `LDST_EXPLICIT_VARIANTS`;
+  - this covers `block_two_ctas` and MMAv5-like two-CTA TMEM-linear layouts at
+    `N = 64`, `128`, and `256`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - descriptor roundtrip + two-CTA descriptor matrices:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-descriptor-auto-roundtrip-twocta PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_roundtrip_sweeps' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_compositions' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps'`
+    - `30 passed, 180 skipped in 142.02s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Interpretation:
+  - skipped cases are expected tensor-memory OOR boundaries in lifted
+    roundtrip shapes;
+  - the validation also covers the single-CTA descriptor roundtrip sweep after
+    `ebb23b697` made `LDST_DESCRIPTOR_CASES` include `auto`.
+- Next:
+  - continue staged `ld/st` fuzzing on higher-rank and stale-negative
+    descriptor-view surfaces;
+  - then stale-negative cleanup and heuristic cleanup.

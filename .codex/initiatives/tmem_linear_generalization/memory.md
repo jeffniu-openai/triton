@@ -274,7 +274,40 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 15:10 UTC)
+## Current Topline (2026-04-11 15:20 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `ca9f94760` on `origin/codex/tmem`
+- Two-CTA descriptor-chain `ld/st` auto instruction selection is now covered:
+  - `LDST_TWOCTA_DESCRIPTOR_CASES` now uses `LDST_VARIANTS`, so it includes
+    `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`;
+  - coverage spans `block_two_ctas` and MMAv5-like two-CTA TMEM-linear layouts
+    at `N = 64`, `128`, and `256`;
+  - the expansion reaches both
+    `test_tmem_runtime_matrix_ldst_twocta_descriptor_compositions` and
+    `test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps`.
+- Validation for `ca9f94760`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - descriptor roundtrip + two-CTA descriptor matrices:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-descriptor-auto-roundtrip-twocta PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_roundtrip_sweeps' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_compositions' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps'`
+    - `30 passed, 180 skipped in 142.02s`
+  - `git diff --check`
+    - `PASSED`
+- Note:
+  - this validation also covers the single-CTA descriptor roundtrip sweep after
+    `ebb23b697` made `LDST_DESCRIPTOR_CASES` include `auto`;
+  - skipped cases are expected tensor-memory OOR boundaries in lifted
+    roundtrip shapes.
+- Next:
+  - continue staged `ld/st` fuzzing on higher-rank and stale-negative
+    descriptor-view surfaces;
+  - then continue stale-negative cleanup and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 15:10 UTC)
 
 - Latest pushed source/test checkpoint:
   - `ebb23b697` on `origin/codex/tmem`
