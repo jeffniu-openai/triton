@@ -90,6 +90,7 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
 
 static void annotateMMAv5AccumulatorRootRowPlan(
     triton::nvidia_gpu::TMEMAllocOp alloc) {
+  triton::nvidia_gpu::setExplicitMMAv5AccumulatorRoot(alloc);
   triton::nvidia_gpu::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 }
 

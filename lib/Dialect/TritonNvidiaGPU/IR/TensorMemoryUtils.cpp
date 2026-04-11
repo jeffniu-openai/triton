@@ -24,6 +24,10 @@ constexpr StringLiteral kExplicitTMemLdStRowPlanAttrName =
     "ttng.tmem_ldst_row_plan";
 constexpr StringLiteral kExplicitTMemPhysicalLayoutAttrName =
     "ttng.tmem_physical_layout";
+constexpr StringLiteral kExplicitMMAv5AccumulatorRootAttrName =
+    "ttng.tmem_mmav5_accumulator_root";
+constexpr StringLiteral kExplicitMMAv5OperandRootAttrName =
+    "ttng.tmem_mmav5_operand_root";
 
 static Value getUniqueFunctionArgForwardingSource(BlockArgument blockArg) {
   auto func = dyn_cast_if_present<FuncOp>(blockArg.getOwner()->getParentOp());
@@ -82,7 +86,7 @@ Value getTMemForwardingSource(Value memDesc) {
 namespace {
 
 static std::optional<TMemLdStRowPlan>
-getExplicitTMemLdStRowPlan(Value memDesc) {
+getExplicitTMemLdStRowPlanImpl(Value memDesc) {
   SmallPtrSet<Value, 4> seen;
   Value cur = memDesc;
   while (cur && seen.insert(cur).second) {
@@ -96,7 +100,38 @@ getExplicitTMemLdStRowPlan(Value memDesc) {
       }
       return std::nullopt;
     }
-    cur = getTMemForwardingSource(cur);
+    if (auto forwarded = getTMemForwardingSource(cur)) {
+      cur = forwarded;
+      continue;
+    }
+    Operation *def = cur.getDefiningOp();
+    if (!def)
+      break;
+    if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    break;
   }
   return std::nullopt;
 }
@@ -2009,6 +2044,10 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
 }
 } // namespace
 
+std::optional<TMemLdStRowPlan> getExplicitTMemLdStRowPlan(Value memDesc) {
+  return getExplicitTMemLdStRowPlanImpl(memDesc);
+}
+
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     // TMEM scales use logical broadcast row bases in their linear layout, but
@@ -2153,6 +2192,121 @@ void setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp op) {
     return;
   if (auto plan = getMMAv5RootRowPlan(memTy))
     setExplicitTMemLdStRowPlan(op, *plan, /*overwriteExisting=*/true);
+}
+
+void setExplicitMMAv5AccumulatorRoot(TMEMAllocOp op) {
+  if (!op)
+    return;
+  op->setAttr(kExplicitMMAv5AccumulatorRootAttrName,
+              UnitAttr::get(op.getContext()));
+}
+
+static bool hasExplicitTMemRootAttr(Value memDesc, StringLiteral attrName) {
+  SmallPtrSet<Value, 4> seen;
+  Value cur = memDesc;
+  while (cur && seen.insert(cur).second) {
+    if (auto alloc = dyn_cast_if_present<TMEMAllocOp>(cur.getDefiningOp()))
+      return alloc->hasAttr(attrName);
+    if (auto forwarded = getTMemForwardingSource(cur)) {
+      cur = forwarded;
+      continue;
+    }
+    Operation *def = cur.getDefiningOp();
+    if (!def)
+      break;
+    if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    break;
+  }
+  return false;
+}
+
+bool hasExplicitMMAv5AccumulatorRoot(Value memDesc) {
+  return hasExplicitTMemRootAttr(memDesc,
+                                 kExplicitMMAv5AccumulatorRootAttrName);
+}
+
+void setExplicitMMAv5OperandRoot(TMEMAllocOp op) {
+  if (!op)
+    return;
+  op->setAttr(kExplicitMMAv5OperandRootAttrName, UnitAttr::get(op.getContext()));
+}
+
+bool hasExplicitMMAv5OperandRoot(Value memDesc) {
+  return hasExplicitTMemRootAttr(memDesc, kExplicitMMAv5OperandRootAttrName);
+}
+
+void copyExplicitMMAv5RootMarkers(TMEMAllocOp dst, TMEMAllocOp src) {
+  if (!dst || !src)
+    return;
+  if (src->hasAttr(kExplicitMMAv5AccumulatorRootAttrName))
+    setExplicitMMAv5AccumulatorRoot(dst);
+  if (src->hasAttr(kExplicitMMAv5OperandRootAttrName))
+    setExplicitMMAv5OperandRoot(dst);
+}
+
+static bool isTMemViewRootedAtBlockArgument(Value memDesc) {
+  SmallPtrSet<Value, 4> seen;
+  Value cur = memDesc;
+  while (cur && seen.insert(cur).second) {
+    if (isa<BlockArgument>(cur))
+      return true;
+    if (auto forwarded = getTMemForwardingSource(cur)) {
+      cur = forwarded;
+      continue;
+    }
+    Operation *def = cur.getDefiningOp();
+    if (!def)
+      return false;
+    if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    return false;
+  }
+  return false;
 }
 
 void setExplicitTMemPhysicalLayout(TMEMAllocOp op, const LinearLayout &layout,
@@ -2396,7 +2550,9 @@ static bool shouldPreferBackingRowPlanForPureOuterIndexView(
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy || queryTy != memTy || !queryPlan || !backingPlan ||
       !isPureOuterTMemIndexView(memDesc) ||
-      backingPlan->rowSpan <= queryPlan->rowSpan || queryTy.getRank() != 2) {
+      !hasExplicitMMAv5AccumulatorRoot(memDesc) ||
+      backingPlan->rowSpan <= queryPlan->rowSpan || queryTy.getRank() != 2 ||
+      queryTy.getShape()[1] != 32) {
     return false;
   }
 
@@ -2473,14 +2629,6 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
                                  const TMemLdStQueryLayout &queryLayout) {
   auto queryPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
   auto layoutPlan = getTMemLdStRowPlan(queryLayout.layout);
-  auto backingPlan = memDesc ? getBackingTMemLdStRowPlan(memDesc)
-                             : std::optional<TMemLdStRowPlan>{};
-  if (memDesc && backingPlan) {
-    if (auto explicitLayout = getExplicitTMemPhysicalLayout(memDesc);
-        explicitLayout && explicitLayout->layout == queryLayout.layout) {
-      return backingPlan;
-    }
-  }
   if (!layoutPlan)
     return queryPlan;
   if (!queryPlan)
@@ -2491,19 +2639,54 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy || memTy != queryTy)
     return queryPlan;
+  auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
+  if (backingPlan &&
+      (hasExplicitMMAv5AccumulatorRoot(memDesc) ||
+       hasExplicitMMAv5OperandRoot(memDesc)) &&
+      isa_and_nonnull<TMEMAllocOp>(memDesc.getDefiningOp()) &&
+      backingPlan->rowSpan > layoutPlan->rowSpan) {
+    return backingPlan;
+  }
 
-  bool isExplicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
-                      gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
-                      gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(
-          memDesc.getDefiningOp());
+  auto getProjectedM64LayoutPlan = [&]()
+      -> std::optional<TMemLdStRowPlan> {
+    if (layoutPlan->rowSpan == queryTy.getShape()[0])
+      return layoutPlan;
+
+    auto *ctx = queryTy.getContext();
+    auto kRow = StringAttr::get(ctx, "row");
+    auto normalizedLayout =
+        normalizeTensorMemoryLinearLayoutForAnalysis(queryLayout.layout);
+    if (!normalizedLayout.hasInDim(kRow))
+      return std::nullopt;
+    auto activeLayout = normalizedLayout.removeZeroBasesAlongDim(kRow);
+    if (!activeLayout.hasInDim(kRow) ||
+        activeLayout.getInDimSize(kRow) != queryTy.getShape()[0] ||
+        activeLayout.getInDimSizeLog2(kRow) != 6) {
+      return std::nullopt;
+    }
+    auto isZeroActiveRowBasis = [&](unsigned idx) {
+      return idx < activeLayout.getInDimSizeLog2(kRow) &&
+             llvm::all_of(activeLayout.getBasis(kRow, idx),
+                          [](int32_t v) { return v == 0; });
+    };
+    if (isZeroActiveRowBasis(4) && isZeroActiveRowBasis(5)) {
+      return TMemLdStRowPlan{/*warpRow0=*/0, /*warpRow1=*/0,
+                             /*rowSpan=*/64};
+    }
+    return TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
+                           /*rowSpan=*/64};
+  };
+  auto projectedM64Plan = getProjectedM64LayoutPlan();
   bool isProjectedM64Subview =
       queryTy.getRank() == 2 && queryTy.getElementTypeBitWidth() == 32 &&
-      queryTy.getShape()[0] == 64 &&
-      layoutPlan->rowSpan == queryTy.getShape()[0] &&
-      layoutPlan->rowSpan < queryPlan->rowSpan;
-  if (isExplicitViewProducer && isProjectedM64Subview)
-    return layoutPlan;
+      queryTy.getShape()[0] == 64 && projectedM64Plan &&
+      projectedM64Plan->rowSpan == queryTy.getShape()[0] &&
+      projectedM64Plan->rowSpan < queryPlan->rowSpan;
+  if (isProjectedM64Subview && isPureOuterTMemIndexView(memDesc))
+    return queryPlan;
+  if (isProjectedM64Subview)
+    return projectedM64Plan;
   return queryPlan;
 }
 
@@ -3692,6 +3875,29 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     if (auto rowPlan = getTMemLdStRowPlan(support.query.layout))
       support.rowPlan = rowPlan;
   };
+  auto sourceHasOpaqueMMAv5AccumulatorPlan = [&](Value src) {
+    auto srcTy = dyn_cast_if_present<MemDescType>(src.getType());
+    if (!srcTy || srcTy.getRank() != 2 ||
+        queryTy.getElementTypeBitWidth() != 32 ||
+        queryTy.getShape()[0] != 64 || queryTy.getShape()[1] != 32 ||
+        srcTy.getElementTypeBitWidth() != 32 || srcTy.getShape()[0] != 64 ||
+        srcTy.getShape()[1] < queryTy.getShape()[1] ||
+        !isTensorMemoryEncoding(srcTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
+      return false;
+    }
+
+    auto sourcePlan = getTMemLdStRowPlanForType(srcTy);
+    auto backingPlan = getBackingTMemLdStRowPlan(src);
+    if (!backingPlan ||
+        (sourcePlan && backingPlan->rowSpan <= sourcePlan->rowSpan)) {
+      return false;
+    }
+
+    return getExplicitTMemLdStRowPlan(src).has_value() ||
+           isPureOuterTMemIndexView(src) ||
+           isTMemViewRootedAtBlockArgument(src);
+  };
 
   auto getSourceSupport = [&](Value src)
       -> std::optional<TMemLdStSupportQueryPlan> {
@@ -3700,10 +3906,20 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     if (!srcTy)
       return std::nullopt;
     auto preferredSourceRowPlan = [&](std::optional<TMemLdStRowPlan> rowPlan) {
-      if (auto mmav5RootPlan = getMMAv5RootRowPlan(srcTy);
-          mmav5RootPlan &&
-          (!rowPlan || mmav5RootPlan->rowSpan > rowPlan->rowSpan)) {
-        return std::optional<TMemLdStRowPlan>(*mmav5RootPlan);
+      if (sourceHasOpaqueMMAv5AccumulatorPlan(src)) {
+        if (auto backingPlan = getBackingTMemLdStRowPlan(src);
+            backingPlan &&
+            (!rowPlan || backingPlan->rowSpan > rowPlan->rowSpan)) {
+          return backingPlan;
+        }
+      }
+      if (hasExplicitMMAv5AccumulatorRoot(src) ||
+          isTMemViewRootedAtBlockArgument(src)) {
+        if (auto mmav5RootPlan = getMMAv5RootRowPlan(srcTy);
+            mmav5RootPlan &&
+            (!rowPlan || mmav5RootPlan->rowSpan > rowPlan->rowSpan)) {
+          return std::optional<TMemLdStRowPlan>(*mmav5RootPlan);
+        }
       }
       return rowPlan;
     };
@@ -3822,14 +4038,75 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
       remapTMemLdStQueryOrigin(
           support.query, support.query.layout,
           {{kCol, static_cast<int32_t>(subslice.getOffsets()[1])}})};
+  auto getExplicitSourceRowPlan = [](Value value)
+      -> std::optional<TMemLdStRowPlan> {
+    SmallPtrSet<Value, 4> seen;
+    Value cur = value;
+    while (cur && seen.insert(cur).second) {
+      if (auto explicitPlan = getExplicitTMemLdStRowPlan(cur))
+        return explicitPlan;
+      if (auto forwarded = getTMemForwardingSource(cur)) {
+        cur = forwarded;
+        continue;
+      }
+      Operation *def = cur.getDefiningOp();
+      if (!def)
+        break;
+      if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      break;
+    }
+    return std::nullopt;
+  };
+  auto sameRowPlan = [](const TMemLdStRowPlan &lhs,
+                        const TMemLdStRowPlan &rhs) {
+    return lhs.warpRow0 == rhs.warpRow0 && lhs.warpRow1 == rhs.warpRow1 &&
+           lhs.rowSpan == rhs.rowSpan && lhs.baseOffset == rhs.baseOffset;
+  };
+  auto explicitSourceRowPlan = getExplicitSourceRowPlan(subslice.getSrc());
+  bool sourceIsMMAv5Accumulator =
+      hasExplicitMMAv5AccumulatorRoot(subslice.getSrc()) ||
+      sourceHasOpaqueMMAv5AccumulatorPlan(subslice.getSrc()) ||
+      isTMemViewRootedAtBlockArgument(subslice.getSrc());
   // Column subviews borrow the source support image, so the first choice for
-  // row planning should come from that support image itself. This preserves
-  // the source/root physical row span while still letting the zero-row basis
-  // project the logical anchors down to the sliced 64-row view.
-  support.rowPlan = getTMemLdStRowPlan(support.query.layout);
-  // If the borrowed support image cannot provide a row plan, fall back to the
-  // sliced standalone query so projected M64 views still avoid inheriting the
-  // source/root 32,64 anchors verbatim.
+  // row planning should come from the source support/root contract only when
+  // the root has an explicit producer-owned row-plan. Plain descriptor
+  // roundtrips can otherwise look like M64 column slices and must keep the
+  // projected 64-row plan.
+  if (auto layoutRowPlan = getTMemLdStRowPlan(support.query.layout)) {
+    bool keepExplicitSourcePlan =
+        sourceIsMMAv5Accumulator && support.rowPlan &&
+        support.rowPlan->rowSpan > layoutRowPlan->rowSpan &&
+        (!explicitSourceRowPlan ||
+         sameRowPlan(*explicitSourceRowPlan, *support.rowPlan));
+    if (!keepExplicitSourcePlan) {
+      support.rowPlan = layoutRowPlan;
+    }
+  }
+  // If neither the source nor borrowed support image can provide a row plan,
+  // fall back to the sliced standalone query.
   if (!support.rowPlan)
     if (auto sliceQuery = inferStandaloneTMemLdStQueryLayoutImpl(
             memDesc, /*preserveNonCanonicalView=*/true,
@@ -5872,6 +6149,14 @@ computeTMemLdStEncodingInfoImpl(
       (!rowPlan || rowPlanOverride->rowSpan == rowPlan->rowSpan ||
        memLayoutSupportsOverride() || allowLiftedM64AccumulatorOverride))
     rowPlan = rowPlanOverride;
+  bool useProducerAnchorsForProjectedM64SplitN =
+      rowPlanOverride && rowPlan && rowPlanOverride->rowSpan == 128 &&
+      rowPlan->rowSpan == 128 && bitwidth == 32 && logicalRows == 64 &&
+      physicalRows == 128 && physicalCols > logicalCols && hasZeroRowBasis &&
+      !hasZeroColBasis && useActiveMemLayoutForDirectPlanning &&
+      activePhysicalRows == logicalRows &&
+      ((rowPlan->warpRow0 == 16 && rowPlan->warpRow1 == 32) ||
+       (rowPlan->warpRow0 == 32 && rowPlan->warpRow1 == 64));
   if (debug) {
     llvm::errs() << "[halfrows-info] regLayout:\n"
                  << regLayout.toString() << "\n";
@@ -5921,6 +6206,11 @@ computeTMemLdStEncodingInfoImpl(
   };
   auto expectedWarp0Basis = getRowAnchorBasis(rowPlan->warpRow0);
   auto expectedWarp1Basis = getRowAnchorBasis(rowPlan->warpRow1);
+  if ((!expectedWarp0Basis || !expectedWarp1Basis) &&
+      useProducerAnchorsForProjectedM64SplitN) {
+    expectedWarp0Basis = SmallVector<int32_t>{rowPlan->warpRow0, 0};
+    expectedWarp1Basis = SmallVector<int32_t>{rowPlan->warpRow1, 0};
+  }
   if (!expectedWarp0Basis || !expectedWarp1Basis) {
     if (emitError) {
       emitError() << "TMEM load/store requires row anchors "
@@ -6093,6 +6383,11 @@ computeTMemLdStEncodingInfoImpl(
   if (isHalfRowLiftedSupportView) {
     warpBasis0.assign(expectedWarp0Basis->begin(), expectedWarp0Basis->end());
     warpBasis1.assign(expectedWarp1Basis->begin(), expectedWarp1Basis->end());
+  }
+  if (useProducerAnchorsForProjectedM64SplitN &&
+      info->atom == TMemAccessAtom::I16x32bx2) {
+    warpBasis0 = {rowPlan->warpRow0, 0};
+    warpBasis1 = {rowPlan->warpRow1, 0};
   }
   bool isI16RowZeroM64ReinterpretView =
       isRowZeroM64ReinterpretView &&

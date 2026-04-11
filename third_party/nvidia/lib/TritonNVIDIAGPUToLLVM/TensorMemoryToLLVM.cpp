@@ -834,7 +834,9 @@ lowerTMemLdStFromTypes(
   auto kCol = StringAttr::get(rewriter.getContext(), "col");
   auto preferBackingRowPlanForDirectRootLoad =
       [&](MemDescType queryTy,
-          std::optional<TMemLdStRowPlan> rowPlan) -> std::optional<TMemLdStRowPlan> {
+          std::optional<TMemLdStRowPlan> rowPlan,
+          const TMemLdStQueryLayout *queryLayout = nullptr)
+          -> std::optional<TMemLdStRowPlan> {
     if (!vals.empty() || !memDescValue ||
         !isa_and_nonnull<TMEMAllocOp>(memDescValue.getDefiningOp()) || !rowPlan) {
       return rowPlan;
@@ -842,12 +844,14 @@ lowerTMemLdStFromTypes(
     auto backingPlan = getBackingTMemLdStRowPlan(memDescValue);
     if (!backingPlan || backingPlan->rowSpan <= rowPlan->rowSpan ||
         queryTy != memTy || queryTy.getRank() != 2 ||
-        queryTy.getShape()[0] != 64) {
+        queryTy.getShape()[0] != 64 ||
+        queryTy.getShape()[1] != 32 ||
+        !hasExplicitMMAv5AccumulatorRoot(memDescValue)) {
       return rowPlan;
     }
-    auto queryLayout = toLinearLayout(queryTy);
-    if (!canRepresentLogicalRowAnchor(queryLayout, backingPlan->warpRow0) ||
-        !canRepresentLogicalRowAnchor(queryLayout, backingPlan->warpRow1)) {
+    auto anchorLayout = queryLayout ? queryLayout->layout : toLinearLayout(queryTy);
+    if (!canRepresentLogicalRowAnchor(anchorLayout, backingPlan->warpRow0) ||
+        !canRepresentLogicalRowAnchor(anchorLayout, backingPlan->warpRow1)) {
       return rowPlan;
     }
     return backingPlan;
@@ -911,7 +915,8 @@ lowerTMemLdStFromTypes(
                                                     *rawQueryLayout);
       if (!rawRowPlan)
         rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
-      rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan);
+      rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan,
+                                                         &*rawQueryLayout);
       if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
               memDescValue.getDefiningOp()) &&
           memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
@@ -999,7 +1004,8 @@ lowerTMemLdStFromTypes(
             getTMemLdStRowPlanForQueryLayout(memDescValue, memTy, supportQuery);
       if (!supportRowPlan)
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
-      supportRowPlan = preferBackingRowPlanForDirectRootLoad(memTy, supportRowPlan);
+      supportRowPlan = preferBackingRowPlanForDirectRootLoad(
+          memTy, supportRowPlan, &supportQuery);
       std::string supportDetails;
       auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
         llvm::raw_string_ostream os(supportDetails);
@@ -1056,7 +1062,31 @@ lowerTMemLdStFromTypes(
                 getTMemLdStSupportQueryPlan(subslice->getSrc(), &supportError)) {
           if (traceQuerySelection)
             appendTrace("supportQuery source-column-subview plan");
-          auto lowered = trySupportQuery(srcSupportPlan->query, std::nullopt);
+          auto supportRowPlan = srcSupportPlan->rowPlan;
+          auto sourceTy = dyn_cast<MemDescType>(subslice->getSrc().getType());
+          if (sourceTy && memTy.getRank() == 2 && sourceTy.getRank() == 2 &&
+              memTy.getElementTypeBitWidth() == 32 &&
+              sourceTy.getElementTypeBitWidth() == 32 &&
+              memTy.getShape()[0] == 64 && memTy.getShape()[1] == 32 &&
+              sourceTy.getShape()[0] == 64 &&
+              sourceTy.getShape()[1] > memTy.getShape()[1]) {
+            auto backingPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
+            auto explicitPlan = getExplicitTMemLdStRowPlan(subslice->getSrc());
+            auto preferWider = [&](std::optional<TMemLdStRowPlan> candidate) {
+              if (candidate &&
+                  (!supportRowPlan ||
+                   candidate->rowSpan > supportRowPlan->rowSpan)) {
+                supportRowPlan = candidate;
+              }
+            };
+            preferWider(explicitPlan);
+            if (hasExplicitMMAv5AccumulatorRoot(subslice->getSrc()) ||
+                hasExplicitMMAv5OperandRoot(subslice->getSrc())) {
+              preferWider(backingPlan);
+            }
+          }
+          auto lowered =
+              trySupportQuery(srcSupportPlan->query, supportRowPlan);
           if (traceQuerySelection) {
             appendTrace(Twine("supportQuery source-column-subview ") +
                         (succeeded(lowered) ? Twine("ok") : Twine("fail")));

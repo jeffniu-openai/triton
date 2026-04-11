@@ -7150,3 +7150,80 @@ Open after this slice:
     the physical family actually selected by the producer store;
   - this points to a missing producer-owned physical TMEM family contract
     rather than another local ld/st family-selection tweak.
+
+## 2026-04-11 03:38 UTC
+
+- Mined the initiative docs for the longer-term remaining work on
+  `tcgen05.cp` / `warpx2`, `tcgen05.ld/st`, `tcgen05.ld.red`,
+  `tcgen05.mma`, and `tcgen05.mma_scaled`.
+- No code edits, builds, or tests were run for this checkpoint; this was a
+  durable-status refresh only.
+- Current long-term read recorded in `memory.md`:
+  - the old no-scales `warpx2::{01_23,02_13}.64x128b`
+    candidate-positive failures are no longer believed live; later docs record
+    both candidate positives green after the `[128,4]`
+    raw-query/direct-view preservation fix;
+  - remaining copy work is coverage/saturation: canonical TMEM-linear
+    `128x128b`, TMEM-view destinations for `128x256b`, scales
+    `warpx4.32x128b`, `cta_group::2` combinations, and any additional
+    deterministic `warpx2` user-visible paths;
+  - broad `ld/st` fuzzing remains the first major saturation phase after the
+    current planner bugs, with `ld.red` modifier/layout saturation following
+    once supported non-sharded families are stable;
+  - existing MMAv5 coverage already includes several plain and scaled families,
+    but broad `tcgen05.mma` / `tcgen05.mma_scaled` kind/layout/CTA saturation
+    remains open, especially direct scaled MMAv5 through TMEM views and the
+    2-CTA TF32 shared-transpose lowering follow-up.
+
+## 2026-04-11 04:44 UTC
+
+- Closed the current dirty-worktree M64 / split-N producer-contract regression
+  set.
+- Root cause:
+  - direct root MMAv5 accumulator/operand TMEM roots need the wider
+    producer-owned row-plan contract even when their canonical linear layout
+    looks like a projected M64 direct-load layout;
+  - multicta epilogue loads used the source-column support image but discarded
+    the source support row plan, so lowering recomputed the narrow sliced
+    `64x32` plan and disagreed with the MMAv5 producer; and
+  - broadening row-plan inheritance at generic outer-index support is wrong
+    because descriptor-chain full-tile indexed loads must remain on their
+    narrow/raw non-MMAv5 contract.
+- Fix:
+  - mark explicit MMAv5 accumulator and operand roots and copy those markers
+    through the current TMEM allocation cloning / partitioning paths;
+  - expose `getExplicitTMemLdStRowPlan(...)` and make it follow forwarding and
+    descriptor-view chains;
+  - let direct root query-layout planning preserve the wider backing row plan
+    only for explicit MMAv5 accumulator/operand root allocs;
+  - pass the source support row plan through the pure source-column lowering
+    path; and
+  - scope the source-column wide-plan override to f32 `64x32` column subviews
+    of wider f32 M64 sources with an explicit/source MMAv5 producer contract.
+- Trace evidence:
+  - multicta source-column support now lowers with
+    `warpBase0=2097152`, `warpBase1=4194304`;
+  - descriptor-chain final full-tile indexed load still lowers with
+    `warpBase0=1048576`, `warpBase1=2097152`.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - exact multicta old-mainline repro:
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+    - `PASSED`
+  - descriptor-chain exact:
+    - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `PASSED`
+  - five-test focused control batch:
+    - `test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - `test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - `test_block_m_64_mma[linear]`
+    - `test_block_m_64_mma[legacy]`
+    - `test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - `5 passed`
+  - full multicta file:
+    - `python/examples/gluon/03-matmul-multicta.py`
+    - `82 passed, 14 skipped`
+- Follow-up:
+  - refresh the aggregate GB200 manifests / broader examples-Gluon status on
+    top of the checkpoint commit, then continue staged broad validation.

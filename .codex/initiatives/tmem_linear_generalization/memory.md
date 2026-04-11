@@ -128,6 +128,43 @@
 - For all of the above, preserve the invariant that user-visible layout
   generalization is not tied to a pile of family-specific hacks.
 
+#### 2026-04-11 Long-Term Surface Audit
+- This audit is not the immediate implementation target while the current
+  M64 / split-N direct-load regressions are still live. Resume it once the
+  GB200 branch-recovery exacts are green and the shared planner is stable.
+- `tcgen05.cp` / `warpx2`:
+  - the old no-scales `warpx2::{01_23,02_13}.64x128b` candidate-positive tail
+    is no longer believed to be live after the `[128,4]`
+    raw-query/direct-view preservation fix; both candidate positives were
+    recorded green in the latest docs;
+  - remaining copy work is saturation and missing-surface coverage, especially
+    canonical TMEM-linear `128x128b`, TMEM-view destinations for `128x256b`,
+    scales `warpx4.32x128b`, `cta_group::2` combinations, and any additional
+    deterministic `warpx2` user-visible paths;
+  - keep `4x256b` out of the positive target set unless a future direct-PTX
+    probe proves a deterministic compiler contract.
+- `tcgen05.ld/st` and `tcgen05.ld.red`:
+  - broad `ld/st` fuzzing remains the first major saturation phase after the
+    active planner bugs, covering canonical, mixed/interleaved, block-basis,
+    two-CTA, MMAv5-like, M64/split-N, and descriptor-view chains;
+  - direct higher-rank access is still future work: higher-rank descriptors
+    should be sliced/indexed/reshaped to 2D before access, and unsupported
+    direct higher-rank access should stay a clean negative;
+  - `ld.red` has real positive coverage for tile-permuted and pure
+    row/col-permuted layouts, but still needs modifier/layout saturation over
+    supported non-sharded families and clean diagnostics for N-sharded or
+    otherwise unsupported reductions.
+- `tcgen05.mma` / `tcgen05.mma_scaled`:
+  - existing runtime coverage includes plain `f16`, `tf32`, `f8f6f4`,
+    `bf16 -> kind::f16`, several 2-CTA plain kinds, and targeted scaled-MMAv5
+    cases;
+  - remaining work is broad kind/layout/CTA saturation: sweep plain `f16`,
+    `tf32`, `f8f6f4`, confirm `i8` as clean unsupported where PTXAS rejects
+    it, then broaden scaled `mxf8f6f4`, `mxf4`, and `mxf4nvf4`;
+  - direct scaled MMAv5 through TMEM views remains a high-value runtime target,
+    and the 2-CTA TF32 shared-transpose lowering failure should remain a
+    compiler follow-up target rather than a settled ISA boundary.
+
 ### Phase 5: Performance And Selection Heuristics
 - Where multiple codegen paths are legal, add or refine heuristics so the
   compiler prefers the better-performing family.
@@ -157,12 +194,12 @@
 - Keep the GB200/NVIDIA CI red list current in `gb200_nvidia_ci_inventory.md`
   and use that file as the current validation baseline for this Blackwell
   devbox phase.
-- First close the merge-base-present MMAv5
-  `python/test/gluon/test_core.py::test_mma_shared_inputs[...]` regression
-  bucket, using fresh isolated exact reruns and current-vs-merge-base TTGIR /
-  PTX / planner comparisons rather than raw shard totals.
-- Then close the remaining merge-base-present example regression:
-  - `python/examples/gluon/03-matmul-multicta.py`
+- The merge-base-present MMAv5 and multicta representative regressions are
+  locally closed by the current M64 producer-contract/source-column row-plan
+  fix; keep their exacts in the focused guard set while broadening.
+- Next refresh the aggregate GB200 manifests and rerun broader examples/Gluon
+  shards on top of the checkpoint commit before declaring the branch-recovery
+  phase done.
 - Keep the now-closed `python/examples/gluon/02-convolution.py` checkpoint in
   mind during follow-up debugging:
   - the final fix was not another TMEM/PTX family change
@@ -172,24 +209,76 @@
   - that fallback inflated the epilogue scratch buffer by `128 KB` and pushed
     the kernel to `262208` shared bytes
 - Keep the branch-added PTX-expectation and stale-negative TMEM tails separate
-  from the old-mainline recovery queue until the MMAv5/compiler bucket is
-  stable again.
+  from the old-mainline recovery queue while refreshing the aggregate status.
 - Keep the reinterpret-heavy `block_m_64` tests visible as explicit
   descriptor-view rewrite / missing-surface work rather than using them as the
   first proof target for the current branch recovery.
-- Run the cache/process-contamination investigation in parallel with the MMAv5
-  work, but do not let it replace the core compiler diagnosis unless the fresh
-  process boundary proves the failure is purely harness-side.
 - Re-broaden through TMEM runtime, MMA/matmul, `triton_kernels`, and then the
-  broader suite once the current GB200 branch-recovery bucket is back under
-  control.
+  broader suite once the current GB200 manifests are refreshed.
 - Continue the larger initiative mission after the local bug buckets are green:
   - `ld.red` expansion
   - `copy` `warpx2` completion
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-10 22:41 UTC)
+## Current Topline (2026-04-11 04:44 UTC)
+
+- This supersedes the dirty `2026-04-11 02:55 UTC` handoff state where
+  `test_mma_shared_inputs[...]`, descriptor-chain, and the representative
+  multicta exact were red again.
+- The current local slice closes the M64 / split-N producer-contract recovery
+  exacts on this branch:
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-32-warps2-8-False-True-acc_dtype0]`
+    - passed in the focused control batch
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+    - passed
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    - passed
+  - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix[linear_m64_32x32b_splitn_8w-layout9-64-128-32x32b_splitn-8-16x32bx2]`
+    - passed
+  - `python/test/gluon/test_core.py::test_tmem_linear_roundtrip_splitn_shapes[linear_m64_splitn_64x32-layout11-64-32-expected_offset_imms11]`
+    - passed
+  - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+    - passed
+  - full `python/examples/gluon/03-matmul-multicta.py`
+    - `82 passed, 14 skipped`
+- Structural fix summary:
+  - MMAv5 accumulator and operand roots now carry explicit producer-root
+    markers in addition to the explicit row-plan/physical-layout attrs;
+  - those markers are copied through the current TMEM allocation cloning /
+    partitioning paths;
+  - direct root ld/st planning only preserves the wider backing row plan for
+    explicit MMAv5 accumulator/operand roots, so descriptor-chain roots do not
+    accidentally inherit producer-only anchors;
+  - `getExplicitTMemLdStRowPlan(...)` is now public and follows forwarding and
+    descriptor-view chains, allowing lowering to recover a source root's
+    explicit row plan without duplicating traversal logic; and
+  - source-column lowering now passes the source support row plan through to
+    `computeTMemLdStEncodingInfo(...)` and only upgrades f32 `64x32` column
+    subviews of wider f32 M64 sources to an explicit/source producer row plan.
+- Important trace evidence:
+  - the multicta f32 `64x128 -> 64x32` epilogue source-column path now uses
+    `warpBase0=2097152`, `warpBase1=4194304`, matching the MMAv5 producer
+    contract;
+  - the descriptor-chain final full-tile indexed load still uses the narrow
+    raw/support contract, `warpBase0=1048576`, `warpBase1=2097152`, which is
+    required for that non-MMAv5 descriptor-view roundtrip.
+- Current live branch-recovery read:
+  - the known old-mainline representative examples are green locally:
+    - `02-convolution.py` was green in the prior slice (`48 passed`)
+    - `03-matmul-multicta.py` is green in this slice (`82 passed, 14 skipped`)
+  - aggregate GB200 example manifests are still stale until refreshed on top
+    of the latest commit;
+  - before treating the branch-recovery phase as complete, rerun the aggregate
+    examples/Gluon shards and refresh the GB200 manifest docs with current
+    branch-vs-merge-base classification.
+- Immediate next move:
+  - commit and push this M64 producer-contract/source-column fix;
+  - refresh the aggregate GB200 manifests after the checkpoint commit;
+  - then continue staged broad validation and the longer-term `ld.red`,
+    `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing phases recorded above.
+
+## Historical Topline (2026-04-10 22:41 UTC)
 
 - The broad GB200 census from `18:48 UTC` remains the last whole-lane snapshot,
   but the primary merge-base-present MMAv5 compiler bucket from that census is
@@ -1005,6 +1094,16 @@
     - runtime PTX/LLIR parity coverage,
     - at least one lit lowering check, and
     - clean-negative coverage for true impossible frontiers.
+- 2026-04-11 status reminder:
+  - do not treat historical `warpx2` discovery failures as current blockers;
+    the old candidate-positive no-scales `warpx2` tests were later recorded
+    green, so the remaining copy backlog is coverage/saturation plus any new
+    deterministic families found by direct probes;
+  - treat `ld/st` fuzzing as the broadest planner stress test after the live
+    M64 row-plan bugs are fixed;
+  - treat `tcgen05.mma` / `tcgen05.mma_scaled` as a later broadening phase,
+    with direct scaled-MMAv5 TMEM views and 2-CTA TF32 as the highest-value
+    remembered frontiers.
 - Ambiguous or undocumented families should still be treated as direct-PTX
   probe targets before promoting them to compiler work.
 

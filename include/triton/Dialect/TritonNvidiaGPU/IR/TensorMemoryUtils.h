@@ -100,9 +100,16 @@ std::optional<TMemLdStRowPlan> getMMAv5RootRowPlan(gpu::MemDescType memTy);
 
 Value getTMemForwardingSource(Value memDesc);
 
+std::optional<TMemLdStRowPlan> getExplicitTMemLdStRowPlan(Value memDesc);
+
 void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan,
                                 bool overwriteExisting = false);
 void setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp op);
+void setExplicitMMAv5AccumulatorRoot(TMEMAllocOp op);
+bool hasExplicitMMAv5AccumulatorRoot(Value memDesc);
+void setExplicitMMAv5OperandRoot(TMEMAllocOp op);
+bool hasExplicitMMAv5OperandRoot(Value memDesc);
+void copyExplicitMMAv5RootMarkers(TMEMAllocOp dst, TMEMAllocOp src);
 
 void setExplicitTMemPhysicalLayout(TMEMAllocOp op, const LinearLayout &layout,
                                    bool twoCTAs,

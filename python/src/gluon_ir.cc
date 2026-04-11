@@ -124,6 +124,7 @@ static void annotateMMAv5AccumulatorRootRowPlan(Value acc) {
   auto alloc = getBackingTMemAlloc(acc);
   if (!alloc)
     return;
+  ttng::setExplicitMMAv5AccumulatorRoot(alloc);
   ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 }
 
@@ -148,6 +149,7 @@ static void annotateMMAv5TMemOperandRootRowPlan(Value operand, Value acc) {
   if (!operandAlloc || !accAlloc || operandAlloc == accAlloc)
     return;
   ttng::copyExplicitTMemLdStRowPlan(operandAlloc, accAlloc);
+  ttng::setExplicitMMAv5OperandRoot(operandAlloc);
 }
 
 static void annotateMMAv5TMemOperandRootPhysicalLayout(Value operand) {
@@ -2119,12 +2121,33 @@ void init_gluon_ir(py::module &&m) {
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;
           auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
+          auto hasProjectedM64RawQueryLayout = [&]() {
+            if (queryMemDescTy.getRank() != 2 ||
+                queryMemDescTy.getElementTypeBitWidth() != 32 ||
+                queryMemDescTy.getShape()[0] != 64) {
+              return false;
+            }
+            auto rawQueryLayout = inferRawQueryLayout(queryMemDesc);
+            if (!rawQueryLayout)
+              return false;
+            auto kRow = StringAttr::get(ctx, "row");
+            if (!rawQueryLayout->layout.hasInDim(kRow))
+              return false;
+            auto activeLayout =
+                rawQueryLayout->layout.removeZeroBasesAlongDim(kRow);
+            return rawQueryLayout->layout.getInDimSize(kRow) >
+                       queryMemDescTy.getShape()[0] &&
+                   activeLayout.hasInDim(kRow) &&
+                   activeLayout.getInDimSize(kRow) ==
+                       queryMemDescTy.getShape()[0];
+          }();
           auto preferQueryTypeLayoutsBeforeRawQuery =
               queryMemDescTy.getRank() == 2 &&
               queryMemDescTy.getElementTypeBitWidth() == 32 &&
               queryMemDescTy.getShape()[0] == 64 && numWarps == 4 &&
               !isa<ttng::TensorMemoryScalesEncodingAttr>(
                   queryMemDescTy.getEncoding()) &&
+              !hasProjectedM64RawQueryLayout &&
               (!desiredAtom || *desiredAtom == ttng::TMemAccessAtom::I32x32b ||
                *desiredAtom == ttng::TMemAccessAtom::I16x32bx2);
           auto tryQueryTypeLayouts = [&]() -> py::object {
