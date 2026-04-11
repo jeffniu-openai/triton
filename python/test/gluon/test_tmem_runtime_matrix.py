@@ -1849,12 +1849,12 @@ M64_ROWCOL_PERMUTED_AUTO_CASES = [
 
 LDST_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, ), ("32x32b", "16x64b", "16x128b", "16x256b"))
+    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, ), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, ), ("32x32b", "16x64b"))
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, ), ("auto", "32x32b", "16x64b"))
 ]
 
 CP_NO_SCALES_CASES = [
