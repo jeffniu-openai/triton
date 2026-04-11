@@ -150,11 +150,11 @@ def _make_tmem_linear_layout_block(m, n, two_ctas=False):
     )
 
 
-def _make_tmem_linear_layout_ld_red_legacy_equivalent_256x128():
+def _make_tmem_linear_layout_ld_red_legacy_equivalent_256(n):
     return TensorMemoryLinearLayout(
         rows=[[1 << i, 0] for i in range(7)],
-        cols=[[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [128, 0]],
-        shape=[256, 128],
+        cols=[[0, 1 << i] for i in range(int(math.log2(n)))] + [[128, 0]],
+        shape=[256, n],
     )
 
 
@@ -2095,7 +2095,9 @@ LD_RED_LINEAR_CASES = [
     ("identity", 128, 64, 4, "32x32b.x64"),
     ("identity", 128, 128, 4, "32x32b.x128"),
     ("identity", 128, 256, 4, "32x32b.x64"),
-    ("legacy_equivalent_256x128", 256, 128, 8, "32x32b.x128"),
+    ("legacy_equivalent_256", 256, 32, 8, "32x32b.x32"),
+    ("legacy_equivalent_256", 256, 64, 8, "32x32b.x64"),
+    ("legacy_equivalent_256", 256, 128, 8, "32x32b.x128"),
 ]
 
 LD_RED_EXPECTED_OP_COUNT = {32: 1, 64: 1, 128: 1, 256: 4}
@@ -2135,6 +2137,13 @@ LD_RED_MIXED_CASES = [
     (128, 64, 4),
     (128, 128, 4),
     (128, 256, 4),
+]
+
+LD_RED_UNSUPPORTED_SOURCE_CASES = [
+    ("identity_256x32", 256, 32, 8),
+    ("identity_256x64", 256, 64, 8),
+    ("identity_256x128", 256, 128, 8),
+    ("identity_256x256", 256, 256, 8),
 ]
 
 LDST_EXPECTED_OFFSETS_128x256 = {
@@ -3435,8 +3444,8 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
                                                            expected_shape):
     if layout_name == "identity":
         layout = _make_tmem_linear_layout(M, N)
-    elif layout_name == "legacy_equivalent_256x128":
-        layout = _make_tmem_linear_layout_ld_red_legacy_equivalent_256x128()
+    elif layout_name == "legacy_equivalent_256":
+        layout = _make_tmem_linear_layout_ld_red_legacy_equivalent_256(N)
     else:
         layout = _make_tmem_linear_layout_mixed(M, N)
     compiled = _run_tmem_reduction_case(
@@ -3616,6 +3625,29 @@ def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupporte
             red_op,
             use_abs,
             propagate_nan,
+            num_warps=num_warps,
+        )
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
+    assert "tmem.load(...)+tt.reduce(...)" in text
+    assert "tt.reduce" in text
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("name,M,N,num_warps", LD_RED_UNSUPPORTED_SOURCE_CASES)
+def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported(
+    name, M, N, num_warps, capfd
+):
+    layout = _make_tmem_linear_layout(M, N)
+    with pytest.raises(Exception) as err:
+        _run_tmem_reduction_case(
+            layout,
+            M,
+            N,
+            "min",
+            False,
+            tl.PropagateNan.NONE,
             num_warps=num_warps,
         )
     captured = capfd.readouterr()

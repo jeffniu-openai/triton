@@ -223,7 +223,10 @@ Every fuzz case records:
 - `M in {128, 256}`
 - `N in {32, 64, 128, 256}`
 - positive layouts where the N dimension is not sharded across threads:
-  - canonical identity
+  - canonical identity for the 128-row reduction block
+  - row-256 reduction-friendly physical forms where the source layout still
+    has a 128-row reduction block and carries the high row bit through the
+    column/query frame
   - any additional TMEM-linear family that compile-only search proves emits
     legal reduction code
 
@@ -247,6 +250,9 @@ Every fuzz case records:
 - integer reduction with `NaN`
 - unpacked formats
 - N-sharded register layouts
+- plain identity `256xN` source layouts, which are not the current direct
+  `tcgen05.ld.red` source form and should keep the clean software-reduction
+  diagnostic unless the planner grows a real positive lowering
 
 ### 4. `cp`
 

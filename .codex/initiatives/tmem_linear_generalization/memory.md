@@ -195,6 +195,10 @@
     direct higher-rank access should stay a clean negative;
   - `ld.red` now has modifier saturation over identity, tile-permuted, and
     pure row/col-permuted supported non-sharded families at `eac11c719`;
+  - `ld.red` now also pins the row-256 source boundary: reduction-friendly
+    `256x{32,64,128}` layouts with the extra row bit carried in the column
+    query frame are positive `32x32b`, while plain identity
+    `256x{32,64,128,256}` source layouts are clean unsupported cases;
   - remaining `ld.red` work is broader layout fuzzing plus clean diagnostics
     for N-sharded or otherwise unsupported reductions.
 - `tcgen05.mma` / `tcgen05.mma_scaled`:
@@ -322,7 +326,42 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:03 UTC)
+## Current Topline (2026-04-11 17:09 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `d734f940a` on `origin/codex/tmem`
+- `ld.red` row-256 runtime-matrix coverage is broadened:
+  - positive reduction-friendly `256x{32,64,128}` TMEM-linear layouts now
+    exercise the same all-modifier matrix as the existing identity positives;
+  - plain identity `256x{32,64,128,256}` source layouts are covered as clean
+    unsupported cases with the dedicated `tcgen05.ld.red-compatible`
+    diagnostic.
+- Discovery note:
+  - plain identity `256xN` is not the current direct `ld.red` source form;
+  - the positive row-256 shape is the legacy-equivalent physical layout with a
+    128-row reduction block and the high row bit carried in the column/query
+    frame;
+  - `256x256` in that positive form was not added because the probe hit the
+    current shared-memory resource budget.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused row-256 positives:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-legacy256-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_identity_linear_layout -k legacy_equivalent_256`
+    - `24 passed, 32 deselected in 16.73s`
+  - focused row-256 identity clean negatives:
+    `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-identity256-negatives PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported`
+    - `4 passed in 3.65s`
+  - broad current-head `ld_red` slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-after-256-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `228 passed, 2017 deselected in 139.83s (0:02:19)`
+- Next:
+  - commit and push this row-256 `ld.red` fuzz slice;
+  - continue operational fuzzing from `fuzz_plan.md`, likely additional copy
+    saturation or broader MMA/scaled-MMA probes.
+
+## Prior Topline (2026-04-11 17:03 UTC)
 
 - Latest pushed checkpoint before this docs update:
   - `4521dfe1a` on `origin/codex/tmem`

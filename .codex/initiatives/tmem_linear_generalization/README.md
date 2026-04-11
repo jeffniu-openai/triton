@@ -98,7 +98,7 @@ When resuming the initiative:
   - broad `tcgen05.cp`:
     `152 passed, 5 skipped, 2068 deselected`
   - broad `tcgen05.ld.red`:
-    `208 passed, 1991 deselected`
+    `228 passed, 2017 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
     `64 passed, 2135 deselected`
   - scaled-MMA copy-helper matrix:
@@ -162,6 +162,13 @@ When resuming the initiative:
   - mixed unsupported layouts check the same modifier matrix and continue to
     report the dedicated `tmem_load reduction source layout is not directly
     tcgen05.ld.red-compatible` diagnostic.
+- `ld.red` row-256 source-boundary coverage is expanded:
+  - reduction-friendly `256x{32,64,128}` TMEM-linear layouts with the extra
+    row bit carried in the column/query frame are positive and still emit
+    `tcgen05.ld.red.sync.aligned.32x32b`;
+  - plain identity `256x{32,64,128,256}` TMEM-linear source layouts are pinned
+    as clean unsupported cases with the same actionable software-reduction
+    diagnostic.
 - Scaled-MMAv5 copy-matrix instruction coverage is tightened by `3374bbf12`:
   - the runtime-matrix scaled copy tests still assert exact
     `tcgen05.cp.cta_group::{1,2}.warpx4.32x128b` PTX/LLIR streams;
@@ -309,11 +316,13 @@ When resuming the initiative:
     copy boundaries.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ld-red-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-after-256-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
   - result:
-    `208 passed, 1991 deselected in 129.20s`;
+    `228 passed, 2017 deselected in 139.83s`;
   - this covers identity, tile-permuted, column-permuted, row-permuted, all
-    legal modifier pairs, and clean unsupported mixed-layout negatives.
+    legal modifier pairs, reduction-friendly row-256 positives, clean
+    unsupported identity row-256 layouts, and clean unsupported mixed-layout
+    negatives.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

@@ -8960,6 +8960,38 @@ Open after this slice:
   - commit and push this validation checkpoint;
   - continue operational fuzzing from `fuzz_plan.md`.
 
+## 2026-04-11 17:09 UTC
+
+- Broadened `ld.red` row-256 runtime-matrix coverage.
+- Source/test changes:
+  - generalized the row-256 legacy-equivalent layout helper to accept `N`;
+  - added positive `legacy_equivalent_256` cases for
+    `256x{32,64,128}`;
+  - added clean unsupported plain identity `256x{32,64,128,256}` cases.
+- Discovery:
+  - plain identity `256xN` TMEM-linear layouts cleanly reject with
+    `tmem_load reduction source layout is not directly tcgen05.ld.red-compatible`;
+  - the positive direct row-256 form keeps a 128-row reduction block and carries
+    the high row bit in the column/query frame;
+  - the positive `256x256` probe is currently resource-limited and was not
+    added as a runtime positive.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused row-256 positives:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-legacy256-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_identity_linear_layout -k legacy_equivalent_256`
+    - `24 passed, 32 deselected in 16.73s`
+  - focused row-256 identity clean negatives:
+    - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-identity256-negatives PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported`
+    - `4 passed in 3.65s`
+  - broad current-head `ld_red` slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-after-256-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `228 passed, 2017 deselected in 139.83s (0:02:19)`
+- Next:
+  - run hygiene, commit, and push this coverage slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
+
 ## 2026-04-11 17:03 UTC
 
 - Recorded the clarified supported `_reinterpret` migration contract.
