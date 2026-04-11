@@ -43,13 +43,14 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 14:20 UTC, the latest pushed source/test checkpoint is
-  `eac11c719` on `origin/codex/tmem`.
+- As of 2026-04-11 14:30 UTC, the latest pushed source/test checkpoint is
+  `3374bbf12` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
-  copy slices were validated with focused direct-i8 MMA tests, adjacent
-  positive `tcgen05_mma` kind tests, the Blackwell conversion lit test, and
-  focused copy runtime exacts.
+  copy / `ld.red` / scaled-MMA coverage slices were validated with focused
+  direct-i8 MMA tests, adjacent positive `tcgen05_mma` kind tests, the
+  Blackwell conversion lit test, focused copy and `ld.red` runtime exacts, and
+  the focused scaled-MMA opcode matrix.
 - A fresh four-way `python/test/gluon` sweep from `be3cba0cd` is green:
   - group 1:
     `5448 passed, 1002 skipped, 19348 deselected`
@@ -103,6 +104,12 @@ When resuming the initiative:
   - mixed unsupported layouts check the same modifier matrix and continue to
     report the dedicated `tmem_load reduction source layout is not directly
     tcgen05.ld.red-compatible` diagnostic.
+- Scaled-MMAv5 copy-matrix instruction coverage is tightened by `3374bbf12`:
+  - the runtime-matrix scaled copy tests still assert exact
+    `tcgen05.cp.cta_group::{1,2}.warpx4.32x128b` PTX/LLIR streams;
+  - the same format/CTA/geometry/accumulator-layout matrix now also asserts
+    exact `tcgen05.mma.cta_group::{1,2}.kind::{mxf8f6f4,mxf4,mxf4nvf4}.block_scale.scale_vec::*`
+    opcode selection for PTX and LLIR.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

@@ -274,7 +274,37 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 14:20 UTC)
+## Current Topline (2026-04-11 14:30 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `3374bbf12` on `origin/codex/tmem`
+- This checkpoint tightens scaled-MMAv5 runtime-matrix instruction coverage:
+  - the scaled-MMA copy matrix and geometry sweep already covered
+    `mxf8f6f4`, `mxf4`, and `mxf4nvf4` kind selection across `cta_group::{1,2}`,
+    accumulator layout kind, block geometry, and multicast combinations;
+  - they now assert that PTX and LLIR agree on every emitted
+    `tcgen05.mma.cta_group::{1,2}.kind::*` opcode;
+  - they also assert the exact expected `block_scale.scale_vec::*` suffix for
+    the format pair and CTA count, while keeping the exact scaled
+    `tcgen05.cp.cta_group::{1,2}.warpx4.32x128b` copy checks.
+- Validation for `3374bbf12`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused scaled-MMA runtime-matrix opcode slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-opcode-runtime-matrix PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep'`
+    - `52 passed in 15.44s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue direct scaled-MMAv5 TMEM-view runtime targets and broader
+    MMAv5/`mma_scaled` saturation;
+  - then continue staged `ld/st` fuzzing, stale-negative cleanup, and
+    heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 14:20 UTC)
 
 - Latest pushed source/test checkpoint:
   - `eac11c719` on `origin/codex/tmem`

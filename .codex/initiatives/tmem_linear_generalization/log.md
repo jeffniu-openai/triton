@@ -7893,3 +7893,44 @@ Open after this slice:
 - Next:
   - move to broader MMAv5/`mma_scaled` runtime coverage, then staged `ld/st`
     fuzzing and stale-negative cleanup.
+
+## 2026-04-11 14:30 UTC
+
+- Committed and pushed scaled-MMAv5 opcode matrix coverage:
+  - `3374bbf12`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - tighten the existing runtime-matrix scaled-MMA copy coverage so it checks
+    the actual `tcgen05.mma` instruction kind selected by each execution, not
+    only the associated `tcgen05.cp.warpx4.32x128b` scale-copy stream.
+- Implementation:
+  - imported the shared `_expected_scaled_mma_opcode` helper from
+    `test_core.py`;
+  - added a local PTX/LLIR MMA opcode assertion helper mirroring the existing
+    copy helper;
+  - `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix`
+    now checks exact scaled MMA opcodes across the format-pair, CTA-count, and
+    accumulator-layout matrix;
+  - `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep`
+    now checks exact scaled MMA opcodes across block geometry, multicast,
+    CTA-count, and accumulator-layout variants.
+- Instruction coverage now explicitly includes:
+  - `tcgen05.mma.cta_group::{1,2}.kind::mxf8f6f4.block_scale.scale_vec::1X`;
+  - `tcgen05.mma.cta_group::{1,2}.kind::mxf4.block_scale.scale_vec::2X`;
+  - `tcgen05.mma.cta_group::{1,2}.kind::mxf4nvf4.block_scale.scale_vec::4X`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused scaled-MMA runtime-matrix opcode slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-opcode-runtime-matrix PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_geometry_sweep'`
+    - `52 passed in 15.44s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue direct scaled-MMAv5 TMEM-view runtime coverage and broader
+    MMAv5/`mma_scaled` saturation;
+  - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.
