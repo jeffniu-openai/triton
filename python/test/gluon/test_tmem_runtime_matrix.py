@@ -1714,19 +1714,18 @@ LDST_ROWCOL_PERMUTED_CASES = [
 
 LDST_EXOTIC_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_EXOTIC_LAYOUTS.keys(), (64, 128, 256), LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_EXOTIC_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_EXOTIC_DESCRIPTOR_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(("scrambled_cols", "scrambled_rows_cols"), (64, 128, 256),
-                                           LDST_EXPLICIT_VARIANTS)
+                                           LDST_VARIANTS)
 ]
 
 LDST_EXOTIC_UNSUPPORTED_CASES = [
     (layout_name, n, variant)
-    for layout_name, n, variant in product(LDST_EXOTIC_UNSUPPORTED_LAYOUTS.keys(), (64, 128, 256),
-                                           LDST_EXPLICIT_VARIANTS)
+    for layout_name, n, variant in product(LDST_EXOTIC_UNSUPPORTED_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
