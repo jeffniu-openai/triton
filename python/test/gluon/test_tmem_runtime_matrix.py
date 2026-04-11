@@ -4174,6 +4174,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive():
         compiled,
         ["tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"],
     )
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_copy" in ttgir
@@ -4199,6 +4200,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive():
         compiled,
         ["tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"],
     )
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_copy" in ttgir
@@ -4222,6 +4224,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_canonical_codegen():
         compiled,
         ["tcgen05.cp.cta_group::1.warpx2::01_23.64x128b"],
     )
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_copy" in ttgir
@@ -4245,6 +4248,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen():
         compiled,
         ["tcgen05.cp.cta_group::1.warpx2::02_13.64x128b"],
     )
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_copy" in ttgir

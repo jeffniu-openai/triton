@@ -104,7 +104,7 @@ When resuming the initiative:
   - broad `ld/st`:
     `1114 passed, 441 skipped, 713 deselected`
   - broad `tcgen05.cp`:
-    `154 passed, 5 skipped, 2114 deselected`
+    `154 passed, 5 skipped, 2354 deselected`
   - broad `tcgen05.ld.red`:
     `468 passed, 2045 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
@@ -182,9 +182,10 @@ When resuming the initiative:
     boundary (`Required: 1024, Hardware limit: 512`) instead of a positive
     target.
 - No-scales `warpx2` copy exact coverage now includes both canonical codegen
-  tails:
+  tails and exact single-CTA commit opcode checks:
   - `warpx2::01_23.64x128b`;
-  - `warpx2::02_13.64x128b`.
+  - `warpx2::02_13.64x128b`;
+  - `tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64`.
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the clean tensor-memory-scales
@@ -356,13 +357,13 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-copy-commit-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-commit-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `154 passed, 5 skipped, 2114 deselected in 39.60s`;
-  - this covers the current no-scales `warpx2` positives, dense copy
-    positives, 2-CTA `128x128b` / `128x256b` copy, scaled `warpx4` copy
-    paths, exact scaled-copy commit opcodes, and clean unsupported copy
-    boundaries.
+    `154 passed, 5 skipped, 2354 deselected in 40.46s`;
+  - this covers the current no-scales `warpx2` positives with exact commit
+    opcodes, dense copy positives, 2-CTA `128x128b` / `128x256b` copy, scaled
+    `warpx4` copy paths, exact scaled-copy commit opcodes, and clean
+    unsupported copy boundaries.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-rowcol-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;

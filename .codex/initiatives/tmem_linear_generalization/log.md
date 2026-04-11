@@ -9501,3 +9501,29 @@ Open after this slice:
   - `ld.red` now has broad permutation saturation at `128x{64,128,256}`;
     continue with copy/`warpx2`, MMAv5 reachable families, or more targeted
     `ld.red` exotic/mixed-frontier probes.
+
+## 2026-04-11 19:19 UTC
+
+- Added exact commit opcode checks to no-scales `warpx2` copy positives.
+- Source/test change:
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive`;
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive`;
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_canonical_codegen`;
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_canonical_codegen`;
+  - all now assert
+    `tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64`
+    in addition to exact `tcgen05.cp.cta_group::1.warpx2::*` opcode streams.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused `warpx2` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-commit-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `5 passed, 2508 deselected in 3.95s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-commit-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `154 passed, 5 skipped, 2354 deselected in 40.46s`
+- Next:
+  - run hygiene, commit, and push this `warpx2` commit-anchor slice;
+  - continue copy/`warpx2` probing, MMAv5 reachable-family work, or targeted
+    `ld.red` exotic/mixed-frontier probes.

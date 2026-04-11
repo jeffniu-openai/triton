@@ -70,7 +70,7 @@
   - focused copy/MMA commit exacts:
     `24 passed in 19.43s`
   - broad `tcgen05.cp` slice:
-    `154 passed, 5 skipped, 2114 deselected in 39.60s`
+    `154 passed, 5 skipped, 2354 deselected in 40.46s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
     `154 passed, 50 skipped, 2069 deselected in 93.50s (0:01:33)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
@@ -232,7 +232,8 @@
     raw-query/direct-view preservation fix; both candidate positives were
     recorded green in the latest docs;
   - no-scales canonical-codegen coverage now pins both `warpx2::01_23` and
-    `warpx2::02_13` as exact `cta_group::1.64x128b` opcode streams;
+    `warpx2::02_13` as exact `cta_group::1.64x128b` opcode streams, with
+    exact single-CTA commit opcode checks;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail cleanly because no compatible scales descriptor plan can be

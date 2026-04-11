@@ -314,8 +314,9 @@ Every fuzz case records:
   suggests it should exist, write a direct PTX microkernel to determine whether
   the ISA/toolchain accepts the opcode.
 - The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` cases are now
-  covered through the public backend path; reserve direct PTX probes for
-  remaining scales or two-CTA `warpx2` documentation gaps.
+  covered through the public backend path with exact single-CTA commit opcode
+  checks; reserve direct PTX probes for remaining scales or two-CTA `warpx2`
+  documentation gaps.
 
 #### Checks
 - Output matches input for no-scales copies.
