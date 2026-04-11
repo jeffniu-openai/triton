@@ -369,6 +369,18 @@ def _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=None):
     return ops
 
 
+def _scaled_mma_operand_params(format_name):
+    if format_name == "mxfp8":
+        return 1, "e4m3"
+    if format_name in ("mxfp4", "nvfp4"):
+        return 2, "e2m1"
+    raise ValueError(f"unsupported scaled MMA format: {format_name}")
+
+
+def _expected_scaled_mma_acc_subslice_count(a_format, b_format):
+    return 2 if a_format in ("mxfp4", "nvfp4") and b_format in ("mxfp4", "nvfp4") else 4
+
+
 def _assert_clean_unsupported_descriptor_view(text: str, expected_text: str):
     assert expected_text in text
     assert "reshape or permute so TMEM columns stay contiguous" not in text
@@ -1493,6 +1505,96 @@ def tmem_mma_scaled_acc_subslice_kernel(
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
     tcgen05_mma_scaled(a_smem, b_smem, acc_tmem, a_scale_tmem, b_scale_tmem, "e5m2", "e5m2", use_acc=True)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_reg = acc_tmem.load()
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
+def tmem_mma_scaled_acc_subslice_format_kernel(
+    out_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    a,
+    b,
+    a_scale,
+    b_scale,
+    parent_layout: ttgl.constexpr,
+    slice_start: ttgl.constexpr,
+    VEC_SIZE: ttgl.constexpr,
+    A_ELEM_PER_BYTE: ttgl.constexpr,
+    B_ELEM_PER_BYTE: ttgl.constexpr,
+    A_FORMAT: ttgl.constexpr,
+    B_FORMAT: ttgl.constexpr,
+):
+    parent_n: ttgl.constexpr = 128
+    A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
+    B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
+    A_IS_FP4: ttgl.constexpr = A_ELEM_PER_BYTE == 2
+    B_IS_FP4: ttgl.constexpr = B_ELEM_PER_BYTE == 2
+    MIXED_PREC: ttgl.constexpr = A_ELEM_PER_BYTE != B_ELEM_PER_BYTE
+
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    a_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [M, A_STORAGE_K],
+        a.dtype.element_ty,
+        fp4_padded=A_IS_FP4 and MIXED_PREC,
+    )
+    b_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [N, B_STORAGE_K],
+        b.dtype.element_ty,
+        fp4_padded=B_IS_FP4 and MIXED_PREC,
+    )
+    block_layout_a: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+    block_layout_b: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+
+    a_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout_a))[:, None]
+    a_offs_k = ttgl.arange(0, A_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_a))[None, :]
+    b_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, block_layout_b))[:, None]
+    b_offs_k = ttgl.arange(0, B_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_b))[None, :]
+
+    a_tile = ttgl.load(a + a_offs_m * A_STORAGE_K + a_offs_k)
+    b_tile = ttgl.load(b + b_offs_n * B_STORAGE_K + b_offs_k)
+    a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, A_STORAGE_K], a_nvmma_layout, a_tile)
+    b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, B_STORAGE_K], b_nvmma_layout, b_tile)
+
+    acc_parent = allocate_tensor_memory(ttgl.float32, [M, parent_n], parent_layout)
+    acc_tmem = acc_parent.slice(slice_start, N, dim=1)
+    acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    acc_tmem.store(ttgl.zeros([M, N], ttgl.float32, layout=acc_reg_layout))
+
+    scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
+    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
+    b_scale_tmem = allocate_tensor_memory(b_scale.dtype.element_ty, [N, K // VEC_SIZE], scale_layout)
+    scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
+    scale_reg_layout_n: ttgl.constexpr = b_scale_tmem.get_reg_layout()
+
+    scale_offs_k_m = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+    scale_offs_k_n = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+    scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+    scale_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+    a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // VEC_SIZE) + scale_offs_k_m))
+    b_scale_tmem.store(ttgl.load(b_scale + scale_offs_n * (K // VEC_SIZE) + scale_offs_k_n))
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma_scaled(
+        a_smem,
+        b_smem.permute((1, 0)),
+        acc_tmem,
+        a_scale_tmem,
+        b_scale_tmem,
+        A_FORMAT,
+        B_FORMAT,
+        use_acc=True,
+    )
     tcgen05_commit(bar)
     mbarrier.wait(bar, phase=0)
     mbarrier.invalidate(bar)
@@ -4535,6 +4637,48 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view(n):
     torch.testing.assert_close(out, expected, atol=1e-6, rtol=1e-6)
 
     _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=4)
+    assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
+def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format, b_format):
+    m = k = 128
+    n = 64
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_acc_subslice_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        _make_tmem_linear_layout(m, 128),
+        64,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
