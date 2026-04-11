@@ -4557,3 +4557,39 @@ rejection, not rescue
   - after broad validation is stable, resume `ld.red`, `copy`/`warpx2`,
     broader MMAv5/`mma_scaled`, fuzzing, stale-negative cleanup, and
     heuristic cleanup.
+
+## 2026-04-11 13:05 UTC: Full Gluon grouped sweep is green at current head
+
+- Validated checkpoint:
+  - `be3cba0cd` on `origin/codex/tmem`
+- Fresh four-way `python/test/gluon` sweep:
+  - group 1:
+    - `5448 passed, 1002 skipped, 19348 deselected in 3127.70s`
+  - group 2:
+    - `2666 passed, 3784 skipped, 19348 deselected in 1155.29s`
+  - group 3:
+    - `4408 passed, 2041 skipped, 19348 deselected, 1 xfailed in 2032.99s`
+  - group 4:
+    - `5582 passed, 866 skipped, 19350 deselected in 1751.06s`
+- Manifest updates:
+  - `gb200_current_branch_group1_latest_failures.txt`: `0` nodeids
+  - `gb200_current_branch_group2_latest_failures.txt`: `0` nodeids
+  - `gb200_current_branch_group3_latest_failures.txt`: `0` nodeids
+  - `gb200_current_branch_group4_latest_failures.txt`: `0` nodeids
+- Consequence:
+  - the stale group-3 M64 failures are closed at full-shard scope;
+  - the one group-3 xfail is the intentional legacy M64 MMAv5
+    producer-family design-debt marker;
+  - the old full Gluon failure manifests should not be used for prioritization
+    anymore.
+- Watch item:
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics, but pytest
+    continued and both shards finished green;
+  - leave this as nonfailing noise unless a focused exact rerun produces an
+    actual failed nodeid.
+- Next:
+  - continue the recovery queue with attention kept separate as the supported
+    synchronization-aware subview/bitcast migration target;
+  - keep legacy M64 MMAv5 producer-family semantics visible as design debt;
+  - then resume long-term `ld.red`, `copy`/`warpx2`, broader
+    MMAv5/`mma_scaled`, fuzzing, stale-negative cleanup, and heuristic cleanup.

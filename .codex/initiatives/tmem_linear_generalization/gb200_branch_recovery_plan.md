@@ -46,6 +46,31 @@ PY
 
 ## Current Classification Summary
 
+### Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
+
+- Validated checkpoint:
+  - `be3cba0cd`
+- Result:
+  - group 1:
+    - `5448 passed, 1002 skipped, 19348 deselected`
+  - group 2:
+    - `2666 passed, 3784 skipped, 19348 deselected`
+  - group 3:
+    - `4408 passed, 2041 skipped, 19348 deselected, 1 xfailed`
+  - group 4:
+    - `5582 passed, 866 skipped, 19350 deselected`
+- Recovery-plan consequence:
+  - the full current-branch Gluon group manifests are refreshed to
+    `0` nodeids;
+  - the stale M64 group-3 failures are closed at shard scope;
+  - the remaining local recovery queue should no longer prioritize old full
+    Gluon shard failure lists.
+- Notes:
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics but finished
+    with green pytest summaries;
+  - keep those diagnostics in the noise/watch bucket unless a focused exact
+    rerun turns one into a failed nodeid.
+
 ### Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
 
 - Source checkpoint:

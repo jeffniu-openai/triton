@@ -30,6 +30,36 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
+
+- Validated checkpoint:
+  - `be3cba0cd`
+- Command pattern:
+  - `CUDA_VISIBLE_DEVICES=<0..3> TRITON_CACHE_DIR=/tmp/triton-cache-gluon-current-g<group>-after-m64-bitcast PYTHONPATH=python:. pytest -s --tb=short -q -rf --splits 4 --group <group> python/test/gluon`
+- Current group manifests:
+  - [gb200_current_branch_group1_latest_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group1_latest_failures.txt)
+    - `0` nodeids
+  - [gb200_current_branch_group2_latest_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group2_latest_failures.txt)
+    - `0` nodeids
+  - [gb200_current_branch_group3_latest_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group3_latest_failures.txt)
+    - `0` nodeids
+  - [gb200_current_branch_group4_latest_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_group4_latest_failures.txt)
+    - `0` nodeids
+- Shard results:
+  - group 1:
+    - `5448 passed, 1002 skipped, 19348 deselected in 3127.70s`
+  - group 2:
+    - `2666 passed, 3784 skipped, 19348 deselected in 1155.29s`
+  - group 3:
+    - `4408 passed, 2041 skipped, 19348 deselected, 1 xfailed in 2032.99s`
+  - group 4:
+    - `5582 passed, 866 skipped, 19350 deselected in 1751.06s`
+- Notes:
+  - the previous group-3 M64 failures are closed at shard scope;
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics but still
+    finished with passing pytest summaries, so they are not recorded as live
+    failed nodeids.
+
 ### Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
 
 - Latest pushed source checkpoint:

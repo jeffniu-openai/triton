@@ -7651,3 +7651,36 @@ Open after this slice:
   - keep the legacy M64 MMAv5 xfail visible as design debt;
   - keep attention migration deferred to a supported synchronization-aware
     subview/bitcast rewrite.
+
+## 2026-04-11 13:05 UTC
+
+- Ran a fresh current-head four-way `python/test/gluon` sweep from
+  `be3cba0cd` with one pytest process per GPU and isolated cache dirs:
+  - group 1 command:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gluon-current-g1-after-m64-bitcast PYTHONPATH=python:. pytest -s --tb=short -q -rf --splits 4 --group 1 python/test/gluon`
+    - `5448 passed, 1002 skipped, 19348 deselected in 3127.70s`
+  - group 2 command:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gluon-current-g2-after-m64-bitcast PYTHONPATH=python:. pytest -s --tb=short -q -rf --splits 4 --group 2 python/test/gluon`
+    - `2666 passed, 3784 skipped, 19348 deselected in 1155.29s`
+  - group 3 command:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gluon-current-g3-after-m64-bitcast PYTHONPATH=python:. pytest -s --tb=short -q -rf --splits 4 --group 3 python/test/gluon`
+    - `4408 passed, 2041 skipped, 19348 deselected, 1 xfailed in 2032.99s`
+  - group 4 command:
+    - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gluon-current-g4-after-m64-bitcast PYTHONPATH=python:. pytest -s --tb=short -q -rf --splits 4 --group 4 python/test/gluon`
+    - `5582 passed, 866 skipped, 19350 deselected in 1751.06s`
+- Refreshed current full Gluon failure manifests to `0` nodeids:
+  - `gb200_current_branch_group1_latest_failures.txt`
+  - `gb200_current_branch_group2_latest_failures.txt`
+  - `gb200_current_branch_group3_latest_failures.txt`
+  - `gb200_current_branch_group4_latest_failures.txt`
+- Interpretation:
+  - the stale group-3 M64 failures are closed at full grouped-sweep scope;
+  - the group-3 xfail is the explicit legacy M64 MMAv5
+    producer-family design-debt marker;
+  - the old broad Gluon shard failure counts should not be used for recovery
+    prioritization anymore.
+- Noise/watch item:
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics while
+    continuing to final green pytest summaries;
+  - do not classify those diagnostics as failures unless a focused exact rerun
+    returns a failed nodeid.

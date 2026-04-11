@@ -18,6 +18,40 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
+
+- Validated checkpoint:
+  - `be3cba0cd` on `origin/codex/tmem`
+- Scope:
+  - full current-branch `python/test/gluon` split into four
+    `pytest-split` groups with one outer process per GPU and isolated
+    `TRITON_CACHE_DIR` values.
+- Result:
+  - group 1:
+    - `5448 passed, 1002 skipped, 19348 deselected in 3127.70s`
+  - group 2:
+    - `2666 passed, 3784 skipped, 19348 deselected in 1155.29s`
+  - group 3:
+    - `4408 passed, 2041 skipped, 19348 deselected, 1 xfailed in 2032.99s`
+  - group 4:
+    - `5582 passed, 866 skipped, 19350 deselected in 1751.06s`
+- Manifest consequence:
+  - `gb200_current_branch_group1_latest_failures.txt` is refreshed to
+    `0` nodeids;
+  - `gb200_current_branch_group2_latest_failures.txt` is refreshed to
+    `0` nodeids;
+  - `gb200_current_branch_group3_latest_failures.txt` is refreshed to
+    `0` nodeids;
+  - `gb200_current_branch_group4_latest_failures.txt` is refreshed to
+    `0` nodeids.
+- Notes:
+  - the previous M64 group-3 failures are closed in the full grouped sweep;
+  - the group-3 xfail is the intentional legacy M64 MMAv5 producer-family
+    design-debt marker;
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics, but pytest
+    continued and both shards finished green. Do not classify those diagnostics
+    as live failures without a failing exact nodeid.
+
 ## Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
 
 - Latest pushed source checkpoint:
