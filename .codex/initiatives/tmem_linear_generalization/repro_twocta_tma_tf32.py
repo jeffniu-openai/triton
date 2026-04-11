@@ -1,3 +1,7 @@
+import os
+import sys
+import tempfile
+
 import torch
 
 from triton.experimental import gluon
@@ -74,17 +78,47 @@ def run(layout_kind: str):
     )
 
 
+def run_captured(layout_kind: str):
+    with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(mode="w+b") as stderr_file:
+        old_stdout = os.dup(1)
+        old_stderr = os.dup(2)
+        exc = None
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(stdout_file.fileno(), 1)
+            os.dup2(stderr_file.fileno(), 2)
+            try:
+                run(layout_kind)
+            except Exception as err:  # noqa: BLE001 - this is a repro script.
+                exc = err
+            finally:
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os.dup2(old_stdout, 1)
+                os.dup2(old_stderr, 2)
+        finally:
+            os.close(old_stdout)
+            os.close(old_stderr)
+
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        text = str(exc or "")
+        text += stdout_file.read().decode("utf-8", errors="replace")
+        text += stderr_file.read().decode("utf-8", errors="replace")
+        return exc, text
+
+
 def main():
     for layout_kind in ("legacy", "linear"):
-        try:
-            run(layout_kind)
-        except Exception as exc:
-            text = str(exc)
-            if EXPECTED not in text and "PassManager::run failed" not in text:
-                raise
-            print(f"{layout_kind}: reproduced expected failure")
-            continue
-        raise AssertionError(f"{layout_kind}: unexpectedly passed")
+        exc, text = run_captured(layout_kind)
+        if exc is None:
+            raise AssertionError(f"{layout_kind}: unexpectedly passed")
+        if EXPECTED not in text:
+            raise AssertionError(f"{layout_kind}: missing expected verifier diagnostic") from exc
+        if "PassManager::run failed" in text or "Assertion" in text:
+            raise AssertionError(f"{layout_kind}: failure was not clean") from exc
+        print(f"{layout_kind}: reproduced clean verifier failure")
 
 
 if __name__ == "__main__":

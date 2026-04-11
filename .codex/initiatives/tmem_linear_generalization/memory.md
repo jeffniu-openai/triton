@@ -72,7 +72,7 @@
   - broad `tcgen05.cp` slice:
     `158 passed, 5 skipped, 2417 deselected in 40.42s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `209 passed, 50 skipped, 2320 deselected in 117.66s (0:01:57)`
+    `211 passed, 50 skipped, 2321 deselected in 117.79s (0:01:57)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -337,13 +337,12 @@
     these repeated-`N=32` forms are intentionally rejected because the public
     tensor-memory scales layout exposes matrix-B scale fragments at 64-column
     alignment;
-  - the recorded 2-CTA TF32 TMA-fed shared-transpose issue still reproduces on
-    current head and is now captured by
-    `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`:
-    legal non-transposed TMA descriptors for B reach MMAv5 lowering and both
-    legacy and canonical-linear accumulators fail with
+  - the recorded 2-CTA TF32 TMA-fed shared-transpose issue is now pinned as a
+    clean verifier negative by
+    `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`:
+    legal non-transposed TMA descriptors for B are rejected with
     `tcgen05.mma does not support transposed float32 operands in shared memory`
-    / `PassManager::run failed`;
+    before LLVM lowering, with no `PassManager::run failed` or assertion;
   - this does not invalidate the green direct 2-CTA TF32 runtime coverage; it
     marks a TMA-to-shared layout materialization gap where TMA descriptors
     cannot be transposed but the TF32 MMA lowering rejects the resulting
@@ -490,6 +489,50 @@
   - continue either the two-CTA `warpx2::02_13` descriptor/address-model fix,
     a deeper direct-PTX scales `warpx2` probe, or the TMA-fed 2-CTA TF32
     shared-transpose compiler follow-up.
+
+## 2026-04-11 20:45 UTC: TMA-fed 2-CTA TF32 is a clean verifier negative
+
+- Moved the recorded TMA-fed 2-CTA TF32 shared-transpose failure from late
+  MMAv5 LLVM lowering into `TCGen5MMAOp::verify()`.
+- Source/test change:
+  - `TCGen5MMAOp::verify()` now rejects obvious NVMMA shared-memory TF32 cases
+    that MMAv5 cannot lower: transposed A, or non-transposed B;
+  - added
+    `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    for both legacy and canonical TMEM-linear accumulators;
+  - tightened `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+    to require the verifier diagnostic and reject `PassManager::run failed` or
+    assertions.
+- Boundary:
+  - this remains a TMA-to-shared layout materialization/API frontier, not a
+    direct 2-CTA TF32 accumulator-layout regression;
+  - TMA descriptors still cannot be transposed, and legal non-transposed B
+    descriptors produce the shared operand form MMAv5 TF32 rejects.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    `PASSED`
+  - focused clean-negative exact:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-clean-verifier PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    `2 passed in 3.18s`
+  - adjacent two-CTA TF32 positives:
+    `8 passed in 7.62s`
+  - broad direct MMA/scaled-MMA slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-not-cp-clean-verifier PYTHONPATH=python:. pytest -s --tb=short -q -k 'mma and not cp' python/test/gluon/test_tmem_runtime_matrix.py`
+    `211 passed, 50 skipped, 2321 deselected in 117.79s (0:01:57)`
+  - standalone repro script:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-repro-clean-check2 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+    `legacy: reproduced clean verifier failure`
+    `linear: reproduced clean verifier failure`
+  - hygiene:
+    `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    `git diff --check`
+    `PASSED`
+- Next:
+  - commit and push this clean-negative verifier slice;
+  - continue either the two-CTA `warpx2::02_13` descriptor/address-model fix,
+    a deeper direct-PTX scales `warpx2` probe, or another bounded MMAv5 /
+    scaled-MMAv5 reachable-family gap.
 
 ## Prior Topline (2026-04-11 20:23 UTC)
 

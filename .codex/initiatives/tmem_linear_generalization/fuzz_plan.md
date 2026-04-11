@@ -384,9 +384,9 @@ Every fuzz case records:
 - non-MMAv5-equivalent TMEM-linear accumulator layouts
 - transposed float32 shared operands
   - current live nuance: direct non-TMA 2-CTA TF32 coverage is green, but
-    TMA-fed 2-CTA TF32 still hits this frontier because TMA descriptors cannot
-    be transposed and legal non-transposed B descriptors lower to a shared
-    operand form rejected by MMAv5 TF32 lowering
+    TMA-fed 2-CTA TF32 is a clean verifier negative because TMA descriptors
+    cannot be transposed and legal non-transposed B descriptors lower to a
+    shared operand form rejected by MMAv5 TF32 lowering
 - CGA mismatches between descriptors and the module CTA topology
 
 ### 6. `mma_scaled`

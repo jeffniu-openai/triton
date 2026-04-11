@@ -9858,3 +9858,56 @@ Open after this slice:
     scales probe;
   - next useful scales work is either a deeper direct-PTX documentation probe or
     a different descriptor/address representation.
+
+## 2026-04-11 20:45 UTC
+
+- Moved the 2-CTA TF32 TMA-fed shared-transpose failure from late MMAv5 LLVM
+  lowering into `TCGen5MMAOp::verify()`.
+- Source/test change:
+  - `TCGen5MMAOp::verify()` now rejects obvious NVMMA shared-memory TF32 cases
+    that MMAv5 cannot lower:
+    - transposed A;
+    - non-transposed B, which MMAv5 lowering interprets as the transposed
+      shared-memory operand form;
+  - added
+    `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    across legacy and canonical TMEM-linear accumulator layouts;
+  - tightened `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+    to require the verifier diagnostic and reject `PassManager::run failed` or
+    assertions;
+  - the test covers the legal TMA-descriptor shape that previously reached
+    LLVM lowering and surfaced
+    `tcgen05.mma does not support transposed float32 operands in shared memory`
+    together with `PassManager::run failed`.
+- Boundary:
+  - this is intentionally a clean-negative checkpoint, not a claim that the
+    TMA-fed TF32 shape is ISA-impossible forever;
+  - TMA B descriptors still cannot be transposed, while MMAv5 TF32 still
+    rejects the resulting shared operand form, so the remaining positive route
+    is a principled TMA-to-shared layout materialization/API solution.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused new clean-negative exact:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-clean-verifier PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    - `2 passed in 3.18s`
+  - adjacent two-CTA TF32 positives:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tf32-verifier-adjacent PYTHONPATH=python:. pytest -s --tb=short -q <8 exact tf32 two-CTA plain/use_acc nodeids>`
+    - `8 passed in 7.62s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-not-cp-clean-verifier PYTHONPATH=python:. pytest -s --tb=short -q -k 'mma and not cp' python/test/gluon/test_tmem_runtime_matrix.py`
+    - `211 passed, 50 skipped, 2321 deselected in 117.79s (0:01:57)`
+  - standalone repro script:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-repro-clean-check2 PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`
+    - `legacy: reproduced clean verifier failure`
+    - `linear: reproduced clean verifier failure`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this clean-negative verifier slice;
+  - continue with the two-CTA `warpx2::02_13` descriptor/address-model fix,
+    a deeper direct-PTX scales `warpx2` probe, or another bounded MMAv5 /
+    scaled-MMAv5 reachable-family gap.

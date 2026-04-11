@@ -112,7 +112,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `476 passed, 2055 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `209 passed, 50 skipped, 2320 deselected`
+    `211 passed, 50 skipped, 2321 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -431,19 +431,19 @@ When resuming the initiative:
   - each case confirms the repeated `N=32` tile-permuted layout fails with the
     dedicated `matrix-B scale fragments at 64-column alignment` diagnostic and
     does not fall through to a PassManager/assertion crash.
-- The recorded 2-CTA TF32 TMA-fed shared-transpose issue is still live and now
-  has a durable repro:
-  - script:
-    `.codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`;
-  - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-twocta-tma-tf32-repro-script PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/repro_twocta_tma_tf32.py`;
-  - current result:
-    both legacy and canonical TMEM-linear 2-CTA accumulators reproduce
+- The recorded 2-CTA TF32 TMA-fed shared-transpose issue is now pinned as a
+  clean verifier negative instead of a late LLVM pass failure:
+  - `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    covers both legacy and canonical TMEM-linear accumulators;
+  - legal non-transposed TMA descriptors still cannot feed this TF32 MMAv5
+    shape because TMA descriptors cannot be transposed and MMAv5 rejects the
+    resulting transposed shared-memory operand;
+  - the verifier now reports
     `tcgen05.mma does not support transposed float32 operands in shared memory`
-    / `PassManager::run failed`;
+    without `PassManager::run failed` or assertions;
   - direct non-TMA 2-CTA TF32 remains covered by the green direct-MMA slice, so
-    this is specifically a TMA-to-shared layout gap rather than a direct
-    accumulator-layout regression.
+    this remains a TMA-to-shared layout materialization/API frontier rather
+    than a direct accumulator-layout regression.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

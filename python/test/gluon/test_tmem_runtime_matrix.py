@@ -5437,6 +5437,65 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc(kind, acc_layout_kin
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+def test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error(acc_layout_kind, capfd):
+    ctas_per_cga = [2, 1]
+    ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
+    block_m = 128 * ctas_per_cga[0]
+    block_n = 64 * ctas_per_cga_b[1]
+    block_k = 32
+
+    cta_split_a = [ctas_per_cga[0], 1]
+    cta_split_b = [1, ctas_per_cga_b[1]]
+    cta_order = [1, 0]
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, cta_split_a, cta_order, 0)
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga_b, cta_split_b, cta_order, 1)
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
+
+    shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([block_m, block_k], ttgl.float32, cga_layout=cga_layout_a)
+    shared_layout_b = ttgl.NVMMASharedLayout.get_default_for([block_k, block_n], ttgl.float32, cga_layout=cga_layout_b)
+
+    a = _round_to_tf32(torch.randn((block_m, block_k), dtype=torch.float32, device="cuda"))
+    b = _round_to_tf32(torch.randn((block_k, block_n), dtype=torch.float32, device="cuda"))
+    out = torch.empty((block_m, block_n), dtype=torch.float32, device="cuda")
+
+    a_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(a, [block_m, block_k], shared_layout_a)
+    b_desc = gluon.nvidia.hopper.TensorDescriptor.from_tensor(b, [block_k, block_n], shared_layout_b)
+
+    if acc_layout_kind == "legacy":
+        acc_layout = TensorMemoryLayout(
+            block=(128, block_n // ctas_per_cga[1]),
+            col_stride=1,
+            two_ctas=True,
+            cga_layout=cga_layout_c,
+        )
+    else:
+        acc_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+
+    blocked_c = ttgl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
+                                   cga_layout=cga_layout_c)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_mma_twocta_kernel[(1, )](
+            a_desc,
+            b_desc,
+            out,
+            block_m,
+            block_n,
+            acc_layout,
+            blocked_c,
+            num_warps=4,
+            num_ctas=2,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "tcgen05.mma does not support transposed float32 operands in shared memory" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,parent_layout,layout_token", MMA_INDEXED_ACC_CASES)
 def test_tmem_runtime_matrix_mma_indexed_acc_view(name, parent_layout, layout_token):
     m = n = 128

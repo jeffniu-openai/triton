@@ -600,6 +600,20 @@ LogicalResult TCGen5MMAOp::verify() {
   auto bEnc = getB().getType().getEncoding();
   if (!isa<NVMMASharedEncodingAttr, SharedLinearEncodingAttr>(bEnc))
     return emitOpError("RHS operand must have a NVMMAShared encoding");
+  if (atype.isF32()) {
+    if (auto aShared = dyn_cast<NVMMASharedEncodingAttr>(aEnc)) {
+      if (aShared.getTransposed())
+        return emitOpError(
+            "tcgen05.mma does not support transposed float32 operands in "
+            "shared memory");
+    }
+    if (auto bShared = dyn_cast<NVMMASharedEncodingAttr>(bEnc)) {
+      if (!bShared.getTransposed())
+        return emitOpError(
+            "tcgen05.mma does not support transposed float32 operands in "
+            "shared memory");
+    }
+  }
   auto retType = getD().getType();
   auto emitUnsupportedTMemLayout = [&](StringRef operand, Attribute layout) {
     return emitOpError() << operand
