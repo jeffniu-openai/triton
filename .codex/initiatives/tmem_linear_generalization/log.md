@@ -10108,3 +10108,30 @@ Open after this slice:
   - continue with the two-CTA `warpx2::02_13` descriptor/address-model
     frontier, deeper scales `warpx2` probing, broader `ld.red` fuzzing, or a
     bounded MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 22:35 UTC
+
+- Rechecked the tempting direct-seed route for the canonical public two-CTA
+  no-scales `warpx2::02_13.64x128b` case.
+- Temporary probe:
+  - relaxed `getDirectTMemCopySeedDescriptorImm(...)` locally to accept the
+    `[256,4]` two-CTA source and canonical shared block basis `[[128, 0]]`;
+  - rebuilt with
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`;
+  - ran `tmem_copy_no_scales_warpx2_twocta_kernel` with the canonical
+    `warpx2::02_13` shared/TMEM layouts.
+- Probe result:
+  - PTX emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` and the expected
+    `cta_group::2` multicast commit;
+  - the output tensor was entirely zero (`count_nonzero(out) == 0`).
+- Cleanup / validation:
+  - reverted the temporary source edits;
+  - rebuilt with the same `make -j8` command;
+  - exact clean unsupported boundary remains green:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-0213-clean-after-probe-revert PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    - `1 passed in 3.17s`
+- Consequence:
+  - the current clean unsupported diagnostic is protecting a real wrong-code
+    direct-seed path; a future fix needs a better descriptor/address model or a
+    different proven public layout, not just a broader seed guard.

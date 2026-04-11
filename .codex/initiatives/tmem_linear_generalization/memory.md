@@ -274,6 +274,10 @@
     by a clean unsupported test at descriptor-plan synthesis, so keep it as a
     layout-surface / direct-PTX frontier rather than a clean ISA-impossible
     negative;
+  - a 2026-04-11 temporary direct-seed relaxation for the canonical two-CTA
+    `warpx2::02_13` case compiled and emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but runtime output was
+    entirely zero; that path is confirmed wrong-code, not a verifier-only gap;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail because no compatible scales descriptor plan can be synthesized;
@@ -6185,3 +6189,30 @@ rejection, not rescue
   - continue with the two-CTA `warpx2::02_13` descriptor/address-model
     frontier, deeper scales `warpx2` probing, broader `ld.red` fuzzing, or a
     bounded MMAv5 / scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 22:35 UTC: Two-CTA warpx2::02_13 direct-seed probe still produces all-zero output
+
+- Latest pushed checkpoint before this probe:
+  - `f0cca8a2c` on `origin/codex/tmem`
+- Probe performed:
+  - temporarily relaxed `getDirectTMemCopySeedDescriptorImm(...)` to allow the
+    canonical `[256,4]` two-CTA shared source shape and its `[[128, 0]]` shared
+    block basis for `warpx2::02_13`;
+  - rebuilt with `make -j8`;
+  - launched `tmem_copy_no_scales_warpx2_twocta_kernel` with the canonical
+    two-CTA `02_13` source and destination layouts.
+- Result:
+  - PTX emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` plus the multicast commit;
+  - runtime output was entirely zero (`count_nonzero(out) == 0`), so the direct
+    seed relaxation is confirmed wrong-code.
+- Cleanup / validation:
+  - reverted the temporary source edits and rebuilt;
+  - exact clean-unsupported boundary rerun:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-0213-clean-after-probe-revert PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    - `1 passed in 3.17s`
+  - worktree was clean before this docs update.
+- Consequence:
+  - keep the two-CTA `warpx2::02_13` public-layout case as a clean unsupported
+    descriptor/address-model frontier; do not unblock it by extending the
+    current direct-seed helper alone.

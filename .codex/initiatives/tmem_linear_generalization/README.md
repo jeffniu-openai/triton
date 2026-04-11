@@ -210,7 +210,13 @@ When resuming the initiative:
   - the two-CTA `warpx2::02_13` candidate shared layout is now pinned as a
     clean unsupported descriptor-synthesis frontier under the canonical public
     shared layout; it remains a layout-surface / direct-PTX frontier, not a
-    proven ISA-impossible negative.
+    proven ISA-impossible negative;
+  - a 2026-04-11 temporary direct-seed relaxation for the canonical two-CTA
+    `warpx2::02_13` source emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` but produced all-zero
+    output, so the current clean unsupported boundary is protecting a real
+    wrong-code path and should not be removed without a better descriptor/address
+    model.
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales
