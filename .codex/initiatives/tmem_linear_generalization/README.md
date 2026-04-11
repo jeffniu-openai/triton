@@ -47,8 +47,9 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 17:40 UTC, the latest pushed source/test checkpoint is
-  `a950338f7` on `origin/codex/tmem`.
+- As of 2026-04-11 18:05 UTC, the latest pushed source/test checkpoint is
+  `a950338f7` on `origin/codex/tmem`; the latest docs checkpoint before this
+  validation refresh is `016f489a3`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -223,6 +224,14 @@ When resuming the initiative:
   - `X1_F16_LDST_VARIANTS` covers `auto` and explicit `32x32b`;
   - validation covers linear packed, legacy packed, and legacy unpacked
     layouts with the existing pack/unpack opcode expectations.
+- Combined current-head `ld/st` runtime-matrix validation is green after the
+  staged auto expansions:
+  - command:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`;
+  - result:
+    `1082 passed, 437 skipped, 680 deselected in 1344.69s`;
+  - skips are expected tensor-memory OOR / clean-boundary cases in lifted
+    descriptor roundtrip and rank-5 families.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

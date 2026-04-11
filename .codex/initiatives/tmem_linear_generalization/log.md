@@ -8546,6 +8546,35 @@ Open after this slice:
     intentional exact-opcode coverage or add auto companions if they test
     instruction selection rather than a particular explicit family.
 
+## 2026-04-11 18:05 UTC
+
+- Broadened validation across the combined current-head `ld/st` runtime-matrix
+  slice after the staged auto expansions.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `a950338f7`
+  - docs checkpoint before this validation refresh:
+    - `016f489a3`
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad ldst slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+    - `1082 passed, 437 skipped, 680 deselected in 1344.69s (0:22:24)`
+- Interpretation:
+  - no failures surfaced from combining the auto expansions;
+  - skips are expected clean OOR/boundary classifications, especially lifted
+    descriptor roundtrip and rank-5 families.
+- Next:
+  - move to the next non-ld/st saturation surface from the long-term plan:
+    copy/`tcgen05.cp` remaining surfaces, `ld.red` broader layout fuzzing, or
+    MMAv5 / `mma_scaled` reachable-family coverage.
+
 ## 2026-04-11 16:10 UTC
 
 - Committed and pushed higher-rank dim0-slice `ld/st` auto coverage:

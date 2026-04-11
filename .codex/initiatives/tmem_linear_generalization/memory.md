@@ -277,7 +277,30 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:40 UTC)
+## Current Topline (2026-04-11 18:05 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `a950338f7` on `origin/codex/tmem`
+- Latest pushed docs checkpoint before this validation refresh:
+  - `016f489a3` on `origin/codex/tmem`
+- Combined current-head `ld/st` runtime-matrix validation is green after the
+  staged auto expansions:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad ldst slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst`
+    - `1082 passed, 437 skipped, 680 deselected in 1344.69s (0:22:24)`
+  - skipped cases are expected clean OOR/boundary classifications in lifted
+    descriptor roundtrip and rank-5 families.
+- Next:
+  - move to the next non-ld/st saturation surface from the long-term plan:
+    copy/`tcgen05.cp` remaining surfaces, `ld.red` broader layout fuzzing, or
+    MMAv5 / `mma_scaled` reachable-family coverage;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 17:40 UTC)
 
 - Latest pushed source/test checkpoint:
   - `a950338f7` on `origin/codex/tmem`
