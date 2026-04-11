@@ -232,4 +232,18 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - create private workspaces with dereferenced Triton runtime symlink targets
   - tell workers to propose one or two small kernel diffs only
   - keep all broad ranking in the central scorer instead of delegating benchmarking to workers
-- Status: pending
+- Setup notes:
+  - added [ws-report-promptopt-make-workspace.py](/root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-make-workspace.py)
+    to build private workspaces from the current worktree while overlaying the active Triton runtime
+    with symlinks dereferenced
+  - validated in a fresh sandbox that:
+    - `from triton.runtime import driver; driver.active` succeeds
+    - `triton.language.extra.cuda.libdevice.exp` is present
+    - the standalone example imports and runs a quick benchmark sanity point
+  - also removed a local shadow-package trap in the canonical environment:
+    `third_party/nvidia/language/cuda/libdevice/` had been shadowing the real tracked
+    `libdevice.py` module
+- Workspaces:
+  - `r6a1`
+  - `r6a2`
+- Status: ready to launch workers

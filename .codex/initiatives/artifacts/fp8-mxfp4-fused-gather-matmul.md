@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-11T20:32:22Z
+updated: 2026-04-11T21:47:03Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -622,6 +622,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Fresh isolated rounds (`r4*`, `r5*`), direct sandbox import checks, worker monitoring, and manual diagnosis of missing Triton runtime pieces in copied workspaces
   - Learnings: The next bottleneck in the prompt-optimization loop was not kernel quality but sandbox correctness. Copied private workspaces inherited incomplete Triton runtime trees because the canonical repo uses symlinked runtime paths such as `python/triton/backends/nvidia` and `python/triton/language/extra/cuda`. That created misleading worker failures (`ModuleNotFoundError` on `libdevice`, then `0 active drivers`). Round 5 also showed that once the runtime was repaired enough for a worker to produce a small kernel diff, it was still better to keep broad ranking in the main agent rather than trust worker-local benchmarking from an ad hoc sandbox. The report now documents the workspace-completeness checklist, the symlink-dereference requirement, and the stronger separation between isolated proposal generation and central scoring.
   - Plan updates: Future prompt-optimization rounds should build private workspaces with dereferenced Triton runtime symlink targets from the start and ask workers for small kernel diffs only, with all broad evaluation performed centrally.
+- `2026-04-11` Completed: Made the prompt-optimization environment functional again
+  - Artifact: `.codex/initiatives/artifacts/ws-report-promptopt-make-workspace.py`, `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`
+  - Validation: Fresh dereferenced workspaces `r6a1`/`r6a2`; sandbox checks that `driver.active` succeeds, `triton.language.extra.cuda.libdevice.exp` exists, the example imports, and a quick local benchmark point runs (`batch=128` sanity point in `r6a1` measured `0.03267 ms`)
+  - Learnings: The environment problem had two layers. First, private workspaces copied from the active worktree needed explicit overlays of the Triton runtime symlink targets. Second, the canonical environment itself had a local shadow-package trap: an untracked `third_party/nvidia/language/cuda/libdevice/` directory shadowed the tracked `libdevice.py` module and made `libdevice.exp` disappear during JIT dependency resolution. Removing that shadow directory and introducing a dedicated workspace-maker script restored a functional isolated sandbox workflow. The example was also switched to import `triton.language.extra.libdevice`, which avoids depending on the fragile shadowed path.
+  - Plan updates: Restart the prompt-optimization loop from round 6 using the new workspace-maker script and central scoring only.
 
 ## Next Up
 

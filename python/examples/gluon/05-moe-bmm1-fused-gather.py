@@ -11,7 +11,7 @@ import triton.experimental.gluon.language.nvidia.blackwell.tma as tma
 from triton.experimental.gluon.language.nvidia.blackwell import float2
 import triton.experimental.gluon.language.nvidia.hopper.mbarrier as mbarrier
 import triton.language.core as tl_core
-import triton.language.extra.cuda.libdevice as libdevice
+import triton.language.extra.libdevice as libdevice
 from triton.language.core import _aggregate as aggregate
 from triton.testing import do_bench_cudagraph
 

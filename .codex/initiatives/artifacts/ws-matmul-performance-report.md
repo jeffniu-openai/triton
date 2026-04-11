@@ -236,6 +236,12 @@ For an isolated workspace that is expected to run Triton examples locally, verif
 If any of those fail, fix the workspace recipe first. Do **not** treat the worker as blocked on the
 kernel until the sandbox can import Triton and create a CUDA driver.
 
+There was also a separate local-machine trap: an untracked directory
+`third_party/nvidia/language/cuda/libdevice/` shadowed the tracked module
+`third_party/nvidia/language/cuda/libdevice.py`. When that shadow package existed, Python imported
+the package first and `libdevice.exp` disappeared during JIT dependency resolution. Removing the
+shadow package restored the correct module import.
+
 One more subtlety matters here: in the canonical Triton tree, some of these runtime paths are
 symlinks rather than ordinary directories. In particular:
 
@@ -253,6 +259,18 @@ For isolated-agent work, the safer workspace recipe is:
 - then explicitly dereference or overlay those Triton runtime symlink targets into the workspace
 
 Do not assume `rsync -a` or a simple file copy is sufficient.
+
+The durable fix added for this loop is:
+
+- [ws-report-promptopt-make-workspace.py](/root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-make-workspace.py)
+
+That helper:
+
+- copies the current worktree snapshot
+- omits all other initiative artifacts except this report
+- overlays the active Triton runtime's `backends` and `language/extra/cuda` trees with symlinks
+  dereferenced
+- deletes the shadow `cuda/libdevice/` package directory if it appears in the workspace
 
 ### Environment Checklist
 
