@@ -9663,3 +9663,33 @@ Open after this slice:
   - run hygiene, commit, and push this wrong-code-prevention slice;
   - keep two-CTA `warpx2::02_13` and scales `warpx2` as descriptor/address
     model frontiers rather than dense-layout opcode-substitution targets.
+
+## 2026-04-11 19:58 UTC
+
+- Broadened tile-permuted plain MMAv5 accumulator kind coverage.
+- Source/test change:
+  - `MMA_TILE_PERMUTED_KIND_CASES` now covers both
+    `128x128/tile_n=32` and `128x256/tile_n=64`;
+  - `test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc` now takes
+    `(kind, n, tile_n)` and builds the matching tile-permuted accumulator
+    layout for each case;
+  - coverage spans `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`, with runtime
+    numerics and exact PTX/LLIR `tcgen05.mma` kind checks.
+- Durable reinterpret contract reminder from the user:
+  - this project should migrate code that implicitly relies on `_reinterpret`
+    behavior and compiler physical-layout knowledge to supported APIs;
+  - the intended physical alias sequence is offset to the right part of TMEM,
+    slice/subview to the desired physical bits, then bitcast to the desired
+    dtype/shape/layout only when the view is equal-size and preserves the exact
+    physical mapping of the input descriptor.
+- Validation:
+  - focused tile-permuted kind matrix:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-kind-expanded PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc`
+    - `10 passed in 6.91s`
+  - broad direct MMA/scaled-MMA slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-kind-expanded-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `169 passed, 50 skipped, 2320 deselected in 100.62s (0:01:40)`
+- Next:
+  - run hygiene, commit, and push this MMA coverage slice;
+  - continue with the two-CTA `warpx2::02_13` / scales `warpx2`
+    descriptor-address frontier or another MMAv5 reachable-family gap.

@@ -72,7 +72,7 @@
   - broad `tcgen05.cp` slice:
     `157 passed, 5 skipped, 2372 deselected in 42.63s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
-    `164 passed, 50 skipped, 2309 deselected in 98.38s (0:01:38)`
+    `169 passed, 50 skipped, 2320 deselected in 100.62s (0:01:40)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
@@ -317,8 +317,9 @@
     `slice_start=0` and offset `slice_start=64` subviews across the five
     supported format pairs;
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
-    `bf16`, `f8e5m2`, and `f8e4m3`, with exact PTX/LLIR opcode checks for the
-    expected instruction kind;
+    `bf16`, `f8e5m2`, and `f8e4m3` across both `128x128/tile_n=32` and
+    `128x256/tile_n=64` accumulator layouts, with exact PTX/LLIR opcode checks
+    for the expected instruction kind;
   - tile-permuted scaled-MMAv5 accumulator-subview clean negatives now cover
     the same format pairs as the positive scaled subview matrix:
     `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
@@ -342,7 +343,7 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `154 passed, 50 skipped, 2069 deselected`;
+    `169 passed, 50 skipped, 2320 deselected`;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable
@@ -454,7 +455,43 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 17:19 UTC)
+## Current Topline (2026-04-11 19:58 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `1b2e83595` on `origin/codex/tmem`
+- Tile-permuted plain MMAv5 accumulator kind coverage is expanded from the
+  original `128x128/tile_n=32` geometry to cover both:
+  - `128x128`, `tile_n=32`
+  - `128x256`, `tile_n=64`
+- The expanded matrix spans all supported plain operand kinds:
+  - `f16`
+  - `tf32`
+  - `bf16`
+  - `f8e5m2`
+  - `f8e4m3`
+- The test checks runtime numerics plus exact PTX/LLIR
+  `tcgen05.mma.cta_group::1.kind::*` opcode agreement for each geometry/kind
+  pair.
+- Validation:
+  - focused tile-permuted kind matrix:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-kind-expanded PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc`
+    - `10 passed in 6.91s`
+  - broad direct MMA/scaled-MMA slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-kind-expanded-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    - `169 passed, 50 skipped, 2320 deselected in 100.62s (0:01:40)`
+- The supported `_reinterpret` migration invariant remains unchanged and should
+  steer future code changes:
+  - offset to the right part of TMEM;
+  - slice/subview it to the desired physical bits;
+  - then bitcast to the desired dtype, shape, and layout only when the view is
+    equal-size and preserves the exact physical TMEM mapping of the input
+    descriptor.
+- Next:
+  - commit and push this MMA coverage slice;
+  - continue either the two-CTA `warpx2::02_13` / scales `warpx2`
+    descriptor-address frontier or the next MMAv5 reachable-family gap.
+
+## Prior Topline (2026-04-11 17:19 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `8deb0fcad` on `origin/codex/tmem`

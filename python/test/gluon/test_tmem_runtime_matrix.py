@@ -4936,7 +4936,11 @@ MMA_TILE_PERMUTED_CASES = [
     (256, 64),
 ]
 
-MMA_TILE_PERMUTED_KIND_CASES = MMA_PLAIN_KINDS
+MMA_TILE_PERMUTED_KIND_CASES = [
+    (kind, n, tile_n)
+    for kind in MMA_PLAIN_KINDS
+    for n, tile_n in ((128, 32), (256, 64))
+]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -5290,13 +5294,12 @@ def test_tmem_runtime_matrix_mma_acc_tile_permuted(n, tile_n):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind", MMA_TILE_PERMUTED_KIND_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind):
-    m = n = 128
-    k = 32
+@pytest.mark.parametrize("kind,n,tile_n", MMA_TILE_PERMUTED_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind, n, tile_n):
+    m, k = 128, 32
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
-    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
+    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
 
     a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
     out = torch.empty((m, n), device="cuda", dtype=torch.float32)

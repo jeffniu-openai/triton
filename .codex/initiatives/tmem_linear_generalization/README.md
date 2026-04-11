@@ -108,7 +108,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `476 passed, 2055 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `164 passed, 50 skipped, 2309 deselected`
+    `169 passed, 50 skipped, 2320 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -227,6 +227,8 @@ When resuming the initiative:
 - Tile-permuted MMAv5 accumulator coverage now spans all plain supported
   operand kinds:
   - `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
+  - each kind is covered for `128x128` / `tile_n=32` and `128x256` /
+    `tile_n=64` accumulator layouts;
   - each path checks PTX/LLIR opcode equality and the expected
     `tcgen05.mma` kind.
 - Direct scaled-MMAv5 TMEM-view tests now pin exact `mxf8f6f4` scaled-MMA
@@ -396,14 +398,15 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-scaled-mma-twocta-subview-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-tile-kind-expanded-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `164 passed, 50 skipped, 2309 deselected in 98.38s (0:01:38)`;
+    `169 passed, 50 skipped, 2320 deselected in 100.62s (0:01:40)`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
-    and offset one-CTA accumulator subview format-matrix cases and the new
-    two-CTA cga-aware accumulator-subview matrix; scaled-MMA copy helper
-    coverage tracked separately.
+    and offset one-CTA accumulator subview format-matrix cases, the two-CTA
+    cga-aware accumulator-subview matrix, and tile-permuted plain-kind
+    accumulators at `128x128/tile_n=32` and `128x256/tile_n=64`; scaled-MMA
+    copy helper coverage tracked separately.
 - Tile-permuted scaled-MMAv5 accumulator-subview clean-negative coverage now
   spans the same format pairs as the positive direct subview matrix:
   - `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
