@@ -281,6 +281,12 @@ When resuming the initiative:
   - two-CTA rank-5 descriptor roundtrip coverage uses the full
     `LDST_VARIANTS` set and confirms the newly added large explicit families
     hit the clean tensor-memory OOR boundary.
+- Scales `ld/st` instruction-selection coverage now includes `auto`:
+  - auto does not simply mirror explicit `32x32b`; for several shapes it
+    selects wider `16x64b`, `16x128b`, or `16x256b` packet streams with the
+    expected high-half `1048576` offsets;
+  - `test_tmem_runtime_matrix_ldst_scales_variant_sweep` pins those exact
+    PTX/LLIR streams across the existing scales variant matrix.
 - Combined current-head `ld/st` runtime-matrix validation is green after the
   staged auto expansions:
   - command:

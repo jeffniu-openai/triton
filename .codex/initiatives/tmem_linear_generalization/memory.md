@@ -309,7 +309,32 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:35 UTC)
+## Current Topline (2026-04-11 16:37 UTC)
+
+- Latest source/test checkpoint in progress:
+  - `f899dda05` plus local `python/test/gluon/test_tmem_runtime_matrix.py`
+    edits
+- Scales `ld/st` instruction-selection coverage now includes `auto`.
+- Important finding:
+  - scales `auto` is a valid positive path, but it does not always mirror the
+    explicit `32x32b` packet family;
+  - for several shapes it selects wider `16x64b`, `16x128b`, or `16x256b`
+    packet streams with high-half `1048576` offsets.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - new auto parametrizations:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-scales-auto-current-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_variant_sweep -k auto`
+    - `21 passed, 33 deselected in 4.15s`
+  - full scales variant sweep:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-scales-variant-full-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_variant_sweep`
+    - `54 passed in 5.68s`
+- Next:
+  - run hygiene, commit, and push this scales-auto fuzzing slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
+
+## Prior Topline (2026-04-11 16:35 UTC)
 
 - Latest source/test checkpoint in progress:
   - `646cbb670` plus local `python/test/gluon/test_tmem_runtime_matrix.py`

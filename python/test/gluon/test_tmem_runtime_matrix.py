@@ -2017,7 +2017,7 @@ SCALES_LDST_CASES = [
     (256, 64, 4, 2, ((1, 0),), _expected_ldst_ops("16x32bx2.x64.b32", [0])),
 ]
 
-SCALES_LDST_VARIANT_CASES = [
+SCALES_LDST_EXPLICIT_VARIANT_CASES = [
     (16, 4, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (16, 8, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (32, 4, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
@@ -2052,6 +2052,32 @@ SCALES_LDST_VARIANT_CASES = [
     (32, 16, 4, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2, 4, 6])),
     (32, 4, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
 ]
+
+SCALES_LDST_AUTO_VARIANT_CASES = [
+    (16, 4, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 8, 8, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (32, 4, 8, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (64, 4, 4, "auto", _expected_ldst_ops("16x64b.x1.b32", [0, 1048576])),
+    (64, 8, 4, "auto", _expected_ldst_ops("16x128b.x1.b32", [0, 1048576])),
+    (64, 16, 4, "auto", _expected_ldst_ops("16x256b.x1.b32", [0, 1048576])),
+    (64, 16, 8, "auto", _expected_ldst_ops("32x32b.x4.b32", [0])),
+    (64, 32, 4, "auto", _expected_ldst_ops("16x256b.x2.b32", [0, 1048576])),
+    (64, 32, 8, "auto", _expected_ldst_ops("32x32b.x8.b32", [0])),
+    (128, 4, 4, "auto", _expected_ldst_ops("16x128b.x1.b32", [0, 1048576])),
+    (128, 8, 4, "auto", _expected_ldst_ops("16x256b.x1.b32", [0, 1048576])),
+    (128, 8, 8, "auto", _expected_ldst_ops("32x32b.x4.b32", [0])),
+    (128, 16, 4, "auto", _expected_ldst_ops("16x256b.x2.b32", [0, 1048576])),
+    (128, 16, 8, "auto", _expected_ldst_ops("32x32b.x8.b32", [0])),
+    (128, 32, 4, "auto", _expected_ldst_ops("16x256b.x4.b32", [0, 1048576])),
+    (128, 32, 8, "auto", _expected_ldst_ops("32x32b.x16.b32", [0])),
+    (16, 8, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (16, 16, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (16, 16, 8, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
+    (32, 8, 4, "auto", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
+    (32, 8, 8, "auto", _expected_ldst_ops("32x32b.x1.b32", [0])),
+]
+
+SCALES_LDST_VARIANT_CASES = SCALES_LDST_AUTO_VARIANT_CASES + SCALES_LDST_EXPLICIT_VARIANT_CASES
 
 SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
     (

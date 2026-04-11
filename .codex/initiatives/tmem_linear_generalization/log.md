@@ -8890,3 +8890,44 @@ Open after this slice:
 - Next:
   - run hygiene, commit, and push this focused fuzzing slice;
   - continue operational fuzzing from `fuzz_plan.md`.
+
+## 2026-04-11 16:37 UTC
+
+- Added scales `ld/st` `auto` instruction-selection coverage.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - base checkpoint:
+    - `f899dda05`
+- Implementation:
+  - split the existing scales variant matrix into
+    `SCALES_LDST_EXPLICIT_VARIANT_CASES` and
+    `SCALES_LDST_AUTO_VARIANT_CASES`;
+  - added auto companions for the existing explicit `32x32b` scales cases;
+  - pinned exact auto PTX/LLIR opcode streams.
+- Finding:
+  - the initial assumption that scales `auto` would mirror explicit `32x32b`
+    was wrong for several shapes;
+  - valid auto selection can choose wider `16x64b`, `16x128b`, or `16x256b`
+    packet streams with high-half `1048576` offsets;
+  - those streams are now recorded as the expected compiler behavior.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - direct probe before patching expectations:
+    - `auto` was runtime-correct and PTX/LLIR matched;
+    - the first expectation attempt failed because auto selected wider packet
+      families for larger scales shapes instead of the explicit `32x32b`
+      family.
+  - new auto parametrizations:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-scales-auto-current-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_variant_sweep -k auto`
+    - `21 passed, 33 deselected in 4.15s`
+  - full scales variant sweep:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-scales-variant-full-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_variant_sweep`
+    - `54 passed in 5.68s`
+- Next:
+  - run hygiene, commit, and push this scales-auto fuzzing slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
