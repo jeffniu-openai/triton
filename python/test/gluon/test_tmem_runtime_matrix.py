@@ -1979,6 +1979,7 @@ CP_SCALES_WARPX4_GEOMETRY_CASES = [
 ]
 
 F16_LDST_SHAPE_MAP = {
+    "auto": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
     "32x32b": {64: "32x32b.x32.b32", 128: "32x32b.x64.b32", 256: "32x32b.x128.b32"},
     "16x64b": {64: "16x64b.x16.b32", 128: "16x64b.x32.b32", 256: "16x64b.x64.b32"},
     "16x128b": {64: "16x128b.x8.b32", 128: "16x128b.x16.b32", 256: "16x128b.x32.b32"},
@@ -1987,7 +1988,7 @@ F16_LDST_SHAPE_MAP = {
 
 F16_LDST_CASES = [
     ("identity", n, variant, F16_LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), ("32x32b", "16x64b", "16x128b", "16x256b"))
+    for n, variant in product((64, 128, 256), LDST_VARIANTS)
 ]
 
 X1_F16_LDST_CASES = [
