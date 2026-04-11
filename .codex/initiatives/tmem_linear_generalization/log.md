@@ -9156,3 +9156,37 @@ Open after this slice:
   - continue operational fuzzing from `fuzz_plan.md`, likely copy
     `cta_group::2` / scales `warpx2` search or another bounded scaled-MMA
     frontier.
+
+## 2026-04-11 17:36 UTC
+
+- Added no-scales dense `tcgen05.cp.cta_group::2.128x128b` coverage.
+- Source/test change:
+  - factored the isolated child-process runner used by two-CTA copy tests so
+    the libtriton import-corruption retry remains shared;
+  - added `tmem_copy_128x128_twocta_kernel`, using explicit
+    `SharedLinearLayout` with a physical two-CTA row block basis `[[128, 0]]`;
+  - added `test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen`,
+    covering both legacy and canonical TMEM-linear two-CTA destinations.
+- Discovery:
+  - `NVMMASharedLayout(swizzle=32)` is not a valid way to spell this
+    `256x4` source because the contiguous dimension is too small for the
+    swizzle;
+  - `SharedLinearLayout` block bases must be CTA-shape-scaled physical bases,
+    not the logical CGA basis from `_make_2cta_cga_layout`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused new exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-twocta-128x128-focused-r7 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen`
+    - `1 passed in 5.22s`
+  - existing two-CTA dense `128x256b` codegen exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-cp-twocta-existing-rerun PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_codegen`
+    - `1 passed in 8.49s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-twocta-128x128 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `154 passed, 5 skipped, 2098 deselected in 39.69s`
+- Next:
+  - run hygiene, commit, and push this copy coverage slice;
+  - continue copy saturation with scales `warpx2` search, or pivot to another
+    bounded scaled-MMA/MMA frontier.

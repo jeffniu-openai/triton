@@ -184,12 +184,17 @@
     `warpx2::02_13` as exact `cta_group::1.64x128b` opcode streams;
   - direct canonical TMEM-linear `128x128b` root coverage is now closed by
     `c5bdb6d5c`;
+  - no-scales dense `cta_group::2` copy coverage now pins both
+    `128x128b` and `128x256b` opcode families; the new `128x128b` exact uses a
+    fixed `256x4` two-CTA i32/f32-bitwidth shape with explicit
+    `SharedLinearLayout` and validates both legacy and canonical-linear
+    destinations;
   - fit `128x256b` indexed-view coverage is broadened by `7075f31fc`, while
     the full `[2, 128, 256]` parent is captured as a tensor-memory OOR
     boundary;
   - remaining copy work is saturation and missing-surface coverage, especially
-    scaled-MMA copy geometries, `cta_group::2` combinations, and any
-    additional deterministic `warpx2` user-visible paths that fit TMEM;
+    scaled-MMA copy geometries and any additional deterministic `warpx2`
+    user-visible paths that fit TMEM;
   - keep `4x256b` out of the positive target set unless a future direct-PTX
     probe proves a deterministic compiler contract.
 - `tcgen05.ld/st` and `tcgen05.ld.red`:

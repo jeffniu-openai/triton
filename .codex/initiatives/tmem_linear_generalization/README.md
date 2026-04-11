@@ -162,6 +162,11 @@ When resuming the initiative:
   tails:
   - `warpx2::01_23.64x128b`;
   - `warpx2::02_13.64x128b`.
+- No-scales `cta_group::2` dense copy coverage now includes both dense
+  families:
+  - `tcgen05.cp.cta_group::2.128x128b` for the fixed `256x4` two-CTA
+    i32/f32-bitwidth shape through explicit `SharedLinearLayout`;
+  - `tcgen05.cp.cta_group::2.128x256b` for the existing wider N matrix.
 - `ld.red` modifier saturation is expanded by `eac11c719`:
   - positive identity, tile-permuted, column-permuted, and row-permuted linear
     layouts now cover all four legal modifier pairs:
@@ -320,12 +325,12 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-warpx2-0213 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-cp-broad-after-twocta-128x128 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `153 passed, 5 skipped, 2088 deselected in 37.11s`;
+    `154 passed, 5 skipped, 2098 deselected in 39.69s`;
   - this covers the current no-scales `warpx2` positives, dense copy
-    positives, 2-CTA copy, scaled `warpx4` copy paths, and clean unsupported
-    copy boundaries.
+    positives, 2-CTA `128x128b` / `128x256b` copy, scaled `warpx4` copy
+    paths, and clean unsupported copy boundaries.
 - Current-head `tcgen05.ld.red` runtime-matrix validation is green:
   - command:
     `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-after-256-fuzz PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
