@@ -273,6 +273,14 @@ When resuming the initiative:
   - `X1_F16_LDST_VARIANTS` covers `auto` and explicit `32x32b`;
   - validation covers linear packed, legacy packed, and legacy unpacked
     layouts with the existing pack/unpack opcode expectations.
+- Focused `ld/st` fuzz/stale-coverage cleanup now includes the remaining
+  fixed-offset and rank-5 variant tails:
+  - `test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256` includes an
+    `auto` companion and confirms it selects the canonical
+    `32x32b.x64.b32` offset pattern;
+  - two-CTA rank-5 descriptor roundtrip coverage uses the full
+    `LDST_VARIANTS` set and confirms the newly added large explicit families
+    hit the clean tensor-memory OOR boundary.
 - Combined current-head `ld/st` runtime-matrix validation is green after the
   staged auto expansions:
   - command:

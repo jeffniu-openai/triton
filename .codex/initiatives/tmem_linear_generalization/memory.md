@@ -309,7 +309,27 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:33 UTC)
+## Current Topline (2026-04-11 16:35 UTC)
+
+- Latest source/test checkpoint in progress:
+  - `646cbb670` plus local `python/test/gluon/test_tmem_runtime_matrix.py`
+    edits
+- Focused `ld/st` fuzz/stale-coverage cleanup is green:
+  - `test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256` now covers
+    `auto` and confirms the canonical `32x32b.x64.b32` offset pattern:
+    - `5 passed in 7.09s`
+  - `test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip` now uses
+    the full `LDST_VARIANTS` set and confirms the newly added large explicit
+    families remain clean tensor-memory OOR boundaries:
+    - `10 skipped in 7.12s`
+- Build before these tests:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `PASSED`, ninja reported no work to do
+- Next:
+  - run hygiene, commit, and push this focused fuzzing slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
+
+## Prior Topline (2026-04-11 16:33 UTC)
 
 - Latest pushed source/test checkpoint:
   - `24bec4ecf` on `origin/codex/tmem`

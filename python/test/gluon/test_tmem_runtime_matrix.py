@@ -1854,7 +1854,7 @@ LDST_DESCRIPTOR_RANK5_CASES = [
 
 LDST_TWOCTA_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, ), ("auto", "32x32b", "16x64b"))
+    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, ), LDST_VARIANTS)
 ]
 
 CP_NO_SCALES_CASES = [
@@ -2112,6 +2112,16 @@ LD_RED_MIXED_CASES = [
 ]
 
 LDST_EXPECTED_OFFSETS_128x256 = {
+    "auto": [
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 64),
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 128),
+        ("tcgen05.st.sync.aligned.32x32b.x64.b32", 192),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 64),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 128),
+        ("tcgen05.ld.sync.aligned.32x32b.x64.b32", 192),
+    ],
     "32x32b": [
         ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
         ("tcgen05.st.sync.aligned.32x32b.x64.b32", 64),
@@ -3134,7 +3144,7 @@ def test_tmem_runtime_matrix_splitn_rowcol_permuted_auto_selects_16x32bx2(row_pe
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("variant", ("32x32b", "16x64b", "16x128b", "16x256b"))
+@pytest.mark.parametrize("variant", tuple(LDST_EXPECTED_OFFSETS_128x256))
 def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
     m, n = 128, 256
     layout = _make_tmem_linear_layout(m, n)

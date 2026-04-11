@@ -8853,3 +8853,40 @@ Open after this slice:
     validation;
   - keep the attention exact separate from supported physical-bitcast API
     validation.
+
+## 2026-04-11 16:35 UTC
+
+- Added a focused `ld/st` fuzz/stale-coverage slice for the remaining
+  fixed-offset and two-CTA rank-5 variant tails.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - base checkpoint:
+    - `646cbb670`
+- Implementation:
+  - `test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256` now includes
+    `auto` and expects the same `32x32b.x64.b32` offset pattern as the
+    explicit `32x32b` selection;
+  - `LDST_TWOCTA_DESCRIPTOR_RANK5_CASES` now uses the full `LDST_VARIANTS`
+    matrix instead of stopping at `auto`, `32x32b`, and `16x64b`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - fixed-offset exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-fixed-offset-auto-current PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256`
+    - `5 passed in 7.09s`
+  - two-CTA rank-5 exact:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-rank5-twocta-full-variants PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip`
+    - `10 skipped in 7.12s`
+- Interpretation:
+  - `auto` for the canonical fixed-offset `128x256` case selects the expected
+    `32x32b` offset/immediate sequence;
+  - the newly covered two-CTA rank-5 large explicit families stay on the clean
+    tensor-memory OOR boundary instead of crashing or reaching malformed
+    lowering.
+- Next:
+  - run hygiene, commit, and push this focused fuzzing slice;
+  - continue operational fuzzing from `fuzz_plan.md`.
