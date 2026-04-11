@@ -1754,15 +1754,19 @@ CP_LINEAR_INDEXED_VIEW_CASES = [
         1,
         "tcgen05.cp.cta_group::1.128x128b",
     ),
-    (
-        "128x256b",
-        torch.float32,
-        128,
-        128,
-        ttgl.NVMMASharedLayout(swizzle_byte_width=128, element_bitwidth=32, rank=2),
-        16,
-        "tcgen05.cp.cta_group::1.128x256b",
-    ),
+    *[
+        (
+            f"128x256b_{dtype_name}_swizzle{swizzle}",
+            torch_dtype,
+            128,
+            128,
+            ttgl.NVMMASharedLayout(swizzle_byte_width=swizzle, element_bitwidth=32, rank=2),
+            16,
+            "tcgen05.cp.cta_group::1.128x256b",
+        )
+        for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
+        for swizzle in (32, 64, 128)
+    ],
 ]
 
 CP_LINEAR_SUBSLICE_VIEW_CASES = [
@@ -3576,6 +3580,21 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view(name, torch_dtype,
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
     assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view_full_128x256_reports_tmem_oor():
+    M = 128
+    N = 256
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+    lifted_layout = _lift_tmem_layout(_make_tmem_linear_layout(M, N), [2])
+    smem_layout = ttgl.NVMMASharedLayout(swizzle_byte_width=128, element_bitwidth=32, rank=2)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources, match="tensor memory"):
+        tmem_copy_no_scales_linear_indexed_view_kernel[(1, )](
+            inp, out, lifted_layout, smem_layout, M, N, num_warps=4
+        )
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
