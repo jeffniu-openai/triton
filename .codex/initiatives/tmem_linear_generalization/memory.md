@@ -274,7 +274,38 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 15:20 UTC)
+## Current Topline (2026-04-11 15:30 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `7df887318` on `origin/codex/tmem`
+- Higher-rank `ld/st` index descriptor views now include `auto` instruction
+  selection:
+  - `LDST_SUBVIEW_SHAPE_MAP` has explicit `auto` expectations for narrowed
+    32/64/128-column subviews;
+  - `LDST_HIGHER_RANK_INDEX_CASES` and
+    `LDST_TWOCTA_HIGHER_RANK_INDEX_CASES` now use `LDST_VARIANTS`;
+  - coverage spans identity/mixed single-CTA layouts and block/MMAv5-like
+    two-CTA layouts at `N = 64` and `128`.
+- Validation for `7df887318`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - single-CTA higher-rank index matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-higher-rank-index-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index'`
+    - `20 passed in 22.53s`
+  - two-CTA higher-rank index matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-twocta-higher-rank-index-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index'`
+    - `20 passed in 14.00s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue staged `ld/st` fuzzing on higher-rank slice and stale-negative
+    descriptor-view surfaces;
+  - then continue stale-negative cleanup and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 15:20 UTC)
 
 - Latest pushed source/test checkpoint:
   - `ca9f94760` on `origin/codex/tmem`

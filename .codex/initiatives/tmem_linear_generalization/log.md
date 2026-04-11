@@ -8127,3 +8127,35 @@ Open after this slice:
   - continue staged `ld/st` fuzzing on higher-rank and stale-negative
     descriptor-view surfaces;
   - then stale-negative cleanup and heuristic cleanup.
+
+## 2026-04-11 15:30 UTC
+
+- Committed and pushed higher-rank index `ld/st` auto coverage:
+  - `7df887318`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - extend auto instruction-selection coverage to higher-rank index descriptor
+    views, which assert both full-tile and narrowed subview opcode streams.
+- Implementation:
+  - added `auto` expected subview shapes to `LDST_SUBVIEW_SHAPE_MAP`;
+  - `LDST_HIGHER_RANK_INDEX_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_INDEX_CASES` now uses `LDST_VARIANTS`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - single-CTA higher-rank index matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-higher-rank-index-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index'`
+    - `20 passed in 22.53s`
+  - two-CTA higher-rank index matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-twocta-higher-rank-index-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index'`
+    - `20 passed in 14.00s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue staged `ld/st` fuzzing on higher-rank slice and stale-negative
+    descriptor-view surfaces;
+  - then stale-negative cleanup and heuristic cleanup.

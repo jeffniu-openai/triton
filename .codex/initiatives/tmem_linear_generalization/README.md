@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 15:20 UTC, the latest pushed source/test checkpoint is
-  `ca9f94760` on `origin/codex/tmem`.
+- As of 2026-04-11 15:30 UTC, the latest pushed source/test checkpoint is
+  `7df887318` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -140,6 +140,11 @@ When resuming the initiative:
   - coverage reaches both `block_two_ctas` and MMAv5-like two-CTA layouts;
   - the validation also reran the single-CTA descriptor roundtrip sweep now
     reached by `LDST_DESCRIPTOR_CASES`.
+- Higher-rank `ld/st` index descriptor views now include `auto` instruction
+  selection after `7df887318`:
+  - auto subview shapes are pinned to the expected `32x32b` family;
+  - single-CTA identity/mixed and two-CTA block/MMAv5-like layouts are covered
+    for `N = 64, 128`.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
