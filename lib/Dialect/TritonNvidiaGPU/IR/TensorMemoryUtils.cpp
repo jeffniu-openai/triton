@@ -959,6 +959,54 @@ remapTMemLdStQueryOriginThroughPhysicalCoords(
   return dstOrigin;
 }
 
+static bool
+isTMemLdStQueryOriginRepresentable(const TMemLdStQueryLayout &query,
+                                   const LinearLayout &layout) {
+  auto queryInDims = llvm::to_vector(query.layout.getInDimNames());
+  for (StringAttr dim : layout.getInDimNames()) {
+    auto it = llvm::find(queryInDims, dim);
+    if (it == queryInDims.end())
+      continue;
+    int32_t value = query.origin[std::distance(queryInDims.begin(), it)];
+    if (value < 0 || value >= layout.getInDimSize(dim))
+      return false;
+  }
+  return true;
+}
+
+static FailureOr<SmallVector<int32_t>>
+remapTMemPhysicalOriginForBitcast(const TMemLdStQueryLayout &srcQuery,
+                                  const LinearLayout &dstLayout,
+                                  int srcBitwidth, int dstBitwidth,
+                                  std::string *error) {
+  SmallVector<int32_t> dstOrigin =
+      remapTMemLdStQueryOrigin(srcQuery, dstLayout, /*deltaCoords=*/{});
+  if (srcBitwidth == dstBitwidth)
+    return dstOrigin;
+
+  auto srcInDims = llvm::to_vector(srcQuery.layout.getInDimNames());
+  auto dstInDims = llvm::to_vector(dstLayout.getInDimNames());
+  if (dstInDims.empty())
+    return dstOrigin;
+  auto *ctx = dstInDims.front().getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  auto srcColIt = llvm::find(srcInDims, kCol);
+  auto dstColIt = llvm::find(dstInDims, kCol);
+  if (srcColIt == srcInDims.end() || dstColIt == dstInDims.end())
+    return dstOrigin;
+
+  int32_t srcCol = srcQuery.origin[std::distance(srcInDims.begin(), srcColIt)];
+  int64_t dstColBits = static_cast<int64_t>(srcCol) * srcBitwidth;
+  if (dstColBits % dstBitwidth != 0) {
+    if (error)
+      *error = "unsupported tensor memory memdesc_reinterpret view";
+    return failure();
+  }
+  dstOrigin[std::distance(dstInDims.begin(), dstColIt)] =
+      static_cast<int32_t>(dstColBits / dstBitwidth);
+  return dstOrigin;
+}
+
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
                                       ArrayRef<int32_t> offsets) {
   assert(shape.size() == offsets.size());
@@ -1609,33 +1657,42 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
                "compute support layout";
     return failure();
   }
-  SmallVector<std::pair<StringAttr, int32_t>> srcOriginSparse;
-  srcOriginSparse.reserve(ll.getNumInDims());
-  auto srcInDims = llvm::to_vector(ll.getInDimNames());
-  for (auto [dim, value] : llvm::zip_equal(srcInDims, workingQuery.origin))
-    srcOriginSparse.push_back({dim, value});
-  auto srcOriginCoords =
-      ll.apply(makeFullLinearLayoutCoords(srcInDims, srcOriginSparse));
-  SmallVector<int32_t> srcOriginPoint;
-  srcOriginPoint.reserve(ll.getNumOutDims());
-  for (auto dim : ll.getOutDimNames())
-    srcOriginPoint.push_back(lookupLinearLayoutCoord(srcOriginCoords, dim));
-  auto dstOriginPoint = remapOriginPoint(srcOriginPoint);
-  if (failed(dstOriginPoint))
+  FailureOr<SmallVector<int32_t>> maybeDstOrigin = failure();
+  if (!isTMemLdStQueryOriginRepresentable(workingQuery, ll)) {
+    maybeDstOrigin = remapTMemPhysicalOriginForBitcast(
+        workingQuery, *dstLayout, srcBitwidth, dstBitwidth, error);
+  } else {
+    SmallVector<std::pair<StringAttr, int32_t>> srcOriginSparse;
+    srcOriginSparse.reserve(ll.getNumInDims());
+    auto srcInDims = llvm::to_vector(ll.getInDimNames());
+    for (auto [dim, value] : llvm::zip_equal(srcInDims, workingQuery.origin))
+      srcOriginSparse.push_back({dim, value});
+    auto srcOriginCoords =
+        ll.apply(makeFullLinearLayoutCoords(srcInDims, srcOriginSparse));
+    SmallVector<int32_t> srcOriginPoint;
+    srcOriginPoint.reserve(ll.getNumOutDims());
+    for (auto dim : ll.getOutDimNames())
+      srcOriginPoint.push_back(lookupLinearLayoutCoord(srcOriginCoords, dim));
+    auto dstOriginPoint = remapOriginPoint(srcOriginPoint);
+    if (failed(dstOriginPoint))
+      return failure();
+    auto dstLogicalDims = llvm::to_vector(dstLayout->getOutDimNames());
+    SmallVector<std::pair<StringAttr, int32_t>> dstOriginSparse;
+    dstOriginSparse.reserve(dstLogicalDims.size());
+    for (auto [dim, value] : llvm::zip_equal(dstLogicalDims, *dstOriginPoint))
+      dstOriginSparse.push_back({dim, value});
+    auto dstOriginCoords = (*dstInv).apply(
+        makeFullLinearLayoutCoords(dstLogicalDims, dstOriginSparse));
+    SmallVector<int32_t> dstOrigin;
+    dstOrigin.reserve(dstLayout->getNumInDims());
+    for (auto dim : dstLayout->getInDimNames())
+      dstOrigin.push_back(lookupLinearLayoutCoord(dstOriginCoords, dim));
+    maybeDstOrigin = std::move(dstOrigin);
+  }
+  if (failed(maybeDstOrigin))
     return failure();
-  auto dstLogicalDims = llvm::to_vector(dstLayout->getOutDimNames());
-  SmallVector<std::pair<StringAttr, int32_t>> dstOriginSparse;
-  dstOriginSparse.reserve(dstLogicalDims.size());
-  for (auto [dim, value] : llvm::zip_equal(dstLogicalDims, *dstOriginPoint))
-    dstOriginSparse.push_back({dim, value});
-  auto dstOriginCoords = (*dstInv).apply(
-      makeFullLinearLayoutCoords(dstLogicalDims, dstOriginSparse));
-  SmallVector<int32_t> dstOrigin;
-  dstOrigin.reserve(dstLayout->getNumInDims());
-  for (auto dim : dstLayout->getInDimNames())
-    dstOrigin.push_back(lookupLinearLayoutCoord(dstOriginCoords, dim));
   auto result = TMemLdStQueryLayout{*dstLayout, workingQuery.twoCTAs,
-                                    std::move(dstOrigin)};
+                                    std::move(*maybeDstOrigin)};
   if (debug) {
     llvm::errs() << "[tmem-ldst] reinterpret srcShape=";
     for (int64_t size : srcShape)
@@ -2016,6 +2073,12 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
         llvm::errs() << "[tmem-ldst] preserveViewOrigin analysis fail dst="
                      << memDescTy << " err=" << *error << "\n";
       return failure();
+    }
+    if (!isTMemLdStQueryOriginRepresentable(*srcQuery, srcQuery->layout)) {
+      return TMemLdStQueryLayout{
+          maybeAnalysis->layout, maybeAnalysis->twoCTAs,
+          remapTMemLdStQueryOrigin(*srcQuery, maybeAnalysis->layout,
+                                   /*deltaCoords=*/{})};
     }
     auto remappedOrigin = remapTMemLdStQueryOriginThroughPhysicalCoords(
         *srcQuery, maybeAnalysis->layout, error);

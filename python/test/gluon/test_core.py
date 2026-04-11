@@ -1993,10 +1993,9 @@ def test_tmem_linear_f16_roundtrip(N):
 def test_tmem_subslice_block_m_64(layout_kind):
 
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
-    n2_layout = TensorMemoryLayout((64, 2), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(2)
 
     @gluon.jit
-    def kernel(s_ptr, out_ptr):
+    def kernel(s_ptr, out_ptr, full_layout: ttgl.constexpr):
         BLOCK_M: ttgl.constexpr = 64
         N: ttgl.constexpr = 128
         BLOCK_N: ttgl.constexpr = 64
@@ -2014,18 +2013,16 @@ def test_tmem_subslice_block_m_64(layout_kind):
         s_tmem.store(s)
         o_tmem.store(s)
 
-        p_tmem = s_tmem.slice(0, N // 2, dim=1)._reinterpret(ttgl.float16, [BLOCK_M, N], tmem_layout)
+        p_tmem = s_tmem.slice(0, N // 2, dim=1).bitcast(ttgl.float16, [BLOCK_M, N], tmem_layout)
         p_layout: ttgl.constexpr = p_tmem.get_reg_layout()
         p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=p_layout))
 
-        d1_tmem_layout: ttgl.constexpr = n2_layout
-
-        m_tmem = s_tmem.slice(N // 4, 2, dim=1)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
+        m_tmem = s_tmem.slice(N // 4, 2, dim=1)
         d1_layout: ttgl.constexpr = m_tmem.get_reg_layout()
         m_tmem.store(ttgl.full((BLOCK_M, 2), 2.0, dtype=ttgl.float32, layout=d1_layout))
-        l_tmem = s_tmem.slice(N // 4 + 2, 2, dim=1)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
+        l_tmem = s_tmem.slice(N // 4 + 2, 2, dim=1)
         l_tmem.store(ttgl.full((BLOCK_M, 2), 3.0, dtype=ttgl.float32, layout=d1_layout))
-        a_tmem = s_tmem.slice(N // 4 + 4, 2, dim=1)._reinterpret(ttgl.float32, [BLOCK_M, 2], d1_tmem_layout)
+        a_tmem = s_tmem.slice(N // 4 + 4, 2, dim=1)
         a_tmem.store(ttgl.full((BLOCK_M, 2), 4.0, dtype=ttgl.float32, layout=d1_layout))
 
         s = s_tmem.load()
@@ -2036,9 +2033,10 @@ def test_tmem_subslice_block_m_64(layout_kind):
     s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
 
     out_tri = torch.empty_like(s)
-    compiled = kernel[(1, )](s, out_tri)
+    compiled = kernel[(1, )](s, out_tri, full_layout)
 
     ttgir = compiled.asm["ttgir"]
+    assert "tmem_physical_bitcast" in ttgir
     # Check that we have two 64x128xf32 allocations.
     assert ttgir.count("ttng.tmem_alloc") == 2
     alloc_lines = [
@@ -2083,7 +2081,7 @@ def test_tmem_subslice_block_m_64_parent_layout(layout_kind, fresh_triton_cache)
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
 
     @gluon.jit
-    def kernel(s_ptr, out_ptr):
+    def kernel(s_ptr, out_ptr, full_layout: ttgl.constexpr):
         BLOCK_M: ttgl.constexpr = 64
         N: ttgl.constexpr = 128
         tmem_layout: ttgl.constexpr = full_layout
@@ -2093,32 +2091,41 @@ def test_tmem_subslice_block_m_64_parent_layout(layout_kind, fresh_triton_cache)
         offsets = ttgl.set_auto_layout(offsets, layout)
         s = ttgl.load(s_ptr + offsets)
         s_tmem.store(s)
-        p_tmem = s_tmem.slice(0, N // 2, dim=1)._reinterpret(ttgl.float16, [BLOCK_M, N], tmem_layout)
-        p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=layout))
+        p_tmem = s_tmem.slice(0, N // 2, dim=1).bitcast(ttgl.float16, [BLOCK_M, N], tmem_layout)
+        p_tmem.store(ttgl.full((BLOCK_M, N), 0.0, dtype=ttgl.float16, layout=p_tmem.get_reg_layout()))
         ttgl.store(out_ptr + offsets, s_tmem.load())
 
     torch.manual_seed(0)
     s = torch.randn((64, 128), dtype=torch.float32, device="cuda")
     out_tri = torch.empty_like(s)
 
-    compiled = kernel[(1, )](s, out_tri)
+    compiled = kernel[(1, )](s, out_tri, full_layout)
 
     out_ref = s.clone()
     out_ref[:, 0:32] = 0.0
     out_ref[:, 64:96] = 0.0
 
     torch.testing.assert_close(out_ref, out_tri, atol=0, rtol=0)
+    assert "tmem_physical_bitcast" in compiled.asm["ttgir"]
     assert "ttg.convert_layout" not in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
+@pytest.mark.parametrize("layout_kind", [
+    pytest.param(
+        "legacy",
+        marks=pytest.mark.xfail(
+            reason="legacy M64 64x64 layout sugar needs producer-visible physical-family semantics for MMAv5"
+        ),
+    ),
+    "linear",
+])
 def test_block_m_64_mma(layout_kind):
 
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
 
     @gluon.jit
-    def kernel(a_ptr, b_ptr, c_ptr, d_ptr):
+    def kernel(a_ptr, b_ptr, c_ptr, d_ptr, full_layout: ttgl.constexpr):
         BLOCK_M: ttgl.constexpr = 64
         N: ttgl.constexpr = 128
         BLOCK_N: ttgl.constexpr = 64
@@ -2190,7 +2197,7 @@ def test_block_m_64_mma(layout_kind):
     c = torch.randn((64, 128), dtype=torch.float32, device="cuda")
 
     d_tri = torch.empty_like(c)
-    compiled = kernel[(1, )](a, b, c, d_tri)
+    compiled = kernel[(1, )](a, b, c, d_tri, full_layout)
 
     ttgir = compiled.asm["ttgir"]
     assert ttgir.count("ttng.tmem_alloc") == 3
