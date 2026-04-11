@@ -48,9 +48,11 @@ lives in `gb200_branch_recovery_plan.md`.
   - the previous M64 group-3 failures are closed in the full grouped sweep;
   - the group-3 xfail is the intentional legacy M64 MMAv5 producer-family
     design-debt marker;
-  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics, but pytest
-    continued and both shards finished green. Do not classify those diagnostics
-    as live failures without a failing exact nodeid.
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics in this
+    pre-`57a06c29b` sweep, but pytest continued and both shards finished green.
+    `57a06c29b` now rejects the direct Gluon API path before IR lowering on
+    `sm_103a+`; do not classify the old diagnostics as live failures without a
+    new failing exact nodeid.
 
 ## Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
 
@@ -1587,15 +1589,19 @@ Interim interpretation of the unit lane:
     - keep the cache-collision hypothesis open only for future repros that
       actually survive a fresh process boundary
 
-### Noisy But Expected During `-s` Shard Runs
+### Direct i8 `tcgen05_mma` Clean Negative
 
 - `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`
-  - clean isolated rerun passes
-  - the PTXAS rejection
-    `Feature '.kind::i8' not supported on .target 'sm_103a'`
-    is the expected behavior for this negative test
-  - the shard log is noisy because `-s` prints the PTXAS reproducer even though
-    the test itself passes
+  - `57a06c29b` changes the direct Gluon API path from a caught PTXAS
+    rejection to a frontend clean negative on `sm_103a+`
+  - focused current-head validation:
+    - `test_tcgen05_mma_plain_kind_i8_reports_clean_error`
+    - `test_tmem_runtime_matrix_mma_i8_reports_clean_error`
+    - `3 passed in 3.73s`
+  - generic `ttng.tc_gen5_mma` i8 conversion coverage remains positive for
+    `compute-capability=100`:
+    - `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `1 passed`
 
 ## Recently Cleared During This Checkpoint
 

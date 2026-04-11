@@ -7684,3 +7684,45 @@ Open after this slice:
     continuing to final green pytest summaries;
   - do not classify those diagnostics as failures unless a focused exact rerun
     returns a failed nodeid.
+
+## 2026-04-11 13:40 UTC
+
+- Committed and pushed direct-i8 `tcgen05_mma` cleanup:
+  - `57a06c29b`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - eliminate the direct Gluon API path that reached PTXAS for
+    `tcgen05.mma.kind::i8` on `sm_103a`;
+  - preserve generic `ttng.tc_gen5_mma` i8 conversion coverage for
+    `compute-capability=100`;
+  - keep this separate from attention and from the supported physical-bitcast
+    API migration work.
+- Implementation:
+  - `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`
+    now reads the target capability from `_semantic.builder.options.arch`;
+  - direct `tcgen05_mma` with i8/u8 operands and an int32 accumulator raises a
+    clean `ValueError` on `sm_103a+` before IR lowering;
+  - the focused tests in `test_core.py` and `test_tmem_runtime_matrix.py`
+    assert the frontend diagnostic and continue to reject `PassManager::run
+    failed` or assertion output.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - direct i8 exacts:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-i8-clean-error-target-aware PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_i8_reports_clean_error'`
+    - `3 passed in 3.73s`
+  - adjacent positive plain-kind exacts:
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-mma-kind-positive-target-aware PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_runtime' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc'`
+    - `11 passed in 5.90s`
+  - conversion lit:
+    - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `1 passed`
+  - `git diff --check`
+    - `PASSED`
+- Current consequence:
+  - the previous broad-shard `.kind::i8` PTXAS text is no longer a current
+    direct-API behavior after `57a06c29b`;
+  - the full four-way Gluon sweep remains the previous green proof until a
+    future broad rerun is needed for another source-changing slice.

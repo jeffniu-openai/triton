@@ -66,10 +66,13 @@ PY
   - the remaining local recovery queue should no longer prioritize old full
     Gluon shard failure lists.
 - Notes:
-  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics but finished
-    with green pytest summaries;
-  - keep those diagnostics in the noise/watch bucket unless a focused exact
-    rerun turns one into a failed nodeid.
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics in the
+    pre-`57a06c29b` sweep but finished with green pytest summaries;
+  - `57a06c29b` now rejects the direct Gluon `tcgen05_mma` i8 path before IR
+    lowering on `sm_103a+`, while preserving `compute-capability=100`
+    conversion-lit coverage;
+  - keep any future `.kind::i8` diagnostics in the noise/watch bucket unless a
+    fresh current-head focused exact turns one into a failed nodeid.
 
 ### Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
 

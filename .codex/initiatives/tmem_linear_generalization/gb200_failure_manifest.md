@@ -56,9 +56,12 @@ PY
     - `5582 passed, 866 skipped, 19350 deselected in 1751.06s`
 - Notes:
   - the previous group-3 M64 failures are closed at shard scope;
-  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics but still
-    finished with passing pytest summaries, so they are not recorded as live
-    failed nodeids.
+  - groups 3 and 4 printed `.kind::i8` PTX assembler diagnostics in the
+    pre-`57a06c29b` sweep but still finished with passing pytest summaries, so
+    they are not recorded as live failed nodeids;
+  - `57a06c29b` now rejects the direct Gluon `tcgen05_mma` i8 path before IR
+    lowering on `sm_103a+`, so future current-head shard reruns should not
+    print the old PTXAS reproducer for that clean-negative exact.
 
 ### Latest M64 Physical-Bitcast Refresh (2026-04-11 12:10 UTC)
 

@@ -270,7 +270,52 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 09:44 UTC)
+## Current Topline (2026-04-11 13:40 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `57a06c29b` on `origin/codex/tmem`
+- This checkpoint closes the direct `tcgen05_mma` i8/PTXAS log-noise slice
+  without narrowing generic IR coverage:
+  - the Gluon API now rejects direct `tcgen05_mma` with i8/u8 operands and an
+    int32 accumulator on `sm_103a+` before IR lowering;
+  - the diagnostic tells users to use `tt.dot` so the compiler can select a
+    supported MMA version;
+  - the `ttng.tc_gen5_mma` i8 conversion tests for `compute-capability=100`
+    remain positive.
+- Validation for `57a06c29b`:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - direct i8 clean-negative exacts:
+    - `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_i8_reports_clean_error`
+    - `3 passed in 3.73s`
+  - adjacent positive plain-kind MMA exacts:
+    - `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_runtime`
+    - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc`
+    - `11 passed in 5.90s`
+  - `cd build/cmake.linux-aarch64-cpython-3.12 && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir`
+    - `1 passed`
+  - `git diff --check`
+    - `PASSED`
+- Broad-sweep status:
+  - the latest full four-way `python/test/gluon` proof remains the green
+    pre-`57a06c29b` sweep recorded at `77c43f696`;
+  - the four current-branch group failure manifests remain `0` nodeids;
+  - after `57a06c29b`, the direct-i8 clean-negative path should no longer
+    print the old PTXAS `.kind::i8` reproducer in future shard reruns.
+- The supported `_reinterpret` migration invariant remains:
+  - offset to the right part of TMEM;
+  - slice/subview to the desired physical bits;
+  - bitcast to the desired dtype, shape, and layout only when equal-size and
+    physical-mapping equivalent to the input descriptor.
+- Next:
+  - keep attention reverted until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready;
+  - keep legacy M64 MMAv5 producer-family semantics as explicit design debt;
+  - continue the long-term `ld.red`, `copy`/`warpx2`, broader
+    MMAv5/`mma_scaled`, fuzzing, stale-negative cleanup, and heuristic phases.
+
+## Prior Topline (2026-04-11 09:44 UTC)
 
 - The latest pushed code/test checkpoint remains
   `ab8ff6e6444b1cf8521a06941d6cf1b8a25e3217` on `codex/tmem`, pushed to

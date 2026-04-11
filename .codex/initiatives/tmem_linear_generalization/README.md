@@ -43,9 +43,12 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 13:05 UTC, the latest validated current-branch checkpoint is
-  `be3cba0cd` on `origin/codex/tmem`; the latest source-changing checkpoint is
-  still `85d8dbbf4`.
+- As of 2026-04-11 13:40 UTC, the latest pushed source/test checkpoint is
+  `57a06c29b` on `origin/codex/tmem`.
+- The latest full four-way `python/test/gluon` sweep remains the green sweep
+  recorded at `77c43f696` / source `be3cba0cd`; the new `57a06c29b` slice was
+  validated with focused direct-i8 negative tests, adjacent positive
+  `tcgen05_mma` kind tests, and the Blackwell conversion lit test.
 - A fresh four-way `python/test/gluon` sweep from `be3cba0cd` is green:
   - group 1:
     `5448 passed, 1002 skipped, 19348 deselected`
@@ -57,10 +60,12 @@ When resuming the initiative:
     `5582 passed, 866 skipped, 19350 deselected`
   - the current `gb200_current_branch_group{1,2,3,4}_latest_failures.txt`
     manifests are refreshed to `0` nodeids.
-- Groups 3 and 4 still printed noisy `.kind::i8` PTX assembler diagnostics
-  while continuing to final green pytest summaries. Treat those as
-  nonfailing/xfailed-path output unless a focused exact rerun reports a failed
-  nodeid.
+- The broad-sweep `.kind::i8` PTX assembler diagnostics are now addressed for
+  the direct Gluon API path by `57a06c29b`: on `sm_103a+`,
+  direct `tcgen05_mma` i8/u8 inputs with an int32 accumulator fail before IR
+  lowering with a clean frontend diagnostic, while the generic
+  `compute-capability=100` `ttng.tc_gen5_mma` i8 conversion coverage remains
+  intact.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
