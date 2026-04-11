@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 14:50 UTC, the latest pushed source/test checkpoint is
-  `602fd9b44` on `origin/codex/tmem`.
+- As of 2026-04-11 15:00 UTC, the latest pushed source/test checkpoint is
+  `7766be003` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -122,6 +122,12 @@ When resuming the initiative:
   - it validates numeric output, exact PTX/LLIR
     `mxf8f6f4` / `mxf4` / `mxf4nvf4` scaled-MMA opcodes, and the
     `ttg.memdesc_subslice` + `tensor_memory_linear` accumulator path.
+- Plain MMAv5 kind saturation now includes f16 in the explicit 1-CTA and
+  2-CTA kind matrices after `7766be003`:
+  - `MMA_PLAIN_KINDS` covers `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
+  - both legacy and canonical linear accumulator layouts are covered for
+    `cta_group::1` and `cta_group::2`;
+  - the tests continue to assert exact PTX/LLIR opcode agreement.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

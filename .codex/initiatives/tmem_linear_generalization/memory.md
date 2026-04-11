@@ -274,7 +274,37 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 14:50 UTC)
+## Current Topline (2026-04-11 15:00 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `7766be003` on `origin/codex/tmem`
+- This checkpoint makes the plain MMAv5 kind matrix explicitly cover f16:
+  - `MMA_PLAIN_KINDS` is now `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
+  - the shared kind tuple feeds both
+    `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc` and
+    `test_tmem_runtime_matrix_mma_twocta_plain_kinds`;
+  - f16 is therefore covered for legacy and tensor-memory-linear accumulator
+    layouts across `cta_group::1` and `cta_group::2`;
+  - helper dispatch now raises `ValueError` for unknown kind names instead of
+    falling through to the fp8 branch.
+- Validation for `7766be003`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - plain-kind matrices:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-kind-f16-matrix PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_plain_kinds'`
+    - `20 passed in 8.64s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue MMAv5 / `mma_scaled` saturation for remaining layout, CTA, and
+    stale-negative surfaces;
+  - then continue staged `ld/st` fuzzing, stale-negative cleanup, and
+    heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 14:50 UTC)
 
 - Latest pushed source/test checkpoint:
   - `602fd9b44` on `origin/codex/tmem`

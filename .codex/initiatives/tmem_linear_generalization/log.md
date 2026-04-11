@@ -8025,3 +8025,40 @@ Open after this slice:
   - continue MMAv5 / `mma_scaled` saturation for remaining CTA/layout/stale
     negative surfaces;
   - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 15:00 UTC
+
+- Committed and pushed f16 plain MMAv5 kind-matrix coverage:
+  - `7766be003`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - make the explicit runtime-matrix plain-kind sweep cover f16 alongside
+    tf32, bf16, and f8f6f4 families.
+- Implementation:
+  - added `MMA_PLAIN_KINDS = ("f16", "tf32", "bf16", "f8e5m2", "f8e4m3")`;
+  - both `MMA_PLAIN_KIND_CASES` and `MMA_TWOCTA_PLAIN_KIND_CASES` now use that
+    shared tuple;
+  - added f16 branches to the 1-CTA and 2-CTA helper input builders;
+  - changed helper fallback behavior so unknown kind names raise
+    `ValueError`.
+- Coverage:
+  - f16 is now covered in the same exact PTX/LLIR opcode-agreement matrix as
+    tf32, bf16, f8e5m2, and f8e4m3;
+  - both legacy and tensor-memory-linear accumulator layouts are covered for
+    `cta_group::1` and `cta_group::2`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - plain-kind matrices:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-plain-kind-f16-matrix PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_twocta_plain_kinds'`
+    - `20 passed in 8.64s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue MMAv5 / `mma_scaled` saturation for remaining layout, CTA, and
+    stale-negative surfaces;
+  - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.
