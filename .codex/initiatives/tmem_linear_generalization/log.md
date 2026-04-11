@@ -9470,3 +9470,34 @@ Open after this slice:
   - run hygiene, commit, and push this pure-row `ld.red` coverage slice;
   - continue `ld.red` layout fuzzing or move to copy/`warpx2` or MMAv5 reachable
     families.
+
+## 2026-04-11 19:16 UTC
+
+- Added a row/column cross-product `tcgen05.ld.red` N-sweep.
+- Source/test change:
+  - added `LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES` for non-identity row and
+    non-identity column permutations at `N=64` and `N=256`;
+  - added `test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep`, keeping
+    pure row/column sweeps and the original `128x128` cross-product visible as
+    separate coverage layers.
+- Probe result before promotion:
+  - all `N=64` non-identity row/column pairs emit one
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` op;
+  - all `N=256` non-identity row/column pairs emit four
+    `tcgen05.ld.red.sync.aligned.32x32b.x64.min.f32` ops;
+  - no non-`32x32b` reduction atom was discovered.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused row/column N-sweep exact:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-rowcol-nsweep PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep`
+    - `144 passed in 113.29s (0:01:53)`
+  - broad current-head `ld_red` slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldred-rowcol-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `468 passed, 2045 deselected in 331.45s (0:05:31)`
+- Next:
+  - run hygiene, commit, and push this row/column `ld.red` coverage slice;
+  - `ld.red` now has broad permutation saturation at `128x{64,128,256}`;
+    continue with copy/`warpx2`, MMAv5 reachable families, or more targeted
+    `ld.red` exotic/mixed-frontier probes.

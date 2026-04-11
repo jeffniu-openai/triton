@@ -93,12 +93,13 @@
     `72 passed in 50.45s`
   - focused pure-row N-sweep exact:
     `48 passed in 31.75s`
+  - focused row/column N-sweep exact:
+    `144 passed in 113.29s (0:01:53)`
   - broad `ld_red` slice:
-    `324 passed, 2045 deselected in 225.19s (0:03:45)`
-  - pure column permutations now cover `128x{64,128,256}`; pure row
-    permutations now add `128x{64,256}` beside the existing `128x128`
-    row/column cross-product, and all still emit the expected `32x32b`
-    reduction-family opcodes.
+    `468 passed, 2045 deselected in 331.45s (0:05:31)`
+  - pure column, pure row, and non-identity row/column cross-product
+    permutations now cover `128x{64,128,256}` and still emit the expected
+    `32x32b` reduction-family opcodes.
 - Current-head four-way heavy Gluon validation at `be14fedc5` is green for
   `python/test/gluon/test_core.py` plus
   `python/test/gluon/test_tmem_runtime_matrix.py`:
@@ -272,10 +273,9 @@
     should be sliced/indexed/reshaped to 2D before access, and unsupported
     direct higher-rank access should stay a clean negative;
   - `ld.red` now has modifier saturation over identity, tile-permuted, and
-    pure row/col-permuted supported non-sharded families; pure column-permuted
-    positives span `128x{64,128,256}`, and pure row-permuted positives cover
-    `128x{64,256}` in addition to the existing `128x128` row/column
-    cross-product;
+    row/column-permuted supported non-sharded families; pure column, pure row,
+    and non-identity row/column cross-product positives span
+    `128x{64,128,256}`;
   - `ld.red` now also pins the row-256 source boundary: reduction-friendly
     `256x{32,64,128}` layouts with the extra row bit carried in the column
     query frame are positive `32x32b`, while plain identity

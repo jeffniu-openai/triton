@@ -2296,6 +2296,15 @@ LD_RED_PURE_ROW_PERMUTED_N_SWEEP_CASES = [
     for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
 
+LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES = [
+    (row_perm_kind, col_perm_kind, n, expected_shape)
+    for row_perm_kind in PERMUTED_LAYOUT_KINDS
+    if row_perm_kind != "identity"
+    for col_perm_kind in PERMUTED_LAYOUT_KINDS
+    if col_perm_kind != "identity"
+    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+]
+
 LD_RED_MIXED_CASES = [
     (128, 64, 4),
     (128, 128, 4),
@@ -3825,6 +3834,49 @@ def test_tmem_runtime_matrix_ld_red_pure_row_permuted_n_sweep(
     M = 128
     num_warps = 4
     layout = _make_tmem_linear_layout_permuted(M, N, row_perm_kind, "identity")
+    compiled = _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=num_warps,
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+
+    ptx_red_ops = [
+        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", )) if ".ld.red." in op
+    ]
+    llir_red_ops = [
+        op for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", )) if ".ld.red." in op
+    ]
+    assert ptx_red_ops == llir_red_ops
+    assert len(ptx_red_ops) == LD_RED_EXPECTED_OP_COUNT[N]
+    expected_prefix = f"tcgen05.ld.red.sync.aligned.{expected_shape}.{red_op}"
+    assert all(op.startswith(expected_prefix) for op in ptx_red_ops)
+    assert all(op.endswith(".f32") for op in ptx_red_ops)
+    if use_abs:
+        assert all(".abs." in op for op in ptx_red_ops)
+    else:
+        assert all(".abs." not in op for op in ptx_red_ops)
+    if propagate_nan == tl.PropagateNan.ALL:
+        assert all(".NaN." in op for op in ptx_red_ops)
+    else:
+        assert all(".NaN." not in op for op in ptx_red_ops)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,N,expected_shape", LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES)
+def test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep(
+    red_op, use_abs, propagate_nan, row_perm_kind, col_perm_kind, N, expected_shape
+):
+    M = 128
+    num_warps = 4
+    layout = _make_tmem_linear_layout_permuted(M, N, row_perm_kind, col_perm_kind)
     compiled = _run_tmem_reduction_case(
         layout,
         M,
