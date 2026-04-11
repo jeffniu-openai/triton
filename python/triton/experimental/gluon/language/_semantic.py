@@ -610,6 +610,35 @@ class GluonSemantic(TritonSemantic[TensorTy]):
         self._preserve_memdesc_ir_type(ty, handle)
         return desc_val(handle, **ty.__dict__)
 
+    def tmem_memdesc_bitcast(self, mem_desc, dtype, shape, layout=None):
+        from triton.experimental.gluon.language.nvidia.blackwell import (
+            tensor_memory_descriptor_type,
+        )
+        _check(
+            isinstance(mem_desc.type, tensor_memory_descriptor_type),
+            lambda: "tensor memory bitcast expects a tensor memory descriptor",
+        )
+        desc_ty, desc_val, allowed_layouts, allowed_layout_names = self._memdesc_constructors(mem_desc)
+        _check(isinstance(dtype, ttgl.dtype), lambda: f"expected 'dtype' to be a dtype but got {dtype}")
+        _check(_is_int_list(shape), lambda: f"all elements of 'shape' must be integers but got {shape}")
+        if layout is not None:
+            _check(
+                isinstance(layout, allowed_layouts),
+                lambda: f"expected 'layout' to be {allowed_layout_names} but got {layout}",
+            )
+            ty = desc_ty(dtype, shape, layout, shape)
+            handle = self.builder.create_tmem_memdesc_bitcast_with_layout(ty.to_ir(self.builder), mem_desc.handle)
+        else:
+            handle = self.builder.create_tmem_memdesc_bitcast(
+                mem_desc.handle,
+                dtype.to_ir(self.builder),
+                shape,
+            )
+            layout = self.builder.get_gluon_layout_from_memdesc(handle)
+            ty = desc_ty(dtype, shape, layout, shape)
+        self._preserve_memdesc_ir_type(ty, handle)
+        return desc_val(handle, **ty.__dict__)
+
     def wrap_tensor(self, x, scalar_ty, ret_shape, layout):
         if ret_shape:
             res_ty = ttgl.distributed_type(scalar_ty, ret_shape, layout)

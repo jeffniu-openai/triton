@@ -41,6 +41,19 @@ When resuming the initiative:
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.
 
+## Current Checkpoint
+
+- As of 2026-04-11 06:02 UTC, a supported
+  `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)` API is staged
+  in the worktree.
+- The attention example's f32 scratch -> bf16 P alias has been migrated to the
+  supported `slice/subview -> bitcast` pattern, and the formerly red exact
+  `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  is locally green.
+- The next required durable step is to commit/push the checkpoint, then refresh
+  the broader examples/Gluon aggregate and GB200 manifests on top of that
+  commit.
+
 ## Document Roles
 
 - `memory.md`

@@ -7269,3 +7269,57 @@ Open after this slice:
       mapping of the input descriptor;
   - reserve lowering fixes for cases where those supported APIs miscompile.
 - Documentation-only checkpoint; no build or test was run for this entry.
+
+## 2026-04-11 06:02 UTC
+
+- Implemented the supported TMEM descriptor bitcast API that the attention
+  migration needed:
+  - public Gluon API:
+    - `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)`
+  - builder/lowering marker:
+    - emits `ttg.memdesc_reinterpret` with `tmem_physical_bitcast`
+  - semantics:
+    - the source descriptor must already name the intended physical TMEM region
+      through offset/slice/subview operations;
+    - the bitcast must preserve total size and physical mapping while changing
+      dtype/shape and optionally using an explicit typed result layout.
+- Migrated the attention P-storage alias away from private `_reinterpret`
+  behavior:
+  - `_borrow_s_as_p` now slices the f32 scratch tile and bitcasts the selected
+    physical region to the bf16 P descriptor with the MMAv5-compatible P
+    layout;
+  - split-exp stores now slice each f32 scratch partition before bitcasting to
+    the corresponding bf16 partition view;
+  - nearby one-column f32 scratch aliases now use `bitcast`.
+- Fixed the supported lowering path exposed by that migration:
+  - ld/st support queries for marked physical bitcasts preserve the exact
+    physical query image so f32-to-f16/bf16 stores pack into selected TMEM
+    dwords rather than using `unpack::16b`;
+  - MMAv5 TMEM operand loaders use the explicit typed result descriptor layout
+    for marked physical bitcasts, because exact packed subword physical query
+    layouts can be non-surjective and are not directly invertible for typed
+    MMAv5 address calculation.
+- Added focused coverage:
+  - frontend parser coverage for derived and explicit-layout bitcasts plus a
+    clean size-mismatch diagnostic;
+  - runtime coverage that a sliced f32 TMEM subview bitcast to f16 preserves
+    physical mapping for stores;
+  - runtime coverage that a sliced f32 TMEM subview bitcast to bf16 can feed
+    `tcgen05.mma` as the TMEM lhs.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - `PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_ir python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_explicit_layout_ir python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_size_mismatch_reports_clean_error`
+    - `3 passed`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-tmem-bitcast-core-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_physical_bitcast_preserves_subview_mapping python/test/gluon/test_core.py::test_tmem_physical_bitcast_mma_lhs`
+    - `2 passed`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-bitcast-final-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]'`
+    - `PASSED`
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-tmem-runtime-views-final-<timestamp> PYTHONPATH=python:. pytest -s --tb=short -vv python/test/gluon/test_core.py::test_tmem_linear_runtime_views`
+    - `11 passed`
+  - `git diff --check`
+    - `PASSED`
+- Remaining work:
+  - commit and push this checkpoint;
+  - rerun the broader examples/Gluon aggregate and refresh the GB200 manifests
+    on top of the checkpoint commit.

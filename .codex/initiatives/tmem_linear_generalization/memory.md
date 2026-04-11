@@ -205,12 +205,15 @@
   fix; keep their exacts in the focused guard set while broadening.
 - The current examples/Gluon aggregate refresh exposed a real current-branch
   regression in `python/examples/gluon/01-attention-forward.py`:
-  `test_op[False-dtype0-True-128-1024-48-4]` fails on current `codex/tmem` but
-  passes on merge-base.
-- Treat that attention issue as an explicit API migration: the kernel's
-  f32-to-bf16 TMEM `_reinterpret` path relies on compiler-specific physical
-  packing behavior. Migrate it to supported linear-layout/view APIs with the
-  same intent instead of patching TMEM lowering to prefer the old fallback.
+  `test_op[False-dtype0-True-128-1024-48-4]` failed on current `codex/tmem` but
+  passed on merge-base.
+- That attention exact is locally green again after adding a supported
+  `subslice/subview -> bitcast` TMEM descriptor API and migrating the
+  f32-to-bf16 P-storage alias to it.
+- The fix intentionally does not preserve private `_reinterpret` behavior:
+  load/store lowering uses the exact physical bitcast query, while MMAv5 typed
+  address planning uses the explicit result descriptor layout because packed
+  sub-32-bit physical bitcast queries can be non-surjective.
 - 2026-04-11 user clarification to preserve across contexts:
   - this is the original motivation for the project, not just a local
     attention workaround;
@@ -223,7 +226,7 @@
     - bitcast to the desired dtype, shape, and layout only when the bitcast is
       equal-size and preserves the exact physical TMEM mapping of the input
       descriptor.
-- After the attention migration is green, refresh the aggregate GB200
+- After committing the attention bitcast migration, refresh the aggregate GB200
   manifests and rerun broader examples/Gluon shards on top of the checkpoint
   commit before declaring the branch-recovery phase done.
 - Keep the now-closed `python/examples/gluon/02-convolution.py` checkpoint in
@@ -247,7 +250,60 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 05:12 UTC)
+## Current Topline (2026-04-11 06:02 UTC)
+
+- `HEAD` is `60e5017783ef9ec1b32c18eea9f1b7d4d7be9918` on `codex/tmem`; the
+  current worktree is dirty with the supported TMEM bitcast API, attention
+  migration, tests, and docs for the next checkpoint commit.
+- New supported API:
+  - `tensor_memory_descriptor.bitcast(dtype, shape, layout=None)`
+  - semantics: the source descriptor must already identify the intended
+    physical TMEM region; the bitcast preserves total bits and physical mapping
+    while changing dtype/shape and optionally using an explicit equivalent
+    typed TMEM layout.
+- Attention migration:
+  - `_borrow_s_as_p` now slices the f32 scratch tile to the physical P-storage
+    region and bitcasts it to bf16 with the existing MMAv5-compatible P layout;
+  - split-exp stores now slice each f32 scratch partition first, then bitcast
+    only that physical subregion to the bf16 partition view;
+  - one-column f32 scratch aliases for alpha/epilogue are also expressed
+    through `bitcast`.
+- Lowering boundary:
+  - ld/st support queries for marked physical bitcasts use the exact physical
+    query so f32-to-f16/bf16 views pack into selected TMEM dwords instead of
+    expanding through `unpack::16b`;
+  - MMAv5 TMEM operand address planning uses the explicit result descriptor
+    layout for marked physical bitcasts because the exact physical query may be
+    non-surjective for packed subword columns.
+- Validation:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - parser bitcast tests:
+    - `python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_ir`
+    - `python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_explicit_layout_ir`
+    - `python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_size_mismatch_reports_clean_error`
+    - `3 passed`
+  - focused runtime bitcast tests:
+    - `python/test/gluon/test_core.py::test_tmem_physical_bitcast_preserves_subview_mapping`
+    - `python/test/gluon/test_core.py::test_tmem_physical_bitcast_mma_lhs`
+    - `2 passed`
+  - attention exact:
+    - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+    - `PASSED`
+  - existing TMEM runtime view matrix:
+    - `python/test/gluon/test_core.py::test_tmem_linear_runtime_views`
+    - `11 passed`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this checkpoint to `origin/codex/tmem`;
+  - refresh the examples/Gluon aggregate and GB200 manifests on top of the
+    checkpoint commit;
+  - then continue the staged broad validation plan before moving to the
+    long-term `ld.red`, `copy`/`warpx2`, MMAv5/`mma_scaled`, and fuzzing
+    phases.
+
+## Prior Topline (2026-04-11 05:12 UTC)
 
 - `HEAD` is `220565b20e5a3cfc71333b32da06a34cb4596f90` on `codex/tmem`, with
   the M64 / split-N producer-contract fix committed and pushed to

@@ -153,6 +153,10 @@ bool isUnsupportedDirectTMemLdStDescriptorView(
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemViewType(Value memDesc, std::string *error = nullptr);
 
+FailureOr<gpu::MemDescType>
+inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,
+                     Type dstElementType, std::string *error = nullptr);
+
 FailureOr<TMemLdStEncodingInfo>
 computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             int maxnreg,

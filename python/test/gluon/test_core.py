@@ -2445,6 +2445,96 @@ def test_tmem_descriptor_chain_matrix(name, layout, M, N, instr_variant, num_war
 
 
 @gluon.jit
+def tmem_physical_bitcast_preserves_subview_kernel(out, layout: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+
+    ones = ttgl.full((M, N), 1.0, dtype=ttgl.float32, layout=reg_layout)
+    tmem.store(ones)
+
+    left_half_as_f16 = tmem.slice(0, N // 2, dim=1).bitcast(ttgl.float16, (M, N))
+    bitcast_layout: ttgl.constexpr = left_half_as_f16.get_reg_layout()
+    zeros = ttgl.full((M, N), 0.0, dtype=ttgl.float16, layout=bitcast_layout)
+    left_half_as_f16.store(zeros)
+
+    loaded = tmem.load(reg_layout)
+    ttgl.store(out + offs, loaded)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_physical_bitcast_preserves_subview_mapping():
+    out = torch.empty((128, 128), dtype=torch.float32, device="cuda")
+    compiled = tmem_physical_bitcast_preserves_subview_kernel[(1, )](
+        out, _make_tmem_linear_layout(128, 128), num_warps=4
+    )
+
+    expected = torch.ones_like(out)
+    expected[:, :64] = 0
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reinterpret" in ttgir
+    assert "tmem_physical_bitcast" in ttgir
+
+    ptx = compiled.asm["ptx"]
+    assert "tcgen05.st.sync.aligned.32x32b.x64.b32" in ptx
+    assert "tcgen05.st.sync.aligned.32x32b.x64.unpack::16b.b32" not in ptx
+
+
+@gluon.jit
+def tmem_physical_bitcast_mma_lhs_kernel(out, layout: ttgl.constexpr, acc_layout: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    K: ttgl.constexpr = 128
+    scratch = allocate_tensor_memory(ttgl.float32, [M, K], layout)
+    p_layout: ttgl.constexpr = TensorMemoryLayout((M, K), col_stride=1)
+    lhs_tmem = scratch.slice(0, K // 2, dim=1).bitcast(ttgl.bfloat16, (M, K), p_layout)
+    lhs_layout: ttgl.constexpr = lhs_tmem.get_reg_layout()
+    lhs = ttgl.full((M, K), 1.0, dtype=ttgl.bfloat16, layout=lhs_layout)
+    lhs_tmem.store(lhs)
+
+    b_reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+    b = ttgl.full((K, N), 1.0, dtype=ttgl.bfloat16, layout=b_reg_layout)
+    b_smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [K, N], ttgl.bfloat16, transposed=True
+    )
+    b_smem = ttgl.allocate_shared_memory(ttgl.bfloat16, [K, N], layout=b_smem_layout)
+    b_smem.store(b)
+
+    acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma(lhs_tmem, b_smem, acc_tmem, use_acc=False)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    ttgl.store(out + offs, acc_tmem.load(out_layout))
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_physical_bitcast_mma_lhs():
+    out = torch.empty((128, 128), dtype=torch.float32, device="cuda")
+    compiled = tmem_physical_bitcast_mma_lhs_kernel[(1, )](
+        out,
+        _make_tmem_linear_layout(128, 128),
+        TensorMemoryLayout((128, 128), col_stride=1),
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out, torch.full_like(out, 128), atol=0, rtol=0)
+    ttgir = compiled.asm["ttgir"]
+    assert "tmem_physical_bitcast" in ttgir
+    assert "ttng.tc_gen5_mma" in ttgir
+
+
+@gluon.jit
 def tmem_legacy_m64_root_subslice_default_load_kernel(inp_ptr, out_ptr):
     layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
     offs_m = ttgl.arange(0, 64, layout=ttgl.SliceLayout(1, layout))[:, None]

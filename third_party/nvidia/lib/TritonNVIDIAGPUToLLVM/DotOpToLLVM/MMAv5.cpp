@@ -16,6 +16,11 @@ namespace ttng = mlir::triton::nvidia_gpu;
 using ::mlir::triton::gpu::NVMMASharedEncodingAttr;
 using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 
+static bool isTMemPhysicalBitcast(Value value) {
+  auto reinterpret = value.getDefiningOp<MemDescReinterpretOp>();
+  return reinterpret && reinterpret->hasAttr("tmem_physical_bitcast");
+}
+
 //===----------------------------------------------------------------------===//
 // DotOpMmaV5TmemLoader
 //===----------------------------------------------------------------------===//
@@ -25,6 +30,56 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Value memDescValue, Value tmemBase, bool useRawWordColumns) {
   auto ll = [&]() {
     std::string layoutError;
+    auto getTypeLayout = [&]() -> std::optional<LinearLayout> {
+      if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
+        if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
+                memTy.getShape(), memTy.getEncoding(), &layoutError)) {
+          // Exact tensor-memory-linear encodings carry the physical TMEM view
+          // contract directly. MMAv5 family planning still determines
+          // legality, but raw row/col address arithmetic must use the analyzed
+          // view itself so tile-permuted and other non-canonical linear
+          // layouts reach the correct physical TMEM coordinates.
+          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+              *maybeAnalysis);
+        }
+      }
+      auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
+      auto shape = memTy.getShape().take_back(rank);
+      auto allocShape = memTy.getAllocShape().take_back(rank);
+      if (shape == allocShape) {
+        if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
+          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+              info->familyLayout);
+        }
+        if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
+          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+              info->familyLayout);
+        }
+        if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
+          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+              info->familyLayout);
+        }
+      }
+      if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
+              memTy.getShape(), memTy.getEncoding(), &layoutError)) {
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            *maybeAnalysis);
+      }
+      if (auto maybeCanonical =
+              ttng::getCanonicalTMemLinearEncoding(memTy, &layoutError)) {
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            maybeCanonical->getLinearLayout());
+      }
+      return std::nullopt;
+    };
+    if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
+      // The lowered TMEM base already includes the source slice/subview
+      // offset. For typed MMAv5 addressing, use the result descriptor layout:
+      // the exact physical bitcast query may be non-surjective for packed
+      // sub-32-bit columns because two logical values share one TMEM word.
+      if (auto maybeLayout = getTypeLayout())
+        return *maybeLayout;
+    }
     if (memDescValue) {
       if (auto maybeQuery = ttng::inferStandaloneTMemLdStQueryLayout(
               memDescValue, /*preserveNonCanonicalView=*/true, &layoutError);
@@ -33,45 +88,8 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
             maybeQuery->layout);
       }
     }
-    if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
-      if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
-              memTy.getShape(), memTy.getEncoding(), &layoutError)) {
-        // Exact tensor-memory-linear encodings carry the physical TMEM view
-        // contract directly. MMAv5 family planning still determines legality,
-        // but raw row/col address arithmetic must use the analyzed view
-        // itself so tile-permuted and other non-canonical linear layouts
-        // reach the correct physical TMEM coordinates.
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            *maybeAnalysis);
-      }
-    }
-    auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
-    auto shape = memTy.getShape().take_back(rank);
-    auto allocShape = memTy.getAllocShape().take_back(rank);
-    if (shape == allocShape) {
-      if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->familyLayout);
-      }
-      if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->familyLayout);
-      }
-      if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->familyLayout);
-      }
-    }
-    if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
-            memTy.getShape(), memTy.getEncoding(), &layoutError)) {
-      return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-          *maybeAnalysis);
-    }
-    if (auto maybeCanonical =
-            ttng::getCanonicalTMemLinearEncoding(memTy, &layoutError)) {
-      return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-          maybeCanonical->getLinearLayout());
-    }
+    if (auto maybeLayout = getTypeLayout())
+      return *maybeLayout;
     return toLinearLayout(memTy);
   }();
   (void)memDescValue;
@@ -106,11 +124,13 @@ getSortedTMemTileOrder(Value memDescValue, MemDescType memTy, int varyingDim,
   for (int rep = 0; rep < numRep; ++rep) {
     SmallVector<int32_t> logicalOffsets(memTy.getRank(), 0);
     logicalOffsets[memTy.getRank() - 2 + varyingDim] = rep * tileSize;
-    offsets.emplace_back(memDescValue
-                             ? ttng::getTMemViewOffsetForLowering(memDescValue,
-                                                                  logicalOffsets)
-                             : ttng::getTMemViewOffset(memTy, logicalOffsets),
-                         rep);
+    // Keep tile ordering in the same typed coordinate frame as
+    // DotOpMmaV5TmemLoader::build for physical bitcasts.
+    uint32_t offset =
+        memDescValue && !isTMemPhysicalBitcast(memDescValue)
+            ? ttng::getTMemViewOffsetForLowering(memDescValue, logicalOffsets)
+            : ttng::getTMemViewOffset(memTy, logicalOffsets);
+    offsets.emplace_back(offset, rep);
   }
   llvm::sort(offsets, [](const auto &lhs, const auto &rhs) {
     return lhs.first < rhs.first;

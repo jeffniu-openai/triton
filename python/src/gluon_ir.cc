@@ -992,6 +992,47 @@ void init_gluon_ir(py::module &&m) {
                  });
              return op.getResult();
            })
+      .def("create_tmem_memdesc_bitcast",
+           [](GluonOpBuilder &self, Value src, Type dstElementType,
+              std::vector<int64_t> &dstShape) -> Value {
+             std::string error;
+             auto maybeResultTy = ttng::inferTMemBitcastType(
+                 src, dstShape, dstElementType, &error);
+             if (failed(maybeResultTy)) {
+               if (error.empty())
+                 error = "failed to infer tensor memory bitcast result type";
+               throw py::value_error(error.c_str());
+             }
+             auto resultTy = *maybeResultTy;
+             auto op = createCheckedOrThrow(
+                 self, "failed to create tensor memory bitcast", [&] {
+                   return ttg::MemDescReinterpretOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src, resultTy);
+                 });
+             op->setAttr("tmem_physical_bitcast",
+                         mlir::UnitAttr::get(self.getBuilder().getContext()));
+             return op.getResult();
+           })
+      .def("create_tmem_memdesc_bitcast_with_layout",
+           [](GluonOpBuilder &self, Type resultType, Value src) -> Value {
+             auto resultTy = cast<ttg::MemDescType>(resultType);
+             std::string error;
+             auto maybeInferredTy = ttng::inferTMemBitcastType(
+                 src, resultTy.getShape(), resultTy.getElementType(), &error);
+             if (failed(maybeInferredTy)) {
+               if (error.empty())
+                 error = "failed to infer tensor memory bitcast result type";
+               throw py::value_error(error.c_str());
+             }
+             auto op = createCheckedOrThrow(
+                 self, "failed to create tensor memory bitcast", [&] {
+                   return ttg::MemDescReinterpretOp::createChecked(
+                       self.getBuilder(), self.getLastLoc(), src, resultTy);
+                 });
+             op->setAttr("tmem_physical_bitcast",
+                         mlir::UnitAttr::get(self.getBuilder().getContext()));
+             return op.getResult();
+           })
       .def("create_set_auto_layout",
            [](GluonOpBuilder &self, Attribute layout, Value value) -> Value {
              return self.create<gluon::SetAutoLayoutOp>(layout, value);

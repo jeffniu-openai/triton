@@ -326,6 +326,28 @@ def tensor_memory_linear_view_load_kernel(layout: ttgl.constexpr, linear_layout:
     view.store(value)
 
 
+@gluon.jit
+def tensor_memory_bitcast_kernel(linear_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.float32, [128, 128], linear_layout)
+    view = mem.slice(0, 64, dim=1)
+    _ = view.bitcast(ttgl.float16, (128, 128))
+
+
+@gluon.jit
+def tensor_memory_bitcast_explicit_layout_kernel(linear_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.float32, [128, 128], linear_layout)
+    view = mem.slice(0, 64, dim=1)
+    layout: ttgl.constexpr = TensorMemoryLayout((128, 128), col_stride=1)
+    _ = view.bitcast(ttgl.float16, (128, 128), layout)
+
+
+@gluon.jit
+def tensor_memory_bitcast_bad_size_kernel(linear_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.float32, [128, 128], linear_layout)
+    view = mem.slice(0, 64, dim=1)
+    _ = view.bitcast(ttgl.float16, (128, 64))
+
+
 def _make_tmem_linear_layout(m, n):
     return TensorMemoryLinearLayout(
         rows=[[1 << i, 0] for i in range(m.bit_length() - 1)],
@@ -486,6 +508,42 @@ def test_tensor_memory_linear_view_load_reports_clean_error(capfd):
     assert "ttng.tmem_load" in msg
     assert "no supported register layout" in msg
     assert "Assertion" not in msg
+
+
+def test_tensor_memory_bitcast_ir():
+    mod = run_parser(
+        tensor_memory_bitcast_kernel,
+        *make_args(_make_tmem_linear_layout_128_identity(), num_warps=2),
+        target=BLACKWELL_TARGET,
+    )
+    ir = anonymize_ir(mod.str_nodebug())
+    assert "ttg.memdesc_subslice" in ir
+    assert "ttg.memdesc_reinterpret" in ir
+    assert "128x128xf16" in ir
+    assert "tensor_memory_linear" in ir
+
+
+def test_tensor_memory_bitcast_explicit_layout_ir():
+    mod = run_parser(
+        tensor_memory_bitcast_explicit_layout_kernel,
+        *make_args(_make_tmem_linear_layout_128_identity(), num_warps=2),
+        target=BLACKWELL_TARGET,
+    )
+    ir = anonymize_ir(mod.str_nodebug())
+    assert "ttg.memdesc_subslice" in ir
+    assert "ttg.memdesc_reinterpret" in ir
+    assert "tmem_physical_bitcast" in ir
+    assert "128x128xf16" in ir
+    assert "tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>" in ir
+
+
+def test_tensor_memory_bitcast_size_mismatch_reports_clean_error():
+    with pytest.raises(CompilationError, match="must preserve the total number of bits"):
+        run_parser(
+            tensor_memory_bitcast_bad_size_kernel,
+            *make_args(_make_tmem_linear_layout_128_identity(), num_warps=2),
+            target=BLACKWELL_TARGET,
+        )
 
 
 @gluon.jit

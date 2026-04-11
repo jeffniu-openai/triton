@@ -1477,6 +1477,7 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
     }
     return coords;
   };
+  bool usesSubElementDst = false;
   auto mapPoint = [&](ArrayRef<int32_t> dstPoint)
       -> FailureOr<SmallVector<int32_t>> {
     auto linearDst = linearizeRowMajorCoordsLocal(layoutDstShape, dstPoint);
@@ -1484,9 +1485,12 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
       return failure();
     int64_t srcBitOffset = *linearDst * static_cast<int64_t>(dstBitwidth);
     if (srcBitOffset % srcBitwidth != 0) {
-      if (error)
-        *error = "unsupported tensor memory memdesc_reinterpret view";
-      return failure();
+      if (dstBitwidth >= srcBitwidth || srcBitwidth % dstBitwidth != 0) {
+        if (error)
+          *error = "unsupported tensor memory memdesc_reinterpret view";
+        return failure();
+      }
+      usesSubElementDst = true;
     }
     int64_t linearSrc = srcBitOffset / srcBitwidth;
     return unravelRowMajorCoordsLocal(layoutSrcShape, linearSrc);
@@ -1564,6 +1568,13 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
     return failure();
   }
   auto dstLayout = computeLeftInverseLayout(*dstInv, error);
+  if (failed(dstLayout)) {
+    if (usesSubElementDst) {
+      if (error)
+        error->clear();
+      dstLayout = dstInv->pseudoinvert();
+    }
+  }
   if (failed(dstLayout)) {
     if (error && error->empty())
       *error = "unsupported tensor memory memdesc_reinterpret view: failed to "
@@ -3875,6 +3886,28 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     if (auto rowPlan = getTMemLdStRowPlan(support.query.layout))
       support.rowPlan = rowPlan;
   };
+  auto isPhysicalBitcast = [](Value value) {
+    auto reinterpret = value.getDefiningOp<gpu::MemDescReinterpretOp>();
+    return reinterpret && reinterpret->hasAttr("tmem_physical_bitcast");
+  };
+  auto getStandalonePhysicalBitcastSupport =
+      [&](Value value) -> std::optional<TMemLdStSupportQueryPlan> {
+    auto query = inferStandaloneTMemLdStQueryLayoutImpl(
+        value, /*preserveNonCanonicalView=*/true, error);
+    if (failed(query))
+      return std::nullopt;
+    auto valueTy = dyn_cast<MemDescType>(value.getType());
+    auto rowPlan =
+        valueTy ? getTMemLdStRowPlanForQueryLayout(value, valueTy, *query)
+                : std::optional<TMemLdStRowPlan>{};
+    if (!rowPlan && valueTy)
+      rowPlan = getTMemLdStRowPlanForQuery(value, valueTy);
+    if (!rowPlan)
+      rowPlan = getBackingTMemLdStRowPlan(value);
+    if (!rowPlan)
+      rowPlan = getTMemLdStRowPlan(query->layout);
+    return TMemLdStSupportQueryPlan{*query, rowPlan};
+  };
   auto sourceHasOpaqueMMAv5AccumulatorPlan = [&](Value src) {
     auto srcTy = dyn_cast_if_present<MemDescType>(src.getType());
     if (!srcTy || srcTy.getRank() != 2 ||
@@ -3947,6 +3980,9 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   };
 
   if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
+    if (isPhysicalBitcast(memDesc))
+      return getStandalonePhysicalBitcastSupport(memDesc);
+
     auto srcTy = dyn_cast<MemDescType>(reinterpret.getSrc().getType());
     if (!srcTy || srcTy.getRank() != 2)
       return std::nullopt;
@@ -4015,6 +4051,8 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>();
   if (!subslice)
     return std::nullopt;
+  if (isPhysicalBitcast(subslice.getSrc()))
+    return getStandalonePhysicalBitcastSupport(memDesc);
   auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
   if (!srcTy || srcTy.getRank() != 2 || subslice.getOffsets().size() != 2 ||
       subslice.getOffsets()[0] != 0 ||
@@ -4173,6 +4211,72 @@ FailureOr<MemDescType> inferStandaloneTMemViewType(Value memDesc,
                                                    std::string *error) {
   return inferStandaloneTMemViewTypeImpl(
       memDesc, /*preserveNonCanonicalView=*/false, error);
+}
+
+FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
+                                            ArrayRef<int64_t> dstShape,
+                                            Type dstElementType,
+                                            std::string *error) {
+  bool debug = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
+  auto srcTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (!srcTy ||
+      srcTy.getMemorySpace() != TensorMemorySpaceAttr::get(memDesc.getContext())) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+  if (!isTensorMemoryEncoding(srcTy.getEncoding())) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+  if (isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
+    if (error)
+      *error = "tensor memory scales descriptors do not support bitcast";
+    return failure();
+  }
+
+  auto srcQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+      memDesc, /*preserveNonCanonicalView=*/true, error);
+  if (failed(srcQuery))
+    return failure();
+  if (debug) {
+    llvm::errs() << "[tmem-bitcast] src type=" << srcTy << "\n"
+                 << "[tmem-bitcast] src query:\n"
+                 << srcQuery->layout.toString() << "\n";
+  }
+  if (error)
+    error->clear();
+
+  int64_t dstBitwidth =
+      getElementTypeOrSelf(dstElementType).getIntOrFloatBitWidth();
+  auto dstQuery = inferTMemReinterpretQueryLayout(
+      srcTy.getShape(), srcTy.getElementTypeBitWidth(), *srcQuery, dstShape,
+      dstBitwidth, memDesc.getContext(), error);
+  if (failed(dstQuery)) {
+    if (debug && error)
+      llvm::errs() << "[tmem-bitcast] reinterpret query failed: " << *error
+                   << "\n";
+    return failure();
+  }
+  if (debug) {
+    llvm::errs() << "[tmem-bitcast] dst query:\n"
+                 << dstQuery->layout.toString() << "\n";
+  }
+  if (error)
+    error->clear();
+
+  auto dstEncoding = tryMakeTMemViewEncoding(
+      memDesc.getContext(), dstQuery->layout, dstQuery->twoCTAs, error);
+  if (!dstEncoding)
+    return failure();
+
+  auto resultTy = tryCreateMemDescType(
+      memDesc.getContext(), dstShape, dstElementType, *dstEncoding,
+      srcTy.getMemorySpace(), srcTy.getMutableMemory(), dstShape, error);
+  if (!resultTy)
+    return failure();
+  return *resultTy;
 }
 
 std::optional<LinearLayout>
@@ -5301,6 +5405,10 @@ computeTMemLdStEncodingInfoImpl(
                                      : physicalRows;
   bool hasZeroRowBasis = hasZeroBasisAlong(memLayout, kRow);
   bool hasZeroColBasis = hasZeroBasisAlong(memLayout, kCol);
+  bool isColScaledPackedBitcast =
+      bitwidth == 16 && !hasZeroRowBasis && !hasZeroColBasis &&
+      memLayout.hasInDim(kCol) && logicalRows == activePhysicalRows &&
+      logicalCols == memLayout.getInDimSize(kCol) * 2;
   bool isWholeRootRowZeroSplitN =
       hasZeroRowBasis && !hasZeroColBasis &&
       memTy.getShape() == memTy.getAllocShape() &&
@@ -5339,7 +5447,8 @@ computeTMemLdStEncodingInfoImpl(
         (!(hasZeroColBasis &&
            (hasWidenedSupportCols || hasPackedHalfRowAndColSupport)) &&
          logicalCols <= physicalCols) ||
-        (!hasZeroColBasis && !isRowZeroLiftedReinterpret)) {
+        (!hasZeroColBasis && !isRowZeroLiftedReinterpret &&
+         !isColScaledPackedBitcast)) {
       if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
         llvm::errs() << "[tmem-ldst] packed16 support precondition fail: bitwidth="
                      << bitwidth << " isScales=" << isScales
@@ -5406,6 +5515,8 @@ computeTMemLdStEncodingInfoImpl(
         return std::nullopt;
       }
       eraseIt = llvm::find_if(colIt->second, isZeroBasis);
+    } else if (isColScaledPackedBitcast) {
+      shiftPackedColDim = true;
     } else {
       eraseIt = llvm::find_if(colIt->second, [&](ArrayRef<int32_t> basis) {
         auto basisOutIdx = getBasisOutIdx(basis);
@@ -5420,7 +5531,8 @@ computeTMemLdStEncodingInfoImpl(
       }
       shiftPackedColDim = true;
     }
-    colIt->second.erase(eraseIt);
+    if (eraseIt != colIt->second.end())
+      colIt->second.erase(eraseIt);
 
     auto outDims = llvm::to_vector(memLayout.getOutDims());
     if (outDims[*colOutIdx].second % 2 != 0)
@@ -5719,10 +5831,17 @@ computeTMemLdStEncodingInfoImpl(
       return std::nullopt;
     }
     if (info->atom == TMemAccessAtom::I32x32b) {
-      // The packed sparse-support quotient is already expressed in dword
-      // TMEM columns. Lower it through the normal 32x32b unpacked f16 path
-      // rather than pretending the original f16 values were contiguous.
-      info->unpacked = true;
+      // Most sparse f16 support views need the native 32x32b unpack path: each
+      // logical 16-bit element occupies a distinct selected TMEM dword column.
+      //
+      // A descriptor bitcast from a 32-bit TMEM region to a 16-bit logical
+      // view is different. Its support image is already the exact selected
+      // dword columns, and the logical f16 values must be packed into those
+      // dwords rather than expanded across twice as many physical columns.
+      bool packF16PairsIntoSelectedDwords = isColScaledPackedBitcast;
+      info->unpacked = !packF16PairsIntoSelectedDwords;
+      if (packF16PairsIntoSelectedDwords)
+        info->vec = 2;
       info->packetOffsets.clear();
       info->packetOffsets.reserve(
           packedCvt.hasInDim(kReg)
@@ -5738,7 +5857,9 @@ computeTMemLdStEncodingInfoImpl(
       for (int32_t messageIdx = 0; messageIdx < numMessages; ++messageIdx) {
         int32_t staticOffset =
             getPackedStaticOffset(messageIdx * info->numRegsPerMessage,
-                                  /*colScale=*/2);
+                                  packF16PairsIntoSelectedDwords
+                                      ? /*colScale=*/1
+                                      : /*colScale=*/2);
         if (isRowZeroLiftedPackedSupport)
           staticOffset +=
               (messageIdx / packedBandMessages) * packedBandMessages * 2;

@@ -30,6 +30,21 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Attention Exact Refresh (2026-04-11 06:02 UTC)
+
+- `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+  - current dirty-worktree status:
+    - `PASSED`
+  - current interpretation:
+    - fixed by migrating the unsupported `_reinterpret`-based f32 scratch ->
+      bf16 P alias to the supported `slice/subview -> bitcast` TMEM descriptor
+      API
+    - do not use any older examples aggregate count that includes this exact
+      as the live red list after the checkpoint commit
+  - remaining manifest work:
+    - rerun the broader examples/Gluon aggregate and regenerate/update the
+      examples manifests on top of the checkpoint commit
+
 ### Latest MMAv5 Function Refresh (2026-04-10 19:30 UTC)
 
 - [gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_gluon_mma_shared_inputs_failures.txt)

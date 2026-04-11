@@ -686,6 +686,31 @@ class tensor_memory_descriptor(base_value):
         layout = _unwrap_if_constexpr(layout)
         return _semantic.memdesc_reinterpret(self, dtype, shape, layout)
 
+    @builtin
+    def bitcast(self, dtype, shape, layout=None, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
+        """
+        Bitcast a tensor memory descriptor without changing its physical TMEM
+        mapping.
+
+        The source descriptor should already identify the physical TMEM region
+        to view. The bitcast preserves the total number of bits and derives the
+        result layout from the source descriptor's physical mapping unless an
+        explicit equivalent tensor memory layout is provided.
+
+        Args:
+            dtype (dtype): The new data type.
+            shape (Sequence[int]): The new shape.
+            layout (Optional[TensorMemoryLayout]): Explicit result layout.
+
+        Returns:
+            tensor_memory_descriptor: Descriptor with updated type, shape, and
+            tensor-memory layout.
+        """
+        dtype = _unwrap_if_constexpr(dtype)
+        shape = [_unwrap_if_constexpr(s) for s in shape]
+        layout = _unwrap_if_constexpr(layout)
+        return _semantic.tmem_memdesc_bitcast(self, dtype, shape, layout)
+
 
 @builtin
 def allocate_tensor_memory(element_ty, shape, layout, value=None, _semantic=None):

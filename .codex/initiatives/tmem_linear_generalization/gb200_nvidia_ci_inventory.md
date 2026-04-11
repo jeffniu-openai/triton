@@ -18,6 +18,22 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Attention Bitcast Migration Checkpoint (2026-04-11 06:02 UTC)
+
+- A later examples/Gluon refresh found one current-branch attention exact red:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+- Current dirty-worktree status:
+  - this exact is locally green after the supported TMEM descriptor bitcast API
+    and attention migration.
+- Validation:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
+    - `PASSED`
+- Inventory consequence:
+  - the exact should drop out of the live examples red list after the checkpoint
+    commit;
+  - the broader examples/Gluon aggregate and generated manifests still need a
+    fresh rerun before the full examples lane can be marked green.
+
 ## Latest MMAv5 Direct-Load Family Fix Refresh (2026-04-10 19:30 UTC)
 
 - The previous full-lane GB200 census remains the last whole-suite Gluon
