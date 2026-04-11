@@ -309,7 +309,30 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:30 UTC)
+## Current Topline (2026-04-11 16:33 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `24bec4ecf` on `origin/codex/tmem`
+- Clean Gluon examples subset validation is green:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - `python/examples/gluon/02-convolution.py`:
+    - `48 passed in 8.99s`
+  - `python/examples/gluon/03-matmul-multicta.py`:
+    - `82 passed, 14 skipped in 75.53s (0:01:15)`
+  - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
+    - `690 passed, 60 skipped in 52.87s`
+- Full `python/examples/gluon` remains intentionally not the aggregate target
+  while `01-attention-forward.py` is back to `_reinterpret` and red pending the
+  synchronization-aware supported view/bitcast migration.
+- Next:
+  - start operational fuzzing from `fuzz_plan.md` or continue wider pytest/lit
+    validation;
+  - keep the attention exact separate from supported physical-bitcast API
+    validation.
+
+## Prior Topline (2026-04-11 16:30 UTC)
 
 - Latest pushed source/test checkpoint:
   - `2ad0ccf5e` on `origin/codex/tmem`

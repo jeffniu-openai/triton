@@ -8815,3 +8815,41 @@ Open after this slice:
     `fuzz_plan.md`;
   - keep attention deferred until the supported synchronization-aware
     `offset/slice/subview -> bitcast` migration is ready.
+
+## 2026-04-11 16:33 UTC
+
+- Ran the clean Gluon examples subset at current head.
+- Branch / checkpoints:
+  - branch:
+    - `codex/tmem`
+  - remote:
+    - `origin/codex/tmem`
+  - source/test checkpoint:
+    - `24bec4ecf`
+- Validation setup:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - separate GPU/cache commands:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-example-convolution-current PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/02-convolution.py`
+    - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-example-matmul-multicta-current PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/03-matmul-multicta.py`
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-example-2cta-block-scale-current PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/04-2cta-block-scale-matmul.py`
+- Results:
+  - `02-convolution.py`:
+    - `48 passed in 8.99s`
+  - `03-matmul-multicta.py`:
+    - `82 passed, 14 skipped in 75.53s (0:01:15)`
+  - `04-2cta-block-scale-matmul.py`:
+    - `690 passed, 60 skipped in 52.87s`
+- Interpretation:
+  - current head remains green on the clean examples subset;
+  - full `python/examples/gluon` remains intentionally split because
+    `01-attention-forward.py` is back to `_reinterpret` and red until the
+    supported synchronization-aware offset/slice/subview-to-bitcast migration
+    is done.
+- Next:
+  - commit and push this validation checkpoint;
+  - start operational fuzzing from `fuzz_plan.md` or continue wider pytest/lit
+    validation;
+  - keep the attention exact separate from supported physical-bitcast API
+    validation.

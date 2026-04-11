@@ -78,6 +78,16 @@ When resuming the initiative:
     `776 passed, 677 skipped, 4368 deselected`
   - aggregate:
     `2377 passed, 3444 skipped, 17463 deselected`
+- The clean Gluon examples subset is green at `24bec4ecf`; full
+  `python/examples/gluon` is intentionally not the current aggregate because
+  `01-attention-forward.py` is a known deferred `_reinterpret` migration
+  target:
+  - `python/examples/gluon/02-convolution.py`:
+    `48 passed`
+  - `python/examples/gluon/03-matmul-multicta.py`:
+    `82 passed, 14 skipped`
+  - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
+    `690 passed, 60 skipped`
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1082 passed, 437 skipped, 680 deselected`
