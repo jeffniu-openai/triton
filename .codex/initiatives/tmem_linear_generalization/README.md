@@ -127,7 +127,7 @@ When resuming the initiative:
   - broad `tcgen05.ld.red`:
     `487 passed, 2183 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
-    `222 passed, 50 skipped, 2407 deselected`
+    `226 passed, 50 skipped, 2407 deselected`
   - scaled-MMA copy-helper matrix:
     `52 passed, 2147 deselected` with exact copy, MMA, and commit opcode checks
 - Allocator/lifetime coverage now has explicit runtime anchors:
@@ -298,6 +298,16 @@ When resuming the initiative:
 - That direct scaled-MMAv5 accumulator-subview format matrix now covers both
   `slice_start=0` and `slice_start=64`, so the same format/opcode assertions
   exercise root-aligned and offset accumulator subviews.
+- Direct scaled-MMAv5 TMEM-LHS subview format coverage now includes the
+  fp8-A reachable subset:
+  - `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_fp8a_format_matrix`
+    covers `mxfp8/mxfp8` and `mxfp8/mxfp4` for both legacy and canonical
+    TMEM-linear accumulator layouts;
+  - the test slices a packed-storage TMEM-linear operand-A parent, feeds that
+    subview directly to `tcgen05_mma_scaled`, and pins exact PTX/LLIR scaled
+    MMA and commit opcodes;
+  - A-side fp4 scaled TMEM-LHS subviews remain a known wrong-code frontier from
+    the 2026-04-11 probe and are not promoted to positive coverage.
 - Two-CTA direct scaled-MMAv5 accumulator-subview coverage is now present:
   - `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`
     reuses the cga-aware TMA/scales-copy topology, allocates a larger
@@ -494,20 +504,20 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-lhs-subslice-plain-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-lhs-scaled-fp8a-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `222 passed, 50 skipped, 2407 deselected in 123.81s (0:02:03)`;
+    `226 passed, 50 skipped, 2407 deselected in 131.68s (0:02:11)`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
     and offset one-CTA accumulator subview format-matrix cases, the two-CTA
     cga-aware accumulator-subview matrix, tile-permuted plain-kind accumulators
     at `128x128/tile_n=32` and `128x256/tile_n=64`, the all-plain-kind
-    TMEM-LHS subview matrix for both legacy/canonical accumulator layouts, and
-    two-CTA plain-kind accumulators at `256x128` and `256x256`; it also covers
-    both 1-CTA and 2-CTA `use_acc=True` plain-kind accumulator addition for all
-    supported plain kinds and both legacy/canonical accumulator layouts, plus
-    TMA-fed two-CTA TF32 when matrix B is loaded through a non-transposed
-    `[N, K]` TMA
+    TMEM-LHS subview matrix for both legacy/canonical accumulator layouts, the
+    fp8-A scaled TMEM-LHS subview matrix, and two-CTA plain-kind accumulators at
+    `256x128` and `256x256`; it also covers both 1-CTA and 2-CTA `use_acc=True`
+    plain-kind accumulator addition for all supported plain kinds and both
+    legacy/canonical accumulator layouts, plus TMA-fed two-CTA TF32 when matrix
+    B is loaded through a non-transposed `[N, K]` TMA
     descriptor and passed to MMAv5 as a shared-memory `permute((1, 0))` view.
     Scaled-MMA copy-helper coverage remains tracked separately.
 - Tile-permuted scaled-MMAv5 accumulator-subview clean-negative coverage now

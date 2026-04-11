@@ -10645,3 +10645,63 @@ Open after this slice:
 1. Continue the next bounded frontier: copy `warpx2` descriptor/direct-PTX
    work, true scales `warpx2`, staged `ld/st` fuzzing, or broader
    MMAv5/scaled-MMAv5 reachable-family coverage.
+
+## 2026-04-11 scaled MMAv5 TMEM-LHS fp8-A subview matrix
+
+### Branch / HEAD / Worktree
+- branch: `codex/tmem`
+- latest pushed checkpoint before this source/test update: `d91d07cdc`
+- source/test edits:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`
+- docs/status edits:
+  - `README.md`
+  - `memory.md`
+  - `log.md`
+  - `handoff_2026-04-09.md`
+  - `fuzz_plan.md`
+
+### Current Status
+- The existing scaled-MMAv5 TMEM-LHS subview anchor covered only the older
+  fixed e5m2/e5m2 path.
+- A storage-aware probe over the scaled format pairs found a clear reachable
+  subset:
+  - `mxfp8/mxfp8` and `mxfp8/mxfp4` are runtime-correct when operand A is the
+    TMEM subview, for both legacy and canonical TMEM-linear accumulator layouts;
+  - A-side fp4 cases (`mxfp4/mxfp4`, `mxfp4/mxfp8`, `nvfp4/nvfp4`) compile but
+    produce wrong numerical results, so they remain a wrong-code frontier and
+    are not promoted to positive coverage.
+- Added `tmem_mma_scaled_lhs_subslice_format_kernel`, which stores packed
+  operand-A data through a TMEM-linear parent sliced in storage-coordinate K,
+  passes the sliced A view directly to `tcgen05_mma_scaled`, and uses a
+  shared-memory B descriptor with the same padded-layout rules as the existing
+  accumulator-subview format matrix.
+- Added `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_fp8a_format_matrix`
+  over `mxfp8/mxfp8` and `mxfp8/mxfp4` for both legacy and canonical
+  accumulator layouts. The test checks numeric output, exact PTX/LLIR scaled
+  MMA opcodes and counts, the single-CTA commit opcode, and
+  `ttg.memdesc_subslice` + `tensor_memory_linear` TTGIR.
+
+### Validation
+- Build:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `PASSED`, ninja reported no work to do
+- Syntax:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+  - `PASSED`
+- Hygiene before docs:
+  - `git diff --check`
+  - `PASSED`
+- Focused scaled TMEM-LHS fp8-A format matrix:
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-lhs-subview-fp8a-focused PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_fp8a_format_matrix`
+  - `4 passed in 6.02s`
+- Nearby direct scaled-MMAv5 view selector:
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-lhs-subview-fp8a-nearby PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_minimal or mma_scaled_acc_blockn64_direct_layout or mma_scaled_acc_blockn32_direct_layout or mma_scaled_acc_subslice_view or mma_scaled_lhs_subslice_view or mma_scaled_acc_tile_permuted_64_direct_layout'`
+  - `21 passed, 2662 deselected in 13.47s`
+- Broad current-head MMA selector:
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-lhs-scaled-fp8a-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+  - `226 passed, 50 skipped, 2407 deselected in 131.68s (0:02:11)`
+
+### Next Concrete Steps
+1. Continue the next bounded frontier: copy `warpx2` descriptor/direct-PTX
+   work, true scales `warpx2`, staged `ld/st` fuzzing, or the A-side fp4
+   scaled TMEM-LHS wrong-code frontier when ready to debug lowering.
