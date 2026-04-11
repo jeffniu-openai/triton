@@ -220,6 +220,15 @@ When resuming the initiative:
     output, so the current clean unsupported boundary is protecting a real
     wrong-code path and should not be removed without a better descriptor/address
     model.
+  - a follow-up direct-PTX patch sweep is recorded in
+    `experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` with results in
+    `experiments/results/probe_cp_warpx2_02_13_twocta_direct_ptx_current.log`:
+    opcode-only, source-row-plus-16, single-CTA seed, destination `+4`, and two
+    message variants all assemble and launch through the cluster-aware Triton
+    launcher, but none match the extended single-CTA `02_13` oracle; the
+    descriptor/address mutations either duplicate source-column pairs or copy
+    the wrong row/column mix, so they still do not recover the missing 4-byte
+    source-column bit.
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales

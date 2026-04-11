@@ -351,7 +351,12 @@ Every fuzz case records:
   synthesis can prove correct runtime semantics. For two-CTA `02_13`, do not
   promote a direct-seed path unless it preserves both the row mapping and the
   4-byte source-column bit; the current direct-seed variants either duplicate
-  columns, return zeros, or fault.
+  columns, return zeros, or fault. The durable patched-PTX sweep in
+  `experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` / results file
+  `experiments/results/probe_cp_warpx2_02_13_twocta_direct_ptx_current.log`
+  extends this to opcode-only, source-row-plus-16, single-CTA seed,
+  destination-`+4`, and two-message variants; none match the extended
+  single-CTA `02_13` oracle.
 
 #### Checks
 - Output matches input for no-scales copies.

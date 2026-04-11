@@ -291,6 +291,16 @@
     `[64, 192, 65, 193]`), `tmemDwordDelta=4` remains all-zero, unaligned
     deltas trap with misaligned-address errors, and sweeping the known seed
     fields did not restore the missing 4-byte source-column bit;
+  - a durable patched-PTX sweep now reproduces that conclusion without source
+    edits: `experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` starts from
+    the executable two-CTA `01_23` public kernel, patches the opcode to
+    `warpx2::02_13`, assembles with Blackwell `ptxas`, and launches through
+    Triton's normal cluster-aware CUDA launcher. The result artifact
+    `experiments/results/probe_cp_warpx2_02_13_twocta_direct_ptx_current.log`
+    shows all eight variants returned successfully with no sentinel or NaN
+    output, but none matched the extended single-CTA `02_13` oracle; opcode-only,
+    source-row-plus-16, single-seed, destination-`+4`, and two-message variants
+    still either duplicate source-column pairs or copy the wrong row/column mix;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail because no compatible scales descriptor plan can be synthesized;
