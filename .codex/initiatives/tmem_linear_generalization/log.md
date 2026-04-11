@@ -7975,3 +7975,53 @@ Open after this slice:
   - continue direct scaled-MMAv5 TMEM-view format broadening where cleanly
     expressible;
   - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 14:50 UTC
+
+- Committed and pushed direct scaled-MMAv5 accumulator-subview format coverage:
+  - `602fd9b44`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - close a meaningful part of the high-value "direct scaled-MMAv5 through
+    TMEM views" item by adding format-pair coverage to a direct accumulator
+    subview path.
+- Implementation:
+  - added `tmem_mma_scaled_acc_subslice_format_kernel`;
+  - the kernel accepts packed FP4 and unpacked FP8 operands, derives NVMMA
+    shared layouts from storage shape/type, writes the accumulator through a
+    TMEM-linear subview, and calls `tcgen05_mma_scaled` directly;
+  - added `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix`
+    over:
+    - `mxfp8/mxfp8`;
+    - `mxfp4/mxfp4`;
+    - `mxfp8/mxfp4`;
+    - `mxfp4/mxfp8`;
+    - `nvfp4/nvfp4`.
+- Coverage:
+  - numeric output is checked against the dequantized reference;
+  - PTX and LLIR MMA opcode streams must match;
+  - exact opcode selection is checked for:
+    - `mxf8f6f4.block_scale.scale_vec::1X`;
+    - `mxf4.block_scale.scale_vec::2X`;
+    - `mxf4nvf4.block_scale.scale_vec::4X`;
+  - the TTGIR must include `ttg.memdesc_subslice` and
+    `tensor_memory_linear`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - exact new format matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-direct-view-format-matrix-r2 PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix'`
+    - `5 passed in 5.53s`
+  - broadened direct scaled-MMA view slice:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-direct-view-broadened PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_minimal or mma_scaled_acc_blockn64_direct_layout or mma_scaled_acc_blockn32_direct_layout or mma_scaled_acc_subslice_view or mma_scaled_lhs_subslice_view or mma_scaled_acc_tile_permuted_64_direct_layout'`
+    - `12 passed, 1896 deselected in 9.61s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue MMAv5 / `mma_scaled` saturation for remaining CTA/layout/stale
+    negative surfaces;
+  - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.

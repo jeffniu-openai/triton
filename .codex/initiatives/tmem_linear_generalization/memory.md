@@ -274,7 +274,47 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 14:40 UTC)
+## Current Topline (2026-04-11 14:50 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `602fd9b44` on `origin/codex/tmem`
+- This checkpoint broadens direct scaled-MMAv5 accumulator-subview format
+  coverage:
+  - added a focused direct scaled-MMA subview kernel that accepts packed FP4
+    and unpacked FP8 operands from `random_quantized_tensor`;
+  - the kernel stores into a sliced TMEM accumulator view and calls
+    `tcgen05_mma_scaled` directly, so this is direct TMEM-view coverage rather
+    than another copy-backed scale path;
+  - covered format pairs:
+    - `mxfp8/mxfp8`;
+    - `mxfp4/mxfp4`;
+    - `mxfp8/mxfp4`;
+    - `mxfp4/mxfp8`;
+    - `nvfp4/nvfp4`;
+  - assertions validate numeric output, PTX/LLIR MMA opcode agreement, exact
+    expected `mxf8f6f4` / `mxf4` / `mxf4nvf4` `scale_vec` suffixes, and the
+    `ttg.memdesc_subslice` + `tensor_memory_linear` accumulator path.
+- Validation for `602fd9b44`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - exact new format matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-direct-view-format-matrix-r2 PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix'`
+    - `5 passed in 5.53s`
+  - broadened direct scaled-MMA view slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-direct-view-broadened PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled_minimal or mma_scaled_acc_blockn64_direct_layout or mma_scaled_acc_blockn32_direct_layout or mma_scaled_acc_subslice_view or mma_scaled_lhs_subslice_view or mma_scaled_acc_tile_permuted_64_direct_layout'`
+    - `12 passed, 1896 deselected in 9.61s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue the MMAv5 / `mma_scaled` saturation queue for remaining CTA,
+    layout, and stale-negative coverage;
+  - then continue staged `ld/st` fuzzing, stale-negative cleanup, and
+    heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 14:40 UTC)
 
 - Latest pushed source/test checkpoint:
   - `5e3b2ae87` on `origin/codex/tmem`

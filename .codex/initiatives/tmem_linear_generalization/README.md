@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 14:40 UTC, the latest pushed source/test checkpoint is
-  `5e3b2ae87` on `origin/codex/tmem`.
+- As of 2026-04-11 14:50 UTC, the latest pushed source/test checkpoint is
+  `602fd9b44` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -114,8 +114,14 @@ When resuming the initiative:
   opcodes after `5e3b2ae87`:
   - this covers the existing minimal, block-N direct-layout, accumulator
     subview, LHS subview, and tile-permuted accumulator runtime tests;
-  - these direct-view kernels still hardcode e5m2/e5m2, so direct-view format
-    broadening for `mxf4` / `mxf4nvf4` remains open.
+  - the original e5m2/e5m2 direct-view kernels remain in place.
+- Direct scaled-MMAv5 accumulator-subview format coverage is broadened by
+  `602fd9b44`:
+  - the new direct subview matrix covers `mxfp8/mxfp8`, `mxfp4/mxfp4`,
+    `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - it validates numeric output, exact PTX/LLIR
+    `mxf8f6f4` / `mxf4` / `mxf4nvf4` scaled-MMA opcodes, and the
+    `ttg.memdesc_subslice` + `tensor_memory_linear` accumulator path.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
