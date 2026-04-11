@@ -779,6 +779,25 @@ lowerTMemLdStFromTypes(
       return;
     os << msg << "\n";
   };
+  auto isPureTMem2DColumnSubview =
+      [&](Value value) -> std::optional<triton::gpu::MemDescSubsliceOp> {
+    auto subslice = dyn_cast_if_present<triton::gpu::MemDescSubsliceOp>(
+        value.getDefiningOp());
+    if (!subslice)
+      return std::nullopt;
+    auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+    auto dstTy = dyn_cast<MemDescType>(subslice.getType());
+    auto tmemSpace = TensorMemorySpaceAttr::get(rewriter.getContext());
+    if (!srcTy || !dstTy || srcTy.getMemorySpace() != tmemSpace ||
+        dstTy.getMemorySpace() != tmemSpace || srcTy.getRank() != 2 ||
+        dstTy.getRank() != 2 || subslice.getOffsets().size() != 2 ||
+        subslice.getOffsets()[0] != 0 ||
+        srcTy.getShape()[0] != dstTy.getShape()[0] ||
+        srcTy.getShape()[1] <= dstTy.getShape()[1]) {
+      return std::nullopt;
+    }
+    return subslice;
+  };
   if (memDescValue) {
     std::string unsupportedDescriptorViewError;
     if (isUnsupportedDirectTMemLdStDescriptorView(
@@ -888,9 +907,10 @@ lowerTMemLdStFromTypes(
           rawMemTy = *maybeStandaloneTy;
         }
       }
-      rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
+      rawRowPlan = getTMemLdStRowPlanForQueryLayout(memDescValue, memTy,
+                                                    *rawQueryLayout);
       if (!rawRowPlan)
-        rawRowPlan = getTMemLdStRowPlanForQuery(memDescValue, rawMemTy);
+        rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan);
       if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
               memDescValue.getDefiningOp()) &&
@@ -900,7 +920,8 @@ lowerTMemLdStFromTypes(
                                      /*rowSpan=*/64};
       }
       if (debugQuerySelection) {
-        llvm::errs() << "[tmem-ldst] raw memTy=" << memTy << " rawRowPlan="
+        llvm::errs() << "[tmem-ldst] raw memTy=" << memTy
+                     << " rawQueryTy=" << rawMemTy << " rawRowPlan="
                      << (rawRowPlan ? llvm::Twine(rawRowPlan->rowSpan).str()
                                     : std::string("none"))
                      << "\n";
@@ -922,10 +943,16 @@ lowerTMemLdStFromTypes(
                           " regsPerMsg=" +
                           Twine(rawEncodingInfoOr->numRegsPerMessage) +
                           " baseOffset=" + Twine(rawEncodingInfoOr->baseOffset) +
+                          " secondHalf=" +
+                          (rawEncodingInfoOr->secondHalfOffset
+                               ? Twine(*rawEncodingInfoOr->secondHalfOffset)
+                               : Twine("none")) +
                           " warpBase0=" +
                           Twine(rawEncodingInfoOr->warpBaseOffset0) +
                           " warpBase1=" +
                           Twine(rawEncodingInfoOr->warpBaseOffset1) +
+                          " packetOffsets=" +
+                          Twine(rawEncodingInfoOr->packetOffsets.size()) +
                           " reps=" + rawEncodingInfoOr->reps.toString())
                        : (Twine("fail details=") + rawDetails)));
       if (debugQuerySelection) {
@@ -968,11 +995,10 @@ lowerTMemLdStFromTypes(
                                std::optional<TMemLdStRowPlan> supportRowPlan)
         -> FailureOr<std::pair<SmallVector<Value>, SmallVector<Value>>> {
       if (!supportRowPlan)
-        supportRowPlan = getTMemLdStRowPlanForQuery(memDescValue, memTy);
+        supportRowPlan =
+            getTMemLdStRowPlanForQueryLayout(memDescValue, memTy, supportQuery);
       if (!supportRowPlan)
         supportRowPlan = getBackingTMemLdStRowPlan(memDescValue);
-      if (!supportRowPlan)
-        supportRowPlan = getTMemLdStRowPlan(supportQuery.layout);
       supportRowPlan = preferBackingRowPlanForDirectRootLoad(memTy, supportRowPlan);
       std::string supportDetails;
       auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
@@ -1025,6 +1051,102 @@ lowerTMemLdStFromTypes(
     };
     std::string supportError;
     if (!disableSupportQuery) {
+      if (auto subslice = isPureTMem2DColumnSubview(memDescValue)) {
+        if (auto srcSupportPlan =
+                getTMemLdStSupportQueryPlan(subslice->getSrc(), &supportError)) {
+          if (traceQuerySelection)
+            appendTrace("supportQuery source-column-subview plan");
+          auto lowered = trySupportQuery(srcSupportPlan->query, std::nullopt);
+          if (traceQuerySelection) {
+            appendTrace(Twine("supportQuery source-column-subview ") +
+                        (succeeded(lowered) ? Twine("ok") : Twine("fail")));
+          }
+          if (succeeded(lowered)) {
+            return *lowered;
+          }
+        } else if (traceQuerySelection) {
+          appendTrace(Twine("supportQuery source-column-subview no-plan details=") +
+                      supportError);
+        }
+        std::string sourceRawError;
+        if (auto sourceRawQuery = inferStandaloneTMemLdStQueryLayout(
+                subslice->getSrc(), /*preserveNonCanonicalView=*/true,
+                &sourceRawError);
+            succeeded(sourceRawQuery)) {
+          auto sourceTy = cast<MemDescType>(subslice->getSrc().getType());
+          auto sourceRowPlan = getTMemLdStRowPlanForQueryLayout(
+              memDescValue, memTy, *sourceRawQuery);
+          if (!sourceRowPlan)
+            sourceRowPlan = getTMemLdStRowPlanForQuery(subslice->getSrc(),
+                                                       sourceTy);
+          if (!sourceRowPlan)
+            sourceRowPlan = getBackingTMemLdStRowPlan(memDescValue);
+          if (!sourceRowPlan)
+            sourceRowPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
+          sourceRowPlan =
+              preferBackingRowPlanForDirectRootLoad(sourceTy, sourceRowPlan);
+          std::string sourceRawDetails;
+          auto sourceRawEncodingInfo = [&]() -> FailureOr<TMemLdStEncodingInfo> {
+            llvm::raw_string_ostream os(sourceRawDetails);
+            ScopedDiagnosticHandler handler(
+                rewriter.getContext(), [&](Diagnostic &diag) { diag.print(os); });
+            return computeTMemLdStEncodingInfo(
+                regTy, memTy, *sourceRawQuery, maxnreg,
+                debugQuerySelection ? diag
+                                    : std::function<InFlightDiagnostic()>{},
+                sourceRowPlan);
+          }();
+          if (traceQuerySelection) {
+            appendTrace(Twine("rawQuery source-column-subview ") +
+                        (succeeded(sourceRawEncodingInfo)
+                             ? (Twine("ok atom=") +
+                                Twine(static_cast<int>(
+                                    sourceRawEncodingInfo->atom)) +
+                                " rowSpan=" +
+                                (sourceRowPlan
+                                     ? Twine(sourceRowPlan->rowSpan)
+                                     : Twine("none")) +
+                                " rowBase=" +
+                                (sourceRowPlan
+                                     ? Twine(sourceRowPlan->baseOffset)
+                                     : Twine("none")) +
+                                " regsPerMsg=" +
+                                Twine(sourceRawEncodingInfo->numRegsPerMessage) +
+                                " baseOffset=" +
+                                Twine(sourceRawEncodingInfo->baseOffset) +
+                                " secondHalf=" +
+                                (sourceRawEncodingInfo->secondHalfOffset
+                                     ? Twine(
+                                           *sourceRawEncodingInfo->secondHalfOffset)
+                                     : Twine("none")) +
+                                " warpBase0=" +
+                                Twine(sourceRawEncodingInfo->warpBaseOffset0) +
+                                " warpBase1=" +
+                                Twine(sourceRawEncodingInfo->warpBaseOffset1) +
+                                " packetOffsets=" +
+                                Twine(sourceRawEncodingInfo->packetOffsets.size()))
+                             : (Twine("fail details=") + sourceRawDetails)));
+          }
+          if (succeeded(sourceRawEncodingInfo)) {
+            uint32_t alreadyAdjustedBase =
+                getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
+            if (alreadyAdjustedBase != 0)
+              sourceRawEncodingInfo->baseOffset =
+                  sourceRawEncodingInfo->baseOffset > alreadyAdjustedBase
+                      ? sourceRawEncodingInfo->baseOffset - alreadyAdjustedBase
+                      : 0;
+            if (auto lowered = lowerTMemLdStFromInfo(
+                    loc, rewriter, *sourceRawEncodingInfo, pred, llvmElemTy,
+                    vals, tmemBase, redOp, useAbs, useNaN);
+                succeeded(lowered)) {
+              return *lowered;
+            }
+          }
+        } else if (traceQuerySelection) {
+          appendTrace(Twine("rawQuery source-column-subview no-query details=") +
+                      sourceRawError);
+        }
+      }
       if (auto supportPlan =
               getTMemLdStSupportQueryPlan(memDescValue, &supportError)) {
         if (auto lowered =

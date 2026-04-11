@@ -232,17 +232,17 @@ PY
       - `48 passed in 7.30s`
     - the older `48` nodeids are now historical only
 - [gb200_current_branch_examples_multicta_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_examples_multicta_failures.txt)
-  - `14` nodeids
+  - `0` nodeids
   - source:
-    - isolated current-head `python/examples/gluon/03-matmul-multicta.py`
+    - refreshed isolated current-head
+      `python/examples/gluon/03-matmul-multicta.py`
   - current interpretation:
-    - preferred exact manifest for the multicta matmul half of the examples
-      lane
-    - fresh current-head rerun at `c6990c1e9`:
-      - `14 failed, 68 passed, 14 skipped in 65.24s`
-    - fresh merge-base rerun at `7f61ac734`:
+    - refreshed empty after the TMEM column-subview direct-lowering fix
+    - latest current-head rerun:
+      - `82 passed, 14 skipped in 58.66s`
+    - fresh merge-base rerun at `7f61ac734` remains:
       - `82 passed, 14 skipped in 37.96s`
-    - this is now the next confirmed old-mainline examples bucket
+    - the older `14` nodeids are historical only
 - [gb200_current_branch_test_proton_failures.txt](/root/code/triton-tmem-isolated/.codex/initiatives/tmem_linear_generalization/gb200_current_branch_test_proton_failures.txt)
   - `11` nodeids
   - source:

@@ -107,6 +107,10 @@ public:
     }
     auto tMemAlloc = TMEMAllocOp::create(rewriter, loc, lhsMemDescType, src);
     nvidia_gpu::setExplicitMMAv5RootRowPlanIfNeeded(tMemAlloc);
+    if (auto info = nvidia_gpu::getMMAv5LhsLayoutInfo(lhsMemDescType)) {
+      nvidia_gpu::setExplicitTMemPhysicalLayout(
+          tMemAlloc, info->familyLayout, info->twoCTAs);
+    }
     tcGen5MMAOp.getAMutable().assign(tMemAlloc);
     return success();
   }

@@ -316,6 +316,7 @@ ttng::TMEMAllocOp ttng::createTMemAlloc(OpBuilder &builder,
       builder, oldTMemAllocOp.getLoc(), accMemDescType,
       builder.getType<gpu::AsyncTokenType>(), /*src=*/Value());
   ttng::copyExplicitTMemLdStRowPlan(newAlloc, oldTMemAllocOp);
+  ttng::copyExplicitTMemPhysicalLayout(newAlloc, oldTMemAllocOp);
   ttng::setExplicitMMAv5RootRowPlanIfNeeded(newAlloc);
   return newAlloc;
 }

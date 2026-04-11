@@ -189,7 +189,7 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-10 19:30 UTC)
+## Current Topline (2026-04-10 22:41 UTC)
 
 - The broad GB200 census from `18:48 UTC` remains the last whole-lane snapshot,
   but the primary merge-base-present MMAv5 compiler bucket from that census is
@@ -218,9 +218,10 @@
       - same `11` failures on merge-base, so keep this bucket preexisting
     - `python/examples/gluon/`
 - Current live branch-recovery backlog:
-  1. merge-base-present multicta example regression
-     - `python/examples/gluon/03-matmul-multicta.py`
-     - `14` exact wrong-code failures
+  - no old-mainline TMEM/compiler bucket is currently known open from the
+    examples lane after the multicta fix
+  - the aggregate `python/examples/gluon/` manifest is stale and needs a fresh
+    full-directory rerun on top of the latest fixes
 - Closed at `2026-04-10 19:46 UTC`:
   - `python/examples/gluon/02-convolution.py`
     - representative exact now passes
@@ -246,6 +247,13 @@
       - the `+4` byte delta versus merge-base is the deliberate
         `kTensorMemoryAllocSharedBytes` padding for `tcgen05.alloc`
 - Current branch-added / contract-evolution tails to keep separate:
+  - `test_block_m_64_mma[linear]`
+    - still a real wrong-code exact
+    - current reading:
+      - branch-added / branch-changed TMEM coverage
+      - not another standalone ld/st packet bug
+      - points to a missing producer-owned physical TMEM family contract for
+        slice-after-store TMEM consumers
   - `1` opinionated PTX-expectation exact:
     - `gb200_current_branch_test_gluon_splitn_expectation_tail_failures.txt`
   - `3` stale-negative / support-broadened exacts:
@@ -4107,3 +4115,46 @@ rejection, not rescue
   - the right target is the TMEM column-slice query/support construction itself
   - do not keep tuning atom-order or M64 split-N heuristics while the real
     support/raw query image is still wrong
+
+## 2026-04-10 22:41 UTC: the multicta column-slice regression is fixed; the next core issue is producer-visible TMEM physical-family semantics
+
+- The old-mainline `python/examples/gluon/03-matmul-multicta.py` regression is
+  now closed on the current branch.
+- What fixed it:
+  - pure rank-2 TMEM column subviews now get a direct lowering path that can
+    reuse the source support/raw query plan instead of immediately collapsing
+    to the sliced `64x32` query type;
+  - the direct planner now rejects `I32x32b` layouts whose warp anchors are
+    not aligned to whole `32x32b` message tiles; and
+  - the handle-aware explicit split-N frontend path once again preserves the
+    final split-N register layout instead of re-finalizing an already-final
+    planner result.
+- Validation:
+  - `make -j8`
+  - exact multicta repro:
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+    - `PASSED`
+  - nearby TMEM/split-N controls:
+    - `test_tmem_linear_roundtrip_splitn_shapes[...]`
+    - `test_tmem_descriptor_chain_matrix[...]`
+    - both `PASSED`
+  - full file:
+    - `python/examples/gluon/03-matmul-multicta.py`
+    - `82 passed, 14 skipped`
+- Most important remaining diagnosis:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]` is still
+    red, and relaxing its PTX-immediate expectation exposes real wrong-code,
+    not just a stale assertion;
+  - this no longer looks like another ld/st packet-selection bug;
+  - the key abstraction gap is that later TMEM slices / MMAv5 consumers still
+    reason from the logical memdesc type alone, while the producer store can
+    choose a different physical direct family such as explicit split-N;
+  - `getTMemViewOffset(...)`, `getSortedTMemTileOrder(...)`, and
+    `DotOpMmaV5TmemLoader::build(...)` are all still fundamentally type-driven
+    here.
+- Immediate implication for the next fix:
+  - stop treating `block_m_64_mma[linear]` like another standalone direct-ld/st
+    planner issue;
+  - the next real work item is a producer-owned physical TMEM contract, or an
+    equivalent value-aware MMAv5/view-offset model, so slice-after-store TMEM
+    consumers can preserve the actual physical family selected by the store.

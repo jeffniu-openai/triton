@@ -1400,7 +1400,11 @@ def test_mma_shared_inputs(bitwidth, transpose_a, transpose_b, acc_dtype, warps,
         num_ctas=num_ctas,
     )
 
-    assert two_ctas == ("two_ctas" in compiled.asm["ttgir"])
+    has_two_ctas_layout = re.search(
+        r"#ttng\.tensor_memory(?:_linear|_encoding)<[^>\n]*two_ctas",
+        compiled.asm["ttgir"],
+    ) is not None
+    assert two_ctas == has_two_ctas_layout
     if two_ctas:
         assert "fence.mbarrier_init.release.cluster" in compiled.asm["ptx"]
 
@@ -2186,8 +2190,8 @@ def test_block_m_64_mma(layout_kind):
 
     ttgir = compiled.asm["ttgir"]
     assert ttgir.count("ttng.tmem_alloc") == 3
-    assert len(re.findall(r"ttng\.tmem_alloc(?: \{[^}]*\})? : \(\) -> !ttg\.memdesc<64x128xf32", ttgir)) == 1
-    assert len(re.findall(r"ttng\.tmem_alloc(?: \{[^}]*\})? : \(\) -> !ttg\.memdesc<64x128xf16", ttgir)) == 2
+    assert ttgir.count(": () -> !ttg.memdesc<64x128xf32") == 1
+    assert ttgir.count(": () -> !ttg.memdesc<64x128xf16") == 2
     assert ttgir.count("ttng.tmem_ldst_row_plan") == 3
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_subslice" not in ttgir

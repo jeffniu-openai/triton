@@ -944,6 +944,10 @@ static Operation *sliceOp(Operation *op, int offset, IRMapping &mappings,
       auto alloc =
           builder.createWithAsyncTaskIds<triton::nvidia_gpu::TMEMAllocOp>(
               op->getLoc(), newType, cvtOp);
+      if (auto oldAlloc =
+              dyn_cast<triton::nvidia_gpu::TMEMAllocOp>(tmemAllocOp.getOperation())) {
+        ttng::copyExplicitTMemPhysicalLayout(alloc, oldAlloc);
+      }
       ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 
       auto v = tmemAllocOp->getResult(0);

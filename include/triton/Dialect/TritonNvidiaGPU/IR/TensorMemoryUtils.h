@@ -98,17 +98,30 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy)
 
 std::optional<TMemLdStRowPlan> getMMAv5RootRowPlan(gpu::MemDescType memTy);
 
-void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan);
+Value getTMemForwardingSource(Value memDesc);
+
+void setExplicitTMemLdStRowPlan(TMEMAllocOp op, const TMemLdStRowPlan &plan,
+                                bool overwriteExisting = false);
 void setExplicitMMAv5RootRowPlanIfNeeded(TMEMAllocOp op);
 
+void setExplicitTMemPhysicalLayout(TMEMAllocOp op, const LinearLayout &layout,
+                                   bool twoCTAs,
+                                   bool overwriteExisting = false);
+
 void copyExplicitTMemLdStRowPlan(TMEMAllocOp dst, TMEMAllocOp src);
+void copyExplicitTMemPhysicalLayout(TMEMAllocOp dst, TMEMAllocOp src);
 
 std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc);
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
                                                           gpu::MemDescType queryTy);
+std::optional<TMemLdStRowPlan>
+getTMemLdStRowPlanForQueryLayout(Value memDesc, gpu::MemDescType queryTy,
+                                 const TMemLdStQueryLayout &queryLayout);
 
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
+
+uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);
 
@@ -161,7 +174,8 @@ getTMemLdStPhysicalSupportPlan(gpu::MemDescType memTy, unsigned numWarps,
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                 unsigned numWarps,
-                                std::optional<TMemLdStRowPlan> rowPlanOverride);
+                                std::optional<TMemLdStRowPlan> rowPlanOverride,
+                                std::optional<LinearLayout> queryLayoutOverride);
 
 std::optional<TensorMemoryLinearEncodingAttr>
 tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,

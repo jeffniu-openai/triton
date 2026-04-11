@@ -702,6 +702,7 @@ int insertTmemAref(TmemAccessDag &accessDag, int numTmemBlocks) {
   auto arefAlloc =
       cast<TMEMAllocOp>(createAlloc(b, allocOp.getLoc(), arefBufType, Value()));
   copyExplicitTMemLdStRowPlan(arefAlloc, allocOp);
+  copyExplicitTMemPhysicalLayout(arefAlloc, allocOp);
   setExplicitMMAv5RootRowPlanIfNeeded(arefAlloc);
   auto arefOp = createArefCreateOp(b, {arefBufType}, {arefAlloc->getResult(0)},
                                    allocOp.getLoc());

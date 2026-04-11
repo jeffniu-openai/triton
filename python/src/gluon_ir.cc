@@ -82,6 +82,10 @@ static void printDiagStr(llvm::raw_ostream &os, const Diagnostic &diag) {
 static ttng::TMEMAllocOp getBackingTMemAlloc(Value memDesc) {
   Value cur = memDesc;
   while (cur) {
+    if (auto forwarded = ttng::getTMemForwardingSource(cur)) {
+      cur = forwarded;
+      continue;
+    }
     if (auto alloc = dyn_cast_if_present<ttng::TMEMAllocOp>(cur.getDefiningOp()))
       return alloc;
     Operation *def = cur.getDefiningOp();
@@ -123,12 +127,81 @@ static void annotateMMAv5AccumulatorRootRowPlan(Value acc) {
   ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 }
 
+static void annotateMMAv5AccumulatorRootPhysicalLayout(Value acc,
+                                                       bool scaled = false) {
+  auto alloc = getBackingTMemAlloc(acc);
+  auto memTy = dyn_cast_if_present<ttg::MemDescType>(acc.getType());
+  if (!alloc || !memTy)
+    return;
+  auto info = scaled ? ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)
+                     : ttng::getMMAv5AccumulatorLayoutInfo(memTy);
+  if (!info)
+    return;
+  ttng::setExplicitTMemPhysicalLayout(alloc, info->familyLayout,
+                                      info->twoCTAs,
+                                      /*overwriteExisting=*/true);
+}
+
 static void annotateMMAv5TMemOperandRootRowPlan(Value operand, Value acc) {
   auto operandAlloc = getBackingTMemAlloc(operand);
   auto accAlloc = getBackingTMemAlloc(acc);
   if (!operandAlloc || !accAlloc || operandAlloc == accAlloc)
     return;
   ttng::copyExplicitTMemLdStRowPlan(operandAlloc, accAlloc);
+}
+
+static void annotateMMAv5TMemOperandRootPhysicalLayout(Value operand) {
+  auto alloc = getBackingTMemAlloc(operand);
+  auto memTy = dyn_cast_if_present<ttg::MemDescType>(operand.getType());
+  if (!alloc || !memTy)
+    return;
+  auto info = ttng::getMMAv5LhsLayoutInfo(memTy);
+  if (!info)
+    return;
+  ttng::setExplicitTMemPhysicalLayout(alloc, info->familyLayout,
+                                      info->twoCTAs,
+                                      /*overwriteExisting=*/true);
+}
+
+static void annotateDirectTMemRootContractFromStore(Value memDesc) {
+  auto alloc = getBackingTMemAlloc(memDesc);
+  auto memTy = dyn_cast_if_present<ttg::MemDescType>(memDesc.getType());
+  if (!alloc || !memTy || alloc.getResult() != memDesc)
+    return;
+
+  std::string error;
+  auto maybeRawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
+      memDesc, /*preserveNonCanonicalView=*/true, &error);
+  if (failed(maybeRawQuery))
+    return;
+
+  auto rowPlan = ttng::getTMemLdStRowPlanForQueryLayout(memDesc, memTy,
+                                                        *maybeRawQuery);
+  if (!rowPlan)
+    rowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
+  if (!rowPlan)
+    return;
+
+  ttng::setExplicitTMemPhysicalLayout(alloc, maybeRawQuery->layout,
+                                      maybeRawQuery->twoCTAs);
+  ttng::setExplicitTMemLdStRowPlan(alloc, *rowPlan);
+}
+
+static void annotateCanonicalMMAv5AccumulatorRootContract(Value memDesc) {
+  auto alloc = dyn_cast_if_present<ttng::TMEMAllocOp>(memDesc.getDefiningOp());
+  auto memTy = dyn_cast_if_present<ttg::MemDescType>(memDesc.getType());
+  if (!alloc || !memTy)
+    return;
+
+  auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy);
+  if (!info)
+    info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
+  if (!info)
+    return;
+
+  ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
+  ttng::setExplicitTMemPhysicalLayout(alloc, info->familyLayout,
+                                      info->twoCTAs);
 }
 
 static bool matchesRequestedTMemAtom(
@@ -950,14 +1023,19 @@ void init_gluon_ir(py::module &&m) {
            })
       .def("create_tmem_alloc",
            [](GluonOpBuilder &self, Type resultTy, Value value) -> Value {
-             return self.create<ttng::TMEMAllocOp>(resultTy, value);
+             auto op = self.create<ttng::TMEMAllocOp>(resultTy, value);
+             annotateCanonicalMMAv5AccumulatorRootContract(op.getResult());
+             return op.getResult();
            })
       .def("create_tmem_alloc",
            [](GluonOpBuilder &self, Type resultTy, py::none value) -> Value {
-             return self.create<ttng::TMEMAllocOp>(resultTy, Value{});
+             auto op = self.create<ttng::TMEMAllocOp>(resultTy, Value{});
+             annotateCanonicalMMAv5AccumulatorRootContract(op.getResult());
+             return op.getResult();
            })
       .def("create_tmem_store",
            [](GluonOpBuilder &self, Value memDesc, Value value, Value pred) {
+             annotateDirectTMemRootContractFromStore(memDesc);
              self.create<ttng::TMEMStoreOp>(memDesc, value, pred);
            })
       .def(
@@ -1070,8 +1148,11 @@ void init_gluon_ir(py::module &&m) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
              annotateMMAv5AccumulatorRootRowPlan(acc);
+             annotateMMAv5AccumulatorRootPhysicalLayout(acc);
              annotateMMAv5TMemOperandRootRowPlan(a, acc);
+             annotateMMAv5TMemOperandRootPhysicalLayout(a);
              annotateMMAv5TMemOperandRootRowPlan(b, acc);
+             annotateMMAv5TMemOperandRootPhysicalLayout(b);
              self.create<ttng::TCGen5MMAOp>(tokType, a, b, acc, accDep, useAcc,
                                             pred, two_ctas, multicast,
                                             mbarriers, mbarrier_preds);
@@ -1085,8 +1166,12 @@ void init_gluon_ir(py::module &&m) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
              annotateMMAv5AccumulatorRootRowPlan(acc);
+             annotateMMAv5AccumulatorRootPhysicalLayout(acc,
+                                                       /*scaled=*/true);
              annotateMMAv5TMemOperandRootRowPlan(a, acc);
+             annotateMMAv5TMemOperandRootPhysicalLayout(a);
              annotateMMAv5TMemOperandRootRowPlan(b, acc);
+             annotateMMAv5TMemOperandRootPhysicalLayout(b);
              self.create<ttng::TCGen5MMAScaledOp>(
                  tokType, a, b, acc, accDep, aScale, bScale, aType, bType,
                  useAcc, pred, mbarriers, mbarrier_preds, two_ctas);
@@ -1587,7 +1672,6 @@ void init_gluon_ir(py::module &&m) {
           }
           return ttg::LinearEncodingAttr::get(ctx, std::move(layout));
         };
-
         auto getCompatibleLayouts = [&](Value queryMemDesc,
                                        ttg::MemDescType queryTy) {
           SmallVector<ttg::DistributedEncodingTrait> layouts;
@@ -1600,15 +1684,37 @@ void init_gluon_ir(py::module &&m) {
           };
           auto rowPlan =
               ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
-          // Keep the handle-aware candidate ranking aligned with the public
-          // descriptor type path: start from the generic compatible-layout
-          // order, then append row-plan-specific direct layouts that only the
-          // memdesc-aware path can discover. This avoids letting a speculative
-          // row-plan-specific I32x32b layout preempt the better split-N family
-          // for root M64 descriptors while still preserving view-specific
-          // rescue layouts.
-          for (auto layout : ttng::getTmemCompatibleLayouts(queryTy, numWarps))
-            addAttr(layout);
+          bool explicitViewProducer =
+              isa_and_nonnull<ttg::MemDescSubsliceOp, ttng::TMEMSubSliceOp,
+                              ttg::MemDescIndexOp, ttg::MemDescReshapeOp,
+                              ttg::MemDescTransOp, ttg::MemDescReinterpretOp>(
+                  queryMemDesc.getDefiningOp());
+          bool deferCanonicalM64SplitNCompatibleLayout =
+              atomName == "32x32b" && explicitViewProducer &&
+              queryTy.getRank() == 2 &&
+              queryTy.getElementTypeBitWidth() == 32 &&
+              queryTy.getShape()[0] == 64 &&
+              queryTy.getAllocShape() == queryTy.getShape() &&
+              !isa<ttng::TensorMemoryScalesEncodingAttr>(queryTy.getEncoding());
+          auto addGenericCompatibleLayouts = [&]() {
+            std::optional<ttg::DistributedEncodingTrait> deferredLayout;
+            std::optional<ttg::LinearEncodingAttr> canonicalSplitNAttr;
+            if (deferCanonicalM64SplitNCompatibleLayout) {
+              if (auto canonicalSplitN =
+                      ttng::getCanonicalM64SplitNLayout(queryTy, numWarps)) {
+                canonicalSplitNAttr = createLinearRegAttr(*canonicalSplitN);
+              }
+            }
+            for (auto layout : ttng::getTmemCompatibleLayouts(queryTy, numWarps)) {
+              if (canonicalSplitNAttr && layout == *canonicalSplitNAttr) {
+                deferredLayout = layout;
+                continue;
+              }
+              addAttr(layout);
+            }
+            if (deferredLayout)
+              addAttr(*deferredLayout);
+          };
           auto addLayout = [&](tt::LinearLayout layout) {
             auto normalizedLayout =
                 normalizeRegLayoutForAttr(std::move(layout));
@@ -1621,17 +1727,47 @@ void init_gluon_ir(py::module &&m) {
           };
 
           if (rowPlan) {
+            bool useExactViewLinearPlannerForM64DirectView =
+                atomName == "32x32b" && explicitViewProducer &&
+                queryTy.getRank() == 2 &&
+                queryTy.getElementTypeBitWidth() == 32 &&
+                queryTy.getShape()[0] == 64 &&
+                queryTy.getAllocShape() == queryTy.getShape();
+            auto exactViewLayout =
+                useExactViewLinearPlannerForM64DirectView
+                    ? std::optional<tt::LinearLayout>(ttg::toLinearLayout(queryTy))
+                    : std::nullopt;
             for (auto atom : {ttng::TMemAccessAtom::I32x32b,
                               ttng::TMemAccessAtom::I16x256b,
                               ttng::TMemAccessAtom::I16x128b,
                               ttng::TMemAccessAtom::I16x64b,
                               ttng::TMemAccessAtom::I16x32bx2}) {
-              if (auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
-                      queryTy, atom, numWarps, rowPlan)) {
+              std::optional<tt::LinearLayout> maybeLayout;
+              if (exactViewLayout &&
+                  (atom == ttng::TMemAccessAtom::I32x32b ||
+                   atom == ttng::TMemAccessAtom::I16x32bx2)) {
+                maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
+                    *exactViewLayout, atom, numWarps,
+                    queryTy.getElementTypeBitWidth(), *rowPlan,
+                    /*allowSplitNFastPath=*/false);
+              } else {
+                maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
+                    queryTy, atom, numWarps, rowPlan);
+              }
+              if (maybeLayout) {
+                if (traceToFile) {
+                  appendTrace(Twine("getCompatibleLayouts rowPlan atom=") +
+                              Twine(static_cast<int>(atom)) + " layout=" +
+                              maybeLayout->toString());
+                }
                 addLayout(std::move(*maybeLayout));
               }
             }
           }
+          if (explicitViewProducer)
+            addGenericCompatibleLayouts();
+          else
+            addGenericCompatibleLayouts();
           return layouts;
         };
         auto getBlockedFallbackLayouts =
@@ -1682,7 +1818,24 @@ void init_gluon_ir(py::module &&m) {
           auto shape = llvm::to_vector(
               queryMemDescTy.getShape().take_back(queryMemDescTy.getRank()));
           auto elementType = queryMemDescTy.getElementType();
-          auto rowPlan = ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
+          std::optional<ttng::TMemLdStRowPlan> rowPlan;
+          if (auto supportPlan =
+                  ttng::getTMemLdStSupportQueryPlan(queryMemDesc,
+                                                    /*error=*/nullptr)) {
+            rowPlan = supportPlan->rowPlan;
+            if (!rowPlan)
+              rowPlan = ttng::getTMemLdStRowPlan(supportPlan->query.layout);
+          }
+          if (!rowPlan) {
+            if (auto rawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
+                    queryMemDesc, /*preserveNonCanonicalView=*/true,
+                    /*error=*/nullptr);
+                succeeded(rawQuery)) {
+              rowPlan = ttng::getTMemLdStRowPlan(rawQuery->layout);
+            }
+          }
+          if (!rowPlan)
+            rowPlan = ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
           if (debug) {
             debugLog << "[tmem-reg-layout] queryTy=" << queryTy
                      << " atom=" << atomName
@@ -1720,9 +1873,8 @@ void init_gluon_ir(py::module &&m) {
                                : (Twine("fail details=") + candidateDetails)));
             }
             if (succeeded(maybeInfo) &&
-                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
+                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom))
               return layoutToGluon(candidateLayout);
-            }
           }
           return py::none();
         };
@@ -1821,9 +1973,11 @@ void init_gluon_ir(py::module &&m) {
           }
           return *maybeQueryLayout;
         };
-        auto firstLegalLayoutForRawQuery =
+        auto firstLegalLayoutForQueryLayout =
             [&](Value queryMemDesc, const ttng::TMemLdStQueryLayout &queryLayout,
-                std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
+                std::optional<ttng::TMemAccessAtom> desiredAtom,
+                std::optional<ttng::TMemLdStRowPlan> rowPlanOverride =
+                    std::nullopt) -> py::object {
           auto queryTy = cast<ttg::MemDescType>(queryMemDesc.getType());
           bool disableRawRowPlanOverride =
               isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
@@ -1832,21 +1986,31 @@ void init_gluon_ir(py::module &&m) {
                   queryMemDesc.getDefiningOp()) &&
               queryTy.getRank() == 2 && queryTy.getShape()[0] == 32 &&
               queryTy.getShape()[1] == 32;
-          std::optional<ttng::TMemLdStRowPlan> rowPlan;
-          if (!disableRawRowPlanOverride) {
-            rowPlan = ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
-            if (!rowPlan)
-              rowPlan = ttng::getTMemLdStRowPlan(queryLayout.layout);
+          std::optional<ttng::TMemLdStRowPlan> rowPlan = rowPlanOverride;
+          if (!rowPlan && !disableRawRowPlanOverride) {
+            rowPlan = ttng::getTMemLdStRowPlanForQueryLayout(queryMemDesc,
+                                                             queryTy,
+                                                             queryLayout);
             if (!rowPlan)
               rowPlan = ttng::getBackingTMemLdStRowPlan(queryMemDesc);
           }
           if (!rowPlan)
             rowPlan = ttng::getTMemLdStRowPlan(queryLayout.layout);
+          if (traceToFile) {
+            appendTrace(Twine("firstLegalLayoutForQueryLayout atomName=") +
+                        atomName + " rowPlan=" +
+                        (rowPlan
+                             ? Twine("{") + Twine(rowPlan->warpRow0) + "," +
+                                   Twine(rowPlan->warpRow1) + ";span=" +
+                                   Twine(rowPlan->rowSpan) + ";base=" +
+                                   Twine(rowPlan->baseOffset) + "}"
+                             : Twine("none")) +
+                        " layout=" + queryLayout.layout.toString());
+          }
 
           auto tryAtom = [&](ttng::TMemAccessAtom atom) -> py::object {
             auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
-                queryLayout.layout, atom, numWarps,
-                queryTy.getElementTypeBitWidth(), *rowPlan);
+                queryTy, atom, numWarps, rowPlan, queryLayout.layout);
             if (debug) {
               debugLog << "[tmem-reg-layout] raw atom="
                        << static_cast<int>(atom) << " -> "
@@ -1900,7 +2064,7 @@ void init_gluon_ir(py::module &&m) {
             }
             if (succeeded(maybeInfo) &&
                 matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
-              appendTrace(Twine("firstLegalLayoutForRawQuery atomName=") +
+              appendTrace(Twine("firstLegalLayoutForQueryLayout atomName=") +
                           atomName + " matchedAtom=" +
                           Twine(static_cast<int>(maybeInfo->atom)));
               return layoutToGluon(*attr);
@@ -2032,10 +2196,8 @@ void init_gluon_ir(py::module &&m) {
                   std::optional<ttng::TMemLdStRowPlan> supportRowPlan)
               -> py::object {
             if (!supportRowPlan)
-              supportRowPlan = ttng::getTMemLdStRowPlan(supportQuery.layout);
-            if (!supportRowPlan)
-              supportRowPlan =
-                  ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryMemDescTy);
+              supportRowPlan = ttng::getTMemLdStRowPlanForQueryLayout(
+                  queryMemDesc, queryMemDescTy, supportQuery);
             if (!supportRowPlan)
               supportRowPlan = ttng::getBackingTMemLdStRowPlan(queryMemDesc);
             if (debug) {
@@ -2062,8 +2224,8 @@ void init_gluon_ir(py::module &&m) {
                 return py::none();
               }
               auto maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
-                  supportQuery.layout, atom, numWarps,
-                  queryMemDescTy.getElementTypeBitWidth(), *supportRowPlan);
+                  queryMemDescTy, atom, numWarps, supportRowPlan,
+                  supportQuery.layout);
               if (debug) {
                 debugLog << "[tmem-reg-layout] support atom="
                          << static_cast<int>(atom) << " -> "
@@ -2149,8 +2311,8 @@ void init_gluon_ir(py::module &&m) {
                 break;
             }
             if (layout.is_none()) {
-              layout = firstLegalLayoutForRawQuery(queryMemDesc, supportQuery,
-                                                  desiredAtom);
+              layout = firstLegalLayoutForQueryLayout(
+                  queryMemDesc, supportQuery, desiredAtom, supportRowPlan);
             }
             if (!layout.is_none()) {
               appendTrace("findDirectLayoutForMemDesc supportQuery");
@@ -2167,6 +2329,13 @@ void init_gluon_ir(py::module &&m) {
                 trySupportLayout(supportPlan->query, supportPlan->rowPlan);
             if (!layout.is_none())
               return layout;
+            py::object supportFallback =
+                physicalSupportLayout(queryMemDesc, desiredAtom);
+            if (!supportFallback.is_none()) {
+              appendTrace(
+                  "findDirectLayoutForMemDesc physicalSupportLayout-after-support");
+              return supportFallback;
+            }
           } else if (debug && !supportError.empty()) {
             debugLog << "[tmem-reg-layout] support query unavailable: "
                      << supportError << "\n";
@@ -2177,7 +2346,7 @@ void init_gluon_ir(py::module &&m) {
               return layout;
           }
           if (auto rawQueryLayout = inferRawQueryLayout(queryMemDesc)) {
-            py::object layout = firstLegalLayoutForRawQuery(
+            py::object layout = firstLegalLayoutForQueryLayout(
                 queryMemDesc, *rawQueryLayout, desiredAtom);
             if (!layout.is_none()) {
               appendTrace("findDirectLayoutForMemDesc rawQuery");
@@ -2326,7 +2495,8 @@ void init_gluon_ir(py::module &&m) {
                 memDesc, /*preserveNonCanonicalView=*/true, &rawError);
             succeeded(maybeRawQuery)) {
           rawQueryLayout = *maybeRawQuery;
-          rawRowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, memDescTy);
+          rawRowPlan = ttng::getTMemLdStRowPlanForQueryLayout(
+              memDesc, memDescTy, *rawQueryLayout);
           if (!rawRowPlan)
             rawRowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
         }

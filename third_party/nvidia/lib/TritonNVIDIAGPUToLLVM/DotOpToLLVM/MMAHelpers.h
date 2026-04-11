@@ -334,7 +334,8 @@ class DotOpMmaV5TmemLoader : public DotOpMmaMemLoader {
 public:
   DotOpMmaV5TmemLoader() {}
   static DotOpMmaV5TmemLoader build(Location loc, RewriterBase &rewriter,
-                                    gpu::MemDescType memTy, Value tmemBase,
+                                    gpu::MemDescType memTy, Value memDescValue,
+                                    Value tmemBase,
                                     bool useRawWordColumns = false);
 
   MemDescOperand tmemLoad(int a, int b, ConversionPatternRewriter &rewriter,

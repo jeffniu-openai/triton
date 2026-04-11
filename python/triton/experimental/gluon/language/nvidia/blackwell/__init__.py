@@ -87,19 +87,14 @@ def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
         return None
 
     splitn_layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
-        desc.handle, num_warps, "32x32b_splitn"
+        desc.handle, num_warps, "32x32b"
     )
     if splitn_layout is not None:
-        return _finalize_splitn_tmem_reg_layout(
-            splitn_layout,
-            desc.dtype,
-            shape,
-            alloc_shape,
-            layout,
-            num_warps,
-            "32x32b_splitn",
-            False,
-        )
+        # The handle-aware memdesc query already returns the final split-N
+        # register layout. Only the pure type-based fallback needs the Python
+        # basis rewrite that materializes the split-N half-column basis in the
+        # frontend-visible layout.
+        return splitn_layout
 
     try:
         return _compute_tmem_reg_layout(

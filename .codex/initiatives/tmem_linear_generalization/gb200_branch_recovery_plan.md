@@ -916,3 +916,41 @@ PY
   4. refresh `gb200_current_branch_examples_multicta_failures.txt`
   5. rerun the full `python/examples/gluon/` directory so the aggregate
      examples manifest becomes current again
+
+## 2026-04-10 22:41 UTC: the old-mainline multicta example regression is closed; the next live TMEM issue is outside the merge-base recovery queue
+
+- `python/examples/gluon/03-matmul-multicta.py` is now green on the current
+  branch:
+  - representative exact:
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+    - `PASSED`
+  - full file:
+    - `82 passed, 14 skipped`
+- Root cause / fix:
+  - the branch regression was a real TMEM `64x128 -> 64x32` pure column-subview
+    direct-ld/st bug;
+  - the fix was to let the lowering reuse the source support/raw query plan
+    for pure rank-2 TMEM column subviews instead of degrading immediately to
+    the sliced `64x32` query type, plus the associated whole-tile warp-anchor
+    guard and split-N frontend cleanup.
+- Recovery consequence:
+  - the old-mainline examples bucket is now closed at the exact-file level
+  - `gb200_current_branch_examples_multicta_failures.txt` is refreshed empty
+  - the aggregate `gb200_current_branch_examples_gluon_failures.txt` remains
+    stale until the full examples directory is rerun on top of this fix
+- The next live TMEM engineering problem is *not* part of the merge-base
+  parity queue:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+  - current reading:
+    - branch-added / branch-changed TMEM coverage
+    - still real wrong-code after relaxing the PTX-immediate assertion
+    - points to a missing producer-owned physical TMEM family contract, because
+      later TMEM slices / MMAv5 consumers still reason from the logical memdesc
+      type instead of the family actually selected by the producer store
+- Updated recovery order from here:
+  1. rerun the full `python/examples/gluon/` directory so the stale aggregate
+     examples manifest is replaced by a current post-multicta one
+  2. keep the merge-base parity queue focused on any remaining old-mainline
+     red surfaces from that rerun
+  3. handle `test_block_m_64_mma[linear]` as the next core TMEM design fix,
+     not as an examples-lane recovery item

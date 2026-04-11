@@ -708,6 +708,7 @@ static ttng::TMEMAllocOp createTMemAlloc(OpBuilder &builder,
   auto newAlloc = ttng::TMEMAllocOp::create(
       builder, oldTMemAllocOp.getLoc(), accMemDescType, nullptr);
   ttng::copyExplicitTMemLdStRowPlan(newAlloc, oldTMemAllocOp);
+  ttng::copyExplicitTMemPhysicalLayout(newAlloc, oldTMemAllocOp);
   ttng::setExplicitMMAv5RootRowPlanIfNeeded(newAlloc);
   return newAlloc;
 }

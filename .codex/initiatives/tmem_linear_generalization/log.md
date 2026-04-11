@@ -7117,3 +7117,36 @@ Open after this slice:
     experiments and trace hooks
   - the latest detailed state is recorded in
     `handoff_2026-04-09.md`
+
+## 2026-04-10 22:41 UTC
+
+- The old-mainline `python/examples/gluon/03-matmul-multicta.py` regression is
+  now green on the current dirty branch state.
+- Structural fix summary:
+  - pure rank-2 TMEM column subviews can now lower by reusing the source
+    support/raw query family instead of immediately degrading to the sliced
+    `64x32` query type;
+  - the direct planner now rejects `I32x32b` layouts whose warp anchors are
+    not whole-message-tile multiples; and
+  - the handle-aware split-N frontend path keeps the final planner-returned
+    layout instead of re-finalizing an already-final split-N result.
+- Validation:
+  - `make -j8`
+  - exact old-mainline repro:
+    - `python/examples/gluon/03-matmul-multicta.py::test_matmul_matches_torch[100-200-200-4-32-2-2-CGA_LAYOUT0-8-0-64-128-64]`
+    - `PASSED`
+  - nearby TMEM controls:
+    - `test_tmem_linear_roundtrip_splitn_shapes[...]`
+    - `test_tmem_descriptor_chain_matrix[...]`
+    - both `PASSED`
+  - full file:
+    - `python/examples/gluon/03-matmul-multicta.py`
+    - `82 passed, 14 skipped`
+- The next live TMEM issue is now:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[linear]`
+- Current diagnosis for that remaining red exact:
+  - relaxing the PTX-immediate assertion exposes real wrong-code;
+  - later TMEM slices / MMAv5 consumers are still type-driven and do not carry
+    the physical family actually selected by the producer store;
+  - this points to a missing producer-owned physical TMEM family contract
+    rather than another local ld/st family-selection tweak.

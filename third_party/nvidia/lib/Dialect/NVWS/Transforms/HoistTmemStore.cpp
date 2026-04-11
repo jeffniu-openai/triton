@@ -92,6 +92,7 @@ public:
                 rewriter, alloc.getLoc(), alloc.getResultTypes()[0],
                 rewriter.getType<AsyncTokenType>(), storeSrc);
             ttng::copyExplicitTMemLdStRowPlan(newAlloc, alloc);
+            ttng::copyExplicitTMemPhysicalLayout(newAlloc, alloc);
             ttng::setExplicitMMAv5RootRowPlanIfNeeded(newAlloc);
 
             if (auto allocTok = alloc.getToken()) {

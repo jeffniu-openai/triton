@@ -129,6 +129,10 @@ TMemAllocation getTmemAllocSizes(gpu::MemDescType memDescType);
 
 uint32_t getTMemSubSliceOffset(gpu::MemDescType memDescType, int32_t nOffset);
 
+uint32_t getTMemViewOffset(const LinearLayout &layout,
+                           ArrayRef<int32_t> offsets, uint32_t bitwidth,
+                           ArrayRef<int64_t> prefixShape = {});
+
 uint32_t getTMemViewOffset(gpu::MemDescType memDescType,
                            ArrayRef<int32_t> offsets);
 
@@ -200,7 +204,7 @@ tryMakeTensorMemoryLinearEncoding(MLIRContext *ctx, LinearLayout linearLayout,
                                   std::string *error = nullptr);
 
 struct MMAv5LhsLayoutInfo {
-  LinearLayout canonicalLayout;
+  LinearLayout familyLayout;
   unsigned mmaSizeM;
   unsigned mmaSizeN;
   unsigned colStride;
@@ -208,7 +212,7 @@ struct MMAv5LhsLayoutInfo {
 };
 
 struct MMAv5AccumulatorLayoutInfo {
-  LinearLayout canonicalLayout;
+  LinearLayout familyLayout;
   unsigned mmaSizeM;
   unsigned mmaSizeN;
   unsigned colStride;
@@ -260,7 +264,9 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                 unsigned numWarps,
-                                std::optional<TMemLdStRowPlan> rowPlanOverride);
+                                std::optional<TMemLdStRowPlan> rowPlanOverride,
+                                std::optional<LinearLayout> queryLayoutOverride =
+                                    std::nullopt);
 
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(const LinearLayout &memLayout,

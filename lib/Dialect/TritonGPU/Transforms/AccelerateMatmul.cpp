@@ -93,6 +93,19 @@ static void annotateMMAv5AccumulatorRootRowPlan(
   triton::nvidia_gpu::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
 }
 
+static void annotateMMAv5AccumulatorRootPhysicalLayout(
+    triton::nvidia_gpu::TMEMAllocOp alloc, bool scaled = false) {
+  auto memTy = dyn_cast<triton::gpu::MemDescType>(alloc.getType());
+  if (!memTy)
+    return;
+  auto info = scaled ? triton::nvidia_gpu::getMMAv5ScaledAccumulatorLayoutInfo(memTy)
+                     : triton::nvidia_gpu::getMMAv5AccumulatorLayoutInfo(memTy);
+  if (!info)
+    return;
+  triton::nvidia_gpu::setExplicitTMemPhysicalLayout(
+      alloc, info->familyLayout, info->twoCTAs);
+}
+
 SmallVector<unsigned> warpsPerTileV2(DotOpInterface dotOp,
                                      const ArrayRef<int64_t> shape,
                                      int numWarps) {
@@ -629,6 +642,7 @@ public:
     auto acc = triton::nvidia_gpu::TMEMAllocOp::create(
         rewriter, loc, accMemDescType, tokType, cvtAcc);
     annotateMMAv5AccumulatorRootRowPlan(acc);
+    annotateMMAv5AccumulatorRootPhysicalLayout(acc);
     auto vTrue = arith::ConstantIntOp::create(rewriter, dotOp.getLoc(), 1, 1);
     auto mma = triton::nvidia_gpu::TCGen5MMAOp::create(
         rewriter, loc, tokType, a, b, acc, acc.getToken(), /*useD=*/vTrue,
@@ -885,6 +899,7 @@ public:
     auto acc = triton::nvidia_gpu::TMEMAllocOp::create(
         rewriter, loc, accMemDescType, tokType, cvtAcc);
     annotateMMAv5AccumulatorRootRowPlan(acc);
+    annotateMMAv5AccumulatorRootPhysicalLayout(acc, /*scaled=*/true);
 
     RankedTensorType oldScaleAType = dotOp.getAScale().getType();
     RankedTensorType oldScaleBType = dotOp.getBScale().getType();

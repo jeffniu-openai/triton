@@ -5,6 +5,7 @@
 #include "mlir/Support/LLVM.h"
 #include "triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 
 using namespace mlir;
 using namespace mlir::triton;
@@ -21,9 +22,17 @@ using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
-    Value tmemBase, bool useRawWordColumns) {
+    Value memDescValue, Value tmemBase, bool useRawWordColumns) {
   auto ll = [&]() {
     std::string layoutError;
+    if (memDescValue) {
+      if (auto maybeQuery = ttng::inferStandaloneTMemLdStQueryLayout(
+              memDescValue, /*preserveNonCanonicalView=*/true, &layoutError);
+          succeeded(maybeQuery)) {
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            maybeQuery->layout);
+      }
+    }
     if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
       if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
               memTy.getShape(), memTy.getEncoding(), &layoutError)) {
@@ -36,22 +45,21 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
             *maybeAnalysis);
       }
     }
-
     auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
     auto shape = memTy.getShape().take_back(rank);
     auto allocShape = memTy.getAllocShape().take_back(rank);
     if (shape == allocShape) {
       if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
         return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->canonicalLayout);
+            info->familyLayout);
       }
       if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
         return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->canonicalLayout);
+            info->familyLayout);
       }
       if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
         return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->canonicalLayout);
+            info->familyLayout);
       }
     }
     if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
@@ -66,6 +74,7 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     }
     return toLinearLayout(memTy);
   }();
+  (void)memDescValue;
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);
@@ -90,14 +99,18 @@ MemDescOperand mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::tmemLoad(
 }
 
 static SmallVector<int>
-getSortedTMemTileOrder(MemDescType memTy, int varyingDim, int numRep,
-                       int tileSize) {
+getSortedTMemTileOrder(Value memDescValue, MemDescType memTy, int varyingDim,
+                       int numRep, int tileSize) {
   SmallVector<std::pair<uint32_t, int>> offsets;
   offsets.reserve(numRep);
   for (int rep = 0; rep < numRep; ++rep) {
     SmallVector<int32_t> logicalOffsets(memTy.getRank(), 0);
     logicalOffsets[memTy.getRank() - 2 + varyingDim] = rep * tileSize;
-    offsets.emplace_back(ttng::getTMemViewOffset(memTy, logicalOffsets), rep);
+    offsets.emplace_back(memDescValue
+                             ? ttng::getTMemViewOffsetForLowering(memDescValue,
+                                                                  logicalOffsets)
+                             : ttng::getTMemViewOffset(memTy, logicalOffsets),
+                         rep);
   }
   llvm::sort(offsets, [](const auto &lhs, const auto &rhs) {
     return lhs.first < rhs.first;
@@ -481,10 +494,11 @@ struct DotConversion {
 
 LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
                              ConversionPatternRewriter &rewriter, Location loc,
-                             Value a, Value b, Value loadedA, Value loadedB,
-                             MemDescType dTensorTy, Value useDFlag, Value pred,
-                             ValueRange barriers, ValueRange barrierPreds,
-                             bool twoCTAs, ValueRange commitDescs,
+                             Value a, Value b, Value d, Value loadedA,
+                             Value loadedB, MemDescType dTensorTy,
+                             Value useDFlag, Value pred, ValueRange barriers,
+                             ValueRange barrierPreds, bool twoCTAs,
+                             ValueRange commitDescs,
                              bool opKindIsMXFP4, const DotConversion &op) {
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
 
@@ -564,8 +578,8 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
   std::iota(nRepOrder.begin(), nRepOrder.end(), 0);
   if (isa<ttng::TensorMemoryEncodingAttr, ttng::TensorMemoryLinearEncodingAttr>(
           dTensorTy.getEncoding())) {
-    nRepOrder = getSortedTMemTileOrder(dTensorTy, /*varyingDim=*/1, numRepN,
-                                       mmaSizeN);
+    nRepOrder = getSortedTMemTileOrder(d, dTensorTy,
+                                       /*varyingDim=*/1, numRepN, mmaSizeN);
   }
 
   std::unique_ptr<DotOpMmaMemLoader> aLoader;
@@ -574,8 +588,10 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
   std::iota(kRepOrder.begin(), kRepOrder.end(), 0);
   if (aInTmem) {
     aLoader = std::make_unique<DotOpMmaV5TmemLoader>(
-        DotOpMmaV5TmemLoader::build(loc, rewriter, aTensorTy, baseA));
-    kRepOrder = getSortedTMemTileOrder(aTensorTy, /*varyingDim=*/1, numRepK,
+        DotOpMmaV5TmemLoader::build(loc, rewriter, aTensorTy, a,
+                                    baseA));
+    kRepOrder = getSortedTMemTileOrder(a, aTensorTy,
+                                       /*varyingDim=*/1, numRepK,
                                        aOperandShape[1]);
   } else {
     auto isFp4a = op.numBitsPerElementA == 4;
@@ -669,7 +685,8 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
   dot.numBitsPerElementB = bTensorTy.getElementTypeBitWidth();
 
   DotOpMmaV5TmemLoader dLoader =
-      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, op.getD(),
+                                  adaptor.getD(),
                                   /*useRawWordColumns=*/true);
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,
                           int m, int n, const DotConversion::InstDesc &desc) {
@@ -694,8 +711,9 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
   };
 
   return convertDotImpl(
-      typeConverter, rewriter, loc, op.getA(), op.getB(), adaptor.getA(),
-      adaptor.getB(), dTensorTy, adaptor.getUseD(), adaptor.getPred(),
+      typeConverter, rewriter, loc, op.getA(), op.getB(), op.getD(),
+      adaptor.getA(), adaptor.getB(), dTensorTy, adaptor.getUseD(),
+      adaptor.getPred(),
       adaptor.getBarriers(), adaptor.getBarrierPreds(), twoCTAs, commitDescs,
       /*opKindIsMXFP4=*/false, dot);
 }
@@ -792,7 +810,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   // TMEM address model as plain MMAv5 and preserves whole-tile permutations
   // and descriptor-view offsets without a separate block-id schedule.
   DotOpMmaV5TmemLoader dLoader =
-      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, adaptor.getD(),
+      DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, op.getD(),
+                                  adaptor.getD(),
                                   /*useRawWordColumns=*/true);
   dot.getAccumulatorInfo = [](MemDescType memTy) {
     return ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
@@ -838,7 +857,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   };
 
   return convertDotImpl(typeConverter, rewriter, loc, op.getA(), op.getB(),
-                        adaptor.getA(), adaptor.getB(), dTensorTy,
+                        op.getD(), adaptor.getA(), adaptor.getB(), dTensorTy,
                         adaptor.getUseD(), adaptor.getPred(),
                         adaptor.getBarriers(), adaptor.getBarrierPreds(),
                         twoCTAs, ValueRange{}, opKindIsMXFP4, dot);
