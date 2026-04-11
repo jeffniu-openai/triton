@@ -240,6 +240,13 @@ When resuming the initiative:
   - this covers the current no-scales `warpx2` positives, dense copy
     positives, 2-CTA copy, scaled `warpx4` copy paths, and clean unsupported
     copy boundaries.
+- Current-head `tcgen05.ld.red` runtime-matrix validation is green:
+  - command:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ld-red-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`;
+  - result:
+    `208 passed, 1991 deselected in 129.20s`;
+  - this covers identity, tile-permuted, column-permuted, row-permuted, all
+    legal modifier pairs, and clean unsupported mixed-layout negatives.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;

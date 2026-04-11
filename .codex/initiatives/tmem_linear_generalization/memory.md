@@ -277,7 +277,27 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 18:15 UTC)
+## Current Topline (2026-04-11 18:25 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `a950338f7` on `origin/codex/tmem`
+- Latest pushed docs checkpoint before this validation refresh:
+  - `bf9eebb37` on `origin/codex/tmem`
+- Current-head `tcgen05.ld.red` runtime-matrix validation is green:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - broad ld.red slice:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ld-red-current-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    - `208 passed, 1991 deselected in 129.20s (0:02:09)`
+  - coverage includes identity, tile-permuted, column-permuted, row-permuted,
+    all legal modifier pairs, and clean unsupported mixed-layout negatives.
+- Next:
+  - move to MMAv5 / `mma_scaled` reachable-family coverage;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 18:15 UTC)
 
 - Latest pushed source/test checkpoint:
   - `a950338f7` on `origin/codex/tmem`
