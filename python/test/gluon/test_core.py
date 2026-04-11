@@ -2903,9 +2903,9 @@ TMEM_LINEAR_SPLITN_CASES = [
         128,
         (
             ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 64, 32),
+            ("tcgen05.st.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
             ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 0, 32),
-            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 64, 32),
+            ("tcgen05.ld.sync.aligned.16x32bx2.x32.b32", 1048576, 32),
         ),
     ),
     (
@@ -5055,7 +5055,7 @@ def test_tmem_reduction_linear_legacy_block_equiv_layout(red_op, use_abs, propag
             _make_tmem_linear_layout_block(128, 64),
             128,
             64,
-            "Layout has 2 CTAs per CGA, but the context requires 1 CTAs per CGA.",
+            "TMEM layout '32x32b' unsupported for descriptor view",
         ),
     ],
 )
