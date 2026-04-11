@@ -9802,3 +9802,34 @@ Open after this slice:
   - continue either the two-CTA `warpx2::02_13` / scales `warpx2`
     descriptor-address frontier or the TMA-fed 2-CTA TF32 shared-transpose
     compiler follow-up.
+
+
+## 2026-04-11 20:23 UTC
+
+- Pinned the canonical public two-CTA no-scales `warpx2::02_13` candidate as a
+  clean unsupported descriptor-plan boundary.
+- Source/test change:
+  - added
+    `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`;
+  - the test uses `_make_tmem_copy_warpx2_shared_layout_twocta()` with
+    `_make_tmem_copy_warpx2_tmem_layout_02_13_twocta()` so the layout still
+    classifies as `tcgen05.copy.warpx2::02_13.64x128b`;
+  - it asserts the failure is the planned clean descriptor-synthesis diagnostic,
+    with no `PassManager::run failed`, assertion, or late wrong-code path.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused boundary exact:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-02-13-twocta-clean-negative PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    - `1 passed in 3.29s`
+  - focused `warpx2` slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-boundary-slice PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `9 passed, 2571 deselected in 4.32s`
+  - broad current-head `cp` slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-boundary-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `158 passed, 5 skipped, 2417 deselected in 40.42s`
+- Next after this boundary slice is committed and pushed:
+  - continue either the two-CTA `warpx2::02_13` descriptor/address-model fix
+    itself, the scales `warpx2` descriptor search, or the TMA-fed 2-CTA TF32
+    shared-transpose compiler follow-up.

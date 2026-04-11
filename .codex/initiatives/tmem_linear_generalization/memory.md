@@ -70,7 +70,7 @@
   - focused copy/MMA commit exacts:
     `24 passed in 19.43s`
   - broad `tcgen05.cp` slice:
-    `157 passed, 5 skipped, 2372 deselected in 42.63s`
+    `158 passed, 5 skipped, 2417 deselected in 40.42s`
   - broad true `tcgen05.mma` / direct `mma_scaled` slice:
     `209 passed, 50 skipped, 2320 deselected in 117.66s (0:01:57)`
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
@@ -256,9 +256,10 @@
     single-CTA and two-CTA cases; runtime probes showed that the old
     codegen-only path could emit `warpx2` opcodes while copying wrong data
     (including all-zero two-CTA `02_13` output);
-  - a matching two-CTA `warpx2::02_13` candidate shared layout still fails
-    during shared descriptor-plan synthesis, so keep it as a layout-surface /
-    direct-PTX frontier rather than a clean ISA-impossible negative;
+  - a matching two-CTA `warpx2::02_13` candidate shared layout is now pinned
+    by a clean unsupported test at descriptor-plan synthesis, so keep it as a
+    layout-surface / direct-PTX frontier rather than a clean ISA-impossible
+    negative;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail cleanly because no compatible scales descriptor plan can be
@@ -463,7 +464,40 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 20:20 UTC)
+## Current Topline (2026-04-11 20:23 UTC)
+
+- Latest pushed checkpoint before this source/test update:
+  - `fc35a1c20` on `origin/codex/tmem`
+- Added an exact clean-unsupported test for the canonical public two-CTA
+  `warpx2::02_13.64x128b` no-scales copy candidate.
+- Current behavior:
+  - the canonical two-CTA shared layout plus `02_13` TMEM layout classifies as
+    `tcgen05.copy.warpx2::02_13.64x128b`;
+  - verifier/planning rejects it because Triton cannot synthesize a compatible
+    shared-memory descriptor plan;
+  - the test asserts this stays a clean unsupported diagnostic and does not
+    fall through to `PassManager::run failed`, assertions, or the older
+    wrong-code/all-zero path.
+- Validation:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - focused two-CTA `warpx2::02_13` clean boundary:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-02-13-twocta-clean-negative PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    - `1 passed in 3.29s`
+  - focused `warpx2` slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-boundary-slice PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`
+    - `9 passed, 2571 deselected in 4.32s`
+  - broad current-head `cp` slice:
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-boundary-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`
+    - `158 passed, 5 skipped, 2417 deselected in 40.42s`
+- Next:
+  - after committing and pushing this boundary slice, continue either the
+    two-CTA `warpx2::02_13` descriptor/address-model fix itself, the scales
+    `warpx2` descriptor search, or the TMA-fed 2-CTA TF32 shared-transpose
+    compiler follow-up.
+
+## Prior Topline (2026-04-11 20:20 UTC)
 
 - Latest pushed checkpoint before this source/test update:
   - `7aa084aa4` on `origin/codex/tmem`

@@ -108,7 +108,7 @@ When resuming the initiative:
   - broad `ld/st`:
     `1114 passed, 441 skipped, 713 deselected`
   - broad `tcgen05.cp`:
-    `157 passed, 5 skipped, 2372 deselected`
+    `158 passed, 5 skipped, 2417 deselected`
   - broad `tcgen05.ld.red`:
     `476 passed, 2055 deselected`
   - true `tcgen05.mma` / direct `mma_scaled`:
@@ -195,9 +195,10 @@ When resuming the initiative:
   - dense shared-layout `warpx2` forms are now clean unsupported for both
     single-CTA and two-CTA cases because runtime probes showed the old
     codegen-only path emitted `warpx2` opcodes while copying the wrong data;
-  - the two-CTA `warpx2::02_13` candidate shared layout still fails in shared
-    descriptor-plan synthesis and remains a layout-surface / direct-PTX
-    frontier, not a proven ISA-impossible negative.
+  - the two-CTA `warpx2::02_13` candidate shared layout is now pinned as a
+    clean unsupported descriptor-synthesis frontier under the canonical public
+    shared layout; it remains a layout-surface / direct-PTX frontier, not a
+    proven ISA-impossible negative.
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the clean tensor-memory-scales
@@ -387,11 +388,12 @@ When resuming the initiative:
     descriptor roundtrip and rank-5 families.
 - Current-head `tcgen05.cp` runtime-matrix validation is green:
   - command:
-    `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-restrict-cp-broad-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
+    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-warpx2-clean-boundary-cp-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k cp`;
   - result:
-    `157 passed, 5 skipped, 2372 deselected in 42.63s`;
+    `158 passed, 5 skipped, 2417 deselected in 40.42s`;
   - this covers the current no-scales `warpx2` positives with exact commit
-    opcodes, including the new two-CTA `warpx2::01_23` path and dense-shared
+    opcodes, including the two-CTA `warpx2::01_23` path, the new two-CTA
+    `warpx2::02_13` canonical-shared clean unsupported boundary, dense-shared
     `warpx2` clean negatives, dense copy positives, 2-CTA `128x128b` /
     `128x256b` copy, scaled `warpx4` copy paths, exact scaled-copy commit
     opcodes, and clean unsupported copy boundaries.

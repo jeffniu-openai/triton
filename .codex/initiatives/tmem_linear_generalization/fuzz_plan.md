@@ -289,9 +289,10 @@ Every fuzz case records:
   copied wrong data.
 - No-scales `cta_group::2` `warpx2::01_23.64x128b` is covered by an
   executable public-layout test with exact copy and multicast commit opcodes.
-  `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the first
-  candidate shared layout fails during descriptor-plan synthesis, and the dense
-  shared-layout form is rejected to avoid known wrong-code.
+  `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the
+  canonical candidate shared layout is pinned as a clean descriptor-plan
+  unsupported case, and the dense shared-layout form is rejected to avoid
+  known wrong-code.
 
 #### Scales / multicast positive matrix
 - scales payload layouts that are known to alias to legal TMEM scales tiles
@@ -326,9 +327,11 @@ Every fuzz case records:
 - The no-scales `cta_group::1` `warpx2::{02_13,01_23}.64x128b` candidate
   cases and the no-scales `cta_group::2 warpx2::01_23.64x128b` case are now
   covered through the public backend path with exact commit opcode checks;
-  reserve direct PTX probes for remaining scales or two-CTA `warpx2::02_13`
-  documentation/layout gaps. Dense shared-layout `warpx2` forms are negative
-  until descriptor synthesis can prove correct runtime semantics.
+  the no-scales `cta_group::2 warpx2::02_13.64x128b` canonical candidate is
+  covered as a clean descriptor-plan unsupported boundary. Reserve direct PTX
+  probes for remaining scales or two-CTA `warpx2::02_13` documentation/layout
+  gaps. Dense shared-layout `warpx2` forms are negative until descriptor
+  synthesis can prove correct runtime semantics.
 
 #### Checks
 - Output matches input for no-scales copies.
