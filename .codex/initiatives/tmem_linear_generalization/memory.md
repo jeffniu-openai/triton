@@ -274,7 +274,35 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 15:30 UTC)
+## Current Topline (2026-04-11 15:40 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `81b4e5a9d` on `origin/codex/tmem`
+- Higher-rank multidimensional-slice `ld/st` descriptor views now include
+  `auto` instruction selection:
+  - `LDST_HIGHER_RANK_SLICE_CASES` and
+    `LDST_TWOCTA_HIGHER_RANK_SLICE_CASES` now use `LDST_VARIANTS`;
+  - coverage spans identity/mixed single-CTA layouts and block/MMAv5-like
+    two-CTA layouts at `N = 64` and `128`;
+  - the tests validate functional output, PTX/LLIR ld/st opcode agreement, and
+    expected higher-rank reshape/transpose/split/join IR markers.
+- Validation for `81b4e5a9d`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - higher-rank slice matrices:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-higher-rank-slice-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slices' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices'`
+    - `40 passed in 42.65s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue staged `ld/st` fuzzing on clean-negative and stale-negative
+    descriptor-view surfaces;
+  - then continue stale-negative cleanup and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 15:30 UTC)
 
 - Latest pushed source/test checkpoint:
   - `7df887318` on `origin/codex/tmem`

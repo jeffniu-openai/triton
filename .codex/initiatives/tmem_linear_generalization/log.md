@@ -8159,3 +8159,33 @@ Open after this slice:
   - continue staged `ld/st` fuzzing on higher-rank slice and stale-negative
     descriptor-view surfaces;
   - then stale-negative cleanup and heuristic cleanup.
+
+## 2026-04-11 15:40 UTC
+
+- Committed and pushed higher-rank multidimensional-slice `ld/st` auto
+  coverage:
+  - `81b4e5a9d`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - extend auto instruction-selection coverage to the higher-rank
+    multidimensional-slice descriptor path, after the higher-rank index path
+    was covered.
+- Implementation:
+  - `LDST_HIGHER_RANK_SLICE_CASES` now uses `LDST_VARIANTS`;
+  - `LDST_TWOCTA_HIGHER_RANK_SLICE_CASES` now uses `LDST_VARIANTS`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - higher-rank slice matrices:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-higher-rank-slice-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slices' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices'`
+    - `40 passed in 42.65s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue staged `ld/st` fuzzing on clean-negative and stale-negative
+    descriptor-view surfaces;
+  - then stale-negative cleanup and heuristic cleanup.
