@@ -2444,7 +2444,8 @@ def test_tmem_descriptor_chain_matrix(name, layout, M, N, instr_variant, num_war
 
 
 @gluon.jit
-def tmem_physical_bitcast_preserves_subview_kernel(out, layout: ttgl.constexpr):
+def tmem_physical_bitcast_preserves_subview_kernel(out, layout: ttgl.constexpr,
+                                                    slice_start: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
     tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
@@ -2454,30 +2455,35 @@ def tmem_physical_bitcast_preserves_subview_kernel(out, layout: ttgl.constexpr):
     ones = ttgl.full((M, N), 1.0, dtype=ttgl.float32, layout=reg_layout)
     tmem.store(ones)
 
-    left_half_as_f16 = tmem.slice(0, N // 2, dim=1).bitcast(ttgl.float16, (M, N))
-    bitcast_layout: ttgl.constexpr = left_half_as_f16.get_reg_layout()
+    half_as_f16 = tmem.slice(slice_start, N // 2, dim=1).bitcast(
+        ttgl.float16, (M, N)
+    )
+    bitcast_layout: ttgl.constexpr = half_as_f16.get_reg_layout()
     zeros = ttgl.full((M, N), 0.0, dtype=ttgl.float16, layout=bitcast_layout)
-    left_half_as_f16.store(zeros)
+    half_as_f16.store(zeros)
 
     loaded = tmem.load(reg_layout)
     ttgl.store(out + offs, loaded)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_physical_bitcast_preserves_subview_mapping():
+@pytest.mark.parametrize("slice_start", (0, 64))
+def test_tmem_physical_bitcast_preserves_subview_mapping(slice_start):
     out = torch.empty((128, 128), dtype=torch.float32, device="cuda")
     compiled = tmem_physical_bitcast_preserves_subview_kernel[(1, )](
-        out, _make_tmem_linear_layout(128, 128), num_warps=4
+        out, _make_tmem_linear_layout(128, 128), slice_start, num_warps=4
     )
 
     expected = torch.ones_like(out)
-    expected[:, :64] = 0
+    expected[:, slice_start:slice_start + 64] = 0
     torch.testing.assert_close(out, expected, atol=0, rtol=0)
 
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttg.memdesc_reinterpret" in ttgir
     assert "tmem_physical_bitcast" in ttgir
+    if slice_start:
+        assert "[0, 64]" in ttgir
 
     ptx = compiled.asm["ptx"]
     assert "tcgen05.st.sync.aligned.32x32b.x64.b32" in ptx

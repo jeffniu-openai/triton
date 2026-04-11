@@ -64,6 +64,12 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- The supported `slice/subview -> bitcast` contract now has an explicit
+  root-aligned and right-half regression in
+  `test_tmem_physical_bitcast_preserves_subview_mapping`: the right-half case
+  first selects columns `64:128` of the original f32 TMEM tile, then bitcasts
+  that already-selected physical image to an f16 view, and verifies only the
+  selected physical half is overwritten.
 - As of the latest focused coverage checkpoint, the current source/test slices
   add runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
   `relinquish_alloc_permit`, `dealloc`, and `wait`, including pow2 alloc-size

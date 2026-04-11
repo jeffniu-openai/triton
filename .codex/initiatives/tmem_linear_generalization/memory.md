@@ -76,6 +76,16 @@
   - exact anchors cover single-CTA non-multicast commit and two-CTA multicast
     commit for copy/MMA paths, including scaled-MMA copy-helper kernels, with
     PTX and LLIR opcode agreement.
+- Current-head supported physical-bitcast API coverage is green:
+  - focused physical-bitcast slice:
+    `3 passed, 17963 deselected in 4.57s`
+  - `test_tmem_physical_bitcast_preserves_subview_mapping` now covers both
+    `slice_start=0` and `slice_start=64`, so the API contract is pinned for a
+    root-aligned half-tile and an offset right-half subview before bitcasting
+    to an equal-size f16 view;
+  - the right-half case verifies that the bitcast does not select, remap, or
+    relocate physical TMEM: only columns `64:128` of the original f32 tile are
+    overwritten through the f16 view.
 - Current-head scaled-MMAv5 accumulator-subview format coverage is green:
   - focused one-CTA slice-start matrix:
     `10 passed in 6.86s`

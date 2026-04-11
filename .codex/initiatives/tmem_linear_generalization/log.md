@@ -9911,3 +9911,43 @@ Open after this slice:
   - continue with the two-CTA `warpx2::02_13` descriptor/address-model fix,
     a deeper direct-PTX scales `warpx2` probe, or another bounded MMAv5 /
     scaled-MMAv5 reachable-family gap.
+
+## 2026-04-11 20:50 UTC
+
+- Pinned the supported physical-bitcast API contract for an offset TMEM
+  subview.
+- Source/test change:
+  - extended `tmem_physical_bitcast_preserves_subview_kernel` to take a
+    constexpr `slice_start`;
+  - parametrized `test_tmem_physical_bitcast_preserves_subview_mapping` over
+    `slice_start=0` and `slice_start=64`;
+  - the new right-half case first slices columns `64:128` from the f32 TMEM
+    tile, then bitcasts that already-selected physical image to an equal-size
+    f16 view, stores zeros, and verifies only the right half of the original
+    tile changes.
+- Contract boundary:
+  - this is the supported replacement pattern for `_reinterpret` uses that
+    depended on compiler physical-layout knowledge: offset/subview to the exact
+    physical bits first, then bitcast only when size and physical mapping are
+    equivalent;
+  - the test intentionally proves the bitcast does not select, remap, or
+    relocate physical TMEM.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`
+  - focused physical-bitcast exact:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-physical-bitcast-right-subview-r2 PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_core.py::test_tmem_physical_bitcast_preserves_subview_mapping`
+    - `2 passed in 3.86s`
+  - neighboring physical-bitcast slice:
+    - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-physical-bitcast-slice PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_core.py -k tmem_physical_bitcast`
+    - `3 passed, 17963 deselected in 4.57s`
+  - hygiene:
+    - `python3 -m py_compile python/test/gluon/test_core.py`
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - commit and push this contract-regression slice;
+  - continue with the two-CTA `warpx2::02_13` descriptor/address-model fix,
+    a deeper direct-PTX scales `warpx2` probe, or another bounded MMAv5 /
+    scaled-MMAv5 reachable-family gap.
