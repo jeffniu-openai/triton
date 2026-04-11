@@ -2004,6 +2004,8 @@ X1_F32_LDST_CASES = [
     ("linear_twocta", 256, 2, lambda: _make_tmem_linear_layout_mmav5_twocta(256, 1)),
 ]
 
+X1_F32_LDST_VARIANTS = ("auto", "32x32b")
+
 X1_F32_UNSUPPORTED_VARIANTS = ("16x64b", "16x128b", "16x256b")
 
 SCALES_LDST_CASES = [
@@ -3190,13 +3192,17 @@ def test_tmem_runtime_matrix_ldst_x1_f16_roundtrip(layout_kind, layout_factory, 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
-def test_tmem_runtime_matrix_ldst_x1_f32_roundtrip(layout_kind, m, num_ctas, layout_factory):
+@pytest.mark.parametrize("variant", X1_F32_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_f32_roundtrip(layout_kind, m, num_ctas, layout_factory, variant):
     n = 1
     layout = layout_factory()
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, "32x32b", num_warps=4, num_ctas=num_ctas)
+    if variant == "auto":
+        compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4, num_ctas=num_ctas)
+    else:
+        compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4, num_ctas=num_ctas)
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
@@ -3215,14 +3221,15 @@ def test_tmem_runtime_matrix_ldst_x1_f32_roundtrip(layout_kind, m, num_ctas, lay
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
-def test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip(layout_kind, m, num_ctas, layout_factory):
+@pytest.mark.parametrize("variant", X1_F32_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip(layout_kind, m, num_ctas, layout_factory, variant):
     n = 1
     layout = layout_factory()
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_chain_kernel[(1, )](
-        inp, out, layout, m, n, "32x32b", num_warps=4, num_ctas=num_ctas
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=num_ctas
     )
     torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
 
