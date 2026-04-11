@@ -277,7 +277,32 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 16:10 UTC)
+## Current Topline (2026-04-11 16:20 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `8f622b938` on `origin/codex/tmem`
+- The two-CTA MMAv5-like higher-rank `ld/st` unsupported matrix now includes
+  `auto` instruction selection:
+  - `LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES` now uses
+    `LDST_VARIANTS`;
+  - auto cases remain clean negatives through the CTA-per-CGA mismatch path;
+  - the tests still reject PassManager/assertion crashes.
+- Validation for `8f622b938`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - two-CTA MMAv5 higher-rank unsupported matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-mmav5-twocta-higher-rank-auto-unsupported PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_mmav5_descriptor_higher_rank_reports_clean_error'`
+    - `15 passed in 5.21s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - inspect remaining staged `ld/st` explicit-only permuted/exotic surfaces;
+  - then continue broader validation and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 16:10 UTC)
 
 - Latest pushed source/test checkpoint:
   - `572fb25b2` on `origin/codex/tmem`
