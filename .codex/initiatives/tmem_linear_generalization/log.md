@@ -8062,3 +8062,33 @@ Open after this slice:
   - continue MMAv5 / `mma_scaled` saturation for remaining layout, CTA, and
     stale-negative surfaces;
   - then staged `ld/st` fuzzing, stale-negative cleanup, and heuristic cleanup.
+
+## 2026-04-11 15:10 UTC
+
+- Committed and pushed descriptor-chain `ld/st` auto coverage:
+  - `ebb23b697`
+  - branch / remote:
+    - `codex/tmem`
+    - `origin/codex/tmem`
+- Scope:
+  - start the staged `ld/st` fuzzing phase with a narrow user-level expansion:
+    auto instruction selection through the basic descriptor-composition chain.
+- Implementation:
+  - `LDST_DESCRIPTOR_CASES` now uses `LDST_VARIANTS` instead of only
+    `LDST_EXPLICIT_VARIANTS`;
+  - this adds `auto` cases for identity and mixed TMEM-linear layouts at
+    `N = 64`, `128`, and `256`.
+- Validation:
+  - build:
+    - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - descriptor-chain `ld/st` matrix:
+    - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-descriptor-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions'`
+    - `30 passed in 27.45s`
+  - hygiene:
+    - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue staged `ld/st` fuzzing across two-CTA, higher-rank, and stale
+    negative descriptor-view surfaces;
+  - then stale-negative cleanup and heuristic cleanup.

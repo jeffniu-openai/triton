@@ -274,7 +274,36 @@
   - broader MMAv5 / `mma_scaled` reachable-family support
   - saturation fuzzing and final cleanup of stale negatives and heuristics.
 
-## Current Topline (2026-04-11 15:00 UTC)
+## Current Topline (2026-04-11 15:10 UTC)
+
+- Latest pushed source/test checkpoint:
+  - `ebb23b697` on `origin/codex/tmem`
+- Staged `ld/st` fuzzing has started with descriptor-chain `auto`
+  instruction selection:
+  - `LDST_DESCRIPTOR_CASES` now uses `LDST_VARIANTS`, so the basic
+    descriptor-composition matrix covers `auto` alongside `32x32b`,
+    `16x64b`, `16x128b`, and `16x256b`;
+  - coverage spans identity and mixed TMEM-linear layouts at `N = 64`, `128`,
+    and `256`;
+  - the test still validates functional output, PTX/LLIR opcode agreement, and
+    the `tensor_memory_linear` TTGIR marker.
+- Validation for `ebb23b697`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    - `PASSED`, ninja reported no work to do
+  - descriptor-chain `ld/st` matrix:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-ldst-descriptor-auto PYTHONPATH=python:. pytest -s --tb=short -q 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_compositions'`
+    - `30 passed in 27.45s`
+  - `git diff --check`
+    - `PASSED`
+- Next:
+  - continue staged `ld/st` fuzzing across two-CTA, higher-rank, and stale
+    negative descriptor-view surfaces;
+  - then continue stale-negative cleanup and heuristic cleanup;
+  - keep attention deferred until a synchronization-aware supported
+    `offset/slice/subview -> bitcast` migration is ready.
+
+## Prior Topline (2026-04-11 15:00 UTC)
 
 - Latest pushed source/test checkpoint:
   - `7766be003` on `origin/codex/tmem`

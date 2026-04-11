@@ -43,8 +43,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- As of 2026-04-11 15:00 UTC, the latest pushed source/test checkpoint is
-  `7766be003` on `origin/codex/tmem`.
+- As of 2026-04-11 15:10 UTC, the latest pushed source/test checkpoint is
+  `ebb23b697` on `origin/codex/tmem`.
 - The latest full four-way `python/test/gluon` sweep remains the green sweep
   recorded at `77c43f696` / source `be3cba0cd`; the newer `57a06c29b` and
   copy / `ld.red` / scaled-MMA coverage slices were validated with focused
@@ -128,6 +128,13 @@ When resuming the initiative:
   - both legacy and canonical linear accumulator layouts are covered for
     `cta_group::1` and `cta_group::2`;
   - the tests continue to assert exact PTX/LLIR opcode agreement.
+- Staged `ld/st` fuzzing has started with descriptor-chain `auto` coverage at
+  `ebb23b697`:
+  - the basic descriptor-composition matrix now covers `auto` instruction
+    selection in addition to explicit `32x32b`, `16x64b`, `16x128b`, and
+    `16x256b`;
+  - coverage spans identity and mixed TMEM-linear layouts at `N = 64, 128,
+    256`.
 - The supported M64 subview/physical-bitcast slice is now checkpointed:
   - `47a07a37d` added normalized source-query inversion for physical bitcast
     views whose source subview keeps inactive zero support bases;
