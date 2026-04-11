@@ -1766,15 +1766,15 @@ LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
 ]
 
 LDST_HIGHER_RANK_OOR_CASES = [
-    (layout_name, variant) for layout_name, variant in product(LDST_LAYOUTS.keys(), LDST_EXPLICIT_VARIANTS)
+    (layout_name, variant) for layout_name, variant in product(LDST_LAYOUTS.keys(), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_OOR_CASES = [
-    (layout_name, variant) for layout_name, variant in product(LDST_TWOCTA_LAYOUTS.keys(), LDST_EXPLICIT_VARIANTS)
+    (layout_name, variant) for layout_name, variant in product(LDST_TWOCTA_LAYOUTS.keys(), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
-    ("block_two_ctas", variant) for variant in LDST_EXPLICIT_VARIANTS
+    ("block_two_ctas", variant) for variant in LDST_VARIANTS
 ]
 
 LDST_HIGHER_RANK_POSITIVE_CASES = [
