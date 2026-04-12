@@ -8,6 +8,20 @@ Artifacts:
 - merge-base checkout: `/root/code/triton-mergebase-ci`
 - merge-base SHA: `11ee1144a737006921231bbd3386c187812c38e1`
 
+## Preserve-Set Update - 2026-04-12 09:33 UTC
+
+At `3359982ee`, after API/contract and two stale-lit test refreshes, the current
+lit state is no longer the original 9-file failure set. Full `make test-lit`
+now reports `246 passed, 2 failed, 2 unsupported`; only
+`TritonGPU/pipeline-loop-nest.mlir` and `TritonGPU/pipeline-lower-loop.mlir`
+remain as stale attr-text checks. The actual compiler/runtime bug set remains
+the `162` unit nodeids plus `test_block_m_64_mma[legacy]`.
+
+The user also corrected the semantic model for the next recovery phase: zero
+TMEM bases are broadcast/equivalence semantics, so branch-only provenance attrs
+are papering over underlying producer/view/ld-st bugs rather than selecting a
+valid representative. Attribute removal is now part of the bug-fix work.
+
 ## Summary
 
 | Bucket | Count | Classification |

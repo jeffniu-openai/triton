@@ -50,6 +50,23 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Pre-cleanup preserve-set, 2026-04-12 09:33 UTC at `3359982ee`, is recorded in
+  `gb200_preserve_set_20260412.md`.
+  - Semantic correction: zero TMEM bases are broadcast/equivalence semantics,
+    not a choice among potentially divergent representatives. If physical cells
+    in the same equivalence class differ, that is a producer/view/ld-st bug.
+  - Attribute policy correction: `ttng.tmem_physical_layout`,
+    `ttng.tmem_ldst_row_plan`, `ttng.tmem_mmav5_accumulator_root`, and related
+    root markers are now cleanup targets because they encode provenance that
+    should instead fall out of the layout/view chain and exact codegen.
+  - Fresh current-head evidence:
+    `make -j8` passed; full lit is `246 passed, 2 failed, 2 unsupported` with
+    only `pipeline-loop-nest.mlir` and `pipeline-lower-loop.mlir` failing as
+    stale attr-text checks; all `162` branch-new unit nodeids still fail; the
+    legacy M64 Gluon exact still fails; Proton main still has the same
+    `11` merge-base-preexisting failures; C++, gsan, regression,
+    microbenchmark, unit debug, fused-attention tutorial, plugins,
+    instrumentation, and Proton tails are green at focused/wrapper scope.
 - Fresh full GB200 `integration-tests-nvidia` inventory at `cb76c31a0` is red on
   current branch and classified against merge-base `11ee1144a737006921231bbd3386c187812c38e1`:
   - branch-new lit: `9` files, all pass on merge-base;

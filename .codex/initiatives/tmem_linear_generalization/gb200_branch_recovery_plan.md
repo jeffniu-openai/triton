@@ -46,6 +46,32 @@ PY
 
 ## Current Classification Summary
 
+### Preserve-Set Update (2026-04-12 09:33 UTC)
+
+- Current checkpoint:
+  - `3359982ee`.
+- Source of truth for this checkpoint:
+  - `gb200_preserve_set_20260412.md`.
+- Semantic update from the user:
+  - zero TMEM bases are broadcast/equivalence semantics;
+  - branch-only TMEM provenance attributes are cleanup targets because the
+    layout/view chain should determine physical mapping and codegen must
+    preserve broadcast equivalence.
+- Current recovery backlog after fresh preserve reruns:
+  1. `162` branch-new unit wrong-output nodeids remain real compiler/runtime
+     bugs.
+  2. `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` remains a
+     real compiler/runtime bug.
+  3. Lit has only two stale attr-text checks left:
+     `TritonGPU/pipeline-loop-nest.mlir` and
+     `TritonGPU/pipeline-lower-loop.mlir`.
+  4. Proton remains preexisting merge-base noise.
+- Do not solve the real bugs by keeping or recreating
+  `ttng.tmem_physical_layout`, `ttng.tmem_ldst_row_plan`, or MMAv5 root marker
+  provenance. Fix the underlying layout/broadcast/codegen issue and remove the
+  attributes.
+
+
 ### Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
 
 - Validated checkpoint:

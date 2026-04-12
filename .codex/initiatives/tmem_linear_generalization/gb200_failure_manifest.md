@@ -32,6 +32,28 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+## Preserve-Set Exact Status (2026-04-12 09:33 UTC)
+
+- Current checkpoint:
+  - `3359982ee`.
+- Detailed preserve-set:
+  - `gb200_preserve_set_20260412.md`.
+- Fresh exact current-head red lists:
+  - lit: only `TritonGPU/pipeline-loop-nest.mlir` and
+    `TritonGPU/pipeline-lower-loop.mlir` fail in full `make test-lit`;
+  - unit: all `162` nodeids in
+    `gb200_branch_new_20260412_unit_main_failures.txt` still fail;
+  - Gluon: `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    still fails;
+  - Proton: the `11` nodeids in
+    `gb200_preexisting_20260412_proton_main_failures.txt` still fail in the
+    main Proton command and remain merge-base-preexisting.
+- The older `gb200_current_20260412_lit_failures.txt` file is historical after
+  the lit test refreshes: five API/contract files plus `invalid.mlir` and
+  `ops.mlir` have been fixed at focused/full-lit scope, leaving only the two
+  pipeline files above.
+
+
 ### Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
 
 - Validated checkpoint:

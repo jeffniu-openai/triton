@@ -20,6 +20,9 @@ When resuming the initiative:
 - use `gb200_failure_classification_20260412.md` for the current split between
   actual compiler/runtime bugs, stale tests, tests requiring API/contract
   updates, and merge-base-preexisting noise;
+- use `gb200_preserve_set_20260412.md` for the current pre-cleanup preserve-set
+  before removing branch-only TMEM physical-layout / row-plan / MMAv5-root
+  attributes and the hacks that depend on them;
 - use `gb200_branch_recovery_plan.md` when you need the prioritized
   branch-caused recovery backlog and the exact representative repros to drive
   fixes;
@@ -68,9 +71,32 @@ When resuming the initiative:
 - Lowering-side fixes are still appropriate for supported APIs that miscompile,
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.
+- TMEM layouts are the source of truth. A zero TMEM basis means
+  broadcast/equivalence semantics: physical coordinates that map to the same
+  logical tensor element must agree, and codegen must preserve that invariant.
+- Do not justify ld/st behavior as choosing a `live` representative among
+  divergent physical cells. Divergence inside a zero-basis equivalence class is
+  itself a bug in producer, view, or load/store lowering.
+- The branch-only TMEM attributes (`ttng.tmem_physical_layout`,
+  `ttng.tmem_ldst_row_plan`, `ttng.tmem_mmav5_accumulator_root`, and related
+  root markers) are now treated as papering over underlying layout/codegen bugs.
+  The next cleanup target is to remove them and make lowering respect the
+  layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
 
+- Current pre-cleanup preserve-set at `3359982ee` is recorded in
+  `gb200_preserve_set_20260412.md`:
+  - build passed;
+  - full lit is down to two stale pipeline FileCheck failures
+    (`pipeline-loop-nest.mlir` and `pipeline-lower-loop.mlir`);
+  - the `162` branch-new `python/test/unit` exact nodeids still all fail;
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` still fails;
+  - Proton's `11` cudagraph / periodic flushing failures still reproduce and
+    remain merge-base-preexisting noise;
+  - fresh current-head wrapper/tail checks for C++, gsan, regression,
+    microbenchmark, unit debug, fused-attention tutorial, plugins,
+    instrumentation, and Proton tails are green.
 - Full GB200 `integration-tests-nvidia` inventory at `cb76c31a0` is not green:
   - branch-new actionable failures were `9` lit files, `162` `python/test/unit`
     nodeids, and `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;

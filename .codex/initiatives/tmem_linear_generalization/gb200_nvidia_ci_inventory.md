@@ -20,6 +20,35 @@ lives in `gb200_branch_recovery_plan.md`. The current detailed split between
 actual bugs, stale tests, API/contract-update tests, and merge-base-preexisting
 noise lives in `gb200_failure_classification_20260412.md`.
 
+## Preserve-Set Update Before Attribute Cleanup (2026-04-12 09:33 UTC)
+
+- Current checkpoint:
+  - `3359982ee` on `origin/codex/tmem`.
+- Detailed preserve-set:
+  - `gb200_preserve_set_20260412.md`.
+- Since the full GB200 sweep at `cb76c31a0`, runtime compiler/source code is
+  unchanged; intervening changes are initiative docs plus lit/MLIR test updates.
+- Fresh current-head evidence:
+  - build passed;
+  - full `make test-lit`: `246 passed, 2 failed, 2 unsupported`;
+  - remaining lit failures are only:
+    - `TritonGPU/pipeline-loop-nest.mlir`;
+    - `TritonGPU/pipeline-lower-loop.mlir`;
+  - all `162` nodeids in `gb200_branch_new_20260412_unit_main_failures.txt`
+    still fail;
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` still fails;
+  - Proton main still has the same `11` merge-base-preexisting failures;
+  - C++, gsan, regression, microbenchmark, unit debug, fused-attention
+    tutorial, unit instrumentation/plugins, and Proton tails are green in the
+    fresh preserve reruns.
+- Branch recovery implication:
+  - do not use the old 9-lit or 4-stale-lit count as current after this point;
+  - lit is now only the two pipeline attr-text checks;
+  - the real compiler/runtime recovery queue remains the `162` unit failures
+    plus the legacy M64 Gluon failure;
+  - the next implementation phase is attribute removal by fixing the underlying
+    layout/broadcast/codegen bugs, not by preserving provenance attributes.
+
 ## Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
 
 - Validated checkpoint:

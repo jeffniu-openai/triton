@@ -1,3 +1,54 @@
+## 2026-04-12 09:33 UTC: GB200 preserve-set before TMEM attribute cleanup
+
+- Recorded `gb200_preserve_set_20260412.md` before removing branch-only TMEM
+  physical-layout / row-plan / MMAv5-root attributes and the lowering-side
+  special cases that depend on them.
+- User corrected the semantic model: a zero TMEM basis denotes
+  broadcast/equivalence, not a free choice between divergent physical
+  representatives. If two physical coordinates map to the same logical tensor
+  element, codegen must preserve agreement across that equivalence class.
+- New cleanup direction:
+  - treat `ttng.tmem_physical_layout`, `ttng.tmem_ldst_row_plan`,
+    `ttng.tmem_mmav5_accumulator_root`, and related root markers as
+    implementation debt that papers over layout/codegen bugs;
+  - make the layout/view chain the source of truth for physical mapping;
+  - make ld/st lowering respect zero-basis broadcast semantics directly.
+- Validation / preserve evidence at `3359982ee`:
+  - build:
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    -> passed, ninja no work;
+  - full lit:
+    `PATH=/root/.triton/llvm/llvm-ubuntu-arm64/bin:$PATH make test-lit`
+    -> `246 passed, 2 failed, 2 unsupported`; failures are
+    `TritonGPU/pipeline-loop-nest.mlir` and
+    `TritonGPU/pipeline-lower-loop.mlir`;
+  - known unit red manifest:
+    `162 failed in 70.43s`;
+  - legacy M64 Gluon exact:
+    `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    -> failed, `8085 / 8192` mismatched;
+  - C++:
+    `make test-cpp` -> `240/240` passed;
+  - gsan:
+    `make NUM_PROCS=24 test-gsan` -> `20 passed`;
+  - regression:
+    `make test-regression` -> `1090 passed, 216 skipped`;
+  - microbenchmark:
+    `make test-microbenchmark` -> rc `0`;
+  - unit tails:
+    `test_debug.py` -> `95 passed`;
+    `python/tutorials/06-fused-attention.py` -> `192 passed, 192 skipped`;
+    instrumentation -> `1 passed`;
+    plugin tail -> `3 passed`;
+  - Proton:
+    main command -> `11 failed, 114 passed` with the same preexisting
+    cudagraph/periodic-flushing bucket; `test_hw_trace`, `test_override.py`,
+    and `test_overhead` tails each passed.
+- Artifact directory:
+  `/tmp/gb200-ci-preserve-20260412-092408`.
+- Tooling note: `apply_patch` still failed with tool-level `No such file or
+  directory`, so this docs checkpoint used scripted exact replacements.
+
 # TMEM Linear Generalization Log
 
 ## 2026-03-24
