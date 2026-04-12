@@ -10794,3 +10794,24 @@ Open after this slice:
   - full attention file: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-sdpa-matrix-final2 PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py` -> `64 passed in 102.66s (0:01:42)`.
 - Remaining boundary: full `python/examples/gluon` has not been rerun as one
   aggregate after this attention SDPA-reference correction.
+
+
+## 2026-04-12 03:15 UTC: recorded GB200 unit status and legacy M64 xfail follow-up
+
+- Rechecked the GB200 docs after the user asked about omitted `python/test/unit`
+  coverage.
+- Corrected current reading:
+  - the GB200/NVIDIA workflow includes `make NUM_PROCS=24 test-unit` as well as
+    lit, Gluon, gsan, regression, microbenchmark, C++ unit, and Proton lanes;
+  - the early 134-nodeid unit-red inventory is historical;
+  - checkpoint `78196b4e4` reran the full `make NUM_PROCS=24 test-unit` wrapper
+    green, including main `python/test/unit`, `test_debug.py`,
+    `python/triton_kernels/tests`, the fused-attention tutorial,
+    instrumentation, and plugin tails;
+  - the current unit manifests are empty, while the large XML unit manifest is
+    retained only as stale historical evidence.
+- Also recorded user direction that the lone legacy M64 MMAv5 xfail should be
+  fixed later:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+  - keep it below current CI-lane freshness and full examples aggregate refresh,
+    but do not treat it as permanent design debt.

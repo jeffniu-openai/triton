@@ -575,7 +575,9 @@ When resuming the initiative:
     `1 passed, 1 xfailed`;
   - the xfail is deliberate design debt for legacy M64 `64x64` layout sugar
     lacking producer-visible physical-family semantics for MMAv5 consumers;
-    the linear supported layout passes in the same process.
+    the linear supported layout passes in the same process. This is now an
+    explicit follow-up fix on the docket, not just a status note, but it should
+    stay behind current CI-lane freshness and aggregate examples validation.
 - The supported descriptor bitcast API remains on the branch, and the attention
   scratch-alias path is migrated across the SDPA-safe benchmark-shaped unit
   matrix:
@@ -649,6 +651,19 @@ When resuming the initiative:
     - the current clean unsupported descriptor-view diagnostic for a block
       basis `ld.red` negative.
   - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
+- The GB200 `make NUM_PROCS=24 test-unit` lane was also recovered before the
+  latest focused attention/example work:
+  - checkpoint `78196b4e4` reran the full wrapper green;
+  - main `python/test/unit`: `15153 passed, 5492 skipped`;
+  - `python/test/unit/test_debug.py`: `95 passed`;
+  - unit-tail sublanes were green: `python/triton_kernels/tests`,
+    `python/tutorials/06-fused-attention.py`, instrumentation, and plugin tests;
+  - current unit manifests are empty:
+    `gb200_current_branch_test_unit_failures.txt`,
+    `gb200_current_branch_test_unit_matmul_refresh_failures.txt`,
+    `gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt`,
+    `gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt`,
+    and `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`.
 - The supported `_reinterpret` migration invariant remains:
   - offset to the right part of TMEM;
   - slice/subview it to the desired physical bits;
@@ -656,10 +671,10 @@ When resuming the initiative:
     physical-mapping equivalent to the input descriptor.
 - Next required durable step: continue the remaining recovery queue with the
   intentionally reverted attention example tracked separately from supported
-  bitcast API validation and the legacy M64 MMAv5 xfail visible as design debt.
-  Continue broader MMAv5/`mma_scaled`, staged `ld/st` fuzzing, stale-negative
-  cleanup, and heuristic phases, with any remaining copy work limited to
-  shapes that fit the TMEM allocation budget.
+  bitcast API validation. Keep the legacy M64 MMAv5 xfail as an explicit
+  follow-up fix item, then continue broader MMAv5/`mma_scaled`, staged `ld/st`
+  fuzzing, stale-negative cleanup, and heuristic phases, with any remaining copy
+  work limited to shapes that fit the TMEM allocation budget.
 
 ## Document Roles
 

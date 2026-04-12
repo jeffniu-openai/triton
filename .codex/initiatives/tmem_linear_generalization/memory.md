@@ -6258,7 +6258,10 @@ rejection, not rescue
 - Next:
   - continue the recovery queue with attention kept separate as the supported
     synchronization-aware subview/bitcast migration target;
-  - keep legacy M64 MMAv5 producer-family semantics visible as design debt;
+  - keep legacy M64 MMAv5 producer-family semantics visible as design debt, and
+    explicitly fix `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    once the current CI-lane freshness and examples aggregate checks are out of
+    the way;
   - then resume long-term `ld.red`, `copy`/`warpx2`, broader
     MMAv5/`mma_scaled`, fuzzing, stale-negative cleanup, and heuristic cleanup.
 
@@ -6511,3 +6514,34 @@ rejection, not rescue
 - Next: run final hygiene, commit and push this explicit min/max `ld.red`
   coverage slice, then continue copy `warpx2` or MMAv5/scaled-MMAv5 frontier
   work.
+
+
+## 2026-04-12 03:15 UTC: GB200 unit-lane status and legacy M64 xfail docket
+
+- The comprehensive GB200/NVIDIA workflow includes more than the Gluon sweeps.
+  `.github/workflows/integration-tests-nvidia.yml` runs:
+  - `make test-lit`;
+  - `make NUM_PROCS=24 test-unit`;
+  - `make NUM_PROCS=24 test-gluon`;
+  - `make NUM_PROCS=24 test-gsan`;
+  - `make test-regression`;
+  - `make test-microbenchmark`;
+  - `make test-cpp`;
+  - `make test-proton`.
+- The earlier `test-unit` red inventory is superseded by the 2026-04-10 full
+  wrapper rerun at checkpoint `78196b4e4`:
+  - full `make NUM_PROCS=24 test-unit` artifact:
+    `/tmp/test-unit-gb200-after-ws.log`;
+  - main `python/test/unit`: `15153 passed, 5492 skipped`;
+  - `python/test/unit/test_debug.py`: `95 passed`;
+  - tail sublanes green: `python/triton_kernels/tests`,
+    `python/tutorials/06-fused-attention.py`, instrumentation, and plugin tests;
+  - the current `gb200_current_branch_test_unit*_failures.txt` manifests are
+    empty except the historical XML inventory, which remains explicitly stale.
+- The single full-Gluon xfail remains:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+  - reason: legacy M64 `64x64` layout sugar still lacks producer-visible
+    physical-family semantics for MMAv5 consumers.
+- User direction on 2026-04-12: put this xfail on the fix docket. Treat it as a
+  planned follow-up after immediate CI-lane freshness / examples aggregate
+  validation, not as a permanent acceptable state.

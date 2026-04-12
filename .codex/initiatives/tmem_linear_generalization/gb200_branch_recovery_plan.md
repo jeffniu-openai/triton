@@ -1168,3 +1168,22 @@ PY
      red surfaces from that rerun
   3. handle `test_block_m_64_mma[linear]` as the next core TMEM design fix,
      not as an examples-lane recovery item
+
+
+## 2026-04-12 docket update: legacy M64 MMAv5 xfail must be fixed later
+
+- Current green/fresh unit-lane reading:
+  - checkpoint `78196b4e4` reran the full `make NUM_PROCS=24 test-unit` wrapper
+    green;
+  - the current unit failure manifests are empty;
+  - the large XML unit manifest remains historical only.
+- The current full-Gluon xfail is:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+- Reason:
+  - legacy M64 `64x64` layout sugar still needs producer-visible
+    physical-family semantics for MMAv5 consumers.
+- Classification:
+  - not a current GB200 failure nodeid;
+  - not a reason to block the immediate examples aggregate / CI freshness pass;
+  - now an explicit follow-up fix item rather than a permanent tolerated
+    design-debt note.
