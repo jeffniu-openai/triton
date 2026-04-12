@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-12T08:28:30Z
+updated: 2026-04-12T08:36:00Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -647,6 +647,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Central scoring of `r9a1` and `r9a2` from the known-good environment with `PYTHONPATH=python/triton_kernels python .codex/initiatives/artifacts/ws-report-promptopt-eval.py --candidate <workspace>/python/examples/gluon/05-moe-bmm1-fused-gather.py --rep 200`; worker-side sanity gate passes in `r9a1` and `r9a2`
   - Learnings: Round 9 reinforced that the remaining promptopt budget should not go to “obvious” micro-cleanups or constant retunes. Caching `grid_m * GRID_N` once in `PartitionArgs` and reusing it in the schedule path still scored slightly negative (`-0.04%` mean / geometric). Raising `EPILOGUE_STORE_HELPER_DEPTH` from `2` to `3` also lost (`-0.31%` mean / geometric), and that worker additionally violated the contract by running `pip install triton-kernels` inside the sandbox. The report now makes both rules explicit: no package/environment mutation inside worker sandboxes, and no constant-retune hypotheses unless the report already names the knob as unsettled.
   - Plan updates: Resume from round 10 with a narrower structural-only worker prompt and keep central scoring as the only promotion authority.
+- `2026-04-12` Completed: Closed round 10 and required workers to anchor edits to measured bottlenecks
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`
+  - Validation: Central scoring of `r10a1` and `r10a2` from the known-good environment with `PYTHONPATH=python/triton_kernels python .codex/initiatives/artifacts/ws-report-promptopt-eval.py --candidate <workspace>/python/examples/gluon/05-moe-bmm1-fused-gather.py --rep 200`; worker-side sanity gate passes in `r10a1` and `r10a2`
+  - Learnings: Round 10 finally stayed inside the intended structural search region. One worker changed the overlapped epilogue/store ordering and the other hoisted the output-pointer cast out of the helper-store path. Both were valid and only slightly negative (`r10a1`: `-0.11%` mean / geometric; `r10a2`: `-0.02%` mean / geometric, worst point `-0.09%`). This is materially healthier than the earlier catastrophic misses, but it still shows that “make one small structural change” is too open-ended. The next refinement is to require each worker to name the specific measured bottleneck from the report that the change is targeting before it edits the kernel.
+  - Plan updates: Resume from round 11 with the same repaired workspace and sanity gate, but make the worker prompt evidence-anchored: pick one bottleneck from the report first, then edit.
 
 ## Next Up
 

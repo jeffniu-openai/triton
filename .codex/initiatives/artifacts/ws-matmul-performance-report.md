@@ -1701,6 +1701,39 @@ At this point, isolated workers should be spending nearly all of their round bud
 structural hypotheses inside the live kernel**, not on constant retunes, selector cutoffs,
 environment repair, or source-level scalar cleanup.
 
+Round 10 refined that guidance once more:
+
+- the prompt is finally steering workers into the right neighborhood: small structural edits inside
+  the live helper-store / epilogue flow
+- but “structural” by itself is still too broad
+
+Two structural candidates in round 10 both passed the local reference-backed sanity gate:
+
+- one changed the overlapped epilogue/store ordering inside `epilogue_overlapped_store`
+- one hoisted the output-pointer cast out of the helper-store hot path
+
+Both were only slightly negative under the central scorer. That is better than the earlier gross
+losses, but it still means the next workers need one more restriction:
+
+- before editing, name one **specific measured bottleneck or mechanism** from this report that the
+  change is meant to address
+
+Examples of acceptable bottleneck anchors:
+
+- helper-ring slot lifetime and early release
+- barrier/ownership overhead in the direct-store vs helper-store discussion
+- helper-store issue-path register live range
+- known SASS/NCU evidence about where arithmetic or store-side work sits in the schedule
+
+Examples of unacceptable anchors:
+
+- “this looks cleaner”
+- “this might reduce instructions”
+- “this is probably cheaper”
+
+The next prompt should therefore require the worker to cite the bottleneck it is targeting before it
+makes the edit.
+
 ---
 
 ## 13. Open Problems and Suggested Next Steps

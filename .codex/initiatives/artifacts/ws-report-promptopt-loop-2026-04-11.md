@@ -385,3 +385,44 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - the worker contract needs an explicit package-install ban, not just a general “no runtime
     patching” rule
 - Status: completed
+
+### Round 10
+
+- Report version: after the package-install ban and constant-retune ban
+- Planned adjustments:
+  - keep the same repaired workspace and sanity-gate setup
+  - steer workers toward one small structural edit inside the live helper-store / load / epilogue
+    flow
+  - keep all selector, constant, and scalar-arithmetic ideas off the table
+- Workspaces:
+  - `r10a1`
+  - `r10a2`
+- Agents:
+  - `Averroes`
+  - `Goodall`
+- Current prompt differences:
+  - structural-only search space
+  - explicit ban on package installs, constant retunes, selectors, and scalar cleanup
+  - local sanity gate still required before and after editing
+- Final round outcome:
+  - `r10a1`
+    - change type: changed the overlapped epilogue/store ordering so each `_swiglu_step2` result
+      goes straight into `_store_out_subtile`
+    - local status: passed the worker sanity gate
+    - independent score: `-0.11%` mean, `-0.11%` geometric, `2 / 8` wins, worst regression
+      `-0.23%`
+    - result: rejected
+  - `r10a2`
+    - change type: hoisted the output-pointer cast out of the helper-store hot path
+    - local status: passed the worker sanity gate
+    - independent score: `-0.02%` mean, `-0.02%` geometric, `5 / 8` wins, worst regression
+      `-0.09%`
+    - result: rejected
+- Prompt/report lessons from round 10:
+  - the structural-only prompt is healthier than earlier rounds; the candidates are now valid and
+    only slightly negative instead of catastrophically wrong
+  - “small structural edit” is still too broad unless it is tied to a specific measured bottleneck
+    from the report
+  - the next round should require each worker to name the measured bottleneck it is targeting
+    before it edits the kernel
+- Status: completed
