@@ -37,11 +37,13 @@
 - If a test looks cache-sensitive, verify whether the symptom survives a fresh process boundary before blaming `TRITON_CACHE_DIR`. Prefer root-causing missing cache-key inputs, process/device contamination after bad kernels, or compiler global-state reuse over relying on environmental workarounds.
 
 ## Python Sweep Best Practices
+- Always leverage all 4 GPUs for pytest work when possible. Even focused `-k` slices and small runtime buckets should normally run as four `pytest-split` groups with one outer pytest process per GPU and a distinct `TRITON_CACHE_DIR` per process.
 - Install and use `pytest-split` for outer sharding and keep `pytest-xdist` available for lighter CPU-bound cases.
+- Use `pytest-xdist` inside a single GPU shard when it improves CPU-bound collection/compile throughput, but keep inner parallelism conservative (`-n 1` or `-n 2` first). Higher xdist fanout can create rare false-negative OOM failures by oversubscribing GPU memory or process-local compiler/runtime state.
 - Treat validation in stages:
   - `make`
   - targeted lit checks for compiler-only changes
-  - focused pytest nodeids or `-k` slices on one GPU
+  - focused pytest nodeids or `-k` slices split across the 4 GPUs
   - 4-GPU grouped sweeps only after the focused slice is green
 - Keep compile-only and heavy GPU runtime sweeps separate. Do not mix large runtime files with broad compile-only files in the same shard.
 - For heavy GPU runtime files, run one outer pytest process per GPU:
