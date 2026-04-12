@@ -345,3 +345,43 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - future workers should spend less time on selector-threshold edits or hand-strength-reduced
     scalar math and more time on small structural hypotheses
 - Status: completed
+
+### Round 9
+
+- Report version: after the round-8 selector-cutoff and scalar-arithmetic warning update
+- Planned adjustments:
+  - keep the repaired workspace maker and sanity helper
+  - steer workers away from selector-threshold edits and scalar arithmetic cleanup
+  - continue to ask for one small structural hypothesis only
+- Workspaces:
+  - `r9a1`
+  - `r9a2`
+- Agents:
+  - `Dirac`
+  - `Raman`
+- Current prompt differences:
+  - explicit ban on selector-threshold retuning
+  - explicit ban on scalar-arithmetic cleanups
+  - local sanity gate still required before and after editing
+- Final round outcome:
+  - `r9a1`
+    - change type: cached `grid_m * GRID_N` once in `PartitionArgs` and reused it in the block
+      schedule path
+    - local status: passed the worker sanity gate
+    - independent score: `-0.04%` mean, `-0.04%` geometric, `3 / 8` wins, worst regression
+      `-0.14%`
+    - result: rejected
+  - `r9a2`
+    - change type: increased `EPILOGUE_STORE_HELPER_DEPTH` from `2` to `3`
+    - local status: passed the worker sanity gate
+    - policy issue: worker violated the contract by running `pip install triton-kernels`
+    - independent score: `-0.31%` mean, `-0.31%` geometric, `1 / 8` wins, worst regression
+      `-0.47%`
+    - result: rejected
+- Prompt/report lessons from round 9:
+  - even harmless-looking per-block arithmetic caching is now low-value enough that it should not
+    be a worker-round hypothesis
+  - helper-depth retunes are still not promising and should stay off the promptopt shortlist
+  - the worker contract needs an explicit package-install ban, not just a general “no runtime
+    patching” rule
+- Status: completed

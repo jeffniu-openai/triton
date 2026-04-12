@@ -1681,6 +1681,26 @@ Why those rules were added:
 So the worker prompt should continue to prefer structural hypotheses over source-level “obvious”
 micro-cleanups unless those cleanups already come with strong evidence from PTX/SASS or NCU.
 
+Round 9 tightened the worker contract again:
+
+- do **not** change constant tuning defaults like helper depth unless the report already names that
+  knob as unsettled
+- do **not** run `pip install`, `uv`, or any other package/environment mutation inside the worker
+  sandbox
+
+Why those rules were added:
+
+- caching `grid_m * GRID_N` once in the block schedule path was a harmless-looking per-block
+  arithmetic cleanup, but it still scored slightly negative overall
+- increasing `EPILOGUE_STORE_HELPER_DEPTH` from `2` to `3` was also slightly negative under the
+  central scorer
+- one worker tried to work around its local import path with `pip install triton-kernels`, which is
+  exactly the kind of environment mutation that makes promptopt evidence hard to trust
+
+At this point, isolated workers should be spending nearly all of their round budget on **small
+structural hypotheses inside the live kernel**, not on constant retunes, selector cutoffs,
+environment repair, or source-level scalar cleanup.
+
 ---
 
 ## 13. Open Problems and Suggested Next Steps
