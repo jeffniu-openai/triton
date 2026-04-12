@@ -599,7 +599,7 @@ def _softmax_inner_loop(tile_id: gl.constexpr, config, prog,  #
             col_limit_right = (offs_m - start_n + 1)[:, None]
             qk = _apply_causal_mask(qk, col_limit_right)
 
-        if use_tmem_red:
+        if use_tmem_red and STAGE != 2:
             qk_max = gl.convert_layout(qk_max, m_i.type.layout)
             m_ij = gl.maximum(m_i, qk_max * config.qk_scale)
         else:
@@ -948,6 +948,7 @@ HEAD_DIM = [64, 128]
 causal = [False, True]
 providers = ["triton-fp16", "triton-fp8"]
 N_CTX = [2**i for i in range(10, 17)]
+TEST_N_CTX = [2**i for i in range(10, 14)]
 use_tmem_reds = [False, True] if is_blackwell_ultra() else [False]
 
 
@@ -966,7 +967,7 @@ def provider_to_dtype(provider):
 
 @pytest.mark.parametrize("Z", BATCH)
 @pytest.mark.parametrize("H", N_HEADS)
-@pytest.mark.parametrize("N_CTX", N_CTX)
+@pytest.mark.parametrize("N_CTX", TEST_N_CTX)
 @pytest.mark.parametrize("HEAD_DIM", HEAD_DIM)
 @pytest.mark.parametrize("causal", causal)
 @pytest.mark.parametrize("provider", providers)
@@ -987,27 +988,23 @@ def test_op(Z, H, N_CTX, HEAD_DIM, causal, provider, use_tmem_red, profile=False
     assert provider == "triton"
 
     torch.manual_seed(42)
-    q = torch.zeros((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device)
-    k = torch.zeros((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device)
+    q = torch.empty((Z, H, N_CTX, HEAD_DIM), device=device).normal_(mean=0.0, std=0.5).to(dtype)
+    k = torch.empty((Z, H, N_CTX, HEAD_DIM), device=device).normal_(mean=0.0, std=0.5).to(dtype)
     v = torch.empty((Z, H, N_CTX, HEAD_DIM), device=device).normal_(mean=0.0, std=0.5).to(dtype)
     sm_scale = 1.3
 
-    # With q == k == 0, the attention distribution is uniform. This gives an
-    # O(N) oracle for the benchmark sizes where SDPA's math backend is too large.
-    expected = v.to(torch.float32)
-    if causal:
-        expected = expected.cumsum(dim=2)
-        denom = torch.arange(1, N_CTX + 1, dtype=torch.float32, device=device).reshape(1, 1, N_CTX, 1)
-        expected.div_(denom)
-    else:
-        expected = expected.mean(dim=2, keepdim=True).expand_as(expected)
+    ref_q = q.to(torch.float16) if dtype == torch.float8_e5m2 else q
+    ref_k = k.to(torch.float16) if dtype == torch.float8_e5m2 else k
+    ref_v = v.to(torch.float16) if dtype == torch.float8_e5m2 else v
+    ref_out = torch.nn.functional.scaled_dot_product_attention(ref_q, ref_k, ref_v, scale=sm_scale,
+                                                               is_causal=causal)
 
     tri_out, _ = attention_forward(q, k, v, causal, sm_scale, use_tmem_red)
     if dtype == torch.float8_e5m2:
-        torch.testing.assert_close(expected.to(dtype).to(torch.float32), tri_out.to(torch.float32), atol=0.125,
+        torch.testing.assert_close(ref_out.to(dtype).to(torch.float32), tri_out.to(torch.float32), atol=0.25,
                                    rtol=0)
     else:
-        torch.testing.assert_close(expected.to(dtype), tri_out, atol=1e-2, rtol=0)
+        torch.testing.assert_close(ref_out, tri_out, atol=1e-2, rtol=0)
 
 
 # ===-----------------------------------------------------------------------===#

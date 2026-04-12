@@ -111,12 +111,15 @@ When resuming the initiative:
   - aggregate:
     `2377 passed, 3444 skipped, 17463 deselected`
 - The clean Gluon examples subset remains green at `24bec4ecf`, and the
-  attention file now has benchmark-matrix unit coverage at current head:
+  attention file now has SDPA-backed benchmark-parameter unit coverage at
+  current head:
   - `python/examples/gluon/01-attention-forward.py`:
-    `112 passed in 106.85s (0:01:46)` over the benchmark grid
-    (`Z=4`, `H=32`, `HEAD_DIM in {64,128}`, `N_CTX=2**10..2**16`,
+    `64 passed in 102.66s (0:01:42)` over the benchmark grid except the
+    SDPA-OOM context lengths (`N_CTX in {1024,2048,4096,8192}` for tests;
+    benchmark remains `2**10..2**16`);
+  - covered test parameters: `Z=4`, `H=32`, `HEAD_DIM in {64,128}`,
     `causal in {False,True}`, providers `triton-fp16` and `triton-fp8`, and
-    `use_tmem_red in {False,True}` on this Blackwell Ultra box);
+    `use_tmem_red in {False,True}` on this Blackwell Ultra box;
   - `python/examples/gluon/02-convolution.py`:
     `48 passed`
   - `python/examples/gluon/03-matmul-multicta.py`:
@@ -574,7 +577,8 @@ When resuming the initiative:
     lacking producer-visible physical-family semantics for MMAv5 consumers;
     the linear supported layout passes in the same process.
 - The supported descriptor bitcast API remains on the branch, and the attention
-  scratch-alias path is migrated across the benchmark-shaped test matrix:
+  scratch-alias path is migrated across the SDPA-safe benchmark-shaped unit
+  matrix:
   - `python/examples/gluon/01-attention-forward.py` no longer uses
     `_reinterpret` for the scratch-borrow helpers;
   - P scratch slicing is dtype-aware: fp16/bf16 use 64 f32 columns for the P
@@ -582,8 +586,10 @@ When resuming the initiative:
     actual P physical region;
   - exp2 partitions still slice the original f32 scratch subregion before
     bitcasting each exact physical image;
-  - the attention benchmark matrix is green:
-    `112 passed in 106.85s (0:01:46)`;
+  - causal `use_tmem_red` now computes the diagonal-stage row max after causal
+    masking instead of using a pre-mask `ld.red` max;
+  - the SDPA-backed attention matrix is green:
+    `64 passed in 102.66s (0:01:42)`;
   - full `python/examples/gluon` still needs a fresh aggregate rerun before
     marking the broader examples lane current.
 - The stale `test_mma_shared_inputs` two-CTA TTGIR spelling bucket is closed:

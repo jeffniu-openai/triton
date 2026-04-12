@@ -50,19 +50,25 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
-- Current-head attention benchmark-matrix unit coverage is green:
-  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-bench-matrix-final PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py`
-  - `112 passed in 106.85s (0:01:46)`
-  - The matrix matches the benchmark grid on this Blackwell Ultra box:
-    `Z=4`, `H=32`, `HEAD_DIM in {64,128}`, `N_CTX=2**10..2**16`,
-    `causal in {False,True}`, providers `triton-fp16` and `triton-fp8`, and
-    `use_tmem_red in {False,True}`.
-  - The test uses a uniform-attention O(N) oracle (`q == k == 0`, random `v`)
-    because PyTorch's default SDPA math backend OOMs on the largest benchmark
-    shapes and cuDNN SDPA is unavailable on `sm_103`.
-  - The scratch bitcast helpers are now dtype-aware: fp8 P views slice 32 f32
+- Current-head attention benchmark-parameter unit coverage is green with an
+  SDPA reference:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-sdpa-matrix-final2 PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py`
+  - `64 passed in 102.66s (0:01:42)`
+  - The test matrix matches the benchmark grid except for context lengths where
+    PyTorch SDPA OOMs: test `N_CTX` is `{1024,2048,4096,8192}`, while benchmark
+    `N_CTX` remains `2**10..2**16`.
+  - Covered test parameters on this Blackwell Ultra box: `Z=4`, `H=32`,
+    `HEAD_DIM in {64,128}`, `causal in {False,True}`, providers
+    `triton-fp16` and `triton-fp8`, and `use_tmem_red in {False,True}`.
+  - The test uses random `q/k/v` and compares against
+    `torch.nn.functional.scaled_dot_product_attention`; fp8 inputs are
+    dequantized to fp16 for SDPA and compared after fp8 quantization with
+    `atol=0.25`.
+  - The scratch bitcast helpers are dtype-aware: fp8 P views slice 32 f32
     columns instead of the fp16/bf16 64-column region, and alpha/epilogue
     scratch starts after the actual P physical region.
+  - Causal `use_tmem_red` now avoids the pre-mask TMEM reduction max in the
+    diagonal stage because SDPA-backed random tests exposed row-0 wrong results.
   - Full `python/examples/gluon` has not been rerun as one aggregate after this
     attention matrix expansion.
 - Current-head phase-boundary validation at `330c64c05` is green for the full
@@ -500,8 +506,8 @@
   locally closed by the current M64 producer-contract/source-column row-plan
   fix; keep their exacts in the focused guard set while broadening.
 - The focused attention scratch-alias path has been migrated again to the
-  supported `subslice/subview -> bitcast` API and broadened to the benchmark
-  unit matrix:
+  supported `subslice/subview -> bitcast` API and broadened to the SDPA-safe
+  benchmark unit matrix:
   - `_borrow_s_as_p`, `_borrow_s_as_alpha`, and `_borrow_s_for_epilogue` no
     longer call `_reinterpret`;
   - the exp2 P-storage path must slice the original f32 scratch subregion for
@@ -510,8 +516,11 @@
   - fp8 required one more correction: the P physical region is 32 f32 columns,
     not the fp16/bf16 64-column region, so scratch offsets now use
     `BLOCK_N * dtype_bits / 32`;
-  - the attention file benchmark matrix is green at the current checkpoint:
-    `112 passed in 106.85s (0:01:46)`;
+  - SDPA-backed random tests exposed a real causal `use_tmem_red` bug where the
+    diagonal stage used a pre-mask TMEM reduction max; the current source uses
+    `gl.max(qk, 1)` after masking for `STAGE == 2`;
+  - the attention file matrix is green at the current checkpoint:
+    `64 passed in 102.66s (0:01:42)`;
   - the examples/Gluon green aggregate recorded at `4263ae61` / `49f1a0fd`
     is still stale for current `HEAD`, so rerun broader examples before marking
     that lane green.
@@ -1039,8 +1048,8 @@
     - `690 passed, 60 skipped in 52.87s`
 - Full `python/examples/gluon` remains intentionally not the aggregate target
   until rerun after the attention benchmark-matrix expansion. The attention
-  file itself is green (`112 passed`), but the broader examples aggregate is
-  not yet refreshed.
+  file itself is green (`64 passed` with SDPA-backed correctness), but the
+  broader examples aggregate is not yet refreshed.
 - Next:
   - start operational fuzzing from `fuzz_plan.md` or continue wider pytest/lit
     validation;

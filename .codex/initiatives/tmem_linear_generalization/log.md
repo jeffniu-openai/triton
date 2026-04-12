@@ -10768,3 +10768,29 @@ Open after this slice:
   - hygiene: `git diff --check` -> passed.
 - Remaining boundary: full `python/examples/gluon` has not been rerun as one
   aggregate after this attention matrix expansion.
+
+## 2026-04-12 attention SDPA-reference correction
+
+- Reverted the correctness oracle away from the earlier uniform-attention
+  workaround at the user's request. `test_op` now uses random `q/k/v` and
+  compares against `torch.nn.functional.scaled_dot_product_attention` again.
+- Kept the benchmark `N_CTX` range at `2**10..2**16`, but added `TEST_N_CTX =
+  [2**i for i in range(10, 14)]` for unit correctness because the PyTorch SDPA
+  reference first OOMed at `N_CTX=16384` with a 32 GiB allocation on this
+  benchmark-shaped matrix.
+- The initial SDPA-backed expanded run produced `25 passed, 39 failed`:
+  - fp8 random cases were sparse one-bin mismatches against the quantized SDPA
+    reference, so the fp8 tolerance is now `atol=0.25`;
+  - causal `use_tmem_red` fp16/fp8 exposed a real kernel bug where the diagonal
+    stage used a pre-causal-mask TMEM `ld.red` max, producing row-0 wrong
+    results. `_softmax_inner_loop` now uses the post-mask `gl.max(qk, 1)` when
+    `STAGE == 2`, while retaining TMEM reduction max for non-diagonal stages.
+- Validation:
+  - build: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` -> passed, ninja reported no work to do;
+  - syntax: `python3 -m py_compile python/examples/gluon/01-attention-forward.py` -> passed;
+  - hygiene: `git diff --check` -> passed;
+  - collect-only: `PYTHONPATH=python:. pytest --collect-only -q python/examples/gluon/01-attention-forward.py` -> `64 tests collected`;
+  - targeted former failures: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-sdpa-targeted-fixes PYTHONPATH=python:. pytest -s --tb=short -q -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-triton-fp8-False-64-1024-32-4]' 'python/examples/gluon/01-attention-forward.py::test_op[True-triton-fp16-True-128-1024-32-4]' 'python/examples/gluon/01-attention-forward.py::test_op[True-triton-fp8-True-128-1024-32-4]'` -> `3 passed in 21.06s`;
+  - full attention file: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-sdpa-matrix-final2 PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py` -> `64 passed in 102.66s (0:01:42)`.
+- Remaining boundary: full `python/examples/gluon` has not been rerun as one
+  aggregate after this attention SDPA-reference correction.
