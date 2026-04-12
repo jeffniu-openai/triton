@@ -18,6 +18,70 @@ The current execution order follows the plan recorded in `memory.md`:
 The exact branch-caused recovery order that sits on top of this inventory now
 lives in `gb200_branch_recovery_plan.md`.
 
+## Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
+
+- Validated checkpoint:
+  - `cb76c31a0` on `origin/codex/tmem`
+- Artifact directory:
+  - `/tmp/gb200-ci-current-20260412-032422`
+- Scope:
+  - GB200-only `integration-tests-nvidia` lane from
+    `.github/workflows/integration-tests-nvidia.yml`;
+  - `test-interpret` is H100-only and was intentionally out of scope;
+  - pytest-heavy lanes were run with `pytest-split` groups and isolated
+    `TRITON_CACHE_DIR` values, then harness-sensitive singleton/profiler tails
+    were rerun in their exact CI command form.
+- Current branch result:
+  - build: passed;
+  - `make test-lit`: failed `9` files, `239 passed, 9 failed, 2 unsupported`;
+  - `make test-cpp`: passed, `240/240` C++ tests;
+  - `make NUM_PROCS=24 test-unit` surface:
+    - main `python/test/unit` split sweep failed `162` exact nodeids;
+    - exact rerun of those `162` nodeids from `python/test/unit` reproduced
+      all `162` failures;
+    - `test_debug.py` passed in exact CI form: `95 passed`;
+    - `python/triton_kernels/tests` passed all four groups:
+      `674/533/394/776` passed with skips only;
+    - `python/tutorials/06-fused-attention.py` passed/skip-only across all
+      four groups;
+    - instrumentation/plugin tails passed in exact CI form;
+  - `make NUM_PROCS=24 test-gluon` surface:
+    - `python/test/gluon` + `python/tutorials/gluon` failed only
+      `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+    - `python/examples/gluon` passed all four groups, so
+      `python/examples/gluon/01-attention-forward.py` is covered by this
+      aggregate;
+  - `make NUM_PROCS=24 test-gsan`: passed all four groups;
+  - `make test-regression`: passed all four groups;
+  - `make test-microbenchmark`: passed after rerun with
+    `PYTHONPATH=python:.` to avoid installed-package path ambiguity;
+  - `make test-proton`: main Proton command failed `11` cudagraph / periodic
+    flushing nodeids, while the three Proton tail commands passed.
+- Merge-base classification against `/root/code/triton-mergebase-ci` at
+  `11ee1144a737006921231bbd3386c187812c38e1`:
+  - the `9` lit failures all pass on merge-base;
+  - the `162` selected `python/test/unit` failures all pass on merge-base;
+  - the exposed Gluon M64 MMA legacy test passes on merge-base;
+  - the `11` Proton failures reproduce on merge-base with the same `-n 8`
+    command and are ignored as preexisting GB200 lane noise.
+- New branch-actionable manifests:
+  - [gb200_current_20260412_lit_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_20260412_lit_failures.txt)
+    - `9` lit files;
+  - [gb200_branch_new_20260412_unit_main_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_branch_new_20260412_unit_main_failures.txt)
+    - `162` pytest nodeids;
+  - [gb200_branch_new_20260412_gluon_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_branch_new_20260412_gluon_failures.txt)
+    - `1` pytest nodeid.
+- Ignored preexisting manifest:
+  - [gb200_preexisting_20260412_proton_main_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_preexisting_20260412_proton_main_failures.txt)
+    - `11` Proton nodeids that also fail on merge-base.
+- Inventory consequence:
+  - the current GB200 lane is not green at `cb76c31a0`;
+  - older full-Gluon green/xfailed counts are superseded for current-head CI
+    triage;
+  - the immediate recovery queue is now lit expectation/legality fallout,
+    branch-new `python/test/unit` matmul/tensor-descriptor/warp-specialization
+    correctness failures, and the deliberately exposed legacy M64 MMA failure.
+
 ## Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
 
 - Validated checkpoint:

@@ -50,6 +50,28 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Fresh full GB200 `integration-tests-nvidia` inventory at `cb76c31a0` is red on
+  current branch and classified against merge-base `11ee1144a737006921231bbd3386c187812c38e1`:
+  - branch-new lit: `9` files, all pass on merge-base;
+  - branch-new `python/test/unit`: `162` nodeids, all pass on merge-base,
+    clustered in `test_matmul.py` (`27`), `test_tensor_descriptor.py` (`7`),
+    and `test_warp_specialization.py` (`128`);
+  - branch-new Gluon: `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    fails after unxfail, while the linear parameter passes and merge-base's
+    legacy test passes;
+  - Proton main has `11` cudagraph / periodic flushing failures, but the same
+    nodeids fail on merge-base and are not branch recovery blockers;
+  - `test_debug.py`, instrumentation/plugin tails, and Proton split-only extra
+    failures were harness artifacts that cleared or reduced under exact CI-form
+    reruns.
+- The full `python/examples/gluon` aggregate passed in the current GB200 sweep:
+  - group 1: `225 passed, 15 skipped, 718 deselected`
+  - group 2: `221 passed, 19 skipped, 718 deselected`
+  - group 3: `220 passed, 20 skipped, 718 deselected`
+  - group 4: `218 passed, 20 skipped, 720 deselected`
+  - this includes `python/examples/gluon/01-attention-forward.py`, so the
+    previous conservative note that full examples had not been rerun after the
+    attention SDPA correction is superseded.
 - Current-head attention benchmark-parameter unit coverage is green with an
   SDPA reference:
   - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-sdpa-matrix-final2 PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py`
@@ -69,8 +91,8 @@
     scratch starts after the actual P physical region.
   - Causal `use_tmem_red` now avoids the pre-mask TMEM reduction max in the
     diagonal stage because SDPA-backed random tests exposed row-0 wrong results.
-  - Full `python/examples/gluon` has not been rerun as one aggregate after this
-    attention matrix expansion.
+  - Full `python/examples/gluon` was later rerun in the 2026-04-12 GB200
+    sweep at `cb76c31a0` and passed all four split groups.
 - Current-head phase-boundary validation at `330c64c05` is green for the full
   `python/test/gluon/test_tmem_runtime_matrix.py` file:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`

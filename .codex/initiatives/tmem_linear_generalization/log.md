@@ -10818,3 +10818,49 @@ Open after this slice:
   - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
   - keep it below current CI-lane freshness and full examples aggregate refresh,
     but do not treat it as permanent design debt.
+
+## 2026-04-12 Full GB200 NVIDIA CI Sweep At `cb76c31a0`
+
+### Scope
+- Swept the GB200-only `integration-tests-nvidia` workflow surface:
+  `test-lit`, `test-unit`, `test-gluon`, `test-gsan`, `test-regression`,
+  `test-microbenchmark`, `test-cpp`, and `test-proton`.
+- Used four-way `pytest-split` groups for broad pytest lanes and exact CI-form
+  reruns for harness-sensitive singleton/profiler tails.
+- Artifact directory: `/tmp/gb200-ci-current-20260412-032422`.
+
+### Current-Branch Results
+- Build passed.
+- `test-lit` failed `9` files: `239 passed, 9 failed, 2 unsupported`.
+- `test-cpp` passed: `240/240`.
+- Main `python/test/unit` split sweep failed `162` exact nodeids; exact rerun
+  from `python/test/unit` reproduced all `162`.
+- `test_debug.py` passed in exact CI form: `95 passed`.
+- `python/triton_kernels/tests` passed all four groups:
+  `674`, `533`, `394`, and `776` passed with skips only.
+- `python/tutorials/06-fused-attention.py` passed/skip-only across all groups.
+- Instrumentation/plugin tails passed in exact CI form.
+- `python/test/gluon` + `python/tutorials/gluon` failed only
+  `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`.
+- `python/examples/gluon` passed all four groups:
+  `225`, `221`, `220`, and `218` passed with skips only.
+- `gsan`, `regression`, `microbenchmark`, and C++ unit tests passed.
+- Proton main failed `11` cudagraph / periodic flushing nodeids; Proton tails
+  passed.
+
+### Merge-Base Classification
+- Merge-base checkout: `/root/code/triton-mergebase-ci` at
+  `11ee1144a737006921231bbd3386c187812c38e1`.
+- The `9` lit files all pass on merge-base.
+- The `162` selected unit nodeids all pass on merge-base.
+- The legacy M64 MMA test passes on merge-base.
+- The `11` Proton failures reproduce on merge-base and are classified
+  `PREEXISTING_ON_MERGE_BASE`.
+
+### Current Branch Recovery Queue
+1. Fix or refresh the `9` branch-new lit failures.
+2. Root-cause the `162` branch-new unit correctness failures in matmul,
+   tensor descriptor, and warp-specialization attention tests.
+3. Fix the exposed legacy M64 MMA failure without re-adding the xfail.
+4. Ignore Proton for this branch until a failure appears that is not also red
+   on merge-base.

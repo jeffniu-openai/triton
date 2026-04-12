@@ -30,6 +30,42 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+### Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
+
+- Validated checkpoint:
+  - `cb76c31a0`
+- Current branch-actionable exact lists:
+  - [gb200_current_20260412_lit_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_20260412_lit_failures.txt)
+    - `9` lit files
+    - merge-base exact rerun: all `9` passed
+  - [gb200_branch_new_20260412_unit_main_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_branch_new_20260412_unit_main_failures.txt)
+    - `162` pytest nodeids
+    - files represented:
+      - `python/test/unit/language/test_matmul.py`: `27`
+      - `python/test/unit/language/test_tensor_descriptor.py`: `7`
+      - `python/test/unit/language/test_warp_specialization.py`: `128`
+    - current exact rerun: all `162` failed
+    - merge-base exact rerun: all `162` passed
+  - [gb200_branch_new_20260412_gluon_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_branch_new_20260412_gluon_failures.txt)
+    - `1` pytest nodeid:
+      - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
+    - current exact rerun: legacy failed, linear passed
+    - merge-base exact rerun: legacy test passed
+- Current branch ignored/preexisting exact list:
+  - [gb200_preexisting_20260412_proton_main_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_preexisting_20260412_proton_main_failures.txt)
+    - `11` Proton cudagraph / periodic flushing nodeids
+    - current CI-form rerun: `11 failed, 114 passed`
+    - merge-base CI-form rerun: `11 failed, 112 passed`
+    - classification: `PREEXISTING_ON_MERGE_BASE`
+- Harness artifacts not recorded as branch failures:
+  - `test_debug.py` split group 4 produced CUDA fork failures, but exact CI
+    form passed `95 passed`;
+  - instrumentation/plugin singleton split groups 2-4 selected no tests, but
+    exact CI commands passed;
+  - Proton split groups produced extra instrumentation-hook/CUPTI symptoms,
+    but exact CI form reduced the live set to the same `11` preexisting
+    merge-base failures.
+
 ### Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
 
 - Validated checkpoint:

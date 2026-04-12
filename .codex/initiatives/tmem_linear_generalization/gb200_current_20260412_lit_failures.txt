@@ -1,0 +1,9 @@
+Analysis/test-membar-ttng.mlir
+NVWS/aref-tmem-insertion.mlir
+NVWS/assign_stage_phase.mlir
+TritonGPU/pipeline-loop-nest.mlir
+TritonGPU/pipeline-lower-loop.mlir
+TritonGPU/proxy_fence_insertion.mlir
+TritonNvidiaGPU/invalid.mlir
+TritonNvidiaGPU/mma_lowering.mlir
+TritonNvidiaGPU/ops.mlir

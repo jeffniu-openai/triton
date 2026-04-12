@@ -68,6 +68,16 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Full GB200 `integration-tests-nvidia` inventory at `cb76c31a0` is not green:
+  - branch-new actionable failures are `9` lit files, `162` `python/test/unit`
+    nodeids, and `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+  - those exacts pass on merge-base `11ee1144a737006921231bbd3386c187812c38e1`;
+  - Proton's `11` cudagraph / periodic flushing failures reproduce on
+    merge-base and are ignored as preexisting GB200 lane noise.
+- The latest current-head `python/examples/gluon` aggregate passed all four
+  split groups, so `python/examples/gluon/01-attention-forward.py` is now
+  covered by the examples aggregate as well as its focused SDPA-backed matrix.
+
 - The supported `slice/subview -> bitcast` contract now has an explicit
   root-aligned and right-half regression in
   `test_tmem_physical_bitcast_preserves_subview_mapping`: the right-half case
@@ -126,9 +136,8 @@ When resuming the initiative:
     `82 passed, 14 skipped`
   - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
     `690 passed, 60 skipped`
-  - full `python/examples/gluon` has not been rerun as one aggregate after the
-    attention matrix expansion, so keep the broader examples aggregate
-    conservative.
+  - full `python/examples/gluon` was rerun in the 2026-04-12 GB200 sweep at
+    `cb76c31a0` and passed all four split groups.
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1181 passed, 441 skipped, 1027 deselected`

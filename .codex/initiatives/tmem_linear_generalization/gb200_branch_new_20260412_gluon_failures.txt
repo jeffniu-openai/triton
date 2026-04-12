@@ -1,0 +1,1 @@
+python/test/gluon/test_core.py::test_block_m_64_mma[legacy]

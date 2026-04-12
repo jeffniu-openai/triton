@@ -46,6 +46,37 @@ PY
 
 ## Current Classification Summary
 
+### Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
+
+- Validated checkpoint:
+  - `cb76c31a0`
+- Branch-caused recovery backlog from this sweep:
+  - `test-lit`: `9` branch-new lit failures, all green on merge-base;
+  - `python/test/unit`: `162` branch-new runtime correctness failures:
+    - `27` matmul / persistent matmul exacts;
+    - `7` tensor descriptor matmul / reshape exacts;
+    - `128` warp-specialization attention exacts;
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`:
+    branch-new visible failure after removing the temporary xfail.
+- Not recovery blockers:
+  - Proton main `11` cudagraph / periodic flushing failures reproduce on
+    merge-base and remain `PREEXISTING_ON_MERGE_BASE`;
+  - `test_debug.py`, instrumentation/plugin tails, and Proton split-only extra
+    failures were harness artifacts and cleared in exact CI-form reruns.
+- Recovery order:
+  1. Fix or intentionally refresh the `9` lit failures. They are branch-new
+     and include TMEM scales-copy clean-unsupported fallout, `tcgen05.mma`
+     transposed-f32 legality fallout, and `memdesc_subslice` / pipeline
+     FileCheck expectation fallout.
+  2. Root-cause the `162` branch-new `python/test/unit` correctness failures
+     as shared compiler/runtime regressions before chasing individual nodeids.
+     They all pass on merge-base and cluster in matmul, tensor descriptor, and
+     warp-specialization attention surfaces.
+  3. Fix the exposed legacy M64 MMA producer-family issue without re-adding
+     the xfail.
+  4. Leave Proton out of the branch recovery queue unless a future rerun shows
+     a nodeid that is not also failing on merge-base.
+
 ### Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
 
 - Validated checkpoint:
