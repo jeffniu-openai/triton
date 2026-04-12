@@ -10809,7 +10809,10 @@ Open after this slice:
     `python/triton_kernels/tests`, the fused-attention tutorial,
     instrumentation, and plugin tails;
   - the current unit manifests are empty, while the large XML unit manifest is
-    retained only as stale historical evidence.
+    retained only as stale historical evidence;
+  - because `78196b4e4` predates later focused compiler/test coverage commits,
+    a current-HEAD full `test-unit` rerun is still required for a fresh complete
+    GB200 stamp.
 - Also recorded user direction that the lone legacy M64 MMAv5 xfail should be
   fixed later:
   - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;

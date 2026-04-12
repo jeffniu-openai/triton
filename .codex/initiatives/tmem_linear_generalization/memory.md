@@ -6529,7 +6529,8 @@ rejection, not rescue
   - `make test-cpp`;
   - `make test-proton`.
 - The earlier `test-unit` red inventory is superseded by the 2026-04-10 full
-  wrapper rerun at checkpoint `78196b4e4`:
+  wrapper rerun at checkpoint `78196b4e4`, but that is an older checkpoint than
+  current HEAD:
   - full `make NUM_PROCS=24 test-unit` artifact:
     `/tmp/test-unit-gb200-after-ws.log`;
   - main `python/test/unit`: `15153 passed, 5492 skipped`;
@@ -6537,7 +6538,9 @@ rejection, not rescue
   - tail sublanes green: `python/triton_kernels/tests`,
     `python/tutorials/06-fused-attention.py`, instrumentation, and plugin tests;
   - the current `gb200_current_branch_test_unit*_failures.txt` manifests are
-    empty except the historical XML inventory, which remains explicitly stale.
+    empty except the historical XML inventory, which remains explicitly stale;
+  - rerun `make NUM_PROCS=24 test-unit` at current HEAD before calling the full
+    GB200 unit lane freshly validated.
 - The single full-Gluon xfail remains:
   - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
   - reason: legacy M64 `64x64` layout sugar still lacks producer-visible

@@ -651,8 +651,9 @@ When resuming the initiative:
     - the current clean unsupported descriptor-view diagnostic for a block
       basis `ld.red` negative.
   - `gb200_current_branch_test_core_group3_focus_e70a3aa09_failures.txt`
-- The GB200 `make NUM_PROCS=24 test-unit` lane was also recovered before the
-  latest focused attention/example work:
+- The latest recorded full GB200 `make NUM_PROCS=24 test-unit` lane was
+  recovered at an older checkpoint and must be rerun at current HEAD before a
+  full fresh CI stamp:
   - checkpoint `78196b4e4` reran the full wrapper green;
   - main `python/test/unit`: `15153 passed, 5492 skipped`;
   - `python/test/unit/test_debug.py`: `95 passed`;
@@ -663,7 +664,9 @@ When resuming the initiative:
     `gb200_current_branch_test_unit_matmul_refresh_failures.txt`,
     `gb200_current_branch_test_unit_tensor_descriptor_refresh_failures.txt`,
     `gb200_current_branch_test_unit_warp_specialization_refresh_failures.txt`,
-    and `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`.
+    and `gb200_current_branch_test_unit_rowanchor_refresh_failures.txt`;
+  - this unit green point predates later focused compiler/test coverage commits,
+    so do not treat it as a current-HEAD full-wrapper rerun without refreshing.
 - The supported `_reinterpret` migration invariant remains:
   - offset to the right part of TMEM;
   - slice/subview it to the desired physical bits;

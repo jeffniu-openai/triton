@@ -1172,11 +1172,13 @@ PY
 
 ## 2026-04-12 docket update: legacy M64 MMAv5 xfail must be fixed later
 
-- Current green/fresh unit-lane reading:
+- Latest recorded unit-lane reading:
   - checkpoint `78196b4e4` reran the full `make NUM_PROCS=24 test-unit` wrapper
     green;
   - the current unit failure manifests are empty;
-  - the large XML unit manifest remains historical only.
+  - the large XML unit manifest remains historical only;
+  - because this predates later focused compiler/test coverage commits, rerun
+    `make NUM_PROCS=24 test-unit` at current HEAD for a fresh full-wrapper stamp.
 - The current full-Gluon xfail is:
   - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`
 - Reason:
