@@ -10882,14 +10882,18 @@ Open after this slice:
     `expected-error` / `expected-note`;
   - `TritonGPU/pipeline-loop-nest.mlir` and
     `TritonGPU/pipeline-lower-loop.mlir` need FileCheck updates for current
-    `ttng.tmem_alloc` attributes.
-- API/contract updates:
+    `ttng.tmem_alloc` attributes;
+  - `TritonNvidiaGPU/ops.mlir` is stale branch-local linear-TMEM view IR: the
+    exact IR is absent from merge-base because `tensor_memory_linear` is
+    branch-added, and it should use the current physical-mapping-preserving
+    `memdesc_subslice` result type.
+- API/contract updates, verified main-invalid by pushing representative IR
+  through merge-base backend lowering:
   - scales-copy lit users: `Analysis/test-membar-ttng.mlir`,
     `TritonGPU/proxy_fence_insertion.mlir`, and
     `TritonNvidiaGPU/mma_lowering.mlir`;
   - now-invalid transposed-f32 MMAv5 lit users: `NVWS/assign_stage_phase.mlir`
-    and `NVWS/aref-tmem-insertion.mlir`;
-  - old `memdesc_subslice` result-type spelling: `TritonNvidiaGPU/ops.mlir`.
+    and `NVWS/aref-tmem-insertion.mlir`.
 - Proton's `11` cudagraph / periodic flushing failures remain
   `PREEXISTING_ON_MERGE_BASE` and are not branch recovery blockers.
 - Detailed report: `gb200_failure_classification_20260412.md`.

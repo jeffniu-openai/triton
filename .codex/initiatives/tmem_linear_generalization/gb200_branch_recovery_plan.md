@@ -62,23 +62,26 @@ PY
   - actual bugs: the `162` `python/test/unit` wrong-output nodeids and the
     legacy M64 Gluon wrong-output nodeid;
   - stale tests: `TritonNvidiaGPU/invalid.mlir`,
-    `TritonGPU/pipeline-loop-nest.mlir`, and
-    `TritonGPU/pipeline-lower-loop.mlir`;
-  - API/contract updates: `Analysis/test-membar-ttng.mlir`,
+    `TritonGPU/pipeline-loop-nest.mlir`,
+    `TritonGPU/pipeline-lower-loop.mlir`, and branch-local
+    `TritonNvidiaGPU/ops.mlir` `memdesc_subslice` result-type text;
+  - API/contract updates verified main-invalid through merge-base backend
+    lowering: `Analysis/test-membar-ttng.mlir`,
     `TritonGPU/proxy_fence_insertion.mlir`,
     `TritonNvidiaGPU/mma_lowering.mlir`, `NVWS/assign_stage_phase.mlir`,
-    `NVWS/aref-tmem-insertion.mlir`, and `TritonNvidiaGPU/ops.mlir`.
+    and `NVWS/aref-tmem-insertion.mlir`.
 - Not recovery blockers:
   - Proton main `11` cudagraph / periodic flushing failures reproduce on
     merge-base and remain `PREEXISTING_ON_MERGE_BASE`;
   - `test_debug.py`, instrumentation/plugin tails, and Proton split-only extra
     failures were harness artifacts and cleared in exact CI-form reruns.
 - Recovery order:
-  1. Refresh the three stale lit tests first; this removes FileCheck /
-     expected-diagnostic drift from the red list without touching lowering.
-  2. Rewrite the six API/contract-update lit files to supported scales-copy,
-     MMAv5, or descriptor-view spellings, or convert each to a deliberate
-     negative when the unsupported case is the point.
+  1. Refresh the four stale lit tests first; this removes FileCheck /
+     expected-diagnostic / branch-local view text drift from the red list
+     without touching lowering.
+  2. Rewrite the five API/contract-update lit files to supported scales-copy
+     or MMAv5 spellings, or convert each to a deliberate negative when the
+     unsupported case is the point.
   3. Root-cause the `162` branch-new `python/test/unit` correctness failures
      as shared compiler/runtime regressions before chasing individual nodeids.
      They all pass on merge-base and cluster in matmul, tensor descriptor, and

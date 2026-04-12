@@ -14,8 +14,8 @@ Artifacts:
 | --- | ---: | --- |
 | `python/test/unit` runtime failures | 162 nodeids | Actual compiler/runtime bugs |
 | `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` | 1 nodeid | Actual compiler/runtime bug |
-| lit tests with now-invalid TMEM copy/MMAv5/view contracts | 6 files | Tests require API/contract update |
-| lit tests with stale FileCheck / expected-error text | 3 files | Stale tests |
+| lit tests with now-invalid TMEM copy/MMAv5 contracts | 5 files | Tests require API/contract update |
+| lit tests with stale FileCheck / expected-error / branch-local view text | 4 files | Stale tests |
 | Proton cudagraph / periodic flushing | 11 nodeids | Preexisting on merge-base, ignore for branch recovery |
 
 ## Actual Bugs
@@ -73,9 +73,21 @@ Classification:
 ## Tests Requiring API / Contract Updates
 
 These tests feed IR or descriptor types that are no longer valid under the
-supported TMEM copy/MMAv5/view contracts. They are not evidence that the new
+supported TMEM copy/MMAv5 contracts. They are not evidence that the new
 clean verifier diagnostics are wrong; the tests need to be rewritten to a
 supported spelling or intentionally converted to negative tests.
+
+Main-validity check, 2026-04-12:
+- merge-base `triton-opt` accepts the original shallow lit pipelines for these
+  files;
+- pushing representative post-pass IR through the merge-base backend does not
+  generate valid code;
+- scales-copy cases fail or crash in backend lowering around unsupported
+  `ttng.tmem_copy` to tensor-memory scales;
+- the MMAv5 f32 shape from the NVWS tests fails merge-base backend lowering
+  with `failed to find valid tcgen05.mma layout for operand A`;
+- therefore these are main-invalid IR patterns that the current branch reports
+  earlier and more cleanly, not branch regressions.
 
 ### Scales-copy descriptor-plan contract
 
@@ -114,26 +126,31 @@ Classification:
 - update the test IR to use supported operand dtype/layouts, or make the
   invalid f32 case an expected diagnostic if that is the intended coverage.
 
-### `memdesc_subslice` result-type contract
-
-File:
-- `TritonNvidiaGPU/ops.mlir`
-
-Observed diagnostic:
-- `ttg.memdesc_subslice` result memdesc types no longer match the verifier's
-  inferred type; the written result types use the older reduced
-  `tensor_memory_linear` encoding instead of the current physical-layout view
-  contract.
-
-Classification:
-- API/dialect contract update required;
-- update the handwritten IR to the current inferred descriptor-view type
-  spelling, preserving the parent physical mapping where required.
-
 ## Stale Tests
 
 These appear to be test-text drift rather than actual compiler regressions or
 API misuse.
+
+### `TritonNvidiaGPU/ops.mlir`
+
+Observed diagnostic:
+- branch-local linear-TMEM `ttg.memdesc_subslice` result memdesc types no
+  longer match the verifier's inferred type; the written result types use the
+  older reduced `tensor_memory_linear` encoding instead of the current
+  physical-layout-preserving view contract.
+
+Main-validity check, 2026-04-12:
+- merge-base cannot parse this exact IR because `#ttng.tensor_memory_linear`
+  is branch-added;
+- the relevant branch conversion tests were already updated by `ab8ff6e64` to
+  keep the subview result's physical mapping equivalent to the parent/root
+  descriptor;
+- this is stale branch-local lit IR, not proof of a main-loose-verifier case.
+
+Classification:
+- stale branch test / dialect-contract text;
+- update the handwritten IR to the current inferred descriptor-view type
+  spelling, preserving the parent physical mapping where required.
 
 ### `TritonNvidiaGPU/invalid.mlir`
 
@@ -184,7 +201,7 @@ Classification:
 ## Recommended Recovery Order
 
 1. Fix stale lit tests first; this should reduce `test-lit` noise quickly.
-2. Rewrite the API/contract-update lit files to supported TMEM copy/MMAv5/view
+2. Rewrite the API/contract-update lit files to supported TMEM copy/MMAv5
    spellings or convert them to explicit negatives where appropriate.
 3. Debug the actual runtime bug cluster, starting with the smaller matmul /
    tensor-descriptor set before the 128 warp-specialization attention nodeids.
