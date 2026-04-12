@@ -79,133 +79,6 @@ static void printDiagStr(llvm::raw_ostream &os, const Diagnostic &diag) {
     printDiagStr(os, note);
 }
 
-static ttng::TMEMAllocOp getBackingTMemAlloc(Value memDesc) {
-  Value cur = memDesc;
-  while (cur) {
-    if (auto forwarded = ttng::getTMemForwardingSource(cur)) {
-      cur = forwarded;
-      continue;
-    }
-    if (auto alloc = dyn_cast_if_present<ttng::TMEMAllocOp>(cur.getDefiningOp()))
-      return alloc;
-    Operation *def = cur.getDefiningOp();
-    if (!def)
-      break;
-    if (auto op = dyn_cast<ttg::MemDescIndexOp>(def)) {
-      cur = op.getSrc();
-      continue;
-    }
-    if (auto op = dyn_cast<ttg::MemDescSubsliceOp>(def)) {
-      cur = op.getSrc();
-      continue;
-    }
-    if (auto op = dyn_cast<ttng::TMEMSubSliceOp>(def)) {
-      cur = op.getSrc();
-      continue;
-    }
-    if (auto op = dyn_cast<ttg::MemDescReshapeOp>(def)) {
-      cur = op.getSrc();
-      continue;
-    }
-    if (auto op = dyn_cast<ttg::MemDescReinterpretOp>(def)) {
-      cur = op.getSrc();
-      continue;
-    }
-    if (auto op = dyn_cast<ttg::MemDescTransOp>(def)) {
-      cur = op.getSrc();
-      continue;
-    }
-    break;
-  }
-  return {};
-}
-
-static void annotateMMAv5AccumulatorRootRowPlan(Value acc) {
-  auto alloc = getBackingTMemAlloc(acc);
-  if (!alloc)
-    return;
-  ttng::setExplicitMMAv5AccumulatorRoot(alloc);
-  ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
-}
-
-static void annotateMMAv5AccumulatorRootPhysicalLayout(Value acc,
-                                                       bool scaled = false) {
-  auto alloc = getBackingTMemAlloc(acc);
-  auto memTy = dyn_cast_if_present<ttg::MemDescType>(acc.getType());
-  if (!alloc || !memTy)
-    return;
-  auto info = scaled ? ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)
-                     : ttng::getMMAv5AccumulatorLayoutInfo(memTy);
-  if (!info)
-    return;
-  ttng::setExplicitTMemPhysicalLayout(alloc, info->familyLayout,
-                                      info->twoCTAs,
-                                      /*overwriteExisting=*/true);
-}
-
-static void annotateMMAv5TMemOperandRootRowPlan(Value operand, Value acc) {
-  auto operandAlloc = getBackingTMemAlloc(operand);
-  auto accAlloc = getBackingTMemAlloc(acc);
-  if (!operandAlloc || !accAlloc || operandAlloc == accAlloc)
-    return;
-  ttng::copyExplicitTMemLdStRowPlan(operandAlloc, accAlloc);
-  ttng::setExplicitMMAv5OperandRoot(operandAlloc);
-}
-
-static void annotateMMAv5TMemOperandRootPhysicalLayout(Value operand) {
-  auto alloc = getBackingTMemAlloc(operand);
-  auto memTy = dyn_cast_if_present<ttg::MemDescType>(operand.getType());
-  if (!alloc || !memTy)
-    return;
-  auto info = ttng::getMMAv5LhsLayoutInfo(memTy);
-  if (!info)
-    return;
-  ttng::setExplicitTMemPhysicalLayout(alloc, info->familyLayout,
-                                      info->twoCTAs,
-                                      /*overwriteExisting=*/true);
-}
-
-static void annotateDirectTMemRootContractFromStore(Value memDesc) {
-  auto alloc = getBackingTMemAlloc(memDesc);
-  auto memTy = dyn_cast_if_present<ttg::MemDescType>(memDesc.getType());
-  if (!alloc || !memTy || alloc.getResult() != memDesc)
-    return;
-
-  std::string error;
-  auto maybeRawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
-      memDesc, /*preserveNonCanonicalView=*/true, &error);
-  if (failed(maybeRawQuery))
-    return;
-
-  auto rowPlan = ttng::getTMemLdStRowPlanForQueryLayout(memDesc, memTy,
-                                                        *maybeRawQuery);
-  if (!rowPlan)
-    rowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
-  if (!rowPlan)
-    return;
-
-  ttng::setExplicitTMemPhysicalLayout(alloc, maybeRawQuery->layout,
-                                      maybeRawQuery->twoCTAs);
-  ttng::setExplicitTMemLdStRowPlan(alloc, *rowPlan);
-}
-
-static void annotateCanonicalMMAv5AccumulatorRootContract(Value memDesc) {
-  auto alloc = dyn_cast_if_present<ttng::TMEMAllocOp>(memDesc.getDefiningOp());
-  auto memTy = dyn_cast_if_present<ttg::MemDescType>(memDesc.getType());
-  if (!alloc || !memTy)
-    return;
-
-  auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy);
-  if (!info)
-    info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
-  if (!info)
-    return;
-
-  ttng::setExplicitMMAv5RootRowPlanIfNeeded(alloc);
-  ttng::setExplicitTMemPhysicalLayout(alloc, info->familyLayout,
-                                      info->twoCTAs);
-}
-
 static bool matchesRequestedTMemAtom(
     ttg::MemDescType queryTy, std::optional<ttng::TMemAccessAtom> desiredAtom,
     ttng::TMemAccessAtom actualAtom) {
@@ -1067,18 +940,15 @@ void init_gluon_ir(py::module &&m) {
       .def("create_tmem_alloc",
            [](GluonOpBuilder &self, Type resultTy, Value value) -> Value {
              auto op = self.create<ttng::TMEMAllocOp>(resultTy, value);
-             annotateCanonicalMMAv5AccumulatorRootContract(op.getResult());
              return op.getResult();
            })
       .def("create_tmem_alloc",
            [](GluonOpBuilder &self, Type resultTy, py::none value) -> Value {
              auto op = self.create<ttng::TMEMAllocOp>(resultTy, Value{});
-             annotateCanonicalMMAv5AccumulatorRootContract(op.getResult());
              return op.getResult();
            })
       .def("create_tmem_store",
            [](GluonOpBuilder &self, Value memDesc, Value value, Value pred) {
-             annotateDirectTMemRootContractFromStore(memDesc);
              self.create<ttng::TMEMStoreOp>(memDesc, value, pred);
            })
       .def(
@@ -1190,12 +1060,6 @@ void init_gluon_ir(py::module &&m) {
              bool multicast) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
-             annotateMMAv5AccumulatorRootRowPlan(acc);
-             annotateMMAv5AccumulatorRootPhysicalLayout(acc);
-             annotateMMAv5TMemOperandRootRowPlan(a, acc);
-             annotateMMAv5TMemOperandRootPhysicalLayout(a);
-             annotateMMAv5TMemOperandRootRowPlan(b, acc);
-             annotateMMAv5TMemOperandRootPhysicalLayout(b);
              self.create<ttng::TCGen5MMAOp>(tokType, a, b, acc, accDep, useAcc,
                                             pred, two_ctas, multicast,
                                             mbarriers, mbarrier_preds);
@@ -1208,13 +1072,6 @@ void init_gluon_ir(py::module &&m) {
               bool two_ctas) {
              Value accDep;
              auto tokType = self.getBuilder().getType<ttg::AsyncTokenType>();
-             annotateMMAv5AccumulatorRootRowPlan(acc);
-             annotateMMAv5AccumulatorRootPhysicalLayout(acc,
-                                                       /*scaled=*/true);
-             annotateMMAv5TMemOperandRootRowPlan(a, acc);
-             annotateMMAv5TMemOperandRootPhysicalLayout(a);
-             annotateMMAv5TMemOperandRootRowPlan(b, acc);
-             annotateMMAv5TMemOperandRootPhysicalLayout(b);
              self.create<ttng::TCGen5MMAScaledOp>(
                  tokType, a, b, acc, accDep, aScale, bScale, aType, bType,
                  useAcc, pred, mbarriers, mbarrier_preds, two_ctas);

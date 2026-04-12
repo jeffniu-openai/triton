@@ -267,14 +267,14 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   tt.func public @tensor_memory_kernel() attributes {noinline = false} {
     %c0_i32 = arith.constant 0 : i32
     %cst = arith.constant dense<0> : tensor<128x128xi32, #blocked>
-    %result = ttng.tmem_alloc {ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 128, 128>, two_ctas = false}} : () -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
-    %result_0 = ttng.tmem_alloc %cst {ttng.tmem_ldst_row_plan = array<i32: 32, 64, 128, 0>, ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 128, 128>, two_ctas = false}} : (tensor<128x128xi32, #blocked>) -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
+    %result_0 = ttng.tmem_alloc %cst : (tensor<128x128xi32, #blocked>) -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
     %result_1 = ttng.tmem_load %result_0 : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> tensor<128x128xi32, #blocked>
     %true = arith.constant true
     ttng.tmem_store %cst, %result_0, %true : tensor<128x128xi32, #blocked> -> !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable>
     %0 = ttg.memdesc_subslice %result_0[0, 0] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
     %1 = ttg.memdesc_subslice %result_0[0, 64] : !ttg.memdesc<128x128xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xi32, #tmem, #ttng.tensor_memory, mutable, 128x128>
-    %result_2 = ttng.tmem_alloc {ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 128, 128>, two_ctas = false}} : () -> !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+    %result_2 = ttng.tmem_alloc : () -> !ttg.memdesc<2x128x128xf32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32_3 = arith.constant 0 : i32
     %c2_i32 = arith.constant 2 : i32
     %c1_i32 = arith.constant 1 : i32
@@ -1074,7 +1074,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   tt.func public @tcgen05_mma_kernel() attributes {noinline = false} {
     %0 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
-    %result = ttng.tmem_alloc {ttng.tmem_mmav5_accumulator_root, ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 0>, array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 128, 128>, two_ctas = false}} : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_0 = arith.constant true
     %2 = ttng.tc_gen5_mma %0, %1, %result[], %true, %true_0 : !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
@@ -1113,7 +1113,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>
     %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     %result_0 = ttng.tmem_alloc : () -> !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
-    %result_1 = ttng.tmem_alloc {ttng.tmem_mmav5_accumulator_root, ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 0>, array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 128, 128>, two_ctas = false}} : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
+    %result_1 = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_2 = arith.constant true
     %2 = ttng.tc_gen5_mma_scaled %0, %1, %result_1[], %result, %result_0, %true, %true_2 lhs = e5m2 rhs = e5m2 : !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf8E5M2, #shared, #smem, mutable>, !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
@@ -1194,7 +1194,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
     %0 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
     %1 = ttg.local_alloc : () -> !ttg.memdesc<128x128xf16, #shared, #smem, mutable>
     %2 = ttg.local_alloc : () -> !ttg.memdesc<1xi64, #shared1, #smem, mutable>
-    %result = ttng.tmem_alloc {ttng.tmem_mmav5_accumulator_root, ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 0>, array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 128, 128>, two_ctas = false}} : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory, mutable>
     %true = arith.constant true
     %true_0 = arith.constant true
     %true_1 = arith.constant true
@@ -1472,7 +1472,7 @@ def test_tmem_index_constexpr():
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_index_kernel() attributes {noinline = false} {
-    %result = ttng.tmem_alloc {ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>, array<i32: 128, 0>, array<i32: 0, 128>], []], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 256, 256>, two_ctas = false}} : () -> !ttg.memdesc<2x256x256xi32, #tmem, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<2x256x256xi32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32 = arith.constant 0 : i32
     %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x256x256xi32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<256x256xi32, #tmem, #ttng.tensor_memory, mutable>
     tt.return
@@ -1501,7 +1501,7 @@ def test_tmem_subslice_reg_layout_constexpr():
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1, CGALayout = [[1, 0], [2, 0]]>
 module attributes {"ttg.num-ctas" = 4 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "...", "ttg.threads-per-warp" = 32 : i32} {
   tt.func public @tmem_subslice_reg_layout_kernel() attributes {noinline = false} {
-    %result = ttng.tmem_alloc {ttng.tmem_physical_layout = {in_dim_bases = [[array<i32: 1, 0>, array<i32: 2, 0>, array<i32: 4, 0>, array<i32: 8, 0>, array<i32: 16, 0>, array<i32: 32, 0>, array<i32: 64, 0>], [array<i32: 0, 1>, array<i32: 0, 2>, array<i32: 0, 4>, array<i32: 0, 8>, array<i32: 0, 16>, array<i32: 0, 32>, array<i32: 0, 64>, array<i32: 0, 128>], [array<i32: 128, 0>, array<i32: 256, 0>]], in_dim_names = ["row", "col", "block"], out_dim_names = ["dim0", "dim1"], out_dim_sizes = array<i32: 512, 256>, two_ctas = false}} : () -> !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable>
+    %result = ttng.tmem_alloc : () -> !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable>
     %c0_i32 = arith.constant 0 : i32
     %0 = ttg.memdesc_index %result[%c0_i32] : !ttg.memdesc<2x512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable>
     %1 = ttg.memdesc_subslice %0[0, 0] : !ttg.memdesc<512x256xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<512x32xf32, #tmem, #ttng.tensor_memory, mutable, 512x256>

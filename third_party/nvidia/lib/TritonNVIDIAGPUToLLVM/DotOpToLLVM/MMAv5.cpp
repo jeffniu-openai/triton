@@ -80,6 +80,13 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
       if (auto maybeLayout = getTypeLayout())
         return *maybeLayout;
     }
+    auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
+    auto shape = memTy.getShape().take_back(rank);
+    auto allocShape = memTy.getAllocShape().take_back(rank);
+    if (shape == allocShape) {
+      if (auto maybeLayout = getTypeLayout())
+        return *maybeLayout;
+    }
     if (memDescValue) {
       if (auto maybeQuery = ttng::inferStandaloneTMemLdStQueryLayout(
               memDescValue, /*preserveNonCanonicalView=*/true, &layoutError);

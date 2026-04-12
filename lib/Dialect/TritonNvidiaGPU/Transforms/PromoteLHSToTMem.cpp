@@ -106,12 +106,6 @@ public:
       src = ttg::ConvertLayoutOp::create(rewriter, loc, newTy, src);
     }
     auto tMemAlloc = TMEMAllocOp::create(rewriter, loc, lhsMemDescType, src);
-    nvidia_gpu::setExplicitMMAv5RootRowPlanIfNeeded(tMemAlloc);
-    nvidia_gpu::setExplicitMMAv5OperandRoot(tMemAlloc);
-    if (auto info = nvidia_gpu::getMMAv5LhsLayoutInfo(lhsMemDescType)) {
-      nvidia_gpu::setExplicitTMemPhysicalLayout(
-          tMemAlloc, info->familyLayout, info->twoCTAs);
-    }
     tcGen5MMAOp.getAMutable().assign(tMemAlloc);
     return success();
   }

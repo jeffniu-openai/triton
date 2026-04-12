@@ -837,16 +837,14 @@ lowerTMemLdStFromTypes(
           std::optional<TMemLdStRowPlan> rowPlan,
           const TMemLdStQueryLayout *queryLayout = nullptr)
           -> std::optional<TMemLdStRowPlan> {
-    if (!vals.empty() || !memDescValue ||
+    if (!memDescValue ||
         !isa_and_nonnull<TMEMAllocOp>(memDescValue.getDefiningOp()) || !rowPlan) {
       return rowPlan;
     }
     auto backingPlan = getBackingTMemLdStRowPlan(memDescValue);
     if (!backingPlan || backingPlan->rowSpan <= rowPlan->rowSpan ||
         queryTy != memTy || queryTy.getRank() != 2 ||
-        queryTy.getShape()[0] != 64 ||
-        queryTy.getShape()[1] != 32 ||
-        !hasExplicitMMAv5AccumulatorRoot(memDescValue)) {
+        queryTy.getShape()[0] != 64) {
       return rowPlan;
     }
     auto anchorLayout = queryLayout ? queryLayout->layout : toLinearLayout(queryTy);
@@ -1070,19 +1068,10 @@ lowerTMemLdStFromTypes(
               memTy.getShape()[0] == 64 && memTy.getShape()[1] == 32 &&
               sourceTy.getShape()[0] == 64 &&
               sourceTy.getShape()[1] > memTy.getShape()[1]) {
-            auto backingPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
-            auto explicitPlan = getExplicitTMemLdStRowPlan(subslice->getSrc());
-            auto preferWider = [&](std::optional<TMemLdStRowPlan> candidate) {
-              if (candidate &&
-                  (!supportRowPlan ||
-                   candidate->rowSpan > supportRowPlan->rowSpan)) {
-                supportRowPlan = candidate;
-              }
-            };
-            preferWider(explicitPlan);
-            if (hasExplicitMMAv5AccumulatorRoot(subslice->getSrc()) ||
-                hasExplicitMMAv5OperandRoot(subslice->getSrc())) {
-              preferWider(backingPlan);
+            if (auto backingPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
+                backingPlan &&
+                (!supportRowPlan || backingPlan->rowSpan > supportRowPlan->rowSpan)) {
+              supportRowPlan = backingPlan;
             }
           }
           auto lowered =

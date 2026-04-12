@@ -2183,7 +2183,10 @@ def test_block_m_64_mma(layout_kind):
     assert ttgir.count("ttng.tmem_alloc") == 3
     assert ttgir.count(": () -> !ttg.memdesc<64x128xf32") == 1
     assert ttgir.count(": () -> !ttg.memdesc<64x128xf16") == 2
-    assert ttgir.count("ttng.tmem_ldst_row_plan") == 3
+    assert "ttng.tmem_ldst_row_plan" not in ttgir
+    assert "ttng.tmem_physical_layout" not in ttgir
+    assert "ttng.tmem_mmav5_accumulator_root" not in ttgir
+    assert "ttng.tmem_mmav5_operand_root" not in ttgir
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttng.tmem_subslice" not in ttgir
 

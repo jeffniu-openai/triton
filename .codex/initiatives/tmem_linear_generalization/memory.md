@@ -6641,3 +6641,60 @@ rejection, not rescue
 - Tooling note: the `apply_patch` tool still failed before edits with
   `No such file or directory`, so this checkpoint used scripted exact
   replacements and then validated the resulting diff.
+
+## 2026-04-12 10:23 UTC: TMEM side-channel attribute cleanup in progress
+
+- Preserve-set commit before this cleanup is `37d00bb91` on `codex/tmem`;
+  target remote remains `origin/codex/tmem` (`jeffniu-openai` remote URL).
+- User decision: the descriptor layout/type is the source of truth. Zero TMEM
+  bases encode broadcast/equivalence semantics; if physical coordinates in one
+  zero-basis equivalence class diverge, that is a producer/view/ld-st bug, not
+  a reason for ld/st to choose a hidden live representative.
+- Removed the branch-only TMEM side-channel API and producers/propagators for:
+  - `ttng.tmem_ldst_row_plan`;
+  - `ttng.tmem_physical_layout`;
+  - `ttng.tmem_mmav5_accumulator_root`;
+  - `ttng.tmem_mmav5_operand_root`.
+- Direct ld/st planning now keeps the exact descriptor `LinearLayout`,
+  including zero row/col bases, so direct stores, loads, and MMAv5 users agree
+  on one logical-to-physical TMEM projection.
+- The original `python/test/unit/language/test_matmul.py` M64 failures were
+  fixed by preserving those zero bases instead of planning from an active
+  physical layout that collapsed broadcast/support bits away.
+- Removing the attrs exposed the same M64 backing-plan issue in
+  `python/test/gluon/test_core.py::test_mma_shared_inputs`: before the
+  type-derived fix, exact M64 cases chose a 64-row/narrow load-store plan and
+  produced wrong results.
+- Current source derives the full-shape M64 row plan/query from the memdesc
+  type/layout family and ordinary view-chain/backing-plan analysis. It no
+  longer depends on producer provenance attrs or on copying attrs through TMEM
+  alloc rewrites.
+- Focused validation already passed:
+  - `make -j8`;
+  - representative M64 matmul exact;
+  - tensor-descriptor matmul exact;
+  - `test_block_m_64_mma[legacy]`;
+  - indexed-view `tcgen05.cp` no-scales exact;
+  - focused Gluon frontend TMEM/MMAv5 tests;
+  - focused lit for `tmem_layouts.mlir`, `mma_lowering.mlir`,
+    `test_tensor_memory_allocation.mlir`, `promote-lhs-to-tmem.mlir`,
+    `hoist-tmem-alloc.mlir`, and `loop-pipeline-blackwell.mlir`;
+  - two exact and eight sampled `test_mma_shared_inputs` M64 cases, including
+    f16/f8, use-acc true/false, CTA-group variants, and nonzero offsets.
+- Hygiene already passed:
+  - `git diff --check`;
+  - production attr sweep across `lib`, `include`, `third_party`, `python`,
+    and `test`; only negative test assertions still mention the removed attrs.
+- The four-way post-fix `test_mma_shared_inputs` split sweep is green:
+  - group 1: `3830 passed, 490 skipped, 13646 deselected`;
+  - group 2: `2954 passed, 1366 skipped, 13646 deselected`;
+  - group 3: `1206 passed, 3114 skipped, 13646 deselected`;
+  - group 4: `2584 passed, 1736 skipped, 13646 deselected`.
+- The pre-fix `test_mma_shared_inputs` failures after attr removal are stale
+  and should not be counted as current red without a fresh repro.
+- Post-helper-rename rebuild and smoke passed:
+  - `make -j8`;
+  - representative M64 matmul exact;
+  - tensor-descriptor matmul exact;
+  - `test_block_m_64_mma[legacy]`;
+  - representative M64 `test_mma_shared_inputs` exact.

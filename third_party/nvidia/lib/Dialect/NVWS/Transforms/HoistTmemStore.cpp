@@ -91,10 +91,6 @@ public:
             auto newAlloc = ttng::TMEMAllocOp::create(
                 rewriter, alloc.getLoc(), alloc.getResultTypes()[0],
                 rewriter.getType<AsyncTokenType>(), storeSrc);
-            ttng::copyExplicitTMemLdStRowPlan(newAlloc, alloc);
-            ttng::copyExplicitTMemPhysicalLayout(newAlloc, alloc);
-            ttng::copyExplicitMMAv5RootMarkers(newAlloc, alloc);
-            ttng::setExplicitMMAv5RootRowPlanIfNeeded(newAlloc);
 
             if (auto allocTok = alloc.getToken()) {
               allocTok.replaceAllUsesWith(newAlloc.getToken());

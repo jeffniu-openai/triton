@@ -4788,7 +4788,7 @@ def test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized(M):
 
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x128b"] * (M // 128))
     ttgir = compiled.asm["ttgir"]
-    assert "ttng.tmem_physical_layout" in ttgir
+    assert "ttng.tmem_physical_layout" not in ttgir
     assert "ttg.memdesc_index" in ttgir
     assert "tensor_memory_encoding" in ttgir
 

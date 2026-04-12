@@ -10993,3 +10993,49 @@ Open after this slice:
 - Tooling note: the `apply_patch` tool still failed before edits with
   `No such file or directory`, so this checkpoint used scripted exact
   replacements and then validated the resulting diff.
+
+## 2026-04-12 10:23 UTC: removed TMEM attr side channels; wider M64 sweep running
+
+- Starting point:
+  - branch `codex/tmem`;
+  - preserve-set commit `37d00bb91`;
+  - target remote branch `origin/codex/tmem`.
+- Change under validation:
+  - removed the explicit TMEM physical-layout, ld/st row-plan, and MMAv5 root
+    marker attrs plus all C++/Gluon producers and propagation helpers;
+  - direct TMEM ld/st planning now preserves zero row/col bases from the
+    descriptor layout instead of planning from an active layout that discards
+    broadcast/support bits;
+  - full-shape M64 MMAv5 backing row plans are recovered from the memdesc
+    type/layout family and backing view-chain analysis rather than from
+    producer attrs;
+  - tests that previously counted or required attrs now assert the attrs are
+    absent from TTGIR.
+- Focused validation passed before the wider sweep:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`;
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-128-32-4-float32-float16]`;
+  - `python/test/unit/language/test_tensor_descriptor.py::test_make_tensor_descriptor_matmul[64-128-32-4-2]`;
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+  - `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_indexed_view_canonicalized`;
+  - focused `python/test/gluon/test_frontend.py` TMEM/MMAv5 nodeids;
+  - focused lit for `tmem_layouts.mlir`, `mma_lowering.mlir`,
+    `test_tensor_memory_allocation.mlir`, `promote-lhs-to-tmem.mlir`,
+    `hoist-tmem-alloc.mlir`, and `loop-pipeline-blackwell.mlir`;
+  - exact/sampled M64 `test_mma_shared_inputs` cases that failed immediately
+    after attr removal now pass with a 128-row raw row plan.
+- Hygiene passed:
+  - `git diff --check`;
+  - `rg` sweep for the removed attr names shows only test assertions requiring
+    absence.
+- Wider validation passed:
+  - four-way split over `python/test/gluon/test_core.py -k test_mma_shared_inputs`;
+  - group 1: `3830 passed, 490 skipped, 13646 deselected in 4427.19s (1:13:47)`;
+  - group 2: `2954 passed, 1366 skipped, 13646 deselected in 3590.28s (0:59:50)`;
+  - group 3: `1206 passed, 3114 skipped, 13646 deselected in 1271.53s (0:21:11)`;
+  - group 4: `2584 passed, 1736 skipped, 13646 deselected in 3363.72s (0:56:03)`.
+- Post-helper-rename rebuild and smoke passed:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`;
+  - `python/test/unit/language/test_matmul.py::test_simple_matmul[False-False-4-2-64-128-32-4-float32-float16]`;
+  - `python/test/unit/language/test_tensor_descriptor.py::test_make_tensor_descriptor_matmul[64-128-32-4-2]`;
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+  - `python/test/gluon/test_core.py::test_mma_shared_inputs[False-ctas_per_cga0-1-1-1-64-0-0-warps1-16-False-False-acc_dtype1]`.

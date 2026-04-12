@@ -85,6 +85,22 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- The TMEM side-channel attribute cleanup slice is in progress after the
+  preserve-set commit `37d00bb91`:
+  - producer/provenance attributes are being removed instead of copied through
+    alloc rewrites (`ttng.tmem_physical_layout`, `ttng.tmem_ldst_row_plan`,
+    `ttng.tmem_mmav5_accumulator_root`, and
+    `ttng.tmem_mmav5_operand_root`);
+  - direct ld/st planning now preserves zero bases from the descriptor layout,
+    treating them as broadcast/equivalence semantics rather than disposable
+    physical storage;
+  - the M64 MMAv5 full-shape backing row plan is recovered from the memdesc
+    type/layout family and ordinary view-chain analysis, not from producer
+    attrs;
+  - focused lit, frontend, matmul, tensor-descriptor, Gluon M64, copy, and
+    sampled `test_mma_shared_inputs` probes pass at current working tree;
+  - the post-fix four-way `test_mma_shared_inputs` split sweep is green,
+    so the earlier pre-fix failure count is now stale.
 - Current pre-cleanup preserve-set at `3359982ee` is recorded in
   `gb200_preserve_set_20260412.md`:
   - build passed;
