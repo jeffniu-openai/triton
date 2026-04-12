@@ -51,7 +51,10 @@ PY
 - Validated checkpoint:
   - `cb76c31a0`
 - Branch-caused recovery backlog from this sweep:
-  - `test-lit`: `9` branch-new lit failures, all green on merge-base;
+  - `test-lit`: originally `9` branch-new lit failures, all green on
+    merge-base; as of 2026-04-12 08:21 UTC, the five API/contract-update
+    lit files pass focused lit and only the four stale lit tests remain
+    pending full `test-lit` refresh;
   - `python/test/unit`: `162` branch-new runtime correctness failures:
     - `27` matmul / persistent matmul exacts;
     - `7` tensor descriptor matmul / reshape exacts;
@@ -76,12 +79,10 @@ PY
   - `test_debug.py`, instrumentation/plugin tails, and Proton split-only extra
     failures were harness artifacts and cleared in exact CI-form reruns.
 - Recovery order:
-  1. Refresh the four stale lit tests first; this removes FileCheck /
-     expected-diagnostic / branch-local view text drift from the red list
-     without touching lowering.
-  2. Rewrite the five API/contract-update lit files to supported scales-copy
-     or MMAv5 spellings, or convert each to a deliberate negative when the
-     unsupported case is the point.
+  1. Refresh the four stale lit tests; the five API/contract-update lit files
+     were rewritten to supported scales-copy/MMAv5 spellings and pass focused
+     lit as of 2026-04-12 08:21 UTC.
+  2. Rerun full `make test-lit` after the stale lit refresh.
   3. Root-cause the `162` branch-new `python/test/unit` correctness failures
      as shared compiler/runtime regressions before chasing individual nodeids.
      They all pass on merge-base and cluster in matmul, tensor descriptor, and

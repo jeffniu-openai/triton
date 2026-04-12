@@ -10897,3 +10897,48 @@ Open after this slice:
 - Proton's `11` cudagraph / periodic flushing failures remain
   `PREEXISTING_ON_MERGE_BASE` and are not branch recovery blockers.
 - Detailed report: `gb200_failure_classification_20260412.md`.
+
+## 2026-04-12 08:21 UTC: GB200 API/contract lit bucket fixed
+
+- Fixed only the five lit tests previously classified as API/contract updates:
+  - `test/Analysis/test-membar-ttng.mlir`;
+  - `test/TritonGPU/proxy_fence_insertion.mlir`;
+  - `test/TritonNvidiaGPU/mma_lowering.mlir`;
+  - `test/NVWS/assign_stage_phase.mlir`;
+  - `test/NVWS/aref-tmem-insertion.mlir`.
+- Scales-copy tests now use verifier-supported `#ttg.shared_linear` source
+  layouts that synthesize a valid tensor-memory-scales descriptor plan instead
+  of relying on old invalid `nvmma_shared` / `swizzled_shared` scale-copy IR.
+- `mma_lowering.mlir` keeps the shared-scales-to-TMEM lowering intent by using
+  `blockN=128` so both A and B scale copies are `128x8` supported scales-copy
+  tiles; it still checks `tmem_alloc`, `tmem_copy`, and the rewritten
+  `tc_gen5_mma_scaled` operands.
+- NVWS scheduling/aref tests no longer use invalid shared-memory `f32` MMA
+  operands for scheduling-only coverage:
+  - unscaled cases use supported `f16` shared operands with f32 accumulators;
+  - scaled cases use `f8E4M3FN` shared operands under a 64-byte f8 shared
+    layout for the 64-wide A tile.
+- Validation:
+  - `make -j8` passed after refreshing the LLVM toolchain and build tree;
+  - `ninja triton-opt` from the build directory reported `no work to do`;
+  - direct pass pipelines without FileCheck passed for all five files, including
+    both `test-membar-ttng.mlir` RUN lines;
+  - lit with `PATH=/root/.triton/llvm/llvm-ubuntu-arm64/bin:$PATH` passed for
+    all five files:
+    - `lit -v test/Analysis/test-membar-ttng.mlir`;
+    - `lit -v test/TritonGPU/proxy_fence_insertion.mlir`;
+    - `lit -v test/TritonNvidiaGPU/mma_lowering.mlir`;
+    - `lit -v test/NVWS/assign_stage_phase.mlir`;
+    - `lit -v test/NVWS/aref-tmem-insertion.mlir`;
+  - `git diff --check` passed.
+- Current GB200 branch-recovery implication:
+  - the API/contract lit bucket is fixed at focused-lit scope;
+  - the stale lit bucket remains: `TritonNvidiaGPU/invalid.mlir`,
+    `TritonGPU/pipeline-loop-nest.mlir`, `TritonGPU/pipeline-lower-loop.mlir`,
+    and `TritonNvidiaGPU/ops.mlir`;
+  - a full `make test-lit` rerun is still pending after the stale lit fixes;
+  - the `162` `python/test/unit` failures and legacy M64 MMAv5 bug remain the
+    actual compiler/runtime recovery backlog.
+- Tooling note: the `apply_patch` tool still failed before edits with
+  `No such file or directory`, so this checkpoint used scripted exact
+  replacements and then validated the resulting diff.

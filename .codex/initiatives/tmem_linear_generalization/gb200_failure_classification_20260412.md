@@ -14,7 +14,7 @@ Artifacts:
 | --- | ---: | --- |
 | `python/test/unit` runtime failures | 162 nodeids | Actual compiler/runtime bugs |
 | `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` | 1 nodeid | Actual compiler/runtime bug |
-| lit tests with now-invalid TMEM copy/MMAv5 contracts | 5 files | Tests require API/contract update |
+| lit tests with now-invalid TMEM copy/MMAv5 contracts | 5 files | Fixed at focused-lit scope on 2026-04-12 08:21 UTC |
 | lit tests with stale FileCheck / expected-error / branch-local view text | 4 files | Stale tests |
 | Proton cudagraph / periodic flushing | 11 nodeids | Preexisting on merge-base, ignore for branch recovery |
 
@@ -72,9 +72,10 @@ Classification:
 
 ## Tests Requiring API / Contract Updates
 
-These tests feed IR or descriptor types that are no longer valid under the
-supported TMEM copy/MMAv5 contracts. They are not evidence that the new
-clean verifier diagnostics are wrong; the tests need to be rewritten to a
+Status, 2026-04-12 08:21 UTC: fixed at focused-lit scope. These tests fed
+IR or descriptor types that are no longer valid under the supported TMEM
+copy/MMAv5 contracts. They were not evidence that the new
+clean verifier diagnostics were wrong; the tests needed to be rewritten to a
 supported spelling or intentionally converted to negative tests.
 
 Main-validity check, 2026-04-12:
@@ -101,13 +102,14 @@ Observed diagnostic:
   `tcgen05.copy.warpx4.32x128b`, but Triton cannot synthesize a compatible
   shared-memory descriptor plan for tensor memory scales.
 
-Classification:
-- API/contract update required;
-- these pass tests were relying on a now-rejected scales-copy setup to reach
-  downstream membar / proxy-fence / MMA-lowering checks;
-- update the source shared layout or descriptor construction to one of the
-  supported scales-copy forms, or move the case into a clean-negative test if
-  the unsupported shape is the point.
+Resolution:
+- fixed by rewriting the pass tests to supported scales-copy forms;
+- `Analysis/test-membar-ttng.mlir` and
+  `TritonGPU/proxy_fence_insertion.mlir` now use
+  descriptor-plan-compatible `shared_linear` source layouts;
+- `TritonNvidiaGPU/mma_lowering.mlir` keeps shared-scale lowering coverage
+  on supported `128x8` A/B scale tiles with `blockN=128`;
+- focused lit validation passed for all three files.
 
 ### MMAv5 transposed-f32 shared-memory contract
 
@@ -119,12 +121,12 @@ Observed diagnostic:
 - `ttng.tc_gen5_mma` reports that `tcgen05.mma` does not support transposed
   `float32` operands in shared memory.
 
-Classification:
-- API/contract update required;
-- these NVWS tests use now-invalid f32 shared-memory operand layouts while
-  trying to test scheduling / aref behavior;
-- update the test IR to use supported operand dtype/layouts, or make the
-  invalid f32 case an expected diagnostic if that is the intended coverage.
+Resolution:
+- fixed by changing the scheduling-only IR to supported operand dtype/layouts;
+- unscaled NVWS MMAv5 tests now use f16 shared operands with f32 accumulators;
+- scaled e4m3 NVWS tests now use f8E4M3FN shared operands and a compatible
+  f8 shared layout;
+- focused lit validation passed for both NVWS files.
 
 ## Stale Tests
 
@@ -200,9 +202,10 @@ Classification:
 
 ## Recommended Recovery Order
 
-1. Fix stale lit tests first; this should reduce `test-lit` noise quickly.
-2. Rewrite the API/contract-update lit files to supported TMEM copy/MMAv5
-   spellings or convert them to explicit negatives where appropriate.
+1. Fix the four remaining stale lit tests.
+2. Rerun full `make test-lit` after stale lit refresh; the five
+   API/contract lit files already pass focused lit after their
+   supported-spelling rewrite.
 3. Debug the actual runtime bug cluster, starting with the smaller matmul /
    tensor-descriptor set before the 128 warp-specialization attention nodeids.
 4. Fix `test_block_m_64_mma[legacy]` without reintroducing an xfail.

@@ -80,11 +80,17 @@ noise lives in `gb200_failure_classification_20260412.md`.
   - the current GB200 lane is not green at `cb76c31a0`;
   - older full-Gluon green/xfailed counts are superseded for current-head CI
     triage;
-  - the `9` lit failures split into `3` stale test-text updates and `6`
+  - the `9` lit failures split into `4` stale test-text updates and `5`
     API/contract-update tests, not runtime compiler correctness bugs;
   - the actual bug queue is the branch-new `python/test/unit`
     matmul/tensor-descriptor/warp-specialization correctness cluster plus the
     deliberately exposed legacy M64 MMA failure.
+- Post-classification update, 2026-04-12 08:21 UTC:
+  - the five API/contract lit files now pass focused lit after
+    supported-spelling rewrites;
+  - the four stale lit files remain pending;
+  - full `make test-lit` should be rerun after stale lit refresh before
+    replacing the sweep-level `9`-file count.
 
 ## Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
 

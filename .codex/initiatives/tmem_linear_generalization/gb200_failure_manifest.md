@@ -39,8 +39,11 @@ PY
 - Current branch-actionable exact lists are classified in
   [gb200_failure_classification_20260412.md](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_failure_classification_20260412.md)
   before recovery work: the unit/Gluon wrong-output failures are actual bugs,
-  five lit files require API/contract updates, and four lit files are stale
-  expected-output / branch-local view checks.
+  five lit files required API/contract updates, and four lit files are stale
+  expected-output / branch-local view checks. As of 2026-04-12 08:21 UTC, the
+  five API/contract lit files pass focused lit after supported-spelling
+  rewrites; the four stale lit files remain pending and full `make test-lit`
+  has not yet been rerun.
 - Current branch-actionable exact lists:
   - [gb200_current_20260412_lit_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_20260412_lit_failures.txt)
     - `9` lit files

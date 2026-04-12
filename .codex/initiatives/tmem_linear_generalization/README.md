@@ -72,11 +72,15 @@ When resuming the initiative:
 ## Current Checkpoint
 
 - Full GB200 `integration-tests-nvidia` inventory at `cb76c31a0` is not green:
-  - branch-new actionable failures are `9` lit files, `162` `python/test/unit`
+  - branch-new actionable failures were `9` lit files, `162` `python/test/unit`
     nodeids, and `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
   - those exacts pass on merge-base `11ee1144a737006921231bbd3386c187812c38e1`;
   - Proton's `11` cudagraph / periodic flushing failures reproduce on
-    merge-base and are ignored as preexisting GB200 lane noise.
+    merge-base and are ignored as preexisting GB200 lane noise;
+  - as of 2026-04-12 08:21 UTC, the five API/contract lit files from that
+    `9`-file lit bucket pass focused lit after supported-spelling rewrites,
+    leaving the four stale lit tests as the next lit-only recovery slice before
+    a full `make test-lit` rerun.
 - The latest current-head `python/examples/gluon` aggregate passed all four
   split groups, so `python/examples/gluon/01-attention-forward.py` is now
   covered by the examples aggregate as well as its focused SDPA-backed matrix.
