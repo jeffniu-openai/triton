@@ -304,3 +304,44 @@ This prevents agents from “winning” by changing local benchmark helpers or d
     contract is now tighter: syntax check, real invocation, and local reference sanity must all
     pass before a candidate is even worth scoring
 - Status: completed
+
+### Round 8
+
+- Report version: after the reference-backed worker sanity-gate update
+- Planned adjustments:
+  - keep the repaired workspace maker
+  - require the new sanity script both before and after the edit
+  - continue to forbid runtime/import patching and broad selector rewrites
+- Workspaces:
+  - `r8a1`
+  - `r8a2`
+- Agents:
+  - `Volta`
+  - `Galileo`
+- Current prompt differences:
+  - workers must run the local reference-backed sanity helper before and after editing
+  - workers are restricted to one small kernel diff only
+  - central scoring remains authoritative for promotion
+- Final round outcome:
+  - `r8a1`
+    - change type: widened the low-batch `BLOCK_M=64` selector cutoff from `slice_size <= 58` to
+      `<= 64`
+    - local status: passed the worker sanity gate
+    - independent score: `-0.40%` mean, `-0.41%` geometric, `3 / 8` wins, worst regression
+      `-1.68%`
+    - result: rejected
+  - `r8a2`
+    - change type: replaced the weight-scale `off_k_w // 64` division with a precomputed stride
+      multiply
+    - local status: passed the worker sanity gate
+    - independent score: `-5.84%` mean, `-7.56%` geometric, `3 / 8` wins, worst regression
+      `-46.62%`
+    - result: rejected
+- Prompt/report lessons from round 8:
+  - the current low-batch selector boundary is more coupled to the live kernel than it looks from
+    one representative point
+  - mathematically exact source-level scalar-arithmetic “simplifications” can still damage Triton
+    or downstream codegen badly
+  - future workers should spend less time on selector-threshold edits or hand-strength-reduced
+    scalar math and more time on small structural hypotheses
+- Status: completed

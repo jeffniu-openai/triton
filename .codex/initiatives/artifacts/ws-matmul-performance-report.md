@@ -1662,6 +1662,25 @@ The durable helper for that is:
 
 It should be treated as the minimum post-edit gate before a worker claims a viable candidate.
 
+Round 8 added two more practical filters for isolated workers:
+
+- do **not** retune the current low-batch selector boundaries just because one breakpoint looks
+  “obviously” conservative
+- do **not** assume a hand-written scalar-arithmetic simplification will beat the compiler's own
+  strength reduction
+
+Why those rules were added:
+
+- widening the current `slice_size <= 58` boundary to `<= 64` looked plausible for `batch=2048`
+  in isolation, but the broad scorer still rejected it with a negative geometric result and only
+  `3 / 8` wins
+- replacing `off_k_w // 64` with a precomputed stride multiplication was mathematically exact and
+  passed the local reference-backed sanity gate, but the central scorer still showed a large
+  across-the-board regression, including a catastrophic worst point
+
+So the worker prompt should continue to prefer structural hypotheses over source-level “obvious”
+micro-cleanups unless those cleanups already come with strong evidence from PTX/SASS or NCU.
+
 ---
 
 ## 13. Open Problems and Suggested Next Steps

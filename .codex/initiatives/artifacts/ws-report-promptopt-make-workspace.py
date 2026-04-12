@@ -34,7 +34,8 @@ def main() -> None:
     dest.mkdir(parents=True, exist_ok=True)
 
     # Copy the current source tree but leave out git metadata, build products, and other initiative
-    # artifacts. The report itself is re-added explicitly below so the worker gets only that prompt.
+    # artifacts. The prompt report and worker-side sanity helper are re-added explicitly below so
+    # the worker gets a narrow, controlled artifact surface.
     run(
         [
             "rsync",
@@ -87,6 +88,9 @@ def main() -> None:
     artifact_dir = dest / ".codex" / "initiatives" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(report, artifact_dir / report.name)
+    sanity = report.with_name("ws-report-promptopt-sanity.py")
+    if sanity.is_file():
+        shutil.copy2(sanity, artifact_dir / sanity.name)
 
     print(dest)
 

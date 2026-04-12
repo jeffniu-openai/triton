@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-12T08:08:47Z
+updated: 2026-04-12T08:21:00Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -637,6 +637,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: `make` from `/root/code/triton`; `python -m py_compile /root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-sanity.py`; `PYTHONPATH=python/triton_kernels python /root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-sanity.py --candidate /root/code/triton-ws-opt/python/examples/gluon/05-moe-bmm1-fused-gather.py --batch 128`; central scoring of round-7 candidates from the known-good environment
   - Learnings: Round 7 showed that a worker-side “it runs once” check is still too weak. One candidate (`r7a1`) compiled and ran but scored slightly negative overall (`-0.82%` mean / geometric) with a worst regression of `-11.07%`, while the other (`r7a2`) passed a one-point local invocation yet failed the broad central scorer on correctness with `176797 / 1474560` mismatches at `batch=128`. The new durable rule is therefore stricter: workers must pass syntax, one real post-edit kernel invocation, and a local reference comparison before a candidate is worth central scoring. The canonical helper for that gate is `.codex/initiatives/artifacts/ws-report-promptopt-sanity.py`.
   - Plan updates: Resume the hillclimb from round 8 with the repaired workspace maker, the new sanity gate as a mandatory post-edit step, and central scoring as the only promotion authority.
+- `2026-04-12` Completed: Closed round 8 and tightened the report against selector-cutoff and scalar-arithmetic traps
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`
+  - Validation: Central scoring of `r8a1` and `r8a2` from the known-good environment with `PYTHONPATH=python/triton_kernels python .codex/initiatives/artifacts/ws-report-promptopt-eval.py --candidate <workspace>/python/examples/gluon/05-moe-bmm1-fused-gather.py --rep 200`; worker-side sanity gate passes in `r8a1` and `r8a2`
+  - Learnings: Round 8 produced two locally sane but globally losing candidates. Widening the low-batch selector boundary from `slice_size <= 58` to `<= 64` looked attractive for `batch=2048`, but the broad scorer still rejected it at `-0.40%` mean / `-0.41%` geometric with only `3 / 8` wins. Replacing the weight-scale `off_k_w // 64` division with a precomputed stride multiply was mathematically exact and passed the local sanity gate, yet the broad scorer rejected it catastrophically at `-5.84%` mean / `-7.56%` geometric with a `-46.62%` worst point. The new report rule is therefore explicit: do not spend round budget on selector-cutoff retuning or hand-strength-reduced scalar arithmetic unless there is strong PTX/SASS or NCU evidence that the compiler is really missing something.
+  - Plan updates: Resume from round 9 with the repaired workspace maker and sanity gate intact, but steer workers away from selector-threshold edits and source-level scalar-arithmetic cleanups.
 
 ## Next Up
 
