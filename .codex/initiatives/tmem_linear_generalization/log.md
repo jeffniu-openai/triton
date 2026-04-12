@@ -10864,3 +10864,32 @@ Open after this slice:
 3. Fix the exposed legacy M64 MMA failure without re-adding the xfail.
 4. Ignore Proton for this branch until a failure appears that is not also red
    on merge-base.
+
+## 2026-04-12 GB200 failure classification
+
+- Classified the branch-new failures from the full GB200-only
+  `integration-tests-nvidia` sweep at source checkpoint `cb76c31a0` into
+  actual bugs, stale tests, tests requiring API/contract updates, and
+  merge-base-preexisting noise.
+- Actual bugs:
+  - `162` `python/test/unit` runtime wrong-output nodeids across matmul, tensor
+    descriptor, and warp-specialization attention;
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`, where the
+    legacy parameter fails while the linear parameter and merge-base legacy
+    exact pass.
+- Stale tests:
+  - `TritonNvidiaGPU/invalid.mlir` needs the clean unsupported scales-copy
+    `expected-error` / `expected-note`;
+  - `TritonGPU/pipeline-loop-nest.mlir` and
+    `TritonGPU/pipeline-lower-loop.mlir` need FileCheck updates for current
+    `ttng.tmem_alloc` attributes.
+- API/contract updates:
+  - scales-copy lit users: `Analysis/test-membar-ttng.mlir`,
+    `TritonGPU/proxy_fence_insertion.mlir`, and
+    `TritonNvidiaGPU/mma_lowering.mlir`;
+  - now-invalid transposed-f32 MMAv5 lit users: `NVWS/assign_stage_phase.mlir`
+    and `NVWS/aref-tmem-insertion.mlir`;
+  - old `memdesc_subslice` result-type spelling: `TritonNvidiaGPU/ops.mlir`.
+- Proton's `11` cudagraph / periodic flushing failures remain
+  `PREEXISTING_ON_MERGE_BASE` and are not branch recovery blockers.
+- Detailed report: `gb200_failure_classification_20260412.md`.

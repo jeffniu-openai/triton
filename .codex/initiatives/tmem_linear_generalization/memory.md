@@ -64,6 +64,15 @@
   - `test_debug.py`, instrumentation/plugin tails, and Proton split-only extra
     failures were harness artifacts that cleared or reduced under exact CI-form
     reruns.
+- The branch-new red set is now split in
+  `gb200_failure_classification_20260412.md`:
+  - actual bugs: the `162` `python/test/unit` wrong-output nodeids and
+    `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`;
+  - stale tests: `TritonNvidiaGPU/invalid.mlir`,
+    `TritonGPU/pipeline-loop-nest.mlir`, and
+    `TritonGPU/pipeline-lower-loop.mlir`;
+  - API/contract updates: the lit tests that still use now-invalid scales-copy,
+    transposed-f32 MMAv5, or old `memdesc_subslice` result-type spellings.
 - The full `python/examples/gluon` aggregate passed in the current GB200 sweep:
   - group 1: `225 passed, 15 skipped, 718 deselected`
   - group 2: `221 passed, 19 skipped, 718 deselected`

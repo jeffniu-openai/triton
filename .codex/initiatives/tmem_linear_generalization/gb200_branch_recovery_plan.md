@@ -58,23 +58,34 @@ PY
     - `128` warp-specialization attention exacts;
   - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]`:
     branch-new visible failure after removing the temporary xfail.
+- Detailed classification is in `gb200_failure_classification_20260412.md`:
+  - actual bugs: the `162` `python/test/unit` wrong-output nodeids and the
+    legacy M64 Gluon wrong-output nodeid;
+  - stale tests: `TritonNvidiaGPU/invalid.mlir`,
+    `TritonGPU/pipeline-loop-nest.mlir`, and
+    `TritonGPU/pipeline-lower-loop.mlir`;
+  - API/contract updates: `Analysis/test-membar-ttng.mlir`,
+    `TritonGPU/proxy_fence_insertion.mlir`,
+    `TritonNvidiaGPU/mma_lowering.mlir`, `NVWS/assign_stage_phase.mlir`,
+    `NVWS/aref-tmem-insertion.mlir`, and `TritonNvidiaGPU/ops.mlir`.
 - Not recovery blockers:
   - Proton main `11` cudagraph / periodic flushing failures reproduce on
     merge-base and remain `PREEXISTING_ON_MERGE_BASE`;
   - `test_debug.py`, instrumentation/plugin tails, and Proton split-only extra
     failures were harness artifacts and cleared in exact CI-form reruns.
 - Recovery order:
-  1. Fix or intentionally refresh the `9` lit failures. They are branch-new
-     and include TMEM scales-copy clean-unsupported fallout, `tcgen05.mma`
-     transposed-f32 legality fallout, and `memdesc_subslice` / pipeline
-     FileCheck expectation fallout.
-  2. Root-cause the `162` branch-new `python/test/unit` correctness failures
+  1. Refresh the three stale lit tests first; this removes FileCheck /
+     expected-diagnostic drift from the red list without touching lowering.
+  2. Rewrite the six API/contract-update lit files to supported scales-copy,
+     MMAv5, or descriptor-view spellings, or convert each to a deliberate
+     negative when the unsupported case is the point.
+  3. Root-cause the `162` branch-new `python/test/unit` correctness failures
      as shared compiler/runtime regressions before chasing individual nodeids.
      They all pass on merge-base and cluster in matmul, tensor descriptor, and
      warp-specialization attention surfaces.
-  3. Fix the exposed legacy M64 MMA producer-family issue without re-adding
+  4. Fix the exposed legacy M64 MMA producer-family issue without re-adding
      the xfail.
-  4. Leave Proton out of the branch recovery queue unless a future rerun shows
+  5. Leave Proton out of the branch recovery queue unless a future rerun shows
      a nodeid that is not also failing on merge-base.
 
 ### Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)

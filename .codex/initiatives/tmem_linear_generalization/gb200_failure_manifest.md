@@ -6,6 +6,8 @@ meant to be machine-usable artifacts, not hand-maintained prose.
 
 Use this file together with:
 - `gb200_nvidia_ci_inventory.md` for the executed lane state and classification
+- `gb200_failure_classification_20260412.md` for the current actual-bug versus
+  stale-test versus API/contract-update split
 - `gb200_branch_recovery_plan.md` for the prioritized branch-caused backlog
 
 ## How To Use
@@ -34,6 +36,11 @@ PY
 
 - Validated checkpoint:
   - `cb76c31a0`
+- Current branch-actionable exact lists are classified in
+  [gb200_failure_classification_20260412.md](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_failure_classification_20260412.md)
+  before recovery work: the unit/Gluon wrong-output failures are actual bugs,
+  six lit files require API/contract updates, and three lit files are stale
+  expected-output checks.
 - Current branch-actionable exact lists:
   - [gb200_current_20260412_lit_failures.txt](/root/code/triton/.codex/initiatives/tmem_linear_generalization/gb200_current_20260412_lit_failures.txt)
     - `9` lit files

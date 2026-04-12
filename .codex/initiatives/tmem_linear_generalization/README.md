@@ -17,6 +17,9 @@ When resuming the initiative:
 - use `gb200_failure_manifest.md` plus the adjacent generated `.txt` files
   when you need the exact nodeid inventories for the current branch or the
   merge-base-existing shard-3 subsets;
+- use `gb200_failure_classification_20260412.md` for the current split between
+  actual compiler/runtime bugs, stale tests, tests requiring API/contract
+  updates, and merge-base-preexisting noise;
 - use `gb200_branch_recovery_plan.md` when you need the prioritized
   branch-caused recovery backlog and the exact representative repros to drive
   fixes;

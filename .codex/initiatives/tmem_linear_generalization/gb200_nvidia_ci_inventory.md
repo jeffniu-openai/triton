@@ -16,7 +16,9 @@ The current execution order follows the plan recorded in `memory.md`:
   work.
 
 The exact branch-caused recovery order that sits on top of this inventory now
-lives in `gb200_branch_recovery_plan.md`.
+lives in `gb200_branch_recovery_plan.md`. The current detailed split between
+actual bugs, stale tests, API/contract-update tests, and merge-base-preexisting
+noise lives in `gb200_failure_classification_20260412.md`.
 
 ## Latest Full GB200 NVIDIA CI Sweep (2026-04-12 05:24 UTC)
 
@@ -78,9 +80,11 @@ lives in `gb200_branch_recovery_plan.md`.
   - the current GB200 lane is not green at `cb76c31a0`;
   - older full-Gluon green/xfailed counts are superseded for current-head CI
     triage;
-  - the immediate recovery queue is now lit expectation/legality fallout,
-    branch-new `python/test/unit` matmul/tensor-descriptor/warp-specialization
-    correctness failures, and the deliberately exposed legacy M64 MMA failure.
+  - the `9` lit failures split into `3` stale test-text updates and `6`
+    API/contract-update tests, not runtime compiler correctness bugs;
+  - the actual bug queue is the branch-new `python/test/unit`
+    matmul/tensor-descriptor/warp-specialization correctness cluster plus the
+    deliberately exposed legacy M64 MMA failure.
 
 ## Latest Whole-`python/test/gluon` Refresh (2026-04-11 13:05 UTC)
 
