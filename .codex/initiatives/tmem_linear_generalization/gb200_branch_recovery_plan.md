@@ -1261,3 +1261,19 @@ PY
   - not a reason to block the immediate examples aggregate / CI freshness pass;
   - now an explicit follow-up fix item rather than a permanent tolerated
     design-debt note.
+
+## 2026-04-12 15:20 UTC: preserve-set exact reds closed by layout-only row-plan fix
+
+- The branch-only TMEM attrs remain removed; no production references remain to
+  `ttng.tmem_ldst_row_plan`, `ttng.tmem_physical_layout`,
+  `ttng.tmem_mmav5_accumulator_root`, or `ttng.tmem_mmav5_operand_root`.
+- The `162` branch-new `python/test/unit` exact nodeids that were red in the
+  preserve-set now pass at current head.
+- The M64 descriptor-chain matrix now passes all `26` cases. The key fix was
+  to let pure outer-index views use the concrete query-layout row plan unless
+  the query layout itself carries the MMAv5 family `block` dimension.
+- Full lit is green at current head: `248 passed, 2 unsupported`.
+- Recovery-plan consequence: do not prioritize the stale preserve-set unit/lit
+  counts. The next recovery work should start from a fresh broader GB200 grouped
+  sweep, then move to any surviving real failures; keep long-term view/bitcast,
+  `ld.red`, copy warpx2, MMAv5 coverage, and fuzzing items on the plan.

@@ -100,3 +100,21 @@ During attribute removal, do not introduce new failures outside this preserve
 set. Narrow reruns should use the exact red nodeids above plus nearby TMEM
 runtime/Gluon controls; broader reruns should refresh lit and the relevant
 split pytest lanes at milestones.
+
+## 2026-04-12 15:20 UTC Post-Cleanup Status
+
+The red set recorded above is the preserve-set baseline, not the current head
+status after the layout-only cleanup. At current head after the row-plan fixes:
+
+- `make test-lit`: `248 passed, 2 unsupported`.
+- The `162` exact `python/test/unit` nodeids from
+  `gb200_branch_new_20260412_unit_main_failures.txt`: `162 passed`.
+- `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix`:
+  `26 passed`.
+- `test_tmem_linear_m64_roundtrip_direct_shapes` plus `test_block_m_64_mma`:
+  `20 passed`.
+- Physical bitcast subview mapping exacts `[0]` and `[64]`: `2 passed`.
+
+Use the original preserve-set section to understand what had to be preserved
+while removing attrs. Use this post-cleanup section as the current-head reading
+for these exact buckets.

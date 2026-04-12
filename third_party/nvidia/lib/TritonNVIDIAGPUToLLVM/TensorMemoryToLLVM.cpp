@@ -892,22 +892,11 @@ lowerTMemLdStFromTypes(
             memDescValue, /*preserveNonCanonicalView=*/true, &rawError);
         succeeded(rawQuery)) {
       rawQueryLayout = *rawQuery;
-      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
-              memDescValue.getDefiningOp()) &&
-          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
-          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
-        rawQueryLayout->layout = toLinearLayout(memTy);
-      }
       MemDescType rawMemTy = memTy;
-      if (!(isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
-                memDescValue.getDefiningOp()) &&
-            memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
-            memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128)) {
-        if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
-                memDescValue, /*error=*/nullptr);
-            succeeded(maybeStandaloneTy)) {
-          rawMemTy = *maybeStandaloneTy;
-        }
+      if (auto maybeStandaloneTy = inferStandaloneTMemRegLayoutQueryType(
+              memDescValue, /*error=*/nullptr);
+          succeeded(maybeStandaloneTy)) {
+        rawMemTy = *maybeStandaloneTy;
       }
       rawRowPlan = getTMemLdStRowPlanForQueryLayout(memDescValue, memTy,
                                                     *rawQueryLayout);
@@ -915,13 +904,6 @@ lowerTMemLdStFromTypes(
         rawRowPlan = getBackingTMemLdStRowPlan(memDescValue);
       rawRowPlan = preferBackingRowPlanForDirectRootLoad(rawMemTy, rawRowPlan,
                                                          &*rawQueryLayout);
-      if (isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
-              memDescValue.getDefiningOp()) &&
-          memTy.getRank() == 2 && memTy.getElementTypeBitWidth() == 32 &&
-          memTy.getShape()[0] == 64 && memTy.getShape()[1] == 128) {
-        rawRowPlan = TMemLdStRowPlan{/*warpRow0=*/16, /*warpRow1=*/32,
-                                     /*rowSpan=*/64};
-      }
       if (debugQuerySelection) {
         llvm::errs() << "[tmem-ldst] raw memTy=" << memTy
                      << " rawQueryTy=" << rawMemTy << " rawRowPlan="

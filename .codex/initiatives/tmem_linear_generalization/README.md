@@ -737,6 +737,59 @@ When resuming the initiative:
   fuzzing, stale-negative cleanup, and heuristic phases, with any remaining copy
   work limited to shapes that fit the TMEM allocation budget.
 
+## 2026-04-12 15:20 UTC: layout-only row-plan cleanup closes preserve-set reds
+
+- Starting point for this slice: `a88f55a81` on `codex/tmem`, dirty in
+  `TensorMemoryUtils.cpp` and `TensorMemoryToLLVM.cpp`; target remote remains
+  `origin/codex/tmem`.
+- Root cause after removing the TMEM side-channel attrs:
+  - the LLVM lowering still had a hard-coded f32 `64x128` reinterpret raw-query
+    override that replaced exact view-chain layout arithmetic with
+    `toLinearLayout(memTy)` and forced `{16, 32, 64}` row anchors;
+  - same-dtype `memdesc_reinterpret` views could borrow the source support row
+    bit order instead of planning from the destination/view layout;
+  - pure outer `memdesc_index` views were using the wider M64 type/family row
+    plan even when the concrete inferred query layout had no MMAv5 family block
+    dimension, so a store through a chained view and a later load through
+    `tmem.index(1)` chose different representatives of the zero-row/broadcast
+    layout.
+- Fix direction:
+  - remove the remaining hard-coded reinterpret raw-query override;
+  - keep same-dtype non-physical reinterpret support on the destination/view
+    layout when it is standalone-query representable;
+  - keep borrowed/wider backing row plans only when the query layout can
+    materialize both requested row anchors;
+  - for pure outer indexes, use the concrete query layout row plan unless that
+    query layout itself still carries the MMAv5 family `block` dimension.
+- This preserves the project invariant: the descriptor layout/query is the
+  source of truth. Zero bases mean broadcast/equivalence; the planner must not
+  choose a divergent hidden physical representative based on producer attrs.
+- Current validation against rebuilt compiler:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`: passed;
+  - `make test-lit`: `248 passed, 2 unsupported`;
+  - `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix`: `26 passed`;
+  - all `162` exact nodeids from
+    `gb200_branch_new_20260412_unit_main_failures.txt`: `162 passed`;
+  - `test_tmem_linear_m64_roundtrip_direct_shapes` plus `test_block_m_64_mma`:
+    `20 passed`;
+  - `test_tmem_physical_bitcast_preserves_subview_mapping[0]` and `[64]`:
+    `2 passed`;
+  - hygiene: `git diff --check` passed; removed-attr production sweep has no
+    production hits, only negative test assertions.
+- Status implication:
+  - the preserve-set lit, unit, descriptor-chain, direct-M64, block-M-64 MMA,
+    and physical-bitcast checks are green at this checkpoint;
+  - older manifests that reported the `162` unit exacts or M64 descriptor-chain
+    cases as current red are now stale and must not be used for prioritization
+    without rerunning them.
+- Remaining after this checkpoint:
+  - run broader GB200 grouped sweeps when this slice is committed/pushed;
+  - keep the legacy default-load opcode-quality issue on the docket if it still
+    appears in a wider sweep;
+  - continue the longer plan: supported view/bitcast API migration,
+    attention rewrite later, `ld.red`, `copy` warpx2, broader MMAv5 family
+    coverage, heuristic cleanup, and staged fuzzing/validation.
+
 ## Document Roles
 
 - `memory.md`
