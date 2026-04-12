@@ -50,6 +50,16 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Latest checkpoint, 2026-04-12 23:15 UTC: full-shape MMAv5 TMEM descriptors once again use
+  the derived MMAv5 family layout for instruction address arithmetic, while
+  marked physical bitcasts keep the exact typed result layout. This fixes the
+  current-head tile-permuted MMAv5 accumulator/LHS/scaled failures found by the
+  CI-shaped `test-gluon` run after attr cleanup. Focused four-GPU tile-permuted
+  rerun, broad runtime-matrix `-k 'mma and not cp'`, nearby core M64/bitcast
+  selector, representative `test_mma_shared_inputs` exacts, and relevant lit
+  lowering checks are green. The prior tile-permuted MMAv5 failure list is stale
+  for those nodeids; a full `test-gluon`/GB200 rerun remains the next wider
+  milestone.
 - Pre-cleanup preserve-set, 2026-04-12 09:33 UTC at `3359982ee`, is recorded in
   `gb200_preserve_set_20260412.md`.
   - Semantic correction: zero TMEM bases are broadcast/equivalence semantics,

@@ -85,6 +85,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest checkpoint, 2026-04-12 23:15 UTC: a focused MMAv5 loader fix is ready after the
+  post-attr-cleanup `test-gluon` run exposed tile-permuted MMAv5 runtime
+  failures. Full-shape MMAv5 descriptors now use the derived family layout for
+  instruction address arithmetic; marked physical bitcasts still use the exact
+  typed result layout. The focused tile-permuted cluster, broad runtime-matrix
+  `-k 'mma and not cp'`, nearby core M64/bitcast selector, representative
+  `test_mma_shared_inputs` exacts, and relevant lit lowering checks are green.
+  The previous tile-permuted MMAv5 current-head failure list is stale for those
+  nodeids; run the next wider GB200/checkpoint sweep before using aggregate
+  counts for new prioritization.
+
 - The TMEM side-channel attribute cleanup slice is in progress after the
   preserve-set commit `37d00bb91`:
   - producer/provenance attributes are being removed instead of copied through

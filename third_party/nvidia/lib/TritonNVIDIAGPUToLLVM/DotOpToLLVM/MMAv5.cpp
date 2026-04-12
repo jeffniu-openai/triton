@@ -30,38 +30,13 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Value memDescValue, Value tmemBase, bool useRawWordColumns) {
   auto ll = [&]() {
     std::string layoutError;
-    auto getTypeLayout = [&]() -> std::optional<LinearLayout> {
-      if (isa<ttng::TensorMemoryLinearEncodingAttr>(memTy.getEncoding())) {
-        if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
-                memTy.getShape(), memTy.getEncoding(), &layoutError)) {
-          // Exact tensor-memory-linear encodings carry the physical TMEM view
-          // contract directly. MMAv5 family planning still determines
-          // legality, but raw row/col address arithmetic must use the analyzed
-          // view itself so tile-permuted and other non-canonical linear
-          // layouts reach the correct physical TMEM coordinates.
-          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-              *maybeAnalysis);
-        }
-      }
-      auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
-      auto shape = memTy.getShape().take_back(rank);
-      auto allocShape = memTy.getAllocShape().take_back(rank);
-      if (shape == allocShape) {
-        if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
-          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-              info->familyLayout);
-        }
-        if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
-          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-              info->familyLayout);
-        }
-        if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
-          return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-              info->familyLayout);
-        }
-      }
+    auto getExactTypeLayout = [&]() -> std::optional<LinearLayout> {
       if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
               memTy.getShape(), memTy.getEncoding(), &layoutError)) {
+        // Exact typed descriptors carry the physical TMEM view contract
+        // directly. Physical bitcasts consume the result descriptor in this
+        // coordinate frame instead of the possibly non-surjective physical
+        // query layout.
         return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
             *maybeAnalysis);
       }
@@ -72,19 +47,41 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
       }
       return std::nullopt;
     };
+    auto getMMAv5FamilyLayout = [&]() -> std::optional<LinearLayout> {
+      auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
+      auto shape = memTy.getShape().take_back(rank);
+      auto allocShape = memTy.getAllocShape().take_back(rank);
+      if (shape != allocShape)
+        return std::nullopt;
+      if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            info->familyLayout);
+      }
+      if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            info->familyLayout);
+      }
+      if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
+        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
+            info->familyLayout);
+      }
+      return std::nullopt;
+    };
     if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
       // The lowered TMEM base already includes the source slice/subview
       // offset. For typed MMAv5 addressing, use the result descriptor layout:
       // the exact physical bitcast query may be non-surjective for packed
       // sub-32-bit columns because two logical values share one TMEM word.
-      if (auto maybeLayout = getTypeLayout())
+      if (auto maybeLayout = getExactTypeLayout())
         return *maybeLayout;
     }
     auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
     auto shape = memTy.getShape().take_back(rank);
     auto allocShape = memTy.getAllocShape().take_back(rank);
     if (shape == allocShape) {
-      if (auto maybeLayout = getTypeLayout())
+      if (auto maybeLayout = getMMAv5FamilyLayout())
+        return *maybeLayout;
+      if (auto maybeLayout = getExactTypeLayout())
         return *maybeLayout;
     }
     if (memDescValue) {
@@ -95,7 +92,7 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
             maybeQuery->layout);
       }
     }
-    if (auto maybeLayout = getTypeLayout())
+    if (auto maybeLayout = getExactTypeLayout())
       return *maybeLayout;
     return toLinearLayout(memTy);
   }();
