@@ -10737,3 +10737,34 @@ Open after this slice:
     `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-subview-bitcast PYTHONPATH=python:. pytest -s --tb=short -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]'` -> `1 passed in 8.75s`.
 - Remaining boundary: full `python/examples/gluon` and broader examples/Gluon
   aggregate validation have not been rerun after this focused attention fix.
+
+## 2026-04-12 attention benchmark-matrix test expansion
+
+- Expanded `python/examples/gluon/01-attention-forward.py::test_op` to use the
+  same shape/provider parameter grid as the benchmark:
+  - `BATCH = [4]`;
+  - `N_HEADS = [32]`;
+  - `HEAD_DIM = [64, 128]`;
+  - `N_CTX = [2**i for i in range(10, 17)]`;
+  - `causal = [False, True]`;
+  - `providers = ["triton-fp16", "triton-fp8"]`;
+  - `use_tmem_reds = [False, True]` on Blackwell Ultra, otherwise `[False]`.
+- The benchmark/test provider parsing now goes through one shared
+  `provider_to_dtype` helper.
+- The test oracle is intentionally O(N), not SDPA-based: `q == k == 0` makes
+  the distribution uniform, so the expected output is the mean or causal prefix
+  mean of random `v`. This avoids PyTorch's default SDPA math backend OOM at
+  larger benchmark sizes; forcing cuDNN SDPA is also not viable on this
+  `sm_103` devbox.
+- The expanded matrix exposed an fp8 scratch-view bug: `_borrow_s_as_p` sliced
+  64 f32 columns, which is size-equivalent for fp16/bf16 P but too large for
+  fp8 P. The helper now computes `BLOCK_N * dtype_bits / 32` f32 columns and
+  places alpha/epilogue scratch after the actual P physical image.
+- Validation:
+  - build: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` -> passed, ninja reported no work to do;
+  - collect-only: `PYTHONPATH=python:. pytest --collect-only -q python/examples/gluon/01-attention-forward.py` -> `112 tests collected`;
+  - representative fp8 pcols fix: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-fp8-pcols PYTHONPATH=python:. pytest -s --tb=short -q -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-triton-fp8-False-64-1024-32-4]'` -> `1 passed in 8.18s`;
+  - full attention file: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-bench-matrix-final PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py` -> `112 passed in 106.85s (0:01:46)`;
+  - hygiene: `git diff --check` -> passed.
+- Remaining boundary: full `python/examples/gluon` has not been rerun as one
+  aggregate after this attention matrix expansion.

@@ -111,18 +111,21 @@ When resuming the initiative:
   - aggregate:
     `2377 passed, 3444 skipped, 17463 deselected`
 - The clean Gluon examples subset remains green at `24bec4ecf`, and the
-  attention exact now has a supported scratch-alias bitcast migration:
-  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`:
-    `1 passed in 8.75s` after migrating the scratch-borrow helpers and exp2
-    partition stores to `slice/subview -> bitcast`;
+  attention file now has benchmark-matrix unit coverage at current head:
+  - `python/examples/gluon/01-attention-forward.py`:
+    `112 passed in 106.85s (0:01:46)` over the benchmark grid
+    (`Z=4`, `H=32`, `HEAD_DIM in {64,128}`, `N_CTX=2**10..2**16`,
+    `causal in {False,True}`, providers `triton-fp16` and `triton-fp8`, and
+    `use_tmem_red in {False,True}` on this Blackwell Ultra box);
   - `python/examples/gluon/02-convolution.py`:
     `48 passed`
   - `python/examples/gluon/03-matmul-multicta.py`:
     `82 passed, 14 skipped`
   - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
     `690 passed, 60 skipped`
-  - full `python/examples/gluon` has not been rerun after this attention
-    migration, so keep the broader examples aggregate conservative.
+  - full `python/examples/gluon` has not been rerun as one aggregate after the
+    attention matrix expansion, so keep the broader examples aggregate
+    conservative.
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1181 passed, 441 skipped, 1027 deselected`
@@ -570,18 +573,19 @@ When resuming the initiative:
   - the xfail is deliberate design debt for legacy M64 `64x64` layout sugar
     lacking producer-visible physical-family semantics for MMAv5 consumers;
     the linear supported layout passes in the same process.
-- The supported descriptor bitcast API remains on the branch, and the focused
-  attention scratch-alias path is migrated again at the current checkpoint:
+- The supported descriptor bitcast API remains on the branch, and the attention
+  scratch-alias path is migrated across the benchmark-shaped test matrix:
   - `python/examples/gluon/01-attention-forward.py` no longer uses
     `_reinterpret` for the scratch-borrow helpers;
-  - the helper-only migration still reproduced the old invalid-basis failure,
-    so the final patch also slices the original f32 scratch subregion for each
-    exp2 partition before bitcasting that exact physical image;
-  - the representative attention exact is green:
-    `1 passed in 8.75s`;
-  - the old examples/Gluon green aggregate at `4263ae61` / `49f1a0fd` remains
-    stale for current `HEAD`, and full `python/examples/gluon` still needs a
-    fresh rerun.
+  - P scratch slicing is dtype-aware: fp16/bf16 use 64 f32 columns for the P
+    image, while fp8 uses 32, and alpha/epilogue scratch is placed after the
+    actual P physical region;
+  - exp2 partitions still slice the original f32 scratch subregion before
+    bitcasting each exact physical image;
+  - the attention benchmark matrix is green:
+    `112 passed in 106.85s (0:01:46)`;
+  - full `python/examples/gluon` still needs a fresh aggregate rerun before
+    marking the broader examples lane current.
 - The stale `test_mma_shared_inputs` two-CTA TTGIR spelling bucket is closed:
   - current TMEM encoding text may spell the type field as `twoCTAs`, while
     physical-layout and op attributes still use `two_ctas`;

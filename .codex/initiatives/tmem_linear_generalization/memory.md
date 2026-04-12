@@ -50,16 +50,21 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
-- Current-head attention scratch-alias migration has a focused green exact:
-  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-subview-bitcast PYTHONPATH=python:. pytest -s --tb=short -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]'`
-  - `1 passed in 8.75s`
-  - The migrated code uses supported `slice/subview -> bitcast` APIs for
-    `_borrow_s_as_p`, `_borrow_s_as_alpha`, `_borrow_s_for_epilogue`, and the
-    exp2 partition stores. The exp2 path must slice the original f32 scratch to
-    the exact physical columns for each partition before bitcasting; bitcasting
-    the whole P view and then slicing it still hits the old invalid-basis
-    failure.
-  - Full `python/examples/gluon` has not been rerun after this focused fix.
+- Current-head attention benchmark-matrix unit coverage is green:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-bench-matrix-final PYTHONPATH=python:. pytest -s --tb=short -q python/examples/gluon/01-attention-forward.py`
+  - `112 passed in 106.85s (0:01:46)`
+  - The matrix matches the benchmark grid on this Blackwell Ultra box:
+    `Z=4`, `H=32`, `HEAD_DIM in {64,128}`, `N_CTX=2**10..2**16`,
+    `causal in {False,True}`, providers `triton-fp16` and `triton-fp8`, and
+    `use_tmem_red in {False,True}`.
+  - The test uses a uniform-attention O(N) oracle (`q == k == 0`, random `v`)
+    because PyTorch's default SDPA math backend OOMs on the largest benchmark
+    shapes and cuDNN SDPA is unavailable on `sm_103`.
+  - The scratch bitcast helpers are now dtype-aware: fp8 P views slice 32 f32
+    columns instead of the fp16/bf16 64-column region, and alpha/epilogue
+    scratch starts after the actual P physical region.
+  - Full `python/examples/gluon` has not been rerun as one aggregate after this
+    attention matrix expansion.
 - Current-head phase-boundary validation at `330c64c05` is green for the full
   `python/test/gluon/test_tmem_runtime_matrix.py` file:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
@@ -495,15 +500,18 @@
   locally closed by the current M64 producer-contract/source-column row-plan
   fix; keep their exacts in the focused guard set while broadening.
 - The focused attention scratch-alias path has been migrated again to the
-  supported `subslice/subview -> bitcast` API:
+  supported `subslice/subview -> bitcast` API and broadened to the benchmark
+  unit matrix:
   - `_borrow_s_as_p`, `_borrow_s_as_alpha`, and `_borrow_s_for_epilogue` no
     longer call `_reinterpret`;
   - the exp2 P-storage path must slice the original f32 scratch subregion for
     each partition before bitcasting, because the helper-only migration still
     reproduced the old invalid-basis failure;
-  - the attention exact
-    `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-    is green at the current checkpoint;
+  - fp8 required one more correction: the P physical region is 32 f32 columns,
+    not the fp16/bf16 64-column region, so scratch offsets now use
+    `BLOCK_N * dtype_bits / 32`;
+  - the attention file benchmark matrix is green at the current checkpoint:
+    `112 passed in 106.85s (0:01:46)`;
   - the examples/Gluon green aggregate recorded at `4263ae61` / `49f1a0fd`
     is still stale for current `HEAD`, so rerun broader examples before marking
     that lane green.
@@ -1030,9 +1038,9 @@
   - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
     - `690 passed, 60 skipped in 52.87s`
 - Full `python/examples/gluon` remains intentionally not the aggregate target
-  until rerun after the focused attention supported-bitcast migration. The
-  exact attention repro is green, but the broader examples aggregate is not yet
-  refreshed.
+  until rerun after the attention benchmark-matrix expansion. The attention
+  file itself is green (`112 passed`), but the broader examples aggregate is
+  not yet refreshed.
 - Next:
   - start operational fuzzing from `fuzz_plan.md` or continue wider pytest/lit
     validation;

@@ -345,20 +345,23 @@ class AttentionProgram:
 
 @gluon.jit
 def _borrow_s_as_p(config, s_tmem):
-    p_tmem = s_tmem.slice(0, config.BLOCK_N // 2)
+    p_tmem_cols: gl.constexpr = config.BLOCK_N * config.dtype.primitive_bitwidth // gl.float32.primitive_bitwidth
+    p_tmem = s_tmem.slice(0, p_tmem_cols)
     return p_tmem.bitcast(config.dtype, config.qk_shape, config.p_tmem_layout)
 
 
 @gluon.jit
 def _borrow_s_as_alpha(config, s_tmem):
-    alpha_tmem = s_tmem.slice(config.BLOCK_N // 2, 1)
+    p_tmem_cols: gl.constexpr = config.BLOCK_N * config.dtype.primitive_bitwidth // gl.float32.primitive_bitwidth
+    alpha_tmem = s_tmem.slice(p_tmem_cols, 1)
     return alpha_tmem.bitcast(gl.float32, [config.SPLIT_M, 1])
 
 
 @gluon.jit
 def _borrow_s_for_epilogue(config, s_tmem):
-    m_i_tmem = s_tmem.slice(config.BLOCK_N // 2 + 1, 1)
-    l_i_tmem = s_tmem.slice(config.BLOCK_N // 2 + 2, 1)
+    p_tmem_cols: gl.constexpr = config.BLOCK_N * config.dtype.primitive_bitwidth // gl.float32.primitive_bitwidth
+    m_i_tmem = s_tmem.slice(p_tmem_cols + 1, 1)
+    l_i_tmem = s_tmem.slice(p_tmem_cols + 2, 1)
     m_i_tmem = m_i_tmem.bitcast(gl.float32, [config.SPLIT_M, 1])
     l_i_tmem = l_i_tmem.bitcast(gl.float32, [config.SPLIT_M, 1])
     return m_i_tmem, l_i_tmem
@@ -939,15 +942,37 @@ def is_blackwell_ultra():
     return is_cuda() and torch.cuda.get_device_capability()[0:2] == (10, 3)
 
 
-@pytest.mark.parametrize("Z", [4])
-@pytest.mark.parametrize("H", [48])
-@pytest.mark.parametrize("N_CTX", [1024])
-@pytest.mark.parametrize("HEAD_DIM", [128])
-@pytest.mark.parametrize("causal", [True])
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
-@pytest.mark.parametrize("use_tmem_red", [False])
+BATCH = [4]
+N_HEADS = [32]
+HEAD_DIM = [64, 128]
+causal = [False, True]
+providers = ["triton-fp16", "triton-fp8"]
+N_CTX = [2**i for i in range(10, 17)]
+use_tmem_reds = [False, True] if is_blackwell_ultra() else [False]
+
+
+def provider_to_dtype(provider):
+    provider, dtype = provider.split("-")
+    if dtype == "fp16":
+        dtype = torch.float16
+    elif dtype == "bf16":
+        dtype = torch.bfloat16
+    elif dtype == "fp8":
+        dtype = torch.float8_e5m2
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+    return provider, dtype
+
+
+@pytest.mark.parametrize("Z", BATCH)
+@pytest.mark.parametrize("H", N_HEADS)
+@pytest.mark.parametrize("N_CTX", N_CTX)
+@pytest.mark.parametrize("HEAD_DIM", HEAD_DIM)
+@pytest.mark.parametrize("causal", causal)
+@pytest.mark.parametrize("provider", providers)
+@pytest.mark.parametrize("use_tmem_red", use_tmem_reds)
 @pytest.mark.skipif(not is_blackwell(), reason="Gluon attention is only supported on Blackwell GPUs")
-def test_op(Z, H, N_CTX, HEAD_DIM, causal, dtype, use_tmem_red, profile=False):
+def test_op(Z, H, N_CTX, HEAD_DIM, causal, provider, use_tmem_red, profile=False):
     device = "cuda"
 
     def alloc_fn(size: int, alignment: int, stream):
@@ -958,29 +983,36 @@ def test_op(Z, H, N_CTX, HEAD_DIM, causal, dtype, use_tmem_red, profile=False):
     if use_tmem_red and not is_blackwell_ultra():
         pytest.skip("TMEM reduction is only supported on Blackwell Ultra GPUs")
 
-    torch.manual_seed(42)
-    q = (torch.empty((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device).normal_(mean=0.0, std=0.5).requires_grad_())
-    k = (torch.empty((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device).normal_(mean=0.0, std=0.5).requires_grad_())
-    v = (torch.empty((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device).normal_(mean=0.0, std=0.5).requires_grad_())
-    sm_scale = 0.5
+    provider, dtype = provider_to_dtype(provider)
+    assert provider == "triton"
 
-    ref_out = torch.nn.functional.scaled_dot_product_attention(q, k, v, scale=sm_scale, is_causal=causal)
+    torch.manual_seed(42)
+    q = torch.zeros((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device)
+    k = torch.zeros((Z, H, N_CTX, HEAD_DIM), dtype=dtype, device=device)
+    v = torch.empty((Z, H, N_CTX, HEAD_DIM), device=device).normal_(mean=0.0, std=0.5).to(dtype)
+    sm_scale = 1.3
+
+    # With q == k == 0, the attention distribution is uniform. This gives an
+    # O(N) oracle for the benchmark sizes where SDPA's math backend is too large.
+    expected = v.to(torch.float32)
+    if causal:
+        expected = expected.cumsum(dim=2)
+        denom = torch.arange(1, N_CTX + 1, dtype=torch.float32, device=device).reshape(1, 1, N_CTX, 1)
+        expected.div_(denom)
+    else:
+        expected = expected.mean(dim=2, keepdim=True).expand_as(expected)
 
     tri_out, _ = attention_forward(q, k, v, causal, sm_scale, use_tmem_red)
-    torch.testing.assert_close(ref_out, tri_out, atol=1e-2, rtol=0)
+    if dtype == torch.float8_e5m2:
+        torch.testing.assert_close(expected.to(dtype).to(torch.float32), tri_out.to(torch.float32), atol=0.125,
+                                   rtol=0)
+    else:
+        torch.testing.assert_close(expected.to(dtype), tri_out, atol=1e-2, rtol=0)
 
 
 # ===-----------------------------------------------------------------------===#
 # Benchmarking
 # ===-----------------------------------------------------------------------===#
-
-BATCH = [4]
-N_HEADS = [32]
-HEAD_DIM = [64, 128]
-causal = [False, True]
-providers = ["triton-fp16", "triton-fp8"]
-N_CTX = [2**i for i in range(10, 17)]
-use_tmem_reds = [False, True] if is_blackwell_ultra() else [False]
 
 bench_configs = []
 for Z, H, D, is_causal, use_tmem_red in itertools.product(BATCH, N_HEADS, HEAD_DIM, causal, use_tmem_reds):
@@ -1006,15 +1038,7 @@ for Z, H, D, is_causal, use_tmem_red in itertools.product(BATCH, N_HEADS, HEAD_D
 
 @triton.testing.perf_report(bench_configs)
 def bench(Z, H, N_CTX, HEAD_DIM, causal, use_tmem_red, provider):
-    provider, dtype = provider.split("-")
-    if dtype == "fp16":
-        dtype = torch.float16
-    elif dtype == "bf16":
-        dtype = torch.bfloat16
-    elif dtype == "fp8":
-        dtype = torch.float8_e5m2
-    else:
-        raise ValueError(f"Unsupported dtype: {dtype}")
+    provider, dtype = provider_to_dtype(provider)
     device = "cuda"
 
     torch.manual_seed(42)
