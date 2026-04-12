@@ -1603,15 +1603,25 @@ its first 30 minutes doing something like this:
      ```bash
      PYTHONPATH=python/triton_kernels:python python -m py_compile python/examples/gluon/05-moe-bmm1-fused-gather.py
      ```
-2. **run one quick local benchmark sanity point before editing**
-   - use a representative batch point and confirm the example runs at all
-3. **choose one narrow kernel hypothesis**
+2. **run the canonical sanity gate before editing**
+   - from the workspace root, run:
+     ```bash
+     PYTHONPATH=python/triton_kernels:python python .codex/initiatives/artifacts/ws-report-promptopt-sanity.py \
+       --candidate python/examples/gluon/05-moe-bmm1-fused-gather.py --batch 128
+     ```
+   - this must perform one real kernel invocation and compare the example against the reference
+3. **optionally run one quick local benchmark sanity point before editing**
+   - use a representative batch point and confirm the example runs in the local sandbox
+4. **choose one narrow kernel hypothesis**
    - not a broad selector rewrite
    - not a launch-grid/occupancy heuristic
    - not benchmark-helper surgery
-4. **make one candidate edit**
+5. **make one candidate edit**
    - keep the diff small enough that cause and effect are interpretable
-5. **measure the candidate on more than one point before writing a success claim**
+6. **rerun the canonical sanity gate after editing**
+   - `py_compile` alone is not enough
+   - one real kernel invocation without a reference check is also not enough
+7. **measure the candidate on more than one point before writing a success claim**
    - if the candidate is only checked at one or two points, it is not ready to summarize
 
 The loop strongly suggests that a worker who does not get to step 4 quickly is unlikely to produce a
@@ -1640,8 +1650,17 @@ central evaluator rejected them immediately at real compilation time:
 - one introduced a tensor/scalar type mismatch in the helper-store mask path
 - one introduced an incompatible `Float2Tensor` broadcast shape
 
-So any future worker-side “sanity check” should include at least one real kernel invocation after
-editing, not just Python syntax validation.
+Round 7 sharpened that rule one step further. One worker managed a valid real invocation but still
+failed the central scorer on correctness, so the worker-side gate now needs both:
+
+- one real post-edit kernel invocation
+- one reference comparison against the local production baseline
+
+The durable helper for that is:
+
+- [ws-report-promptopt-sanity.py](/root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-sanity.py)
+
+It should be treated as the minimum post-edit gate before a worker claims a viable candidate.
 
 ---
 

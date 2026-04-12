@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-11T23:02:37Z
+updated: 2026-04-12T08:08:47Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -632,6 +632,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Central scoring / compilation of the two round-6 candidate diffs from fresh fixed workspaces
   - Learnings: Round 6 is the first promptopt round that reliably produced small, interpretable kernel diffs instead of environment failures or vague heuristics. Both candidates targeted the helper-store path and both failed at real Triton compilation despite passing `python -m py_compile`. One introduced a tensor/scalar mismatch in the helper-store mask path, and the other introduced an incompatible `Float2Tensor` broadcast. So the loop has now learned another concrete rule: `py_compile` is only a syntax check and is not a meaningful post-edit sanity gate for Triton/Gluon kernels. Future workers need to prove at least one real kernel invocation after editing before their candidate is worth central scoring.
   - Plan updates: Start round 7 from the same environment-fixed, proposal-only setup, but require one actual edited-kernel invocation as a worker-side sanity check before a candidate can be reported.
+- `2026-04-12` Completed: Closed round 7 and promoted a reference-backed worker sanity gate
+  - Artifact: `.codex/initiatives/artifacts/ws-matmul-performance-report.md`, `.codex/initiatives/artifacts/ws-report-promptopt-loop-2026-04-11.md`, `.codex/initiatives/artifacts/ws-report-promptopt-sanity.py`
+  - Validation: `make` from `/root/code/triton`; `python -m py_compile /root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-sanity.py`; `PYTHONPATH=python/triton_kernels python /root/code/triton-ws-opt/.codex/initiatives/artifacts/ws-report-promptopt-sanity.py --candidate /root/code/triton-ws-opt/python/examples/gluon/05-moe-bmm1-fused-gather.py --batch 128`; central scoring of round-7 candidates from the known-good environment
+  - Learnings: Round 7 showed that a worker-side “it runs once” check is still too weak. One candidate (`r7a1`) compiled and ran but scored slightly negative overall (`-0.82%` mean / geometric) with a worst regression of `-11.07%`, while the other (`r7a2`) passed a one-point local invocation yet failed the broad central scorer on correctness with `176797 / 1474560` mismatches at `batch=128`. The new durable rule is therefore stricter: workers must pass syntax, one real post-edit kernel invocation, and a local reference comparison before a candidate is worth central scoring. The canonical helper for that gate is `.codex/initiatives/artifacts/ws-report-promptopt-sanity.py`.
+  - Plan updates: Resume the hillclimb from round 8 with the repaired workspace maker, the new sanity gate as a mandatory post-edit step, and central scoring as the only promotion authority.
 
 ## Next Up
 

@@ -275,4 +275,32 @@ This prevents agents from “winning” by changing local benchmark helpers or d
   - keep the fixed workspace-maker and proposal-only contract
   - require one actual edited-kernel invocation as a worker-side sanity gate
   - continue using central scoring as the authority for promotion
-- Status: pending
+- Workspaces:
+  - `r7a1`
+  - `r7a2`
+- Agents:
+  - `Parfit`
+  - `Bernoulli`
+- Current prompt differences:
+  - workers must supply one real post-edit kernel invocation, not just `py_compile`
+  - runtime/import patching remains forbidden
+  - central scoring remains authoritative for promotion
+- Final round outcome:
+  - `r7a1`
+    - change type: small helper-store inner-loop arithmetic reshaping
+    - local status: compiled and passed a real post-edit kernel invocation
+    - independent score: `-0.82%` mean, `-0.82%` geometric, `5 / 8` wins, worst regression
+      `-11.07%`
+    - result: rejected
+  - `r7a2`
+    - change type: small packed-store-path reshaping
+    - local status: passed a one-point real kernel invocation
+    - central outcome: rejected on correctness before performance ranking
+    - reason: broad scorer found `176797 / 1474560` mismatches on the `batch=128` reference check
+- Prompt/report lessons from round 7:
+  - one real post-edit kernel invocation is necessary but not sufficient
+  - workers also need a local reference-comparison gate before they report success
+  - the broad central scorer should continue to be the only promotion authority, but the worker
+    contract is now tighter: syntax check, real invocation, and local reference sanity must all
+    pass before a candidate is even worth scoring
+- Status: completed
