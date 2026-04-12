@@ -2099,15 +2099,7 @@ def test_tmem_subslice_block_m_64_parent_layout(layout_kind, fresh_triton_cache)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_kind", [
-    pytest.param(
-        "legacy",
-        marks=pytest.mark.xfail(
-            reason="legacy M64 64x64 layout sugar needs producer-visible physical-family semantics for MMAv5"
-        ),
-    ),
-    "linear",
-])
+@pytest.mark.parametrize("layout_kind", ["legacy", "linear"])
 def test_block_m_64_mma(layout_kind):
 
     full_layout = TensorMemoryLayout((64, 64), col_stride=1) if layout_kind == "legacy" else _make_tmem_linear_layout_m64(128)
