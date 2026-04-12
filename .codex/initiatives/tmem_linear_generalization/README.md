@@ -57,10 +57,11 @@ When resuming the initiative:
 - Said another way, this is an offset/subview over the existing physical TMEM
   allocation followed by a size-and-physical-mapping-equivalent type/view
   reinterpretation, not a remapping or relocation operation.
-- The attention example remains a deferred migration target: it deliberately
-  reuses part of TMEM while the kernel knows that region is not otherwise live,
-  so the eventual supported rewrite must preserve both the synchronization
-  discipline and the physical `offset/subview -> bitcast` contract.
+- The attention example's scratch-borrow path has a focused supported
+  migration: helpers now offset/slice the f32 scratch TMEM before bitcasting,
+  and the exp2 partition stores slice the exact physical subregion before
+  bitcasting each bf16 view. Preserve this synchronization-aware pattern if
+  broader attention coverage exposes more aliasing cases.
 - Lowering-side fixes are still appropriate for supported APIs that miscompile,
   but do not add ad-hoc selectors just to preserve old `_reinterpret`
   accidents.
@@ -109,16 +110,19 @@ When resuming the initiative:
     `776 passed, 677 skipped, 4368 deselected`
   - aggregate:
     `2377 passed, 3444 skipped, 17463 deselected`
-- The clean Gluon examples subset is green at `24bec4ecf`; full
-  `python/examples/gluon` is intentionally not the current aggregate because
-  `01-attention-forward.py` is a known deferred `_reinterpret` migration
-  target:
+- The clean Gluon examples subset remains green at `24bec4ecf`, and the
+  attention exact now has a supported scratch-alias bitcast migration:
+  - `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`:
+    `1 passed in 8.75s` after migrating the scratch-borrow helpers and exp2
+    partition stores to `slice/subview -> bitcast`;
   - `python/examples/gluon/02-convolution.py`:
     `48 passed`
   - `python/examples/gluon/03-matmul-multicta.py`:
     `82 passed, 14 skipped`
   - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
     `690 passed, 60 skipped`
+  - full `python/examples/gluon` has not been rerun after this attention
+    migration, so keep the broader examples aggregate conservative.
 - The current-head runtime-matrix saturation slices are green:
   - broad `ld/st`:
     `1181 passed, 441 skipped, 1027 deselected`
@@ -566,17 +570,18 @@ When resuming the initiative:
   - the xfail is deliberate design debt for legacy M64 `64x64` layout sugar
     lacking producer-visible physical-family semantics for MMAv5 consumers;
     the linear supported layout passes in the same process.
-- The supported descriptor bitcast API remains on the branch, but the
-  attention example migration has been intentionally reverted for now:
-  - `python/examples/gluon/01-attention-forward.py` is back to its pre-bitcast
-    `_reinterpret` form;
-  - the representative attention exact is red again with
-    `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'`;
-  - the old examples/Gluon green aggregate at `4263ae61` / `49f1a0fd` is
-    stale for current `HEAD`;
-  - future attention work must use a synchronization-aware supported
-    `offset/slice/subview -> bitcast` sequence, not private `_reinterpret`
-    behavior or lowering selectors.
+- The supported descriptor bitcast API remains on the branch, and the focused
+  attention scratch-alias path is migrated again at the current checkpoint:
+  - `python/examples/gluon/01-attention-forward.py` no longer uses
+    `_reinterpret` for the scratch-borrow helpers;
+  - the helper-only migration still reproduced the old invalid-basis failure,
+    so the final patch also slices the original f32 scratch subregion for each
+    exp2 partition before bitcasting that exact physical image;
+  - the representative attention exact is green:
+    `1 passed in 8.75s`;
+  - the old examples/Gluon green aggregate at `4263ae61` / `49f1a0fd` remains
+    stale for current `HEAD`, and full `python/examples/gluon` still needs a
+    fresh rerun.
 - The stale `test_mma_shared_inputs` two-CTA TTGIR spelling bucket is closed:
   - current TMEM encoding text may spell the type field as `twoCTAs`, while
     physical-layout and op attributes still use `two_ctas`;

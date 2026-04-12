@@ -10709,3 +10709,31 @@ Open after this slice:
 1. Continue the next bounded frontier: copy `warpx2` descriptor/direct-PTX
    work, true scales `warpx2`, staged `ld/st` fuzzing, or the A-side fp4
    scaled TMEM-LHS wrong-code frontier when ready to debug lowering.
+
+## 2026-04-12 attention scratch alias supported bitcast retry
+
+- Migrated the attention scratch-borrow path in
+  `python/examples/gluon/01-attention-forward.py` back to the supported
+  physical bitcast API. The helpers now slice the f32 scratch region before
+  bitcasting:
+  - `_borrow_s_as_p`: `slice(0, BLOCK_N // 2) -> bitcast(dtype, qk_shape, p_tmem_layout)`;
+  - `_borrow_s_as_alpha`: `slice(BLOCK_N // 2, 1) -> bitcast(float32, [SPLIT_M, 1])`;
+  - `_borrow_s_for_epilogue`: adjacent one-column slices -> derived-layout
+    `bitcast(float32, [SPLIT_M, 1])`.
+- The first helper-only attempt still failed the exact attention repro with
+  `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'`.
+- The working fix also changed `_compute_and_store_exp2` to follow the full
+  offset/subview contract: for each exp2 partition, slice the original f32
+  scratch descriptor to the exact physical columns for that partition, then
+  bitcast that subview to the bf16 P-part descriptor before storing. This
+  avoids relying on slicing a previously bitcast full-P view.
+- Validation:
+  - build: `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` -> passed, ninja reported no work to do;
+  - syntax: `python3 -m py_compile python/examples/gluon/01-attention-forward.py` -> passed;
+  - hygiene: `git diff --check` -> passed;
+  - failed intermediate helper-only exact:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-helper-bitcast-derived PYTHONPATH=python:. pytest -s --tb=short -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]'` -> failed with the invalid-basis GluonInline error;
+  - final exact:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-subview-bitcast PYTHONPATH=python:. pytest -s --tb=short -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]'` -> `1 passed in 8.75s`.
+- Remaining boundary: full `python/examples/gluon` and broader examples/Gluon
+  aggregate validation have not been rerun after this focused attention fix.

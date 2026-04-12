@@ -50,6 +50,16 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Current-head attention scratch-alias migration has a focused green exact:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-attention-subview-bitcast PYTHONPATH=python:. pytest -s --tb=short -vv 'python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]'`
+  - `1 passed in 8.75s`
+  - The migrated code uses supported `slice/subview -> bitcast` APIs for
+    `_borrow_s_as_p`, `_borrow_s_as_alpha`, `_borrow_s_for_epilogue`, and the
+    exp2 partition stores. The exp2 path must slice the original f32 scratch to
+    the exact physical columns for each partition before bitcasting; bitcasting
+    the whole P view and then slicing it still hits the old invalid-basis
+    failure.
+  - Full `python/examples/gluon` has not been rerun after this focused fix.
 - Current-head phase-boundary validation at `330c64c05` is green for the full
   `python/test/gluon/test_tmem_runtime_matrix.py` file:
   - `1757 passed, 442 skipped in 1640.11s (0:27:20)`
@@ -220,11 +230,11 @@
   dtype/shape/layout only when it is size-equivalent and
   physical-mapping-equivalent to the already-selected input; it must not select
   or remap physical TMEM.
-- The attention example is intentionally still reverted to `_reinterpret` until
-  it can be migrated with this supported sequence. Its trick of reusing part of
-  TMEM while the kernel knows the original use is inactive also requires the
-  synchronization/lifetime discipline to be preserved, not only the view
-  arithmetic.
+- The attention example scratch-alias path has a focused supported migration
+  using this sequence. Keep the synchronization/lifetime discipline intact:
+  select the inactive f32 scratch subregion first, then bitcast only an
+  equal-size physical view. The exact attention test is green, but broader
+  examples validation remains pending.
 - For intent tests, rewrite kernels to use explicit guaranteed descriptor/view
   composition:
   - `slice`
@@ -484,17 +494,19 @@
 - The merge-base-present MMAv5 and multicta representative regressions remain
   locally closed by the current M64 producer-contract/source-column row-plan
   fix; keep their exacts in the focused guard set while broadening.
-- The attention example is intentionally back to its old `_reinterpret` state
-  after the user asked to stop editing that kernel for now:
-  - the supported `subslice/subview -> bitcast` API is still present and
-    validated by focused tests;
+- The focused attention scratch-alias path has been migrated again to the
+  supported `subslice/subview -> bitcast` API:
+  - `_borrow_s_as_p`, `_borrow_s_as_alpha`, and `_borrow_s_for_epilogue` no
+    longer call `_reinterpret`;
+  - the exp2 P-storage path must slice the original f32 scratch subregion for
+    each partition before bitcasting, because the helper-only migration still
+    reproduced the old invalid-basis failure;
   - the attention exact
     `python/examples/gluon/01-attention-forward.py::test_op[False-dtype0-True-128-1024-48-4]`
-    is red again at `13930b1ff`;
-  - the failure is in `gluon_to_ttgir` with
-    `LLVM ERROR: Invalid basis 32 for in-dim 'col' and out-dim 'dim1'`;
+    is green at the current checkpoint;
   - the examples/Gluon green aggregate recorded at `4263ae61` / `49f1a0fd`
-    is stale for current `HEAD`.
+    is still stale for current `HEAD`, so rerun broader examples before marking
+    that lane green.
 - The bitcast API fix intentionally does not preserve private `_reinterpret`
   behavior:
   - load/store lowering uses the exact physical bitcast query for explicit
@@ -1018,8 +1030,9 @@
   - `python/examples/gluon/04-2cta-block-scale-matmul.py`:
     - `690 passed, 60 skipped in 52.87s`
 - Full `python/examples/gluon` remains intentionally not the aggregate target
-  while `01-attention-forward.py` is back to `_reinterpret` and red pending the
-  synchronization-aware supported view/bitcast migration.
+  until rerun after the focused attention supported-bitcast migration. The
+  exact attention repro is green, but the broader examples aggregate is not yet
+  refreshed.
 - Next:
   - start operational fuzzing from `fuzz_plan.md` or continue wider pytest/lit
     validation;
