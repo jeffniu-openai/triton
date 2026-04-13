@@ -5672,6 +5672,7 @@ def test_tmem_runtime_matrix_cp_scales_warpx4():
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
 
 
@@ -5685,6 +5686,7 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy():
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
 
 
