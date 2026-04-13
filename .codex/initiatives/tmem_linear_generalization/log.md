@@ -12046,3 +12046,26 @@ Open after this slice:
   - the temporary source alias was reverted again;
   - post-revert rebuild passed.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted writes.
+
+## 2026-04-13 13:18 UTC: corrected scales `warpx2` direct-PTX probe
+
+- Found and fixed a flaw in the direct-PTX scales `warpx2` experiment:
+  - the original `compile_seed` compiled by launching the canonical `warpx4` kernel first;
+  - that prior launch primed state enough for at least `first_01_23_only` to appear correct;
+  - compile-only `warmup` removes that priming and is now the default probe path.
+- Script/result updates:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_scales_warpx2_direct_ptx.py` now has `--prime-canonical` only for reproducing the historical artifact;
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_scales_warpx2_direct_ptx_current.jsonl` was regenerated over four GPUs.
+- Corrected unprimed results:
+  - `warpx4_control` still matches random input exactly;
+  - `first_01_23_only` and `first_02_13_only` do not match: random input `diff_count=510`, arange `diff_count=512`, and rows show only columns `0..7` populated;
+  - `both_01_23_original_descs`, `both_02_13_original_descs`, `second_01_23_only`, and `second_02_13_only` still launch-fail with illegal memory access.
+- Primed artifact:
+  - `first_01_23_only --prime-canonical` reproduces the historical full roundtrip after a prior canonical `warpx4` launch;
+  - this is not valid support evidence for compiler lowering.
+- Current conclusion:
+  - do not land a scales `warpx2` alias or opcode-suffix swap;
+  - true scales `warpx2` remains unsupported/unproven until an unprimed descriptor/address schedule copies the full logical tile.
+- Validation / hygiene:
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_scales_warpx2_direct_ptx.py` passed;
+  - branch source was already clean after the previous temporary-source revert and rebuild.

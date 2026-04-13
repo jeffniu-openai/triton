@@ -123,16 +123,19 @@ def make_input(kind: str) -> torch.Tensor:
     return torch.randint(-100, 100, (64, 16), dtype=torch.int8, device="cuda")
 
 
-def compile_seed(inp: torch.Tensor):
+def compile_seed(inp: torch.Tensor, prime_canonical: bool):
     out = torch.empty_like(inp)
-    compiled = tmem_copy_scales_warpx4_kernel[(1,)](inp, out, num_warps=4)
-    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    compiled = tmem_copy_scales_warpx4_kernel.warmup(inp, out, grid=(1,), num_warps=4)
+    if prime_canonical:
+        compiled[(1, 1, 1)](inp, out)
+        torch.cuda.synchronize()
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
     return compiled, out
 
 
-def run_variant(variant: Variant, input_kind: str, arch: int) -> dict:
+def run_variant(variant: Variant, input_kind: str, arch: int, prime_canonical: bool) -> dict:
     inp = make_input(input_kind)
-    compiled, out = compile_seed(inp)
+    compiled, out = compile_seed(inp, prime_canonical)
     patched_ptx = patch_ptx(compiled.asm["ptx"], variant)
     cubin = assemble_ptx(patched_ptx, arch)
     device = driver.active.get_current_device()
@@ -150,6 +153,7 @@ def run_variant(variant: Variant, input_kind: str, arch: int) -> dict:
     return {
         "variant": variant.name,
         "input": input_kind,
+        "prime_canonical": bool(prime_canonical),
         "matches_input": bool(equal),
         "diff_count": int((out != inp).sum().item()),
         "same_count": int((out == inp).sum().item()),
@@ -179,10 +183,15 @@ def main() -> int:
     parser.add_argument("variant", choices=sorted(VARIANTS))
     parser.add_argument("--input", choices=("random", "arange"), default="random")
     parser.add_argument("--arch", type=int, default=103)
+    parser.add_argument(
+        "--prime-canonical",
+        action="store_true",
+        help="Launch the unpatched canonical warpx4 kernel before the patched cubin. This reproduces the historical primed probe but is not valid support evidence.",
+    )
     args = parser.parse_args()
 
     try:
-        result = run_variant(VARIANTS[args.variant], args.input, args.arch)
+        result = run_variant(VARIANTS[args.variant], args.input, args.arch, args.prime_canonical)
     except Exception as exc:
         print(json.dumps({"variant": args.variant, "error": type(exc).__name__, "message": str(exc)[:500]}))
         return 1
