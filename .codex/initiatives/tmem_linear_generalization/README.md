@@ -31,6 +31,8 @@ When resuming the initiative:
 - use `log.md` for chronological provenance and validation history; and
 - use `fuzz_plan.md` once the current planner/cleanup blockers are green and
   broad saturation work is the next task.
+- use `ldst_validation_recipe_20260413.md` for the current duration-cache
+  and bucketed recipe for broad `ld/st` runtime-matrix validation.
 
 ## Current Project Invariant
 

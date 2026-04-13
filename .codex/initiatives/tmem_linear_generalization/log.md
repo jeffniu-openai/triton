@@ -11929,3 +11929,23 @@ Open after this slice:
   - a duration-aware `ld/st` sweep recipe;
   - another bounded MMAv5/scaled-MMAv5 reachable-family coverage gap.
 - Tooling note: `apply_patch` still fails with `No such file or directory`, so this docs update used exact scripted replacements.
+
+## 2026-04-13 `ld/st` duration-cache and bucketed broad validation
+
+- Revisited the broad `python/test/gluon/test_tmem_runtime_matrix.py -k ldst` validation problem after the project-owner GB200 timing calibration.
+- Current collection remains `1642/2758` selected tests.
+- Static split-16 evidence:
+  - groups `1..4` passed: `412 passed` total, group times `6:26`, `9:13`, `9:49`, `13:23`;
+  - groups `14..16` passed/clean-skipped: `282 passed, 21 skipped`, group times `7:33`, `2:03`, `4:19`;
+  - groups `5..8` and `13` timed out under wrappers, concentrated in descriptor-composition, descriptor-roundtrip, and higher-rank descriptor-view buckets.
+- Exact replacement buckets closed the timeout functions:
+  - descriptor-composition row/column sweep: split-8, `240 passed`;
+  - descriptor-roundtrip row/column sweep: split-8, `240 skipped` cleanly;
+  - remaining descriptor composition / roundtrip / two-CTA bucket: split-8, `180 passed, 180 skipped`;
+  - higher-rank index / multidimensional descriptor bucket: split-8, `120 passed`.
+- No deterministic `ld/st` runtime-matrix failures were found at `77d3edea1`.
+- Merged all generated pytest-split timings into:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/ldst_pytest_durations_20260413.json`
+  - `1642` duration entries, one per selected `ldst` nodeid.
+- Added `ldst_validation_recipe_20260413.md` with the accepted evidence, timeout caveats, recommended duration-cache command, and bucketed fallback recipe.
+- Validation-policy conclusion: the broad selector is green by bucketed evidence but still too expensive for casual local reruns. A collect-only `least_duration` split-16 with the duration cache estimates roughly `780s` per group; use focused selectors or the bucketed recipe for development, and reserve a full duration-aware sweep for phase boundaries.
