@@ -1660,6 +1660,42 @@ def tmem_copy_scales_warpx4_kernel(in_ptr, out_ptr):
 
 
 @gluon.jit
+def tmem_copy_scales_warpx4_twocta_kernel(in_ptr, out_ptr):
+    SMEM_H: ttgl.constexpr = 128
+    SMEM_W: ttgl.constexpr = 16
+
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0], cga_layout=[[1, 0]])
+    offs_m = ttgl.arange(0, SMEM_H, layout=ttgl.SliceLayout(1, blocked))
+    offs_n = ttgl.arange(0, SMEM_W, layout=ttgl.SliceLayout(0, blocked))
+    offs = offs_m[:, None] * SMEM_W + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]],
+        block_bases=[[64, 0]],
+    )
+    tmem = allocate_tensor_memory(
+        ttgl.int8, (SMEM_H, SMEM_W), layout=TensorMemoryScalesLayout(cga_layout=[[1, 0]])
+    )
+    smem = ttgl.allocate_shared_memory(ttgl.int8, (SMEM_H, SMEM_W), layout=smem_layout)
+    smem.store(value)
+    fence_async_shared(cluster=True)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    output = tmem.load(reg_layout)
+    out_offs_m = ttgl.arange(0, SMEM_H, layout=ttgl.SliceLayout(1, reg_layout))
+    out_offs_n = ttgl.arange(0, SMEM_W, layout=ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_offs_m[:, None] * SMEM_W + out_offs_n[None, :]
+    ttgl.store(out_ptr + out_offs, output)
+
+
+@gluon.jit
 def tmem_copy_scales_layout_probe_kernel(in_ptr, out_ptr, smem_layout: ttgl.constexpr):
     SMEM_H: ttgl.constexpr = 64
     SMEM_W: ttgl.constexpr = 16
@@ -5635,6 +5671,19 @@ def test_tmem_runtime_matrix_cp_scales_warpx4():
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
+    assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy():
+    smem_h, smem_w = 128, 16
+    inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
+
+    compiled = tmem_copy_scales_warpx4_twocta_kernel[(1, )](inp, out, num_warps=4, num_ctas=2)
+
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
     assert "ttg.memdesc_reinterpret" not in compiled.asm["ttgir"]
 

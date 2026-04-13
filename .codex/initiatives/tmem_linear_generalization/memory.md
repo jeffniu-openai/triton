@@ -7032,3 +7032,24 @@ rejection, not rescue
   - `git diff --check`: passed.
 - Validation caveat: do not report the timed-out composition split groups as test failures. They are another example of the known no-duration static-split problem. For a full compositions refresh, collect/store durations or split by exact nodeid buckets.
 - Tooling caveat: `apply_patch` still fails with `No such file or directory`; the small source edit used an exact scripted replacement.
+
+## 2026-04-13 09:24 UTC: direct two-CTA scales `warpx4` copy coverage
+
+- Added direct runtime-matrix coverage for a two-CTA CGA-shaped tensor-memory-scales copy without going through scaled MMA:
+  - new helper `tmem_copy_scales_warpx4_twocta_kernel`;
+  - source/destination tile `128x16xi8`;
+  - shared layout uses the supported scales `warpx4` offset bases plus `block_bases=[[64, 0]]`;
+  - destination uses `TensorMemoryScalesLayout(cga_layout=[[1, 0]])`;
+  - launch uses `num_ctas=2` and `fence_async_shared(cluster=True)`.
+- New test `test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy` checks exact roundtrip correctness, exact PTX/LLIR copy opcodes, and absence of legacy `ttg.memdesc_reinterpret`.
+- Observed/direct-copy boundary:
+  - pure scales copy without an MMAv5 op emits two `tcgen05.cp.cta_group::1.warpx4.32x128b` operations for this CGA-shaped tile;
+  - the existing scaled-MMA copy matrix continues to pin `tcgen05.cp.cta_group::2.warpx4.32x128b` when the enclosing two-CTA MMAv5 operation sets the module-level two-CTA contract.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`: passed;
+  - rebuild before runtime pytest was a no-op success;
+  - focused `-k cp_scales_warpx4` over four `pytest-split` groups: `54 passed`;
+  - broader runtime-matrix `-k cp` over four `pytest-split` groups: `167 passed, 5 skipped`;
+  - `git diff --check`: passed.
+- This closes a bounded supported-copy coverage gap only. True scales `warpx2`, two-CTA `warpx2::02_13` descriptor/address synthesis, broader `ld.red` fuzzing, and MMAv5/scaled-MMAv5 family saturation remain the next long-term frontiers.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this edit used exact scripted replacements.
