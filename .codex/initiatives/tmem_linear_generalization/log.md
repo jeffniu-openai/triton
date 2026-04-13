@@ -12396,3 +12396,22 @@ Open after this slice:
   - aggregate: `187 passed, 5 skipped`.
 - This supersedes the older broad-copy count of `167 passed, 5 skipped`; the
   difference is the new all-format `block_n=256` scaled-copy coverage.
+
+## 2026-04-13 after broad copy validation: tight direct MMA/scaled-MMA selector is green
+
+- First ran collect-only on the historical broad selector:
+  - `PYTHONPATH=python:. pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+  - result: `326/2930` selected, including many `ldst_*mmav5*` nodeids because
+    `mmav5` contains the substring `mma`;
+  - conclusion: this selector is contaminated and should not be used as the
+    pure direct-MMA runtime-matrix refresh.
+- Switched to the tight family selector:
+  - collect-only command: `PYTHONPATH=python:. pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'test_tmem_runtime_matrix_mma'`;
+  - result: `201/2930` selected, covering the MMA/scaled-MMA runtime-matrix
+    tests without the ldst `mmav5` cases.
+- Runtime validation across four GPU `pytest-split` groups passed:
+  - group 1: `51 passed`;
+  - group 2: `51 passed`;
+  - group 3: `51 passed`;
+  - group 4: `48 passed`;
+  - aggregate: `201 passed`.
