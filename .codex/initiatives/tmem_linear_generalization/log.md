@@ -12358,3 +12358,30 @@ Open after this slice:
     `4 passed` aggregate;
   - nearby `-k 'tma_tf32'` selector: all eight selected positive plus negative
     cases passed across the four groups.
+
+## 2026-04-13 after TMA TF32 negative expansion: scaled-copy format matrix covers `block_n=256`
+
+- Expanded the scaled-MMAv5 copy-helper format matrix:
+  - `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix` now
+    covers `block_n in (128, 256)`;
+  - all existing scaled format pairs remain covered: `mxfp8/mxfp8`,
+    `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - both `num_ctas in {1, 2}` and both legacy/canonical accumulator layouts are
+    covered.
+- Probe finding before the edit:
+  - two-CTA canonical `mxfp8/mxfp8` at `block_n=128` emitted two
+    `tcgen05.cp...warpx4.32x128b` copies;
+  - the same case at `block_n=256` emitted three copies because the B-scale
+    payload needs a second N tile while the A-scale copy count is unchanged;
+  - the MMA opcode stream stayed at four `mxf8f6f4.block_scale.scale_vec::1X`
+    instructions.
+- The exact copy-op assertion now uses
+  `(1 + block_n // 128) * (32 // vec_size)`, preserving the old `block_n=128`
+  counts and pinning the new wider shape.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` no-op success;
+  - exact expanded matrix across four GPU `pytest-split` groups: `40 passed`
+    aggregate;
+  - nearby `-k 'cp_scales_warpx4_via_scaled_mma'` selector: all `72` selected
+    copy-matrix plus geometry cases passed across four groups.
