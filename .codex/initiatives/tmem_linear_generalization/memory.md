@@ -109,6 +109,14 @@
   success, the exact new nodeid passed `8` selected cases across four GPU split
   groups, and the nearby `ldst_x1_subword or ldst_x1_f32` selector passed `57`
   selected cases aggregate.
+- `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
+  a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
+  as too slow, not recorded as validation. Group 1 completed green
+  (`409 passed, 2322 deselected`) but took `38:23`; groups 2-4 were still
+  running at about `42` minutes with steady output and were terminated. Future
+  broad `ld/st` refreshes should use finer split groups, duration-aware data, or
+  narrower selectors first; do not treat split-4 timing as acceptable for this
+  lane.
 - Latest copy-frontier checkpoint, 2026-04-13 07:25 UTC at `6e453288d`: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. Earlier direct-PTX work ruled out direct-seed `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and nearby two-message column-pair schedules. The latest four-GPU JSONL scan extended single-message direct-seed offsets through `36..63` with destination deltas `0` and `4`; all `56` variants launched without sentinels or NaNs, none matched the extended `02_13` oracle, and every variant duplicated one source column pair. Keep this frontier on descriptor/message semantics rather than another small offset toggle.
 - Latest validation checkpoint, 2026-04-13 03:00 UTC: the previous Gluon tail is now closed from local evidence. `python/test/gluon/test_tmem_runtime_matrix.py` has full file coverage via mixed split granularity (`2683` selected cases: `2237 passed, 446 skipped`, no failures/errors). `python/test/gluon/test_lowerings.py` is green across four GPU shards (`4937 passed, 512 skipped`). Together with the earlier green first-phase groups 1-3, split-16 groups 13-14, isolated xdist-crash nodeid pass, and green `python/examples/gluon/`, current-head `test-gluon` has no deterministic known failures after the MMAv5 fix. The timeout root cause was static split imbalance in slow TMEM ldst composition/legality-probe buckets, not a failing nodeid.
 - Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green (`248 passed, 2 unsupported`)

@@ -11629,3 +11629,20 @@ Open after this slice:
   - exact new nodeid across four GPU split groups passed `8` selected cases;
   - nearby selector `ldst_x1_subword or ldst_x1_f32` passed `57` selected cases
     aggregate across four GPU split groups.
+
+## 2026-04-13 08:25 UTC: coarse split-4 broad ld/st refresh stopped as too slow
+
+- Attempted a broad current-head `ld/st` runtime-matrix refresh after
+  `15c0bf252` with four GPU shards:
+  `PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst'`.
+- Outcome:
+  - group 1 completed green: `409 passed, 2322 deselected in 2303.94s (0:38:23)`;
+  - groups 2, 3, and 4 were still emitting progress at about `42` minutes and
+    were terminated with `SIGTERM`;
+  - no failure was observed, but the run is incomplete and must not be counted
+    as broad validation.
+- Velocity conclusion:
+  - split-4 without duration data is too coarse for broad `ld/st` on this
+    devbox;
+  - use finer shard counts, duration-aware split data, or targeted selectors
+    before attempting another broad `ld/st` refresh.
