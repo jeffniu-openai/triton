@@ -11545,3 +11545,23 @@ Open after this slice:
     test for one representative clean unsupported case;
   - this does not close true scales `warpx2` or all multicast/layout search,
     which remain direct-probe / descriptor-semantics frontiers.
+
+## 2026-04-13 07:25 UTC: two-CTA `warpx2::02_13` direct-seed offsets 36..63 ruled out
+
+- Extended the patched-PTX probe for no-scales two-CTA
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`.
+- Scope:
+  - single-message direct-seed descriptor immediates with `sourceOffsetB128`
+    offsets `36..63`;
+  - destination deltas `0` and `4`;
+  - `56` variants split across four GPUs and written to JSONL shards
+    `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`.
+- Result:
+  - all variants assembled, launched, and completed;
+  - no sentinel or NaN output was observed;
+  - no variant matched the layout-derived extended `02_13` oracle;
+  - every variant duplicated one source column pair.
+- Status:
+  - keep the public two-CTA `warpx2::02_13` path as a clean unsupported
+    descriptor-plan boundary until a new descriptor-address hypothesis appears;
+  - do not promote the previously tested direct-seed family into lowering.

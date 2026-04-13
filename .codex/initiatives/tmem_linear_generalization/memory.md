@@ -433,6 +433,13 @@
     output, but none matched the extended single-CTA `02_13` oracle; opcode-only,
     source-row-plus-16, single-seed, destination-`+4`, and two-message variants
     still either duplicate source-column pairs or copy the wrong row/column mix;
+  - a fresh four-GPU direct-PTX scan extended two-CTA `warpx2::02_13`
+    single-message direct-seed `sourceOffsetB128` coverage from earlier
+    `32..35` through `36..63` with destination deltas `0` and `4`; all `56`
+    variants launched without sentinel or NaN output, none matched the extended
+    `02_13` oracle, and every result duplicated one source column pair. Result
+    shards live under
+    `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,
     then fail because no compatible scales descriptor plan can be synthesized;
