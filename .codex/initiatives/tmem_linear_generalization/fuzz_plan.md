@@ -482,9 +482,10 @@ Every fuzz case records:
   currently including one-CTA root-aligned `slice_start=0` and offset
   `slice_start=64` direct subviews plus two-CTA cga-aware `slice_start=0` and
   `slice_start=128` direct subviews across the proven format pairs
-- TMEM-LHS subview format coverage currently includes the packed-storage
-  reachable subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
-  `nvfp4/nvfp4`) for both legacy and canonical accumulator layouts; mixed
+- TMEM-LHS format coverage currently includes the packed-storage reachable
+  subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
+  for both legacy and canonical accumulator layouts, across both subviews and
+  full-shape tile-permuted operand-A descriptors at logical `K=256`; mixed
   `mxfp4/mxfp8` dense TMEM-LHS subviews are a clean unsupported boundary, not
   a positive target yet, because `mxf8f6f4` fp4 LHS currently requires
   `fp4_padded` shared-memory operand-A storage; this is pinned by

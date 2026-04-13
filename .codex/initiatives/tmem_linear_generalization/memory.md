@@ -7146,3 +7146,26 @@ rejection, not rescue
     do not classify that partial broad run as a branch failure. This is another
     no-duration static-split partitioning issue to handle with finer/duration
     data if a full broad refresh is needed.
+
+## 2026-04-13 13:59 UTC: scaled-MMAv5 full-shape tile-permuted TMEM-LHS matrix
+
+- Added `tmem_mma_scaled_lhs_tile_permuted_format_kernel`, a direct scaled-MMA
+  helper that stores packed operand A into a full-shape tile-permuted
+  TMEM-linear descriptor and feeds it directly to `tcgen05_mma_scaled`.
+- Positive matrix: `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
+  `nvfp4/nvfp4`, each across legacy and canonical TMEM-linear accumulator
+  layouts.
+- Shape choice is intentional: logical `K=256` gives fp4-A formats a 128-column
+  packed storage tile. The scratch probe showed logical `K=128` only reaches the
+  mxfp8-A cases; fp4-A at 64 storage columns still gets the clean
+  MMAv5-compatible-layout rejection.
+- The test asserts numeric output, exact PTX/LLIR scaled-MMA opcode/count
+  agreement, exact commit opcode, no `ttg.memdesc_subslice`, and preserved
+  `tensor_memory_linear`.
+- Validation:
+  - scratch probe for `K=256` passed the four format pairs on one GPU;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `make` was a no-op success;
+  - exact new nodeid passed `8` selected cases across four GPU split groups;
+  - nearby selector `mma_scaled and (lhs or tile_permuted)` passed `30` selected
+    cases across four GPU split groups (`8`, `8`, `8`, `6`).

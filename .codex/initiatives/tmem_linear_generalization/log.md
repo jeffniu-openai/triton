@@ -12195,3 +12195,26 @@ Open after this slice:
 - Tooling note: `apply_patch` first failed to match the drifted helper context
   and then failed with `No such file or directory`; source/docs edits used exact
   checked replacements.
+
+## 2026-04-13 13:59 UTC: scaled-MMAv5 full-shape tile-permuted TMEM-LHS coverage
+
+- Probed and added a direct full-shape tile-permuted TMEM-LHS scaled-MMA path:
+  - `K=128` was positive for mxfp8-A pairs but fp4-A storage had only 64 columns
+    and hit the expected MMAv5-compatible-layout rejection;
+  - `K=256` gives fp4-A 128 packed-storage columns and passed the packed-storage
+    positive subset.
+- Code/test changes:
+  - new `tmem_mma_scaled_lhs_tile_permuted_format_kernel`;
+  - new `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_matrix`;
+  - matrix covers `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
+    `nvfp4/nvfp4` across legacy and canonical accumulator layouts;
+  - assertions cover numeric output, exact scaled-MMA PTX/LLIR opcode/counts,
+    exact commit opcode, absence of `ttg.memdesc_subslice`, and preserved
+    `tensor_memory_linear`.
+- Validation:
+  - scratch probe passed for `K=256` on GPU 0;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` no-op success;
+  - exact new nodeid across four GPUs: `8 passed` aggregate (`2` per group);
+  - nearby `mma_scaled and (lhs or tile_permuted)` selector: `30 passed`
+    aggregate, shard results `8`, `8`, `8`, and `6` selected cases.

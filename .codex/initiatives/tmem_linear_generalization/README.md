@@ -208,6 +208,22 @@ When resuming the initiative:
 
 - Latest scaled-MMAv5 two-CTA multicast checkpoint, 2026-04-13 12:37 UTC: the existing two-CTA accumulator-subview format matrix now covers both scale-TMA paths by running `multicast=False` and `multicast=True`. The test passes the parameter through `mma_scaled_tcgen05_acc_subslice_copy`, preserves numeric output plus exact copy/MMA/commit opcode checks, and asserts TTGIR `{multicast}` appears only for the multicast path. Validation: py-compile passed, rebuild passed, the exact nodeid passed `20` cases across four GPU split groups, and the nearby `mma_scaled and subslice and format_matrix` selector passed `43` cases across four GPU split groups.
 
+- Latest scaled-MMAv5 full-shape TMEM-LHS checkpoint, 2026-04-13 13:59 UTC: direct
+  tile-permuted TMEM-LHS coverage now includes the packed-storage positive
+  subset for scaled MMA. New `tmem_mma_scaled_lhs_tile_permuted_format_kernel`
+  allocates operand A directly in a tile-permuted TMEM-linear descriptor, uses
+  logical `K=256` so fp4-A storage has a reachable `128`-column tile, and feeds
+  the descriptor directly to `tcgen05_mma_scaled` without a subview. The new
+  matrix covers `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
+  `nvfp4/nvfp4` across legacy and canonical accumulator layouts, checking
+  numeric output, exact PTX/LLIR scaled-MMA opcode/count agreement, commit
+  opcodes, no `ttg.memdesc_subslice`, and preserved `tensor_memory_linear`.
+  Validation: scratch probe showed `K=128` is positive only for mxfp8-A while
+  `K=256` covers the packed-storage subset; py-compile passed, rebuild was a
+  no-op success, exact nodeid passed `8` cases across four GPU split groups,
+  and nearby `mma_scaled and (lhs or tile_permuted)` passed `30` cases across
+  four GPUs.
+
 - Latest scaled-MMAv5 tile-permuted accumulator checkpoint, 2026-04-13 12:43 UTC: the `tile_n=64` direct accumulator layout now has full scaled format coverage instead of the previous `mxfp8/mxfp8`-only test. `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix` covers `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4` on the `128x256` tile-permuted accumulator layout, with numeric checks plus exact PTX/LLIR scaled-MMA opcode/count checks. Validation: py-compile passed, rebuild was a no-op success, the exact nodeid passed all `5` selected cases across four GPU split groups, and nearby `mma_scaled and tile_permuted` passed `11` cases across four GPU split groups.
 
 - Latest direct MMA/scaled-MMA validation checkpoint, 2026-04-13 12:45 UTC: after the two scaled-MMAv5 coverage commits (`a18607fd9` and `8b3fec8d6`), the broad runtime-matrix selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'` is green across four GPU split groups: `258 passed, 50 skipped` aggregate (`32/45 skipped`, `72/5 skipped`, `77`, and `77` by group).
@@ -534,14 +550,16 @@ When resuming the initiative:
 - That direct scaled-MMAv5 accumulator-subview format matrix now covers both
   `slice_start=0` and `slice_start=64`, so the same format/opcode assertions
   exercise root-aligned and offset accumulator subviews.
-- Direct scaled-MMAv5 TMEM-LHS subview format coverage now includes the
-  packed-storage reachable subset:
+- Direct scaled-MMAv5 TMEM-LHS format coverage now includes both subview and
+  full-shape tile-permuted packed-storage reachable subsets:
   - `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_matrix`
     covers `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`
     for both legacy and canonical TMEM-linear accumulator layouts;
-  - the test slices a packed-storage TMEM-linear operand-A parent, feeds that
-    subview directly to `tcgen05_mma_scaled`, and pins exact PTX/LLIR scaled
-    MMA and commit opcodes;
+  - `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_matrix`
+    covers the same format/layout subset for a full-shape tile-permuted
+    operand-A descriptor at logical `K=256`, with no `ttg.memdesc_subslice`;
+  - both tests feed TMEM operand-A descriptors directly to `tcgen05_mma_scaled`
+    and pin exact PTX/LLIR scaled-MMA and commit opcodes;
   - mixed `mxfp4/mxfp8` dense TMEM-LHS subviews are pinned as a clean
     unsupported case because `mxf8f6f4` fp4 LHS requires padded operand-A
     storage currently represented by `fp4_padded` shared memory; the durable
