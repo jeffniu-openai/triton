@@ -5999,6 +5999,11 @@ MMA_PLAIN_KIND_CASES = [
     for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
 ]
 
+MMA_PLAIN_KIND_ACC_CASES = [
+    (kind, acc_layout_kind, n)
+    for kind, acc_layout_kind, n in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256))
+]
+
 MMA_TWOCTA_CASES = [
     ("legacy", "legacy"),
     ("linear", "linear"),
@@ -6041,9 +6046,9 @@ def test_tmem_runtime_matrix_mma(name, layout, use_acc):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind", MMA_PLAIN_KIND_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_kind):
-    m = n = 128
+@pytest.mark.parametrize("kind,acc_layout_kind,n", MMA_PLAIN_KIND_ACC_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_kind, n):
+    m = 128
     k = 32
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
@@ -6089,9 +6094,9 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind", MMA_PLAIN_KIND_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind):
-    m = n = 128
+@pytest.mark.parametrize("kind,acc_layout_kind,n", MMA_PLAIN_KIND_ACC_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n):
+    m = 128
     k = 32
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])

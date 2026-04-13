@@ -425,6 +425,8 @@ Every fuzz case records:
   runtime coverage; direct `i8` remains a clean frontend/ptxas-negative
   boundary on the current Blackwell target.
 - `cta_group in {1, 2}`
+- current one-CTA root plain-kind matrix covers `blockN in {128, 256}` for
+  legacy and canonical TMEM-linear accumulator layouts
 - current two-CTA plain-kind matrix covers `blockN in {128, 256}` for legacy
   and canonical TMEM-linear accumulator layouts
 - `use_acc in {false, true}`; current 1-CTA and 2-CTA `use_acc=true`

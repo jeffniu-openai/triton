@@ -12486,3 +12486,28 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`, or mine the next bounded MMAv5/scaled-MMAv5
     coverage gap.
+
+## 2026-04-13 15:02 UTC: one-CTA plain MMAv5 root accumulator matrix covers N=256
+
+- Expanded the one-CTA plain MMAv5 root accumulator tests:
+  - added `MMA_PLAIN_KIND_ACC_CASES` with `N in {128, 256}`;
+  - `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc` now covers both
+    N shapes for all supported plain kinds and both legacy/canonical accumulator
+    layouts;
+  - `test_tmem_runtime_matrix_mma_plain_kinds_use_acc` covers the same shape,
+    kind, layout, and accumulator-add matrix.
+- Probe finding before the edit:
+  - `128x256` root accumulators pass for `f16`, `tf32`, `bf16`, `f8e5m2`, and
+    `f8e4m3`, over both accumulator layouts and both accumulator modes;
+  - the wider root layouts use the same root opcode counts already pinned for
+    `128x128` (`f16/bf16=2`, `tf32=4`, `f8=1`).
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - focused selector `-k 'mma_plain_kinds_with_linear_acc or mma_plain_kinds_use_acc'`: `40 passed` across four GPU groups;
+  - tight family selector `-k 'test_tmem_runtime_matrix_mma'`: `223 passed`
+    across four GPU groups (`56`, `56`, `56`, `55`);
+  - `git diff --check` passed.
+- Next:
+  - continue the copy descriptor/address frontiers or another bounded
+    MMAv5/scaled-MMAv5 shape parity gap.

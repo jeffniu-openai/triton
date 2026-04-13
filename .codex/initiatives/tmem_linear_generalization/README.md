@@ -87,6 +87,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest plain-MMAv5 root-accumulator shape checkpoint, 2026-04-13 15:02 UTC: one-CTA root accumulator coverage now spans `N=128` and `N=256` for every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`), both legacy and canonical TMEM-linear accumulator layouts, and both no-accumulator and `use_acc=True` paths. A scratch probe confirmed the wider `128x256` root layouts use the same root opcode counts as `128x128`; the runtime matrix now pins this through `MMA_PLAIN_KIND_ACC_CASES` while leaving the separate TMEM-LHS subview matrix at its original shape. Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8` no-op success; focused `-k 'mma_plain_kinds_with_linear_acc or mma_plain_kinds_use_acc'` passed `40` selected cases across four GPU groups; tight `-k 'test_tmem_runtime_matrix_mma'` passed `223` selected cases across four GPU groups (`56`, `56`, `56`, `55`); `git diff --check` passed.
+
 - Latest scaled-MMAv5 TMEM-LHS clean-negative checkpoint, 2026-04-13 14:57 UTC: full-shape tile-permuted TMEM-LHS now has the same mixed fp4-A contract coverage as the subview path. New `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported` covers `mxfp4/mxfp8` over legacy and canonical TMEM-linear accumulator layouts at logical `K=256`, confirms the verifier reports the padded-storage fp4-A diagnostic, and checks that the failure is clean rather than a PassManager/assertion crash. Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8` no-op success; exact new nodeid passed its two selected parameters across four GPU split groups; nearby `-k 'mma_scaled and lhs and tile_permuted'` passed `10` selected cases across four groups; tight `-k 'test_tmem_runtime_matrix_mma'` passed `203` selected cases across four GPU split groups (`51`, `51`, `51`, `50`).
 
 - Latest copy-planner cleanup checkpoint, 2026-04-13 14:55 UTC: `getTMemCopyPlans` no longer offers the direct-seed `warpx2::02_13` plan for multi-CTA/block layouts. The direct seed remains available for the executable single-CTA `128x4` `02_13` path, but the two-CTA `256x4` case stays on descriptor-plan search only because repeated actual-layout probes show the direct-seed extension either duplicates the source-column pair, writes all zeros, or traps for unaligned TMEM deltas. The stale comment implying a representable `01_23`-style descriptor shape might be enough was replaced with the current invariant: descriptor representability alone is not proof; a future `02_13` fix must preserve the missing 4-byte source-column bit through a real descriptor/address schedule. Validation: `make -j8` rebuilt cleanly; the affected exact selector (`warpx2_02_13_candidate_positive or warpx2_02_13_twocta_candidate_reports_clean_unsupported or warpx2_01_23_twocta_positive`) passed on the three non-empty four-GPU split groups; broader `-k 'cp_no_scales_warpx2'` passed `8` cases across four GPU split groups; `lit -v test/TritonNvidiaGPU/invalid.mlir` passed; `git diff --check` passed.
@@ -611,16 +613,17 @@ When resuming the initiative:
     copies, exact multicast `tcgen05.commit.cta_group::2`, and
     `ttg.memdesc_subslice` + `tensor_memory_linear` + `two_ctas` TTGIR.
 - Plain MMAv5 kind saturation now includes f16 in the explicit 1-CTA and
-  2-CTA kind matrices after `7766be003`, and the current two-CTA matrix has
-  been widened to `N=128` and `N=256`:
+  2-CTA kind matrices after `7766be003`, the one-CTA root accumulator matrix
+  now spans `N=128` and `N=256`, and the current two-CTA matrix has been
+  widened to `N=128` and `N=256`:
   - `MMA_PLAIN_KINDS` covers `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
   - both legacy and canonical linear accumulator layouts are covered for
     `cta_group::1` and `cta_group::2`;
-  - the `cta_group::2` kind matrix covers both `256x128` and `256x256`
-    accumulator shapes.
-  - the tests continue to assert exact PTX/LLIR opcode agreement and now pin
-    exact root op counts: `f16=2`, `bf16=2`, `tf32=4`, and
-    `f8e5m2/f8e4m3=1`.
+  - the `cta_group::1` root kind matrix covers both `128x128` and `128x256`
+    accumulator shapes, and the `cta_group::2` kind matrix covers both
+    `256x128` and `256x256` accumulator shapes;
+  - the tests continue to assert exact PTX/LLIR opcode agreement and pin exact
+    root op counts: `f16=2`, `bf16=2`, `tf32=4`, and `f8e5m2/f8e4m3=1`.
 - Plain MMAv5 `use_acc=True` coverage now spans all `MMA_PLAIN_KINDS`
   across both 1-CTA and 2-CTA paths, for both legacy and canonical
   TMEM-linear accumulator layouts, validating runtime accumulator addition
