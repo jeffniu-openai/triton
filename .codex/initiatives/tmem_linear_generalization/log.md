@@ -11410,3 +11410,24 @@ Open after this slice:
     minutes while groups 3 and 4 completed much faster; keep preferring more
     duration-aware partitions for wide local sweeps rather than normalizing
     long silent shards.
+
+## 2026-04-13 05:41 UTC: legacy M64 MMAv5 xfail docket is stale on current head
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - HEAD `b475e2883` before this documentation checkpoint.
+- Rebuild:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    passed.
+- Focused M64 evidence:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` with
+    `--runxfail` passed on the active split group;
+  - normal `python/test/gluon/test_core.py::test_block_m_64_mma` passed both
+    legacy and linear parameters across four `pytest-split` groups;
+  - nearby selector
+    `test_tmem_subslice_block_m_64 or test_tmem_subslice_block_m_64_parent_layout or test_block_m_64_mma`
+    passed all six selected cases across the active split groups.
+- Conclusion:
+  - the old legacy M64 MMAv5 bug/xfail docket item is stale at current head;
+  - do not treat `test_block_m_64_mma[legacy]` as branch-actionable unless a
+    fresh exact current-head repro fails.

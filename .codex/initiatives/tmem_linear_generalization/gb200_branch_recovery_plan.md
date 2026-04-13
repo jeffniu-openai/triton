@@ -46,6 +46,23 @@ PY
 
 ## Current Classification Summary
 
+### Current-Head Recovery Status (2026-04-13 05:41 UTC)
+
+- Current checkpoint:
+  - `b475e2883`.
+- Live branch recovery backlog from local current-head evidence:
+  - none known.
+- The historical legacy M64 MMAv5 item is no longer live:
+  - `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` passed with
+    `--runxfail`;
+  - both normal `test_block_m_64_mma` parameters passed across four
+    `pytest-split` groups;
+  - the nearby M64 selector covering `test_tmem_subslice_block_m_64`,
+    `test_tmem_subslice_block_m_64_parent_layout`, and
+    `test_block_m_64_mma` passed all six selected cases.
+- Treat older recovery-plan entries that list this nodeid as a real bug or
+  xfail as historical unless a fresh exact current-head rerun fails.
+
 ### Preserve-Set Update (2026-04-12 09:33 UTC)
 
 - Current checkpoint:

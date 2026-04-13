@@ -85,6 +85,16 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest M64 docket checkpoint, 2026-04-13 05:41 UTC: the historical
+  `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` bug/xfail item
+  is stale at current head. After rebuild, the legacy parameter passed with
+  `--runxfail`, both `test_block_m_64_mma` parameters passed normally across
+  four `pytest-split` groups, and the nearby M64 subview/MMA selector
+  (`test_tmem_subslice_block_m_64`,
+  `test_tmem_subslice_block_m_64_parent_layout`, and `test_block_m_64_mma`)
+  passed all six selected cases. Do not carry the old M64 xfail as a live
+  branch-actionable failure unless a fresh exact repro fails.
+
 - Latest scaled-MMAv5 TMEM-LHS checkpoint, 2026-04-13 05:35 UTC: scaled
   MMAv5 TMEM-LHS subviews now address packed fp4 operand-A descriptors in
   storage-column coordinates for the K tile step, fixing homogeneous A-side

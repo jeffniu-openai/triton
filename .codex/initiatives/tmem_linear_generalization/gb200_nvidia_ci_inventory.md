@@ -20,14 +20,12 @@ lives in `gb200_branch_recovery_plan.md`. The current detailed split between
 actual bugs, stale tests, API/contract-update tests, and merge-base-preexisting
 noise lives in `gb200_failure_classification_20260412.md`.
 
-## Current Broad Validation Checkpoint (2026-04-13 04:19 UTC)
+## Current Broad Validation Checkpoint (2026-04-13 05:41 UTC)
 
 - Current checkpoint:
-  - `4fe39e5d28edf82d90bb9039049083a66359f9b6` on `origin/codex/tmem`.
-  - Runtime source code is unchanged since `21a82fc16`; subsequent commits only
-    recorded validation state.
+  - `b475e2883` on `origin/codex/tmem`.
 - Rebuild/current-head compiler checks:
-  - `make -j8`: no-op success;
+  - `make -j8`: success after relinking current source;
   - `make test-lit`: `248 passed, 2 unsupported`;
   - `make test-cpp`: `240/240` passed.
 - `make test-unit` surface from current local evidence:
@@ -46,6 +44,12 @@ noise lives in `gb200_failure_classification_20260412.md`.
     `2237 passed, 446 skipped`;
   - `python/test/gluon/test_lowerings.py`: four GPU split coverage
     `4937 passed, 512 skipped`;
+  - legacy M64 docket check: `test_block_m_64_mma[legacy]` passed with
+    `--runxfail`, both normal `test_block_m_64_mma` parameters passed, and the
+    nearby M64 selector covering `test_tmem_subslice_block_m_64`,
+    `test_tmem_subslice_block_m_64_parent_layout`, and
+    `test_block_m_64_mma` passed all six selected cases across four
+    `pytest-split` groups;
   - together with the earlier green `python/test/gluon/ python/tutorials/gluon/`
     groups and exact xdist-crash-nodeid rerun, there are no deterministic known
     Gluon failures at current head.
