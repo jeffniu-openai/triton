@@ -6934,6 +6934,9 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
   if (!atom)
     return {};
 
+  auto *ctx = cvt.getInDimNames().begin()->getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+
   auto makePlan = [&](ArrayRef<std::tuple<unsigned, unsigned, unsigned, int>>
                           messageSpecs) {
     TMemCopyPlan plan;
@@ -6979,17 +6982,20 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
     return plans;
   }
   if (atom->multicast == 2) {
-    appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
-                     /*directSeed=*/true, /*tmemDwordDelta=*/4,
-                     /*directSourceOffsetB128=*/32);
+    bool isSingleCTA = !cvt.hasInDim(kBlock) || cvt.getInDimSize(kBlock) == 1;
+    if (isSingleCTA) {
+      appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
+                       /*directSeed=*/true, /*tmemDwordDelta=*/4,
+                       /*directSourceOffsetB128=*/32);
+    }
     appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
                      /*directSeed=*/false, /*tmemDwordDelta=*/0,
                      /*directSourceOffsetB128=*/0);
-    // Direct PTX probes show warpx2::02_13 can sometimes use the same
-    // descriptor seed shape as the clean 01_23 path even though the opcode
-    // selects a different quadrant family. Keep the 64x2 factorization first,
-    // but also try a bounded 32x4 fallback before declaring the family
-    // unsupported.
+    // Keep a bounded 32x4 fallback in the descriptor search, but do not treat
+    // descriptor representability alone as proof of correctness. Two-CTA
+    // 02_13 probes showed the 01_23-style descriptor shape still duplicates the
+    // source-column pair unless a real descriptor/address schedule preserves the
+    // missing 4-byte source-column bit.
     appendWarpx2Plan(/*descriptorRows=*/32u, /*sourceWarpGroups=*/4u,
                      /*directSeed=*/false, /*tmemDwordDelta=*/0,
                      /*directSourceOffsetB128=*/0);

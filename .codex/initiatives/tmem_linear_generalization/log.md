@@ -12438,3 +12438,23 @@ Open after this slice:
     `block_n=128`, `parent_n=256`, `slice_start in {0,128}`;
   - only revisit `block_n=256` offset-subview coverage if a different legal
     parent layout or resource model is designed.
+
+## 2026-04-13 14:55 UTC: copy planner skips two-CTA `warpx2::02_13` direct seed
+
+- Cleaned up `getTMemCopyPlans(...)` after the negative two-CTA `warpx2::02_13` probes:
+  - direct-seed `02_13` plans are now emitted only when the shared/TMEM conversion has no multi-CTA block dimension (`block` size `1` or absent);
+  - the executable single-CTA `128x4` `02_13` path still uses the existing direct seed;
+  - the canonical two-CTA `256x4` case now starts at descriptor-plan search, matching the current evidence that direct seed is not a valid route for it.
+- Updated the stale planner comment:
+  - do not treat `01_23`-style descriptor representability as enough for `02_13`;
+  - forced descriptor and direct-seed probes duplicate source-column pairs unless a real descriptor/address schedule preserves the missing 4-byte source-column bit.
+- Validation:
+  - first rebuild caught a missing local `kBlock` symbol, fixed before validation;
+  - `make -j8` passed after the fix;
+  - affected exact selector across four GPU split groups: groups 1-3 each selected one test and passed; group 4 selected none;
+  - broader `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_warpx2'` passed `8` aggregate cases across four GPU split groups (`2` per group);
+  - `lit -v test/TritonNvidiaGPU/invalid.mlir` passed;
+  - `git diff --check` passed.
+- Next:
+  - keep public two-CTA `02_13` as clean unsupported until a descriptor/address-message model preserves the source-column bit;
+  - continue with the descriptor/address-model frontier, scales `warpx2`, or the next broader MMAv5/scaled-MMAv5 saturation gap.
