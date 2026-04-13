@@ -138,17 +138,21 @@
   Validation: `py_compile` passed, rebuild was a no-op success, and the exact
   `test_tmem_descriptor_chain_matrix` nodeid passed all `26` selected cases
   across four GPU split groups (`7`, `7`, `7`, `5`).
-- Latest runtime-view API-migration checkpoint, 2026-04-13 09:20 UTC:
-  `tmem_linear_runtime_view_kernel_b` now uses supported `.bitcast(...)` for the
-  `index_reshape_*` family and `test_tmem_linear_runtime_views` asserts
-  `tmem_physical_bitcast` for those cases. The three `slice_*` runtime-view
-  cases were probed and still fail supported `.bitcast(...)` type inference with
-  `unsupported tensor memory memdesc_subslice view`, so they intentionally remain
-  on `_reinterpret(...)` until bitcast-over-composed-subslice descriptor chains
-  is implemented in the planner/API. Validation: `py_compile` passed, rebuild
-  was a no-op success, the migrated `index_reshape_*` subset passed all `8`
-  selected cases, and the full runtime-view nodeid passed all `11` selected
-  cases across four GPU split groups (`3`, `3`, `3`, `2`).
+- Latest runtime-view API-migration checkpoint, 2026-04-13 09:35 UTC:
+  the two identity `slice_*` cases in `test_tmem_linear_runtime_views` now use
+  supported `.bitcast(...)`, in addition to the already migrated
+  `index_reshape_*` family. The compiler change verifies subslice projections
+  against a normalized analysis layout only when inactive zero support bases make
+  the destination layout non-injective, and generalizes the standalone TMEM
+  same-rank subview query path beyond rank 2. `slice_reinterpret_64_mixed_32x32b`
+  remains on `_reinterpret(...)` through a separate helper because the real
+  mixed-basis physical-equivalent bitcast still fails with the concrete
+  projection mismatch `dim=0 step=2 phys=col expected=4 actual=2`; do not solve
+  that by adding a pseudoinverse fallback, which asserted during the probe.
+  Validation: `py_compile` passed, rebuild passed, the full runtime-view nodeid
+  passed all `11` selected cases across four GPU split groups (`3`, `3`, `3`,
+  `2`), and adjacent `test_tmem_descriptor_chain_matrix` passed after warmed
+  reruns of cold-timeout groups (`26` selected cases total).
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green

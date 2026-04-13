@@ -11747,3 +11747,24 @@ Open after this slice:
     split groups;
   - full `python/test/gluon/test_core.py::test_tmem_linear_runtime_views` passed
     all `11` selected cases across four GPU split groups (`3`, `3`, `3`, `2`).
+## 2026-04-13 09:35 UTC: migrated identity subslice runtime views to `.bitcast`
+
+- Continued the supported TMEM view API migration in `python/test/gluon/test_core.py`.
+- Changes:
+  - `tmem_linear_runtime_view_kernel_a` now uses `.bitcast(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)` for the identity-slice runtime-view family;
+  - a separate `tmem_linear_runtime_view_kernel_a_reinterpret` helper preserves the mixed-basis slice case on `_reinterpret(...)` while the real planner/API gap remains;
+  - `test_tmem_linear_runtime_views` now asserts `tmem_physical_bitcast` for every case whose name contains `bitcast`, covering both `index_reshape_*` and the identity `slice_*` cases.
+- Compiler/query changes:
+  - `verifyTMemSubsliceProjection` falls back to `normalizeTensorMemoryLinearLayoutForAnalysis` for verification only when the destination layout's left inverse fails because inactive zero support bases make it non-injective; the normalized layout must preserve rank, shape, and total input size before it is accepted;
+  - the standalone same-rank TMEM subview query path now covers same-rank TMEM subslices beyond the old rank-2-only guard.
+- Remaining boundary:
+  - `slice_reinterpret_64_mixed_32x32b` is still not a supported `.bitcast(...)` positive; the current projection mismatch is `dim=0 step=2 phys=col expected=4 actual=2`;
+  - an attempted pseudoinvert fallback is not acceptable and is not in the final diff, because it asserted when the projected image was not contained in the queried image.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_core.py` passed;
+  - `git diff --check` passed before docs update;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
+  - `python/test/gluon/test_core.py::test_tmem_linear_runtime_views` passed all `11` selected cases across four GPU split groups (`3`, `3`, `3`, `2`);
+  - adjacent `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix` remains green. Groups 1 and 2 passed cold (`7`, `7`); group 3 printed `7 passed` but was killed by a `120s` wrapper during teardown, then passed in `3.27s` on warmed rerun; group 4 hit the same cold timeout and then passed in `28.25s` on warmed rerun (`5 passed`).
+- Velocity note:
+  - the descriptor-chain cold timeout here was validation overhead/cache behavior, not a failing nodeid. For future focused guard checks, rerun timed-out split groups against warmed caches or isolate exact nodeids before classifying the result.

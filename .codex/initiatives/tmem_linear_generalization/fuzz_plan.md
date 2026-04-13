@@ -613,7 +613,10 @@ Every fuzz case records:
   - delete no-op same-layout reinterprets;
   - keep genuinely unsupported bitcasts over complex descriptor chains on the
     planner/API backlog instead of adding ad hoc lowering patches.
-- Current known blocked TMEM runtime-view family: `slice_*` in
-  `test_tmem_linear_runtime_views`, where `.bitcast(...)` over the composed
-  subslice/reshape/transpose chain fails with
-  `unsupported tensor memory memdesc_subslice view`.
+- Current known blocked TMEM runtime-view family is now only the mixed-basis
+  `slice_reinterpret_64_mixed_32x32b` case in `test_tmem_linear_runtime_views`;
+  the two identity `slice_*` cases have migrated to supported `.bitcast(...)`.
+  The mixed case still fails supported `.bitcast(...)` over the composed
+  subslice/reshape/transpose chain with projection mismatch
+  `dim=0 step=2 phys=col expected=4 actual=2`, and should be fixed with exact
+  layout algebra rather than a pseudoinverse fallback.

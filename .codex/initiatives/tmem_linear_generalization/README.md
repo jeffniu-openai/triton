@@ -960,27 +960,32 @@ When resuming the initiative:
   - exact nodeid across four GPU split groups passed all `26` selected cases
     (`7`, `7`, `7`, `5`).
 
-## 2026-04-13 09:20 UTC: runtime-view index/reshape cases use supported bitcast
+## 2026-04-13 09:35 UTC: runtime-view identity slices use supported bitcast
 
-- Migrated `tmem_linear_runtime_view_kernel_b` in `python/test/gluon/test_core.py`
-  from `_reinterpret(...)` to `.bitcast(...)` for the `index_reshape_*`
-  runtime-view family.
-- `test_tmem_linear_runtime_views` now asserts `tmem_physical_bitcast` for the
-  migrated `index_reshape_*` cases while keeping the existing exact load/store
-  opcode checks.
-- Boundary confirmed:
-  - trying the same migration for the three `slice_*` runtime-view cases fails
-    at type inference with `unsupported tensor memory memdesc_subslice view`;
-  - those cases remain on `_reinterpret(...)` for now and should be migrated
-    only after bitcast-over-composed-subslice descriptor chains is supported by
-    the planner/API.
+- Extended the `test_core.py` runtime-view API migration beyond the
+  `index_reshape_*` family: the two identity `slice_*` cases now use supported
+  `.bitcast(...)` through `tmem_linear_runtime_view_kernel_a`.
+- The enabling planner/query change is deliberately narrow:
+  - `verifyTMemSubsliceProjection` verifies against the normalized analysis
+    layout when the destination layout is non-injective only because of
+    inactive zero support bases; this preserves broadcast/equivalence semantics
+    instead of rejecting an otherwise physical-equivalent view;
+  - the standalone same-rank TMEM subview query path now handles same-rank TMEM
+    subslices beyond the previous rank-2 special case.
+- `slice_reinterpret_64_mixed_32x32b` remains on `_reinterpret(...)` through a
+  separate helper. A supported `.bitcast(...)` still fails on that mixed-basis
+  projected subslice; the observed projection mismatch was `dim=0 step=2
+  phys=col expected=4 actual=2`. Do not paper this over with a pseudoinverse
+  fallback; the attempted fallback asserted because the projected image was not
+  contained in the queried image.
 - Validation:
   - `python3 -m py_compile python/test/gluon/test_core.py` passed;
-  - rebuild was a no-op success;
-  - `index_reshape_*` subset passed `8` selected cases across four GPU split
-    groups;
-  - full `test_tmem_linear_runtime_views` passed all `11` selected cases across
-    four GPU split groups (`3`, `3`, `3`, `2`).
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
+  - `python/test/gluon/test_core.py::test_tmem_linear_runtime_views` passed all
+    `11` selected cases across four GPU split groups (`3`, `3`, `3`, `2`);
+  - adjacent `test_tmem_descriptor_chain_matrix` passed all `26` selected cases
+    after rerunning cold-timeout groups 3 and 4 against warmed caches (`7`,
+    `7`, `7`, `5`).
 
 ## Document Roles
 

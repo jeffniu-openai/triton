@@ -140,6 +140,33 @@ def tmem_linear_runtime_view_kernel_a(input_ptr, output_ptr, layout: ttgl.conste
     view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
     view = view.permute([0, 2, 1]).reshape((64, 32, 8))
     view = view.slice(0, 64, dim=0).slice(8, 16, dim=1).slice(0, 8, dim=2)
+    view = view.bitcast(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    view.store(ttgl.convert_layout(input_tensor, reg_layout))
+    output_value = view.load(reg_layout)
+    output_value = output_value + ttgl.full([OUT_M, OUT_N], 1.0, ttgl.float32, layout=reg_layout)
+    view.store(output_value)
+    output_value = view.load(reg_layout)
+    ttgl.store(output_ptr + ptr, output_value.reshape([out_elems]))
+
+
+@gluon.jit
+def tmem_linear_runtime_view_kernel_a_reinterpret(input_ptr, output_ptr, layout: ttgl.constexpr,
+                                                  reinterpret_layout: ttgl.constexpr,
+                                                  instr_variant: ttgl.constexpr):
+    OUT_M: ttgl.constexpr = 128
+    OUT_N: ttgl.constexpr = 64
+    out_elems: ttgl.constexpr = OUT_M * OUT_N
+    ptr = ttgl.arange(0, out_elems)
+    input_tensor = ttgl.load(input_ptr + ptr).reshape([OUT_M, OUT_N])
+
+    M: ttgl.constexpr = layout.shape[0]
+    N: ttgl.constexpr = layout.shape[1]
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
+    view = view.permute([0, 2, 1]).reshape((64, 32, 8))
+    view = view.slice(0, 64, dim=0).slice(8, 16, dim=1).slice(0, 8, dim=2)
     view = view._reinterpret(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
 
     reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
@@ -178,7 +205,7 @@ def tmem_linear_runtime_view_kernel_b(input_ptr, output_ptr, layout: ttgl.conste
 
 TMEM_RUNTIME_VIEW_CASES = [
     (
-        "slice_reinterpret_64_identity_32x32b",
+        "slice_bitcast_64_identity_32x32b",
         tmem_linear_runtime_view_kernel_a,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 64),
@@ -186,7 +213,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "slice_reinterpret_64_identity_16x64b",
+        "slice_bitcast_64_identity_16x64b",
         tmem_linear_runtime_view_kernel_a,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 64),
@@ -195,14 +222,14 @@ TMEM_RUNTIME_VIEW_CASES = [
     ),
     (
         "slice_reinterpret_64_mixed_32x32b",
-        tmem_linear_runtime_view_kernel_a,
+        tmem_linear_runtime_view_kernel_a_reinterpret,
         _make_tmem_linear_layout_mixed(128, 128),
         _make_tmem_linear_layout(128, 64),
         "32x32b",
         4,
     ),
     (
-        "index_reshape_reinterpret_128_identity_32x32b",
+        "index_reshape_bitcast_128_identity_32x32b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 128),
@@ -210,7 +237,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_128_identity_16x128b",
+        "index_reshape_bitcast_128_identity_16x128b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 128),
@@ -218,7 +245,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_64_identity_32x32b",
+        "index_reshape_bitcast_64_identity_32x32b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 64),
@@ -226,7 +253,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_64_identity_16x64b",
+        "index_reshape_bitcast_64_identity_16x64b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 64),
@@ -234,7 +261,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_64_identity_16x128b",
+        "index_reshape_bitcast_64_identity_16x128b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 64),
@@ -242,7 +269,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_128_mixed_32x32b",
+        "index_reshape_bitcast_128_mixed_32x32b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout_mixed(128, 128),
         _make_tmem_linear_layout(128, 128),
@@ -250,7 +277,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_64_mixed_32x32b",
+        "index_reshape_bitcast_64_mixed_32x32b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout_mixed(128, 128),
         _make_tmem_linear_layout(128, 64),
@@ -258,7 +285,7 @@ TMEM_RUNTIME_VIEW_CASES = [
         4,
     ),
     (
-        "index_reshape_reinterpret_256_to_128_16x128b",
+        "index_reshape_bitcast_256_to_128_16x128b",
         tmem_linear_runtime_view_kernel_b,
         _make_tmem_linear_layout(128, 256),
         _make_tmem_linear_layout(128, 128),
@@ -2385,7 +2412,7 @@ def test_tmem_linear_runtime_views(name, kernel, layout, reinterpret_layout, ins
     assert ttgir.count("ttg.memdesc_reshape") >= 1
     assert "ttg.memdesc_index" in ttgir
     assert "ttg.memdesc_reinterpret" in ttgir
-    if name.startswith("index_reshape_"):
+    if "bitcast" in name:
         assert "tmem_physical_bitcast" in ttgir
 
     st_opcode = f"tcgen05.st.sync.aligned.{instr_variant}"

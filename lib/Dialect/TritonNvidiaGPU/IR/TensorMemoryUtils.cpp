@@ -380,14 +380,29 @@ static LogicalResult verifyTMemSubsliceProjection(
     ArrayRef<std::pair<StringAttr, int32_t>> baseCoords,
     const LinearLayout &dstLayout, ArrayRef<int64_t> dstShape,
     std::string *error) {
-  auto maybeDstInv = computeLeftInverseLayout(dstLayout, error);
+  auto verificationLayout = dstLayout;
+  auto maybeDstInv = computeLeftInverseLayout(verificationLayout, error);
   if (failed(maybeDstInv)) {
-    if (error && error->empty())
-      *error = "unsupported tensor memory memdesc_subslice view";
-    return failure();
+    auto normalized = normalizeTensorMemoryLinearLayoutForAnalysis(dstLayout);
+    std::string normalizedError;
+    auto normalizedInv = computeLeftInverseLayout(normalized, &normalizedError);
+    if (succeeded(normalizedInv) &&
+        normalized.getNumOutDims() == dstLayout.getNumOutDims() &&
+        llvm::equal(normalized.getOutDimSizes(), dstShape) &&
+        static_cast<int64_t>(normalized.getTotalInDimSize()) ==
+            product<int64_t>(dstShape)) {
+      verificationLayout = normalized;
+      maybeDstInv = std::move(normalizedInv);
+      if (error)
+        error->clear();
+    } else {
+      if (error && error->empty())
+        *error = "unsupported tensor memory memdesc_subslice view";
+      return failure();
+    }
   }
 
-  auto dstLogicalDims = llvm::to_vector(dstLayout.getOutDimNames());
+  auto dstLogicalDims = llvm::to_vector(verificationLayout.getOutDimNames());
   auto dstBaseCoords =
       maybeDstInv->apply(makeFullLinearLayoutCoords(dstLogicalDims, {}));
 
@@ -1729,9 +1744,14 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
       }
       return *srcQuery;
     }
-    if (!isPureTMem2DColumnSubview && srcTy.getMemorySpace() == tmemSpace &&
-        memDescTy.getMemorySpace() == tmemSpace && srcTy.getRank() == 2 &&
-        memDescTy.getRank() == 2 && subslice.getOffsets().size() == 2) {
+    bool isSameRankTMemSubview =
+        srcTy.getMemorySpace() == tmemSpace &&
+        memDescTy.getMemorySpace() == tmemSpace &&
+        srcTy.getRank() == memDescTy.getRank() &&
+        subslice.getOffsets().size() == srcTy.getRank() &&
+        static_cast<size_t>(srcQuery->layout.getNumOutDims()) ==
+            subslice.getOffsets().size();
+    if (!isPureTMem2DColumnSubview && isSameRankTMemSubview) {
       auto maybeDstTy =
           inferStandaloneTMemViewType(memDesc, error);
       if (debug && failed(maybeDstTy) && error && !error->empty()) {
