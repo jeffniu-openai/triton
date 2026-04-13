@@ -382,17 +382,16 @@ Every fuzz case records:
   `experiments/results/probe_cp_warpx2_02_13_twocta_direct_ptx_current.log`
   extends this to opcode-only, source-row-plus-16, single-CTA seed,
   destination-`+4`, and two-message variants; none match the extended
-  single-CTA `02_13` oracle. The newer column-offset log
-  `experiments/results/probe_cp_warpx2_02_13_twocta_column_offsets_current.log`
-  additionally rules out direct-seed `sourceOffsetB128` `32..35` plus the
-  nearest two-message column-pair schedules. The four-GPU JSONL shard set
+  single-CTA `02_13` oracle. The current direct-PTX harness uses compile-only
+  warmup by default so patched cubins are not primed by a prior canonical
+  `01_23` launch. The four-GPU JSONL shard set
   `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`
   extends the single-message direct-seed scan through offsets `36..127` with
   destination deltas `0` and `4`; the durable source-offset records have zero
-  matches against the extended `02_13` oracle. Offsets `36..63` duplicate one
-  source-column pair, offsets `64..72` execute but still mismatch (`65..72`
-  destination `0` has four NaNs), and offsets `73..127` launch-fail in isolated
-  child processes.
+  matches against the extended `02_13` oracle. Offsets `36..72` execute but all
+  duplicate one source-column pair, and offsets `73..127` launch-fail in
+  isolated child processes. The older column-offset/NaN breakdown is historical
+  and superseded by the compile-only rerun.
 
 #### Checks
 - Output matches input for no-scales copies.

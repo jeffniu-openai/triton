@@ -3,9 +3,11 @@
 
 The public lowering keeps the two-CTA 02_13 candidate cleanly unsupported until
 Triton can synthesize a correct shared-memory descriptor plan. This experiment
-starts from the known-good two-CTA 01_23 kernel, patches only the PTX copy
-opcode / descriptor immediate / TMEM destination offset, assembles the result
-with ptxas, and launches through Triton's normal cluster-aware CUDA launcher.
+starts from the known-good two-CTA 01_23 kernel's compile-only warmup,
+patches only the PTX copy opcode / descriptor immediate / TMEM destination
+offset, assembles the result with ptxas, and launches through Triton's normal
+cluster-aware CUDA launcher. Use --prime-canonical only to reproduce historical
+probes that launched the canonical 01_23 kernel before the patched cubin.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from triton.backends.nvidia.compiler import get_ptxas, sm_arch_from_capability
 from triton.runtime import driver
 
 from python.test.gluon.test_tmem_runtime_matrix import (
+    _expected_tmem_copy_warpx2_01_23_twocta_output,
     _make_tmem_copy_warpx2_shared_layout_twocta,
     _make_tmem_copy_warpx2_tmem_layout_twocta,
     tmem_copy_no_scales_warpx2_twocta_kernel,
@@ -196,14 +199,19 @@ def expected_extended_single_cta_02_13(inp: torch.Tensor) -> torch.Tensor:
     return expected
 
 
-def compile_seed_kernel():
+def compile_seed_kernel(prime_canonical: bool):
     shared_layout = _make_tmem_copy_warpx2_shared_layout_twocta()
     tmem_layout = _make_tmem_copy_warpx2_tmem_layout_twocta()
     inp = torch.arange(256 * 4, device="cuda", dtype=torch.float32).reshape(256, 4)
     out = torch.empty_like(inp)
-    compiled = tmem_copy_no_scales_warpx2_twocta_kernel[(1,)](
-        inp, out, shared_layout, tmem_layout, num_warps=4, num_ctas=2
+    compiled = tmem_copy_no_scales_warpx2_twocta_kernel.warmup(
+        inp, out, shared_layout, tmem_layout, grid=(1,), num_warps=4, num_ctas=2
     )
+    if prime_canonical:
+        compiled[(1, 1, 1)](inp, out)
+        torch.cuda.synchronize()
+        expected = _expected_tmem_copy_warpx2_01_23_twocta_output(inp)
+        torch.testing.assert_close(out, expected, atol=0, rtol=0)
     return compiled, inp, out
 
 
@@ -244,8 +252,8 @@ def patch_ptx(ptx: str, variant: Variant) -> str:
     return ptx
 
 
-def analyze_variant(variant: Variant) -> dict[str, object]:
-    compiled, inp, out = compile_seed_kernel()
+def analyze_variant(variant: Variant, prime_canonical: bool = False) -> dict[str, object]:
+    compiled, inp, out = compile_seed_kernel(prime_canonical)
     ptx = patch_ptx(compiled.asm["ptx"], variant)
     cubin = assemble_ptx(ptx)
     device = driver.active.get_current_device()
@@ -273,6 +281,7 @@ def analyze_variant(variant: Variant) -> dict[str, object]:
     return {
         "variant": variant.name,
         "messages": [asdict(message) for message in variant.messages],
+        "prime_canonical": bool(prime_canonical),
         "status": "ok",
         "matches_extended_single_cta_formula": bool(torch.equal(out, expected)),
         "duplicates_col_pair": bool(
@@ -296,8 +305,8 @@ def print_variant_record(record: dict[str, object]) -> None:
         print(f"row {row}: {selected_rows[str(row)]}")
 
 
-def run_variant(variant: Variant) -> int:
-    print_variant_record(analyze_variant(variant))
+def run_variant(variant: Variant, prime_canonical: bool) -> int:
+    print_variant_record(analyze_variant(variant, prime_canonical))
     return 0
 
 
@@ -312,12 +321,14 @@ def parse_int_csv(text: str) -> tuple[int, ...]:
     return tuple(values)
 
 
-def run_source_offset_child(source_offset_b128: int, dst_delta: int, json_record: bool) -> int:
+def run_source_offset_child(
+    source_offset_b128: int, dst_delta: int, json_record: bool, prime_canonical: bool
+) -> int:
     variant = Variant(
         f"direct_seed_off{source_offset_b128}_dst{dst_delta}",
         (CopyMessage("add", direct_seed_imm(source_offset_b128), dst_delta),),
     )
-    record = analyze_variant(variant)
+    record = analyze_variant(variant, prime_canonical)
     record["source_offset_b128"] = source_offset_b128
     record["dst_delta"] = dst_delta
     if json_record:
@@ -352,6 +363,7 @@ def run_source_offset_parent(args: argparse.Namespace) -> int:
                         "--dst-delta",
                         str(dst_delta),
                         "--json-record",
+                        *(["--prime-canonical"] if args.prime_canonical else []),
                     ],
                     env=env,
                     text=True,
@@ -367,11 +379,14 @@ def run_source_offset_parent(args: argparse.Namespace) -> int:
                     "source_offset_b128": source_offset_b128,
                     "dst_delta": dst_delta,
                     "status": "timeout",
+                    "prime_canonical": bool(args.prime_canonical),
                     "timeout_s": args.child_timeout,
                     "output_tail": output[-2000:],
                 }
             else:
-                record = parse_child_record(proc, source_offset_b128, dst_delta)
+                record = parse_child_record(
+                    proc, source_offset_b128, dst_delta, args.prime_canonical
+                )
                 if proc.returncode != 0:
                     status = max(status, proc.returncode)
             line = json.dumps(record, sort_keys=True)
@@ -386,6 +401,7 @@ def parse_child_record(
     proc: subprocess.CompletedProcess[str],
     source_offset_b128: int,
     dst_delta: int,
+    prime_canonical: bool,
 ) -> dict[str, object]:
     if proc.returncode != 0:
         return {
@@ -393,6 +409,7 @@ def parse_child_record(
             "source_offset_b128": source_offset_b128,
             "dst_delta": dst_delta,
             "status": "failed",
+            "prime_canonical": bool(prime_canonical),
             "returncode": proc.returncode,
             "output_tail": proc.stdout[-2000:],
         }
@@ -400,7 +417,7 @@ def parse_child_record(
     return json.loads(json_line)
 
 
-def run_parent() -> int:
+def run_parent(args: argparse.Namespace) -> int:
     script = Path(__file__).resolve()
     status = 0
     for variant in VARIANTS:
@@ -408,7 +425,13 @@ def run_parent() -> int:
         env.setdefault("TRITON_CACHE_DIR", f"/tmp/triton-cache-warpx2-02-13-{variant.name}")
         print(f"===== RUN {variant.name} =====", flush=True)
         proc = subprocess.run(
-            [sys.executable, str(script), "--variant", variant.name],
+            [
+                sys.executable,
+                str(script),
+                "--variant",
+                variant.name,
+                *(["--prime-canonical"] if args.prime_canonical else []),
+            ],
             env=env,
             text=True,
             stdout=subprocess.PIPE,
@@ -427,6 +450,11 @@ def main() -> int:
     parser.add_argument("--source-offset", type=int)
     parser.add_argument("--dst-delta", type=int)
     parser.add_argument("--json-record", action="store_true")
+    parser.add_argument(
+        "--prime-canonical",
+        action="store_true",
+        help="Launch the known-good two-CTA 01_23 kernel before the patched cubin. This reproduces historical primed probes but is not support evidence.",
+    )
     parser.add_argument("--source-offset-start", type=int)
     parser.add_argument("--source-offset-end", type=int)
     parser.add_argument("--dst-deltas", type=parse_int_csv, default=(0, 4))
@@ -436,7 +464,9 @@ def main() -> int:
     if args.source_offset is not None:
         if args.dst_delta is None:
             parser.error("--source-offset requires --dst-delta")
-        return run_source_offset_child(args.source_offset, args.dst_delta, args.json_record)
+        return run_source_offset_child(
+            args.source_offset, args.dst_delta, args.json_record, args.prime_canonical
+        )
     if args.source_offset_start is not None or args.source_offset_end is not None:
         if args.source_offset_start is None or args.source_offset_end is None:
             parser.error("--source-offset-start and --source-offset-end must be provided together")
@@ -444,9 +474,9 @@ def main() -> int:
             parser.error("--source-offset-end must be >= --source-offset-start")
         return run_source_offset_parent(args)
     if args.variant is None:
-        return run_parent()
+        return run_parent(args)
     variant = next(variant for variant in VARIANTS if variant.name == args.variant)
-    return run_variant(variant)
+    return run_variant(variant, args.prime_canonical)
 
 
 if __name__ == "__main__":

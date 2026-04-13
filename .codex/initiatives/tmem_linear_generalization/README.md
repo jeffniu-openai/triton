@@ -87,6 +87,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest two-CTA `warpx2::02_13` corrected direct-PTX checkpoint, 2026-04-13 13:20 UTC: the durable probe `experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` now uses compile-only warmup by default, with `--prime-canonical` retained only to reproduce historical runs that launched the canonical `warpx2::01_23` kernel first. Regenerated artifacts show zero matches against the extended two-CTA `02_13` oracle. All `22` named opcode/descriptor/two-message variants execute with finite output but duplicate a source-column pair (`duplicates_col_pair=true`). The four-GPU source-offset JSONL sweep covers `sourceOffsetB128` `36..127` with destination deltas `0/4`: `74` records for offsets `36..72` execute but all duplicate a source-column pair, while `110` records for offsets `73..127` launch-fail in isolated child processes. The older 2026-04-13 09:42 NaN/partial-duplicate breakdown is superseded because that probe launched the canonical kernel before patched cubins. Conclusion: keep public two-CTA `warpx2::02_13` clean unsupported; next useful work is descriptor/address-message synthesis from the layout model, not another direct-seed offset toggle.
+
 - Latest scales `warpx2` direct-PTX correction checkpoint, 2026-04-13 13:18 UTC: the durable probe `experiments/probe_cp_scales_warpx2_direct_ptx.py` now uses compile-only warmup by default so patched variants are not primed by a prior canonical `warpx4` launch. The corrected results in `experiments/results/probe_cp_scales_warpx2_direct_ptx_current.jsonl` show the unpatched `warpx4_control` still roundtrips, but unprimed `first_01_23_only` and `first_02_13_only` only fill the low half of each logical row (`diff_count=510` for random, `512` for arange). Patching both original messages or using only the second message still launch-fails with illegal memory access. The old apparent positive was a primed-state artifact: `first_01_23_only --prime-canonical` can reproduce the historical success after launching the canonical copy first, but that is not valid support evidence. Conclusion: true scales `warpx2` remains unsupported/unproven; do not land an alias or opcode-suffix swap based on the earlier primed direct-PTX result.
 
 - Latest subview-offset checkpoint, 2026-04-13 09:14 UTC: fixed a compiler assertion where
@@ -179,7 +181,7 @@ When resuming the initiative:
   negative matrix `10 passed`, nearby scaled-MMA selector `27 passed`, and
   broad four-GPU `-k 'mma and not cp'` selector `242 passed, 50 skipped`.
 
-- Latest copy-frontier checkpoint, 2026-04-13 09:42 UTC: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. The bounded direct-PTX follow-ups now cover the single-CTA direct-seed neighborhood (`sourceOffsetB128` `32..127`, destination deltas `0/4`, plus nearby two-message column-pair schedules) without finding an oracle match. Offsets `36..63` launch cleanly but duplicate one source column pair; offsets `64..72` still launch but mismatch the extended `02_13` oracle (`65..72` with destination `0` also produce four NaNs, while destination `4` stays finite but wrong); offsets `73..127` launch-fail in isolated child processes. Across the durable source-offset JSONL records (`184` variants under `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`) there are zero matches, so the next useful work is descriptor/address-message synthesis rather than another small direct-seed offset toggle.
+- Superseded copy-frontier checkpoint, 2026-04-13 09:42 UTC (corrected by the 13:20 compile-only warmup rerun): two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remained intentionally clean unsupported and the direct-PTX search found zero oracle matches, but the exact NaN/duplicate breakdown is stale because the probe launched the canonical `01_23` kernel before patched cubins. Use the 13:20 corrected artifact summary above for current source-offset counts.
 
 - Latest code checkpoint, 2026-04-13 09:24 UTC: direct two-CTA tensor-memory-scales `tcgen05.copy` now has pure-copy runtime-matrix coverage. The new `tmem_copy_scales_warpx4_twocta_kernel` roundtrips a `128x16xi8` CGA-shaped `TensorMemoryScalesLayout(cga_layout=[[1, 0]])` tile from a shared-linear `warpx4` layout with `block_bases=[[64, 0]]`, and asserts exact PTX/LLIR `tcgen05.cp.cta_group::1.warpx4.32x128b` opcodes plus no legacy `ttg.memdesc_reinterpret`. This is bounded supported-copy coverage only; true scales `warpx2` and two-CTA `warpx2::02_13` remain descriptor/address-model frontiers. Validation: py-compile passed, rebuild was a no-op success, focused `-k cp_scales_warpx4` passed `54` tests across four split groups, broad `-k cp` passed `167` with `5` skips across four split groups, and `git diff --check` passed.
 
@@ -437,12 +439,12 @@ When resuming the initiative:
     descriptor/address mutations either duplicate source-column pairs or copy
     the wrong row/column mix, so they still do not recover the missing 4-byte
     source-column bit.
-  - the direct-seed source-offset JSONL scan now covers offsets `36..127` with
-    destination deltas `0` and `4`: offsets `36..63` duplicate source-column
-    pairs, offsets `64..72` execute but still mismatch (`65..72` destination
-    `0` has four NaNs), and offsets `73..127` launch-fail in isolated child
-    processes. No source-offset record matches the extended two-CTA `02_13`
-    oracle.
+  - the corrected compile-only direct-seed source-offset JSONL scan covers
+    offsets `36..127` with destination deltas `0` and `4`: all executing
+    offsets `36..72` duplicate one source-column pair, offsets `73..127`
+    launch-fail in isolated child processes, and no source-offset record matches
+    the extended two-CTA `02_13` oracle. The earlier NaN-specific breakdown is
+    superseded by the compile-only warmup rerun.
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales
