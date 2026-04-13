@@ -11204,3 +11204,53 @@ Open after this slice:
   - `python/examples/gluon/` was already green across four shards (`884 passed, 74 skipped`).
 - Current conclusion: after the MMAv5 family-addressing fix, there are no deterministic known `test-gluon` failures on current head. The older timeout/worker-crash records should be treated as validation partitioning artifacts unless a narrower exact nodeid reproduces.
 - Validation methodology note: the slow legality/probe buckets should get duration-aware split data or a dedicated file-level split recipe before future broad sweeps; do not normalize multi-hour local shards when CI-scale expectation is about 35 minutes total / about 20 minutes test time.
+
+## 2026-04-13 04:19 UTC: GB200 unit tails, lit, C++, and microbenchmark refreshed
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - `HEAD` `4fe39e5d28edf82d90bb9039049083a66359f9b6`;
+  - runtime source code unchanged since `21a82fc16`, with later commits only
+    recording validation status.
+- Rebuild:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    -> `ninja: no work to do`.
+- Fresh lit/C++/microbenchmark evidence:
+  - `timeout 300s make test-lit`
+    -> `248 passed, 2 unsupported` in `9.34s`;
+  - `timeout 900s make test-cpp`
+    -> `240/240` passed in `0.67s`;
+  - `timeout 900s env CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-microbenchmark PYTHONPATH=python:. make test-microbenchmark`
+    -> passed, median launch-overhead sample `21.786785125732422`.
+- `python/tutorials/06-fused-attention.py` was rerun as four
+  `pytest-split` groups with one GPU/cache per group:
+  - group 1: `96 skipped, 288 deselected` in `2.84s`;
+  - group 2: `96 passed, 288 deselected, 1 warning` in `757.08s`;
+  - group 3: `96 passed, 288 deselected` in `459.50s`;
+  - group 4: `96 skipped, 288 deselected` in `3.27s`;
+  - aggregate selected coverage: `192 passed, 192 skipped`, no failures.
+- The singleton `test-unit` tails were rerun in the Makefile's exact
+  environments, distributed across the four GPUs:
+  - instrumentation: `1 passed` in `3.86s`;
+  - `test_plugin.py`: `1 passed` in `1.21s`;
+  - `test_dialect_plugin.py`: `1 passed` in `2.64s`;
+  - `custom_ops.py`: `1 passed` in `3.02s`.
+- Recomputed `python/triton_kernels/tests` non-overlapping aggregate from the
+  green split logs:
+  - split-16 groups 1-12 plus split-4 group 4 cover the full directory;
+  - aggregate: `2377 passed, 3444 skipped`, no failures/errors.
+- Current GB200 branch-actionable status:
+  - lit, C++, gsan, regression, unit main, unit debug exact/sanitizer subset,
+    triton-kernels, fused attention, instrumentation/plugins, examples/Gluon,
+    and the recovered Gluon runtime-matrix/lowerings tail all have green local
+    evidence at current head;
+  - Proton's `11` cudagraph / periodic flushing failures remain the only known
+    CI-command failure family, and those exacts reproduced on merge-base
+    `origin/main`, so they remain preexisting/environmental rather than a TMEM
+    branch regression.
+- Methodology update:
+  - keep using all four GPUs for pytest work, but avoid static split shapes
+    that pack many 17-34s TMEM legality/probe cases into one shard;
+  - if a local shard exceeds the project owner's expected GB200 CI timing by a
+    large margin, investigate partitioning, xdist, or hangs before extending
+    timeouts.

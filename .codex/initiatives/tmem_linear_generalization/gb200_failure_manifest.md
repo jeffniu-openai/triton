@@ -32,6 +32,33 @@ PY
 
 ## Current-Branch Exact Failure Lists
 
+## Current-Head Failure Status (2026-04-13 04:19 UTC)
+
+- Current checkpoint:
+  - `4fe39e5d28edf82d90bb9039049083a66359f9b6` on `origin/codex/tmem`.
+- Live branch-actionable exact lists:
+  - none known from current local evidence.
+- Superseded branch-actionable historical lists:
+  - `gb200_current_20260412_lit_failures.txt` is closed by later lit fixes and
+    full-lit reruns (`248 passed, 2 unsupported`);
+  - `gb200_branch_new_20260412_unit_main_failures.txt` is closed by the
+    layout-only row-plan fix and later unit sweep evidence;
+  - `gb200_branch_new_20260412_gluon_failures.txt` is closed by the M64/layout
+    fixes and later Gluon evidence;
+  - tile-permuted MMAv5 runtime-matrix failure logs are closed by
+    `21a82fc16`;
+  - incomplete Gluon timeout/xdist-crash records are validation partitioning
+    artifacts unless a fresh exact nodeid reproduces.
+- Remaining ignored/preexisting list:
+  - `gb200_preexisting_20260412_proton_main_failures.txt` remains the live
+    ignored Proton family because the same representative exacts reproduce on
+    merge-base `origin/main`.
+- Guidance:
+  - do not select next work from old red-count manifests without rerunning an
+    exact current-head repro first;
+  - after this checkpoint, next TMEM work should come from the long-term plan
+    rather than GB200 branch-recovery manifests.
+
 ## Preserve-Set Exact Status (2026-04-12 09:33 UTC)
 
 - Current checkpoint:

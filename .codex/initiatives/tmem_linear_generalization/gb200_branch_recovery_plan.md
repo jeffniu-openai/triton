@@ -1277,3 +1277,32 @@ PY
   counts. The next recovery work should start from a fresh broader GB200 grouped
   sweep, then move to any surviving real failures; keep long-term view/bitcast,
   `ld.red`, copy warpx2, MMAv5 coverage, and fuzzing items on the plan.
+
+## 2026-04-13 04:19 UTC: branch-recovery queue closed from current local evidence
+
+- Current checkpoint: `4fe39e5d28edf82d90bb9039049083a66359f9b6` on
+  `origin/codex/tmem`.
+- The branch-caused GB200 failure buckets that previously drove this plan are
+  now closed or superseded:
+  - lit is green (`248 passed, 2 unsupported`);
+  - the `162` unit exacts pass after the layout-only row-plan fix and the fresh
+    unit sweep has no deterministic branch failures;
+  - the M64 Gluon exact and tile-permuted MMAv5 runtime-matrix bucket are closed
+    by the layout/MMAv5 fixes and later Gluon evidence;
+  - `python/triton_kernels/tests`, fused attention, instrumentation/plugins,
+    gsan, regression, microbenchmark, C++, examples, runtime-matrix, and
+    lowerings have current green evidence.
+- Proton remains the only known CI-command red family, but it reproduced on
+  merge-base and stays outside the TMEM branch-recovery queue.
+- Current recovery-plan status:
+  - no live branch-actionable GB200 failure is known;
+  - old manifests in this folder are historical until refreshed by a new exact
+    repro.
+- Next work should return to the long-term TMEM plan: supported view/bitcast API
+  migration, attention rewrite later, `ld.red`, copy `warpx2`, broader
+  MMAv5/scaled-MMAv5 reachable-family coverage, heuristic cleanup, and staged
+  fuzzing/validation.
+- Validation velocity rule for future broad sweeps: use all four GPUs, prefer
+  duration-aware splits for heavy TMEM runtime buckets, and treat local shards
+  far slower than the expected ~35-minute GB200 CI lane as a partitioning/xdist
+  or hang investigation before increasing timeouts.

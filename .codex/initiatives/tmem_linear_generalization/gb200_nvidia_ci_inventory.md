@@ -20,6 +20,62 @@ lives in `gb200_branch_recovery_plan.md`. The current detailed split between
 actual bugs, stale tests, API/contract-update tests, and merge-base-preexisting
 noise lives in `gb200_failure_classification_20260412.md`.
 
+## Current Broad Validation Checkpoint (2026-04-13 04:19 UTC)
+
+- Current checkpoint:
+  - `4fe39e5d28edf82d90bb9039049083a66359f9b6` on `origin/codex/tmem`.
+  - Runtime source code is unchanged since `21a82fc16`; subsequent commits only
+    recorded validation state.
+- Rebuild/current-head compiler checks:
+  - `make -j8`: no-op success;
+  - `make test-lit`: `248 passed, 2 unsupported`;
+  - `make test-cpp`: `240/240` passed.
+- `make test-unit` surface from current local evidence:
+  - main `python/test/unit` four-GPU split sweep: `19153 passed, 5492 skipped`;
+  - `test_debug.py`: product green; the split-order CUDA fork symptom is closed
+    by the fresh sanitizer subset in a clean process;
+  - `python/triton_kernels/tests`: full non-overlapping coverage recomputed as
+    `2377 passed, 3444 skipped`, no failures/errors;
+  - `python/tutorials/06-fused-attention.py`: four GPU split groups total
+    `192 passed, 192 skipped`, no failures;
+  - singleton instrumentation/plugins in exact Makefile environments: `4` tests
+    passed.
+- `make test-gluon` surface from current local evidence:
+  - `python/examples/gluon/`: four GPU split aggregate `884 passed, 74 skipped`;
+  - `python/test/gluon/test_tmem_runtime_matrix.py`: full mixed-split coverage
+    `2237 passed, 446 skipped`;
+  - `python/test/gluon/test_lowerings.py`: four GPU split coverage
+    `4937 passed, 512 skipped`;
+  - together with the earlier green `python/test/gluon/ python/tutorials/gluon/`
+    groups and exact xdist-crash-nodeid rerun, there are no deterministic known
+    Gluon failures at current head.
+- Other GB200 lane pieces:
+  - `make test-gsan`: green from the current four-GPU sweep, `20 passed`;
+  - `make test-regression`: green from the current four-GPU sweep,
+    `1090 passed, 216 skipped`;
+  - `make test-microbenchmark`: passed with median launch-overhead sample
+    `21.786785125732422`;
+  - `test-interpret` remains H100-only in the workflow and out of GB200 scope.
+- Proton status:
+  - main Proton command still has the known cudagraph / periodic flushing
+    failure family; representative exacts reproduced on both current branch and
+    merge-base `origin/main`;
+  - keep the `11` Proton nodeids in
+    `gb200_preexisting_20260412_proton_main_failures.txt` classified as
+    `PREEXISTING_ON_MERGE_BASE`, not as TMEM branch-actionable failures.
+- Current branch-actionable conclusion:
+  - no deterministic branch-caused GB200 failure is known after the layout-only
+    row-plan cleanup and MMAv5 family-addressing fix;
+  - historical manifests for the old 9 lit files, 162 unit nodeids, M64 Gluon
+    exact, tile-permuted MMAv5 runtime-matrix bucket, and incomplete Gluon
+    timeout shards are superseded unless a fresh exact repro is produced.
+- Validation methodology consequence:
+  - the project owner expects the full GB200 CI lane to take about 35 minutes
+    including clean build and LLVM download, with actual test time around 20
+    minutes on comparable hardware;
+  - treat much longer local pytest shards as partitioning, xdist, or hang
+    investigations first.
+
 ## Preserve-Set Update Before Attribute Cleanup (2026-04-12 09:33 UTC)
 
 - Current checkpoint:

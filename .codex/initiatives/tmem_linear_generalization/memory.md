@@ -6776,3 +6776,45 @@ rejection, not rescue
   - continue the longer plan: supported view/bitcast API migration,
     attention rewrite later, `ld.red`, `copy` warpx2, broader MMAv5 family
     coverage, heuristic cleanup, and staged fuzzing/validation.
+
+## 2026-04-13 04:19 UTC: current GB200 branch-actionable queue is closed from local evidence
+
+- Current validation checkpoint is `4fe39e5d28edf82d90bb9039049083a66359f9b6`
+  on `codex/tmem`, pushed to `origin/codex/tmem` before this docs update.
+- Runtime source code is unchanged since the MMAv5 family-addressing fix at
+  `21a82fc16`; later commits only recorded validation state.
+- Current-head GB200 evidence now covers:
+  - build: `make -j8` no-op success;
+  - lit: `248 passed, 2 unsupported`;
+  - C++: `240/240` passed;
+  - microbenchmark: passed with median launch-overhead sample
+    `21.786785125732422`;
+  - main `python/test/unit`: `19153 passed, 5492 skipped` from the fresh
+    four-GPU split sweep;
+  - `test_debug.py`: product green, with the earlier split-order CUDA fork
+    failure closed by the exact sanitizer subset in a fresh process;
+  - `python/triton_kernels/tests`: full non-overlapping coverage recomputed as
+    `2377 passed, 3444 skipped`, no failures/errors;
+  - fused-attention tutorial: four `pytest-split` shards total
+    `192 passed, 192 skipped`, no failures;
+  - instrumentation/plugins: four singleton Makefile tails all passed;
+  - Gluon/examples: no deterministic known failures after the runtime-matrix and
+    lowerings tail was closed;
+  - gsan and regression: green from the fresh four-GPU sweeps.
+- Proton remains the only known CI-command red family, but its `11` cudagraph /
+  periodic flushing nodeids reproduced on merge-base `origin/main`, so they are
+  preexisting/environmental and not a TMEM branch-actionable failure.
+- Status implication: the GB200 branch-recovery queue is empty from current
+  local evidence. Do not prioritize stale manifests that list the old 9 lit
+  failures, 162 unit failures, M64 Gluon exact, tile-permuted MMAv5 runtime
+  failures, or incomplete Gluon timeout shards as live branch failures without a
+  new exact repro.
+- Next engineering direction returns to the long-term TMEM plan:
+  supported view/bitcast API migration, attention rewrite later, `ld.red`
+  breadth, copy `warpx2`, broader MMAv5/scaled-MMAv5 reachable-family coverage,
+  heuristic cleanup, and staged fuzzing/validation.
+- Validation methodology reminder: always use all four GPUs for pytest work
+  when the selection is large enough, but treat multi-hour local shards as a
+  partitioning/xdist/hang problem. The project owner expects the full GB200 CI
+  lane to take about 35 minutes including clean build/LLVM download, with actual
+  test time around 20 minutes on comparable hardware.
