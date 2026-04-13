@@ -12707,3 +12707,23 @@ Open after this slice:
     failing nodeid; or
   - run under the actual CI partitioning rather than one ad-hoc local full-file
     invocation.
+
+
+## 2026-04-13 test import and cache hygiene cleanup
+
+- Fixed the live TMEM runtime-matrix cross-test import:
+  - added `python/test/gluon/tmem_test_utils.py` for reusable Gluon TMEM helper kernels, descriptor builders, scaled-MMA helpers, and reduction helpers;
+  - changed `python/test/gluon/test_tmem_runtime_matrix.py` to import that sibling helper instead of `from python.test.gluon.test_core import ...`.
+- Removed the cache-defeating subprocess wrapper from the two copy codegen tests:
+  - `test_tmem_runtime_matrix_cp_no_scales_twocta_codegen`;
+  - `test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen`.
+- Root-cause note for the cache symptom:
+  - these tests were not proving an on-disk cache-key collision; they were launching `python -c`, injecting `PYTHONPATH`, and creating a new temporary `TRITON_CACHE_DIR` for every run, which guaranteed cold compiles and bypassed the stable per-GPU caches used by the rest of the sweep;
+  - future cache-sensitive failures still need fresh-process/stable-cache reproduction before blaming `TRITON_CACHE_DIR`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/tmem_test_utils.py python/test/gluon/test_tmem_runtime_matrix.py python/test/gluon/test_core.py`;
+  - `make -j8` -> no work to do;
+  - `env -u PYTHONPATH pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py` -> `3150 tests collected`;
+  - exact two affected codegen nodeids across four split groups with stable `/tmp/triton-cache-gpu<N>` caches -> groups 1 and 2 each passed one selected test; groups 3 and 4 selected none;
+  - exact four-nodeid helper smoke across four split groups with stable `/tmp/triton-cache-gpu<N>` caches -> `1 passed, 3 deselected` on each group;
+  - `git diff --check` passed.

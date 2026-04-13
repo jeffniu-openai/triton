@@ -1,10 +1,5 @@
 import math
-import os
 import re
-import subprocess
-import sys
-import tempfile
-import textwrap
 from dataclasses import replace
 from itertools import product
 
@@ -31,7 +26,7 @@ from triton.experimental.gluon.language.nvidia.blackwell import (
 )
 from triton.experimental.gluon.language.nvidia.hopper import mbarrier, tma
 from triton._C.libtriton.gluon_ir import make_cga_layout
-from python.test.gluon.test_core import (
+from tmem_test_utils import (
     _expected_scaled_cp_opcode,
     _expected_scaled_mma_opcode,
     make_operand_descriptor,
@@ -510,32 +505,6 @@ def _assert_exact_tmem_lifetime_ptx_llir_match(compiled, cta_group: int, alloc_s
         assert "barrier.cluster.arrive.aligned" not in ptx
         assert "@llvm.nvvm.barrier.cluster.arrive.aligned" not in llir
 
-
-def _run_isolated_python_child(child: str, cache_prefix: str):
-    def run_child():
-        with tempfile.TemporaryDirectory(prefix=cache_prefix) as cache_dir:
-            env = os.environ.copy()
-            pythonpath = env.get("PYTHONPATH")
-            env["PYTHONPATH"] = "python:." if not pythonpath else f"python:.:{pythonpath}"
-            env["TRITON_CACHE_DIR"] = cache_dir
-            env.setdefault("CUDA_VISIBLE_DEVICES", "0")
-            return subprocess.run(
-                [sys.executable, "-c", child],
-                cwd=os.getcwd(),
-                env=env,
-                text=True,
-                capture_output=True,
-            )
-
-    completed = run_child()
-    # Work around an intermittent libtriton import corruption race observed
-    # when launching many short-lived child processes from the runtime matrix.
-    if completed.returncode != 0 and (
-        "libtriton.so: file too short" in completed.stderr
-        or "libtriton.so: invalid ELF header" in completed.stderr
-    ):
-        completed = run_child()
-    return completed
 
 
 def _assert_exact_mma_ptx_llir_match(compiled, expected_ops=None):
@@ -5644,125 +5613,94 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_cle
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen():
-    child = textwrap.dedent(f"""
-        import torch
-        from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryLayout
-        from python.test.gluon.test_tmem_runtime_matrix import (
-            _assert_exact_commit_ptx_llir_match,
-            _assert_exact_cp_ptx_llir_match,
-            _make_2cta_cga_layout,
-            _make_tmem_linear_layout_mmav5_twocta,
-            tmem_copy_no_scales_twocta_kernel,
+    for layout_kind, N, swizzle, expected_count in CP_NO_SCALES_TWOCTA_CASES:
+        M = 256
+        cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+        if layout_kind == "linear":
+            layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
+        else:
+            layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+
+        inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+        out = torch.empty_like(inp)
+        compiled = tmem_copy_no_scales_twocta_kernel[(1, )](
+            inp,
+            out,
+            layout,
+            tuple(tuple(basis) for basis in cga_layout),
+            M,
+            N,
+            swizzle,
+            num_ctas=2,
+            num_warps=4,
         )
+        torch.cuda.synchronize()
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-        cases = {CP_NO_SCALES_TWOCTA_CASES!r}
-        for layout_kind, N, swizzle, expected_count in cases:
-            M = 256
-            cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
-            if layout_kind == "linear":
-                layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
-            else:
-                layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+        _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x256b"] * expected_count)
+        ptx = compiled.asm["ptx"]
+        llir = compiled.asm["llir"]
+        first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x256b")
+        first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x256b")
 
-            inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
-            out = torch.empty_like(inp)
-            compiled = tmem_copy_no_scales_twocta_kernel[(1, )](
-                inp,
-                out,
-                layout,
-                tuple(tuple(basis) for basis in cga_layout),
-                M,
-                N,
-                swizzle,
-                num_ctas=2,
-                num_warps=4,
-            )
-            torch.cuda.synchronize()
-            torch.testing.assert_close(out, inp, atol=0, rtol=0)
-
-            _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x256b"] * expected_count)
-            ptx = compiled.asm["ptx"]
-            llir = compiled.asm["llir"]
-            first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x256b")
-            first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x256b")
-
-            _assert_exact_commit_ptx_llir_match(
-                compiled,
-                ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
-            )
-            assert "tcgen05.cp.cta_group::1" not in ptx
-            assert ptx.count("fence.proxy.async.shared::cluster") == 1
-            assert ptx.count("barrier.cluster.arrive.aligned;") == 2
-            assert ptx.count("barrier.cluster.wait.aligned;") == 2
-            assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
-            assert "barrier.cluster.arrive.relaxed.aligned" not in ptx
-            assert llir.count("llvm.nvvm.fence.proxy.async.shared_cluster") == 2
-            assert llir.count("llvm.nvvm.barrier.cluster.arrive.aligned") == 3
-            assert llir.count("llvm.nvvm.barrier.cluster.wait.aligned") == 3
-            assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
-            assert "llvm.nvvm.barrier.cluster.arrive.relaxed.aligned" not in llir
-            if layout_kind == "linear":
-                assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    """)
-
-    completed = _run_isolated_python_child(child, "tmem-twocta-cache-")
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+        _assert_exact_commit_ptx_llir_match(
+            compiled,
+            ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+        )
+        assert "tcgen05.cp.cta_group::1" not in ptx
+        assert ptx.count("fence.proxy.async.shared::cluster") == 1
+        assert ptx.count("barrier.cluster.arrive.aligned;") == 2
+        assert ptx.count("barrier.cluster.wait.aligned;") == 2
+        assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
+        assert "barrier.cluster.arrive.relaxed.aligned" not in ptx
+        assert llir.count("llvm.nvvm.fence.proxy.async.shared_cluster") == 2
+        assert llir.count("llvm.nvvm.barrier.cluster.arrive.aligned") == 3
+        assert llir.count("llvm.nvvm.barrier.cluster.wait.aligned") == 3
+        assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
+        assert "llvm.nvvm.barrier.cluster.arrive.relaxed.aligned" not in llir
+        if layout_kind == "linear":
+            assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen():
-    child = textwrap.dedent("""
-        import torch
-        from triton.experimental.gluon.language.nvidia.blackwell import TensorMemoryLayout
-        from python.test.gluon.test_tmem_runtime_matrix import (
-            _assert_exact_commit_ptx_llir_match,
-            _assert_exact_cp_ptx_llir_match,
-            _make_2cta_cga_layout,
-            _make_tmem_linear_layout_mmav5_twocta,
-            tmem_copy_128x128_twocta_kernel,
+    for layout_kind in ("linear", "legacy"):
+        M = 256
+        N = 4
+        cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+        if layout_kind == "linear":
+            layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
+        else:
+            layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+
+        inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
+        out = torch.empty_like(inp)
+        compiled = tmem_copy_128x128_twocta_kernel[(1, )](
+            inp,
+            out,
+            layout,
+            num_ctas=2,
+            num_warps=4,
         )
+        torch.cuda.synchronize()
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-        for layout_kind in ("linear", "legacy"):
-            M = 256
-            N = 4
-            cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
-            if layout_kind == "linear":
-                layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
-            else:
-                layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+        _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x128b"])
+        ptx = compiled.asm["ptx"]
+        llir = compiled.asm["llir"]
+        first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x128b")
+        first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x128b")
 
-            inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
-            out = torch.empty_like(inp)
-            compiled = tmem_copy_128x128_twocta_kernel[(1, )](
-                inp,
-                out,
-                layout,
-                num_ctas=2,
-                num_warps=4,
-            )
-            torch.cuda.synchronize()
-            torch.testing.assert_close(out, inp, atol=0, rtol=0)
-
-            _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x128b"])
-            ptx = compiled.asm["ptx"]
-            llir = compiled.asm["llir"]
-            first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x128b")
-            first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x128b")
-
-            _assert_exact_commit_ptx_llir_match(
-                compiled,
-                ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
-            )
-            assert "tcgen05.cp.cta_group::1" not in ptx
-            assert ptx.count("fence.proxy.async.shared::cluster") == 1
-            assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
-            assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
-            if layout_kind == "linear":
-                assert "tensor_memory_linear" in compiled.asm["ttgir"]
-    """)
-
-    completed = _run_isolated_python_child(child, "tmem-twocta-128x128-cache-")
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+        _assert_exact_commit_ptx_llir_match(
+            compiled,
+            ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+        )
+        assert "tcgen05.cp.cta_group::1" not in ptx
+        assert ptx.count("fence.proxy.async.shared::cluster") == 1
+        assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
+        assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
+        if layout_kind == "linear":
+            assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 

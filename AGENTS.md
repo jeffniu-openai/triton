@@ -35,6 +35,8 @@
   - track performance-only deltas separately so correctness recovery stays first.
 - After each meaningful GB200 branch-recovery fix, explicitly mark which older manifests and aggregate counts are now stale, refresh the nearest exact/file-level reruns, and record the new current-head failing set before using any pre-fix counts for prioritization.
 - If a test looks cache-sensitive, verify whether the symptom survives a fresh process boundary before blaming `TRITON_CACHE_DIR`. Prefer root-causing missing cache-key inputs, process/device contamination after bad kernels, or compiler global-state reuse over relying on environmental workarounds.
+- Do not import helpers from other test files, especially via `from python.test...`. Move reusable test kernels, descriptor builders, and assertions into a non-test helper module next to the tests, and import that helper without `sys.path` edits or child-process `PYTHONPATH` injection.
+- Do not work around runtime-matrix issues by assigning a fresh temporary `TRITON_CACHE_DIR` inside tests or subprocess wrappers. Compilation dominates these sweeps; preserve stable per-GPU cache directories across reruns unless a test is explicitly validating cache isolation. If a cache-sensitive symptom appears, identify the missing cache-key input, stale runtime metadata, process/device contamination, or async-compile state bug and fix that root cause.
 
 ## Python Sweep Best Practices
 - Always leverage all 4 GPUs for pytest work when possible. Even focused `-k` slices and small runtime buckets should normally run as four `pytest-split` groups with one outer pytest process per GPU and a distinct `TRITON_CACHE_DIR` per process.
@@ -53,10 +55,10 @@
   - set a distinct `TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>`
   - use the same file list on all shards with `pytest -s --tb=short --splits 4 --group <group>`
 - Preferred 4-GPU runtime sweep pattern:
-  - GPU 0: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 1 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
-  - GPU 1: `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 2 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
-  - GPU 2: `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 3 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
-  - GPU 3: `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group 4 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 0: `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short --splits 4 --group 1 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 1: `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 pytest -s --tb=short --splits 4 --group 2 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 2: `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 pytest -s --tb=short --splits 4 --group 3 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
+  - GPU 3: `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 pytest -s --tb=short --splits 4 --group 4 python/test/gluon/test_core.py python/test/gluon/test_tmem_runtime_matrix.py`
 - Do not combine `--splits 4` with `-n auto` for heavy TMEM runtime sweeps. If inner parallelism is needed for lighter sweeps, keep it small (`-n 1` or `-n 2`) and do not oversubscribe the GPU.
 - Use `pytest --collect-only -q <files>` before large sweeps when changing file lists or selecting exact nodeids.
 - Rerun failures by exact nodeid on an isolated GPU before rerunning an entire shard.
