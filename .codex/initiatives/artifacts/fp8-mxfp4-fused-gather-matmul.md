@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-13T05:49:00Z
+updated: 2026-04-13T06:12:00Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -662,6 +662,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: `make` from `/root/code/triton`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python -m py_compile /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels pytest -s --tb=short /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py::test_op`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`
   - Learnings: The first tutorial version taught the workflow by dynamically importing the live example. That was convenient, but it was not truly standalone in the style of the other Gluon tutorials. Converting it into a full standalone copy of the tuned implementation fixes that and keeps the file executable even if the example evolves later. The standalone script now runs end-to-end and prints the full GPT-OSS 120B MM1 batch sweep directly from the tutorial file.
   - Plan updates: Keep future tutorial updates local to the tutorial file. Treat it as its own runnable teaching artifact rather than a thin wrapper around the example.
+- `2026-04-13` Completed: Distilled the standalone tutorial playbook back into the modular `kernel-optimization` skill
+  - Artifact: `/root/.codex/skills/kernel-optimization/SKILL.md`, `/root/.codex/skills/kernel-optimization/references/tutorial-playbook.md`, `/root/.codex/skills/kernel-optimization/references/gluon-matmul-case-study.md`
+  - Validation: `python /root/.codex/skills/.system/skill-creator/scripts/quick_validate.py /root/.codex/skills/kernel-optimization`
+  - Learnings: The best way to make the skill more reusable was not to paste the whole tutorial into the core skill body. The better shape is a small core skill plus a tutorial-style playbook reference that teaches the seven-step loop, the Gluon matmul case-study reference that captures the condensed technical lessons, and the existing measurement / NCU / occupancy references for deeper dives.
+  - Plan updates: Keep using the skill as the front door and add future workload- or architecture-specific knowledge as separate references rather than growing `SKILL.md` into another report.
 
 ## Next Up
 
