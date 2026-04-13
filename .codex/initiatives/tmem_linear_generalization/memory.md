@@ -112,6 +112,23 @@
   success, the exact new descriptor-chain nodeid passed `8` selected cases
   across four split groups, and the nearby `ldst_x1_subword or ldst_x1_f32`
   selector passed `65` selected cases aggregate.
+- Latest `ld/st` descriptor API-migration checkpoint, 2026-04-13 08:50 UTC:
+  the runtime-matrix descriptor-chain test that still needed a physical-equivalent
+  view change now uses the supported `.bitcast(...)` API instead of
+  `_reinterpret(...)`. The deeper roundtrip case was not a real bitcast: after
+  its view chain it requested the same dtype, shape, and layout, so the no-op
+  `_reinterpret` was removed and the case was renamed
+  `slice_index_deep_roundtrip`. Both single-CTA and two-CTA roundtrip tests now
+  assert the required `memdesc_index`, `memdesc_subslice`, `memdesc_reshape`,
+  and `memdesc_trans` TTGIR operations. A probe of a genuine `.bitcast(...)`
+  after the deep composed view chain still fails type inference with
+  `unsupported tensor memory memdesc_subslice view`; keep that as future
+  supported-API/planner work only for cases that really need a
+  physical-equivalent bitcast over a complex descriptor-view chain. Validation:
+  `py_compile`, rebuild, and `git diff --check` passed; base descriptor
+  compositions passed across the four split groups after rerunning cold-compile
+  group 3 with a warmed cache; the deep single-CTA and two-CTA roundtrip
+  selectors completed with their existing OOR skips and no failures.
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green

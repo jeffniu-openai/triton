@@ -598,3 +598,18 @@ Every fuzz case records:
   - `test/Conversion/tritongpu_to_llvm_blackwell.mlir`
     - add or refresh exact opcode checks when the planner cleanup changes the
       stable direct family
+
+## 2026-04-13 Descriptor View/API Migration Note
+
+- One runtime-matrix `ld/st` descriptor-chain use has been migrated from
+  `_reinterpret` to supported `.bitcast(...)` where a physical-equivalent view
+  bitcast is actually intended.
+- The deep `slice/index/reshape/permute` roundtrip case no longer uses
+  `_reinterpret`; it requested the same dtype, shape, and layout and should stay
+  a pure view-chain test.
+- Remaining `_reinterpret` migrations should follow this distinction:
+  - use supported `.bitcast(...)` only when the test really needs a
+    physical-equivalent descriptor view change;
+  - delete no-op same-layout reinterprets;
+  - keep genuinely unsupported bitcasts over complex descriptor chains on the
+    planner/API backlog instead of adding ad hoc lowering patches.

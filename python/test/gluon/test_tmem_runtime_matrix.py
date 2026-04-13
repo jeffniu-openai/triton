@@ -745,7 +745,7 @@ def tmem_ldst_descriptor_chain_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
     view = tmem.slice(1, 1, dim=0).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view = view.permute([1, 0]).permute([1, 0])
     view = view.slice(0, M, dim=0).slice(0, N, dim=1)
-    view = view._reinterpret(ttgl.float32, [M, N], layout)
+    view = view.bitcast(ttgl.float32, [M, N], layout)
 
     reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     view.store(ttgl.convert_layout(value, reg_layout))
@@ -779,7 +779,6 @@ def tmem_ldst_descriptor_roundtrip_kernel(in_ptr, out_ptr, layout: ttgl.constexp
     else:
         view = view.reshape((2, M // 4, 2, N // 2, 2))
         view = view.permute([2, 1, 0, 4, 3]).permute([2, 1, 0, 4, 3]).reshape((M, N))
-        view = view._reinterpret(ttgl.float32, [M, N], view.layout)
 
     view_reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     out = view.load(view_reg_layout)
@@ -2594,8 +2593,8 @@ LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
                                        "ttg.memdesc_trans")),
     ("slice_index_multidim", 1, 7.0, ("ttg.memdesc_index", "ttg.memdesc_subslice", "ttg.memdesc_reshape",
                                       "ttg.memdesc_trans")),
-    ("slice_index_reinterpret", 2, 11.0, ("ttg.memdesc_index", "ttg.memdesc_subslice", "ttg.memdesc_reshape",
-                                          "ttg.memdesc_trans", "ttg.memdesc_reinterpret")),
+    ("slice_index_deep_roundtrip", 2, 11.0, ("ttg.memdesc_index", "ttg.memdesc_subslice",
+                                             "ttg.memdesc_reshape", "ttg.memdesc_trans")),
 ]
 
 LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
@@ -3646,6 +3645,8 @@ def test_tmem_runtime_matrix_ldst_descriptor_roundtrip_sweeps(layout_name, n, va
 
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
+    for required_op in required_ops:
+        assert required_op in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -3676,6 +3677,8 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps(layout_name
     ttgir = compiled.asm["ttgir"]
     assert "twoCTAs = true" in ttgir
     assert "tensor_memory_linear" in ttgir
+    for required_op in required_ops:
+        assert required_op in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

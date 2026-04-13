@@ -910,6 +910,42 @@ When resuming the initiative:
     attention rewrite later, `ld.red`, `copy` warpx2, broader MMAv5 family
     coverage, heuristic cleanup, and staged fuzzing/validation.
 
+## 2026-04-13 08:50 UTC: ld/st descriptor reinterpret test usage is reduced
+
+- Runtime-matrix descriptor-chain coverage is now closer to the supported TMEM
+  view API contract:
+  - `tmem_ldst_descriptor_chain_kernel` uses `.bitcast(...)` instead of
+    `_reinterpret(...)` for the physical-equivalent descriptor view it actually
+    needs;
+  - the deep descriptor roundtrip chain no longer performs a no-op
+    `_reinterpret` to the same dtype, shape, and layout after the view
+    roundtrip;
+  - the roundtrip parametrization was renamed from `slice_index_reinterpret` to
+    `slice_index_deep_roundtrip`, and the required view ops are now asserted in
+    TTGIR for both single-CTA and two-CTA roundtrip tests.
+- Important boundary:
+  - a genuine `.bitcast(...)` after the composed
+    `reshape/permute/permute/reshape` view chain still fails type inference with
+    `unsupported tensor memory memdesc_subslice view`;
+  - that is a future API/planner gap only for real physical-equivalent bitcasts
+    over complex descriptor-view chains, not needed for this no-op same-layout
+    test case.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    passed;
+  - rebuild passed;
+  - `git diff --check` passed before docs update;
+  - base descriptor-composition split groups passed, with group 3 requiring a
+    warmed-cache rerun after a cold-compile timeout (`8 passed`, `8 passed`,
+    `8 passed`, `6 passed` across the four groups);
+  - the deep roundtrip selectors completed without failures but all selected
+    cases took the existing OOR skip path (`30` single-CTA skips and `30`
+    two-CTA skips).
+- Velocity note:
+  - an initial combined `-k` selector was overbroad because
+    `ldst_descriptor_compositions` also matched permuted/rowcol/exotic sweeps;
+    use exact nodeids for the base function when validating this slice.
+
 ## Document Roles
 
 - `memory.md`

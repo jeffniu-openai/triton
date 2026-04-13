@@ -11669,3 +11669,41 @@ Open after this slice:
   - exact new nodeid across four GPU split groups passed `8` selected cases;
   - nearby selector `ldst_x1_subword or ldst_x1_f32` passed `65` selected cases
     aggregate across four GPU split groups.
+
+## 2026-04-13 08:50 UTC: migrated an ld/st descriptor-chain test off `_reinterpret`
+
+- Reduced runtime-matrix test reliance on undefined `_reinterpret` behavior in
+  `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Changes:
+  - `tmem_ldst_descriptor_chain_kernel` now uses supported `.bitcast(...)` for
+    the physical-equivalent descriptor view it needs;
+  - the deep descriptor roundtrip chain no longer performs a no-op
+    `_reinterpret` to the same dtype, shape, and layout;
+  - the case is now named `slice_index_deep_roundtrip` instead of
+    `slice_index_reinterpret`;
+  - both descriptor-roundtrip tests assert the required TTGIR view operations
+    from their `required_ops` parameter.
+- Probe result:
+  - forcing `.bitcast(...)` onto the deep `reshape/permute/permute/reshape`
+    view chain still fails type inference with
+    `unsupported tensor memory memdesc_subslice view`;
+  - this should remain on the long-term supported-API docket for real
+    physical-equivalent bitcasts over complex descriptor-view chains, but it was
+    not needed for this same-layout no-op test.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
+  - `git diff --check` passed before docs update;
+  - `test_tmem_runtime_matrix_ldst_descriptor_compositions` split groups 1, 2,
+    and 4 passed (`8`, `8`, and `6` selected cases); group 3 hit a `180s`
+    cold-compile timeout, all eight selected nodeids passed in isolated
+    four-GPU reruns, and the warmed-cache group-3 rerun passed (`8 passed`);
+  - `ldst_descriptor_roundtrip_sweeps and slice_index_deep_roundtrip` completed
+    as existing OOR skips across all `30` selected single-CTA cases;
+  - `ldst_twocta_descriptor_roundtrip_sweeps and slice_index_deep_roundtrip`
+    completed as existing OOR skips across all `30` selected two-CTA cases.
+- Velocity note:
+  - the first combined validation selector was overbroad because
+    `-k ldst_descriptor_compositions` also selected permuted, row/col-permuted,
+    and exotic composition sweeps; exact nodeids are required for the base
+    descriptor-composition function.
