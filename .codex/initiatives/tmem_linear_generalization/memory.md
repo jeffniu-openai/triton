@@ -166,6 +166,17 @@
   Validation: `py_compile`, rebuild, and `git diff --check` passed; the exact
   block-descriptor nodeid passed both active split groups (`1`, `1`), with
   groups 3 and 4 empty because only two cases are collected.
+- Frontend TMEM reinterpret classification, 2026-04-13 10:00 UTC:
+  the three TMEM `_reinterpret(...)` helpers in `python/test/gluon/test_frontend.py`
+  were probed with supported `.bitcast(...)` and reverted. The focused parser
+  tests fail before IR generation with `unsupported tensor memory memdesc_subslice
+  view`, matching the same complex composed-view gap as the remaining runtime
+  mixed-slice/descriptor cases. Keep these as intentional `memdesc_reinterpret`
+  parser/IR contract coverage until that planner/API gap is fixed; do not count
+  them as production-style `_reinterpret` reliance. The persistence tutorial and
+  the remaining `test_core.py` / `test_frontend.py` non-TMEM occurrences are
+  shared-memory reinterpret uses, except for `test_core.py`'s mixed-basis TMEM
+  runtime-view case, which stays on the real bitcast backlog.
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green

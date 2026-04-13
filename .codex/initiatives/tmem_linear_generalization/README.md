@@ -1006,6 +1006,23 @@ When resuming the initiative:
   four-GPU split groups (`1`, `1`; groups 3 and 4 were empty because only two
   cases are collected).
 
+## 2026-04-13 10:00 UTC: frontend TMEM reinterpret users classified
+
+- Probed the three TMEM `_reinterpret(...)` helpers in
+  `python/test/gluon/test_frontend.py` with supported `.bitcast(...)`. The
+  probe was reverted: the focused parser tests fail before IR generation with
+  `unsupported tensor memory memdesc_subslice view` on the same composed
+  slice/reshape/transpose pattern.
+- Classification: keep those frontend uses as intentional `memdesc_reinterpret`
+  parser/IR contract coverage until the complex physical-bitcast-over-view-chain
+  planner/API gap is fixed. They should not be treated as production-style
+  reliance on private `_reinterpret` lowering.
+- Remaining `_reinterpret(...)` users after this classification are:
+  - `test_core.py` mixed-basis TMEM runtime-view case, a real planner/API gap;
+  - shared-memory reinterpret tests in `test_core.py` and `test_frontend.py`;
+  - the persistence tutorial scratch-buffer borrow path, which borrows shared
+    memory B buffers for the epilogue rather than tensor memory.
+
 ## Document Roles
 
 - `memory.md`

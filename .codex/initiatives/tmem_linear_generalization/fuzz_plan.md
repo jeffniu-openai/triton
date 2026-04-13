@@ -618,6 +618,11 @@ Every fuzz case records:
   supported `.bitcast(...)`; its two-CTA block parameter is a clean
   bitcast/subslice negative because the composed view would require a negative
   additive block delta (`dim=2 step=2 phys=block delta=-1`).
+- Frontend TMEM parser tests in `python/test/gluon/test_frontend.py` still use
+  raw `_reinterpret(...)` intentionally. A `.bitcast(...)` probe fails before
+  IR generation with `unsupported tensor memory memdesc_subslice view`, so these
+  remain contract coverage until complex physical-bitcast-over-view-chain support
+  exists.
 - Current known blocked TMEM runtime-view family is now only the mixed-basis
   `slice_reinterpret_64_mixed_32x32b` case in `test_tmem_linear_runtime_views`;
   the two identity `slice_*` cases have migrated to supported `.bitcast(...)`.

@@ -11781,3 +11781,19 @@ Open after this slice:
   - `git diff --check` passed before docs update;
   - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
   - exact `test_tmem_runtime_matrix_block_descriptor_reports_clean_error` passed both selected cases across active four-GPU split groups (`1`, `1`); split groups 3 and 4 collected no selected tests and exited with pytest's no-test code because the nodeid has only two parameters.
+## 2026-04-13 10:00 UTC: frontend TMEM reinterpret probe remains blocked on complex bitcast
+
+- Probed the three TMEM `_reinterpret(...)` helpers in `python/test/gluon/test_frontend.py` by temporarily spelling them as `.bitcast(ttgl.float32, (64, 32), reinterpret_layout)`.
+- Focused parser validation used four `pytest-split` groups over:
+  - `test_tensor_memory_linear_view_ir`;
+  - `test_tensor_memory_linear_views_block_layout_ir`;
+  - `test_tensor_memory_linear_view_load_reports_clean_error`;
+  - `test_tensor_memory_descriptor_chain_ir`;
+  - `test_tensor_memory_descriptor_chain_reports_two_ctas_mismatch`.
+- Outcome:
+  - group 1 failed the two linear-view IR tests;
+  - group 2 failed the load clean-error test and descriptor-chain IR test;
+  - group 3 passed the two-CTA mismatch test;
+  - group 4 was empty.
+- Failure mode: supported bitcast rejected the composed descriptor view before IR generation with `unsupported tensor memory memdesc_subslice view`.
+- The probe was reverted. Classification: these frontend tests intentionally cover raw `memdesc_reinterpret` parser/IR behavior and should remain until the physical-bitcast-over-complex-view planner/API gap is solved.
