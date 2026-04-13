@@ -136,16 +136,20 @@ When resuming the initiative:
   `30` selected cases aggregate, and the post-commit broad four-GPU
   `-k 'mma and not cp'` selector passed `242 passed, 50 skipped`.
 
-- Latest `ld/st` x1 subword checkpoint, 2026-04-13 08:10 UTC:
-  direct two-CTA x1 subword roundtrips now cover `f16`, `bf16`, `i16`, and
-  packed `i8` over canonical two-CTA TMEM-linear layouts for `auto` and
-  explicit `32x32b`. The new runtime-matrix test checks exact
+- Latest `ld/st` x1 subword checkpoint, 2026-04-13 08:35 UTC:
+  descriptor-chain two-CTA x1 subword roundtrips are now pinned in addition to
+  the direct two-CTA case. The new runtime-matrix test allocates a lifted
+  `[2, M, N]` canonical two-CTA TMEM-linear layout, reaches the active tile
+  through `slice/index/reshape/permute/permute`, and covers `f16`, `bf16`,
+  `i16`, and packed `i8` for `auto` and explicit `32x32b`. It checks exact
   `tcgen05.{st,ld}.sync.aligned.32x32b.x1.b32` PTX/LLIR opcode streams,
-  zero-offset addressing, numeric roundtrip equality, `tensor_memory_linear`,
-  and `twoCTAs = true` TTGIR spelling. Validation: `py_compile` passed,
-  rebuild was a no-op success, the exact new nodeid passed `8` selected cases
-  across four GPU split groups, and the nearby `ldst_x1_subword or ldst_x1_f32`
-  selector passed `57` selected cases aggregate.
+  zero-offset addressing, numeric roundtrip equality, `memdesc_subslice`,
+  `memdesc_reshape`, `memdesc_trans`, `tensor_memory_linear`, and
+  `twoCTAs = true` TTGIR spelling. Validation: `py_compile` passed, rebuild
+  was a no-op success, the exact new descriptor-chain nodeid passed `8`
+  selected cases across four GPU split groups, and the nearby
+  `ldst_x1_subword or ldst_x1_f32` selector passed `65` selected cases
+  aggregate.
 
 - Latest scaled-MMAv5 TMEM-LHS checkpoint, 2026-04-13 05:35 UTC: scaled
   MMAv5 TMEM-LHS subviews now address packed fp4 operand-A descriptors in
@@ -249,8 +253,9 @@ When resuming the initiative:
   public variant in `{auto,32x32b,16x64b,16x128b,16x256b}`.
 - Narrow x1 subword `ld/st` coverage now spans `f16`, `bf16`, and `i16`
   packed/unpacked cases plus packed and padded `i8` x1 cases for `auto` and
-  `32x32b`; direct two-CTA x1 subword roundtrips now also cover `f16`, `bf16`,
-  `i16`, and packed `i8` over canonical two-CTA TMEM-linear layouts.
+  `32x32b`; direct and descriptor-chain two-CTA x1 subword roundtrips now also
+  cover `f16`, `bf16`, `i16`, and packed `i8` over canonical two-CTA
+  TMEM-linear layouts.
 - As of the latest focused coverage checkpoint, the current source/test slices
   add runtime-matrix allocator-lifetime anchors for `tcgen05.alloc`,
   `relinquish_alloc_permit`, `dealloc`, and `wait`, including pow2 alloc-size

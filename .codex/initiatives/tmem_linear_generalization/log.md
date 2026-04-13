@@ -11646,3 +11646,26 @@ Open after this slice:
     devbox;
   - use finer shard counts, duration-aware split data, or targeted selectors
     before attempting another broad `ld/st` refresh.
+
+## 2026-04-13 08:35 UTC: two-CTA x1 subword ld/st descriptor-chain coverage is pinned
+
+- Added `test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip`.
+- Coverage:
+  - descriptor-chain two-CTA x1 subword `ld/st` roundtrips for `f16`, `bf16`,
+    `i16`, and packed `i8`;
+  - a lifted `[2, M, N]` canonical two-CTA TMEM-linear allocation;
+  - `slice/index/reshape/permute/permute` view composition before access;
+  - `auto` and explicit `32x32b` register-layout selection.
+- Checks:
+  - exact PTX/LLIR opcode stream is one
+    `tcgen05.st.sync.aligned.32x32b.x1.b32` and one
+    `tcgen05.ld.sync.aligned.32x32b.x1.b32`, both at offset `0`;
+  - output exactly matches input;
+  - TTGIR preserves `memdesc_subslice`, `memdesc_reshape`, `memdesc_trans`,
+    `tensor_memory_linear`, and `twoCTAs = true`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - rebuild was a no-op success;
+  - exact new nodeid across four GPU split groups passed `8` selected cases;
+  - nearby selector `ldst_x1_subword or ldst_x1_f32` passed `65` selected cases
+    aggregate across four GPU split groups.

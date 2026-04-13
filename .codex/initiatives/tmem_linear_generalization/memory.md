@@ -99,16 +99,19 @@
   nearby `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc` selector
   passed `30` selected cases aggregate, and the post-commit broad four-GPU
   `-k 'mma and not cp'` selector passed `242 passed, 50 skipped`.
-- Latest `ld/st` x1 subword checkpoint, 2026-04-13 08:10 UTC:
-  `test_tmem_runtime_matrix_ldst_x1_subword_twocta_roundtrip` now pins direct
-  two-CTA x1 subword roundtrips for `f16`, `bf16`, `i16`, and packed `i8` over
-  canonical two-CTA TMEM-linear layouts, for `auto` and explicit `32x32b`. The
-  test checks exact `tcgen05.{st,ld}.sync.aligned.32x32b.x1.b32` PTX/LLIR
-  opcode streams, zero-offset addressing, numeric equality, `tensor_memory_linear`,
-  and `twoCTAs = true`. Validation: `py_compile` passed, rebuild was a no-op
-  success, the exact new nodeid passed `8` selected cases across four GPU split
-  groups, and the nearby `ldst_x1_subword or ldst_x1_f32` selector passed `57`
-  selected cases aggregate.
+- Latest `ld/st` x1 subword checkpoint, 2026-04-13 08:35 UTC:
+  `test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip`
+  now pins descriptor-chain two-CTA x1 subword roundtrips for `f16`, `bf16`,
+  `i16`, and packed `i8` over a lifted canonical two-CTA TMEM-linear layout,
+  for `auto` and explicit `32x32b`. The helper reaches the active tile through
+  `slice/index/reshape/permute/permute` before the store/load. The test checks
+  exact `tcgen05.{st,ld}.sync.aligned.32x32b.x1.b32` PTX/LLIR opcode streams,
+  zero-offset addressing, numeric equality, `memdesc_subslice`,
+  `memdesc_reshape`, `memdesc_trans`, `tensor_memory_linear`, and
+  `twoCTAs = true`. Validation: `py_compile` passed, rebuild was a no-op
+  success, the exact new descriptor-chain nodeid passed `8` selected cases
+  across four split groups, and the nearby `ldst_x1_subword or ldst_x1_f32`
+  selector passed `65` selected cases aggregate.
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green
@@ -519,8 +522,9 @@
     with exact PTX/LLIR opcode agreement;
   - x1 subword `ld/st` now covers `f16`, `bf16`, and `i16` packed plus
     legacy unpacked layouts, packed plus padded `i8` linear/legacy layouts,
-    and direct two-CTA canonical TMEM-linear `f16` / `bf16` / `i16` / packed
-    `i8` layouts, for `auto` and explicit `32x32b`; the padded i8
+    and direct plus descriptor-chain two-CTA canonical TMEM-linear `f16` /
+    `bf16` / `i16` / packed `i8` layouts, for `auto` and explicit `32x32b`;
+    the padded i8
     assertion-style probe failure was fixed by making the store-source convert
     canonicalizer bail out when no compatible TMEM layout exists instead of
     asking for an asserting default layout;

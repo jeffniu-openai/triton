@@ -1007,6 +1007,23 @@ def tmem_ldst_subword_variant_kernel(
 
 
 @gluon.jit
+def tmem_ldst_x1_subword_twocta_descriptor_chain_kernel(
+    in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr, instr_variant: ttgl.constexpr
+):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout)
+    view = tmem.slice(1, 1, dim=0).index(0)
+    view = view.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view = view.permute([1, 0]).permute([1, 0])
+
+    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    view.store(ttgl.convert_layout(value, reg_layout))
+    out = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+
+@gluon.jit
 def tmem_scales_ldst_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, cga_layout: ttgl.constexpr):
     tmem = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout(cga_layout=list(cga_layout)))
     reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant="32x32b")
@@ -4438,6 +4455,35 @@ def test_tmem_runtime_matrix_ldst_x1_subword_twocta_roundtrip(dtype_name, torch_
         ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
     ]
     ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "twoCTAs = true" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,n", X1_SUBWORD_LDST_TWOCTA_CASES)
+@pytest.mark.parametrize("variant", X1_SUBWORD_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip(
+    dtype_name, torch_dtype, n, variant
+):
+    m = 256
+    layout = _lift_tmem_layout(_make_tmem_linear_layout_mmav5_twocta(m, n), [2])
+    inp = torch.arange(m * n, dtype=torch_dtype, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_x1_subword_twocta_descriptor_chain_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "twoCTAs = true" in ttgir
 
