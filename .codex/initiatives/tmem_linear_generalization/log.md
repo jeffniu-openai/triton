@@ -11969,3 +11969,22 @@ Open after this slice:
   - nearby selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and subslice and format_matrix'` across four GPU split groups: `43 passed` aggregate (`11`, `11`, `11`, and `10` selected).
 - This is coverage expansion only. It does not change the current true scales `warpx2` or two-CTA `warpx2::02_13` descriptor/address frontiers.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
+
+## 2026-04-13 12:43 UTC: scaled-MMAv5 `tile_n=64` accumulator coverage spans all formats
+
+- Replaced the old `mxfp8/mxfp8`-only tile-permuted direct accumulator test with `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix`.
+- Added `tmem_mma_scaled_layout_format_kernel`, a format-aware direct accumulator-layout helper for `tcgen05_mma_scaled` that preserves the existing no-slice direct-layout intent.
+- New positive surface:
+  - accumulator layout: `128x256` TMEM-linear tile-permuted layout with `tile_n=64`;
+  - format pairs: `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - numeric output equality;
+  - exact PTX/LLIR scaled-MMA opcode and count checks.
+- Validation / hygiene:
+  - temporary direct smoke over all five format pairs passed before editing;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `git diff --check python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - rebuild was a no-op success;
+  - exact nodeid across four GPU split groups passed all five selected cases, with group 4 selecting no cases because there are only five parameters;
+  - nearby selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and tile_permuted'` passed `11` selected cases across four GPU split groups (`3`, `3`, `3`, `2`).
+- This is coverage expansion only. `tile_n=32` repeated-`N=32` remains the clean unsupported boundary.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.

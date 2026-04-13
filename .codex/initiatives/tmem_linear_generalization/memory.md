@@ -50,6 +50,7 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Latest scaled-MMAv5 tile-permuted accumulator checkpoint, 2026-04-13 12:43 UTC: `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix` replaces the old `mxfp8/mxfp8`-only direct-layout test with full format coverage for `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4` on the `128x256`, `tile_n=64` TMEM-linear accumulator layout. The new generic direct-layout format kernel feeds format-specific packed operands through `tcgen05_mma_scaled`, checks numeric output, and pins exact PTX/LLIR opcode families plus instruction counts (`16` for mixed/fp8 vector-1X cases, `8` for homogeneous fp4/nvfp4 cases). Validation: py-compile passed, rebuild was a no-op success, the exact nodeid passed all `5` selected cases across four GPU split groups, and nearby `mma_scaled and tile_permuted` passed `11` cases across four GPU split groups.
 - Latest scaled-MMAv5 two-CTA multicast checkpoint, 2026-04-13 12:37 UTC: `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` now covers both scale-TMA paths by parameterizing `multicast=False` and `multicast=True`. The matrix still covers both `slice_start=0` and `slice_start=128` across the five scaled format pairs, still checks numeric output plus exact `tcgen05.cp.cta_group::2.warpx4.32x128b`, `tcgen05.mma.cta_group::2.kind::{mxf8f6f4,mxf4,mxf4nvf4}`, and commit opcode streams, and now also asserts TTGIR `{multicast}` is present only for the multicast path. Validation: py-compile passed, rebuild passed, the exact nodeid passed `20` cases across four GPU split groups, and the nearby `mma_scaled and subslice and format_matrix` selector passed `43` cases across four GPU split groups.
 - Latest `ld/st` validation-velocity checkpoint, 2026-04-13 after `77d3edea1`: broad `python/test/gluon/test_tmem_runtime_matrix.py -k ldst` still selects `1642/2758` tests and is green by mixed static/bucketed evidence, with no deterministic failures found. Static split-16 groups `1..4` passed (`412 passed`) and groups `14..16` passed/clean-skipped (`282 passed, 21 skipped`), but static groups `5..8` and `13` hit timeout wrappers on dense descriptor-composition/roundtrip/higher-rank buckets. Exact replacement buckets closed those functions: descriptor-composition row/column sweep `240 passed`; descriptor-roundtrip row/column sweep `240 skipped`; remaining composition/roundtrip/two-CTA buckets `180 passed, 180 skipped`; higher-rank index/multidim buckets `120 passed`. A merged duration cache for all `1642` nodeids now lives at `experiments/results/ldst_pytest_durations_20260413.json`; collect-only `least_duration` split-16 estimates about `780s` per group, so the selector remains a validation-throughput issue rather than a product failure. Use `ldst_validation_recipe_20260413.md` before broad local `ld/st` reruns.
 - Latest `ld.red` explicit non-identity checkpoint, 2026-04-13 09:57 UTC: `test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b` now covers both `min` and `max` across the four compatible non-identity TMEM-linear layouts (`tile_permuted`, `col_reverse`, `row_reverse`, `rowcol_rotate_reverse`) and all four explicit-load variants (`auto`, `32x32b`, `16x32bx2`, `32x32b_splitn`). This doubles the non-identity explicit-layout coverage from `16` to `32` cases and keeps the expected lowering fixed to `tcgen05.ld.red.sync.aligned.32x32b.x128.{min,max}.f32`. Focused validation passed all `32` selected cases across four GPU split groups. Broad `-k ld_red` is green as `523 passed` aggregate after warmed reruns of the cold timeout groups; the initial cold split-4 run remains a validation-velocity warning, not a product failure, because group 1 passed in `9:12`, group 4 printed a green `130 passed` summary at the `900s` wrapper boundary and then passed warm in `12.52s`, and groups 2/3 passed warm in `3:08` and `3:18`. Use duration data, finer groups, or warmed exact reruns for future broad local `ld_red` sweeps.
@@ -654,11 +655,13 @@
     checks;
   - direct scaled-MMAv5 accumulator-view coverage includes exact opcode checks
     for `mxf8f6f4`, `mxf4`, and `mxf4nvf4` format families, including
-    accumulator subviews and selected tile-permuted accumulator layouts; the
-    positive accumulator-subview format matrix now covers both root-aligned
+    accumulator subviews and tile-permuted accumulator layouts; the positive
+    accumulator-subview format matrix now covers both root-aligned
     `slice_start=0` and offset subviews across the five supported format pairs,
     including the two-CTA `slice_start=128` accumulator subview through both
-    non-multicast and multicast scale-TMA paths;
+    non-multicast and multicast scale-TMA paths; the direct `tile_n=64`,
+    `128x256` tile-permuted accumulator matrix now covers those same five
+    format pairs;
   - direct scaled-MMAv5 TMEM-LHS subview format coverage now includes the
     packed-storage reachable subset: `mxfp8/mxfp8`, `mxfp8/mxfp4`,
     `mxfp4/mxfp4`, and `nvfp4/nvfp4` for both legacy and canonical
@@ -7075,4 +7078,22 @@ rejection, not rescue
   - exact nodeid across four GPU split groups: `20 passed` aggregate;
   - nearby selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and subslice and format_matrix'` across four GPU split groups: `43 passed` aggregate.
 - This is coverage expansion only. True scales `warpx2` and two-CTA `warpx2::02_13` remain descriptor/address-model frontiers.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
+
+## 2026-04-13 12:43 UTC: scaled-MMAv5 `tile_n=64` accumulator coverage spans all formats
+
+- Replaced the old `mxfp8/mxfp8`-only `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_direct_layout` with `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix`.
+- Added `tmem_mma_scaled_layout_format_kernel`, a direct accumulator-layout scaled-MMA helper that mirrors the existing format-aware subview kernels without forcing an accumulator slice.
+- New positive surface:
+  - accumulator layout: `TensorMemoryLinearLayout` tile-permuted `128x256`, `tile_n=64`;
+  - format pairs: `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - expected opcode counts: `16` for `mxf8f6f4` vector-1X cases, `8` for homogeneous `mxf4` / `mxf4nvf4` cases.
+- Validation / hygiene:
+  - temporary direct smoke over the five format pairs passed before editing the runtime matrix;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `git diff --check python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - exact nodeid across four GPU split groups selected all five cases and all selected cases passed (`2`, `2`, `1`, and `0` selected; group 4 had no selected case and returned pytest's no-tests code);
+  - nearby selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and tile_permuted'` passed `11` selected cases across four GPU split groups.
+- This closes a bounded scaled-MMAv5 tile-permuted format gap. The `tile_n=32` repeated-`N=32` boundary remains a clean unsupported negative, and true scales `warpx2` / two-CTA `warpx2::02_13` remain descriptor/address frontiers.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
