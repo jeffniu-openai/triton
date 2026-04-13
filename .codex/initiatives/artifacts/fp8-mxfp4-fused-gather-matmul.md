@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-13T05:40:20Z
+updated: 2026-04-13T05:49:00Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -657,6 +657,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: `make` from `/root/code/triton`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python -m py_compile /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels pytest -s --tb=short /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py::test_live_example_matches_reference`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `python /root/.codex/skills/.system/skill-creator/scripts/quick_validate.py /root/.codex/skills/kernel-optimization`
   - Learnings: The most reusable deliverable is no longer the long report alone. The new tutorial turns the matmul initiative into a shorter executable playbook that imports the live example, teaches the measurement-first workflow, and demonstrates same-input correctness plus representative benchmarking. The new `kernel-optimization` skill packages the shared workflow into a thin core plus modular references for measurement, profiling, memory/occupancy, and the Gluon matmul case study so future agents can add new architecture- or workload-specific notes without rewriting the base process.
   - Plan updates: Treat the tutorial and the skill as the primary onboarding material for future kernel-performance work. Keep the long report and initiative as the durable deep history, and add future domain knowledge to the skill by creating new reference modules rather than bloating the core skill instructions.
+- `2026-04-13` Completed: Converted the Gluon optimization tutorial into a fully standalone tutorial file
+  - Artifact: `python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`
+  - Validation: `make` from `/root/code/triton`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python -m py_compile /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels pytest -s --tb=short /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py::test_op`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`
+  - Learnings: The first tutorial version taught the workflow by dynamically importing the live example. That was convenient, but it was not truly standalone in the style of the other Gluon tutorials. Converting it into a full standalone copy of the tuned implementation fixes that and keeps the file executable even if the example evolves later. The standalone script now runs end-to-end and prints the full GPT-OSS 120B MM1 batch sweep directly from the tutorial file.
+  - Plan updates: Keep future tutorial updates local to the tutorial file. Treat it as its own runnable teaching artifact rather than a thin wrapper around the example.
 
 ## Next Up
 
