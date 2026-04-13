@@ -391,10 +391,14 @@ Every fuzz case records:
 - PTX and LLIR `cp` opcodes match exactly in family and count.
 - Barrier/commit emission is present when requested.
 
-#### Negative frontier
-- transposed shared layouts
-- multicast/layout combinations that cannot be described by the copy atom set
-- non-zero subslice starts that violate the split-offset constraints
+#### Negative frontier / covered clean negatives
+- Covered by `test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error`:
+  no-scales copies from transposed `NVMMASharedLayout` sources fail with the
+  clean `The source should not be transposed or padded` diagnostic.
+- Multicast/layout combinations that cannot be described by the copy atom set
+  remain a watch item.
+- Non-zero subslice starts that violate the split-offset constraints remain a
+  watch item.
 
 ### 5. `mma`
 

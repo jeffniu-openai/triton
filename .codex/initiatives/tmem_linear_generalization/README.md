@@ -85,6 +85,16 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest `tcgen05.cp` contract checkpoint, 2026-04-13 06:42 UTC:
+  runtime-matrix clean-negative coverage now pins the no-scales transposed
+  shared-source boundary. `tmem_copy_no_scales_transposed_shared_kernel` uses a
+  transposed `NVMMASharedLayout` source and confirms `tcgen05_copy` rejects it
+  with the existing `The source should not be transposed or padded` diagnostic
+  before lowering. Validation: `py_compile` passed, rebuild was a no-op
+  success, the exact new nodeid passed on the selected split group (`1 passed`,
+  other split groups deselected), and the nearby copy clean-negative selector
+  passed (`9 passed` aggregate across active split groups).
+
 - Latest `ld.red` contract checkpoint, 2026-04-13 06:20 UTC:
   runtime-matrix clean-negative coverage now pins the non-f32
   reduction/modifier boundary. New coverage rejects `i32` plain reductions with

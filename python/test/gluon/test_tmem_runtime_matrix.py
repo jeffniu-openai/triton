@@ -1123,6 +1123,43 @@ def tmem_copy_no_scales_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.const
 
 
 @gluon.jit
+def tmem_copy_no_scales_transposed_shared_kernel(
+    in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
+    swizzle: ttgl.constexpr
+):
+    tmem_layout: ttgl.constexpr = TensorMemoryLayout(
+        block=(128, BLOCK_N),
+        col_stride=32 // in_ptr.dtype.element_ty.primitive_bitwidth,
+    )
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], tmem_layout)
+    tmem_reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, tmem_reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, tmem_reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        transposed=True,
+        element_bitwidth=32,
+        rank=2,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared()
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+
+    out = tmem.load()
+    ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
 def tmem_copy_no_scales_linear_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
                                       swizzle: ttgl.constexpr):
     tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout)
@@ -4883,6 +4920,26 @@ def test_tmem_runtime_matrix_cp_no_scales_swizzles(M, N, BLOCK_N, swizzle):
 
     expected_count = (M * N) // 1024
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error(capfd):
+    M = N = 128
+    BLOCK_N = 128
+    swizzle = 32
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_transposed_shared_kernel[(1, )](
+            inp, out, M, N, BLOCK_N, swizzle, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "The source should not be transposed or padded" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

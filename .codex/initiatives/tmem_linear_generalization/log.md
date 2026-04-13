@@ -11463,3 +11463,31 @@ Open after this slice:
   - future broad local `ld_red` sweeps should use finer split groups, duration
     data, or narrower selectors rather than accepting 15-20 minute shards as
     normal.
+
+## 2026-04-13 06:42 UTC: `tcgen05.cp` transposed shared-source negative is pinned
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - HEAD `4da846789` before this test/docs checkpoint.
+- Coverage added:
+  - new helper kernel `tmem_copy_no_scales_transposed_shared_kernel`;
+  - new test `test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error`;
+  - the kernel uses a no-scales copy from a transposed `NVMMASharedLayout`
+    source to a normal TMEM destination;
+  - expected failure is the verifier diagnostic `The source should not be
+    transposed or padded`, before lowering and without PassManager/assert noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - exact new nodeid across four GPU split groups:
+    `CUDA_VISIBLE_DEVICES=<0..3> TRITON_CACHE_DIR=/tmp/triton-cache-cp-transposed-gpu<0..3> PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error`
+    selected the test in group 1 and passed (`1 passed`); groups 2-4 deselected
+    the single nodeid as expected;
+  - nearby copy clean-negative selector across four GPU split groups:
+    `CUDA_VISIBLE_DEVICES=<0..3> TRITON_CACHE_DIR=/tmp/triton-cache-cp-negative-gpu<0..3> PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_transposed_shared or cp_no_scales_linear_subword_dtypes_report_clean_error or warpx2_dense_shared or warpx2_twocta_dense_shared'`
+    passed (`9 passed` aggregate across active groups; group 4 deselected).
+- Status:
+  - the `tcgen05.cp` fuzz-plan negative frontier no longer has an unpinned
+    transposed shared-layout item; remaining copy frontiers are multicast/layout
+    combinations, non-zero subslice-start split constraints, true scales
+    `warpx2`, and two-CTA `warpx2::02_13` descriptor/message semantics.
