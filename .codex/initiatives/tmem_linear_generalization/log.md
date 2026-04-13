@@ -12128,3 +12128,42 @@ Open after this slice:
     with group runtimes `1:50`, `4:21`, `4:42`, and `4:18`.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this
   edit used exact scripted replacements.
+
+## 2026-04-13 13:43 UTC: copy `warpx2` verifier/debug checkpoint
+
+- Added temporary `TRITON_TMEM_COPY_DEBUG` logging to `TMEMCopyOp::verify` and
+  the LLVM copy lowering, rebuilt, ran exact copy probes, then removed the
+  logging and rebuilt from clean source. No source instrumentation remains.
+- Main finding: the two relevant unsupported paths are verifier rejections, not
+  late LLVM lowering failures.
+- Two-CTA `warpx2::02_13` details:
+  - `cvt` classifies into three `warpx2::02_13.64x128b` plans:
+    direct-seed `descriptorShape=[64,4]`, descriptor `64x4`, and fallback
+    descriptor `32x4`;
+  - direct seed is unavailable because `getDirectTMemCopySeedDescriptorImm`
+    accepts only the single-CTA `128x4` source shape;
+  - the descriptor candidates are exhausted with no MMASMEM representation:
+    `95`, `95`, and `161` candidates respectively;
+  - the known-good two-CTA `01_23` comparison succeeds through the `32x4` plan
+    with a candidate carrying row bases `4,8,16,32,64,128` and col bases `1,2`;
+  - the analogous two-CTA `02_13` fallback candidate keeps a zero low column
+    basis and still fails representation.
+- Scales `warpx2_candidate` details:
+  - the source shared layout maps to `warpx4.32x128b` under
+    `TensorMemoryScalesLayout` analysis;
+  - the single descriptor candidate is not MMASMEM-representable for either
+    descriptor orientation.
+- Single-CTA `02_13` comparison:
+  - the verifier accepts the direct-seed plan for `128x4` and lowering emits
+    direct seed `70403103916032` with `sourceOffsetB128=32`;
+  - runtime still matches the expected single-CTA `02_13` oracle.
+- Conclusion:
+  - do not extend direct seed to `256x4` as a shortcut; corrected direct-PTX
+    probes show the two-CTA direct-seed variants duplicate source columns;
+  - future support needs an actual descriptor/address-message model or should
+    remain clean unsupported.
+- Validation / hygiene:
+  - rebuilt with temporary instrumentation;
+  - exact debug probes for two-CTA `02_13`, two-CTA `01_23`, single-CTA
+    `02_13`, and scales `warpx2_candidate` completed;
+  - removed instrumentation via reverse patch and rebuilt cleanly.
