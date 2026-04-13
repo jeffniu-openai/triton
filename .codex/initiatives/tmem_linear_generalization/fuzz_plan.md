@@ -387,10 +387,12 @@ Every fuzz case records:
   additionally rules out direct-seed `sourceOffsetB128` `32..35` plus the
   nearest two-message column-pair schedules. The four-GPU JSONL shard set
   `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`
-  extends the single-message direct-seed scan through offsets `36..63` with
-  destination deltas `0` and `4`; all `56` variants launched without sentinel
-  or NaN output, none matched the extended `02_13` oracle, and every variant
-  duplicated one source-column pair.
+  extends the single-message direct-seed scan through offsets `36..127` with
+  destination deltas `0` and `4`; the durable source-offset records have zero
+  matches against the extended `02_13` oracle. Offsets `36..63` duplicate one
+  source-column pair, offsets `64..72` execute but still mismatch (`65..72`
+  destination `0` has four NaNs), and offsets `73..127` launch-fail in isolated
+  child processes.
 
 #### Checks
 - Output matches input for no-scales copies.
