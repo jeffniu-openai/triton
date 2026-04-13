@@ -85,6 +85,23 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green and the examples half of
+  `make test-gluon` is green across four GPU shards. The first Gluon phase has
+  no deterministic known failures after the MMAv5 family-addressing fix, but
+  the local validation is incomplete because the heavy runtime-matrix tail still
+  exceeds the current split timeout: four-way `-n 6` groups 1-3 finished green,
+  the group-4 worker-crash node passed isolated, split-16 groups 13-14 finished
+  green, and split-16 groups 15-16 timed out while still making progress. Next
+  action is a better duration-aware/runtime-tail split, not raising timeouts or
+  classifying those timeouts as product failures.
+
+- CI timing reference from the project owner, 2026-04-13: the full GB200 CI lane
+  on a comparable four-node/four-GPU machine is expected to take about 35 minutes
+  including clean build and LLVM download, with actual test time around 20
+  minutes. Local validation that runs much longer should be treated as a
+  partitioning, xdist, or hang investigation first, not normalized as acceptable
+  sweep time.
+
 - Latest checkpoint, 2026-04-12 23:15 UTC: a focused MMAv5 loader fix is ready after the
   post-attr-cleanup `test-gluon` run exposed tile-permuted MMAv5 runtime
   failures. Full-shape MMAv5 descriptors now use the derived family layout for

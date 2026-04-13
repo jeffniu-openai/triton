@@ -50,6 +50,20 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green (`248 passed, 2 unsupported`)
+  and `python/examples/gluon/` is green across four shards (`884 passed, 74
+  skipped` total). The first `python/test/gluon/ python/tutorials/gluon/` phase
+  has no deterministic known failures after the MMAv5 family-addressing fix, but
+  the local sweep is not fully closed: four-way `-n 6` groups 1, 2, and 3
+  finished green; group 4 had one xdist worker crash whose exact nodeid passed
+  isolated, and finer split-16 groups 13 and 14 are green while groups 15 and
+  16 timed out still making progress. Treat this as validation partitioning
+  debt, not a compiler regression, until an isolated nodeid reproduces.
+- Project-owner timing reference, 2026-04-13: the full GB200 CI lane on a comparable
+  four-node/four-GPU machine should be about 35 minutes including clean build and
+  LLVM download, with actual test time around 20 minutes. Any local run that takes
+  far longer needs a partitioning, xdist, process-state, or hang investigation
+  before accepting the runtime as normal.
 - Latest checkpoint, 2026-04-12 23:15 UTC: full-shape MMAv5 TMEM descriptors once again use
   the derived MMAv5 family layout for instruction address arithmetic, while
   marked physical bitcasts keep the exact typed result layout. This fixes the

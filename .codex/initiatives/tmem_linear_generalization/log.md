@@ -11131,3 +11131,52 @@ Open after this slice:
   `test-gluon`/GB200 rerun is still useful as the next wider milestone, but the
   known branch-caused tile-permuted MMAv5 correctness bucket is fixed at focused
   and nearby-broad scope.
+
+## 2026-04-13 01:19 UTC: wider Gluon/lit checkpoint after MMAv5 family-addressing fix
+
+- Full lit is green at `21a82fc16`:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make test-lit`
+  - `248 passed, 2 unsupported` in `9.27s`.
+- `python/examples/gluon/` is green with four GPU shards and `-n 2`:
+  - group 1: `225 passed, 15 skipped` in `469.25s`;
+  - group 2: `221 passed, 19 skipped` in `42.89s`;
+  - group 3: `220 passed, 20 skipped` in `38.08s`;
+  - group 4: `218 passed, 20 skipped` in `40.29s`.
+- First `python/test/gluon/ python/tutorials/gluon/` sweep attempt with
+  four shards and `-n 2` was too slow for the velocity target:
+  - group 2 finished green: `2679 passed, 3994 skipped` in `1665.35s`;
+  - groups 1, 3, and 4 hit the `2700s` outer timeout while still printing
+    progress and without emitting deterministic failures.
+- Retried the same first phase with four shards and `-n 6` to match the
+  24-worker CI scale while keeping one outer process per GPU:
+  - group 1: `5671 passed, 1002 skipped` in `1380.22s`;
+  - group 2: `2679 passed, 3994 skipped` in `566.19s`;
+  - group 3: `4842 passed, 1831 skipped` in `1536.83s`;
+  - group 4 had one xdist worker crash while running
+    `test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep[rotate1-reverse-256-auto-32x32b.x64.b32]`
+    and did not produce a trustworthy final summary before the session ended.
+- The group-4 crash is not a deterministic product failure at current evidence:
+  - isolated four-way exact rerun of the crashed nodeid selected the test in
+    group 1 and passed in `31.35s`; the other groups deselected it.
+- To recover a cleaner status for the missing group-4 quartile, reran finer
+  `--splits 16` groups `13..16` with one GPU each and `-n 2`:
+  - group 13: `1625 passed, 44 skipped` in `56.87s`;
+  - group 14: `1430 passed, 239 skipped` in `90.85s`;
+  - groups 15 and 16 hit the `1500s` outer timeout while still printing
+    progress and without failure output.
+- Status implication:
+  - no deterministic new Gluon failure is known after the MMAv5 fix;
+  - the previous tile-permuted MMAv5 failure bucket remains fixed at focused,
+    nearby-broad, and partial wider-sweep scope;
+  - the outstanding issue is validation partitioning/runtime: the
+    runtime-matrix tail needs a better split strategy or CI-equivalent runner
+    before declaring the whole Gluon lane clean from local evidence.
+- Project-owner timing reference added after this run: on a comparable
+  four-node/four-GPU GB200 machine, the full CI lane should take about 35 minutes
+  including clean build and LLVM download, with actual test time around 20
+  minutes. Treat local runs that run much longer as a partitioning/xdist/hang
+  problem first.
+- Next validation step:
+  - generate/use duration data or split the heavy runtime-matrix tail by exact
+    nodeid/file bucket, then finish the incomplete `--splits 16` groups 15/16
+    without increasing timeouts blindly.
