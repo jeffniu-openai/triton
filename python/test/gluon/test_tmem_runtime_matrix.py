@@ -1216,6 +1216,33 @@ def tmem_copy_no_scales_indexed_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
 
 
 @gluon.jit
+def tmem_copy_no_scales_shared_subslice_bad_offset_kernel(in_ptr, out_ptr, slice_start: ttgl.constexpr):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    PARENT_N: ttgl.constexpr = 2 * N
+    shared_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=32, element_bitwidth=32, rank=2)
+    tmem_layout: ttgl.constexpr = TensorMemoryLayout(block=(128, N), col_stride=1)
+
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, PARENT_N], layout=shared_layout)
+    view = smem.slice(slice_start, N, dim=1)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], tmem_layout)
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    fence_async_shared()
+    tcgen05_copy(view, tmem)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+
+    tmem_reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, tmem_reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, tmem_reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    out = tmem.load(tmem_reg_layout)
+    ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
 def tmem_copy_no_scales_linear_indexed_view_kernel(in_ptr, out_ptr, lifted_layout: ttgl.constexpr,
                                                    smem_layout: ttgl.constexpr, M: ttgl.constexpr,
                                                    N: ttgl.constexpr):
@@ -4968,6 +4995,26 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_32bit_dtypes(dtype_name, torch_
 
     _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_clean_error(capfd):
+    M = 128
+    parent_n = 256
+    slice_start = 64
+    inp = torch.arange(M * parent_n, device="cuda", dtype=torch.float32).reshape(M, parent_n)
+    out = torch.empty((M, parent_n // 2), device="cuda", dtype=torch.float32)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_shared_subslice_bad_offset_kernel[(1, )](
+            inp, out, slice_start, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "The split offset may not touch the tile" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

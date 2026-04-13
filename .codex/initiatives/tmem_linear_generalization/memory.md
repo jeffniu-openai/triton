@@ -50,16 +50,18 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
-- Latest `tcgen05.cp` contract checkpoint, 2026-04-13 06:42 UTC at
-  `4da846789`: runtime-matrix coverage now pins the no-scales transposed
-  shared-source boundary. New test
-  `test_tmem_runtime_matrix_cp_no_scales_transposed_shared_reports_clean_error`
-  uses a transposed `NVMMASharedLayout` source and expects the clean verifier
-  diagnostic `The source should not be transposed or padded`, with no
-  PassManager/assert noise. Validation: `py_compile` passed, rebuild was a
-  no-op success, exact new nodeid selected one split group and passed, and the
-  nearby clean-negative copy selector passed `9` selected cases across active
-  split groups.
+- Latest `tcgen05.cp` contract checkpoint, 2026-04-13 06:55 UTC after
+  `2a79beafe`: runtime-matrix coverage now also pins the non-zero shared
+  subslice split-offset boundary. New test
+  `test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_clean_error`
+  allocates a shared parent tile, slices it at a non-tile-aligned column start,
+  passes that view to `tcgen05_copy`, and expects the clean verifier diagnostic
+  `The split offset may not touch the tile`, with no PassManager/assert noise.
+  The previous transposed shared-source clean negative remains covered in the
+  same nearby selector. Validation: `py_compile` passed, rebuild was a no-op
+  success, exact new nodeid selected one split group and passed, and the nearby
+  clean-negative copy selector passed `10` selected cases across four split
+  groups.
 - Latest `ld.red` contract checkpoint, 2026-04-13 06:20 UTC at `e84e4f0a7`:
   runtime-matrix coverage now pins clean non-f32 reduction/modifier failures.
   `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`

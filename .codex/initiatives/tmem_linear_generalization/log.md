@@ -11491,3 +11491,29 @@ Open after this slice:
     transposed shared-layout item; remaining copy frontiers are multicast/layout
     combinations, non-zero subslice-start split constraints, true scales
     `warpx2`, and two-CTA `warpx2::02_13` descriptor/message semantics.
+
+## 2026-04-13 06:55 UTC: `tcgen05.cp` shared-subslice split-offset negative is pinned
+
+- Added runtime-matrix clean-negative coverage for no-scales `tcgen05.cp` from a
+  shared-memory subview whose non-zero column start violates the shared
+  `memdesc_subslice` tile-split contract.
+- New helper/test:
+  - `tmem_copy_no_scales_shared_subslice_bad_offset_kernel`;
+  - `test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_clean_error`.
+- The helper intentionally avoids materializing a parent `[128, 256]` value into
+  the shared tile before slicing, so the expected failure is the subview verifier
+  diagnostic itself, not an earlier value-layout conversion error.
+- Expected diagnostic: `The split offset may not touch the tile`, with no
+  `PassManager::run failed` or assertion noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - exact new nodeid across four GPU split groups selected the test in group 1
+    and passed; groups 2-4 deselected the singleton as expected;
+  - nearby clean-negative copy selector across four GPU split groups passed
+    `10` selected cases aggregate.
+- Status:
+  - the `tcgen05.cp` fuzz-plan negative frontier no longer has an unpinned
+    non-zero split-offset item;
+  - remaining copy frontiers are multicast/layout combinations, true scales
+    `warpx2`, and two-CTA `warpx2::02_13` descriptor/message semantics.
