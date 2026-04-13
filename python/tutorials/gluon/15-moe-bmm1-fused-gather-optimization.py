@@ -1,3 +1,64 @@
+"""
+Optimizing a Fused-Gather MoE BMM1 Kernel
+=========================================
+
+This tutorial is a **standalone** Gluon optimization example built from the
+current tuned MoE BMM1 fused-gather kernel. It intentionally duplicates the
+live example implementation instead of importing it, so the tutorial keeps
+working even if the example file changes shape later.
+
+Use it as a practical guide for how this project was actually driven:
+
+- define a workload and a correctness contract
+- keep baseline and candidate on the same prepared inputs
+- benchmark broadly before trusting a win
+- use Nsight Compute, PTX, and SASS to answer a concrete question
+- keep durable notes for both promoted changes and dead ends
+
+The current kernel structure is:
+
+.. code-block:: text
+
+   activation loader ----.
+                         |
+   weight+scale loader --+--> MMA --> accumulator --> exact SwiGLU epilogue
+                                                       |
+                                                       v
+                                              helper-store ring in SMEM
+                                                       |
+                                                       v
+                                               store-helper partition
+                                                       |
+                                                       v
+                                                  FP8 global output
+
+What produced durable wins in this project:
+
+- packed ``f32x2`` epilogue math
+- packed FP8 conversion / store
+- helper-store epilogue ownership
+- low-batch ``BLOCK_M`` policy
+- measurement discipline
+
+What did not:
+
+- broad schedule sweeps after the promoted banded schedule
+- deleting buffers to chase occupancy
+- assuming split-K was the low-batch fix
+- async TMA store as a drop-in helper replacement
+- source-level scalar cleanups without PTX/SASS or NCU evidence
+
+The bottom of this file contains:
+
+- a pytest correctness check against the production reference
+- a ``triton.testing.perf_report`` batch sweep
+
+For the full optimization history, see:
+
+- ``.codex/initiatives/artifacts/ws-matmul-performance-report.md``
+- ``.codex/initiatives/artifacts/fp8-mxfp4-fused-gather-matmul.md``
+"""
+
 from dataclasses import dataclass, replace
 from itertools import chain
 
@@ -1088,6 +1149,9 @@ def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[Ra
 
     local_expts = expt_dist[local_rank]
     local_expts_hist = expt_hist[local_expts]
+    if local_expts_hist.sum() == 0:
+        local_expts_hist[torch.randint(0, len(local_expts_hist), size=())] = 1
+
     ragged_metadata = make_ragged_tensor_metadata(local_expts_hist, batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN)
     ragged_metadata.expected_slice_size = batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN // GPT_OSS_120B_NUM_EXPERTS
     combine_indx = sparse_logits.mask_metadata.col_sorted_indx
@@ -1161,7 +1225,6 @@ def run_kernel(prepared: PreparedCase, kernel, precision_config: PrecisionConfig
         c=out,
         fused_activation=prepared.fused_activation,
     )
-
 
 def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, PrecisionConfig]:
     precision_config = make_precision_config(prepared)
@@ -1240,7 +1303,10 @@ def bench(batch_size, provider):
     kernel = matmul if provider == "example" else reference_matmul
     out = make_output_buffer(prepared)
 
-    ms = do_bench_cudagraph(lambda: run_kernel(prepared, kernel, precision_config, out))
+    def run() -> torch.Tensor:
+        return run_kernel(prepared, kernel, precision_config, out)
+
+    ms = do_bench_cudagraph(run)
     n_tokens = int(prepared.ragged_metadata.slice_sizes.sum().item())
     k, n = GPT_OSS_120B_MM1_SHAPE
     flops = 2 * n_tokens * k * n
