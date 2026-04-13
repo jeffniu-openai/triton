@@ -610,13 +610,28 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
   bool transA = false;
   SmallVector<int> kRepOrder(numRepK);
   std::iota(kRepOrder.begin(), kRepOrder.end(), 0);
+  unsigned aTMemTileK = aOperandShape[1];
   if (aInTmem) {
+    // Scaled MMA K coordinates are in logical operand elements, while TMEM A
+    // descriptors for fp4 are packed into byte storage columns. Convert the
+    // per-instruction K step into descriptor storage coordinates before
+    // ordering or addressing the TMEM tiles.
+    unsigned storageBitwidth = aTensorTy.getElementTypeBitWidth();
+    unsigned logicalBitwidth = op.numBitsPerElementA;
+    if (storageBitwidth > logicalBitwidth &&
+        storageBitwidth % logicalBitwidth == 0) {
+      unsigned logicalPerStorage = storageBitwidth / logicalBitwidth;
+      assert(aTMemTileK % logicalPerStorage == 0 &&
+             "MMAv5 TMEM A K tile must align to packed storage columns");
+      aTMemTileK /= logicalPerStorage;
+    }
+
     aLoader = std::make_unique<DotOpMmaV5TmemLoader>(
         DotOpMmaV5TmemLoader::build(loc, rewriter, aTensorTy, a,
                                     baseA));
     kRepOrder = getSortedTMemTileOrder(a, aTensorTy,
                                        /*varyingDim=*/1, numRepK,
-                                       aOperandShape[1]);
+                                       aTMemTileK);
   } else {
     auto isFp4a = op.numBitsPerElementA == 4;
     auto loader = DotOpMmaSmemLoader::build(loc, rewriter, aTensorTy, baseA,
@@ -656,8 +671,9 @@ LogicalResult convertDotImpl(const LLVMTypeConverter &typeConverter,
       MemDescOperand accAddress = op.getAccAddress(rewriter, loc, m, n, desc);
       for (int kIdx = 0; kIdx < numRepK; kIdx++) {
         int k = kRepOrder[kIdx];
-        MemDescOperand a = aLoader->memLoad(
-            m * aOperandShape[0], k * aOperandShape[1], rewriter, loc);
+        unsigned aTileK = desc.aInTmem ? aTMemTileK : aOperandShape[1];
+        MemDescOperand a = aLoader->memLoad(m * aOperandShape[0], k * aTileK,
+                                            rewriter, loc);
         Value b = bLoader->smemLoad(k * bOperandShape[0], n * bOperandShape[1],
                                     rewriter, loc);
         op.createMMAInst(rewriter, loc, accAddress, a, b, elect, useInitAcc,

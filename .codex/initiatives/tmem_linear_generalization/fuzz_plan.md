@@ -454,10 +454,11 @@ Every fuzz case records:
   currently including one-CTA root-aligned `slice_start=0` and offset
   `slice_start=64` direct subviews plus two-CTA cga-aware `slice_start=0` and
   `slice_start=128` direct subviews across the proven format pairs
-- TMEM-LHS subview format coverage currently includes the fp8-A reachable
-  subset (`mxfp8/mxfp8` and `mxfp8/mxfp4`) for both legacy and canonical
-  accumulator layouts; A-side fp4 scaled TMEM-LHS subviews are a known
-  wrong-code frontier, not a positive target yet, and are pinned by
+- TMEM-LHS subview format coverage currently includes the packed-storage
+  reachable subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
+  `nvfp4/nvfp4`) for both legacy and canonical accumulator layouts; mixed
+  `mxfp4/mxfp8` scaled TMEM-LHS subviews are a known wrong-code frontier, not a
+  positive target yet, and are pinned by
   `experiments/probe_mma_scaled_lhs_subslice_formats.py`
 
 #### Checks

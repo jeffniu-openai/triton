@@ -2686,7 +2686,12 @@ CP_SCALES_WARPX4_FORMAT_PAIRS = [
 
 SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
     (a_format, b_format, acc_layout_kind)
-    for a_format, b_format in (("mxfp8", "mxfp8"), ("mxfp8", "mxfp4"))
+    for a_format, b_format in (
+        ("mxfp8", "mxfp8"),
+        ("mxfp8", "mxfp4"),
+        ("mxfp4", "mxfp4"),
+        ("nvfp4", "nvfp4"),
+    )
     for acc_layout_kind in ("legacy", "linear")
 ]
 
@@ -6392,7 +6397,7 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view():
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format,acc_layout_kind", SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES)
-def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_fp8a_format_matrix(
+def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_matrix(
     a_format, b_format, acc_layout_kind
 ):
     m = n = k = 128

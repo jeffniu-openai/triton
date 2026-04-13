@@ -11307,3 +11307,51 @@ Open after this slice:
   - the current clean unsupported diagnostic remains the correct public boundary until a descriptor/message model that preserves both row family and source-column selection is discovered.
 - Validation of this checkpoint:
   - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py`.
+
+## 2026-04-13 05:20 UTC: scaled-MMAv5 TMEM-LHS packed-fp4 K stride fixed
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - HEAD `649cea8f54f9` before this source/test/docs checkpoint.
+- Root cause:
+  - scaled-MMAv5 K tile coordinates are logical operand-element coordinates;
+  - TMEM operand-A descriptors for fp4 are byte-packed storage columns;
+  - the TMEM-LHS lowering used the logical fp4 K tile step directly when
+    sorting TMEM tile order and when addressing A-side K repetitions, so the
+    second K tile for packed fp4 A was addressed too far along the descriptor's
+    storage-column axis.
+- Fix:
+  - in `MMAv5.cpp`, compute a TMEM-specific A K tile step for A-in-TMEM by
+    converting logical sub-byte K width to descriptor storage columns;
+  - use that storage-coordinate step for `getSortedTMemTileOrder` and the
+    A-side `memLoad`;
+  - leave non-TMEM A operands on the existing logical operand shape path.
+- Coverage change:
+  - expanded the scaled TMEM-LHS subview format matrix to include
+    `mxfp4/mxfp4` and `nvfp4/nvfp4` alongside the existing `mxfp8/mxfp8` and
+    `mxfp8/mxfp4` positives;
+  - renamed the test from the fp8-A-specific name to
+    `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_matrix`;
+  - refreshed the durable probe log.
+- Remaining frontier:
+  - `mxfp4/mxfp8` still compiles but produces wrong numerical results in the
+    durable probe for both legacy and canonical accumulator layouts;
+  - keep it out of the positive matrix until the mixed `mxf8f6f4` fp4-A
+    padding/packing issue is understood and fixed.
+- Validation:
+  - rebuild with
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    passed;
+  - probe
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-lhs-fp4-fix-probe PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_mma_scaled_lhs_subslice_formats.py`
+    showed `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`
+    passing, with `mxfp4/mxfp8` still wrong;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    passed;
+  - focused renamed matrix across four GPU `pytest-split` groups:
+    `8 passed`;
+  - nearby scaled-MMA selector across four GPU `pytest-split` groups:
+    `25 passed`;
+  - broad `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    across four GPU `pytest-split` groups:
+    `230 passed, 50 skipped`.

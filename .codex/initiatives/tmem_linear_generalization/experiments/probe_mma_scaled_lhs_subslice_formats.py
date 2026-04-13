@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Probe scaled MMAv5 TMEM-LHS subview format reachability.
 
-This is a durable reproduction for the 2026-04-11 finding that fp8-A scaled
-TMEM-LHS subviews are runtime-correct while A-side fp4 variants currently
-compile but produce wrong numerical results.
+This is a durable reproduction for the scaled TMEM-LHS subview format frontier.
+After the 2026-04-13 packed-TMEM-A K-stride fix, homogeneous fp4 families are
+runtime-correct; mixed `mxfp4/mxfp8` remains a wrong-code frontier.
 """
 
 import math

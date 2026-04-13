@@ -493,11 +493,11 @@
     `slice_start=0` and offset `slice_start=64` subviews across the five
     supported format pairs;
   - direct scaled-MMAv5 TMEM-LHS subview format coverage now includes the
-    fp8-A reachable subset: `mxfp8/mxfp8` and `mxfp8/mxfp4` for both legacy
-    and canonical TMEM-linear accumulator layouts, with exact scaled-MMA,
-    count, commit, and descriptor-view checks; A-side fp4 scaled TMEM-LHS
-    subviews remain a known wrong-code frontier from the 2026-04-11 durable
-    probe artifact
+    packed-storage reachable subset: `mxfp8/mxfp8`, `mxfp8/mxfp4`,
+    `mxfp4/mxfp4`, and `nvfp4/nvfp4` for both legacy and canonical
+    TMEM-linear accumulator layouts, with exact scaled-MMA, count, commit, and
+    descriptor-view checks; the mixed `mxfp4/mxfp8` scaled TMEM-LHS case
+    remains a known wrong-code frontier in the durable probe artifact
     `experiments/probe_mma_scaled_lhs_subslice_formats.py` / results
     `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`;
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
@@ -529,14 +529,14 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    `226 passed, 50 skipped, 2407 deselected`;
+    aggregate selected coverage `230 passed, 50 skipped`;
     plain MMAv5 root and `use_acc` matrices now pin exact op counts
     (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), while
     tile-permuted accumulator coverage pins fourfold counts, the wider-K
     tile-permuted TMEM-LHS path pins `16` f16 ops, the plain TMEM-LHS subview
     matrix spans all supported plain kinds across legacy/canonical
-    accumulators, and scaled TMEM-LHS subview coverage now includes the fp8-A
-    reachable subset;
+    accumulators, and scaled TMEM-LHS subview coverage now includes the
+    packed-storage reachable subset;
     the scaled-MMA copy-helper matrix remains tracked separately;
   - remaining MMA work is not an immediate red-test blocker; it is broader
     fuzz/saturation beyond the deterministic matrix, additional reachable

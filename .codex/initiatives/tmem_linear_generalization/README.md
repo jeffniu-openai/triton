@@ -85,6 +85,18 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest code checkpoint, 2026-04-13 05:20 UTC: scaled MMAv5 TMEM-LHS
+  subviews now address packed fp4 operand-A TMEM descriptors in storage-column
+  coordinates for the K tile step. This fixes the homogeneous A-side fp4
+  wrong-code frontier for `mxfp4/mxfp4` and `nvfp4/nvfp4`; positive coverage
+  now includes `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`
+  across legacy and canonical TMEM-linear accumulators. The mixed
+  `mxfp4/mxfp8` path still compiles but remains wrong-code in the durable
+  probe and is not promoted to the positive test matrix yet. Validation:
+  rebuild passed, focused four-GPU split matrix `8 passed`, nearby scaled-MMA
+  selector `25 passed`, and broad four-GPU `-k 'mma and not cp'` selector
+  `230 passed, 50 skipped`.
+
 - Latest copy-frontier checkpoint, 2026-04-13 05:05 UTC: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. A bounded direct-PTX follow-up around the single-CTA direct seed tested `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and two-message column-pair schedules; every aligned variant still duplicated one source column pair or overwrote with another duplicate, and none matched the layout-derived extended `02_13` oracle. The experiment script now records those column-offset variants, and the current log is `experiments/results/probe_cp_warpx2_02_13_twocta_column_offsets_current.log`.
 
 - Latest code checkpoint, 2026-04-13 04:58 UTC: explicit compatible `ld.red` register-layout coverage now includes non-identity compatible TMEM-linear source layouts (`tile_permuted`, `col_reverse`, `row_reverse`, and `rowcol_rotate_reverse`) for variants `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`. The new matrix confirms this bounded discovery slice still canonicalizes to `tcgen05.ld.red.sync.aligned.32x32b.x128` rather than exposing another accepted reduction atom. Validation: new nodeids `16 passed` across four GPU split groups; broad `-k ld_red` clean split-16 run `503 passed`.
@@ -403,15 +415,15 @@ When resuming the initiative:
   `slice_start=0` and `slice_start=64`, so the same format/opcode assertions
   exercise root-aligned and offset accumulator subviews.
 - Direct scaled-MMAv5 TMEM-LHS subview format coverage now includes the
-  fp8-A reachable subset:
-  - `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_fp8a_format_matrix`
-    covers `mxfp8/mxfp8` and `mxfp8/mxfp4` for both legacy and canonical
-    TMEM-linear accumulator layouts;
+  packed-storage reachable subset:
+  - `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_matrix`
+    covers `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`
+    for both legacy and canonical TMEM-linear accumulator layouts;
   - the test slices a packed-storage TMEM-linear operand-A parent, feeds that
     subview directly to `tcgen05_mma_scaled`, and pins exact PTX/LLIR scaled
     MMA and commit opcodes;
-  - A-side fp4 scaled TMEM-LHS subviews remain a known wrong-code frontier from
-    the 2026-04-11 probe and are not promoted to positive coverage; the durable
+  - mixed `mxfp4/mxfp8` scaled TMEM-LHS subviews remain a known wrong-code
+    frontier and are not promoted to positive coverage; the durable
     reproduction is
     `experiments/probe_mma_scaled_lhs_subslice_formats.py` with current results
     in `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`.
@@ -611,16 +623,17 @@ When resuming the initiative:
 - Current-head direct `tcgen05.mma` / `mma_scaled` runtime-matrix validation is
   green:
   - command:
-    `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-mma-lhs-scaled-fp8a-broad PYTHONPATH=python:. pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
+    four-GPU `pytest-split` groups over
+    `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    `226 passed, 50 skipped, 2407 deselected in 131.68s (0:02:11)`;
+    aggregate selected coverage `230 passed, 50 skipped`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
     and offset one-CTA accumulator subview format-matrix cases, the two-CTA
     cga-aware accumulator-subview matrix, tile-permuted plain-kind accumulators
     at `128x128/tile_n=32` and `128x256/tile_n=64`, the all-plain-kind
     TMEM-LHS subview matrix for both legacy/canonical accumulator layouts, the
-    fp8-A scaled TMEM-LHS subview matrix, and two-CTA plain-kind accumulators at
+    scaled TMEM-LHS subview format matrix, and two-CTA plain-kind accumulators at
     `256x128` and `256x256`; it also covers both 1-CTA and 2-CTA `use_acc=True`
     plain-kind accumulator addition for all supported plain kinds and both
     legacy/canonical accumulator layouts, plus TMA-fed two-CTA TF32 when matrix

@@ -1,10 +1,10 @@
 RESULT a=mxfp8 b=mxfp8 acc=legacy status=PASS max_abs=3.05176e-05 max_rel=3.45098e-07 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
 RESULT a=mxfp8 b=mxfp8 acc=linear status=PASS max_abs=3.05176e-05 max_rel=3.45098e-07 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
-RESULT a=mxfp4 b=mxfp4 acc=legacy status=WRONG max_abs=1127.5 max_rel=12469.2 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X
-RESULT a=mxfp4 b=mxfp4 acc=linear status=WRONG max_abs=1127.5 max_rel=12469.2 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X
+RESULT a=mxfp4 b=mxfp4 acc=legacy status=PASS max_abs=3.05176e-05 max_rel=3.45098e-07 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X
+RESULT a=mxfp4 b=mxfp4 acc=linear status=PASS max_abs=3.05176e-05 max_rel=3.45098e-07 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4.block_scale.scale_vec::2X
 RESULT a=mxfp8 b=mxfp4 acc=legacy status=PASS max_abs=3.05176e-05 max_rel=3.45098e-07 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
 RESULT a=mxfp8 b=mxfp4 acc=linear status=PASS max_abs=3.05176e-05 max_rel=3.45098e-07 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
-RESULT a=mxfp4 b=mxfp8 acc=legacy status=WRONG max_abs=1129.28 max_rel=6035.62 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
-RESULT a=mxfp4 b=mxfp8 acc=linear status=WRONG max_abs=1129.28 max_rel=6035.62 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
-RESULT a=nvfp4 b=nvfp4 acc=legacy status=WRONG max_abs=802.688 max_rel=2272.74 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
-RESULT a=nvfp4 b=nvfp4 acc=linear status=WRONG max_abs=802.688 max_rel=2272.74 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
+RESULT a=mxfp4 b=mxfp8 acc=legacy status=WRONG max_abs=1081.55 max_rel=11860.5 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
+RESULT a=mxfp4 b=mxfp8 acc=linear status=WRONG max_abs=1081.55 max_rel=11860.5 op_count=4 expected_count=4 expected_op=tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X
+RESULT a=nvfp4 b=nvfp4 acc=legacy status=PASS max_abs=3.05176e-05 max_rel=1.1042e-07 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
+RESULT a=nvfp4 b=nvfp4 acc=linear status=PASS max_abs=3.05176e-05 max_rel=1.1042e-07 op_count=2 expected_count=2 expected_op=tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
