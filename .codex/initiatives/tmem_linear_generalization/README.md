@@ -85,6 +85,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest validation checkpoint, 2026-04-13 03:00 UTC: the previously incomplete Gluon tail is now closed from local evidence. `python/test/gluon/test_tmem_runtime_matrix.py` was covered by a mixed split plan totaling `2683` selected cases (`2237 passed, 446 skipped`, no failures/errors), and `python/test/gluon/test_lowerings.py` is green across four GPU shards (`4937 passed, 512 skipped`). Combined with the prior green `python/test/gluon/ python/tutorials/gluon/` groups 1-3, split-16 groups 13-14, the isolated xdist-crash nodeid pass, and green `python/examples/gluon/`, there are no deterministic `test-gluon` failures known after the MMAv5 family-addressing fix. The old long-running shards were static split imbalance around slow TMEM ldst legality/probe cases, not a reproduced compiler/runtime failure.
+
 - Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green and the examples half of
   `make test-gluon` is green across four GPU shards. The first Gluon phase has
   no deterministic known failures after the MMAv5 family-addressing fix, but

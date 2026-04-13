@@ -50,6 +50,7 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Latest validation checkpoint, 2026-04-13 03:00 UTC: the previous Gluon tail is now closed from local evidence. `python/test/gluon/test_tmem_runtime_matrix.py` has full file coverage via mixed split granularity (`2683` selected cases: `2237 passed, 446 skipped`, no failures/errors). `python/test/gluon/test_lowerings.py` is green across four GPU shards (`4937 passed, 512 skipped`). Together with the earlier green first-phase groups 1-3, split-16 groups 13-14, isolated xdist-crash nodeid pass, and green `python/examples/gluon/`, current-head `test-gluon` has no deterministic known failures after the MMAv5 fix. The timeout root cause was static split imbalance in slow TMEM ldst composition/legality-probe buckets, not a failing nodeid.
 - Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green (`248 passed, 2 unsupported`)
   and `python/examples/gluon/` is green across four shards (`884 passed, 74
   skipped` total). The first `python/test/gluon/ python/tutorials/gluon/` phase

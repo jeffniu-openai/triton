@@ -11180,3 +11180,27 @@ Open after this slice:
   - generate/use duration data or split the heavy runtime-matrix tail by exact
     nodeid/file bucket, then finish the incomplete `--splits 16` groups 15/16
     without increasing timeouts blindly.
+
+## 2026-04-13 03:00 UTC: closed Gluon runtime-matrix/lowerings validation tail
+
+- Follow-up to the 01:19 UTC checkpoint: the remaining `test-gluon` uncertainty has been narrowed and closed from local evidence.
+- Root cause of the old long-running shards:
+  - `python/test/gluon/test_tmem_runtime_matrix.py` contains TMEM ldst descriptor composition and legality/probe buckets where individual cases take roughly 17-34s, including cases that ultimately skip as clean unsupported paths;
+  - static `pytest-split` grouping without durations packed many of those cases into the same late shards, so split-8/split-32 directory/file shards hit the outer timeout while still printing progress;
+  - no deterministic failing nodeid was produced.
+- Runtime-matrix coverage now complete:
+  - `python/test/gluon/test_tmem_runtime_matrix.py` covered all `2683` selected cases via a mixed split plan;
+  - aggregate of non-overlapping green shards: `2237 passed, 446 skipped`, no failures/errors;
+  - coverage pieces: split-8 group 1; split-32 group 5; split-128 groups 21-36 and 49-64; split-32 groups 10-12 and 17-32;
+  - the missing accounting gap from split-32 groups 7-8 was explicitly closed by split-128 groups 25-32.
+- Lowerings coverage now complete:
+  - `python/test/gluon/test_lowerings.py` with four GPU shards and `-n 2` passed as `4937 passed, 512 skipped` total;
+  - groups: `1363 passed`, `1355 passed, 8 skipped`, `1243 passed, 120 skipped`, `976 passed, 384 skipped`.
+- Combined status for `make test-gluon` style coverage:
+  - earlier four-GPU `python/test/gluon/ python/tutorials/gluon/` groups 1-3 were green;
+  - split-16 groups 13 and 14 were green;
+  - the group-4 xdist-crash nodeid passed isolated;
+  - the remaining lowerings/runtime-matrix tail is now directly green;
+  - `python/examples/gluon/` was already green across four shards (`884 passed, 74 skipped`).
+- Current conclusion: after the MMAv5 family-addressing fix, there are no deterministic known `test-gluon` failures on current head. The older timeout/worker-crash records should be treated as validation partitioning artifacts unless a narrower exact nodeid reproduces.
+- Validation methodology note: the slow legality/probe buckets should get duration-aware split data or a dedicated file-level split recipe before future broad sweeps; do not normalize multi-hour local shards when CI-scale expectation is about 35 minutes total / about 20 minutes test time.
