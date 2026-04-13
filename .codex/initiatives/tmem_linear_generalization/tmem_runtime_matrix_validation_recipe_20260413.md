@@ -59,7 +59,8 @@ Heavy buckets need finer scheduling:
 
 - Serial split-4 `ld_red` was green but too slow and imbalanced: groups took about `13:37`, `22:21`, `25:15`, and `20:37`.
 - Runner `ld_red` split-16 with `-n 4` passed the full bucket: `643 passed` across 16 groups, with pytest shard times from `13.58s` to `95.91s`.
-- `ld/st` is the largest bucket. Runner `ldst` split-16 with the stored duration cache, least-duration splitting, and `-n 4` passed the full bucket: `1201 passed, 441 skipped` across 16 groups, with pytest shard times from `271.68s` to `350.27s`.
+- `ld/st` is the largest bucket. Initial runner `ldst` split-16 with the stored duration cache, least-duration splitting, and `-n 4` passed the full bucket: `1201 passed, 441 skipped` across 16 groups, with pytest shard times from `271.68s` to `350.27s`.
+- Follow-up speedup on 2026-04-13: the five lifted descriptor roundtrip matrices were proven to be skip-only on current Blackwell hardware (`440` cases that compiled until `OutOfResources` and then called `pytest.skip`). Marking those matrices as known pre-execution skips preserves instruction/op coverage because they produced no op coverage before. After this change, the exact skip-only functions skip `440` cases in `2.40s`, and the full `ldst` bucket still reports `1201 passed, 441 skipped` with shard times reduced to `194.71s` to `273.96s`.
 
 Aggregating the current per-bucket evidence gives full matrix coverage: `2704 passed, 446 skipped` across all `3150` collected cases. This is a bucketed full sweep, not a reduced selector.
 

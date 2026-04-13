@@ -12764,3 +12764,23 @@ Open after this slice:
 - Classification:
   - timeout issue fixed at the validation workflow level by preserving stable caches, using exact selectors, and adding fine-grained/xdist scheduling for compile-heavy buckets;
   - no product failure or deadlock was found in the runtime matrix during this profile.
+
+## 2026-04-13 pre-skip known OOR lifted ld/st roundtrips
+
+- Profile follow-up found that five lifted descriptor roundtrip matrices were pure skip work on current Blackwell hardware:
+  - `test_tmem_runtime_matrix_ldst_descriptor_roundtrip_sweeps`;
+  - `test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps`;
+  - `test_tmem_runtime_matrix_ldst_descriptor_roundtrip_rowcol_permuted_sweeps`;
+  - `test_tmem_runtime_matrix_ldst_descriptor_rank5_roundtrip`;
+  - `test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip`.
+- These `440` cases previously compiled until `triton.runtime.errors.OutOfResources` and then called `pytest.skip`, so they produced no `tcgen05` instruction/op coverage. Marking them as known upfront skips preserves current instruction/op coverage while avoiding non-executable compiles.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - `env -u PYTHONPATH pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst` -> `1642/3150` tests collected;
+  - exact five skip-only functions -> `440 skipped in 2.40s`;
+  - full runner `ldst` with fresh cache prefix -> `1201 passed, 441 skipped`; shard times ranged from `194.71s` to `273.96s`.
+- Timing impact:
+  - previous full runner `ldst` shard range: `271.68s` to `350.27s`;
+  - current full runner `ldst` shard range: `194.71s` to `273.96s`;
+  - same selected `ldst` count and same pass/skip aggregate, but less compile work for known non-executable cases.
