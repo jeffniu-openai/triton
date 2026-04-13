@@ -11517,3 +11517,31 @@ Open after this slice:
     non-zero split-offset item;
   - remaining copy frontiers are multicast/layout combinations, true scales
     `warpx2`, and two-CTA `warpx2::02_13` descriptor/message semantics.
+
+## 2026-04-13 07:10 UTC: scales-copy parent-row subview negative is pinned
+
+- Promoted one representative outcome from the recorded 384-layout scales
+  `warpx2` subslice probe into the runtime matrix.
+- Added helper/test:
+  - `_make_scales_shared_layout_parent_row_subslice_probe`;
+  - `tmem_copy_scales_shared_subslice_layout_probe_kernel`;
+  - `test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported`.
+- The helper allocates a `128x16xi8` shared parent with the probe layout, slices
+  a `64x16` view at aligned starts `0` and `64`, and copies into
+  `TensorMemoryScalesLayout` without using `_reinterpret`; it exists only to
+  pin the verifier/descriptor-plan boundary.
+- Expected diagnostic: source maps to `tcgen05.copy.warpx4.32x128b`, but no
+  compatible TensorMemoryScales shared descriptor plan can be synthesized, and
+  the failure is reported cleanly before late LLVM lowering.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - exact new nodeid across four GPU split groups passed the two parametrized
+    selected cases (`start_row=0` and `64`);
+  - nearby scales-copy selector across four GPU split groups passed `9` selected
+    cases aggregate.
+- Status:
+  - the parent-row scales-subslice probe now has a stable user-level contract
+    test for one representative clean unsupported case;
+  - this does not close true scales `warpx2` or all multicast/layout search,
+    which remain direct-probe / descriptor-semantics frontiers.

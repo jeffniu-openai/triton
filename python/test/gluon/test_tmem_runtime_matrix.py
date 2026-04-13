@@ -292,6 +292,16 @@ def _make_scales_shared_layout_warpx2_column_first_row_tail():
     )
 
 
+def _make_scales_shared_layout_parent_row_subslice_probe():
+    return ttgl.SharedLinearLayout(
+        offset_bases=[
+            [0, 1], [0, 2], [0, 4], [0, 8], [64, 0], [1, 0],
+            [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]
+        ],
+        alignment=16,
+    )
+
+
 def _make_tmem_copy_warpx2_shared_layout():
     return ttgl.SharedLinearLayout(
         offset_bases=[[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]],
@@ -1659,6 +1669,29 @@ def tmem_copy_scales_layout_probe_kernel(in_ptr, out_ptr, smem_layout: ttgl.cons
     value = tmem.load(reg_layout)
     ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked),
                ttgl.convert_layout(value, blocked))
+
+
+@gluon.jit
+def tmem_copy_scales_shared_subslice_layout_probe_kernel(
+    out_ptr,
+    parent_layout: ttgl.constexpr,
+    start_row: ttgl.constexpr,
+):
+    PARENT_ROWS: ttgl.constexpr = 128
+    SMEM_H: ttgl.constexpr = 64
+    SMEM_W: ttgl.constexpr = 16
+
+    smem_parent = ttgl.allocate_shared_memory(ttgl.int8, (PARENT_ROWS, SMEM_W), layout=parent_layout)
+    smem = smem_parent.slice(start_row, SMEM_H, dim=0)
+    tmem = allocate_tensor_memory(ttgl.int8, (SMEM_H, SMEM_W), layout=TensorMemoryScalesLayout())
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    ttgl.store(out_ptr, 0)
 
 
 @gluon.jit
@@ -4912,6 +4945,30 @@ def test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error(ca
     assert "Use a shared layout that lowers to tcgen05.copy." in text
     assert "same descriptor family" in text
     assert "late LLVM lowering" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("start_row", (0, 64))
+def test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported(start_row, capfd):
+    out = torch.empty((1, ), dtype=torch.int32, device="cuda")
+    parent_layout = _make_scales_shared_layout_parent_row_subslice_probe()
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_scales_shared_subslice_layout_probe_kernel[(1, )](
+            out,
+            parent_layout,
+            start_row,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.warpx4.32x128b" in text
+    assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
+    assert "Use a shared layout that lowers to tcgen05.copy.warpx4.32x128b" in text
+    assert "This is reported as cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

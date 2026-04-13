@@ -85,17 +85,18 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- Latest `tcgen05.cp` contract checkpoint, 2026-04-13 06:55 UTC:
-  runtime-matrix clean-negative coverage now pins both no-scales transposed
-  shared-source copies and invalid shared-subslice split offsets. The new
-  `test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_clean_error`
-  keeps the copy source as a shared `memdesc_subslice` view and confirms a
-  non-tile-aligned split start fails with `The split offset may not touch the
-  tile`, before lowering and without PassManager/assert noise. Validation:
-  `py_compile` passed, rebuild was a no-op success, the exact nodeid passed on
-  its selected split group (`1 passed`, other split groups deselected), and the
-  nearby copy clean-negative selector passed (`10 passed` aggregate across four
-  split groups).
+- Latest `tcgen05.cp` contract checkpoint, 2026-04-13 07:10 UTC:
+  runtime-matrix clean-negative coverage now also pins a representative scales
+  copy from a larger shared parent subview. The new
+  `test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported`
+  covers aligned `start_row` values `0` and `64` with the parent-row layout from
+  the 384-layout `warpx2` subslice probe, and confirms the existing clean
+  TensorMemoryScales descriptor-plan diagnostic is reported before lowering.
+  Validation: `py_compile` passed, rebuild was a no-op success, the exact new
+  nodeid passed both selected parametrized cases across split groups, and the
+  nearby scales-copy selector passed (`9 passed` aggregate across active split
+  groups). The previous no-scales transposed shared-source and invalid
+  split-offset clean negatives remain covered.
 
 - Latest `ld.red` contract checkpoint, 2026-04-13 06:20 UTC:
   runtime-matrix clean-negative coverage now pins the non-f32

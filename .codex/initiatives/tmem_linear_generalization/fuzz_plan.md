@@ -398,8 +398,12 @@ Every fuzz case records:
 - Covered by `test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_clean_error`:
   no-scales copies from shared subviews whose non-zero split start intersects a
   tile fail with the clean `The split offset may not touch the tile` diagnostic.
-- Multicast/layout combinations that cannot be described by the copy atom set
-  remain a watch item.
+- Covered by `test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported`:
+  a representative parent-row shared subview from the `warpx2` subslice probe
+  maps to `tcgen05.copy.warpx4.32x128b` but fails cleanly when no compatible
+  TensorMemoryScales shared descriptor plan can be synthesized.
+- Additional multicast/layout combinations that cannot be described by the copy
+  atom set remain a watch item.
 
 ### 5. `mma`
 
