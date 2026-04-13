@@ -12218,3 +12218,33 @@ Open after this slice:
   - exact new nodeid across four GPUs: `8 passed` aggregate (`2` per group);
   - nearby `mma_scaled and (lhs or tile_permuted)` selector: `30 passed`
     aggregate, shard results `8`, `8`, `8`, and `6` selected cases.
+
+## 2026-04-13 14:09 UTC: two-CTA `warpx2::02_13` descriptor-candidate probe
+
+- Added temporary `TRITON_TMEM_COPY_DEBUG` verifier logging, rebuilt, and compared
+  the no-scales two-CTA `01_23` positive with the `02_13` clean-unsupported path.
+- Finding from the verifier dump:
+  - `01_23` accepts the representable `32x4` descriptor layout with row bases
+    `4,8,16,32,64,128` and col bases `1,2`;
+  - `02_13` tries the expected `64x4`, `64x4`, and fallback `32x4` plans, but
+    does not naturally generate that accepted layout.
+- Probe patch:
+  - injected the `01_23`-style descriptor candidate into the `02_13` fallback;
+  - temporarily bypassed the lowering row-stride assertion for `02_13` so codegen
+    could emit the instruction.
+- Result:
+  - codegen emitted exactly
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`;
+  - runtime output was fully wrong versus the extended two-CTA `02_13` oracle
+    (`diff_count=1024`), duplicating source-column pairs instead of selecting
+    the required adjacent source columns.
+- Conclusion:
+  - do not solve this frontier by accepting a representable `01_23` descriptor
+    candidate or by relaxing the stride assertion;
+  - future work needs actual `02_13` descriptor/address-message synthesis.
+- Cleanup/validation:
+  - removed all temporary source changes using the saved reverse diff;
+  - `make` rebuilt clean source;
+  - restored controls passed under four-GPU split execution: `01_23` positive and
+    `02_13` clean unsupported selected on groups 1 and 2; groups 3 and 4 had no
+    selected cases.

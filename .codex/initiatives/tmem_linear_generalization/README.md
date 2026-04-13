@@ -89,6 +89,23 @@ When resuming the initiative:
 
 - Latest two-CTA `warpx2::02_13` corrected direct-PTX checkpoint, 2026-04-13 13:20 UTC: the durable probe `experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` now uses compile-only warmup by default, with `--prime-canonical` retained only to reproduce historical runs that launched the canonical `warpx2::01_23` kernel first. Regenerated artifacts show zero matches against the extended two-CTA `02_13` oracle. All `22` named opcode/descriptor/two-message variants execute with finite output but duplicate a source-column pair (`duplicates_col_pair=true`). The four-GPU source-offset JSONL sweep covers `sourceOffsetB128` `36..127` with destination deltas `0/4`: `74` records for offsets `36..72` execute but all duplicate a source-column pair, while `110` records for offsets `73..127` launch-fail in isolated child processes. The older 2026-04-13 09:42 NaN/partial-duplicate breakdown is superseded because that probe launched the canonical kernel before patched cubins. Conclusion: keep public two-CTA `warpx2::02_13` clean unsupported; next useful work is descriptor/address-message synthesis from the layout model, not another direct-seed offset toggle.
 
+- Latest two-CTA `warpx2::02_13` descriptor experiment, 2026-04-13 14:09 UTC: a
+  temporary verifier probe compared the known-good `01_23` descriptor plan
+  against `02_13`, then injected the `01_23`-style representable `32x4`
+  descriptor candidate into the `02_13` fallback and temporarily bypassed the
+  lowering row-stride assertion. This proved that descriptor representability
+  alone is not sufficient: lowering emitted
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but runtime output differed
+  in all `1024` elements and duplicated source-column pairs (`[0,128,0,128]`
+  style rows instead of the extended `02_13` oracle). All temporary source
+  changes were removed and clean source was rebuilt; the restored two-copy
+  controls passed (`01_23` positive and `02_13` clean unsupported selected on
+  groups 1-2; groups 3-4 had no selected cases). Conclusion: the missing piece
+  is not just adding a representable descriptor candidate or skipping the
+  stride guard. Future support needs a true `02_13` descriptor/address-message
+  schedule that changes the source mapping, or it should remain clean
+  unsupported.
+
 - Latest copy-planner debug checkpoint, 2026-04-13 13:43 UTC: temporary `TRITON_TMEM_COPY_DEBUG` instrumentation confirmed that two-CTA `warpx2::02_13` and the tensor-memory-scales `warpx2_candidate` are rejected in `TMEMCopyOp::verify`, before LLVM lowering. Two-CTA `02_13` classifies into three `warpx2::02_13` plans: direct-seed `64x4`, descriptor `64x4`, and fallback descriptor `32x4`; direct seed is unavailable for the `256x4` shared tile, and none of the `95/95/161` descriptor candidates is MMASMEM-representable. The known-good two-CTA `01_23` path succeeds through the `32x4` plan with a descriptor candidate equivalent to row bases `4,8,16,32,64,128` and col bases `1,2`; the analogous two-CTA `02_13` fallback has a zero low col basis and still fails descriptor representation. Single-CTA `02_13` succeeds only through the `128x4` direct seed. Combined with the corrected direct-PTX probes, this rules out blindly extending direct seed to `256x4`; the remaining work is a real descriptor/address-message model or continued clean unsupported.
 
 - Latest scales `warpx2` direct-PTX correction checkpoint, 2026-04-13 13:18 UTC: the durable probe `experiments/probe_cp_scales_warpx2_direct_ptx.py` now uses compile-only warmup by default so patched variants are not primed by a prior canonical `warpx4` launch. The corrected results in `experiments/results/probe_cp_scales_warpx2_direct_ptx_current.jsonl` show the unpatched `warpx4_control` still roundtrips, but unprimed `first_01_23_only` and `first_02_13_only` only fill the low half of each logical row (`diff_count=510` for random, `512` for arange). Patching both original messages or using only the second message still launch-fails with illegal memory access. The old apparent positive was a primed-state artifact: `first_01_23_only --prime-canonical` can reproduce the historical success after launching the canonical copy first, but that is not valid support evidence. Conclusion: true scales `warpx2` remains unsupported/unproven; do not land an alias or opcode-suffix swap based on the earlier primed direct-PTX result.

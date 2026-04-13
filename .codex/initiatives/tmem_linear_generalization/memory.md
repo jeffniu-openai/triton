@@ -7169,3 +7169,28 @@ rejection, not rescue
   - exact new nodeid passed `8` selected cases across four GPU split groups;
   - nearby selector `mma_scaled and (lhs or tile_permuted)` passed `30` selected
     cases across four GPU split groups (`8`, `8`, `8`, `6`).
+
+## 2026-04-13 14:09 UTC: two-CTA `warpx2::02_13` representable-descriptor probe is negative
+
+- Temporary instrumentation compared no-scales two-CTA copy verifier candidates:
+  - known-good `warpx2::01_23` accepts a `32x4` descriptor layout with row bases
+    `4,8,16,32,64,128` and col bases `1,2`;
+  - the `warpx2::02_13` fallback never naturally produces that accepted layout.
+- Temporarily injecting the `01_23`-style representable descriptor candidate for
+  `02_13` made verifier selection possible, but lowering then hit the existing
+  row-stride assertion. Temporarily bypassing that assertion allowed codegen to
+  emit `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`.
+- Runtime result from that forced path was wrong: `diff_count=1024` against the
+  extended two-CTA `02_13` oracle, with duplicated source-column pairs such as
+  `[0,128,0,128]` where the oracle expects `[64,192,65,193]`.
+- Interpretation: a representable `32x4` descriptor layout plus the `02_13`
+  opcode is not enough. The real fix must synthesize a descriptor/address/message
+  schedule that changes the source mapping; do not remove the clean unsupported
+  boundary by adding the `01_23` descriptor candidate or by relaxing the stride
+  assertion.
+- Hygiene/validation:
+  - all temporary changes to `Ops.cpp`, `TensorMemoryUtils.cpp`, and
+    `TensorMemoryToLLVM.cpp` were reverted;
+  - `make` rebuilt clean source;
+  - restored two-CTA copy controls passed under four-GPU split execution (`1`
+    selected case each on groups 1 and 2; groups 3 and 4 selected none).
