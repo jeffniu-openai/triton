@@ -12686,3 +12686,24 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`; or
   - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
+
+## 2026-04-13 after plain LHS N=256 checkpoint: full runtime-matrix sweep needs better sharding
+
+- Attempted a wider validation of `python/test/gluon/test_tmem_runtime_matrix.py`
+  after the scaled/plain LHS coverage commits.
+- First attempt used four GPU shards with `--splits 4 --group {1..4}` and fresh
+  per-GPU caches. Each shard selected roughly `788` cases and timed out under
+  `timeout 900s` while still printing progress; there were no assertion failure
+  traces before timeout.
+- Follow-up attempt used 16 logical pytest-split groups scheduled four at a time
+  across the GPUs. The per-group selection was about `197` cases, but the first
+  wave still timed out under `timeout 420s` while printing progress because the
+  groups were cold-cache compile heavy. Again, no failure trace was observed.
+- Treat this as inconclusive validation, not a red test. The next full-file
+  runtime-matrix attempt should either:
+  - use stored pytest durations / duration-aware shards;
+  - reuse a stable cache per GPU across waves instead of cold per-group caches;
+  - split by file sections/selectors (`ldst`, `cp`, `mma`) and exact rerun any
+    failing nodeid; or
+  - run under the actual CI partitioning rather than one ad-hoc local full-file
+    invocation.
