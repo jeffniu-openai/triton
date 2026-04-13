@@ -87,6 +87,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest scales `warpx2` direct-PTX probe checkpoint, 2026-04-13 12:59 UTC: added durable experiment `experiments/probe_cp_scales_warpx2_direct_ptx.py` and current results `experiments/results/probe_cp_scales_warpx2_direct_ptx_current.jsonl`. Starting from the known-good tensor-memory-scales `warpx4.32x128b` copy, patched PTX with only the first original descriptor/message changed to `warpx2::01_23.64x128b` or `warpx2::02_13.64x128b` roundtrips both random and arange `64x16xi8` inputs. Patching both original messages, or using only the second message, launch-fails with illegal memory access. A temporary compiler-planner alias experiment was reverted: forced integrated `01_23` emitted one instruction but only populated half the row data / repeated rows, and forced `02_13` hit the existing row-basis assertion. Conclusion: this is useful ISA evidence, but not a supported lowering yet; true scales `warpx2` remains a descriptor/address-model frontier, not an opcode-suffix swap.
+
 - Latest subview-offset checkpoint, 2026-04-13 09:14 UTC: fixed a compiler assertion where
   TMEM subview base lowering used a non-surjective projected ld/st query layout
   as if it could invert arbitrary logical offsets. `getTMemViewOffsetForLowering`

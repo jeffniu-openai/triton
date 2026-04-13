@@ -12001,3 +12001,31 @@ Open after this slice:
 - Aggregate: `258 passed, 50 skipped`, no failures/errors.
 - Interpretation: the direct MMA/scaled-MMA runtime-matrix surface remains green after adding two-CTA scaled-MMA multicast subview coverage and full-format `tile_n=64` tile-permuted scaled accumulator coverage.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
+
+## 2026-04-13 12:59 UTC: scales `warpx2` direct-PTX probe captured
+
+- Added durable experiment:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_scales_warpx2_direct_ptx.py`
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/probe_cp_scales_warpx2_direct_ptx_current.jsonl`
+- Probe method:
+  - compile the known-good public tensor-memory-scales `tmem_copy_scales_warpx4_kernel`;
+  - patch the generated two-message `tcgen05.cp.cta_group::1.warpx4.32x128b` PTX sequence;
+  - assemble with ptxas and launch one variant per process because illegal variants poison the CUDA context.
+- Results from the JSONL artifact:
+  - `warpx4_control` matches random input exactly;
+  - `first_01_23_only` and `first_02_13_only` match random and arange inputs exactly (`diff_count=0`);
+  - `both_01_23_original_descs`, `both_02_13_original_descs`, `second_01_23_only`, and `second_02_13_only` launch-fail with illegal memory access.
+- Temporary compiler experiment, reverted before this checkpoint:
+  - added an optional scales-only planner alias for multicast-3 scales copies;
+  - forcing `warpx2::01_23` first with widened logical column coverage emitted one `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`, but produced wrong data: only half the row columns were populated and rows repeated;
+  - forcing `warpx2::02_13` hit the existing lowering row-basis assertion;
+  - therefore the direct PTX observation is not sufficient to land a source-level alias or suffix swap.
+- Current conclusion:
+  - true scales `warpx2` remains plausible at the ISA/message level, but still needs descriptor/address-model synthesis in the planner;
+  - do not use the historical public `warpx2_candidate` or the canonical `warpx4` descriptor patch as proof of a supported compiler path;
+  - the next useful step is to compare the patched canonical first descriptor against the descriptor emitted by a planner-derived alias and model the missing source-column/row mapping explicitly.
+- Validation / hygiene:
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_scales_warpx2_direct_ptx.py` passed;
+  - after reverting the temporary source experiment, `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
+  - generated the JSONL artifact via parallel subprocesses over four GPUs.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this docs/artifact update used exact scripted writes.
