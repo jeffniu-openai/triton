@@ -7,6 +7,11 @@ current tuned MoE BMM1 fused-gather kernel. It intentionally duplicates the
 live example implementation instead of importing it, so the tutorial keeps
 working even if the example file changes shape later.
 
+Unlike the earlier Gluon tutorials, this file is not trying to introduce one
+new primitive in isolation. It is a tutorial about how to take a real fused
+kernel from “working” to “measured and tuned”, while keeping the reasoning
+legible enough that somebody else can continue the work later.
+
 Use it as a practical guide for how this project was actually driven:
 
 - define a workload and a correctness contract
@@ -14,6 +19,23 @@ Use it as a practical guide for how this project was actually driven:
 - benchmark broadly before trusting a win
 - use Nsight Compute, PTX, and SASS to answer a concrete question
 - keep durable notes for both promoted changes and dead ends
+
+What problem are we solving?
+----------------------------
+
+We want a Blackwell-only kernel for the first MoE expert projection
+(``BMM1`` / ``MM1``) in a fused-gather setting:
+
+- FP8 activations
+- MXFP4 weights
+- per-expert bias
+- fused exact SwiGLU
+- FP8 output
+- ragged expert routing
+
+The production reference path already existed. The point of this tutorial kernel
+was to create a standalone, readable implementation that could be tuned
+aggressively without dragging around every historical experiment.
 
 The current kernel structure is:
 
@@ -32,15 +54,18 @@ The current kernel structure is:
                                                        v
                                                   FP8 global output
 
-What produced durable wins in this project:
+What survived after a long optimization campaign?
+-------------------------------------------------
+
+These changes were durable wins:
 
 - packed ``f32x2`` epilogue math
 - packed FP8 conversion / store
 - helper-store epilogue ownership
 - low-batch ``BLOCK_M`` policy
-- measurement discipline
+- same-input measurement discipline
 
-What did not:
+These directions did **not** survive:
 
 - broad schedule sweeps after the promoted banded schedule
 - deleting buffers to chase occupancy
@@ -48,15 +73,31 @@ What did not:
 - async TMA store as a drop-in helper replacement
 - source-level scalar cleanups without PTX/SASS or NCU evidence
 
+The low-batch conclusion is worth emphasizing because it is easy to guess
+wrong. The first missing feature looked like split-K, but broad GPT-OSS MM1
+measurement showed that low-batch performance was mostly a tile-size problem.
+Once the kernel switched to smaller ``BLOCK_M`` regimes at small slice sizes, it
+already beat the production reference across the full GPT-OSS sweep, so split-K
+stopped being the next step for this workload.
+
 The bottom of this file contains:
 
 - a pytest correctness check against the production reference
 - a ``triton.testing.perf_report`` batch sweep
 
-For the full optimization history, see:
+How to read this file
+---------------------
 
-- ``.codex/initiatives/artifacts/ws-matmul-performance-report.md``
-- ``.codex/initiatives/artifacts/fp8-mxfp4-fused-gather-matmul.md``
+Read it in four passes:
+
+1. the kernel topology and partition helpers
+2. the host-side configuration policy
+3. the correctness test
+4. the benchmark and the inline performance summary at the end
+
+The goal is that this tutorial is useful even if you never open the initiative
+docs. It therefore includes the key conclusions directly in comments rather than
+just pointing elsewhere.
 """
 
 from dataclasses import dataclass, replace
@@ -108,6 +149,22 @@ from triton_kernels.topk import topk
 # Device Code
 # ===-----------------------------------------------------------------------===#
 
+# %%
+# The device code is organized around ownership. The highest-value structural
+# change in this project was not a new math primitive; it was deciding which
+# partition should own which part of the pipeline.
+#
+# The final design keeps:
+# - one activation loader
+# - one weight+scale loader
+# - one MMA partition
+# - one exact-SwiGLU epilogue partition
+# - one store-helper partition
+#
+# The helper-store split is intentional. It lets the epilogue partition hand off
+# packed FP8 fragments through a small SMEM ring and continue computing while
+# separate warps perform the final global stores.
+
 
 @gluon.jit
 def advance(idx: gl.tensor, phase: gl.tensor, num_bufs: gl.constexpr) -> tuple[gl.tensor, gl.tensor]:
@@ -145,6 +202,9 @@ def apply_block_schedule(
     slice_offsets: gl.tensor,
     block_schedule: gl.tensor,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
+    # Schedule experiments ended up being a second-order knob on this workload.
+    # The only schedule change that survived broad measurement was a modest
+    # banded row-major traversal, so the tutorial keeps only that path.
     pid_mn = block_id % (grid_m * GRID_N)
     schedule_pid_m, pid_n = banded_row_major(pid_mn, grid_m, GRID_N, BAND_N=20)
 
@@ -239,7 +299,11 @@ def _split_m_float2(values):
 
 @gluon.jit
 def split_m_subtiles(values, subtile_factor: gl.constexpr):
-    # For epilogue subtiling.
+    # The epilogue is row-subtiled so it can pipeline:
+    #   exact SwiGLU math -> packed FP8 handoff -> helper-store
+    #
+    # This was a real win. Keeping the whole tile monolithic made it harder to
+    # overlap the epilogue with stores and increased register pressure.
     subtiles = (values,)
     for split_level in gl.static_range(5):
         if (1 << split_level) < subtile_factor:
@@ -952,6 +1016,13 @@ class KernelConfig:
     STORE_HELPER_REGS: int = 16
 
 
+# %%
+# The host-side selector was one of the most important lessons from the project.
+# Low-batch performance was not missing split-K first; it was missing smaller
+# M tiles. The current ladder is the simplest policy that survived the full
+# GPT-OSS 120B MM1 sweep.
+
+
 def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
     if ragged_metadata.expected_slice_size is not None:
         return ragged_metadata.expected_slice_size
@@ -961,6 +1032,9 @@ def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
 def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> KernelConfig:
     slice_size = estimated_slice_size(ragged_metadata, m)
     config = KernelConfig()
+    # These thresholds are empirical. They came from a broad batch sweep, not a
+    # one-point autotune. The important thing is the policy shape:
+    # smaller per-expert slices -> smaller BLOCK_M and matching epilogue tile.
     if slice_size <= 8:
         return replace(config, BLOCK_M=16, EPILOGUE_ROW_SUBTILE_FACTOR=2)
     if slice_size <= 16:
@@ -980,6 +1054,9 @@ def matmul(
     c: torch.Tensor,
     fused_activation: FusedActivation,
 ):
+    # This wrapper deliberately returns [M, N] directly and keeps the launch
+    # path explicit. The tutorial is meant to show how the final kernel is
+    # wired, not to hide setup behind another abstraction layer.
     specs = fused_activation.specs
     assert specs.name == "swiglu"
     reduction_n = specs.reduction_n
@@ -1001,6 +1078,9 @@ def matmul(
 
     config = select_kernel_config(a_ragged_metadata, m)
 
+    # The persistent grid is clamped to the available SM count, then the kernel
+    # walks the (M, N) tiles persistently. Earlier schedule experiments tried
+    # many alternatives; the tutorial only keeps the one that survived.
     mxfp_block_size = 32
     scale_size_outer = 128
     scale_size_inner = 4
@@ -1088,6 +1168,14 @@ def matmul(
 # Benchmark and Testing Helpers
 # ===-----------------------------------------------------------------------===#
 
+# %%
+# Everything below is part of the tutorial, not just test scaffolding. The most
+# important measurement rule in the project was:
+#
+#   baseline and candidate must consume the same prepared inputs
+#
+# So the example and the reference both run from the same `PreparedCase`.
+
 GPT_OSS_120B_NUM_EXPERTS = 128
 GPT_OSS_120B_EXPERTS_PER_TOKEN = 4
 GPT_OSS_120B_NUM_EXPERT_SHARDS = 8
@@ -1160,6 +1248,14 @@ def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[Ra
 
 
 def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
+    # The benchmark workload is GPT-OSS 120B MM1:
+    # - 128 experts
+    # - 4 experts per token
+    # - 8 expert shards
+    # - hidden size 2880
+    # - intermediate size 2880
+    #
+    # The fused MM1 projection is therefore 2880 x 5760 before SwiGLU reduction.
     torch.manual_seed(seed)
 
     local_rank = GPT_OSS_120B_LOCAL_RANK
@@ -1237,6 +1333,11 @@ def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, P
 # Unit Tests
 # ===-----------------------------------------------------------------------===#
 
+# %%
+# The correctness test checks the tutorial kernel directly against the
+# production reference. It does not attempt to re-validate the reference itself.
+# That keeps the tutorial test focused on the thing we are teaching.
+
 
 def is_blackwell():
     return triton.runtime.driver.active.get_current_target().backend == "cuda" and torch.cuda.get_device_capability()[0] == 10
@@ -1274,6 +1375,12 @@ def test_op(batch_size):
 # ===-----------------------------------------------------------------------===#
 # Benchmarking
 # ===-----------------------------------------------------------------------===#
+
+# %%
+# The benchmark intentionally sweeps the full GPT-OSS MM1 batch ladder instead
+# of one or two showcase points. That was a hard-earned lesson from the tuning
+# work: selector and buffering changes often look fine at one batch and regress
+# elsewhere.
 
 providers = ["example", "reference"]
 bench_configs = [
@@ -1315,3 +1422,32 @@ def bench(batch_size, provider):
 
 if __name__ == "__main__":
     bench.run(save_path=".", print_data=True)
+
+
+# %%
+# Representative final sweep data
+# -------------------------------
+#
+# The exact numbers depend on the host, clock state, and software revision, but
+# the tuned kernel consistently beat the production reference across the GPT-OSS
+# 120B MM1 sweep when this tutorial was finalized. A direct run of this
+# tutorial printed the following representative points:
+#
+#   batch=128    example=  66.64 TFLOP/s   reference=  63.81 TFLOP/s   +4.43%
+#   batch=512    example= 248.91 TFLOP/s   reference= 238.27 TFLOP/s   +4.46%
+#   batch=2048   example= 833.64 TFLOP/s   reference= 791.21 TFLOP/s   +5.36%
+#   batch=8192   example=2014.87 TFLOP/s   reference=1843.42 TFLOP/s   +9.30%
+#   batch=16384  example=2532.83 TFLOP/s   reference=2364.60 TFLOP/s   +7.12%
+#   batch=31744  example=2939.59 TFLOP/s   reference=2728.71 TFLOP/s   +7.73%
+#
+# Aggregate summary from that sweep:
+#
+# - example won all measured points
+# - mean speedup:   +5.88%
+# - median speedup: +4.94%
+# - best point:     +11.39% at batch=5120
+# - weakest point:  +2.30% at batch=26624
+#
+# The point of embedding these results in the tutorial is pedagogical: a reader
+# should be able to understand both *what* was built and *why this final shape
+# was chosen* without chasing external initiative notes.

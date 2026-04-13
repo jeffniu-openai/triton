@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-13T06:12:00Z
+updated: 2026-04-13T07:08:00Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -667,6 +667,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: `python /root/.codex/skills/.system/skill-creator/scripts/quick_validate.py /root/.codex/skills/kernel-optimization`
   - Learnings: The best way to make the skill more reusable was not to paste the whole tutorial into the core skill body. The better shape is a small core skill plus a tutorial-style playbook reference that teaches the seven-step loop, the Gluon matmul case-study reference that captures the condensed technical lessons, and the existing measurement / NCU / occupancy references for deeper dives.
   - Plan updates: Keep using the skill as the front door and add future workload- or architecture-specific knowledge as separate references rather than growing `SKILL.md` into another report.
+- `2026-04-13` Completed: Reworked the standalone Gluon tutorial into a self-contained teaching document
+  - Artifact: `python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`
+  - Validation: `make` from `/root/code/triton`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python -m py_compile /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels pytest -s --tb=short /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py::test_op`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`
+  - Learnings: A standalone file is not automatically a tutorial. The earlier version was technically self-contained but still read like a copied example with a long header. The improved version now carries its own optimization story, inline explanations of the surviving design decisions, a clearer section structure in the style of the Gluon tutorials, and embedded batch-sweep performance data so the reader does not need the initiative docs for context.
+  - Plan updates: Keep the tutorial pedagogical even if the live example changes. Future updates should preserve the “teach the workflow and the decisions” framing rather than turning the file back into a thin mirror of the example.
 
 ## Next Up
 
