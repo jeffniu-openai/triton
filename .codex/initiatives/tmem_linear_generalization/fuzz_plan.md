@@ -509,13 +509,15 @@ Every fuzz case records:
   MMAv5 two-CTA layout helper.
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
-  for both legacy and canonical accumulator layouts, across both subviews and
-  full-shape tile-permuted operand-A descriptors at logical `K=256`; mixed
-  `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape tile-permuted TMEM-LHS
-  descriptors are clean unsupported boundaries, not positive targets yet,
-  because `mxf8f6f4` fp4 LHS currently requires `fp4_padded` shared-memory
-  operand-A storage. The subview frontier is pinned by
-  `experiments/probe_mma_scaled_lhs_subslice_formats.py`, and the runtime
+  for both legacy and canonical accumulator layouts. Subview operand-A
+  descriptors now span `blockN in {128, 256}` and `blockK in {128, 256}` with
+  exact scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`,
+  while full-shape tile-permuted operand-A descriptors remain covered at
+  logical `K=256`. Mixed `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape
+  tile-permuted TMEM-LHS descriptors are clean unsupported boundaries, not
+  positive targets yet, because `mxf8f6f4` fp4 LHS currently requires
+  `fp4_padded` shared-memory operand-A storage. The subview frontier is pinned
+  by `experiments/probe_mma_scaled_lhs_subslice_formats.py`, and the runtime
   matrix now also pins the full-shape tile-permuted clean-negative path.
 
 #### Checks

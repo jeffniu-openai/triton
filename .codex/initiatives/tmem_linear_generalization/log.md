@@ -12633,3 +12633,29 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`; or
   - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
+
+## 2026-04-13 after scaled-copy multicast expansion: scaled LHS subviews cover N/K matrix
+
+- Expanded `SCALED_MMA_LHS_SUBSLICE_NK_CASES` so
+  `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_matrix` covers
+  `N in {128, 256}` and `K in {128, 256}` for the packed-storage reachable
+  scaled format pairs (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
+  `nvfp4/nvfp4`) across legacy/canonical accumulator layouts.
+- A scratch probe before the edit split the twenty-four new `N/K` combinations
+  over four GPUs and all passed. The runtime matrix now pins exact scaled-MMAv5
+  opcode count as `(K // 128) * base_count`, so `K=256` doubles the LHS-subview
+  instruction count just like the direct-root and scaled-copy helper matrices.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - exact expanded nodeid across four GPU `pytest-split` groups: `32 passed`
+    aggregate (`8` per group);
+  - nearby selector `-k 'mma_scaled and lhs and subslice'`: `35 passed`
+    aggregate (`9`, `9`, `9`, `8`);
+  - tight MMA selector `-k 'test_tmem_runtime_matrix_mma'`: `287 passed`
+    aggregate (`72`, `72`, `72`, `71`) in `56s`, `120s`, `118s`, and `132s`.
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`; or
+  - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
