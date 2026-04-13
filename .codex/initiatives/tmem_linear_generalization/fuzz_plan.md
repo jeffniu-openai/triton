@@ -500,10 +500,12 @@ Every fuzz case records:
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts, across both subviews and
   full-shape tile-permuted operand-A descriptors at logical `K=256`; mixed
-  `mxfp4/mxfp8` dense TMEM-LHS subviews are a clean unsupported boundary, not
-  a positive target yet, because `mxf8f6f4` fp4 LHS currently requires
-  `fp4_padded` shared-memory operand-A storage; this is pinned by
-  `experiments/probe_mma_scaled_lhs_subslice_formats.py`
+  `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape tile-permuted TMEM-LHS
+  descriptors are clean unsupported boundaries, not positive targets yet,
+  because `mxf8f6f4` fp4 LHS currently requires `fp4_padded` shared-memory
+  operand-A storage. The subview frontier is pinned by
+  `experiments/probe_mma_scaled_lhs_subslice_formats.py`, and the runtime
+  matrix now also pins the full-shape tile-permuted clean-negative path.
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.

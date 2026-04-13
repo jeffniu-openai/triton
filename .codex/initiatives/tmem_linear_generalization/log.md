@@ -12458,3 +12458,31 @@ Open after this slice:
 - Next:
   - keep public two-CTA `02_13` as clean unsupported until a descriptor/address-message model preserves the source-column bit;
   - continue with the descriptor/address-model frontier, scales `warpx2`, or the next broader MMAv5/scaled-MMAv5 saturation gap.
+
+## 2026-04-13 14:57 UTC: scaled TMEM-LHS tile-permuted mixed fp4-A is a clean negative
+
+- Added full-shape tile-permuted TMEM-LHS coverage for the same mixed fp4-A
+  scaled-MMAv5 contract already pinned on the subview path:
+  - new test: `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported`;
+  - format: `mxfp4/mxfp8` at logical `K=256`;
+  - accumulator layouts: legacy and canonical TMEM-linear.
+- Rationale:
+  - the positive full-shape tile-permuted TMEM-LHS matrix intentionally covers
+    only the packed-storage reachable subset;
+  - mixed `mxf8f6f4` fp4 operand-A still requires the padded operand-A storage
+    model represented by `fp4_padded` shared memory, so a dense TMEM-LHS
+    descriptor must remain a verifier-level clean unsupported boundary rather
+    than compiling to wrong data.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - exact new nodeid over four GPU `pytest-split` groups: two selected
+    parameters passed; groups 3 and 4 selected none;
+  - nearby selector `-k 'mma_scaled and lhs and tile_permuted'`: `10 passed`
+    across four GPU groups;
+  - tight family selector `-k 'test_tmem_runtime_matrix_mma'`: `203 passed`
+    across four GPU groups (`51`, `51`, `51`, `50`).
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`, or mine the next bounded MMAv5/scaled-MMAv5
+    coverage gap.

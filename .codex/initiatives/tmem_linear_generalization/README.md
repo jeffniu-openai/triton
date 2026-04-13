@@ -87,6 +87,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest scaled-MMAv5 TMEM-LHS clean-negative checkpoint, 2026-04-13 14:57 UTC: full-shape tile-permuted TMEM-LHS now has the same mixed fp4-A contract coverage as the subview path. New `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported` covers `mxfp4/mxfp8` over legacy and canonical TMEM-linear accumulator layouts at logical `K=256`, confirms the verifier reports the padded-storage fp4-A diagnostic, and checks that the failure is clean rather than a PassManager/assertion crash. Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8` no-op success; exact new nodeid passed its two selected parameters across four GPU split groups; nearby `-k 'mma_scaled and lhs and tile_permuted'` passed `10` selected cases across four groups; tight `-k 'test_tmem_runtime_matrix_mma'` passed `203` selected cases across four GPU split groups (`51`, `51`, `51`, `50`).
+
 - Latest copy-planner cleanup checkpoint, 2026-04-13 14:55 UTC: `getTMemCopyPlans` no longer offers the direct-seed `warpx2::02_13` plan for multi-CTA/block layouts. The direct seed remains available for the executable single-CTA `128x4` `02_13` path, but the two-CTA `256x4` case stays on descriptor-plan search only because repeated actual-layout probes show the direct-seed extension either duplicates the source-column pair, writes all zeros, or traps for unaligned TMEM deltas. The stale comment implying a representable `01_23`-style descriptor shape might be enough was replaced with the current invariant: descriptor representability alone is not proof; a future `02_13` fix must preserve the missing 4-byte source-column bit through a real descriptor/address schedule. Validation: `make -j8` rebuilt cleanly; the affected exact selector (`warpx2_02_13_candidate_positive or warpx2_02_13_twocta_candidate_reports_clean_unsupported or warpx2_01_23_twocta_positive`) passed on the three non-empty four-GPU split groups; broader `-k 'cp_no_scales_warpx2'` passed `8` cases across four GPU split groups; `lit -v test/TritonNvidiaGPU/invalid.mlir` passed; `git diff --check` passed.
 
 - Latest scaled-MMAv5 two-CTA accumulator-subview `block_n=256` probe, 2026-04-13 after the tight MMA validation: do not expand `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` to the obvious `parent_n=512` / `slice_start in {0,256}` shape. Representative `mxfp8/mxfp8` probes for both slice starts and multicast modes fail launch metadata with tensor-memory OOR (`Required: 524`, hardware limit `512`). A smaller `parent_n=384` would fit the desired offset range but is invalid for `_make_tmem_linear_layout_mmav5_twocta`, which currently requires power-of-two `N`. Keep current `block_n=128`, `parent_n=256`, `slice_start in {0,128}` coverage as the live offset-subview matrix unless a different legal parent layout is designed.
@@ -593,10 +595,10 @@ When resuming the initiative:
     operand-A descriptor at logical `K=256`, with no `ttg.memdesc_subslice`;
   - both tests feed TMEM operand-A descriptors directly to `tcgen05_mma_scaled`
     and pin exact PTX/LLIR scaled-MMA and commit opcodes;
-  - mixed `mxfp4/mxfp8` dense TMEM-LHS subviews are pinned as a clean
-    unsupported case because `mxf8f6f4` fp4 LHS requires padded operand-A
-    storage currently represented by `fp4_padded` shared memory; the durable
-    probe is
+  - mixed `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape
+    tile-permuted TMEM-LHS descriptors are pinned as clean unsupported cases
+    because `mxf8f6f4` fp4 LHS requires padded operand-A storage currently
+    represented by `fp4_padded` shared memory; the durable subview probe is
     `experiments/probe_mma_scaled_lhs_subslice_formats.py` with current results
     in `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`.
 - Two-CTA direct scaled-MMAv5 accumulator-subview coverage is now present:

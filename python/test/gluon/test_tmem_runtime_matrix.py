@@ -7202,6 +7202,57 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_matrix(
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported(
+    acc_layout_kind, capfd
+):
+    m = n = 128
+    k = 256
+    a_format, b_format = "mxfp4", "mxfp8"
+    vec_size = 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+    lhs_storage_k = k // a_elem_per_byte
+    lhs_layout = _make_tmem_linear_layout_tile_permuted(m, lhs_storage_k, lhs_storage_k // 4)
+    acc_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout(m, n)
+    )
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_scaled_lhs_tile_permuted_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            lhs_layout,
+            acc_layout,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "mixed-precision fp4 LHS operands in tensor memory" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
 def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported(
     acc_layout_kind, capfd
 ):
