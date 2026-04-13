@@ -3063,9 +3063,9 @@ SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
 ]
 
 CP_SCALES_WARPX4_SCALED_MMA_CASES = [
-    (a_format, b_format, block_n, num_ctas, acc_layout_kind)
-    for (a_format, b_format), block_n, num_ctas, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (1, 2), ("legacy", "linear")
+    (a_format, b_format, block_n, block_k, num_ctas, acc_layout_kind)
+    for (a_format, b_format), block_n, block_k, num_ctas, acc_layout_kind in product(
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256), (1, 2), ("legacy", "linear")
     )
 ]
 
@@ -5896,12 +5896,12 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,block_n,num_ctas,acc_layout_kind", CP_SCALES_WARPX4_SCALED_MMA_CASES)
+@pytest.mark.parametrize("a_format,b_format,block_n,block_k,num_ctas,acc_layout_kind",
+                         CP_SCALES_WARPX4_SCALED_MMA_CASES)
 def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(
-    a_format, b_format, block_n, num_ctas, acc_layout_kind
+    a_format, b_format, block_n, block_k, num_ctas, acc_layout_kind
 ):
     block_m = 256 if num_ctas == 2 else 128
-    block_k = 128
     m, n, k = block_m, block_n, block_k
     vec_size = 16 if a_format == "nvfp4" else 32
 
@@ -5927,10 +5927,11 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
     expected = _expected_scaled_cp_opcode(num_ctas)
-    expected_count = (1 + block_n // 128) * (32 // vec_size)
+    expected_count = (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)
     _assert_exact_cp_ptx_llir_match(compiled, [expected] * expected_count)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
-    assert mma_ops
+    expected_mma_count = (block_k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert len(mma_ops) == expected_mma_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(num_ctas)])
 

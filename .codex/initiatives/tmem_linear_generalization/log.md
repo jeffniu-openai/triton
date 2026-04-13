@@ -12578,3 +12578,31 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`; or
   - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
+
+## 2026-04-13 after scaled-root K256 expansion: scaled-copy helper covers block_k=256 formats
+
+- Expanded `CP_SCALES_WARPX4_SCALED_MMA_CASES` so the scaled-MMA copy-helper
+  format matrix covers `block_k in {128, 256}` in addition to all current scaled
+  format pairs, `block_n in {128, 256}`, `num_ctas in {1, 2}`, and
+  legacy/canonical accumulator layouts.
+- Scratch probe before the edit split the forty new `block_k=256` cases over
+  four GPUs and all passed. The observed count pattern is now codified:
+  - scale-copy messages: `(1 + block_n // 128) * (block_k // 128) * (32 // vec_size)`;
+  - scaled-MMA messages: `(block_k // 128) * base_count`.
+- The runtime matrix now asserts exact copy opcodes and exact scaled-MMA opcode
+  counts for this format/shape matrix, instead of only asserting that some MMA
+  op was emitted.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - exact expanded nodeid across four GPU `pytest-split` groups: `80 passed`
+    aggregate (`20` per group);
+  - nearby selector `-k 'cp_scales_warpx4_via_scaled_mma'`: `112 passed`
+    aggregate (`28` per group);
+  - broad copy selector `-k 'cp'`: `227 passed, 5 skipped` aggregate
+    (`53 passed, 5 skipped`; `58`; `58`; `58`).
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`; or
+  - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
