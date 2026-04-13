@@ -11904,3 +11904,28 @@ Open after this slice:
   - one child smoke at offset `64`, destination `0` emitted a compact JSON record and reproduced the duplicate-column mismatch;
   - `git diff --check` passed before this docs update.
 - Tooling note: `apply_patch` still fails with `No such file or directory`, so this script/docs update used exact scripted replacements.
+
+## 2026-04-13 09:57 UTC: explicit `ld.red` non-identity min/max coverage
+
+- Expanded `test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b` so the compatible non-identity explicit-layout matrix covers both `min` and `max`.
+- Covered source layouts:
+  - `tile_permuted`;
+  - `col_reverse`;
+  - `row_reverse`;
+  - `rowcol_rotate_reverse`.
+- Covered load variants remain `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`.
+- Expected lowering remains canonicalized to `tcgen05.ld.red.sync.aligned.32x32b.x128.{min,max}.f32`; this does not add a new accepted reduction atom, it broadens the explicit non-identity layout proof to match the existing identity min/max matrix.
+- Validation / hygiene:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `git diff --check python/test/gluon/test_tmem_runtime_matrix.py` passed before broad validation;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - focused exact nodeid across four GPU split groups: `32 passed` aggregate (`8 passed, 24 deselected` per group);
+  - broad four-GPU `-k ld_red`: group 1 passed cold (`131 passed, 2627 deselected in 552.65s`); groups 2 and 3 timed out under the `900s` wrapper during the cold split-4 run but passed with warmed per-GPU caches (`131 passed` in `188.93s` and `198.24s`); group 4 printed `130 passed, 2628 deselected in 897.95s` at the wrapper boundary, returned `124`, and then passed warm in `12.52s`;
+  - aggregate broad evidence is therefore `523 passed`, with the same split-4 imbalance caveat already recorded for local `ld.red` validation.
+- Validation policy note: cold split-4 broad `ld_red` remains too coarse without duration data. Future broad local runs should store durations and use a duration-aware split, use finer split groups, or rerun exact warmed groups before treating a timeout as a failure.
+- Next candidates after committing/pushing:
+  - descriptor/address-message synthesis for two-CTA `warpx2::02_13`;
+  - true scales `warpx2` descriptor/direct-PTX research;
+  - a duration-aware `ld/st` sweep recipe;
+  - another bounded MMAv5/scaled-MMAv5 reachable-family coverage gap.
+- Tooling note: `apply_patch` still fails with `No such file or directory`, so this docs update used exact scripted replacements.
