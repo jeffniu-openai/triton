@@ -6773,8 +6773,9 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
 @pytest.mark.parametrize("slice_start", (0, 128))
+@pytest.mark.parametrize("multicast", (False, True))
 def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
-    a_format, b_format, slice_start
+    a_format, b_format, slice_start, multicast
 ):
     block_m = 256
     block_n = 128
@@ -6800,7 +6801,7 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
         parent_n,
         slice_start,
         num_ctas=2,
-        multicast=False,
+        multicast=multicast,
     )
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
@@ -6816,6 +6817,10 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
     assert "ttg.memdesc_subslice" in ttgir
     assert "tensor_memory_linear" in ttgir
     assert "two_ctas" in ttgir
+    if multicast:
+        assert "{multicast}" in ttgir
+    else:
+        assert "{multicast}" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

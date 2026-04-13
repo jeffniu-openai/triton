@@ -11949,3 +11949,23 @@ Open after this slice:
   - `1642` duration entries, one per selected `ldst` nodeid.
 - Added `ldst_validation_recipe_20260413.md` with the accepted evidence, timeout caveats, recommended duration-cache command, and bucketed fallback recipe.
 - Validation-policy conclusion: the broad selector is green by bucketed evidence but still too expensive for casual local reruns. A collect-only `least_duration` split-16 with the duration cache estimates roughly `780s` per group; use focused selectors or the bucketed recipe for development, and reserve a full duration-aware sweep for phase boundaries.
+
+## 2026-04-13 12:37 UTC: two-CTA scaled-MMAv5 accumulator-subview matrix covers multicast
+
+- Expanded `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` so the existing two-CTA scaled-MMAv5 accumulator-subview format matrix covers both scale-TMA paths:
+  - added `multicast=False/True` parameterization;
+  - passed the parameter through `mma_scaled_tcgen05_acc_subslice_copy`;
+  - asserted TTGIR `{multicast}` is present only for the multicast path.
+- The matrix still covers:
+  - format pairs `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - `slice_start=0` and `slice_start=128` into the larger two-CTA accumulator parent;
+  - numeric output equality;
+  - exact PTX/LLIR scaled copy, scaled MMA, and commit opcode streams.
+- Validation / hygiene:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `git diff --check python/test/gluon/test_tmem_runtime_matrix.py` passed before the docs update;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed after restoring the temporary copy-verifier instrumentation;
+  - exact nodeid across four GPU split groups: `20 passed` aggregate (`5` selected per group);
+  - nearby selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and subslice and format_matrix'` across four GPU split groups: `43 passed` aggregate (`11`, `11`, `11`, and `10` selected).
+- This is coverage expansion only. It does not change the current true scales `warpx2` or two-CTA `warpx2::02_13` descriptor/address frontiers.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
