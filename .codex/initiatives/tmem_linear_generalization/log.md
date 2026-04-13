@@ -11607,3 +11607,25 @@ Open after this slice:
     steady progress and completed green;
   - this supersedes the older `232 passed, 50 skipped` broad-MMA current-head
     count for the runtime matrix.
+
+## 2026-04-13 08:10 UTC: two-CTA x1 subword ld/st coverage is pinned
+
+- Added `test_tmem_runtime_matrix_ldst_x1_subword_twocta_roundtrip`.
+- Coverage:
+  - direct two-CTA x1 subword roundtrips for `f16`, `bf16`, `i16`, and packed
+    `i8`;
+  - canonical two-CTA TMEM-linear layouts;
+  - `auto` and explicit `32x32b` register-layout selection.
+- Checks:
+  - exact PTX/LLIR opcode stream is one
+    `tcgen05.st.sync.aligned.32x32b.x1.b32` and one
+    `tcgen05.ld.sync.aligned.32x32b.x1.b32`, both at offset `0`;
+  - output exactly matches input;
+  - TTGIR preserves `tensor_memory_linear` and spells the descriptor as
+    `twoCTAs = true`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - rebuild was a no-op success;
+  - exact new nodeid across four GPU split groups passed `8` selected cases;
+  - nearby selector `ldst_x1_subword or ldst_x1_f32` passed `57` selected cases
+    aggregate across four GPU split groups.

@@ -2951,6 +2951,13 @@ X1_SUBWORD_LDST_CASES = [
 
 X1_SUBWORD_LDST_VARIANTS = ("auto", "32x32b")
 
+X1_SUBWORD_LDST_TWOCTA_CASES = (
+    ("f16", torch.float16, 2),
+    ("bf16", torch.bfloat16, 2),
+    ("i16", torch.int16, 2),
+    ("i8", torch.int8, 4),
+)
+
 X1_F32_LDST_CASES = [
     ("linear_onecta", 128, 1, lambda: _make_tmem_linear_layout(128, 1)),
     ("legacy_onecta", 128, 1, lambda: TensorMemoryLayout((128, 1), col_stride=1)),
@@ -4410,6 +4417,29 @@ def test_tmem_runtime_matrix_ldst_x1_subword_roundtrip(
     else:
         assert "tensor_memory_encoding" in ttgir
 
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,n", X1_SUBWORD_LDST_TWOCTA_CASES)
+@pytest.mark.parametrize("variant", X1_SUBWORD_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_subword_twocta_roundtrip(dtype_name, torch_dtype, n, variant):
+    m = 256
+    layout = _make_tmem_linear_layout_mmav5_twocta(m, n)
+    inp = torch.arange(m * n, dtype=torch_dtype, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_subword_variant_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "twoCTAs = true" in ttgir
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)

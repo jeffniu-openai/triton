@@ -99,6 +99,16 @@
   nearby `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc` selector
   passed `30` selected cases aggregate, and the post-commit broad four-GPU
   `-k 'mma and not cp'` selector passed `242 passed, 50 skipped`.
+- Latest `ld/st` x1 subword checkpoint, 2026-04-13 08:10 UTC:
+  `test_tmem_runtime_matrix_ldst_x1_subword_twocta_roundtrip` now pins direct
+  two-CTA x1 subword roundtrips for `f16`, `bf16`, `i16`, and packed `i8` over
+  canonical two-CTA TMEM-linear layouts, for `auto` and explicit `32x32b`. The
+  test checks exact `tcgen05.{st,ld}.sync.aligned.32x32b.x1.b32` PTX/LLIR
+  opcode streams, zero-offset addressing, numeric equality, `tensor_memory_linear`,
+  and `twoCTAs = true`. Validation: `py_compile` passed, rebuild was a no-op
+  success, the exact new nodeid passed `8` selected cases across four GPU split
+  groups, and the nearby `ldst_x1_subword or ldst_x1_f32` selector passed `57`
+  selected cases aggregate.
 - Latest copy-frontier checkpoint, 2026-04-13 07:25 UTC at `6e453288d`: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. Earlier direct-PTX work ruled out direct-seed `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and nearby two-message column-pair schedules. The latest four-GPU JSONL scan extended single-message direct-seed offsets through `36..63` with destination deltas `0` and `4`; all `56` variants launched without sentinels or NaNs, none matched the extended `02_13` oracle, and every variant duplicated one source column pair. Keep this frontier on descriptor/message semantics rather than another small offset toggle.
 - Latest validation checkpoint, 2026-04-13 03:00 UTC: the previous Gluon tail is now closed from local evidence. `python/test/gluon/test_tmem_runtime_matrix.py` has full file coverage via mixed split granularity (`2683` selected cases: `2237 passed, 446 skipped`, no failures/errors). `python/test/gluon/test_lowerings.py` is green across four GPU shards (`4937 passed, 512 skipped`). Together with the earlier green first-phase groups 1-3, split-16 groups 13-14, isolated xdist-crash nodeid pass, and green `python/examples/gluon/`, current-head `test-gluon` has no deterministic known failures after the MMAv5 fix. The timeout root cause was static split imbalance in slow TMEM ldst composition/legality-probe buckets, not a failing nodeid.
 - Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green (`248 passed, 2 unsupported`)
@@ -205,6 +215,10 @@
     `66 passed in 18.12s`
   - focused x1 subword exacts after adding padded i8 cases:
     `88 passed in 22.36s`
+  - focused two-CTA x1 subword exacts:
+    `8 passed` aggregate across four GPU split groups
+  - nearby x1 subword/f32 selector after adding two-CTA subword cases:
+    `57 passed` aggregate across four GPU split groups
   - broad `ld/st` slice:
     `1181 passed, 441 skipped, 1027 deselected in 1340.05s (0:22:20)`
   - the new runtime anchors assert exact PTX/LLIR `tcgen05.alloc`,
@@ -496,11 +510,12 @@
     identity `128x{64,128,256}` layouts and every public instruction variant,
     with exact PTX/LLIR opcode agreement;
   - x1 subword `ld/st` now covers `f16`, `bf16`, and `i16` packed plus
-    legacy unpacked layouts, and packed plus padded `i8` linear/legacy layouts,
-    for `auto` and explicit `32x32b`; the padded i8 assertion-style probe
-    failure was fixed by making the store-source convert canonicalizer bail out
-    when no compatible TMEM layout exists instead of asking for an asserting
-    default layout;
+    legacy unpacked layouts, packed plus padded `i8` linear/legacy layouts,
+    and direct two-CTA canonical TMEM-linear `f16` / `bf16` / `i16` / packed
+    `i8` layouts, for `auto` and explicit `32x32b`; the padded i8
+    assertion-style probe failure was fixed by making the store-source convert
+    canonicalizer bail out when no compatible TMEM layout exists instead of
+    asking for an asserting default layout;
   - direct higher-rank access is still future work, but the current clean
     boundary is now pinned: rank-3 direct `get_reg_layout`, explicit `load`,
     and explicit `store` fail with the frontend 2D-only diagnostic, while the
