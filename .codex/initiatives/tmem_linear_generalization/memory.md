@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-13 23:58 UTC: ldst duration cache current and selector experiment rejected
+
+- Current `ldst` duration cache has been adjusted for the `440` lifted descriptor roundtrip cases that now pre-skip: their stored durations are `0.001s`, so least-duration splitting no longer overweights tests that do no compile/runtime work.
+- Full retained validation: runner `--categories ldst --timeout-per-group 1800` passed `1201` and skipped `441` across all `1642` selected cases. Group times were `208.7s..263.8s`.
+- Runtime-selector kernel reuse was explored and reverted. It is functionally possible only with `@gluon.jit(do_not_specialize=["variant_id"])`, but it is not currently a suite-speed win: xdist runs many different layouts concurrently, and selector-backed tests compile a much larger branchy kernel per layout. Do not reintroduce this pattern without changing grouping so all variants for the same layout are batched in one worker and proving the full `ldst` bucket improves.
+- Safe remaining speed ideas: keep stable per-GPU caches, keep duration data current after skip/status changes, investigate grouping by `(test family, layout, n)` to maximize cache locality, and profile individual descriptor families before changing test kernels.
+
 ## Goal
 - Canonicalize TMEM layouts on `tensor_memory_linear`.
 - Normalize legacy TMEM layouts before semantic consumption.
@@ -50,7 +57,7 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
-- Latest runtime-matrix speed fact, 2026-04-13 23:01 UTC: five lifted `ld/st` descriptor roundtrip matrices are skip-only on current Blackwell hardware because the lifted TMEM allocation exceeds the hardware limit before any instruction/op coverage can be emitted. They previously compiled until `OutOfResources` and then called `pytest.skip`; they now carry an upfront skip marker. This keeps collection and skip coverage (`440` skipped cases) while removing the known non-executable compile work. Validation: py-compile passed; `make -j8` no-op success; ldst collect count remains `1642/3150`; exact skip-only functions now finish as `440 skipped in 2.40s`; full runner `ldst` remains green with `1201 passed, 441 skipped` and improved shard times `194.71s..273.96s` versus the prior `271.68s..350.27s`.
+- Latest runtime-matrix speed fact, 2026-04-13 23:58 UTC: five lifted `ld/st` descriptor roundtrip matrices are skip-only on current Blackwell hardware because the lifted TMEM allocation exceeds the hardware limit before any instruction/op coverage can be emitted. They now carry an upfront skip marker and their stored `ldst` durations are `0.001s`, so least-duration splitting no longer overweights known pre-execution skips. Validation: py-compile passed; `make -j8` no-op success; ldst collect count remains `1642/3150`; exact skip-only functions finish as `440 skipped in 2.40s`; full runner `ldst` remains green with `1201 passed, 441 skipped`; latest group times were `208.7s..263.8s`.
 
 - Latest runtime-matrix validation-velocity fact, 2026-04-13 22:15 UTC: do not validate the full TMEM runtime matrix with raw static split-4 full-file pytest shards. The coverage-preserving local path is now `.codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`, documented in `tmem_runtime_matrix_validation_recipe_20260413.md`. Full collection is still `3150` tests and the runner covers all of them by bucket: `cp=312`, `mma=301`, exact splitn/misc nodeids `=252`, `ld_red=643`, and `ldst=1642`. The timeout root cause is cold compile cost plus static-shard imbalance, not a deadlock or a failing nodeid: sampled `ldst` nodeid cold/warm was about `31s`/`3s`, sampled `ld_red` nodeid cold/warm was about `10s`/`3s`, and serial split-4 `ld_red` was green but took `13:37` to `25:15` per group. Runner validation: `make -j8` no-op success; runner py-compile and deterministic dry-run passed; exact-nodeid splitn smoke passed `252` cases; full `ld_red` passed `643` cases across 16 groups with shard times from about `14s` to `96s`; full `ldst` passed `1201` and skipped `441` across 16 groups with shard times from about `4:32` to `5:50`. Current per-bucket evidence aggregates to `2704 passed, 446 skipped` across all `3150` cases, without reducing the matrix.
 

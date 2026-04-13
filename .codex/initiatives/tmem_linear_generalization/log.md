@@ -12784,3 +12784,23 @@ Open after this slice:
   - previous full runner `ldst` shard range: `271.68s` to `350.27s`;
   - current full runner `ldst` shard range: `194.71s` to `273.96s`;
   - same selected `ldst` count and same pass/skip aggregate, but less compile work for known non-executable cases.
+
+
+## 2026-04-13 23:58 UTC: ldst duration-cache refresh and runtime-selector negative result
+
+- Refreshed `.codex/initiatives/tmem_linear_generalization/experiments/results/ldst_pytest_durations_20260413.json` after the lifted ld/st OOR pre-skip change:
+  - the `440` known pre-skipped lifted roundtrip nodeids now have near-zero scheduling weight (`0.001s`) instead of their old compile-until-OOR durations;
+  - this keeps the same collected nodeids and pass/skip behavior, but prevents least-duration splitting from treating known pre-execution skips as heavy tests.
+- Explored the user-suggested runtime-variant selector idea:
+  - a small Gluon runtime scalar branch works, and `@gluon.jit(do_not_specialize=["variant_id"])` is required to avoid recompiling for each Python integer flag;
+  - direct and descriptor ld/st selector prototypes were functionally correct for isolated five-variant samples;
+  - the idea was rejected for the runtime matrix because xdist schedules many different layouts concurrently, and each individual selector-backed layout compiles a larger multi-branch kernel. A full `ldst` runner attempt with selector-backed descriptor tests had no completed first-wave group after several minutes while many xdist workers were stuck cold-compiling large descriptor kernels. The source experiment was reverted.
+- Validation of the retained scheduling-only change:
+  - `make -j8` -> no work to do;
+  - `env -u PYTHONPATH python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ldst --timeout-per-group 1800`;
+  - result: `1201 passed, 441 skipped` across all `1642` selected `ldst` nodeids;
+  - per-group pytest times: `208.7s` to `263.8s` (`g01=240.1`, `g02=263.8`, `g03=245.6`, `g04=243.2`, `g05=245.9`, `g06=210.1`, `g07=256.4`, `g08=224.5`, `g09=240.2`, `g10=238.7`, `g11=242.2`, `g12=242.1`, `g13=236.5`, `g14=212.7`, `g15=222.7`, `g16=208.7`).
+- Current guidance:
+  - keep the duration-cache update;
+  - do not replace the current ld/st variant-parametrized tests with runtime multi-variant selector kernels unless the runner changes to batch all variants for the same layout in one worker and a full-bucket timing proves a real win;
+  - further speedups should target scheduling, cache reuse, or test grouping around existing per-variant kernels before adding larger branchy test kernels.

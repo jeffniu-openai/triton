@@ -1198,6 +1198,12 @@ When resuming the initiative:
   `warpx4` messages. Support needs a different shared descriptor/view/staging
   model, or this remains a clean unsupported boundary.
 
+## Latest: 2026-04-13 ldst duration-cache refresh
+
+- The `ldst` duration cache now reflects the lifted roundtrip pre-skip change: the `440` known pre-execution skips have near-zero scheduling weight instead of stale compile-until-OOR durations.
+- Full retained validation: `ldst` runner passed `1201` and skipped `441`, with group times `208.7s..263.8s`.
+- Runtime `variant_id` selector kernels were tried and reverted. They are functionally possible with `do_not_specialize`, but they make the real xdist matrix slower by compiling larger branchy kernels per layout.
+
 ## Document Roles
 
 - `memory.md`
