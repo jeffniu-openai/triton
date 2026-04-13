@@ -3044,6 +3044,13 @@ CP_SCALES_WARPX4_FORMAT_PAIRS = [
     ("nvfp4", "nvfp4"),
 ]
 
+SCALED_MMA_ROOT_FORMAT_CASES = [
+    (a_format, b_format, n, acc_layout_kind)
+    for (a_format, b_format), n, acc_layout_kind in product(
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), ("legacy", "linear")
+    )
+]
+
 SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
     (a_format, b_format, acc_layout_kind)
     for a_format, b_format in (
@@ -6899,6 +6906,53 @@ def test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout():
 
     _assert_exact_mxf8f6f4_scaled_mma(compiled, expected_count=4)
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,acc_layout_kind", SCALED_MMA_ROOT_FORMAT_CASES)
+def test_tmem_runtime_matrix_mma_scaled_root_format_matrix(a_format, b_format, n, acc_layout_kind):
+    m = k = 128
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+    acc_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout(m, n)
+    )
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_layout_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        acc_layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

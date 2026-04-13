@@ -12511,3 +12511,40 @@ Open after this slice:
 - Next:
   - continue the copy descriptor/address frontiers or another bounded
     MMAv5/scaled-MMAv5 shape parity gap.
+
+## 2026-04-13 after plain root N256 expansion: direct scaled-MMAv5 root format matrix
+
+- Added `SCALED_MMA_ROOT_FORMAT_CASES` and
+  `test_tmem_runtime_matrix_mma_scaled_root_format_matrix` so direct one-CTA
+  scaled-MMAv5 root accumulators cover:
+  - all current scaled format pairs: `mxfp8/mxfp8`, `mxfp4/mxfp4`,
+    `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - `N in {128, 256}`;
+  - both legacy and canonical TMEM-linear accumulator layouts.
+- Scratch probe before the edit showed all twenty combinations match the
+  dequantized reference and keep the expected direct-root opcode counts:
+  - `4` scaled-MMAv5 instructions for fp8/mixed vector-1X cases;
+  - `2` scaled-MMAv5 instructions for homogeneous fp4/nvfp4 cases.
+- The new runtime matrix checks numeric output, exact PTX/LLIR scaled-MMA opcode
+  family and count, exact commit opcode, and preservation of
+  `tensor_memory_linear` in TTGIR for canonical layouts.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - exact new nodeid across four GPU `pytest-split` groups: `20 passed`
+    aggregate (`5` per group);
+  - tight family selector `-k 'test_tmem_runtime_matrix_mma'`: `243 passed`
+    across four GPU groups (`61`, `61`, `61`, `60`) in `52s`, `72s`, `106s`,
+    and `83s`.
+- CI-velocity note:
+  - this tight selector is comfortably below the project-owner calibration that
+    the full GB200 CI lane should finish in about 35 minutes including clean
+    build and LLVM download;
+  - if future local shards run far past this scale, first suspect split
+    partitioning, cache/process contamination, or a hang rather than treating it
+    as normal runtime.
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`; or
+  - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.

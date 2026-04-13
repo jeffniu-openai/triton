@@ -490,6 +490,11 @@ Every fuzz case records:
 - scale factor subtype / position combinations allowed by the verifier
 - canonical TMEM-linear accumulator and scale layouts equivalent to supported
   legacy layouts
+- direct one-CTA root accumulator coverage now spans every current scaled
+  format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`,
+  and `nvfp4/nvfp4`) at `blockN in {128, 256}` for both legacy and canonical
+  TMEM-linear accumulator layouts, with exact scaled-MMAv5 opcode counts
+  pinned.
 - accumulator subview starts that preserve the same supported physical family,
   currently including one-CTA root-aligned `slice_start=0` and offset
   `slice_start=64` direct subviews plus two-CTA cga-aware `block_n=128`,
