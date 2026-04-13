@@ -11834,3 +11834,18 @@ Open after this slice:
   - `ninja: no work to do`.
 - Tooling note: `apply_patch` still fails with `No such file or directory`, so
   this docs update used exact scripted replacements.
+
+
+## 2026-04-13 09:14 UTC: fixed TMEM subview offset assertion on non-surjective projected queries
+
+- Added a surjectivity guard to `getTMemViewOffsetForLowering` before using an inferred raw TMEM query layout for base-offset arithmetic.
+- Added `test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error` for legacy and linear two-CTA accumulators.
+- Repro before the fix: exact `ldst_twocta_descriptor_roundtrip_sweeps[slice_index_roundtrip-0-5.0-required_ops0-mmav5_twocta-64-auto-32x32b.x64.b32]` asserted in `LinearLayout::lstsq` from `getTMemViewOffsetImpl -> pseudoinvert` while lowering a `memdesc_subslice` base offset.
+- gdb showed the bad layout was a non-surjective projected support/query layout, not a full physical descriptor layout; fallback to the descriptor type layout is therefore the correct offset-arithmetic path.
+- Validation:
+  - rebuild passed after the C++ edit;
+  - exact former abort node now skips via existing tensor-memory OOR handling;
+  - 15 exact `mmav5_twocta-64` roundtrip nodeids all skipped via existing OOR handling across four GPUs, no failures;
+  - descriptor-compositions positive spot checks passed, including individual slow tail nodeids after static split groups timed out from cold compile accumulation;
+  - combined i8 clean-negative matrix passed across four split groups;
+  - `py_compile` and `git diff --check` passed.

@@ -85,6 +85,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest subview-offset checkpoint, 2026-04-13 09:14 UTC: fixed a compiler assertion where
+  TMEM subview base lowering used a non-surjective projected ld/st query layout
+  as if it could invert arbitrary logical offsets. `getTMemViewOffsetForLowering`
+  now uses raw query layouts for offset arithmetic only when they are
+  surjective, otherwise it falls back to the descriptor type's full layout. The
+  former `mmav5_twocta-64-auto` descriptor-roundtrip abort now reaches the
+  existing OOR skip path, the exact `mmav5_twocta-64` roundtrip matrix has no
+  failures, and new two-CTA direct-i8 MMA clean-negative coverage is in the
+  runtime matrix. Validation details and split-timeout caveats are in
+  `memory.md`, `log.md`, and the handoff tail.
+
 - Latest `tcgen05.cp` contract checkpoint, 2026-04-13 07:10 UTC:
   runtime-matrix clean-negative coverage now also pins a representative scales
   copy from a larger shared parent subview. The new

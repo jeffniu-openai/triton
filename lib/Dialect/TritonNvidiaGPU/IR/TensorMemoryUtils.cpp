@@ -2757,10 +2757,14 @@ uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets) 
           memDesc, /*preserveNonCanonicalView=*/true, &queryError);
       succeeded(rawQuery) &&
       rawQuery->layout.getNumOutDims() == static_cast<unsigned>(memTy.getRank()) &&
-      llvm::equal(rawQuery->layout.getOutDimNames(), expectedOutDims)) {
+      llvm::equal(rawQuery->layout.getOutDimNames(), expectedOutDims) &&
+      rawQuery->layout.isSurjective()) {
     // Query layouts already describe the physical TMEM view, but the final
     // base offset still needs the descriptor element width so logical columns
     // land on the correct 32-bit TMEM words for packed element types.
+    // Projected query layouts can be non-surjective: they are sufficient to
+    // describe an ld/st support image, but cannot invert arbitrary logical
+    // subview offsets. Fall back to the descriptor type's full layout below.
     return getTMemViewOffset(rawQuery->layout, offsets,
                              memTy.getElementTypeBitWidth());
   }

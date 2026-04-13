@@ -5926,6 +5926,70 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, capfd):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, capfd):
+    ctas_per_cga = [2, 1]
+    ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
+    cta_split_a = [ctas_per_cga[0], 1]
+    cta_split_b = [1, ctas_per_cga_b[1]]
+    cta_order = [1, 0]
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, cta_split_a, cta_order, 0)
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga_b, cta_split_b, cta_order, 1)
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
+    cga_layout_c_arg = tuple(tuple(basis) for basis in cga_layout_c)
+
+    block_m, block_n, block_k = 256, 128, 32
+    a = torch.randint(-8, 8, (block_m, block_k), device="cuda", dtype=torch.int8)
+    b = torch.randint(-8, 8, (block_k, block_n), device="cuda", dtype=torch.int8)
+    out = torch.empty((block_m, block_n), device="cuda", dtype=torch.int32)
+
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1], cga_layout=cga_layout_a)
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0], cga_layout=cga_layout_b)
+    shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([block_m, block_k], ttgl.int8, cga_layout=cga_layout_a)
+    shared_layout_b = ttgl.NVMMASharedLayout.get_default_for(
+        [block_k, block_n], ttgl.int8, transposed=True, cga_layout=cga_layout_b
+    )
+    acc_layout = (
+        TensorMemoryLayout(
+            block=(128, block_n // ctas_per_cga[1]),
+            col_stride=1,
+            two_ctas=True,
+            cga_layout=cga_layout_c,
+        )
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout_mmav5_twocta(block_m, block_n)
+    )
+
+    with pytest.raises(Exception) as excinfo:
+        mma_kernel[(1,)](
+            a,
+            b,
+            out,
+            block_m,
+            block_n,
+            block_k,
+            block_layout_a,
+            block_layout_b,
+            cga_layout_c_arg,
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            ttgl.int32,
+            False,
+            True,
+            num_warps=4,
+            num_ctas=2,
+        )
+
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "direct tcgen05_mma kind::i8 is not supported on sm_" in msg
+    assert "current Blackwell lowering" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout", MMA_EXOTIC_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_mma_exotic_layout_reports_clean_unsupported(name, layout, capfd):
     m, n, k = 128, 128, 32

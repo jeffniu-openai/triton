@@ -7012,3 +7012,23 @@ rejection, not rescue
   - the first broad split-4 run packed slow cases into groups 2 and 3 and timed
     out at 900s after steady progress; the full split-16 rerun closed the same
     selector cleanly and should be the preferred local recipe for this selector.
+
+
+## 2026-04-13 09:14 UTC: non-surjective projected TMEM query layouts no longer drive subview base offsets
+
+- While validating the new two-CTA MMAv5/i8 coverage, an overbroad `-k "mma and not cp"` selector exposed a deterministic current-head compiler abort in `test_tmem_runtime_matrix_ldst_twocta_descriptor_roundtrip_sweeps[slice_index_roundtrip-0-5.0-required_ops0-mmav5_twocta-64-auto-32x32b.x64.b32]`.
+- Root cause from gdb: this was not an ld/st packet-planner crash. `MemDescSubsliceOpConversion` called `getTMemSubviewOffsetForLowering`, which accepted a raw projected TMEM query layout for subview offset arithmetic because its rank and out-dim names matched the descriptor type. That projected layout was intentionally non-surjective after an outer subslice/index chain (`row` was size 1, only one `col` bit remained, and `block` mapped one row bit), so `getTMemViewOffset(...).pseudoinvert()` asserted in `LinearLayout::lstsq` with `Im(B) not contained in Im(A)`.
+- Fix: `getTMemViewOffsetForLowering` now uses the raw query layout for subview-base arithmetic only when the query layout is surjective. Non-surjective projected query layouts remain valid for ld/st support planning, but arbitrary logical subview offsets fall back to the descriptor type's full layout.
+- This preserves the initiative invariant: the descriptor type/layout is the source of truth for physical TMEM offset arithmetic; support-query projections are not hidden producer-provenance attributes and must not be used as if they covered the full logical offset space.
+- Also added missing two-CTA direct `tcgen05.mma kind::i8` clean-negative coverage in `test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error`, covering both legacy and linear two-CTA accumulator layouts. This pins the same unsupported direct-i8 diagnostic already covered for one-CTA layouts.
+- Validation after rebuild:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`: passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`: passed and relinked `libtriton.so`/tools;
+  - exact former abort node now reaches the existing tensor-memory OOR skip path with no assertion or `PassManager` crash;
+  - all 15 exact `mmav5_twocta-64` two-CTA descriptor-roundtrip nodeids skipped through the existing OOR handler across four GPU split groups (`4`, `4`, `4`, `3` selected), no failures;
+  - positive `test_tmem_runtime_matrix_ldst_twocta_descriptor_compositions` groups 3 and 4 passed (`8`, `6` selected); groups 1 and 2 timed out under a `120s` wrapper after steady progress because cold static split-4 packed slow compile-heavy cases, not because of a failing nodeid;
+  - individually rerun composition cases that looked like the likely slow tail passed: `block_two_ctas-128-32x32b` in `24.35s`, `block_two_ctas-128-16x64b` in `24.50s`, `block_two_ctas-256-16x256b` in `25.16s`, and `mmav5_twocta-64-auto` in `12.91s`;
+  - the combined one-CTA/two-CTA i8 clean-negative matrix passed across four GPU split groups (`1` selected per group);
+  - `git diff --check`: passed.
+- Validation caveat: do not report the timed-out composition split groups as test failures. They are another example of the known no-duration static-split problem. For a full compositions refresh, collect/store durations or split by exact nodeid buckets.
+- Tooling caveat: `apply_patch` still fails with `No such file or directory`; the small source edit used an exact scripted replacement.
