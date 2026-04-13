@@ -1143,6 +1143,19 @@ When resuming the initiative:
   `ld_red_explicit_compatible or ld_red_explicit_n_sharded` passed `163` selected
   cases aggregate (`41`, `41`, `41`, `40` by group).
 
+## Latest: 2026-04-13 scales `warpx2` direct-source-offset scan
+
+- The direct-PTX scales-copy probe now supports arbitrary single-message opcode,
+  source-offset, and TMEM-destination-delta variants with one child process per
+  run.
+- New evidence: the canonical `warpx4` high-half message uses source offset 32
+  to copy logical columns `8..15`, but the same source window faults for both
+  `warpx2::01_23` and `warpx2::02_13`; legal `warpx2` offsets `0..8` only copy
+  row-shifted low physical columns and never produce the high logical half.
+- Current conclusion: do not implement scales `warpx2` by swapping the canonical
+  `warpx4` messages. Support needs a different shared descriptor/view/staging
+  model, or this remains a clean unsupported boundary.
+
 ## Document Roles
 
 - `memory.md`
