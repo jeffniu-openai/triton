@@ -1,0 +1,77 @@
+# TMEM Runtime Matrix Validation Recipe - 2026-04-13
+
+This recipe is the current local way to run the full `python/test/gluon/test_tmem_runtime_matrix.py` surface without reducing the matrix or dropping coverage. It fixes the timeout-prone workflow by changing scheduling, cache reuse, and selectors only.
+
+## Current Diagnosis
+
+The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
+
+Full collection with `PYTHONPATH` unset reports `3150` tests. The coverage-preserving bucket split is:
+
+| Bucket | Selector | Cases | Scheduling |
+| --- | --- | ---: | --- |
+| `cp` | `-k cp` | 312 | split 4, one process per GPU |
+| `mma` | `-k test_tmem_runtime_matrix_mma` | 301 | split 4, one process per GPU |
+| `splitn` / misc | exact function nodeids | 252 | split 4, one process per GPU |
+| `ld_red` | `-k ld_red` | 643 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
+| `ldst` | `-k ldst` | 1642 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
+
+The buckets sum to all `3150` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+
+## Canonical Command
+
+Always rebuild first:
+
+```bash
+make -j8
+```
+
+Then run the full matrix through the runner:
+
+```bash
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py
+```
+
+Useful variants:
+
+```bash
+# Show the exact commands without running them.
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --dry-run
+
+# Run only the heavy families when validating the timeout fix.
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ld_red ldst
+
+# Keep caches separate for an experiment while still stable across waves.
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --cache-prefix /tmp/triton-cache-tmem-runtime-matrix-experiment
+```
+
+The runner removes inherited `PYTHONPATH`, sets a stable per-GPU `TRITON_CACHE_DIR`, and writes per-shard logs under `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_<timestamp>/`. It does not delete caches by default.
+
+## Measured Profile
+
+Small buckets are not the timeout source:
+
+- `cp`: `307 passed, 5 skipped` across four groups in about `48s`, `58s`, `68s`, and `66s`.
+- `mma`: `301 passed` across four groups in about `63s`, `142s`, `126s`, and `131s`.
+- true exact-nodeid `splitn` / misc bucket: runner smoke passed `252` tests across four groups (`63` per group) in `8.95s`, `16.06s`, `15.93s`, and `14.22s` pytest time.
+
+Heavy buckets need finer scheduling:
+
+- Serial split-4 `ld_red` was green but too slow and imbalanced: groups took about `13:37`, `22:21`, `25:15`, and `20:37`.
+- Runner `ld_red` split-16 with `-n 4` passed the full bucket: `643 passed` across 16 groups, with pytest shard times from `13.58s` to `95.91s`.
+- `ld/st` is the largest bucket. Runner `ldst` split-16 with the stored duration cache, least-duration splitting, and `-n 4` passed the full bucket: `1201 passed, 441 skipped` across 16 groups, with pytest shard times from `271.68s` to `350.27s`.
+
+Aggregating the current per-bucket evidence gives full matrix coverage: `2704 passed, 446 skipped` across all `3150` collected cases. This is a bucketed full sweep, not a reduced selector.
+
+Representative compile evidence:
+
+- `test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout_sweep[reverse-reverse-256-16x64b-16x64b.x64.b32]` took about `31s` cold and about `3s` warm.
+- `test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout[even_odd-256-32x32b.x64-False-propagate_nan1-min]` took about `10s` cold and about `3s` warm.
+
+## Rules For Future Sweeps
+
+- Do not reduce the matrix to make timeout symptoms disappear. Change scheduling first.
+- Do not overwrite or recreate `TRITON_CACHE_DIR` inside test helpers or per test. Stable per-GPU cache reuse is required for useful local velocity.
+- Use `pytest-split` for outer GPU sharding and only use `pytest-xdist` inside the compile-heavy single-GPU buckets (`ld_red`, `ld/st`) unless a focused experiment shows it is safe elsewhere.
+- Treat xdist OOMs as potentially false negatives. Rerun exact failing nodeids on an isolated GPU before classifying them as product failures.
+- If a future runner shard times out while still printing progress, inspect the shard log and rerun the slow exact nodeids with the same cache before raising the timeout.

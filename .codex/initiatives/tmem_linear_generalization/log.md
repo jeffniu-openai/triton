@@ -12727,3 +12727,40 @@ Open after this slice:
   - exact two affected codegen nodeids across four split groups with stable `/tmp/triton-cache-gpu<N>` caches -> groups 1 and 2 each passed one selected test; groups 3 and 4 selected none;
   - exact four-nodeid helper smoke across four split groups with stable `/tmp/triton-cache-gpu<N>` caches -> `1 passed, 3 deselected` on each group;
   - `git diff --check` passed.
+
+## 2026-04-13 runtime-matrix timeout profile and coverage-preserving runner
+
+- Profiled `python/test/gluon/test_tmem_runtime_matrix.py` after the cache/import hygiene cleanup. Full collect remains `3150` tests with `PYTHONPATH` unset.
+- Classified the full matrix into coverage-preserving buckets: `cp=312`, `mma=301`, exact splitn/misc nodeids `=252`, `ld_red=643`, and `ldst=1642`; the buckets sum to the full matrix.
+- Root-cause diagnosis for the timeout symptom:
+  - raw static split-4 and cold split-16 runs time out while still printing progress;
+  - sampled exact slow nodeids pass;
+  - representative `ldst` cold/warm timing was about `31s`/`3s`;
+  - representative `ld_red` cold/warm timing was about `10s`/`3s`;
+  - serial split-4 `ld_red` was green but took about `13:37`, `22:21`, `25:15`, and `20:37`.
+- Added `.codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py` as the durable local runner. It preserves coverage, removes inherited `PYTHONPATH`, keeps stable per-GPU caches across waves, uses exact nodeids for splitn/misc, uses split-16 plus `pytest-xdist -n 4` for `ld_red`, and uses split-16 plus least-duration splitting and `pytest-xdist -n 4` for `ldst`.
+- Added `tmem_runtime_matrix_validation_recipe_20260413.md` with the measured profile, canonical command, and future sweep rules.
+- Validation:
+  - `make -j8` -> no work to do;
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`;
+  - runner `--dry-run --categories cp mma splitn ld_red ldst` emitted deterministic commands;
+  - runner exact-nodeid `splitn` smoke passed all `252` selected tests across four GPUs (`11.4s`, `18.3s`, `18.5s`, `16.4s`) with stable per-GPU caches and no `PYTHONPATH` injection.
+- Next:
+  - use the runner for full local runtime-matrix sweeps instead of raw static split-4 full-file pytest;
+  - if a heavy shard still times out while making progress, inspect its per-shard log and exact-nodeid rerun before increasing timeout or reducing coverage.
+
+## 2026-04-13 full heavy-bucket runner validation
+
+- Ran the two timeout-prone buckets through the new runner without reducing coverage.
+- `ld_red` runner result:
+  - command: `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ld_red --cache-prefix /tmp/triton-cache-profile-runner-ldred --timeout-per-group 300`;
+  - result: `643 passed` across 16 split groups;
+  - pytest shard times ranged from `13.58s` to `95.91s`, replacing the previous serial split-4 profile of `13:37` to `25:15` per group.
+- `ldst` runner result:
+  - command: `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ldst --cache-prefix /tmp/triton-cache-profile-runner-ldst --timeout-per-group 900`;
+  - result: `1201 passed, 441 skipped` across 16 split groups;
+  - pytest shard times ranged from `271.68s` to `350.27s`.
+- Combined with the recent green `cp` bucket (`307 passed, 5 skipped`), tight `mma` bucket (`301 passed`), and runner splitn/misc smoke (`252 passed`), current per-bucket evidence covers the full `3150`-case runtime matrix: `2704 passed, 446 skipped`.
+- Classification:
+  - timeout issue fixed at the validation workflow level by preserving stable caches, using exact selectors, and adding fine-grained/xdist scheduling for compile-heavy buckets;
+  - no product failure or deadlock was found in the runtime matrix during this profile.

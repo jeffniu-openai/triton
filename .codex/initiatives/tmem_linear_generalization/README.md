@@ -33,6 +33,10 @@ When resuming the initiative:
   broad saturation work is the next task.
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
+- use `tmem_runtime_matrix_validation_recipe_20260413.md` and
+  `run_tmem_runtime_matrix_sweep.py` for the full 3150-case runtime-matrix
+  sweep; this is the coverage-preserving replacement for raw static split-4
+  full-file runs that time out while still making progress.
 
 ## Current Project Invariant
 
@@ -86,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Latest runtime-matrix validation-velocity checkpoint, 2026-04-13 22:15 UTC: the full `python/test/gluon/test_tmem_runtime_matrix.py` local sweep now has a coverage-preserving runner, `.codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`, plus `tmem_runtime_matrix_validation_recipe_20260413.md`. Full collection remains `3150` tests. The runner partitions the matrix into `cp` (`312`), tight `mma` (`301`), exact-nodeid splitn/misc (`252`), `ld_red` (`643`), and `ldst` (`1642`) buckets, summing to the full matrix. The timeout diagnosis is cold compilation plus bad static partitioning, not a deadlock: representative `ldst` cold/warm timing was about `31s`/`3s`, and representative `ld_red` cold/warm timing was about `10s`/`3s`. Validation: `make -j8` no-op success; runner py-compile passed; runner `--dry-run` emitted deterministic commands; exact-nodeid `splitn` runner smoke passed `252` tests; full runner `ld_red` passed `643` tests with shard times from about `14s` to `96s`; full runner `ldst` passed `1201` and skipped `441` with shard times from about `4:32` to `5:50`. Current per-bucket evidence aggregates to full-matrix coverage: `2704 passed, 446 skipped` across all `3150` collected cases, without reducing the matrix.
 
 - Latest TMEM runtime-matrix test/cache hygiene checkpoint, 2026-04-13 20:43 UTC: `test_tmem_runtime_matrix.py` no longer imports reusable helpers from `python.test.gluon.test_core`; shared TMEM helper kernels and descriptor builders now live in `python/test/gluon/tmem_test_utils.py` and are imported as a sibling helper. The two `tcgen05.cp` two-CTA codegen tests that previously launched `python -c`, injected `PYTHONPATH`, and forced a fresh temporary `TRITON_CACHE_DIR` now run in-process and reuse the shard's stable per-GPU cache. Current cache diagnosis: the active misbehavior was validation self-sabotage from cold temporary caches and child-process imports, not a proven on-disk cache-key collision. Validation: no-PYTHONPATH collect of the full runtime-matrix file reports `3150` tests; `python3 -m py_compile` for `tmem_test_utils.py`, `test_tmem_runtime_matrix.py`, and `test_core.py` passed; `make -j8` no-op success; exact affected/import-helper nodeids passed across four split groups with stable `/tmp/triton-cache-gpu<N>` caches (`1` selected case per group in the final four-nodeid split); `git diff --check` passed.
 
