@@ -3013,6 +3013,16 @@ LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES = [
     for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
 
+LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [
+    pytest.param("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32), id="tile_permuted"),
+    pytest.param("col_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "identity", "reverse"),
+                 id="col_reverse"),
+    pytest.param("row_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "reverse", "identity"),
+                 id="row_reverse"),
+    pytest.param("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse"),
+                 id="rowcol_rotate_reverse"),
+]
+
 LD_RED_MIXED_CASES = [
     (128, 64, 4),
     (128, 128, 4),
@@ -4463,6 +4473,27 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(load_var
     torch.testing.assert_close(inp, out, atol=0, rtol=0)
     torch.testing.assert_close(getattr(torch, red_op)(inp, dim=1).values, red, atol=1e-5, rtol=1e-5)
     _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, False, tl.PropagateNan.NONE)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("layout_name,layout_factory", LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES)
+@pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
+def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b(
+    layout_name, layout_factory, load_variant
+):
+    M = N = 128
+    layout = layout_factory()
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
+        inp, out, red, layout, load_variant, "min", num_warps=4
+    )
+
+    torch.testing.assert_close(inp, out, atol=0, rtol=0)
+    torch.testing.assert_close(torch.min(inp, dim=1).values, red, atol=1e-5, rtol=1e-5)
+    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", "min", False, tl.PropagateNan.NONE)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

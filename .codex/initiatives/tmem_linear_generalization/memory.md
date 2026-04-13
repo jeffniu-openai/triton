@@ -6818,3 +6818,31 @@ rejection, not rescue
   partitioning/xdist/hang problem. The project owner expects the full GB200 CI
   lane to take about 35 minutes including clean build/LLVM download, with actual
   test time around 20 minutes on comparable hardware.
+
+## 2026-04-13 04:58 UTC: explicit `ld.red` non-identity layouts canonicalize to 32x32b
+
+- Added runtime-matrix coverage for explicit compatible `ld.red` register
+  variants over non-identity compatible TMEM-linear source layouts.
+- New matrix:
+  - layouts: `tile_permuted`, `col_reverse`, `row_reverse`, and
+    `rowcol_rotate_reverse`;
+  - explicit load variants: `auto`, `32x32b`, `16x32bx2`, and
+    `32x32b_splitn`;
+  - operation: `min` on `128x128xf32` sources.
+- Purpose:
+  - closes the fuzz-plan discovery question for this bounded non-identity slice:
+    these explicit compatible variants do not expose any accepted reduction atom
+    besides `tcgen05.ld.red.sync.aligned.32x32b.x128`;
+  - keeps the existing identity-layout min/max coverage and N-sharded clean
+    negatives intact.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - collect-only for the new nodeids: `16 tests collected`;
+  - new test across four GPU split groups: `16 passed` total;
+  - broad `ld_red` selector as a clean split-16 run: `503 passed`, no
+    skips/failures/errors;
+  - `git diff --check` passed before docs update.
+- Methodology note:
+  - the first broad split-4 run packed slow cases into groups 2 and 3 and timed
+    out at 900s after steady progress; the full split-16 rerun closed the same
+    selector cleanly and should be the preferred local recipe for this selector.
