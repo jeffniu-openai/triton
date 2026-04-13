@@ -197,7 +197,7 @@
   broad `ld/st` refreshes should use finer split groups, duration-aware data, or
   narrower selectors first; do not treat split-4 timing as acceptable for this
   lane.
-- Latest copy-frontier checkpoint, 2026-04-13 07:25 UTC at `6e453288d`: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. Earlier direct-PTX work ruled out direct-seed `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and nearby two-message column-pair schedules. The latest four-GPU JSONL scan extended single-message direct-seed offsets through `36..63` with destination deltas `0` and `4`; all `56` variants launched without sentinels or NaNs, none matched the extended `02_13` oracle, and every variant duplicated one source column pair. Keep this frontier on descriptor/message semantics rather than another small offset toggle.
+- Latest copy-frontier checkpoint, 2026-04-13 09:42 UTC after `f171c2286`: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. Direct-PTX work has now ruled out the single-CTA direct-seed neighborhood through `sourceOffsetB128` offsets `32..127`, destination deltas `0/4`, and nearby two-message column-pair schedules. The durable JSONL source-offset set has `184` records and zero matches: offsets `36..63` launch cleanly but duplicate one source column pair; offsets `64..72` launch but still mismatch (`65..72` destination `0` has four NaNs, destination `4` stays finite but wrong); offsets `73..127` launch-fail in isolated child processes. Keep this frontier on descriptor/message semantics rather than another small offset toggle.
 - Latest validation checkpoint, 2026-04-13 03:00 UTC: the previous Gluon tail is now closed from local evidence. `python/test/gluon/test_tmem_runtime_matrix.py` has full file coverage via mixed split granularity (`2683` selected cases: `2237 passed, 446 skipped`, no failures/errors). `python/test/gluon/test_lowerings.py` is green across four GPU shards (`4937 passed, 512 skipped`). Together with the earlier green first-phase groups 1-3, split-16 groups 13-14, isolated xdist-crash nodeid pass, and green `python/examples/gluon/`, current-head `test-gluon` has no deterministic known failures after the MMAv5 fix. The timeout root cause was static split imbalance in slow TMEM ldst composition/legality-probe buckets, not a failing nodeid.
 - Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green (`248 passed, 2 unsupported`)
   and `python/examples/gluon/` is green across four shards (`884 passed, 74
@@ -547,12 +547,14 @@
     output, but none matched the extended single-CTA `02_13` oracle; opcode-only,
     source-row-plus-16, single-seed, destination-`+4`, and two-message variants
     still either duplicate source-column pairs or copy the wrong row/column mix;
-  - a fresh four-GPU direct-PTX scan extended two-CTA `warpx2::02_13`
+  - four-GPU direct-PTX scans extended two-CTA `warpx2::02_13`
     single-message direct-seed `sourceOffsetB128` coverage from earlier
-    `32..35` through `36..63` with destination deltas `0` and `4`; all `56`
-    variants launched without sentinel or NaN output, none matched the extended
-    `02_13` oracle, and every result duplicated one source column pair. Result
-    shards live under
+    `32..35` through `36..127` with destination deltas `0` and `4`; the
+    durable JSONL set has `184` source-offset records and zero matches against
+    the extended `02_13` oracle. Offsets `36..63` launch cleanly but duplicate
+    one source column pair; offsets `64..72` launch but still mismatch (`65..72`
+    destination `0` has four NaNs, destination `4` is finite but wrong); offsets
+    `73..127` launch-fail in isolated child processes. Result shards live under
     `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`;
   - the historical scales `warpx2` probe candidate is now known to classify as
     `tcgen05.copy.warpx4.32x128b` under public `TensorMemoryScalesLayout`,

@@ -11870,3 +11870,37 @@ Open after this slice:
   - `git diff --check`: passed.
 - This closes a bounded supported-copy coverage gap only. True scales `warpx2`, two-CTA `warpx2::02_13` descriptor/address synthesis, broader `ld.red` fuzzing, and MMAv5/scaled-MMAv5 family saturation remain the next long-term frontiers.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this edit used exact scripted replacements.
+
+## 2026-04-13 09:42 UTC: extended two-CTA `warpx2::02_13` source-offset scan to 127
+
+- Extended `.codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` so source-offset scans are first-class CLI runs:
+  - child mode emits compact JSON records for one `sourceOffsetB128` / `dst_delta` candidate;
+  - parent mode scans an offset range, launches every candidate in an isolated child process, writes JSONL, and records candidate launch failures without stopping the shard.
+- Ran the next four-GPU scan over direct-seed offsets `64..127` with destination deltas `0` and `4`:
+  - GPU 0: `64..79` -> `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_64_79_gpu0.jsonl`;
+  - GPU 1: `80..95` -> `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_80_95_gpu1.jsonl`;
+  - GPU 2: `96..111` -> `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_96_111_gpu2.jsonl`;
+  - GPU 3: `112..127` -> `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_112_127_gpu3.jsonl`.
+- Result summary for the new scan:
+  - `128` records total;
+  - zero matches against the extended single-CTA `02_13` oracle;
+  - offsets `64..72` launch but still mismatch;
+  - only `64,dst=0` still satisfies the duplicate-column-pair predicate;
+  - offsets `65..72,dst=0` each have four NaNs, while `65..72,dst=4` stay finite but wrong;
+  - offsets `73..127` launch-fail in isolated children with CUDA unspecified-launch-failure reports.
+- Aggregate source-offset evidence now covers offsets `36..127` with `184` JSONL records:
+  - status counts: `74 ok`, `110 failed`;
+  - matches: `0`;
+  - duplicate-column-pair records: `57`;
+  - NaN records: `8`;
+  - sentinel records: `0`.
+- Interpretation:
+  - the two-CTA `warpx2::02_13` public path should remain a clean unsupported descriptor/address-message frontier;
+  - extending the single-CTA direct seed farther does not recover the missing 4-byte source-column bit;
+  - the next useful work is descriptor/address-message synthesis from the layout model, or a separate true scales `warpx2` descriptor/direct-PTX probe.
+- Validation/hygiene:
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - one child smoke at offset `64`, destination `0` emitted a compact JSON record and reproduced the duplicate-column mismatch;
+  - `git diff --check` passed before this docs update.
+- Tooling note: `apply_patch` still fails with `No such file or directory`, so this script/docs update used exact scripted replacements.

@@ -11,12 +11,13 @@ with ptxas, and launches through Triton's normal cluster-aware CUDA launcher.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import torch
@@ -243,7 +244,7 @@ def patch_ptx(ptx: str, variant: Variant) -> str:
     return ptx
 
 
-def run_variant(variant: Variant) -> int:
+def analyze_variant(variant: Variant) -> dict[str, object]:
     compiled, inp, out = compile_seed_kernel()
     ptx = patch_ptx(compiled.asm["ptx"], variant)
     cubin = assemble_ptx(ptx)
@@ -269,18 +270,134 @@ def run_variant(variant: Variant) -> int:
     torch.cuda.synchronize()
 
     expected = expected_extended_single_cta_02_13(inp)
-    print(f"VARIANT {variant.name}")
-    print(f"messages={variant.messages}")
-    print(f"matches_extended_single_cta_formula={bool(torch.equal(out, expected))}")
-    print(
-        "duplicates_col_pair="
-        f"{bool(torch.equal(out[:, 0], out[:, 2]) and torch.equal(out[:, 1], out[:, 3]))}"
-    )
-    print(f"sentinel_count={int((out == -777).sum().item())}")
-    print(f"nan_count={int(torch.isnan(out).sum().item())}")
+    return {
+        "variant": variant.name,
+        "messages": [asdict(message) for message in variant.messages],
+        "status": "ok",
+        "matches_extended_single_cta_formula": bool(torch.equal(out, expected)),
+        "duplicates_col_pair": bool(
+            torch.equal(out[:, 0], out[:, 2]) and torch.equal(out[:, 1], out[:, 3])
+        ),
+        "sentinel_count": int((out == -777).sum().item()),
+        "nan_count": int(torch.isnan(out).sum().item()),
+        "selected_rows": {str(row): out[row].detach().cpu().tolist() for row in SELECTED_ROWS},
+    }
+
+
+def print_variant_record(record: dict[str, object]) -> None:
+    print(f"VARIANT {record['variant']}")
+    print(f"messages={record['messages']}")
+    print(f"matches_extended_single_cta_formula={record['matches_extended_single_cta_formula']}")
+    print(f"duplicates_col_pair={record['duplicates_col_pair']}")
+    print(f"sentinel_count={record['sentinel_count']}")
+    print(f"nan_count={record['nan_count']}")
+    selected_rows = record.get("selected_rows", {})
     for row in SELECTED_ROWS:
-        print(f"row {row}: {out[row].detach().cpu().tolist()}")
+        print(f"row {row}: {selected_rows[str(row)]}")
+
+
+def run_variant(variant: Variant) -> int:
+    print_variant_record(analyze_variant(variant))
     return 0
+
+
+def parse_int_csv(text: str) -> tuple[int, ...]:
+    values = []
+    for part in text.split(","):
+        item = part.strip()
+        if item:
+            values.append(int(item, 0))
+    if not values:
+        raise argparse.ArgumentTypeError("expected at least one integer")
+    return tuple(values)
+
+
+def run_source_offset_child(source_offset_b128: int, dst_delta: int, json_record: bool) -> int:
+    variant = Variant(
+        f"direct_seed_off{source_offset_b128}_dst{dst_delta}",
+        (CopyMessage("add", direct_seed_imm(source_offset_b128), dst_delta),),
+    )
+    record = analyze_variant(variant)
+    record["source_offset_b128"] = source_offset_b128
+    record["dst_delta"] = dst_delta
+    if json_record:
+        record.pop("selected_rows", None)
+        print(json.dumps(record, sort_keys=True))
+    else:
+        print_variant_record(record)
+    return 0
+
+
+def run_source_offset_parent(args: argparse.Namespace) -> int:
+    script = Path(__file__).resolve()
+    output_path = Path(args.jsonl_output) if args.jsonl_output else None
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("")
+    status = 0
+    for source_offset_b128 in range(args.source_offset_start, args.source_offset_end + 1):
+        for dst_delta in args.dst_deltas:
+            env = os.environ.copy()
+            env.setdefault(
+                "TRITON_CACHE_DIR",
+                f"/tmp/triton-cache-warpx2-02-13-off{source_offset_b128}-dst{dst_delta}",
+            )
+            try:
+                proc = subprocess.run(
+                    [
+                        sys.executable,
+                        str(script),
+                        "--source-offset",
+                        str(source_offset_b128),
+                        "--dst-delta",
+                        str(dst_delta),
+                        "--json-record",
+                    ],
+                    env=env,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=args.child_timeout,
+                )
+            except subprocess.TimeoutExpired as exc:
+                status = 124
+                output = exc.stdout if isinstance(exc.stdout, str) else ""
+                record = {
+                    "variant": f"direct_seed_off{source_offset_b128}_dst{dst_delta}",
+                    "source_offset_b128": source_offset_b128,
+                    "dst_delta": dst_delta,
+                    "status": "timeout",
+                    "timeout_s": args.child_timeout,
+                    "output_tail": output[-2000:],
+                }
+            else:
+                record = parse_child_record(proc, source_offset_b128, dst_delta)
+                if proc.returncode != 0:
+                    status = max(status, proc.returncode)
+            line = json.dumps(record, sort_keys=True)
+            print(line, flush=True)
+            if output_path:
+                with output_path.open("a") as f:
+                    f.write(line + "\n")
+    return status
+
+
+def parse_child_record(
+    proc: subprocess.CompletedProcess[str],
+    source_offset_b128: int,
+    dst_delta: int,
+) -> dict[str, object]:
+    if proc.returncode != 0:
+        return {
+            "variant": f"direct_seed_off{source_offset_b128}_dst{dst_delta}",
+            "source_offset_b128": source_offset_b128,
+            "dst_delta": dst_delta,
+            "status": "failed",
+            "returncode": proc.returncode,
+            "output_tail": proc.stdout[-2000:],
+        }
+    json_line = proc.stdout.strip().splitlines()[-1]
+    return json.loads(json_line)
 
 
 def run_parent() -> int:
@@ -307,7 +424,25 @@ def run_parent() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--variant", choices=[variant.name for variant in VARIANTS])
+    parser.add_argument("--source-offset", type=int)
+    parser.add_argument("--dst-delta", type=int)
+    parser.add_argument("--json-record", action="store_true")
+    parser.add_argument("--source-offset-start", type=int)
+    parser.add_argument("--source-offset-end", type=int)
+    parser.add_argument("--dst-deltas", type=parse_int_csv, default=(0, 4))
+    parser.add_argument("--jsonl-output")
+    parser.add_argument("--child-timeout", type=int, default=90)
     args = parser.parse_args()
+    if args.source_offset is not None:
+        if args.dst_delta is None:
+            parser.error("--source-offset requires --dst-delta")
+        return run_source_offset_child(args.source_offset, args.dst_delta, args.json_record)
+    if args.source_offset_start is not None or args.source_offset_end is not None:
+        if args.source_offset_start is None or args.source_offset_end is None:
+            parser.error("--source-offset-start and --source-offset-end must be provided together")
+        if args.source_offset_end < args.source_offset_start:
+            parser.error("--source-offset-end must be >= --source-offset-start")
+        return run_source_offset_parent(args)
     if args.variant is None:
         return run_parent()
     variant = next(variant for variant in VARIANTS if variant.name == args.variant)

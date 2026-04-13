@@ -175,7 +175,7 @@ When resuming the initiative:
   negative matrix `10 passed`, nearby scaled-MMA selector `27 passed`, and
   broad four-GPU `-k 'mma and not cp'` selector `242 passed, 50 skipped`.
 
-- Latest copy-frontier checkpoint, 2026-04-13 07:25 UTC: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. The earlier bounded direct-PTX follow-up around the single-CTA direct seed tested `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and two-message column-pair schedules; a new four-GPU source-offset scan extends the single-message direct-seed range through offsets `36..63` for destination deltas `0/4`. All `56` new variants launched successfully with no sentinels or NaNs, but none matched the layout-derived extended `02_13` oracle and every variant duplicated one source column pair. The new durable shards are `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_{36_42,43_49,50_56,57_63}_gpu{0,1,2,3}.jsonl`.
+- Latest copy-frontier checkpoint, 2026-04-13 09:42 UTC: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. The bounded direct-PTX follow-ups now cover the single-CTA direct-seed neighborhood (`sourceOffsetB128` `32..127`, destination deltas `0/4`, plus nearby two-message column-pair schedules) without finding an oracle match. Offsets `36..63` launch cleanly but duplicate one source column pair; offsets `64..72` still launch but mismatch the extended `02_13` oracle (`65..72` with destination `0` also produce four NaNs, while destination `4` stays finite but wrong); offsets `73..127` launch-fail in isolated child processes. Across the durable source-offset JSONL records (`184` variants under `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_*_gpu*.jsonl`) there are zero matches, so the next useful work is descriptor/address-message synthesis rather than another small direct-seed offset toggle.
 
 - Latest code checkpoint, 2026-04-13 09:24 UTC: direct two-CTA tensor-memory-scales `tcgen05.copy` now has pure-copy runtime-matrix coverage. The new `tmem_copy_scales_warpx4_twocta_kernel` roundtrips a `128x16xi8` CGA-shaped `TensorMemoryScalesLayout(cga_layout=[[1, 0]])` tile from a shared-linear `warpx4` layout with `block_bases=[[64, 0]]`, and asserts exact PTX/LLIR `tcgen05.cp.cta_group::1.warpx4.32x128b` opcodes plus no legacy `ttg.memdesc_reinterpret`. This is bounded supported-copy coverage only; true scales `warpx2` and two-CTA `warpx2::02_13` remain descriptor/address-model frontiers. Validation: py-compile passed, rebuild was a no-op success, focused `-k cp_scales_warpx4` passed `54` tests across four split groups, broad `-k cp` passed `167` with `5` skips across four split groups, and `git diff --check` passed.
 
@@ -427,6 +427,12 @@ When resuming the initiative:
     descriptor/address mutations either duplicate source-column pairs or copy
     the wrong row/column mix, so they still do not recover the missing 4-byte
     source-column bit.
+  - the direct-seed source-offset JSONL scan now covers offsets `36..127` with
+    destination deltas `0` and `4`: offsets `36..63` duplicate source-column
+    pairs, offsets `64..72` execute but still mismatch (`65..72` destination
+    `0` has four NaNs), and offsets `73..127` launch-fail in isolated child
+    processes. No source-offset record matches the extended two-CTA `02_13`
+    oracle.
 - The historical scales `warpx2` probe candidate is now pinned more precisely:
   under public `TensorMemoryScalesLayout` it classifies as
   `tcgen05.copy.warpx4.32x128b` and then hits the tensor-memory-scales
