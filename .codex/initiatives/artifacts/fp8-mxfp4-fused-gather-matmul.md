@@ -1,7 +1,7 @@
 ---
 owner: root@codex-kernel-devbox-0.brix.jeffniu.svc.cluster.local
 created: 2026-04-06T23:18:36Z
-updated: 2026-04-12T08:36:00Z
+updated: 2026-04-13T05:40:20Z
 ---
 
 # FP8 x MXFP4 Fused-Gather Matmul Optimization
@@ -652,6 +652,11 @@ There is now also a long-form synthesis report at `.codex/initiatives/artifacts/
   - Validation: Central scoring of `r10a1` and `r10a2` from the known-good environment with `PYTHONPATH=python/triton_kernels python .codex/initiatives/artifacts/ws-report-promptopt-eval.py --candidate <workspace>/python/examples/gluon/05-moe-bmm1-fused-gather.py --rep 200`; worker-side sanity gate passes in `r10a1` and `r10a2`
   - Learnings: Round 10 finally stayed inside the intended structural search region. One worker changed the overlapped epilogue/store ordering and the other hoisted the output-pointer cast out of the helper-store path. Both were valid and only slightly negative (`r10a1`: `-0.11%` mean / geometric; `r10a2`: `-0.02%` mean / geometric, worst point `-0.09%`). This is materially healthier than the earlier catastrophic misses, but it still shows that “make one small structural change” is too open-ended. The next refinement is to require each worker to name the specific measured bottleneck from the report that the change is targeting before it edits the kernel.
   - Plan updates: Resume from round 11 with the same repaired workspace and sanity gate, but make the worker prompt evidence-anchored: pick one bottleneck from the report first, then edit.
+- `2026-04-13` Completed: Distilled the project into a Gluon tutorial and a modular kernel-optimization skill
+  - Artifact: `python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`, `/root/.codex/skills/kernel-optimization/`
+  - Validation: `make` from `/root/code/triton`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python -m py_compile /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels pytest -s --tb=short /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py::test_live_example_matches_reference`; `PYTHONPATH=/root/code/triton/python:/root/code/triton-ws-opt/python:/root/code/triton-ws-opt/python/triton_kernels python /root/code/triton-ws-opt/python/tutorials/gluon/15-moe-bmm1-fused-gather-optimization.py`; `python /root/.codex/skills/.system/skill-creator/scripts/quick_validate.py /root/.codex/skills/kernel-optimization`
+  - Learnings: The most reusable deliverable is no longer the long report alone. The new tutorial turns the matmul initiative into a shorter executable playbook that imports the live example, teaches the measurement-first workflow, and demonstrates same-input correctness plus representative benchmarking. The new `kernel-optimization` skill packages the shared workflow into a thin core plus modular references for measurement, profiling, memory/occupancy, and the Gluon matmul case study so future agents can add new architecture- or workload-specific notes without rewriting the base process.
+  - Plan updates: Treat the tutorial and the skill as the primary onboarding material for future kernel-performance work. Keep the long report and initiative as the durable deep history, and add future domain knowledge to the skill by creating new reference modules rather than bloating the core skill instructions.
 
 ## Next Up
 
