@@ -1367,9 +1367,9 @@ def tmem_mma_lhs_kernel(
     lhs_layout: ttgl.constexpr,
     acc_layout: ttgl.constexpr,
     smem_b_layout: ttgl.constexpr,
+    N: ttgl.constexpr,
 ):
     M: ttgl.constexpr = 128
-    N: ttgl.constexpr = 128
     K: ttgl.constexpr = 256
     a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
     b_offs = ttgl.arange(0, K)[:, None] * N + ttgl.arange(0, N)[None, :]
@@ -1409,9 +1409,9 @@ def tmem_mma_lhs_subslice_kernel(
     parent_layout: ttgl.constexpr,
     acc_layout: ttgl.constexpr,
     smem_b_layout: ttgl.constexpr,
+    N: ttgl.constexpr,
 ):
     M: ttgl.constexpr = 128
-    N: ttgl.constexpr = 128
     K: ttgl.constexpr = 32
     PARENT_K: ttgl.constexpr = 2 * K
     a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
@@ -6044,6 +6044,18 @@ MMA_TILE_PERMUTED_KIND_CASES = [
     for n, tile_n in ((128, 32), (256, 64))
 ]
 
+MMA_LHS_TILE_PERMUTED_N_CASES = [
+    (kind, n)
+    for kind, n in product(MMA_PLAIN_KINDS, (128, 256))
+    # The direct shared-B helper's tf32 128x256x256 tile exceeds shared memory.
+    if not (kind == "tf32" and n == 256)
+]
+
+MMA_LHS_SUBSLICE_N_CASES = [
+    (kind, acc_layout_kind, n)
+    for kind, acc_layout_kind, n in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256))
+]
+
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout,use_acc", MMA_CASES)
@@ -6784,9 +6796,9 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, 
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind", MMA_PLAIN_KINDS)
-def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind):
-    m = n = 128
+@pytest.mark.parametrize("kind,n", MMA_LHS_TILE_PERMUTED_N_CASES)
+def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind, n):
+    m = 128
     k = 256
     lhs_layout = _make_tmem_linear_layout_tile_permuted(m, k, 64)
     acc_layout = _make_tmem_linear_layout(m, n)
@@ -6796,7 +6808,7 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind):
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
     compiled = tmem_mma_lhs_kernel[(1, )](
-        a, b, out, lhs_layout, acc_layout, shared_layout_b, num_warps=4
+        a, b, out, lhs_layout, acc_layout, shared_layout_b, n, num_warps=4
     )
 
     expected = torch.matmul(a.to(torch.float32), b.to(torch.float32))
@@ -6812,9 +6824,9 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind", MMA_PLAIN_KIND_CASES)
-def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_kind):
-    m = n = 128
+@pytest.mark.parametrize("kind,acc_layout_kind,n", MMA_LHS_SUBSLICE_N_CASES)
+def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_kind, n):
+    m = 128
     k = 32
     parent_layout = _make_tmem_linear_layout(m, 2 * k)
     acc_layout = (
@@ -6835,6 +6847,7 @@ def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_
         parent_layout,
         acc_layout,
         shared_layout_b,
+        n,
         num_warps=4,
     )
 

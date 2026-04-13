@@ -12659,3 +12659,30 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`; or
   - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
+
+## 2026-04-13 after scaled LHS-subview N/K expansion: plain LHS paths cover N=256
+
+- Threaded `N` through the plain TMEM-LHS full-shape and subview helper kernels
+  and expanded their runtime matrix cases.
+- New positive coverage:
+  - `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds` covers all
+    plain kinds at `N in {128, 256}` over both legacy/canonical accumulator
+    layouts;
+  - `test_tmem_runtime_matrix_mma_lhs_tile_permuted` covers `N in {128, 256}`
+    for all direct shared-B shapes except `tf32, N=256, K=256`.
+- Boundary found while probing:
+  - `tf32, N=256, K=256` for the full-shape tile-permuted LHS helper exceeds
+    shared memory (`Required: 262156`, hardware limit `232448`) before launch,
+    so it is intentionally omitted from the positive matrix rather than xfailed.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - exact two-nodeid matrix across four GPU `pytest-split` groups: `29 passed`
+    aggregate (`8`, `8`, `8`, `5`);
+  - tight MMA selector `-k 'test_tmem_runtime_matrix_mma'`: `301 passed`
+    aggregate (`76`, `76`, `76`, `73`) in `59s`, `139s`, `123s`, and `131s`.
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`; or
+  - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.

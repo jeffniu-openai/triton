@@ -87,6 +87,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest plain-MMAv5 TMEM-LHS N-shape checkpoint, 2026-04-13 after the scaled LHS-subview expansion: `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds` now spans `N in {128, 256}` for every supported plain kind and both legacy/canonical accumulator layouts, while `test_tmem_runtime_matrix_mma_lhs_tile_permuted` spans `N in {128, 256}` for all non-OOR direct shared-B shapes. The only omitted full-shape tile entry is `tf32, N=256, K=256`, which exceeds shared memory for this helper (`Required: 262156`, limit `232448`). Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8` no-op success; exact two-nodeid matrix passed `29` selected cases across four GPU groups (`8`, `8`, `8`, `5`); tight `-k 'test_tmem_runtime_matrix_mma'` passed `301` selected cases across four GPU groups (`76`, `76`, `76`, `73`) in `59s`, `139s`, `123s`, and `131s`.
+
 - Latest scaled-MMAv5 TMEM-LHS subview N/K checkpoint, 2026-04-13 after the scaled-copy multicast expansion: `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_matrix` now spans the packed-storage reachable format pairs (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`) at `N in {128, 256}` and `K in {128, 256}`, over both legacy and canonical TMEM-linear accumulator layouts. A scratch four-GPU probe confirmed the twenty-four new `N/K` combinations match the dequantized reference; the scaled-MMAv5 opcode count is now pinned as `(K // 128) * base_count`, doubling for `K=256`. Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8` no-op success; exact expanded nodeid passed all `32` cases across four GPU split groups (`8` each); nearby `-k 'mma_scaled and lhs and subslice'` passed `35` selected cases (`9`, `9`, `9`, `8`); tight `-k 'test_tmem_runtime_matrix_mma'` passed `287` selected cases across four GPU groups (`72`, `72`, `72`, `71`) in `56s`, `120s`, `118s`, and `132s`.
 
 - Latest scaled-MMAv5 copy-helper multicast checkpoint, 2026-04-13 after the `block_k=256` expansion: `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix` now spans every current scaled format pair, `block_n in {128, 256}`, `block_k in {128, 256}`, `num_ctas in {1, 2}`, `multicast in {False, True}`, and both legacy/canonical accumulator layouts. A scratch four-GPU probe confirmed the eighty new `multicast=True` combinations match the dequantized reference; one-CTA cases do not emit TTGIR multicast while two-CTA multicast cases do. Exact scale-copy count remains `(1 + block_n // 128) * (block_k // 128) * (32 // vec_size)`, and scaled-MMA count remains `(block_k // 128) * base_count`. Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8` no-op success; exact expanded nodeid passed all `160` cases across four GPU split groups (`40` each); nearby `-k 'cp_scales_warpx4_via_scaled_mma'` passed `192` cases (`48` each); broad `-k 'cp'` passed `307` with `5` skips (`73 passed, 5 skipped`; `78`; `78`; `78`).
@@ -101,7 +103,7 @@ When resuming the initiative:
 
 - Latest scaled-MMAv5 two-CTA accumulator-subview `block_n=256` probe, 2026-04-13 after the tight MMA validation: do not expand `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` to the obvious `parent_n=512` / `slice_start in {0,256}` shape. Representative `mxfp8/mxfp8` probes for both slice starts and multicast modes fail launch metadata with tensor-memory OOR (`Required: 524`, hardware limit `512`). A smaller `parent_n=384` would fit the desired offset range but is invalid for `_make_tmem_linear_layout_mmav5_twocta`, which currently requires power-of-two `N`. Keep current `block_n=128`, `parent_n=256`, `slice_start in {0,128}` coverage as the live offset-subview matrix unless a different legal parent layout is designed.
 
-- Latest broad direct MMA/scaled-MMA runtime-matrix validation checkpoint, 2026-04-13 after the scaled LHS-subview `N/K` expansion: use `-k 'test_tmem_runtime_matrix_mma'` for the pure MMA/scaled-MMA family, not the historical `-k 'mma and not cp'` selector. Collect-only showed `-k 'mma and not cp'` also selects `ldst_*mmav5*` cases because `mmav5` contains `mma`, which explains earlier static-split imbalance. The tight selector now collects `287` cases and passed across four GPU split groups: `72`, `72`, `72`, and `71` passed.
+- Latest broad direct MMA/scaled-MMA runtime-matrix validation checkpoint, 2026-04-13 after the plain LHS `N` expansion: use `-k 'test_tmem_runtime_matrix_mma'` for the pure MMA/scaled-MMA family, not the historical `-k 'mma and not cp'` selector. Collect-only showed `-k 'mma and not cp'` also selects `ldst_*mmav5*` cases because `mmav5` contains `mma`, which explains earlier static-split imbalance. The tight selector now collects `301` cases and passed across four GPU split groups: `76`, `76`, `76`, and `73` passed.
 
 - Latest broad `tcgen05.cp` runtime-matrix validation checkpoint, 2026-04-13 after the scaled-copy multicast expansion: current head is green for `python/test/gluon/test_tmem_runtime_matrix.py -k 'cp'` across four GPU `pytest-split` groups. Aggregate result: `307 passed, 5 skipped` (`73 passed, 5 skipped`; `78 passed`; `78 passed`; `78 passed`). This supersedes older `227 passed, 5 skipped` broad-copy counts; the delta is expected from adding the all-format multicast scaled-copy matrix.
 
@@ -640,13 +642,16 @@ When resuming the initiative:
   `MMA_PLAIN_KINDS` for a `128x256` operand-A tile and pins eight times the root
   kind count (`f16/bf16=16`, `tf32=32`, `f8e5m2/f8e4m3=8`).
 - Plain MMAv5 TMEM-LHS subview coverage now spans all `MMA_PLAIN_KINDS` for
-  both legacy and canonical TMEM-linear accumulator layouts:
+  `N in {128, 256}` and both legacy/canonical TMEM-linear accumulator layouts:
   - `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds` slices the
     right half of a TMEM-linear operand-A parent and feeds that subview directly
     to `tcgen05_mma`;
   - the matrix pins exact PTX/LLIR opcodes, expected instruction counts
     (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), and the single-CTA
     commit opcode for every supported plain kind.
+- Plain full-shape tile-permuted TMEM-LHS coverage now includes `N=256` for all
+  non-OOR direct shared-B shapes. The `tf32, N=256, K=256` direct helper shape
+  is omitted because it exceeds shared memory before launch.
 - Staged `ld/st` fuzzing has started with descriptor-chain `auto` coverage at
   `ebb23b697`:
   - the basic descriptor-composition matrix now covers `auto` instruction
