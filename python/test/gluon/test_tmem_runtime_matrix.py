@@ -1052,7 +1052,7 @@ def tmem_scales_ldst_variant_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.
 @gluon.jit
 def tmem_ld_red_explicit_layout_kernel(
     in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, load_variant: ttgl.constexpr,
-    red_op: ttgl.constexpr
+    red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
 ):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -1072,9 +1072,9 @@ def tmem_ld_red_explicit_layout_kernel(
 
     load_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=load_variant)
     if red_op == "min":
-        output, reduced = tmem.load_min(layout=load_layout)
+        output, reduced = tmem.load_min(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
     else:
-        output, reduced = tmem.load_max(layout=load_layout)
+        output, reduced = tmem.load_max(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
     output = ttgl.convert_layout(output, global_layout)
     ttgl.store(out_ptr + offs, output)
 
@@ -3317,6 +3317,21 @@ LD_RED_UNSUPPORTED_SOURCE_CASES = [
     ("identity_256x256", 256, 256, 8),
 ]
 
+
+
+def _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan):
+    use_nan = propagate_nan == tl.PropagateNan.ALL
+    torch.testing.assert_close(inp, out, atol=0, rtol=0, equal_nan=use_nan)
+    ref_input = torch.abs(inp) if use_abs else inp
+    expected_red = getattr(torch, red_op)(ref_input, dim=1).values
+    torch.testing.assert_close(expected_red, red, atol=1e-5, rtol=1e-5, equal_nan=use_nan)
+
+
+def _seed_ld_red_nan_rows(inp, propagate_nan):
+    if propagate_nan == tl.PropagateNan.ALL:
+        inp[10, 5] = float("nan")
+        inp[50, 15] = float("nan")
+
 LD_RED_NON_F32_CONTRACT_CASES = [
     pytest.param(
         "i32_plain",
@@ -4838,43 +4853,47 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
-def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(load_variant, red_op):
+def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(
+    load_variant, use_abs, propagate_nan, red_op
+):
     M = N = 128
     layout = _make_tmem_linear_layout(M, N)
     inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
     out = torch.empty_like(inp)
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
-        inp, out, red, layout, load_variant, red_op, num_warps=4
+        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
     )
 
-    torch.testing.assert_close(inp, out, atol=0, rtol=0)
-    torch.testing.assert_close(getattr(torch, red_op)(inp, dim=1).values, red, atol=1e-5, rtol=1e-5)
-    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, False, tl.PropagateNan.NONE)
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,layout_factory", LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES)
 @pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
 def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b(
-    red_op, layout_name, layout_factory, load_variant
+    load_variant, layout_name, layout_factory, use_abs, propagate_nan, red_op
 ):
     M = N = 128
     layout = layout_factory()
     inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
     out = torch.empty_like(inp)
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
-        inp, out, red, layout, load_variant, red_op, num_warps=4
+        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
     )
 
-    torch.testing.assert_close(inp, out, atol=0, rtol=0)
-    torch.testing.assert_close(getattr(torch, red_op)(inp, dim=1).values, red, atol=1e-5, rtol=1e-5)
-    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, False, tl.PropagateNan.NONE)
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, use_abs, propagate_nan)
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
@@ -4888,7 +4907,7 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsu
 
     with pytest.raises(Exception) as err:
         tmem_ld_red_explicit_layout_kernel[(1, )](
-            inp, out, red, layout, load_variant, "min", num_warps=4
+            inp, out, red, layout, load_variant, "min", False, tl.PropagateNan.NONE, num_warps=4
         )
 
     captured = capfd.readouterr()

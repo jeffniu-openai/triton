@@ -185,7 +185,7 @@ When resuming the initiative:
 
 - Latest code checkpoint, 2026-04-13 09:24 UTC: direct two-CTA tensor-memory-scales `tcgen05.copy` now has pure-copy runtime-matrix coverage. The new `tmem_copy_scales_warpx4_twocta_kernel` roundtrips a `128x16xi8` CGA-shaped `TensorMemoryScalesLayout(cga_layout=[[1, 0]])` tile from a shared-linear `warpx4` layout with `block_bases=[[64, 0]]`, and asserts exact PTX/LLIR `tcgen05.cp.cta_group::1.warpx4.32x128b` opcodes plus no legacy `ttg.memdesc_reinterpret`. This is bounded supported-copy coverage only; true scales `warpx2` and two-CTA `warpx2::02_13` remain descriptor/address-model frontiers. Validation: py-compile passed, rebuild was a no-op success, focused `-k cp_scales_warpx4` passed `54` tests across four split groups, broad `-k cp` passed `167` with `5` skips across four split groups, and `git diff --check` passed.
 
-- Latest `ld.red` code checkpoint, 2026-04-13 09:57 UTC: explicit compatible non-identity TMEM-linear source layouts (`tile_permuted`, `col_reverse`, `row_reverse`, and `rowcol_rotate_reverse`) now cover both `min` and `max` for variants `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`. The matrix still canonicalizes to `tcgen05.ld.red.sync.aligned.32x32b.x128.{min,max}.f32` rather than exposing another accepted reduction atom. Validation: focused new nodeids passed across four GPU split groups (`32 passed` aggregate); broad four-GPU `-k ld_red` is green as `523 passed` aggregate after warmed reruns closed the cold split-4 timeout groups. Cold split-4 remains imbalanced without duration data, so future broad local `ld_red` validation should use stored durations, finer split groups, or warmed exact reruns before classifying a timeout.
+- Latest `ld.red` code checkpoint, 2026-04-13 13:35 UTC: explicit compatible reduction-load layouts now cover the full legal modifier matrix (`abs` false/true and `PropagateNan.NONE/ALL`) for both `min` and `max`. The explicit identity and non-identity tests pass `abs`/`propagate_nan` through `tmem.load_{min,max}`, inject NaNs for the NaN-propagating cases, check PyTorch reduction semantics, and still pin `tcgen05.ld.red.sync.aligned.32x32b.x128` opcode canonicalization for `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`. Validation: `py_compile` passed, rebuild was a no-op success, and the focused explicit `ld.red` selector (`ld_red_explicit_compatible or ld_red_explicit_n_sharded`) passed `163` selected cases across four GPU split groups (`41`, `41`, `41`, `40` passed) in `1:50` to `4:42` per group.
 
 - Latest scaled-MMAv5 two-CTA multicast checkpoint, 2026-04-13 12:37 UTC: the existing two-CTA accumulator-subview format matrix now covers both scale-TMA paths by running `multicast=False` and `multicast=True`. The test passes the parameter through `mma_scaled_tcgen05_acc_subslice_copy`, preserves numeric output plus exact copy/MMA/commit opcode checks, and asserts TTGIR `{multicast}` appears only for the multicast path. Validation: py-compile passed, rebuild passed, the exact nodeid passed `20` cases across four GPU split groups, and the nearby `mma_scaled and subslice and format_matrix` selector passed `43` cases across four GPU split groups.
 
@@ -1067,6 +1067,26 @@ When resuming the initiative:
 - Validation: `py_compile`, no-op rebuild, and `git diff --check` passed. The
   combined positive/negative runtime-view nodeids passed all `11` selected cases
   across four GPU split groups (`3`, `3`, `3`, `2`).
+
+
+## 2026-04-13 13:35 UTC: explicit `ld.red` variants cover modifiers
+
+- Extended `tmem_ld_red_explicit_layout_kernel` to forward `abs` and
+  `propagate_nan` into explicit-layout `tmem.load_min` / `tmem.load_max`.
+- The identity and compatible non-identity explicit-variant tests now cover all
+  `LD_RED_MODIFIER_CASES` for both `min` and `max` while keeping the same four
+  explicit load variants: `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`.
+- NaN-propagating cases inject NaNs into representative rows and validate both
+  the full tensor output and the reduced result against PyTorch with
+  `equal_nan=True`.
+- The bounded discovery conclusion is unchanged but stronger: these explicit
+  variants still canonicalize to `tcgen05.ld.red.sync.aligned.32x32b.x128`
+  rather than revealing another accepted reduction atom, including when the
+  `.abs` and `.NaN` opcode modifiers are present.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`,
+  no-op `make`, and four-GPU split pytest for
+  `ld_red_explicit_compatible or ld_red_explicit_n_sharded` passed `163` selected
+  cases aggregate (`41`, `41`, `41`, `40` by group).
 
 ## Document Roles
 

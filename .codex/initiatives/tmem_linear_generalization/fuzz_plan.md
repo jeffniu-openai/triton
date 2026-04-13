@@ -271,13 +271,14 @@ Every fuzz case records:
 - PTX and LLIR use the same `tcgen05.ld.red` opcode stream.
 - Current positives pin exact offset immediates: `[0]` for `N <= 128` and
   `[0, 64, 128, 192]` for `N=256`.
-- Explicit compatible register-layout variants cover both min and max for
-  `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` on the identity layout;
-  modifiers remain covered by the broader inferred-layout modifier matrix.
+- Explicit compatible register-layout variants cover both min and max plus all
+  legal `abs` / `NaN` modifier combinations for `auto`, `32x32b`,
+  `16x32bx2`, and `32x32b_splitn` on the identity layout.
 - Explicit compatible register-layout variants also cover non-identity
   compatible TMEM-linear source families (`tile_permuted`, `col_reverse`,
-  `row_reverse`, and `rowcol_rotate_reverse`) and prove they still canonicalize
-  to `tcgen05.ld.red.sync.aligned.32x32b.x128` rather than discovering a new
+  `row_reverse`, and `rowcol_rotate_reverse`) across the same operation and
+  modifier matrix, proving they still canonicalize to
+  `tcgen05.ld.red.sync.aligned.32x32b.x128` rather than discovering a new
   reduction atom.
 - Positive runtime-matrix `ld.red` tests assert exactly one `wait <store>`
   before reduction loads, exactly one `wait <load>` after `ld.red`, and the

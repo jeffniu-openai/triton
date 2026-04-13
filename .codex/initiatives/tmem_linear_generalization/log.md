@@ -12097,3 +12097,34 @@ Open after this slice:
   - the corrected source-offset sweep ran over four GPUs with isolated children and per-GPU `TRITON_CACHE_DIR`;
   - named-variant probe completed under the expected window and wrote the current log artifact.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this script/docs update used exact scripted replacements.
+
+## 2026-04-13 13:35 UTC: explicit `ld.red` modifier matrix coverage
+
+- Expanded the explicit-compatible `tcgen05.ld.red` runtime-matrix surface so it
+  no longer relies on inferred-layout tests for modifier coverage.
+- Code/test changes:
+  - `tmem_ld_red_explicit_layout_kernel` now accepts `use_abs` and
+    `propagate_nan` and forwards them to `tmem.load_min` / `tmem.load_max`;
+  - identity explicit-layout coverage now spans `min/max`, all
+    `LD_RED_MODIFIER_CASES`, and variants `auto`, `32x32b`, `16x32bx2`, and
+    `32x32b_splitn`;
+  - compatible non-identity explicit-layout coverage spans the same operation,
+    modifier, and variant matrix for `tile_permuted`, `col_reverse`,
+    `row_reverse`, and `rowcol_rotate_reverse`;
+  - NaN-propagating cases seed NaNs into representative rows and validate the
+    reduced result against PyTorch with `equal_nan=True`.
+- Resulting contract:
+  - the explicit-variant discovery question is now pinned for `.abs` and `.NaN`
+    modifiers too;
+  - lowering still canonicalizes to
+    `tcgen05.ld.red.sync.aligned.32x32b.x128` and does not reveal a non-32x32b
+    accepted reduction atom.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` was a no-op success;
+  - four-GPU split pytest:
+    `python/test/gluon/test_tmem_runtime_matrix.py -k "ld_red_explicit_compatible or ld_red_explicit_n_sharded"`;
+  - aggregate selected cases: `163 passed` (`41`, `41`, `41`, `40` by group),
+    with group runtimes `1:50`, `4:21`, `4:42`, and `4:18`.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this
+  edit used exact scripted replacements.
