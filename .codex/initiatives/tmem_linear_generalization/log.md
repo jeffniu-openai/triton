@@ -11988,3 +11988,16 @@ Open after this slice:
   - nearby selector `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma_scaled and tile_permuted'` passed `11` selected cases across four GPU split groups (`3`, `3`, `3`, `2`).
 - This is coverage expansion only. `tile_n=32` repeated-`N=32` remains the clean unsupported boundary.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
+
+## 2026-04-13 12:45 UTC: broad direct MMA/scaled-MMA selector green after coverage expansion
+
+- Current head: `8b3fec8d6`, already pushed to `origin/codex/tmem` before this docs-only validation checkpoint.
+- Four-GPU split run:
+  - `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+  - group 1: `32 passed, 45 skipped, 2695 deselected in 31.26s`;
+  - group 2: `72 passed, 5 skipped, 2695 deselected in 12.80s`;
+  - group 3: `77 passed, 2695 deselected in 17.82s`;
+  - group 4: `77 passed, 2695 deselected in 55.82s`.
+- Aggregate: `258 passed, 50 skipped`, no failures/errors.
+- Interpretation: the direct MMA/scaled-MMA runtime-matrix surface remains green after adding two-CTA scaled-MMA multicast subview coverage and full-format `tile_n=64` tile-permuted scaled accumulator coverage.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
