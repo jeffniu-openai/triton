@@ -11588,3 +11588,22 @@ Open after this slice:
   - exact new nodeid across four GPU split groups passed `10` selected cases;
   - nearby selector `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc`
     passed `30` selected cases aggregate across four GPU split groups.
+
+## 2026-04-13 07:55 UTC: broad MMA runtime selector refreshed after use-acc coverage
+
+- Refreshed the broad runtime-matrix selector after adding tile-permuted plain
+  MMAv5 `use_acc=True` coverage.
+- Command shape:
+  - four GPU shards with distinct `CUDA_VISIBLE_DEVICES` / `TRITON_CACHE_DIR`;
+  - `PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`.
+- Result:
+  - group 1: `30 passed, 43 skipped, 2650 deselected`;
+  - group 2: `66 passed, 7 skipped, 2650 deselected`;
+  - group 3: `73 passed, 2650 deselected`;
+  - group 4: `73 passed, 2650 deselected`;
+  - aggregate selected coverage: `242 passed, 50 skipped`.
+- Notes:
+  - split-4 remains duration-imbalanced without timing data, but all shards made
+    steady progress and completed green;
+  - this supersedes the older `232 passed, 50 skipped` broad-MMA current-head
+    count for the runtime matrix.

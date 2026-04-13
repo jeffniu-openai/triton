@@ -131,9 +131,10 @@ When resuming the initiative:
   `matmul + accumulator` results, exact PTX/LLIR `tcgen05.mma` opcode streams,
   commit opcodes, and preservation of `tensor_memory_linear`. Validation:
   `py_compile` passed, rebuild was a no-op success, the exact new nodeid passed
-  all `10` selected cases across four GPU split groups, and the nearby
+  all `10` selected cases across four GPU split groups, the nearby
   `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc` selector passed
-  `30` selected cases aggregate.
+  `30` selected cases aggregate, and the post-commit broad four-GPU
+  `-k 'mma and not cp'` selector passed `242 passed, 50 skipped`.
 
 - Latest scaled-MMAv5 TMEM-LHS checkpoint, 2026-04-13 05:35 UTC: scaled
   MMAv5 TMEM-LHS subviews now address packed fp4 operand-A descriptors in
@@ -146,7 +147,7 @@ When resuming the initiative:
   storage model currently represented by `fp4_padded` shared memory.
   Validation: rebuild passed, durable probe refreshed, focused positive plus
   negative matrix `10 passed`, nearby scaled-MMA selector `27 passed`, and
-  broad four-GPU `-k 'mma and not cp'` selector `232 passed, 50 skipped`.
+  broad four-GPU `-k 'mma and not cp'` selector `242 passed, 50 skipped`.
 
 - Latest copy-frontier checkpoint, 2026-04-13 07:25 UTC: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. The earlier bounded direct-PTX follow-up around the single-CTA direct seed tested `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and two-message column-pair schedules; a new four-GPU source-offset scan extends the single-message direct-seed range through offsets `36..63` for destination deltas `0/4`. All `56` new variants launched successfully with no sentinels or NaNs, but none matched the layout-derived extended `02_13` oracle and every variant duplicated one source column pair. The new durable shards are `experiments/results/probe_cp_warpx2_02_13_twocta_source_offsets_{36_42,43_49,50_56,57_63}_gpu{0,1,2,3}.jsonl`.
 
@@ -679,7 +680,7 @@ When resuming the initiative:
     four-GPU `pytest-split` groups over
     `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    aggregate selected coverage `232 passed, 50 skipped`;
+    aggregate selected coverage `242 passed, 50 skipped`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
     and offset one-CTA accumulator subview format-matrix cases, the two-CTA
