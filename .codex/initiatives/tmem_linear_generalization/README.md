@@ -946,6 +946,20 @@ When resuming the initiative:
     `ldst_descriptor_compositions` also matched permuted/rowcol/exotic sweeps;
     use exact nodeids for the base function when validating this slice.
 
+## 2026-04-13 09:05 UTC: core descriptor-chain matrix uses supported bitcast
+
+- Migrated `python/test/gluon/test_core.py::tmem_descriptor_chain_matrix_kernel`
+  from `_reinterpret(...)` to `.bitcast(...)` for the same descriptor-chain
+  physical-equivalent view pattern already migrated in the runtime matrix.
+- `test_tmem_descriptor_chain_matrix` now asserts `tmem_physical_bitcast` in
+  TTGIR in addition to the existing descriptor-view operations and exact
+  `tcgen05.{st,ld}` opcode checks.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_core.py` passed;
+  - rebuild was a no-op success;
+  - exact nodeid across four GPU split groups passed all `26` selected cases
+    (`7`, `7`, `7`, `5`).
+
 ## Document Roles
 
 - `memory.md`

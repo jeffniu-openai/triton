@@ -307,7 +307,7 @@ def tmem_descriptor_chain_matrix_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
     view = tmem.slice(1, 1, dim=0).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view = view.permute([1, 0]).permute([1, 0])
     view = view.slice(0, M, dim=0).slice(0, N, dim=1)
-    view = view._reinterpret(ttgl.float32, [M, N], layout)
+    view = view.bitcast(ttgl.float32, [M, N], layout)
 
     reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     view.store(ttgl.convert_layout(value, reg_layout))
@@ -2429,6 +2429,7 @@ def test_tmem_descriptor_chain_matrix(name, layout, M, N, instr_variant, num_war
     assert "ttg.memdesc_trans" in ttgir
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_reinterpret" in ttgir
+    assert "tmem_physical_bitcast" in ttgir
 
     expected_st = f"tcgen05.st.sync.aligned.{expected_opcode}"
     expected_ld = f"tcgen05.ld.sync.aligned.{expected_opcode}"

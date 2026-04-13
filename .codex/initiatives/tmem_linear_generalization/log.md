@@ -11707,3 +11707,19 @@ Open after this slice:
     `-k ldst_descriptor_compositions` also selected permuted, row/col-permuted,
     and exotic composition sweeps; exact nodeids are required for the base
     descriptor-composition function.
+
+## 2026-04-13 09:05 UTC: migrated core descriptor-chain matrix to `.bitcast`
+
+- Followed up the runtime-matrix reinterpret migration with the matching
+  `test_core.py` descriptor-chain matrix helper.
+- Changes:
+  - `tmem_descriptor_chain_matrix_kernel` now calls
+    `.bitcast(ttgl.float32, [M, N], layout)` instead of `_reinterpret(...)`;
+  - `test_tmem_descriptor_chain_matrix` asserts `tmem_physical_bitcast` in
+    TTGIR so the test documents the supported physical-bitcast API path.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_core.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - four-GPU split exact nodeid
+    `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix` passed
+    all `26` selected cases (`7`, `7`, `7`, `5`).

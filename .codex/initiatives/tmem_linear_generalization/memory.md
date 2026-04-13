@@ -129,6 +129,15 @@
   compositions passed across the four split groups after rerunning cold-compile
   group 3 with a warmed cache; the deep single-CTA and two-CTA roundtrip
   selectors completed with their existing OOR skips and no failures.
+- Latest `test_core` descriptor-chain API-migration checkpoint,
+  2026-04-13 09:05 UTC: `tmem_descriptor_chain_matrix_kernel` now uses
+  supported `.bitcast(...)` instead of `_reinterpret(...)` for the same
+  physical-equivalent descriptor-chain view pattern migrated in the runtime
+  matrix. The test now asserts `tmem_physical_bitcast` in TTGIR while preserving
+  its existing memdesc view and exact `tcgen05.{st,ld}` opcode checks.
+  Validation: `py_compile` passed, rebuild was a no-op success, and the exact
+  `test_tmem_descriptor_chain_matrix` nodeid passed all `26` selected cases
+  across four GPU split groups (`7`, `7`, `7`, `5`).
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green
