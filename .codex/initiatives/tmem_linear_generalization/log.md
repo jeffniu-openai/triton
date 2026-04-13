@@ -12316,3 +12316,24 @@ Open after this slice:
 - The default `[K, N]` B TMA descriptor path remains a clean unsupported
   transposed-float32 shared-operand boundary; this checkpoint only expands the
   positive `[N, K]` descriptor plus shared-permute route.
+
+## 2026-04-13 after TMA TF32 descriptor expansion: two-CTA direct-i8 clean negative covers `block_n=256`
+
+- Expanded the direct-i8 MMAv5 clean unsupported boundary:
+  - `test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error` now covers
+    `block_n in (128, 256)`;
+  - both legacy and canonical TMEM-linear two-CTA accumulator layouts are
+    covered;
+  - the assertion remains the dedicated Blackwell direct-i8 diagnostic, with no
+    PassManager or assertion noise.
+- Rationale:
+  - positive two-CTA plain-kind coverage spans `blockN in {128, 256}`;
+  - the direct-i8 boundary should be pinned at the same shapes so future backend
+    changes cannot accidentally fall through only at the wider N tile.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` no-op success;
+  - exact expanded two-CTA nodeid across four GPU `pytest-split` groups:
+    `4 passed` aggregate;
+  - nearby `-k 'i8_reports_clean_error'` selector: six selected one-CTA plus
+    two-CTA cases passed across groups 1-3; group 4 selected no tests.

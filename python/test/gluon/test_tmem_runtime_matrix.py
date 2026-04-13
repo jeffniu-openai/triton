@@ -6178,7 +6178,8 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, capfd):
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, capfd):
+@pytest.mark.parametrize("block_n", (128, 256))
+def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, block_n, capfd):
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     cta_split_a = [ctas_per_cga[0], 1]
@@ -6189,7 +6190,7 @@ def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, 
     cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
     cga_layout_c_arg = tuple(tuple(basis) for basis in cga_layout_c)
 
-    block_m, block_n, block_k = 256, 128, 32
+    block_m, block_k = 256, 32
     a = torch.randint(-8, 8, (block_m, block_k), device="cuda", dtype=torch.int8)
     b = torch.randint(-8, 8, (block_k, block_n), device="cuda", dtype=torch.int8)
     out = torch.empty((block_m, block_n), device="cuda", dtype=torch.int32)
