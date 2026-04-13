@@ -12548,3 +12548,33 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`; or
   - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
+
+## 2026-04-13 after direct scaled-root format matrix: direct scaled-MMAv5 root K=256 coverage
+
+- Expanded `SCALED_MMA_ROOT_FORMAT_CASES` so the direct scaled-MMAv5 root-format
+  matrix now covers `K in {128, 256}` in addition to the existing full format,
+  `N in {128, 256}`, and legacy/canonical accumulator-layout axes.
+- Scratch probe before the edit split the twenty new `K=256` cases over four
+  GPUs and all passed:
+  - `mxfp8/mxfp8`, `mxfp8/mxfp4`, and `mxfp4/mxfp8` use `8` direct-root
+    scaled-MMAv5 instructions at `K=256`;
+  - `mxfp4/mxfp4` and `nvfp4/nvfp4` use `4` direct-root scaled-MMAv5
+    instructions at `K=256`;
+  - numeric results matched the dequantized reference for both `N=128` and
+    `N=256`, with both legacy and canonical accumulator layouts.
+- The test now asserts `expected_count = (k // 128) * base_count`, so the
+  existing `K=128` cases keep their old counts and the new `K=256` cases pin
+  the doubled count.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - exact expanded nodeid across four GPU `pytest-split` groups: `40 passed`
+    aggregate (`10` per group);
+  - tight family selector `-k 'test_tmem_runtime_matrix_mma'`: `263 passed`
+    across four GPU groups (`66`, `66`, `66`, `65`) in `54s`, `92s`, `131s`,
+    and `86s`.
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`; or
+  - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
