@@ -36,6 +36,12 @@ SOURCE_ROW_PLUS_16_IMM = 70403103916064  # 0x400800000020
 SINGLE_CTA_DIRECT_SEED_IMM = 2322202917601312  # 0x8400800000020
 
 
+def direct_seed_imm(source_offset_b128: int) -> int:
+    """Descriptor immediate used by the direct-seed lowering path."""
+    seed = (1 << 46) | (8 << 32)
+    return seed + source_offset_b128 + (((source_offset_b128 >> 3) & 0x7) << 49)
+
+
 @dataclass(frozen=True)
 class CopyMessage:
     op: str
@@ -56,6 +62,68 @@ VARIANTS = (
     Variant("source_row_plus16_dst4", (CopyMessage("or", SOURCE_ROW_PLUS_16_IMM, 4),)),
     Variant("single_seed", (CopyMessage("add", SINGLE_CTA_DIRECT_SEED_IMM, 0),)),
     Variant("single_seed_dst4", (CopyMessage("add", SINGLE_CTA_DIRECT_SEED_IMM, 4),)),
+    Variant("direct_seed_off33", (CopyMessage("add", direct_seed_imm(33), 0),)),
+    Variant("direct_seed_off33_dst4", (CopyMessage("add", direct_seed_imm(33), 4),)),
+    Variant("direct_seed_off34", (CopyMessage("add", direct_seed_imm(34), 0),)),
+    Variant("direct_seed_off34_dst4", (CopyMessage("add", direct_seed_imm(34), 4),)),
+    Variant("direct_seed_off35", (CopyMessage("add", direct_seed_imm(35), 0),)),
+    Variant("direct_seed_off35_dst4", (CopyMessage("add", direct_seed_imm(35), 4),)),
+    Variant(
+        "two_msg_direct_off32_0_off32_4",
+        (
+            CopyMessage("add", direct_seed_imm(32), 0),
+            CopyMessage("add", direct_seed_imm(32), 4),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_4_off32_0",
+        (
+            CopyMessage("add", direct_seed_imm(32), 4),
+            CopyMessage("add", direct_seed_imm(32), 0),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_0_off33_4",
+        (
+            CopyMessage("add", direct_seed_imm(32), 0),
+            CopyMessage("add", direct_seed_imm(33), 4),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_4_off33_0",
+        (
+            CopyMessage("add", direct_seed_imm(32), 4),
+            CopyMessage("add", direct_seed_imm(33), 0),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_0_off34_4",
+        (
+            CopyMessage("add", direct_seed_imm(32), 0),
+            CopyMessage("add", direct_seed_imm(34), 4),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_4_off34_0",
+        (
+            CopyMessage("add", direct_seed_imm(32), 4),
+            CopyMessage("add", direct_seed_imm(34), 0),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_0_off35_4",
+        (
+            CopyMessage("add", direct_seed_imm(32), 0),
+            CopyMessage("add", direct_seed_imm(35), 4),
+        ),
+    ),
+    Variant(
+        "two_msg_direct_off32_4_off35_0",
+        (
+            CopyMessage("add", direct_seed_imm(32), 4),
+            CopyMessage("add", direct_seed_imm(35), 0),
+        ),
+    ),
     Variant(
         "two_msg_base0_plus16_4",
         (

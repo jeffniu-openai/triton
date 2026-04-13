@@ -11282,3 +11282,28 @@ Open after this slice:
   - the first broad split-4 run packed slow cases into groups 2 and 3 and timed
     out at 900s after steady progress; the full split-16 rerun closed the same
     selector cleanly and should be the preferred local recipe for this selector.
+## 2026-04-13 05:05 UTC: two-CTA `warpx2::02_13` column-offset probe remains negative
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - HEAD `31d1837f3fd76d721aa5879c349508e4f5a370c8` before this documentation/experiment checkpoint.
+- Rebuild:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` -> `ninja: no work to do`.
+- Focused current-boundary validation used four GPUs with `pytest-split` and one cache per GPU:
+  - `python/test/gluon/test_tmem_runtime_matrix.py -k warpx2`;
+  - group 1: `4 passed`;
+  - group 2: `4 passed`;
+  - group 3: `4 passed`;
+  - group 4: `1 passed`;
+  - aggregate: `13 passed`, no failures.
+- Direct-PTX follow-up:
+  - expanded `experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py` with direct-seed source-offset variants around the single-CTA `02_13` seed;
+  - saved the current run to `experiments/results/probe_cp_warpx2_02_13_twocta_column_offsets_current.log`;
+  - tested single-message offsets `sourceOffsetB128 = 32..35` with destination deltas `0` and `4`;
+  - tested two-message schedules `off32@dst0 + off{32..35}@dst4` and `off32@dst4 + off{32..35}@dst0`;
+  - no variant matched the extended two-CTA `02_13` oracle; all aligned variants duplicated a source column pair or overwrote with another duplicate.
+- Conclusion:
+  - do not enable two-CTA `warpx2::02_13` by extending the single-CTA direct seed or by adding a second small-offset message;
+  - the current clean unsupported diagnostic remains the correct public boundary until a descriptor/message model that preserves both row family and source-column selection is discovered.
+- Validation of this checkpoint:
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py`.

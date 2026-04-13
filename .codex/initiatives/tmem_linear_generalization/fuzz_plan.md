@@ -315,7 +315,11 @@ Every fuzz case records:
   unsupported case, and the dense shared-layout form is rejected to avoid
   known wrong-code. A direct-seed sweep found that the aligned address variant
   can move data but loses the source-column bit, while the old `+4` TMEM dword
-  delta is all-zero and unaligned deltas trap.
+  delta is all-zero and unaligned deltas trap. A 2026-04-13 direct-seed
+  follow-up around `sourceOffsetB128` `32..35`, destination deltas `0/4`, and
+  two-message column-pair schedules still duplicated one source column pair or
+  overwrote with another duplicate, so this remains a descriptor/message
+  semantics frontier rather than a small offset toggle.
 
 #### Scales / multicast positive matrix
 - scales payload layouts that are known to alias to legal TMEM scales tiles
@@ -369,7 +373,10 @@ Every fuzz case records:
   `experiments/results/probe_cp_warpx2_02_13_twocta_direct_ptx_current.log`
   extends this to opcode-only, source-row-plus-16, single-CTA seed,
   destination-`+4`, and two-message variants; none match the extended
-  single-CTA `02_13` oracle.
+  single-CTA `02_13` oracle. The newer column-offset log
+  `experiments/results/probe_cp_warpx2_02_13_twocta_column_offsets_current.log`
+  additionally rules out direct-seed `sourceOffsetB128` `32..35` plus the
+  nearest two-message column-pair schedules.
 
 #### Checks
 - Output matches input for no-scales copies.
