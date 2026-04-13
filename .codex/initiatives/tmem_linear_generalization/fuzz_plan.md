@@ -341,10 +341,12 @@ Every fuzz case records:
 - `cta_group in {1, 2}`
 - Scaled-MMA copy-helper coverage through `tcgen05.copy.warpx4.32x128b` now
   spans all current scaled format pairs at `blockN in {128, 256}` and
-  `blockK in {128, 256}`, `num_ctas in {1, 2}`, and legacy/canonical
-  accumulator layouts; the expected scaled-copy message count is
-  `(1 + blockN // 128) * (blockK // 128) * (32 // vec_size)`. The companion
-  scaled-MMA instruction count is pinned as `base_count * (blockK // 128)`.
+  `blockK in {128, 256}`, `num_ctas in {1, 2}`, `multicast in {false, true}`,
+  and legacy/canonical accumulator layouts; the expected scaled-copy message
+  count is `(1 + blockN // 128) * (blockK // 128) * (32 // vec_size)`. The
+  companion scaled-MMA instruction count is pinned as
+  `base_count * (blockK // 128)`, and only two-CTA multicast cases should carry
+  the TTGIR `{multicast}` marker.
 - Do not use the historical public-layout "warpx2 candidate" as proof of a
   scales `warpx2` path: it currently classifies as `warpx4.32x128b` under
   `TensorMemoryScalesLayout` because the scales layout carries broadcast row

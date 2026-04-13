@@ -12606,3 +12606,30 @@ Open after this slice:
   - continue copy descriptor/address synthesis for true scales `warpx2` or
     two-CTA `warpx2::02_13`; or
   - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
+
+## 2026-04-13 after scaled-copy K256 expansion: scaled-copy helper covers multicast formats
+
+- Expanded `CP_SCALES_WARPX4_SCALED_MMA_CASES` again so the all-format
+  scaled-MMA copy-helper matrix covers `multicast in {false, true}` across the
+  existing `block_n`, `block_k`, `num_ctas`, and accumulator-layout axes.
+- Scratch probe before the edit split the eighty new `multicast=True` cases over
+  four GPUs and all passed. The probe also confirmed the expected TTGIR surface:
+  - one-CTA multicast=True cases do not carry `{multicast}`;
+  - two-CTA multicast=True cases do carry `{multicast}`.
+- The runtime matrix now asserts that TTGIR multicast marker boundary directly,
+  while preserving exact copy counts and exact scaled-MMA counts from the
+  previous `block_k=256` expansion.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - exact expanded nodeid across four GPU `pytest-split` groups: `160 passed`
+    aggregate (`40` per group);
+  - nearby selector `-k 'cp_scales_warpx4_via_scaled_mma'`: `192 passed`
+    aggregate (`48` per group);
+  - broad copy selector `-k 'cp'`: `307 passed, 5 skipped` aggregate
+    (`73 passed, 5 skipped`; `78`; `78`; `78`).
+- Next:
+  - continue copy descriptor/address synthesis for true scales `warpx2` or
+    two-CTA `warpx2::02_13`; or
+  - mine another bounded MMAv5/scaled-MMAv5 reachable-family parity gap.
