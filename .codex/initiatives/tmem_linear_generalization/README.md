@@ -85,6 +85,21 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest `ld.red` contract checkpoint, 2026-04-13 06:20 UTC:
+  runtime-matrix clean-negative coverage now pins the non-f32
+  reduction/modifier boundary. New coverage rejects `i32` plain reductions with
+  the f32-required diagnostic, rejects `i32` reductions with `NaN` / `abs`
+  modifiers with the dedicated modifier-type diagnostics, and rejects a
+  legacy-unpacked `f16` reduction attempt before lowering. Validation:
+  `py_compile` passed, rebuild was a no-op success, the new nodeid passed
+  across four GPU split groups (`4 passed` aggregate), the nearby negative
+  selector passed (`11 passed` aggregate), and the broad four-GPU `-k ld_red`
+  selector passed (`507 passed` aggregate). The broad split-4 run was badly
+  imbalanced without duration data (reported shard times about `7:58`,
+  `19:31`, `19:05`, and `13:57`), so future broad `ld_red` local validation
+  should use finer/duration-aware groups or narrower selectors instead of
+  treating a slow split-4 shard as normal.
+
 - Latest M64 docket checkpoint, 2026-04-13 05:41 UTC: the historical
   `python/test/gluon/test_core.py::test_block_m_64_mma[legacy]` bug/xfail item
   is stale at current head. After rebuild, the legacy parameter passed with

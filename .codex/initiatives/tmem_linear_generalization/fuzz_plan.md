@@ -281,14 +281,21 @@ Every fuzz case records:
   before reduction loads, exactly one `wait <load>` after `ld.red`, and the
   PTX/LLIR ordering `store -> wait.store -> ld.red -> wait.load`.
 
-#### Negative frontier
-- integer reduction with `NaN`
-- unpacked formats
-- additional N-sharded register layouts beyond the explicit `16x64b`,
-  `16x128b`, and `16x256b` clean-negative coverage
-- plain identity `256xN` source layouts, which are not the current direct
-  `tcgen05.ld.red` source form and should keep the clean software-reduction
-  diagnostic unless the planner grows a real positive lowering
+#### Negative frontier / covered clean negatives
+- Covered by `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`:
+  `i32` plain reductions, `i32` reductions with `NaN` or `abs` modifiers, and
+  legacy-unpacked `f16` reduction attempts all fail before lowering with clean
+  verifier diagnostics.
+- Additional N-sharded register layouts beyond the explicit `16x64b`,
+  `16x128b`, and `16x256b` clean-negative coverage remain a watch item if new
+  explicit variants become reachable.
+- Plain identity `256xN` source layouts are already pinned as not the current
+  direct `tcgen05.ld.red` source form and should keep the clean
+  software-reduction diagnostic unless the planner grows a real positive
+  lowering.
+- If compile-only discovery reaches a true f32 unpacked/reinterpret descriptor
+  view for reduction, it must either fail with the packed-format diagnostic or
+  be promoted only after a proven legal lowering exists.
 
 ### 4. `cp`
 

@@ -1058,6 +1058,41 @@ def tmem_ld_red_explicit_layout_kernel(
 
 
 @gluon.jit
+def tmem_ld_red_non_f32_contract_kernel(
+    in_ptr,
+    out_ptr,
+    red_ptr,
+    layout: ttgl.constexpr,
+    load_variant: ttgl.constexpr,
+    use_abs: ttgl.constexpr,
+    propagate_nan: ttgl.constexpr,
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=layout)
+    store_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=load_variant)
+    value = ttgl.convert_layout(value, store_layout)
+    tmem.store(value)
+
+    output, reduced = tmem.load_min(layout=store_layout, abs=use_abs, propagate_nan=propagate_nan)
+    output = ttgl.convert_layout(output, global_layout)
+    ttgl.store(out_ptr + offs, output)
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_copy_no_scales_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
                                swizzle: ttgl.constexpr):
     tmem_layout: ttgl.constexpr = TensorMemoryLayout(
@@ -3041,6 +3076,49 @@ LD_RED_UNSUPPORTED_SOURCE_CASES = [
     ("identity_256x256", 256, 256, 8),
 ]
 
+LD_RED_NON_F32_CONTRACT_CASES = [
+    pytest.param(
+        "i32_plain",
+        torch.int32,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="i32_plain",
+    ),
+    pytest.param(
+        "i32_nan",
+        torch.int32,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        False,
+        tl.PropagateNan.ALL,
+        "'NaN' requires floating-point element type (f32)",
+        id="i32_nan",
+    ),
+    pytest.param(
+        "i32_abs",
+        torch.int32,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        True,
+        tl.PropagateNan.NONE,
+        "'abs' requires floating-point element type (f32)",
+        id="i32_abs",
+    ),
+    pytest.param(
+        "f16_legacy_unpacked",
+        torch.float16,
+        TensorMemoryLayout(block=(128, 2), col_stride=2),
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="f16_legacy_unpacked",
+    ),
+]
+
 LDST_EXPECTED_OFFSETS_128x256 = {
     "auto": [
         ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
@@ -4520,6 +4598,29 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsu
     assert "tmem_load reduction with N dimension sharded across threads is not supported" in text
     assert "Reduction requires all N elements to reside in the register dimension and M to be unsharded" in text
     assert "Got register layout" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize(
+    "name,dtype,layout,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_CONTRACT_CASES
+)
+def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
+    name, dtype, layout, load_variant, use_abs, propagate_nan, expected_diag, capfd
+):
+    inp = torch.zeros((128, 128), dtype=dtype, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((128,), dtype=dtype, device="cuda")
+
+    with pytest.raises(Exception) as err:
+        tmem_ld_red_non_f32_contract_kernel[(1, )](
+            inp, out, red, layout, load_variant, use_abs, propagate_nan, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert expected_diag in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

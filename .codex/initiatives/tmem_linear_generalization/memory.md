@@ -50,6 +50,19 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Latest `ld.red` contract checkpoint, 2026-04-13 06:20 UTC at `e84e4f0a7`:
+  runtime-matrix coverage now pins clean non-f32 reduction/modifier failures.
+  `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`
+  covers `i32` plain reduction, `i32` with `NaN`, `i32` with `abs`, and
+  legacy-unpacked `f16`; all fail before lowering with dedicated diagnostics and
+  without PassManager/assert noise. Validation: `py_compile` passed, rebuild was
+  a no-op success, the exact new nodeid passed across four GPU split groups
+  (`4 passed` aggregate), nearby negative selector
+  (`11 passed` aggregate), and broad four-GPU `-k ld_red` (`507 passed`
+  aggregate). Broad split-4 was green but too imbalanced without duration data
+  (reported shard times about `7:58`, `19:31`, `19:05`, and `13:57`); prefer
+  finer split groups, duration-aware splits, or targeted selectors for future
+  local `ld_red` sweeps.
 - Latest M64 docket checkpoint, 2026-04-13 05:41 UTC at `b475e2883`:
   the previously recorded legacy M64 MMAv5 bug/xfail is stale on current head.
   Rebuild completed successfully, then

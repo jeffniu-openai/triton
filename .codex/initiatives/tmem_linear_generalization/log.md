@@ -11431,3 +11431,35 @@ Open after this slice:
   - the old legacy M64 MMAv5 bug/xfail docket item is stale at current head;
   - do not treat `test_block_m_64_mma[legacy]` as branch-actionable unless a
     fresh exact current-head repro fails.
+
+## 2026-04-13 06:20 UTC: `ld.red` non-f32 contract negatives are pinned
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - HEAD `e84e4f0a7` before this test/docs checkpoint.
+- Coverage added:
+  - new runtime-matrix helper kernel `tmem_ld_red_non_f32_contract_kernel`;
+  - new test `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`;
+  - cases cover `i32` plain reduction, `i32` + `NaN`, `i32` + `abs`, and
+    legacy-unpacked `f16` reduction attempts;
+  - expected failures are clean verifier diagnostics, with no PassManager or
+    assertion noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - exact new nodeid across four GPU split groups:
+    `CUDA_VISIBLE_DEVICES=<0..3> TRITON_CACHE_DIR=/tmp/triton-cache-ldred-contract-gpu<0..3> PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`
+    selected one case per group and passed (`4 passed` aggregate);
+  - nearby negative selector across four GPU split groups:
+    `CUDA_VISIBLE_DEVICES=<0..3> TRITON_CACHE_DIR=/tmp/triton-cache-ldred-neg-gpu<0..3> PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_non_f32_contract or ld_red_explicit_n_sharded or ld_red_identity_256_linear_layout_reports_clean_unsupported'`
+    passed (`11 passed` aggregate);
+  - broad `ld_red` selector across four GPU split groups:
+    `CUDA_VISIBLE_DEVICES=<0..3> TRITON_CACHE_DIR=/tmp/triton-cache-ldred-broad-contract-gpu<0..3> PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k ld_red`
+    passed (`507 passed` aggregate).
+- Velocity note:
+  - broad split-4 was clean but badly imbalanced without duration data: group 1
+    `127 passed` in `478.90s`, group 2 `127 passed` in `1171.70s`, group 3
+    `127 passed` in `1145.11s`, and group 4 `126 passed` in `837.75s`;
+  - future broad local `ld_red` sweeps should use finer split groups, duration
+    data, or narrower selectors rather than accepting 15-20 minute shards as
+    normal.
