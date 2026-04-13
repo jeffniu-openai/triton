@@ -11768,3 +11768,16 @@ Open after this slice:
   - adjacent `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix` remains green. Groups 1 and 2 passed cold (`7`, `7`); group 3 printed `7 passed` but was killed by a `120s` wrapper during teardown, then passed in `3.27s` on warmed rerun; group 4 hit the same cold timeout and then passed in `28.25s` on warmed rerun (`5 passed`).
 - Velocity note:
   - the descriptor-chain cold timeout here was validation overhead/cache behavior, not a failing nodeid. For future focused guard checks, rerun timed-out split groups against warmed caches or isolate exact nodeids before classifying the result.
+## 2026-04-13 09:50 UTC: migrated runtime-matrix block descriptor negative to `.bitcast`
+
+- Removed the last `_reinterpret(...)` use from `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `tmem_block_descriptor_compile_kernel` now uses `.bitcast(ttgl.float32, [64, 32], reinterpret_layout)` after the composed descriptor view chain.
+- The one-CTA `block` parameter still reaches the expected clean CTA mismatch.
+- The two-CTA block parameter no longer expects the deeper direct ld/st unsupported-row-anchor fragments. With the supported API spelling, it cleanly rejects during bitcast/subslice query formation with `unsupported tensor memory memdesc_subslice view`.
+- Probe result for that boundary: temporary `TRITON_DEBUG_TMEM_QUERY=1` instrumentation showed the generic subslice builder would need `dim=2 step=2 phys=block delta=-1`, so the view is not representable by the current additive query-origin model. The temporary debug instrumentation was removed before validation.
+- Remaining `_reinterpret(...)` users after this checkpoint are outside `test_tmem_runtime_matrix.py`: the mixed-basis runtime-view case in `test_core.py`, shared-memory reinterpret coverage, frontend parser/IR contract tests, and the persistence tutorial's scratch-buffer borrow path.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `git diff --check` passed before docs update;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
+  - exact `test_tmem_runtime_matrix_block_descriptor_reports_clean_error` passed both selected cases across active four-GPU split groups (`1`, `1`); split groups 3 and 4 collected no selected tests and exited with pytest's no-test code because the nodeid has only two parameters.

@@ -985,7 +985,7 @@ def tmem_block_descriptor_compile_kernel(layout: ttgl.constexpr, reinterpret_lay
     view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
     view = view.permute([0, 2, 1]).reshape((64, 32, 8))
     view = view.slice(16, 32, dim=0).slice(8, 16, dim=1).slice(2, 4, dim=2)
-    view = view._reinterpret(ttgl.float32, [64, 32], reinterpret_layout)
+    view = view.bitcast(ttgl.float32, [64, 32], reinterpret_layout)
     value = ttgl.full([64, 32], 0.0, ttgl.float32, layout=reg_layout)
     view.store(ttgl.convert_layout(value, reg_layout))
     _ = view.load(reg_layout)
@@ -2684,13 +2684,11 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
         ),
     ),
     (
-        "block_two_ctas",
+        "block_two_ctas_bitcast_subslice",
         _make_tmem_linear_layout_block(128, 128, two_ctas=True),
         _make_tmem_linear_layout_64x32_block(two_ctas=True),
         (
-            "source has no supported register layout",
-            "unsupported tensor memory descriptor view for direct tcgen05.ld/st",
-            "required row anchors 16,32 are not directly representable in the descriptor view",
+            "unsupported tensor memory memdesc_subslice view",
         ),
     ),
 ]

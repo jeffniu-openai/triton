@@ -153,6 +153,19 @@
   passed all `11` selected cases across four GPU split groups (`3`, `3`, `3`,
   `2`), and adjacent `test_tmem_descriptor_chain_matrix` passed after warmed
   reruns of cold-timeout groups (`26` selected cases total).
+- Latest runtime-matrix API-migration checkpoint, 2026-04-13 09:50 UTC:
+  `python/test/gluon/test_tmem_runtime_matrix.py` no longer contains any
+  `_reinterpret(...)` calls. The remaining block-descriptor clean-negative
+  kernel now uses `.bitcast(...)`; the one-CTA block case still reports the CTA
+  mismatch, while the two-CTA block case cleanly rejects the supported
+  bitcast/subslice with `unsupported tensor memory memdesc_subslice view`. The
+  old `_reinterpret` path reached a deeper direct ld/st unsupported-row-anchor
+  diagnostic only by bypassing the supported descriptor-view contract. Probe
+  detail: the unsupported view would need a negative additive block delta
+  (`dim=2 step=2 phys=block delta=-1`) in the current query/origin model.
+  Validation: `py_compile`, rebuild, and `git diff --check` passed; the exact
+  block-descriptor nodeid passed both active split groups (`1`, `1`), with
+  groups 3 and 4 empty because only two cases are collected.
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green

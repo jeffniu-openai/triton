@@ -987,6 +987,25 @@ When resuming the initiative:
     after rerunning cold-timeout groups 3 and 4 against warmed caches (`7`,
     `7`, `7`, `5`).
 
+## 2026-04-13 09:50 UTC: runtime-matrix block descriptor negative uses supported bitcast
+
+- Removed the last `_reinterpret(...)` use from
+  `python/test/gluon/test_tmem_runtime_matrix.py`: the block-descriptor
+  clean-negative kernel now spells its view change as supported `.bitcast(...)`.
+- The one-CTA block case still reports the expected CTA mismatch cleanly. The
+  two-CTA block case now cleanly rejects earlier at supported bitcast/subslice
+  formation with `unsupported tensor memory memdesc_subslice view`, which better
+  matches the supported API contract than using `_reinterpret(...)` to force the
+  descriptor into a deeper direct ld/st unsupported-row-anchor diagnostic.
+- Probe note: the blocked two-CTA bitcast would require a negative additive
+  block-origin delta (`dim=2 step=2 phys=block delta=-1`) in the current query
+  model, so it remains a real complex-view boundary rather than a direct ld/st
+  negative.
+- Validation: `py_compile`, `make -j8`, and `git diff --check` passed. The
+  exact block-descriptor nodeid passed both selected cases across the active
+  four-GPU split groups (`1`, `1`; groups 3 and 4 were empty because only two
+  cases are collected).
+
 ## Document Roles
 
 - `memory.md`
