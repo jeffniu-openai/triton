@@ -12385,3 +12385,14 @@ Open after this slice:
     aggregate;
   - nearby `-k 'cp_scales_warpx4_via_scaled_mma'` selector: all `72` selected
     copy-matrix plus geometry cases passed across four groups.
+
+## 2026-04-13 after scaled-copy expansion: broad `tcgen05.cp` selector is green
+
+- Ran the broad runtime-matrix copy selector after expanding the scaled-copy
+  format matrix to `block_n=256`:
+  - command shape: `CUDA_VISIBLE_DEVICES=<gpu> TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu> PYTHONPATH=python:. pytest -s --tb=short --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py -k 'cp'`;
+  - group 1: `43 passed, 5 skipped`;
+  - groups 2, 3, and 4: `48 passed` each;
+  - aggregate: `187 passed, 5 skipped`.
+- This supersedes the older broad-copy count of `167 passed, 5 skipped`; the
+  difference is the new all-format `block_n=256` scaled-copy coverage.
