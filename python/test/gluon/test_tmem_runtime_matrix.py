@@ -1360,7 +1360,14 @@ def tmem_mma_indexed_acc_kernel(a_ptr, b_ptr, out_ptr, parent_layout: ttgl.const
 
 
 @gluon.jit
-def tmem_mma_lhs_kernel(a_ptr, b_ptr, out_ptr, lhs_layout: ttgl.constexpr, acc_layout: ttgl.constexpr):
+def tmem_mma_lhs_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    lhs_layout: ttgl.constexpr,
+    acc_layout: ttgl.constexpr,
+    smem_b_layout: ttgl.constexpr,
+):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
     K: ttgl.constexpr = 256
@@ -1373,13 +1380,12 @@ def tmem_mma_lhs_kernel(a_ptr, b_ptr, out_ptr, lhs_layout: ttgl.constexpr, acc_l
     a = ttgl.load(ttgl.set_auto_layout(a_ptr + a_offs, blocked_a))
     b = ttgl.load(ttgl.set_auto_layout(b_ptr + b_offs, blocked_b))
 
-    lhs_tmem = allocate_tensor_memory(ttgl.float16, [M, K], lhs_layout)
+    operand_dtype: ttgl.constexpr = a_ptr.dtype.element_ty
+    lhs_tmem = allocate_tensor_memory(operand_dtype, [M, K], lhs_layout)
     lhs_reg_layout: ttgl.constexpr = lhs_tmem.get_reg_layout()
     lhs_tmem.store(ttgl.convert_layout(a, lhs_reg_layout))
 
-    smem_b_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=16,
-                                                           rank=2)
-    smem_b = ttgl.allocate_shared_memory(ttgl.float16, [K, N], layout=smem_b_layout)
+    smem_b = ttgl.allocate_shared_memory(operand_dtype, [K, N], layout=smem_b_layout)
     smem_b.store(b)
 
     acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
@@ -5898,7 +5904,9 @@ MMA_PLAIN_KIND_EXPECTED_OP_COUNTS = {
 MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
     kind: count * 4 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
 }
-MMA_LHS_TILE_PERMUTED_EXPECTED_OP_COUNT = 16
+MMA_LHS_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
+    kind: count * 8 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
+}
 
 MMA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind)
@@ -6665,28 +6673,30 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, 
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_mma_lhs_tile_permuted():
+@pytest.mark.parametrize("kind", MMA_PLAIN_KINDS)
+def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind):
     m = n = 128
     k = 256
     lhs_layout = _make_tmem_linear_layout_tile_permuted(m, k, 64)
     acc_layout = _make_tmem_linear_layout(m, n)
-    a = torch.randn((m, k), dtype=torch.float16, device="cuda")
-    b = torch.randn((k, n), dtype=torch.float16, device="cuda")
+    a, b, _shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(
+        kind, m, n, k
+    )
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
     compiled = tmem_mma_lhs_kernel[(1, )](
-        a, b, out, lhs_layout, acc_layout, num_warps=4
+        a, b, out, lhs_layout, acc_layout, shared_layout_b, num_warps=4
     )
 
     expected = torch.matmul(a.to(torch.float32), b.to(torch.float32))
-    torch.testing.assert_close(out, expected, atol=1e-1, rtol=8e-2)
+    torch.testing.assert_close(out.to(torch.float32), expected.to(torch.float32), atol=atol, rtol=rtol)
 
     ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     assert ptx_ops
-    assert len(ptx_ops) == MMA_LHS_TILE_PERMUTED_EXPECTED_OP_COUNT
-    assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
+    assert len(ptx_ops) == MMA_LHS_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS[kind]
+    assert all(op == expected_kind for op in ptx_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 

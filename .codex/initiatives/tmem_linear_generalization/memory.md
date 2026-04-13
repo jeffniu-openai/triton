@@ -7116,3 +7116,33 @@ rejection, not rescue
 - Aggregate: `258 passed, 50 skipped`, no failures or errors.
 - This is validation only. It does not change the remaining true scales `warpx2`, two-CTA `warpx2::02_13`, or future broad-fuzz frontiers.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted replacements.
+
+## 2026-04-13 13:48 UTC: plain MMAv5 full-shape tile-permuted TMEM-LHS covers all plain kinds
+
+- Widened `test_tmem_runtime_matrix_mma_lhs_tile_permuted` from f16-only to all
+  `MMA_PLAIN_KINDS`: `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`.
+- `tmem_mma_lhs_kernel` now takes the kind-specific B shared-memory layout and
+  derives the TMEM/shared operand dtype from `a_ptr.dtype.element_ty`; this keeps
+  the helper aligned with the existing plain-kind input factory instead of
+  hardcoding f16 layout semantics.
+- The widened path covers a full-shape `128x256` tile-permuted TMEM-linear
+  operand-A descriptor feeding `tcgen05_mma`, complementing the existing all-kind
+  TMEM-LHS subview matrix.
+- Expected opcode counts are pinned as eight times the root `K=32` counts:
+  `f16=16`, `bf16=16`, `tf32=32`, and `f8e5m2/f8e4m3=8`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `make` was a no-op success;
+  - exact widened nodeid across four GPU split groups selected all five cases
+    across groups 1-3 and passed them (`2`, `2`, `1`; group 4 selected none);
+  - nearby LHS selector
+    `mma_lhs_tile_permuted or mma_lhs_subslice_view_plain_kinds` passed `15`
+    selected cases across four GPUs;
+  - nearby accumulator/LHS selector
+    `mma_lhs_tile_permuted or mma_lhs_subslice_view_plain_kinds or mma_plain_kinds_tile_permuted_acc`
+    passed `35` selected cases across four GPUs;
+  - broader `-k 'mma and not cp'` split-4 had groups 3 and 4 green (`78` passed
+    each) but groups 1 and 2 hit a 300s guard while still making progress, so
+    do not classify that partial broad run as a branch failure. This is another
+    no-duration static-split partitioning issue to handle with finer/duration
+    data if a full broad refresh is needed.

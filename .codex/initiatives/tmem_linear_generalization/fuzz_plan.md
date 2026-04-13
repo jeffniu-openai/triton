@@ -440,6 +440,9 @@ Every fuzz case records:
 - A operand:
   - shared-memory path
   - TMEM path where the op and backend support it
+  - full-shape tile-permuted TMEM-LHS coverage now spans `f16`, `tf32`, `bf16`,
+    `f8e5m2`, and `f8e4m3` for a `128x256` operand-A tile, with exact PTX/LLIR
+    opcode checks and eight-times-root instruction counts
   - current TMEM-LHS subview coverage spans `f16`, `tf32`, `bf16`, `f8e5m2`,
     and `f8e4m3` for both legacy and canonical TMEM-linear accumulator layouts,
     with exact PTX/LLIR opcode and instruction-count checks
@@ -451,8 +454,8 @@ Every fuzz case records:
 - Result matches the reference matmul, including accumulator add when
   `use_acc=true`.
 - PTX and LLIR use the same `tcgen05.mma` opcode family, with exact op counts
-  pinned for the plain-kind root matrices and the tile-permuted accumulator /
-  TMEM-LHS coverage.
+  pinned for the plain-kind root matrices, tile-permuted accumulator coverage,
+  full-shape tile-permuted TMEM-LHS coverage, and TMEM-LHS subview coverage.
 - `commit` opcode family and multicast suffix are correct.
 - TMEM accumulator layout must remain canonical TMEM-linear in TTGIR when the
   source came from `TensorMemoryLinearLayout`.

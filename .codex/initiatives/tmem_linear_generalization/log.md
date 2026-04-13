@@ -12167,3 +12167,31 @@ Open after this slice:
   - exact debug probes for two-CTA `02_13`, two-CTA `01_23`, single-CTA
     `02_13`, and scales `warpx2_candidate` completed;
   - removed instrumentation via reverse patch and rebuilt cleanly.
+
+## 2026-04-13 13:48 UTC: full-shape tile-permuted TMEM-LHS plain-kind matrix
+
+- Expanded direct plain-MMAv5 TMEM-LHS coverage for a full-shape tile-permuted
+  operand-A descriptor:
+  - `test_tmem_runtime_matrix_mma_lhs_tile_permuted` now parameterizes over all
+    `MMA_PLAIN_KINDS` instead of f16 only;
+  - `tmem_mma_lhs_kernel` is dtype/layout-parametric for the operand path by
+    deriving `operand_dtype` from `a_ptr` and accepting the B shared layout from
+    `_make_mma_plain_kind_inputs`;
+  - exact PTX/LLIR `tcgen05.mma` kind and op-count checks now cover
+    `f16/bf16=16`, `tf32=32`, and `f8e5m2/f8e4m3=8` for the `K=256` tile.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` no-op success;
+  - exact widened nodeid over four GPU split groups: all `5` selected cases
+    passed (`2`, `2`, `1`, and group 4 no selected cases);
+  - nearby LHS selector over four GPU split groups: `15 passed` aggregate;
+  - nearby accumulator/LHS tile-permuted selector over four GPU split groups:
+    `35 passed` aggregate, shard times `11.69s`, `14.78s`, `22.84s`, `25.22s`;
+  - broad `-k 'mma and not cp'` check: groups 3 and 4 passed (`78` each, about
+    `1:40`/`1:46`), while groups 1 and 2 timed out at `300s` while still
+    emitting progress. Per project guidance, this was treated as split
+    partitioning/duration-data work, not a reason to raise timeouts or a product
+    failure for this coverage slice.
+- Tooling note: `apply_patch` first failed to match the drifted helper context
+  and then failed with `No such file or directory`; source/docs edits used exact
+  checked replacements.

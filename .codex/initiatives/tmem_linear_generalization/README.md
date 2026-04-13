@@ -142,6 +142,23 @@ When resuming the initiative:
   passed all six selected cases. Do not carry the old M64 xfail as a live
   branch-actionable failure unless a fresh exact repro fails.
 
+- Latest plain-MMAv5 TMEM-LHS checkpoint, 2026-04-13 13:48 UTC: full-shape
+  tile-permuted TMEM-LHS coverage now spans every supported plain operand kind
+  (`f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`) instead of only f16.
+  `tmem_mma_lhs_kernel` now derives the operand dtype from the A pointer and
+  accepts the kind-specific B shared-memory layout, so the widened test feeds
+  a `128x256` tile-permuted TMEM-linear operand-A tile directly to
+  `tcgen05_mma` and checks numeric output plus exact PTX/LLIR opcode counts
+  (`f16/bf16=16`, `tf32=32`, `f8=8`). Validation: py-compile passed,
+  rebuild was a no-op success, the exact widened nodeid passed all `5` cases
+  across four GPU split groups (group 4 selected no cases because the nodeid
+  has only five params), the nearby LHS selector passed `15` cases, and the
+  nearby accumulator/LHS tile-permuted selector passed `35` cases across four
+  GPUs. A broad `-k 'mma and not cp'` split-4 refresh had groups 3 and 4 green
+  (`78` passed each in about `1:40`/`1:46`) but groups 1 and 2 hit the 300s
+  guard while still emitting progress; treat that as the known no-duration
+  partitioning issue, not as a product failure.
+
 - Latest plain-MMAv5 saturation checkpoint, 2026-04-13 07:45 UTC:
   tile-permuted TMEM-linear accumulator coverage now also pins the `use_acc=True`
   accumulator-add path for all supported plain operand kinds (`f16`, `tf32`,
@@ -557,8 +574,9 @@ When resuming the initiative:
   plus exact PTX/LLIR opcode agreement and the same exact root op counts.
 - Plain MMAv5 tile-permuted accumulator coverage now also pins its expected
   expanded instruction counts: four times the root kind count for accumulator
-  tile permutations, and `16` f16 ops for the wider-K tile-permuted TMEM-LHS
-  path.
+  tile permutations. Full-shape tile-permuted TMEM-LHS coverage now spans all
+  `MMA_PLAIN_KINDS` for a `128x256` operand-A tile and pins eight times the root
+  kind count (`f16/bf16=16`, `tf32=32`, `f8e5m2/f8e4m3=8`).
 - Plain MMAv5 TMEM-LHS subview coverage now spans all `MMA_PLAIN_KINDS` for
   both legacy and canonical TMEM-linear accumulator layouts:
   - `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds` slices the
