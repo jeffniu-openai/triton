@@ -972,12 +972,10 @@ When resuming the initiative:
     instead of rejecting an otherwise physical-equivalent view;
   - the standalone same-rank TMEM subview query path now handles same-rank TMEM
     subslices beyond the previous rank-2 special case.
-- `slice_reinterpret_64_mixed_32x32b` remains on `_reinterpret(...)` through a
-  separate helper. A supported `.bitcast(...)` still fails on that mixed-basis
-  projected subslice; the observed projection mismatch was `dim=0 step=2
-  phys=col expected=4 actual=2`. Do not paper this over with a pseudoinverse
-  fallback; the attempted fallback asserted because the projected image was not
-  contained in the queried image.
+- Superseded by the 2026-04-13 10:15 UTC checkpoint: the mixed-basis case was
+  reclassified as not physical-mapping equivalent to the requested identity
+  layout, moved out of the runtime-positive matrix, and converted to a clean
+  supported-bitcast negative.
 - Validation:
   - `python3 -m py_compile python/test/gluon/test_core.py` passed;
   - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
@@ -1017,11 +1015,27 @@ When resuming the initiative:
   parser/IR contract coverage until the complex physical-bitcast-over-view-chain
   planner/API gap is fixed. They should not be treated as production-style
   reliance on private `_reinterpret` lowering.
-- Remaining `_reinterpret(...)` users after this classification are:
-  - `test_core.py` mixed-basis TMEM runtime-view case, a real planner/API gap;
-  - shared-memory reinterpret tests in `test_core.py` and `test_frontend.py`;
-  - the persistence tutorial scratch-buffer borrow path, which borrows shared
-    memory B buffers for the epilogue rather than tensor memory.
+- Remaining `_reinterpret(...)` users after this classification are
+  intentional raw frontend `memdesc_reinterpret` parser/IR coverage,
+  shared-memory reinterpret tests in `test_core.py` and `test_frontend.py`, and
+  the persistence tutorial scratch-buffer borrow path, which borrows shared
+  memory B buffers for the epilogue rather than tensor memory.
+
+## 2026-04-13 10:15 UTC: test_core mixed runtime view is a clean bitcast negative
+
+- Removed the last TMEM `_reinterpret(...)` use from
+  `python/test/gluon/test_core.py`. The mixed-basis runtime-view case is no
+  longer a runtime positive through legacy `_reinterpret(...)`; it is now a
+  supported `.bitcast(...)` clean-negative case named
+  `slice_bitcast_64_mixed_not_physical_equivalent_32x32b`.
+- Classification: this was not a valid physical-equivalent bitcast to the
+  requested identity `128x64` layout. The legacy `_reinterpret` lowering planned
+  from the raw result layout and ignored the selected source descriptor view, so
+  store/load through the same descriptor could pass without proving that the
+  physical TMEM image was preserved.
+- Validation: `py_compile`, no-op rebuild, and `git diff --check` passed. The
+  combined positive/negative runtime-view nodeids passed all `11` selected cases
+  across four GPU split groups (`3`, `3`, `3`, `2`).
 
 ## Document Roles
 

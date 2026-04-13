@@ -11797,3 +11797,17 @@ Open after this slice:
   - group 4 was empty.
 - Failure mode: supported bitcast rejected the composed descriptor view before IR generation with `unsupported tensor memory memdesc_subslice view`.
 - The probe was reverted. Classification: these frontend tests intentionally cover raw `memdesc_reinterpret` parser/IR behavior and should remain until the physical-bitcast-over-complex-view planner/API gap is solved.
+## 2026-04-13 10:15 UTC: converted test_core mixed runtime view to clean bitcast negative
+
+- Removed the `tmem_linear_runtime_view_kernel_a_reinterpret` helper and the last TMEM `_reinterpret(...)` use from `python/test/gluon/test_core.py`.
+- Reclassified the mixed-basis runtime-view case from a legacy `_reinterpret` runtime positive to a supported `.bitcast(...)` clean negative named `slice_bitcast_64_mixed_not_physical_equivalent_32x32b`.
+- Reasoning:
+  - supported `.bitcast(...)` rejects the composed mixed source view with `unsupported tensor memory memdesc_subslice view`;
+  - a debug run of the legacy `_reinterpret` case showed ld/st planning from the raw result `128x64` layout (`rawRowPlan=128`) rather than from the selected source descriptor view;
+  - therefore the old runtime positive did not prove physical mapping preservation, only that store/load through the same legacy reinterpret descriptor were self-consistent.
+- Remaining `_reinterpret(...)` users in the checked files are now intentional raw frontend `memdesc_reinterpret` parser/IR coverage, shared-memory reinterpret tests, and the persistence tutorial's shared-memory scratch-buffer borrow path.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_core.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - combined positive and negative runtime-view nodeids passed across four GPU split groups: `3`, `3`, `3`, and `2` selected cases;
+  - `git diff --check` passed before docs update.

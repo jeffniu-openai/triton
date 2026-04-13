@@ -144,11 +144,9 @@
   `index_reshape_*` family. The compiler change verifies subslice projections
   against a normalized analysis layout only when inactive zero support bases make
   the destination layout non-injective, and generalizes the standalone TMEM
-  same-rank subview query path beyond rank 2. `slice_reinterpret_64_mixed_32x32b`
-  remains on `_reinterpret(...)` through a separate helper because the real
-  mixed-basis physical-equivalent bitcast still fails with the concrete
-  projection mismatch `dim=0 step=2 phys=col expected=4 actual=2`; do not solve
-  that by adding a pseudoinverse fallback, which asserted during the probe.
+  same-rank subview query path beyond rank 2. Superseded note: the mixed-basis
+  runtime-view case was later reclassified as not physical-mapping equivalent
+  to the requested identity layout and converted to a clean bitcast negative.
   Validation: `py_compile` passed, rebuild passed, the full runtime-view nodeid
   passed all `11` selected cases across four GPU split groups (`3`, `3`, `3`,
   `2`), and adjacent `test_tmem_descriptor_chain_matrix` passed after warmed
@@ -175,8 +173,21 @@
   parser/IR contract coverage until that planner/API gap is fixed; do not count
   them as production-style `_reinterpret` reliance. The persistence tutorial and
   the remaining `test_core.py` / `test_frontend.py` non-TMEM occurrences are
-  shared-memory reinterpret uses, except for `test_core.py`'s mixed-basis TMEM
-  runtime-view case, which stays on the real bitcast backlog.
+  shared-memory reinterpret uses. The `test_core.py` mixed-basis TMEM runtime
+  view was later reclassified as an invalid physical-equivalence target and
+  converted to a clean supported-bitcast negative.
+- Latest `test_core` runtime-view API-migration checkpoint, 2026-04-13 10:15 UTC:
+  `python/test/gluon/test_core.py` no longer contains TMEM `_reinterpret(...)`
+  users; only the shared-memory `test_slice_reinterpret` remains in that file.
+  The former mixed-basis runtime-view positive is now a clean supported-bitcast
+  negative, `slice_bitcast_64_mixed_not_physical_equivalent_32x32b`, because the
+  requested identity `128x64` result layout is not physical-mapping equivalent
+  to the selected mixed source view. The old `_reinterpret` path planned from
+  the raw result layout and ignored the source view, so it was testing legacy
+  behavior rather than a supported descriptor-view contract. Validation: `py_compile`,
+  no-op rebuild, and `git diff --check` passed; the combined positive/negative
+  runtime-view nodeids passed all `11` selected cases across four GPU split
+  groups (`3`, `3`, `3`, `2`).
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green

@@ -623,10 +623,7 @@ Every fuzz case records:
   IR generation with `unsupported tensor memory memdesc_subslice view`, so these
   remain contract coverage until complex physical-bitcast-over-view-chain support
   exists.
-- Current known blocked TMEM runtime-view family is now only the mixed-basis
-  `slice_reinterpret_64_mixed_32x32b` case in `test_tmem_linear_runtime_views`;
-  the two identity `slice_*` cases have migrated to supported `.bitcast(...)`.
-  The mixed case still fails supported `.bitcast(...)` over the composed
-  subslice/reshape/transpose chain with projection mismatch
-  `dim=0 step=2 phys=col expected=4 actual=2`, and should be fixed with exact
-  layout algebra rather than a pseudoinverse fallback.
+- `python/test/gluon/test_core.py` now has no TMEM `_reinterpret(...)` users.
+  The former mixed-basis runtime-view positive is a clean supported-bitcast
+  negative because the requested identity `128x64` result layout is not
+  physical-mapping equivalent to the selected mixed source descriptor view.

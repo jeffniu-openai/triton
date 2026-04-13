@@ -152,33 +152,6 @@ def tmem_linear_runtime_view_kernel_a(input_ptr, output_ptr, layout: ttgl.conste
 
 
 @gluon.jit
-def tmem_linear_runtime_view_kernel_a_reinterpret(input_ptr, output_ptr, layout: ttgl.constexpr,
-                                                  reinterpret_layout: ttgl.constexpr,
-                                                  instr_variant: ttgl.constexpr):
-    OUT_M: ttgl.constexpr = 128
-    OUT_N: ttgl.constexpr = 64
-    out_elems: ttgl.constexpr = OUT_M * OUT_N
-    ptr = ttgl.arange(0, out_elems)
-    input_tensor = ttgl.load(input_ptr + ptr).reshape([OUT_M, OUT_N])
-
-    M: ttgl.constexpr = layout.shape[0]
-    N: ttgl.constexpr = layout.shape[1]
-    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
-    view = tmem.slice(1, 1, dim=0).index(0).permute([1, 0]).reshape((64, 2, 128))
-    view = view.permute([0, 2, 1]).reshape((64, 32, 8))
-    view = view.slice(0, 64, dim=0).slice(8, 16, dim=1).slice(0, 8, dim=2)
-    view = view._reinterpret(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
-
-    reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
-    view.store(ttgl.convert_layout(input_tensor, reg_layout))
-    output_value = view.load(reg_layout)
-    output_value = output_value + ttgl.full([OUT_M, OUT_N], 1.0, ttgl.float32, layout=reg_layout)
-    view.store(output_value)
-    output_value = view.load(reg_layout)
-    ttgl.store(output_ptr + ptr, output_value.reshape([out_elems]))
-
-
-@gluon.jit
 def tmem_linear_runtime_view_kernel_b(input_ptr, output_ptr, layout: ttgl.constexpr, reinterpret_layout: ttgl.constexpr,
                                       instr_variant: ttgl.constexpr):
     OUT_M: ttgl.constexpr = reinterpret_layout.shape[0]
@@ -218,14 +191,6 @@ TMEM_RUNTIME_VIEW_CASES = [
         _make_tmem_linear_layout(128, 128),
         _make_tmem_linear_layout(128, 64),
         "16x64b",
-        4,
-    ),
-    (
-        "slice_reinterpret_64_mixed_32x32b",
-        tmem_linear_runtime_view_kernel_a_reinterpret,
-        _make_tmem_linear_layout_mixed(128, 128),
-        _make_tmem_linear_layout(128, 64),
-        "32x32b",
         4,
     ),
     (
@@ -291,6 +256,19 @@ TMEM_RUNTIME_VIEW_CASES = [
         _make_tmem_linear_layout(128, 128),
         "16x128b",
         4,
+    ),
+]
+
+
+TMEM_RUNTIME_VIEW_UNSUPPORTED_BITCAST_CASES = [
+    (
+        "slice_bitcast_64_mixed_not_physical_equivalent_32x32b",
+        tmem_linear_runtime_view_kernel_a,
+        _make_tmem_linear_layout_mixed(128, 128),
+        _make_tmem_linear_layout(128, 64),
+        "32x32b",
+        4,
+        "unsupported tensor memory memdesc_subslice view",
     ),
 ]
 
@@ -2421,6 +2399,30 @@ def test_tmem_linear_runtime_views(name, kernel, layout, reinterpret_layout, ins
     assert ld_opcode in compiled.asm["ptx"]
     assert st_opcode in compiled.asm["llir"]
     assert ld_opcode in compiled.asm["llir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "name, kernel, layout, reinterpret_layout, instr_variant, num_warps, expected_fragment",
+    TMEM_RUNTIME_VIEW_UNSUPPORTED_BITCAST_CASES,
+)
+def test_tmem_linear_runtime_view_bitcast_reports_clean_error(
+    name, kernel, layout, reinterpret_layout, instr_variant, num_warps, expected_fragment, capfd
+):
+    OUT_M, OUT_N = reinterpret_layout.shape
+    out_elems = OUT_M * OUT_N
+
+    input_tensor = torch.arange(out_elems, dtype=torch.float32, device="cuda").reshape(OUT_M, OUT_N)
+    output_tensor = torch.empty(out_elems, dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        kernel[(1, )](input_tensor, output_tensor, layout, reinterpret_layout, instr_variant, num_warps=num_warps)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert expected_fragment in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 TMEM_DESCRIPTOR_CHAIN_LAYOUTS = [
