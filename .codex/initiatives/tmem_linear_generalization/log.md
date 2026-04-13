@@ -11811,3 +11811,26 @@ Open after this slice:
   - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
   - combined positive and negative runtime-view nodeids passed across four GPU split groups: `3`, `3`, `3`, and `2` selected cases;
   - `git diff --check` passed before docs update.
+
+## 2026-04-13 10:35 UTC: GB200 timing calibration recorded for local pytest sweeps
+
+- Recorded the project-owner timing calibration in `AGENTS.md`: the full GB200
+  NVIDIA lane on a comparable 4-GPU machine should be about 35 minutes including
+  clean build and LLVM download, with actual test time around 20 minutes.
+- Consequence for TMEM validation: do not normalize multi-hour or very long
+  local pytest shards. Treat them as partitioning, duration-data, xdist/cache,
+  or hang problems first.
+- Added AGENTS guidance to collect/store durations for broad selectors and use
+  duration-aware `pytest-split` (`--store-durations --durations-path <path>`
+  followed by `--splitting-algorithm=least_duration`) or finer split counts
+  before raising timeouts.
+- Current collect-only evidence for the problematic `ldst` selector:
+  - `PYTHONPATH=python:. pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k 'ldst'`
+  - selected `1642` of `2739` collected tests;
+  - the largest buckets are three `240`-case families, so static split-4 is too
+    coarse for broad `ldst` refreshes.
+- Rebuild before any runtime pytest work:
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+  - `ninja: no work to do`.
+- Tooling note: `apply_patch` still fails with `No such file or directory`, so
+  this docs update used exact scripted replacements.

@@ -50,6 +50,7 @@
   - multi-GPU grouped sweeps where appropriate.
 
 ### Current Validation State
+- Latest validation-velocity checkpoint, 2026-04-13 10:35 UTC: project-level `AGENTS.md` now records the GB200 timing calibration and duration-aware pytest-split guidance. The full GB200 NVIDIA lane is expected to be roughly 35 minutes including clean build/LLVM download, with actual test time around 20 minutes; local pytest shards that run far beyond that should be treated as partitioning, xdist, cache, or hang issues first. A current collect-only scan shows `python/test/gluon/test_tmem_runtime_matrix.py -k ldst` selects `1642` cases, dominated by three `240`-case families (`ldst_rowcol_permuted_layout_sweep`, `ldst_descriptor_roundtrip_rowcol_permuted_sweeps`, and `ldst_descriptor_compositions_rowcol_permuted_layout_sweep`). Future broad `ldst` validation should use stored durations (`--store-durations --durations-path ...`) plus `--splitting-algorithm=least_duration`, finer split counts, or explicit function buckets rather than four static equal-count shards. Rebuild before runtime pytest was a no-op success.
 - Latest `tcgen05.cp` contract checkpoint, 2026-04-13 07:10 UTC after
   `196fcc717`: runtime-matrix coverage now also pins one representative scales
   parent-row shared-subslice boundary from the recorded `warpx2` subslice probe.

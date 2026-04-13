@@ -39,6 +39,8 @@
 ## Python Sweep Best Practices
 - Always leverage all 4 GPUs for pytest work when possible. Even focused `-k` slices and small runtime buckets should normally run as four `pytest-split` groups with one outer pytest process per GPU and a distinct `TRITON_CACHE_DIR` per process.
 - Install and use `pytest-split` for outer sharding and keep `pytest-xdist` available for lighter CPU-bound cases.
+- Calibrate local runtime against GB200 CI: the full GB200 NVIDIA lane on a comparable 4-GPU machine is expected to take roughly 35 minutes including clean build and LLVM download, with actual test time around 20 minutes. Treat single pytest shards that run far beyond that as a partitioning, xdist, cache, or hang problem first.
+- For broad selectors with hundreds of parametrized cases, collect/store durations and use duration-aware splitting before raising timeouts: add `--store-durations --durations-path <path>` on representative runs, then reuse that file with `--splitting-algorithm=least_duration` or finer split counts.
 - Use `pytest-xdist` inside a single GPU shard when it improves CPU-bound collection/compile throughput, but keep inner parallelism conservative (`-n 1` or `-n 2` first). Higher xdist fanout can create rare false-negative OOM failures by oversubscribing GPU memory or process-local compiler/runtime state.
 - Treat validation in stages:
   - `make`
