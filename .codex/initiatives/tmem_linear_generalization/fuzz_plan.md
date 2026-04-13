@@ -471,8 +471,9 @@ Every fuzz case records:
   - current live nuance: direct non-TMA 2-CTA TF32 coverage is green, and
     TMA-fed 2-CTA TF32 is positive at `blockN in {128, 256}` when B is loaded
     as `[N, K]` and then shared-permuted into MMAv5's required `[K, N]` operand
-    view. The default `[K, N]` B TMA descriptor shape remains clean unsupported
-    because TMA descriptors cannot themselves be transposed.
+    view. The default `[K, N]` B TMA descriptor shape is covered as a clean
+    unsupported boundary at the same `blockN in {128, 256}` shapes because TMA
+    descriptors cannot themselves be transposed.
 - CGA mismatches between descriptors and the module CTA topology
 
 ### 6. `mma_scaled`

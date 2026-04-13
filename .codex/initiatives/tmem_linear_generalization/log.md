@@ -12337,3 +12337,24 @@ Open after this slice:
     `4 passed` aggregate;
   - nearby `-k 'i8_reports_clean_error'` selector: six selected one-CTA plus
     two-CTA cases passed across groups 1-3; group 4 selected no tests.
+
+## 2026-04-13 after direct-i8 expansion: TMA-fed two-CTA TF32 clean negative covers `block_n=256`
+
+- Expanded the default `[K, N]` B TMA descriptor clean-negative path:
+  - `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error`
+    now covers `block_n in (128, 256)`;
+  - both legacy and canonical TMEM-linear accumulator layouts are covered;
+  - the test still expects the dedicated transposed-float32 shared-memory operand
+    diagnostic and rejects PassManager/assertion noise.
+- Rationale:
+  - the supported `[N, K]` descriptor plus shared-permute TMA TF32 route now
+    covers `block_n in (128, 256)`;
+  - the default `[K, N]` descriptor boundary should be pinned at the same shape
+    surface so only the intended descriptor/materialization route is positive.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` no-op success;
+  - exact expanded negative nodeid across four GPU `pytest-split` groups:
+    `4 passed` aggregate;
+  - nearby `-k 'tma_tf32'` selector: all eight selected positive plus negative
+    cases passed across the four groups.
