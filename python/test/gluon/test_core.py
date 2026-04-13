@@ -165,7 +165,7 @@ def tmem_linear_runtime_view_kernel_b(input_ptr, output_ptr, layout: ttgl.conste
     tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
     view = tmem.index(1).reshape((64, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view = view.slice(0, OUT_M, dim=0).slice(0, OUT_N, dim=1)
-    view = view._reinterpret(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
+    view = view.bitcast(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)
 
     reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     view.store(ttgl.convert_layout(input_tensor, reg_layout))
@@ -2385,6 +2385,8 @@ def test_tmem_linear_runtime_views(name, kernel, layout, reinterpret_layout, ins
     assert ttgir.count("ttg.memdesc_reshape") >= 1
     assert "ttg.memdesc_index" in ttgir
     assert "ttg.memdesc_reinterpret" in ttgir
+    if name.startswith("index_reshape_"):
+        assert "tmem_physical_bitcast" in ttgir
 
     st_opcode = f"tcgen05.st.sync.aligned.{instr_variant}"
     ld_opcode = f"tcgen05.ld.sync.aligned.{instr_variant}"

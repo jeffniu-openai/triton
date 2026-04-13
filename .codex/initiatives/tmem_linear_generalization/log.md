@@ -11723,3 +11723,27 @@ Open after this slice:
   - four-GPU split exact nodeid
     `python/test/gluon/test_core.py::test_tmem_descriptor_chain_matrix` passed
     all `26` selected cases (`7`, `7`, `7`, `5`).
+
+## 2026-04-13 09:20 UTC: migrated runtime-view index/reshape cases to `.bitcast`
+
+- Continued the supported TMEM view API migration in `python/test/gluon/test_core.py`.
+- Changes:
+  - `tmem_linear_runtime_view_kernel_b` now calls
+    `.bitcast(ttgl.float32, [OUT_M, OUT_N], reinterpret_layout)` instead of
+    `_reinterpret(...)`;
+  - `test_tmem_linear_runtime_views` asserts `tmem_physical_bitcast` for the
+    migrated `index_reshape_*` cases.
+- Boundary probe:
+  - the analogous migration for `tmem_linear_runtime_view_kernel_a` / `slice_*`
+    was attempted and rejected by type inference with
+    `unsupported tensor memory memdesc_subslice view` for all three slice cases;
+  - those tests remain `_reinterpret(...)` users until the planner/API supports
+    physical-equivalent bitcasts over that composed subslice/reshape/transpose
+    view chain.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_core.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - `index_reshape_*` subset passed all `8` selected cases across four GPU
+    split groups;
+  - full `python/test/gluon/test_core.py::test_tmem_linear_runtime_views` passed
+    all `11` selected cases across four GPU split groups (`3`, `3`, `3`, `2`).

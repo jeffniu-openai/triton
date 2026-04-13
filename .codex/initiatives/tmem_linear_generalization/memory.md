@@ -138,6 +138,17 @@
   Validation: `py_compile` passed, rebuild was a no-op success, and the exact
   `test_tmem_descriptor_chain_matrix` nodeid passed all `26` selected cases
   across four GPU split groups (`7`, `7`, `7`, `5`).
+- Latest runtime-view API-migration checkpoint, 2026-04-13 09:20 UTC:
+  `tmem_linear_runtime_view_kernel_b` now uses supported `.bitcast(...)` for the
+  `index_reshape_*` family and `test_tmem_linear_runtime_views` asserts
+  `tmem_physical_bitcast` for those cases. The three `slice_*` runtime-view
+  cases were probed and still fail supported `.bitcast(...)` type inference with
+  `unsupported tensor memory memdesc_subslice view`, so they intentionally remain
+  on `_reinterpret(...)` until bitcast-over-composed-subslice descriptor chains
+  is implemented in the planner/API. Validation: `py_compile` passed, rebuild
+  was a no-op success, the migrated `index_reshape_*` subset passed all `8`
+  selected cases, and the full runtime-view nodeid passed all `11` selected
+  cases across four GPU split groups (`3`, `3`, `3`, `2`).
 - `ld/st` validation velocity warning, 2026-04-13 08:25 UTC:
   a coarse four-GPU split-4 broad `-k 'ldst'` refresh at `15c0bf252` was stopped
   as too slow, not recorded as validation. Group 1 completed green

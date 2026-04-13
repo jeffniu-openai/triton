@@ -960,6 +960,28 @@ When resuming the initiative:
   - exact nodeid across four GPU split groups passed all `26` selected cases
     (`7`, `7`, `7`, `5`).
 
+## 2026-04-13 09:20 UTC: runtime-view index/reshape cases use supported bitcast
+
+- Migrated `tmem_linear_runtime_view_kernel_b` in `python/test/gluon/test_core.py`
+  from `_reinterpret(...)` to `.bitcast(...)` for the `index_reshape_*`
+  runtime-view family.
+- `test_tmem_linear_runtime_views` now asserts `tmem_physical_bitcast` for the
+  migrated `index_reshape_*` cases while keeping the existing exact load/store
+  opcode checks.
+- Boundary confirmed:
+  - trying the same migration for the three `slice_*` runtime-view cases fails
+    at type inference with `unsupported tensor memory memdesc_subslice view`;
+  - those cases remain on `_reinterpret(...)` for now and should be migrated
+    only after bitcast-over-composed-subslice descriptor chains is supported by
+    the planner/API.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_core.py` passed;
+  - rebuild was a no-op success;
+  - `index_reshape_*` subset passed `8` selected cases across four GPU split
+    groups;
+  - full `test_tmem_linear_runtime_views` passed all `11` selected cases across
+    four GPU split groups (`3`, `3`, `3`, `2`).
+
 ## Document Roles
 
 - `memory.md`
