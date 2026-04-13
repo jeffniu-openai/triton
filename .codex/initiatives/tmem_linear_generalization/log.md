@@ -12291,3 +12291,28 @@ Open after this slice:
     schedule first, likely involving a different parent/subview physical shape;
   - otherwise move to the next long-term bucket (`ld.red` breadth, copy
     `warpx2` non-scales frontier, or broader MMAv5/scaled-MMAv5 saturation).
+
+## 2026-04-13 after scales `warpx2` scan: TMA-fed two-CTA TF32 B-transposed descriptor covers `block_n=256`
+
+- Closed a bounded MMAv5 coverage gap in the positive TMA-fed two-CTA TF32 path:
+  - `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor` now
+    parameterizes `block_n` over `128` and `256`;
+  - both legacy and canonical TMEM-linear accumulator layouts are still covered;
+  - the descriptor route remains B supplied as `[N, K]` and passed to MMAv5 as a
+    shared-memory `permute((1, 0))` view.
+- Scratch probes for the new `block_n=256` cases passed before the test edit:
+  - legacy accumulator layout on GPU 0 emitted four matching PTX/LLIR
+    `tcgen05.mma.cta_group::2.kind::tf32` ops and matched `torch.matmul`;
+  - canonical TMEM-linear accumulator layout on GPU 1 did the same and preserved
+    `tensor_memory_linear` in TTGIR.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make` no-op success;
+  - exact expanded nodeid across four GPU `pytest-split` groups: `4 passed`
+    aggregate;
+  - nearby `-k 'tma_tf32'` selector: groups 1-3 ran and passed all six selected
+    cases; group 4 selected no tests and returned pytest's no-tests code because
+    the split had no remaining cases.
+- The default `[K, N]` B TMA descriptor path remains a clean unsupported
+  transposed-float32 shared-operand boundary; this checkpoint only expands the
+  positive `[N, K]` descriptor plus shared-permute route.

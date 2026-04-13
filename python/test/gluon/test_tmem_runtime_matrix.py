@@ -6546,10 +6546,10 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_layout_kind):
+@pytest.mark.parametrize("block_n", (128, 256))
+def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_layout_kind, block_n):
     ctas_per_cga = [2, 1]
     block_m = 128 * ctas_per_cga[0]
-    block_n = 128
     block_k = 32
 
     cta_split = [ctas_per_cga[0], ctas_per_cga[1]]
