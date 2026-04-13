@@ -12029,3 +12029,20 @@ Open after this slice:
   - after reverting the temporary source experiment, `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` passed;
   - generated the JSONL artifact via parallel subprocesses over four GPUs.
 - Tooling note: `apply_patch` still fails with `No such file or directory`; this docs/artifact update used exact scripted writes.
+
+## 2026-04-13 13:09 UTC: scales `warpx2` alias PTX vs launcher follow-up
+
+- Followed up the direct-PTX scales `warpx2` result after the temporary planner alias looked wrong.
+- Additional probes:
+  - removed the skipped second descriptor arithmetic from the patched canonical PTX; the single `warpx2::01_23` message still roundtripped random input exactly (`diff=0`), so the successful direct patch is not just accidental delay from leftover ALU instructions;
+  - dumped the forced integrated-alias PTX and compared it with the working patched canonical PTX. The copy/descriptor sequence is semantically the same aside from register renaming and the removed second-copy tail;
+  - manually assembled/launched the integrated-alias PTX and the cached integrated-alias cubin through the canonical compiled-kernel launcher; both roundtripped exactly;
+  - compiling the source alias and launching through that source-alias compiled object still produced wrong data (`diff_count=510`, first half of each row populated, second half zero), including with compile-only `warmup` plus manual assembly using the same compiled object.
+- Interpretation:
+  - the remaining mismatch is not explained by the PTX text or descriptor immediate alone;
+  - suspect compiled-kernel launcher metadata, cache-key/runtime metadata, or another hidden launch contract around the source-level alias path;
+  - do not land the alias until that path is understood and covered by normal JIT execution, not just manual cubin launch.
+- Hygiene:
+  - the temporary source alias was reverted again;
+  - post-revert rebuild passed.
+- Tooling note: `apply_patch` still fails with `No such file or directory`; this docs update used exact scripted writes.
