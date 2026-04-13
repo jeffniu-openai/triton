@@ -496,8 +496,10 @@
     packed-storage reachable subset: `mxfp8/mxfp8`, `mxfp8/mxfp4`,
     `mxfp4/mxfp4`, and `nvfp4/nvfp4` for both legacy and canonical
     TMEM-linear accumulator layouts, with exact scaled-MMA, count, commit, and
-    descriptor-view checks; the mixed `mxfp4/mxfp8` scaled TMEM-LHS case
-    remains a known wrong-code frontier in the durable probe artifact
+    descriptor-view checks; the mixed `mxfp4/mxfp8` dense TMEM-LHS case
+    is now a clean unsupported boundary because `mxf8f6f4` fp4 LHS requires
+    the padded operand-A storage model currently represented by `fp4_padded`
+    shared memory; the durable probe artifact is
     `experiments/probe_mma_scaled_lhs_subslice_formats.py` / results
     `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`;
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
@@ -529,7 +531,7 @@
     format/geometry/accumulator-layout combinations;
   - current-head direct `mma` / `mma_scaled` runtime-matrix validation is green
     at the latest focused coverage checkpoint:
-    aggregate selected coverage `230 passed, 50 skipped`;
+    aggregate selected coverage `232 passed, 50 skipped`;
     plain MMAv5 root and `use_acc` matrices now pin exact op counts
     (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), while
     tile-permuted accumulator coverage pins fourfold counts, the wider-K

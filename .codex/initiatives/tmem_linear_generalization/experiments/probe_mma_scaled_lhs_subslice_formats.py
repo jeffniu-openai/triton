@@ -3,7 +3,8 @@
 
 This is a durable reproduction for the scaled TMEM-LHS subview format frontier.
 After the 2026-04-13 packed-TMEM-A K-stride fix, homogeneous fp4 families are
-runtime-correct; mixed `mxfp4/mxfp8` remains a wrong-code frontier.
+runtime-correct; mixed `mxfp4/mxfp8` is now a clean unsupported TMEM-LHS
+contract because its fp4-A path requires padded operand-A storage.
 """
 
 import math

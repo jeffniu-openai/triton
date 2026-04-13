@@ -457,8 +457,9 @@ Every fuzz case records:
 - TMEM-LHS subview format coverage currently includes the packed-storage
   reachable subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and
   `nvfp4/nvfp4`) for both legacy and canonical accumulator layouts; mixed
-  `mxfp4/mxfp8` scaled TMEM-LHS subviews are a known wrong-code frontier, not a
-  positive target yet, and are pinned by
+  `mxfp4/mxfp8` dense TMEM-LHS subviews are a clean unsupported boundary, not
+  a positive target yet, because `mxf8f6f4` fp4 LHS currently requires
+  `fp4_padded` shared-memory operand-A storage; this is pinned by
   `experiments/probe_mma_scaled_lhs_subslice_formats.py`
 
 #### Checks

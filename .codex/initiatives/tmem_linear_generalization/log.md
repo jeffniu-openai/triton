@@ -11355,3 +11355,58 @@ Open after this slice:
   - broad `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
     across four GPU `pytest-split` groups:
     `230 passed, 50 skipped`.
+
+## 2026-04-13 05:35 UTC: mixed fp4-A scaled TMEM-LHS is a clean unsupported boundary
+
+- Current checkout:
+  - branch `codex/tmem`;
+  - HEAD `db3ade6e2` before this source/test/docs checkpoint.
+- Root cause / contract boundary:
+  - the remaining `mxfp4/mxfp8` TMEM-LHS case uses the mixed `mxf8f6f4`
+    instruction with fp4 on operand A;
+  - the passing shared-memory path uses `fp4_padded=True` for the fp4 operand
+    in mixed precision, which expands/pads the physical operand-A storage
+    model;
+  - dense tensor-memory descriptors do not currently encode that padded fp4-A
+    storage/view, so allowing a dense TMEM-LHS descriptor through produced
+    wrong numerical results.
+- Fix:
+  - tightened `TCGen5MMAScaledOp::verify()` for tensor-memory LHS operands;
+  - reject scaled MMAv5 tensor-memory LHS layouts whose planned col stride is
+    not `1`, matching the plain MMAv5 LHS contract;
+  - reject mixed `mxf8f6f4` fp4 LHS in tensor memory (`A=e2m1`, `B!=e2m1`)
+    with a direct diagnostic explaining that the currently supported padded
+    storage model is `fp4_padded` shared memory.
+- Test coverage:
+  - added
+    `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported`
+    over legacy and canonical TMEM-linear accumulator layouts;
+  - refreshed `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`,
+    where `mxfp4/mxfp8` now reports `ERROR` instead of `WRONG`.
+- Current positive scaled TMEM-LHS set remains:
+  - `mxfp8/mxfp8`;
+  - `mxfp8/mxfp4`;
+  - `mxfp4/mxfp4`;
+  - `nvfp4/nvfp4`;
+  - each across legacy and canonical TMEM-linear accumulators.
+- Validation:
+  - rebuild with
+    `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8`
+    passed;
+  - durable probe with
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mma-scaled-lhs-mixed-clean-negative-probe PYTHONPATH=python:. python3 .codex/initiatives/tmem_linear_generalization/experiments/probe_mma_scaled_lhs_subslice_formats.py`
+    showed positives passing and `mxfp4/mxfp8` rejected cleanly;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`
+    passed;
+  - focused positive-plus-negative matrix across four GPU `pytest-split` groups:
+    `10 passed`;
+  - nearby scaled-MMA selector across four GPU `pytest-split` groups:
+    `27 passed`;
+  - broad `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`
+    across four GPU `pytest-split` groups:
+    `232 passed, 50 skipped`.
+- Methodology note:
+  - the broad split was green but imbalanced: groups 1 and 2 took about 6
+    minutes while groups 3 and 4 completed much faster; keep preferring more
+    duration-aware partitions for wide local sweeps rather than normalizing
+    long silent shards.

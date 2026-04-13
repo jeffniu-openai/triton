@@ -85,17 +85,18 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- Latest code checkpoint, 2026-04-13 05:20 UTC: scaled MMAv5 TMEM-LHS
-  subviews now address packed fp4 operand-A TMEM descriptors in storage-column
-  coordinates for the K tile step. This fixes the homogeneous A-side fp4
-  wrong-code frontier for `mxfp4/mxfp4` and `nvfp4/nvfp4`; positive coverage
-  now includes `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`
+- Latest scaled-MMAv5 TMEM-LHS checkpoint, 2026-04-13 05:35 UTC: scaled
+  MMAv5 TMEM-LHS subviews now address packed fp4 operand-A descriptors in
+  storage-column coordinates for the K tile step, fixing homogeneous A-side
+  fp4 positives for `mxfp4/mxfp4` and `nvfp4/nvfp4`. Positive coverage now
+  includes `mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`
   across legacy and canonical TMEM-linear accumulators. The mixed
-  `mxfp4/mxfp8` path still compiles but remains wrong-code in the durable
-  probe and is not promoted to the positive test matrix yet. Validation:
-  rebuild passed, focused four-GPU split matrix `8 passed`, nearby scaled-MMA
-  selector `25 passed`, and broad four-GPU `-k 'mma and not cp'` selector
-  `230 passed, 50 skipped`.
+  `mxfp4/mxfp8` dense TMEM-LHS path no longer wrong-codes: it is a clean
+  verifier negative because `mxf8f6f4` fp4 LHS requires the padded operand-A
+  storage model currently represented by `fp4_padded` shared memory.
+  Validation: rebuild passed, durable probe refreshed, focused positive plus
+  negative matrix `10 passed`, nearby scaled-MMA selector `27 passed`, and
+  broad four-GPU `-k 'mma and not cp'` selector `232 passed, 50 skipped`.
 
 - Latest copy-frontier checkpoint, 2026-04-13 05:05 UTC: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. A bounded direct-PTX follow-up around the single-CTA direct seed tested `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and two-message column-pair schedules; every aligned variant still duplicated one source column pair or overwrote with another duplicate, and none matched the layout-derived extended `02_13` oracle. The experiment script now records those column-offset variants, and the current log is `experiments/results/probe_cp_warpx2_02_13_twocta_column_offsets_current.log`.
 
@@ -422,9 +423,10 @@ When resuming the initiative:
   - the test slices a packed-storage TMEM-linear operand-A parent, feeds that
     subview directly to `tcgen05_mma_scaled`, and pins exact PTX/LLIR scaled
     MMA and commit opcodes;
-  - mixed `mxfp4/mxfp8` scaled TMEM-LHS subviews remain a known wrong-code
-    frontier and are not promoted to positive coverage; the durable
-    reproduction is
+  - mixed `mxfp4/mxfp8` dense TMEM-LHS subviews are pinned as a clean
+    unsupported case because `mxf8f6f4` fp4 LHS requires padded operand-A
+    storage currently represented by `fp4_padded` shared memory; the durable
+    probe is
     `experiments/probe_mma_scaled_lhs_subslice_formats.py` with current results
     in `experiments/results/probe_mma_scaled_lhs_subslice_formats_current.log`.
 - Two-CTA direct scaled-MMAv5 accumulator-subview coverage is now present:
@@ -626,7 +628,7 @@ When resuming the initiative:
     four-GPU `pytest-split` groups over
     `python/test/gluon/test_tmem_runtime_matrix.py -k 'mma and not cp'`;
   - result:
-    aggregate selected coverage `230 passed, 50 skipped`;
+    aggregate selected coverage `232 passed, 50 skipped`;
   - this covers canonical, indexed, subview, tile-permuted, 1-CTA and 2-CTA
     direct MMA surfaces plus direct scaled-MMA view cases, including root-aligned
     and offset one-CTA accumulator subview format-matrix cases, the two-CTA

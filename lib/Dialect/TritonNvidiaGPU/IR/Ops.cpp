@@ -885,16 +885,30 @@ LogicalResult TCGen5MMAScaledOp::verify() {
       getScaledMMAOperandType(getB().getType().getElementType(), getBType());
   Type dtype = getD().getType().getElementType();
   auto aEnc = getA().getType().getEncoding();
+  bool aInTmem =
+      isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc);
+  auto aTmemInfo = aInTmem ? getMMAv5LhsLayoutInfo(getA().getType())
+                           : std::optional<MMAv5LhsLayoutInfo>{};
   if (failed(verifyMMADType(*this, atype, btype, dtype)))
     return failure();
-  if (isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc) &&
-      !getMMAv5LhsLayoutInfo(getA().getType())) {
+  if (aInTmem && !aTmemInfo) {
     return emitOpError()
            << "LHS operand must have a MMAv5-compatible tensor memory layout, "
               "but got "
            << aEnc
            << ". Use a directly supported #ttng.tensor_memory_linear layout, "
               "or reshape/permute the descriptor to a supported MMAv5 tile.";
+  }
+  if (aTmemInfo && aTmemInfo->colStride != 1)
+    return emitOpError("The col stride of the LHS operand must be 1");
+  if (aTmemInfo && getAType() == ScaleDotElemType::E2M1 &&
+      getBType() != ScaleDotElemType::E2M1) {
+    return emitOpError()
+           << "does not support mixed-precision fp4 LHS operands in tensor "
+              "memory. Mixed mxf8f6f4 fp4 LHS operands require the padded "
+              "operand-A storage model currently represented by "
+              "fp4_padded shared memory; use shared memory for operand A or "
+              "a homogeneous fp4 scaled-MMA kind.";
   }
   auto info = getMMAv5ScaledAccumulatorLayoutInfo(getD().getType());
   if (!info) {
