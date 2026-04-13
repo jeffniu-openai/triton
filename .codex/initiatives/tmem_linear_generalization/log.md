@@ -12415,3 +12415,26 @@ Open after this slice:
   - group 3: `51 passed`;
   - group 4: `48 passed`;
   - aggregate: `201 passed`.
+
+## 2026-04-13 after tight MMA validation: scaled two-CTA accumulator-subview `block_n=256` is not an easy positive
+
+- Probed the apparent gap in
+  `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`:
+  - target shape: `block_m=256`, `block_n=256`, `block_k=128`;
+  - representative format: `mxfp8/mxfp8`;
+  - `parent_n=512`, `slice_start in {0,256}`, and `multicast in {false,true}`.
+- Result:
+  - all four `parent_n=512` probes fail during launch metadata with
+    `OutOfResources: tensor memory, Required: 524, Hardware limit: 512`;
+  - this is a real TMEM-capacity boundary for the obvious non-overlapping parent
+    layout, not a lowering failure.
+- Tried a smaller parent idea:
+  - `parent_n=384`, `slice_start in {0,128}` would fit the desired logical slice
+    range, but `_make_tmem_linear_layout_mmav5_twocta` asserts because it
+    requires power-of-two `N`;
+  - no production/test change was made.
+- Current conclusion:
+  - keep the current legal two-CTA scaled accumulator-subview coverage at
+    `block_n=128`, `parent_n=256`, `slice_start in {0,128}`;
+  - only revisit `block_n=256` offset-subview coverage if a different legal
+    parent layout or resource model is designed.

@@ -490,8 +490,12 @@ Every fuzz case records:
   legacy layouts
 - accumulator subview starts that preserve the same supported physical family,
   currently including one-CTA root-aligned `slice_start=0` and offset
-  `slice_start=64` direct subviews plus two-CTA cga-aware `slice_start=0` and
-  `slice_start=128` direct subviews across the proven format pairs
+  `slice_start=64` direct subviews plus two-CTA cga-aware `block_n=128`,
+  `parent_n=256`, `slice_start in {0,128}` direct subviews across the proven
+  format pairs. The obvious two-CTA `block_n=256`, `parent_n=512` offset-subview
+  extension exceeds TMEM capacity (`Required: 524`, limit `512`); a
+  `parent_n=384` alternative is not expressible by the current power-of-two
+  MMAv5 two-CTA layout helper.
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts, across both subviews and
