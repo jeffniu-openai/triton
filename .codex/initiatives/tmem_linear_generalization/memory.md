@@ -87,7 +87,18 @@
   passed all six selected tests across the active split groups. Treat old
   documents that list this nodeid as a live failure or xfail as superseded
   unless a fresh exact current-head repro fails.
-- Latest copy-frontier checkpoint, 2026-04-13 05:05 UTC at `31d1837f3fd76d721aa5879c349508e4f5a370c8`: the focused `warpx2` runtime-matrix slice is green across four GPU split groups (`13 passed` total after `make` no-op rebuild). A new bounded direct-PTX column-offset probe for the remaining two-CTA `warpx2::02_13` frontier tested direct-seed `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and two-message combinations that try to supply the missing second source column pair. None matched the extended two-CTA `02_13` oracle; all variants either duplicated one source column pair or overwrote with another duplicate. This keeps the public two-CTA `02_13` test as a clean unsupported boundary and points future work at a real descriptor/message-semantics discovery rather than another small offset toggle.
+- Latest plain-MMAv5 saturation checkpoint, 2026-04-13 07:45 UTC:
+  `test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc` now pins
+  the `use_acc=True` accumulator-add path for tile-permuted TMEM-linear
+  accumulators across all supported plain operand kinds and both existing
+  tile-permuted layouts (`128x128/tile_n=32` and `128x256/tile_n=64`). The test
+  validates numeric `matmul + accumulator` output, exact PTX/LLIR MMAv5 opcode
+  streams, commit opcode selection, and `tensor_memory_linear` preservation.
+  Validation: `py_compile` passed, rebuild was a no-op success, the exact new
+  nodeid passed `10` selected cases across four GPU split groups, and the
+  nearby `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc` selector
+  passed `30` selected cases aggregate.
+- Latest copy-frontier checkpoint, 2026-04-13 07:25 UTC at `6e453288d`: two-CTA `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` remains intentionally clean unsupported. Earlier direct-PTX work ruled out direct-seed `sourceOffsetB128` offsets `32..35`, destination deltas `0/4`, and nearby two-message column-pair schedules. The latest four-GPU JSONL scan extended single-message direct-seed offsets through `36..63` with destination deltas `0` and `4`; all `56` variants launched without sentinels or NaNs, none matched the extended `02_13` oracle, and every variant duplicated one source column pair. Keep this frontier on descriptor/message semantics rather than another small offset toggle.
 - Latest validation checkpoint, 2026-04-13 03:00 UTC: the previous Gluon tail is now closed from local evidence. `python/test/gluon/test_tmem_runtime_matrix.py` has full file coverage via mixed split granularity (`2683` selected cases: `2237 passed, 446 skipped`, no failures/errors). `python/test/gluon/test_lowerings.py` is green across four GPU shards (`4937 passed, 512 skipped`). Together with the earlier green first-phase groups 1-3, split-16 groups 13-14, isolated xdist-crash nodeid pass, and green `python/examples/gluon/`, current-head `test-gluon` has no deterministic known failures after the MMAv5 fix. The timeout root cause was static split imbalance in slow TMEM ldst composition/legality-probe buckets, not a failing nodeid.
 - Latest wider checkpoint, 2026-04-13 01:19 UTC: full lit is green (`248 passed, 2 unsupported`)
   and `python/examples/gluon/` is green across four shards (`884 passed, 74
@@ -549,7 +560,9 @@
   - tile-permuted plain MMAv5 accumulator coverage now spans `f16`, `tf32`,
     `bf16`, `f8e5m2`, and `f8e4m3` across both `128x128/tile_n=32` and
     `128x256/tile_n=64` accumulator layouts, with exact PTX/LLIR opcode checks
-    for the expected instruction kind;
+    for the expected instruction kind; the `use_acc=True` accumulator-add path
+    is now covered for the same kind/layout matrix by
+    `test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc`;
   - tile-permuted scaled-MMAv5 accumulator-subview clean negatives now cover
     the same format pairs as the positive scaled subview matrix:
     `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
@@ -578,8 +591,9 @@
     aggregate selected coverage `232 passed, 50 skipped`;
     plain MMAv5 root and `use_acc` matrices now pin exact op counts
     (`f16=2`, `bf16=2`, `tf32=4`, `f8e5m2/f8e4m3=1`), while
-    tile-permuted accumulator coverage pins fourfold counts, the wider-K
-    tile-permuted TMEM-LHS path pins `16` f16 ops, the plain TMEM-LHS subview
+    tile-permuted accumulator coverage pins fourfold counts for both no-acc and
+    `use_acc=True` accumulator-add paths, the wider-K tile-permuted TMEM-LHS
+    path pins `16` f16 ops, the plain TMEM-LHS subview
     matrix spans all supported plain kinds across legacy/canonical
     accumulators, and scaled TMEM-LHS subview coverage now includes the
     packed-storage reachable subset;

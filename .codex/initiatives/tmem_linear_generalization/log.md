@@ -11565,3 +11565,26 @@ Open after this slice:
   - keep the public two-CTA `warpx2::02_13` path as a clean unsupported
     descriptor-plan boundary until a new descriptor-address hypothesis appears;
   - do not promote the previously tested direct-seed family into lowering.
+
+## 2026-04-13 07:45 UTC: tile-permuted plain MMAv5 use-acc coverage is pinned
+
+- Added `test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc`.
+- Coverage:
+  - all supported plain MMAv5 operand kinds: `f16`, `tf32`, `bf16`, `f8e5m2`,
+    and `f8e4m3`;
+  - tile-permuted TMEM-linear accumulator layouts `128x128/tile_n=32` and
+    `128x256/tile_n=64`;
+  - `use_acc=True` accumulator-add semantics over those non-identity physical
+    accumulator families.
+- Checks:
+  - numeric output matches `matmul + accumulator` with the existing per-kind
+    tolerances;
+  - PTX and LLIR MMAv5 opcodes match exactly and use the expected plain kind;
+  - the expected commit opcode is present;
+  - TTGIR keeps `tensor_memory_linear`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/aarch64-linux-gnu/c++/13 make -j8` was a no-op success;
+  - exact new nodeid across four GPU split groups passed `10` selected cases;
+  - nearby selector `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc`
+    passed `30` selected cases aggregate across four GPU split groups.

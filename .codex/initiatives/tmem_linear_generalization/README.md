@@ -123,6 +123,18 @@ When resuming the initiative:
   passed all six selected cases. Do not carry the old M64 xfail as a live
   branch-actionable failure unless a fresh exact repro fails.
 
+- Latest plain-MMAv5 saturation checkpoint, 2026-04-13 07:45 UTC:
+  tile-permuted TMEM-linear accumulator coverage now also pins the `use_acc=True`
+  accumulator-add path for all supported plain operand kinds (`f16`, `tf32`,
+  `bf16`, `f8e5m2`, and `f8e4m3`) across the existing `128x128/tile_n=32` and
+  `128x256/tile_n=64` layouts. The new runtime-matrix test checks numeric
+  `matmul + accumulator` results, exact PTX/LLIR `tcgen05.mma` opcode streams,
+  commit opcodes, and preservation of `tensor_memory_linear`. Validation:
+  `py_compile` passed, rebuild was a no-op success, the exact new nodeid passed
+  all `10` selected cases across four GPU split groups, and the nearby
+  `mma_plain_kinds_tile_permuted_acc or mma_plain_kinds_use_acc` selector passed
+  `30` selected cases aggregate.
+
 - Latest scaled-MMAv5 TMEM-LHS checkpoint, 2026-04-13 05:35 UTC: scaled
   MMAv5 TMEM-LHS subviews now address packed fp4 operand-A descriptors in
   storage-column coordinates for the K tile step, fixing homogeneous A-side
@@ -436,8 +448,9 @@ When resuming the initiative:
   - `f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`;
   - each kind is covered for `128x128` / `tile_n=32` and `128x256` /
     `tile_n=64` accumulator layouts;
+  - both no-accumulator and `use_acc=True` accumulator-add paths are covered;
   - each path checks PTX/LLIR opcode equality and the expected
-    `tcgen05.mma` kind.
+    `tcgen05.mma` kind, with commit opcode checks on the `use_acc=True` slice.
 - Direct scaled-MMAv5 TMEM-view tests now pin exact `mxf8f6f4` scaled-MMA
   opcodes after `5e3b2ae87`:
   - this covers the existing minimal, block-N direct-layout, accumulator

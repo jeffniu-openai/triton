@@ -6328,6 +6328,44 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind, n, tile_n):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,n,tile_n", MMA_TILE_PERMUTED_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, tile_n):
+    m, k = 128, 32
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    c = torch.randn((m, n), device="cuda", dtype=torch.float32)
+    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
+
+    compiled = tmem_mma_plain_kind_use_acc_kernel[(1, )](
+        a,
+        b,
+        c,
+        out,
+        m,
+        n,
+        k,
+        block_layout_a,
+        block_layout_b,
+        acc_layout,
+        shared_layout_a,
+        shared_layout_b,
+        num_warps=4,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32)) + c
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS[kind]
+    assert all(op == expected_kind for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_mma_lhs_tile_permuted():
     m = n = 128
     k = 256

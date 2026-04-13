@@ -432,7 +432,7 @@ Every fuzz case records:
   - canonical TMEM-linear equivalent
   - tile-permuted canonical TMEM-linear accumulators for all supported plain
     operand kinds, currently covered at `128x128/tile_n=32` and
-    `128x256/tile_n=64`
+    `128x256/tile_n=64`, including the `use_acc=True` accumulator-add path
 - A operand:
   - shared-memory path
   - TMEM path where the op and backend support it
