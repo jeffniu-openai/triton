@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:40 UTC: scales ld/st explicit N-sharded variant coverage
+
+- Added generated tensor-memory-scales `ld/st` coverage for explicit N-sharded variants `16x64b`, `16x128b`, and `16x256b` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Positive cases cover `M in {64,128,256}`, `N in {4,8,16,32}`, and `dtype_bits=4` whenever the scales tile has enough elements for the requested atom family: `M*N >= 256` for `16x64b`, `>= 512` for `16x128b`, and `>= 1024` for `16x256b`.
+- Expected opcode checks use `tcgen05.st/ld.sync.aligned.<variant>.x<count>.b32` with `count = (M*N) / (4 * variant_width)` and offsets `[0, 1048576]`, matching the probed PTX/LLIR shape.
+- Below-threshold explicit N-sharded rows now stay as clean unsupported descriptor-view diagnostics instead of accidental crashes or silent omissions.
+- Current runtime-matrix collection is `5947` tests: `cp=381`, `mma=1318`, splitn/misc `=499`, `ld_red=920`, `ldst=2829`; current bucketed evidence aggregates to `5501 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check` after docs; `make -j8`; no-PYTHONPATH focused `ldst_scales_variant` collect selected `91/5947`; no-PYTHONPATH `ldst` collect selected `2829/5947`; no-PYTHONPATH full-file collect reported `5947`; focused `ldst_scales_variant` selector passed all `91` cases across split-4 on four GPUs (`23`, `23`, `23`, and `22` selected; group times `5.25s`, `5.62s`, `5.23s`, and `5.49s`).
+- Next: run final hygiene, commit/push this bounded `ld/st` checkpoint, then continue staged ISA saturation in another exact non-parked family. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.
+
 ## 2026-04-14 08:34 UTC: scaled-MMAv5 TMEM-LHS nonzero use-acc coverage
 
 - Added `ACC_INIT` to `tmem_mma_scaled_lhs_subslice_format_kernel` and `tmem_mma_scaled_lhs_tile_permuted_format_kernel`; existing positive and clean-negative callers pass `0.0` explicitly.

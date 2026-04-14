@@ -6,7 +6,7 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `5911` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
+Full collection with `PYTHONPATH` unset reports `5947` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
@@ -14,9 +14,9 @@ Full collection with `PYTHONPATH` unset reports `5911` tests after the 2026-04-1
 | `mma` | `-k test_tmem_runtime_matrix_mma` | 1318 | split 4, one process per GPU |
 | `splitn` / misc | exact function nodeids | 499 | split 4, one process per GPU |
 | `ld_red` | `-k ld_red` | 920 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
-| `ldst` | `-k ldst` | 2793 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
+| `ldst` | `-k ldst` | 2829 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `5911` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `5947` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
 
 ## Canonical Command
 
@@ -84,9 +84,10 @@ Heavy buckets need finer scheduling:
 - After the 2026-04-14 higher-rank descriptor `ld/st` i32-parity expansion, the focused positive descriptor selector passed `200` cases across split-8 on four GPUs (`25` per group) in `384.32s`, `339.11s`, `402.75s`, `430.09s`, `418.65s`, `382.93s`, `131.40s`, and `278.68s`. The full `ldst` bucket now collects `2712` cases; refresh the full `ldst` runner after shared lowering changes or before a phase boundary.
 
 - After the 2026-04-14 subword descriptor-chain expansion, the focused selector passed `60` cases across split-4 on four GPUs (`15` per group) in `151.24s`, `153.02s`, `150.40s`, and `152.90s`. The full `ldst` bucket then collected `2772` cases; refresh the full `ldst` runner after shared lowering changes or before a phase boundary.
-- After the 2026-04-14 x1 i32 expansion, the focused selector passed `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3` selected) in `7.75s`, `41.66s`, `4.65s`, and `4.64s`. The full `ldst` bucket now collects `2793` cases; this is a test-only dtype-parity expansion over the existing one-column 32-bit lowering.
+- After the 2026-04-14 x1 i32 expansion, the focused selector passed `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3` selected) in `7.75s`, `41.66s`, `4.65s`, and `4.64s`. The full `ldst` bucket then collected `2793` cases; this is a test-only dtype-parity expansion over the existing one-column 32-bit lowering.
+- After the 2026-04-14 scales explicit N-sharded variant expansion, the focused `ldst_scales_variant` selector passed `91` cases across split-4 on four GPUs (`23`, `23`, `23`, and `22` selected) in `5.25s`, `5.62s`, `5.23s`, and `5.49s`. The full `ldst` bucket now collects `2829` cases; this is test-only variant coverage over already-supported scales `ld/st` lowering plus clean below-threshold unsupported diagnostics.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `5465 passed, 446 skipped` across all `5911` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
+Aggregating the current per-bucket evidence gives full matrix coverage: `5501 passed, 446 skipped` across all `5947` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
 
 Representative compile evidence:
 

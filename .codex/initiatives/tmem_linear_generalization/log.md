@@ -1,3 +1,19 @@
+## 2026-04-14 08:40 UTC: scales ld/st explicit N-sharded variant coverage
+
+- Expanded tensor-memory-scales `ld/st` variant coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Added helper-generated positive cases for explicit `16x64b`, `16x128b`, and `16x256b` variants over `M in {64,128,256}`, `N in {4,8,16,32}`, and `dtype_bits=4` whenever the tile reaches the atom threshold for that variant.
+- Added clean unsupported below-threshold cases for the same N-sharded families, preserving the descriptor-view diagnostic contract.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed after docs;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `91/5947` for `ldst_scales_variant`;
+  - no-PYTHONPATH `ldst` collect selected `2829/5947`;
+  - no-PYTHONPATH full-file collect reported `5947`;
+  - focused `ldst_scales_variant` selector passed all `91` cases across split-4 on four GPUs (`23`, `23`, `23`, `22`; `5.25s`, `5.62s`, `5.23s`, `5.49s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1318`, splitn/misc `=499`, `ld_red=920`, `ldst=2829`; current bucketed evidence aggregates to `5501 passed, 446 skipped`.
+- Next: commit/push this checkpoint and continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 08:34 UTC: scaled-MMAv5 TMEM-LHS nonzero use-acc coverage
 
 - Added nonzero accumulator-add coverage for scaled-MMAv5 TMEM-LHS subview and full-shape tile-permuted operand-A paths in `python/test/gluon/test_tmem_runtime_matrix.py`.

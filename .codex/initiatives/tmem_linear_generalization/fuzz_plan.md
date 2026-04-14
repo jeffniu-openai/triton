@@ -233,6 +233,13 @@ Every fuzz case records:
     two-CTA one-column layouts through `auto` and `32x32b`; explicit
     `16x64b`, `16x128b`, and `16x256b` x1 variants are pinned as clean
     unsupported for both 32-bit payload dtypes.
+- scales-layout families:
+  - current tensor-memory-scales `ld/st` variant coverage includes `auto`,
+    `32x32b`, `16x32bx2`, and explicit N-sharded `16x64b`, `16x128b`,
+    and `16x256b` for `M in {64,128,256}`, `N in {4,8,16,32}`, and
+    `dtype_bits=4` whenever the tile reaches the variant atom threshold.
+    Below-threshold N-sharded cases are pinned as clean unsupported descriptor
+    views, not product regressions.
 - subword families:
   - `dtype in {f16, bf16, i16, i8}`
   - packed, unpacked, and padded one-column cases

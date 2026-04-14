@@ -667,6 +667,22 @@ def _expected_ldst_ops(op_shape: str, offsets):
     return ops
 
 
+SCALES_LDST_N_SHARDED_VARIANT_WIDTHS = {
+    "16x64b": 64,
+    "16x128b": 128,
+    "16x256b": 256,
+}
+
+
+def _scales_ldst_n_sharded_min_elements(instr_variant: str):
+    return 4 * SCALES_LDST_N_SHARDED_VARIANT_WIDTHS[instr_variant]
+
+
+def _expected_scales_ldst_n_sharded_ops(m: int, n: int, instr_variant: str):
+    count = (m * n) // _scales_ldst_n_sharded_min_elements(instr_variant)
+    return _expected_ldst_ops(f"{instr_variant}.x{count}.b32", [0, 1048576])
+
+
 @gluon.jit
 def tmem_ldst_variant_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
                              instr_variant: ttgl.constexpr):
@@ -3571,7 +3587,36 @@ SCALES_LDST_AUTO_VARIANT_CASES = [
     (32, 8, 8, "auto", _expected_ldst_ops("32x32b.x1.b32", [0])),
 ]
 
-SCALES_LDST_VARIANT_CASES = SCALES_LDST_AUTO_VARIANT_CASES + SCALES_LDST_EXPLICIT_VARIANT_CASES
+SCALES_LDST_N_SHARDED_VARIANT_CASES = [
+    (m, n, 4, instr_variant, _expected_scales_ldst_n_sharded_ops(m, n, instr_variant))
+    for m, n, instr_variant in product(
+        (64, 128, 256),
+        (4, 8, 16, 32),
+        SCALES_LDST_N_SHARDED_VARIANT_WIDTHS,
+    )
+    if m * n >= _scales_ldst_n_sharded_min_elements(instr_variant)
+]
+
+SCALES_LDST_N_SHARDED_VARIANT_CLEAN_UNSUPPORTED_CASES = [
+    (
+        m,
+        n,
+        4,
+        instr_variant,
+        f"TMEM layout 'constexpr[{instr_variant}]' unsupported for descriptor view",
+        False,
+    )
+    for m, n, instr_variant in product(
+        (64, 128),
+        (4, 8),
+        ("16x128b", "16x256b"),
+    )
+    if m * n < _scales_ldst_n_sharded_min_elements(instr_variant)
+]
+
+SCALES_LDST_VARIANT_CASES = (
+    SCALES_LDST_AUTO_VARIANT_CASES + SCALES_LDST_EXPLICIT_VARIANT_CASES + SCALES_LDST_N_SHARDED_VARIANT_CASES
+)
 
 SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
     (
@@ -3582,7 +3627,7 @@ SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
         "To be able to `tmem.load` into `tl.split` you need to have more than 4 8-bit registers",
         False,
     ),
-]
+] + SCALES_LDST_N_SHARDED_VARIANT_CLEAN_UNSUPPORTED_CASES
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),
