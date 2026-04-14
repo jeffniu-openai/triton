@@ -13016,3 +13016,17 @@ Open after this slice:
   - focused selector across four GPUs: `20 passed` (`5` per split group); slowest split about `1:35`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1702`; current bucketed evidence aggregates to `2925 passed, 446 skipped`.
 - Next: commit/push this bounded two-CTA `ld/st` checkpoint, then continue with row/column cross-product or descriptor-view breadth before any broad `ldst` runner refresh.
+
+## 2026-04-14 03:53 UTC: ld/st representative row/column N=32 direct and descriptor coverage
+
+- Added `LDST_ROWCOL_N32_CASES` and `test_tmem_runtime_matrix_ldst_rowcol_n32_linear_layout`.
+- The new slice covers root `M=128, N=32` f32 TMEM roundtrips for representative non-diagonal row/column permutations: pure row (`rotate1,identity`), pure column (`identity,reverse`), and mixed row+column (`even_odd,reverse`).
+- Both direct root access and the supported descriptor-chain path are covered across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`; exact PTX/LLIR opcodes are the minimal `32x32b.x32`, `16x64b.x16`, `16x128b.x8`, and `16x256b.x4` families.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector: `30/3401` selected;
+  - focused selector across four GPUs: `30 passed` (`8`, `8`, `8`, `6` by split group); slowest split about `2:39`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1732`; current bucketed evidence aggregates to `2955 passed, 446 skipped`.
+- Next: commit/push this bounded `ld/st` row/column checkpoint, then continue descriptor-view breadth or stage a wider ldst rerun if enough coverage slices accumulate.

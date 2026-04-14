@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:53 UTC: ld/st representative row/column N=32 coverage
+
+- `test_tmem_runtime_matrix_ldst_rowcol_n32_linear_layout` covers representative non-diagonal root `128x32` f32 TMEM layouts: pure row permutation (`rotate1,identity`), pure column permutation (`identity,reverse`), and mixed row+column permutation (`even_odd,reverse`).
+- The slice covers direct access and supported descriptor-chain views over all public `ld/st` variants, pinning minimal atom shapes (`32x32b.x32`, `16x64b.x16`, `16x128b.x8`, `16x256b.x4`) in PTX and LLIR.
+- Current runtime-matrix collection is `3401` tests: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, and `ldst=1732`; current bucketed evidence aggregates to `2955 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `30/3401`; focused selector passed `30` cases across four GPUs (`8`, `8`, `8`, `6`), slowest split about `2:39`.
+- Remaining long-term work: continue bounded descriptor-view breadth and only run a broad `ldst` bucket after accumulated slices or shared-lowering source changes justify it.
+
 ## 2026-04-14 03:34 UTC: two-CTA ld/st N=32 direct and descriptor coverage
 
 - `test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout` covers root `256x32` f32 TMEM roundtrips for both supported two-CTA TMEM-linear layout families (`block_two_ctas` and `mmav5_twocta`).
