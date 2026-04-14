@@ -3088,7 +3088,7 @@ CP_SCALES_WARPX4_FORMAT_PAIRS = [
 SCALED_MMA_ROOT_FORMAT_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for (a_format, b_format), n, k, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256), ("legacy", "linear")
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
     )
 ]
 

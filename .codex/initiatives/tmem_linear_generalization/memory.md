@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:31 UTC: direct scaled-MMAv5 root-format N=64 parity
+
+- `SCALED_MMA_ROOT_FORMAT_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- The direct scaled-MMAv5 root accumulator matrix now covers every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`), `K in {128, 256}`, and both legacy/canonical TMEM-linear accumulator layouts at all three N widths.
+- This is root-format parity: `N=64` had nearby coverage through subview or specialized scaled-MMA paths, but the direct root matrix did not previously prove the small-N surface or exact root opcode counts.
+- Current runtime-matrix collection is `3899` tests: `cp=322`, `mma=612`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3453 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `60/3899`; no-PYTHONPATH tight `mma` collect selected `612/3899`; focused scaled-root selector passed `60` cases across four GPUs (`15` each); tight MMA runner passed `612` across four groups (`153` each).
+
 ## 2026-04-14 04:28 UTC: plain-MMAv5 blockM=64 N=64 coverage
 
 - `MMA_M64_PLAIN_KIND_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

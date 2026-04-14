@@ -500,7 +500,7 @@ Every fuzz case records:
     opcode and instruction-count checks
 - supported MMAv5 tile families:
   - `blockM in {64, 128}`; current root `blockM=64` runtime coverage spans
-    every supported plain operand kind at `N in {128,256}`, `K in {32,64}`,
+    every supported plain operand kind at `N in {64,128,256}`, `K in {32,64}`,
     both legacy/canonical M64 accumulator layouts, and both no-accumulator and
     `use_acc=True` paths.
   - `blockN` and `K` values accepted by the in-tree verifier/matcher
@@ -539,7 +539,7 @@ Every fuzz case records:
   legacy layouts
 - direct one-CTA root accumulator coverage now spans every current scaled
   format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`,
-  and `nvfp4/nvfp4`) at `blockN in {128, 256}` and `blockK in {128, 256}`
+  and `nvfp4/nvfp4`) at `blockN in {64, 128, 256}` and `blockK in {128, 256}`
   for both legacy and canonical TMEM-linear accumulator layouts, with exact
   scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`.
 - accumulator subview starts that preserve the same supported physical family,

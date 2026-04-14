@@ -13275,3 +13275,19 @@ Open after this slice:
   - tight MMA runner passed all `592` cases across groups `148`, `148`, `148`, and `148`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=592`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3433 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another staged ISA coverage gap.
+
+## 2026-04-14 04:31 UTC: direct scaled-MMAv5 root-format N=64 parity
+
+- Expanded `SCALED_MMA_ROOT_FORMAT_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- The root-format direct scaled-MMAv5 matrix now covers all five current scaled format pairs, `K in {128, 256}`, both legacy/canonical accumulator layouts, and all three N widths.
+- This closes a bounded root-surface parity gap: existing N64 scaled-MMA coverage went through subview/specialized paths, while direct root accumulator coverage still started at N128.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `60/3899`;
+  - no-PYTHONPATH tight `mma` collect selected `612/3899`;
+  - focused scaled-root selector passed all `60` cases across four GPUs (`15` per group; group times about `28.68s`, `26.38s`, `28.04s`, and `27.82s`);
+  - tight MMA runner passed all `612` cases across groups `153`, `153`, `153`, and `153` with runner wall times about `8.1s`, `9.0s`, `22.8s`, and `20.4s`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=612`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3453 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation. Copy `warpx2` frontiers remain parked unless a new descriptor/address/staging model appears; otherwise move to another bounded `ld/st`, `ld.red`, MMAv5, or scaled-MMAv5 gap.
