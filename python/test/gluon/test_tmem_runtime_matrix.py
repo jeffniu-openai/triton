@@ -5561,12 +5561,15 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive(dtype_nam
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported(capfd):
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported(
+    dtype_name, torch_dtype, capfd
+):
     M = 256
     N = 4
     shared_layout = _make_tmem_copy_warpx2_shared_layout_twocta()
     tmem_layout = _make_tmem_copy_warpx2_tmem_layout_02_13_twocta()
-    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
     out = torch.empty_like(inp)
 
     with pytest.raises(RuntimeError) as excinfo:

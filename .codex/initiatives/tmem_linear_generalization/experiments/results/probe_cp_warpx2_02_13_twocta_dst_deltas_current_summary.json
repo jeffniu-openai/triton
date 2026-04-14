@@ -1,0 +1,83 @@
+{
+  "conclusion": "No production two-CTA warpx2::02_13 lowering is justified by direct source-offset/destination-delta patching: every executing aligned destination delta duplicates source-column pairs, non-dword-aligned deltas are misaligned, and high source offsets fail to launch at the aligned deltas checked.",
+  "failure_errors": {
+    "misaligned address": 876,
+    "unspecified launch failure": 110
+  },
+  "generated_at_utc": "2026-04-14T01:58:42Z",
+  "matches_extended_single_cta_formula": 0,
+  "ok_duplicate_column_pair": 292,
+  "ok_non_duplicate_column_pair": 0,
+  "probe": "probe_cp_warpx2_02_13_twocta_direct_ptx.py destination-delta scan",
+  "raw_jsonl_files_generated_then_removed": [
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_0_18_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_101_114_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_115_127_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_19_36_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_37_54_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_55_72_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_73_86_current.jsonl",
+    "probe_cp_warpx2_02_13_twocta_dst_deltas_87_100_current.jsonl"
+  ],
+  "records": 1278,
+  "source_offset_b128_ranges": [
+    "0..72 with dst_delta 0..15",
+    "73..127 with dst_delta 8,12"
+  ],
+  "status_by_dst_delta": {
+    "0": {
+      "ok": 73
+    },
+    "1": {
+      "failed": 73
+    },
+    "10": {
+      "failed": 73
+    },
+    "11": {
+      "failed": 73
+    },
+    "12": {
+      "failed": 55,
+      "ok": 73
+    },
+    "13": {
+      "failed": 73
+    },
+    "14": {
+      "failed": 73
+    },
+    "15": {
+      "failed": 73
+    },
+    "2": {
+      "failed": 73
+    },
+    "3": {
+      "failed": 73
+    },
+    "4": {
+      "ok": 73
+    },
+    "5": {
+      "failed": 73
+    },
+    "6": {
+      "failed": 73
+    },
+    "7": {
+      "failed": 73
+    },
+    "8": {
+      "failed": 55,
+      "ok": 73
+    },
+    "9": {
+      "failed": 73
+    }
+  },
+  "status_counts": {
+    "failed": 986,
+    "ok": 292
+  }
+}

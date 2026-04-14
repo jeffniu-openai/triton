@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 current: copy warpx2 frontier closure and negative coverage
+
+- No production two-CTA `warpx2::02_13` lowering was added. A widened direct-PTX scan over `sourceOffsetB128=0..72` with destination deltas `0..15`, plus `sourceOffsetB128=73..127` at the newly confirmed aligned deltas `8` and `12`, produced `1278` records with zero matches to the extended two-CTA `02_13` oracle. All `292` executing variants duplicated source-column pairs; the other `986` failed (`876` misaligned-address failures for non-dword-aligned deltas and `110` high-source launch failures). Compact evidence is in `experiments/results/probe_cp_warpx2_02_13_twocta_dst_deltas_current_summary.json`.
+- A scratch alternate shared block-basis probe was also negative: `block_bases=[[64, 0]]` collides with the canonical `[64, 0]` offset basis, while the nearby bijective offset variant still fails descriptor-plan synthesis.
+- The public clean-unsupported test for no-scales two-CTA `warpx2::02_13` now covers both f32 and i32, matching the supported positive dtype surface. The two direct-PTX `warpx2` probe scripts now run their `--help` path with `PYTHONPATH` unset by locating `python/test/gluon` themselves.
+- Current runtime-matrix collection is `3298` tests: `cp=322`, `mma=311`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; current bucketed evidence aggregates to `2852 passed, 446 skipped`. Validation: `python3 -m py_compile` for the touched test/probe files; `make -j8`; no-PYTHONPATH collect; exact two-CTA `02_13` boundary split (`2` selected cases passed on non-empty groups); nearby no-scales `warpx2` selector (`12 passed` across four groups); full `cp` runner bucket (`317 passed, 5 skipped`); `git diff --check`.
+- Remaining copy `warpx2` status: supported no-scales positives are covered for f32+i32 on single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23`; true scales `warpx2` and no-scales two-CTA `02_13` remain descriptor/address/staging research frontiers, not small direct-offset fixes. Move on to the next long-term ISA coverage bucket unless a real descriptor/view schedule is derived.
+
 ## 2026-04-14 01:26 UTC: copy warpx2 dtype coverage for supported positives
 
 - Supported no-scales `tcgen05.cp` `warpx2` positives now cover f32 and i32 for single-CTA `warpx2::01_23`, single-CTA `warpx2::02_13`, and two-CTA `warpx2::01_23`.

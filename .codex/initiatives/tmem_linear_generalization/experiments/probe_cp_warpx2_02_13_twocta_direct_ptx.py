@@ -27,7 +27,12 @@ import torch
 from triton.backends.nvidia.compiler import get_ptxas, sm_arch_from_capability
 from triton.runtime import driver
 
-from python.test.gluon.test_tmem_runtime_matrix import (
+REPO_ROOT = Path(__file__).resolve().parents[4]
+GLUON_TEST_DIR = REPO_ROOT / "python" / "test" / "gluon"
+if str(GLUON_TEST_DIR) not in sys.path:
+    sys.path.insert(0, str(GLUON_TEST_DIR))
+
+from test_tmem_runtime_matrix import (
     _expected_tmem_copy_warpx2_01_23_twocta_output,
     _make_tmem_copy_warpx2_shared_layout_twocta,
     _make_tmem_copy_warpx2_tmem_layout_twocta,

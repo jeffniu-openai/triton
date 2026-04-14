@@ -12914,3 +12914,31 @@ Open after this slice:
   - full `cp` runner: `316 passed, 5 skipped`;
   - `git diff --check` passed.
 - Current bucketed matrix evidence is `2851 passed, 446 skipped` across `3297` collected tests.
+
+
+## 2026-04-14 copy warpx2 frontier sweep
+
+- Rechecked the remaining copy `warpx2` frontiers after the supported-positive dtype expansion.
+- Scratch alternate-block probe for no-scales two-CTA `warpx2::02_13`:
+  - shared `block_bases=[[64, 0]]` with the canonical offset bases is rejected as non-bijective because it duplicates the `[64, 0]` offset basis;
+  - the nearby bijective variant that moves the high row bit to the offset basis (`[128, 0]` offset, `[64, 0]` block) still reaches the clean descriptor-plan rejection and does not produce a lowering.
+- Widened direct-PTX destination-delta scan for two-CTA `warpx2::02_13`:
+  - `sourceOffsetB128=0..72` was scanned with destination deltas `0..15`;
+  - `sourceOffsetB128=73..127` was scanned at aligned deltas `8` and `12`, complementing the older `0/4` high-offset scan;
+  - aggregate: `1278` records, `0` oracle matches, `292` executing variants, all `292` duplicating source-column pairs, and `986` failures (`876` misaligned-address failures for non-dword-aligned deltas and `110` high-source launch failures);
+  - compact result: `experiments/results/probe_cp_warpx2_02_13_twocta_dst_deltas_current_summary.json`.
+- Tooling cleanup:
+  - `probe_cp_warpx2_02_13_twocta_direct_ptx.py` and `probe_cp_scales_warpx2_direct_ptx.py` now locate `python/test/gluon` themselves so their `--help` path works with `PYTHONPATH` unset.
+- Runtime-matrix coverage:
+  - `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported` is now parametrized over `CP_NO_SCALES_WARPX2_DTYPES`, so the hard boundary is pinned for both f32 and i32.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_warpx2_02_13_twocta_direct_ptx.py .codex/initiatives/tmem_linear_generalization/experiments/probe_cp_scales_warpx2_direct_ptx.py`;
+  - `env -u PYTHONPATH python3 ...probe_cp_warpx2_02_13_twocta_direct_ptx.py --help`;
+  - `env -u PYTHONPATH python3 ...probe_cp_scales_warpx2_direct_ptx.py --help`;
+  - `make -j8`;
+  - no-PYTHONPATH collect: `3298` total runtime-matrix tests;
+  - exact two-CTA `02_13` boundary split: `2` selected dtype cases passed on non-empty groups;
+  - nearby no-scales `warpx2` selector: `12 passed` across four groups;
+  - full `cp` runner: `317 passed, 5 skipped`;
+  - `git diff --check` passed.
+- Conclusion: no production support path is justified for no-scales two-CTA `warpx2::02_13` from direct source-offset or destination-delta patching. True scales `warpx2` remains an unsupported descriptor/view/staging frontier. The copy `warpx2` workstream is now at a reasonable stopping point until a real descriptor/address schedule is derived; move to the next long-term TMEM ISA coverage bucket.

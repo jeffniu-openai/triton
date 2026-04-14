@@ -25,7 +25,12 @@ import torch
 from triton.backends.nvidia.compiler import get_ptxas, sm_arch_from_capability
 from triton.runtime import driver
 
-from python.test.gluon.test_tmem_runtime_matrix import tmem_copy_scales_warpx4_kernel
+REPO_ROOT = Path(__file__).resolve().parents[4]
+GLUON_TEST_DIR = REPO_ROOT / "python" / "test" / "gluon"
+if str(GLUON_TEST_DIR) not in sys.path:
+    sys.path.insert(0, str(GLUON_TEST_DIR))
+
+from test_tmem_runtime_matrix import tmem_copy_scales_warpx4_kernel
 
 BASE_DESC_IMM = 70403103916032
 SEED_DESC_IMM = 2322202917601312
