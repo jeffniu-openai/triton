@@ -12987,3 +12987,18 @@ Open after this slice:
   - focused selector across four GPUs: `10 passed` (`3`, `3`, `3`, `1` by split group).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1652`; current bucketed evidence aggregates to `2875 passed, 446 skipped`.
 - Next: commit/push this bounded `ld/st` coverage checkpoint, then continue with another targeted `ld/st` layout/view slice or staged `ld.red`/copy/MMAv5 coverage.
+
+## 2026-04-14 03:20 UTC: ld/st diagonal-permuted N=32 direct and descriptor coverage
+
+- Added `LDST_PERMUTED_N32_CASES` and `test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout`.
+- The new slice covers root `M=128, N=32` f32 TMEM roundtrips for diagonal row/column permutations `rotate1`, `even_odd`, and `reverse`, excluding identity because the immediately previous slice covers it.
+- Both direct root access and the supported descriptor-chain path are covered across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`; exact PTX/LLIR opcodes are the minimal `32x32b.x32`, `16x64b.x16`, `16x128b.x8`, and `16x256b.x4` families.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector: `30/3351` selected;
+  - focused selector across four GPUs: `30 passed` (`8`, `8`, `8`, `6` by split group);
+  - cold descriptor-heavy split time reached about `2:58`, so keep using exact selectors for these bounded additions.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1682`; current bucketed evidence aggregates to `2905 passed, 446 skipped`.
+- Next: commit/push this bounded `ld/st` permuted-layout checkpoint, then continue with another targeted `ld/st` slice or staged `ld.red`/copy/MMAv5 coverage.

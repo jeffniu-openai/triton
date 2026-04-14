@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:20 UTC: ld/st diagonal-permuted N=32 coverage
+
+- `test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout` extends root `128x32` f32 TMEM roundtrips from identity to diagonal row/column permutations (`rotate1`, `even_odd`, `reverse`).
+- The slice covers both direct access and supported descriptor-chain views over all public `ld/st` variants, pinning the minimal atom shapes (`32x32b.x32`, `16x64b.x16`, `16x128b.x8`, `16x256b.x4`) in PTX and LLIR.
+- Current runtime-matrix collection is `3351` tests: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, and `ldst=1682`; current bucketed evidence aggregates to `2905 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `30/3351`; focused selector passed `30` cases across four GPUs (`8`, `8`, `8`, `6`), slowest cold descriptor split about `2:58`.
+- Remaining long-term work: continue bounded `ld/st` layout/view breadth, especially two-CTA/minimal-N and row/column cross-product slices, before any broad `ldst` runner refresh.
+
 ## 2026-04-14 03:03 UTC: ld/st identity N=32 direct and descriptor coverage
 
 - `test_tmem_runtime_matrix_ldst_identity_n32_linear_layout` covers canonical identity `128x32` f32 TMEM roundtrips for both direct access and the supported descriptor-chain view path.
