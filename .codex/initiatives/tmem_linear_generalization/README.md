@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4017-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4097-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld/st` N=32 non-identity i32 parity checkpoint, 2026-04-14 05:00 UTC: `LDST_PERMUTED_N32_CASES`, `LDST_ROWCOL_N32_CASES`, and `LDST_EXOTIC_N32_CASES` now cover both f32 and i32 for direct and descriptor-chain `128x32` roundtrips over every public `ld/st` variant. This extends the earlier f32-only N32 diagonal, row/column, and scrambled layout slices to match the existing identity and two-CTA f32+i32 N32 coverage while keeping the exact minimal `x32/x16/x8/x4` opcode checks. Current runtime-matrix collection is `4097` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=1982`; bucketed evidence now aggregates to `3651 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `160/4097`; no-PYTHONPATH `ldst` collect selected `1982/4097`; focused N32 non-identity selector passed all `160` cases across four GPUs (`40` each; group times about `7:19`, `8:26`, `9:47`, and `8:53`). A full `ldst` bucket rerun was intentionally deferred because this is a test-only parity expansion and the changed cases were covered directly.
 
 - Current scaled-MMAv5 full-shape tile-permuted TMEM-LHS `N=64` parity checkpoint, 2026-04-14 04:46 UTC: `SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES` now spans `N in {64, 128, 256}` for every currently reachable full-shape tile-permuted TMEM-LHS scaled format pair. Positive coverage includes all packed-storage reachable pairs at `K=256`, the mxfp8-storage LHS pairs at `K=128`, and both legacy plus canonical TMEM-linear accumulator layouts; the fp4-storage `K=128` tile-permuted LHS clean-negative matrix now also spans `N in {64, 128, 256}`. This closes the N64 companion to the scaled-LHS subview parity slice while keeping the fp4-storage K128 boundary as a clean verifier rejection instead of a backend crash. Current runtime-matrix collection is `4017` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3571 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `48/4017`; no-PYTHONPATH tight `mma` collect selected `730/4017`; focused scaled-LHS tile-permuted selector passed all `48` cases across four GPUs (`12` each); tight MMA runner passed all `730` cases across four groups (`183`, `183`, `183`, `181`).
 

@@ -2774,8 +2774,10 @@ PERMUTED_LAYOUT_KINDS = ("identity", "rotate1", "even_odd", "reverse")
 PERMUTED_ROW_COL_LAYOUT_KINDS = list(product(PERMUTED_LAYOUT_KINDS, PERMUTED_LAYOUT_KINDS))
 
 LDST_PERMUTED_N32_CASES = [
-    (mode, perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for mode, perm_kind, variant in product(("direct", "descriptor"), PERMUTED_LAYOUT_KINDS, LDST_VARIANTS)
+    (dtype_name, torch_dtype, mode, perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
+    for (dtype_name, torch_dtype), mode, perm_kind, variant in product(
+        LDST_32BIT_DTYPES, ("direct", "descriptor"), PERMUTED_LAYOUT_KINDS, LDST_VARIANTS
+    )
     if perm_kind != "identity"
 ]
 
@@ -2786,9 +2788,9 @@ LDST_ROWCOL_N32_LAYOUT_CASES = (
 )
 
 LDST_ROWCOL_N32_CASES = [
-    (mode, row_perm_kind, col_perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for mode, (row_perm_kind, col_perm_kind), variant in product(
-        ("direct", "descriptor"), LDST_ROWCOL_N32_LAYOUT_CASES, LDST_VARIANTS
+    (dtype_name, torch_dtype, mode, row_perm_kind, col_perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
+    for (dtype_name, torch_dtype), mode, (row_perm_kind, col_perm_kind), variant in product(
+        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_ROWCOL_N32_LAYOUT_CASES, LDST_VARIANTS
     )
 ]
 
@@ -2810,8 +2812,10 @@ LDST_EXOTIC_CASES = [
 ]
 
 LDST_EXOTIC_N32_CASES = [
-    (mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for mode, layout_name, variant in product(("direct", "descriptor"), LDST_EXOTIC_LAYOUTS.keys(), LDST_VARIANTS)
+    (dtype_name, torch_dtype, mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
+    for (dtype_name, torch_dtype), mode, layout_name, variant in product(
+        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_EXOTIC_LAYOUTS.keys(), LDST_VARIANTS
+    )
 ]
 
 LDST_EXOTIC_DESCRIPTOR_CASES = [
@@ -3707,12 +3711,14 @@ def test_tmem_runtime_matrix_ldst_identity_n32_linear_layout(dtype_name, torch_d
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("mode,perm_kind,variant,expected_shape", LDST_PERMUTED_N32_CASES)
-def test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout(mode, perm_kind, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,mode,perm_kind,variant,expected_shape", LDST_PERMUTED_N32_CASES)
+def test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout(
+    dtype_name, torch_dtype, mode, perm_kind, variant, expected_shape
+):
     m = 128
     n = 32
     layout = _make_tmem_linear_layout_permuted(m, n, perm_kind, perm_kind)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     if mode == "direct":
@@ -3723,7 +3729,7 @@ def test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout(mode, perm_kind, va
         torch.testing.assert_close(out, inp, atol=0, rtol=0)
     else:
         compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-        torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+        torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
@@ -3736,14 +3742,14 @@ def test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout(mode, perm_kind, va
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("mode,row_perm_kind,col_perm_kind,variant,expected_shape", LDST_ROWCOL_N32_CASES)
+@pytest.mark.parametrize("dtype_name,torch_dtype,mode,row_perm_kind,col_perm_kind,variant,expected_shape", LDST_ROWCOL_N32_CASES)
 def test_tmem_runtime_matrix_ldst_rowcol_n32_linear_layout(
-    mode, row_perm_kind, col_perm_kind, variant, expected_shape
+    dtype_name, torch_dtype, mode, row_perm_kind, col_perm_kind, variant, expected_shape
 ):
     m = 128
     n = 32
     layout = _make_tmem_linear_layout_permuted(m, n, row_perm_kind, col_perm_kind)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     if mode == "direct":
@@ -3754,7 +3760,7 @@ def test_tmem_runtime_matrix_ldst_rowcol_n32_linear_layout(
         torch.testing.assert_close(out, inp, atol=0, rtol=0)
     else:
         compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-        torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+        torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
@@ -3767,12 +3773,14 @@ def test_tmem_runtime_matrix_ldst_rowcol_n32_linear_layout(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("mode,layout_name,variant,expected_shape", LDST_EXOTIC_N32_CASES)
-def test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout(mode, layout_name, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,mode,layout_name,variant,expected_shape", LDST_EXOTIC_N32_CASES)
+def test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout(
+    dtype_name, torch_dtype, mode, layout_name, variant, expected_shape
+):
     m = 128
     n = 32
     layout = LDST_EXOTIC_LAYOUTS[layout_name](n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     if mode == "direct":
@@ -3783,7 +3791,7 @@ def test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout(mode, layout_name, va
         torch.testing.assert_close(out, inp, atol=0, rtol=0)
     else:
         compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-        torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+        torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)

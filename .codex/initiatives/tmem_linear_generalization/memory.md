@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 05:00 UTC: ld/st N=32 non-identity i32 parity
+
+- `LDST_PERMUTED_N32_CASES`, `LDST_ROWCOL_N32_CASES`, and `LDST_EXOTIC_N32_CASES` now parameterize over `LDST_32BIT_DTYPES`, adding i32 parity beside the existing f32 N32 non-identity roundtrips.
+- Coverage spans direct and descriptor-chain `128x32` layouts for diagonal permutations (`rotate1`, `even_odd`, `reverse`), representative row/column permutations, and the scrambled/exotic layout families over every public `ld/st` variant.
+- The test functions now seed through int32 and cast to the requested dtype, and descriptor-chain expectations use `inp + 3` so integer and float outputs are both type-preserving.
+- Current runtime-matrix collection is `4097` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=1982`; current bucketed evidence aggregates to `3651 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `160/4097`; no-PYTHONPATH `ldst` collect selected `1982/4097`; focused N32 non-identity selector passed `160` cases across four GPUs (`40` each; group times about `7:19`, `8:26`, `9:47`, and `8:53`). Full `ldst` bucket was not rerun because no shared lowering changed.
+
 ## 2026-04-14 04:46 UTC: scaled-MMAv5 full-shape tile-permuted TMEM-LHS N=64 parity
 
 - `SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

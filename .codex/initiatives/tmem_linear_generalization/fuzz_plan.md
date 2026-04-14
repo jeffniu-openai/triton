@@ -181,16 +181,16 @@ Every fuzz case records:
     direct/descriptor tests.
 - diagonal row/column permutations:
   - current root `128x32` coverage includes `rotate1`, `even_odd`, and
-    `reverse` permutations for direct and descriptor-chain f32 roundtrips over
-    every public `ld/st` variant.
+    `reverse` permutations for direct and descriptor-chain f32 and i32
+    roundtrips over every public `ld/st` variant.
 - representative non-diagonal row/column permutations:
   - current root `128x32` coverage includes pure row (`rotate1,identity`),
     pure column (`identity,reverse`), and mixed row+column (`even_odd,reverse`)
-    layouts for direct and descriptor-chain f32 roundtrips over every public
-    `ld/st` variant.
+    layouts for direct and descriptor-chain f32 and i32 roundtrips over every
+    public `ld/st` variant.
 - scrambled/exotic linear families:
   - current root `128x32` coverage includes `scrambled_cols` and
-    `scrambled_rows_cols` layouts for direct and descriptor-chain f32
+    `scrambled_rows_cols` layouts for direct and descriptor-chain f32 and i32
     roundtrips over every public `ld/st` variant.
 - canonical mixed/interleaved linear families:
   - current `128 x {64, 128, 256}` mixed family

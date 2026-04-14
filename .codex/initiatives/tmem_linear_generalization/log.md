@@ -13374,3 +13374,20 @@ Open after this slice:
   - tight MMA runner passed all `730` cases across groups `183`, `183`, `183`, and `181` with pytest times about `4.98s`, `10.64s`, `7.66s`, and `40.79s`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3571 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 checkpoint, then move to the next staged ISA coverage family. With the nearby MMAv5 N64 parity gaps mostly closed, prefer a descriptor-view `ld/st` or `ld.red` layout slice unless another exact scaled-MMAv5 gap is discovered.
+## 2026-04-14 05:00 UTC: ld/st N=32 non-identity i32 parity
+
+- Expanded the N32 non-identity `ld/st` runtime-matrix slices to use the same f32+i32 dtype surface already present for identity N32 and two-CTA N32 layouts:
+  - `LDST_PERMUTED_N32_CASES` now covers both dtypes for diagonal row/column permutations;
+  - `LDST_ROWCOL_N32_CASES` now covers both dtypes for representative pure-row, pure-column, and mixed row+column layouts;
+  - `LDST_EXOTIC_N32_CASES` now covers both dtypes for `scrambled_cols` and `scrambled_rows_cols` layouts.
+- The three tests now seed through int32 and cast to the requested dtype, matching the existing dtype-generic identity/two-CTA pattern. Descriptor-chain expected results use `inp + 3` rather than `inp + 3.0` so i32 outputs remain dtype-preserving.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `160/4097`;
+  - no-PYTHONPATH `ldst` collect selected `1982/4097`;
+  - focused N32 non-identity selector passed all `160` cases across four GPUs (`40` per group; group times about `439.37s`, `506.68s`, `587.90s`, and `533.16s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=1982`; current bucketed evidence aggregates to `3651 passed, 446 skipped`.
+- Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed descriptor-heavy cases were run directly. Use the duration-aware `ldst` runner before claiming a fresh whole-bucket timing.
+- Next: commit/push this bounded `ld/st` checkpoint, then continue another staged ISA coverage slice. Good nearby options are another descriptor-view dtype/layout parity gap or a reduction layout slice; copy `warpx2` hard frontiers remain parked without a new descriptor/address/staging hypothesis.
