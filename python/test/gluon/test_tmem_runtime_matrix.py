@@ -6276,8 +6276,8 @@ def _expected_plain_mma_op_count(kind, k):
     return MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind] * (k // 32)
 
 
-def _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind):
-    legacy_multiplier = 2 if acc_layout_kind == "legacy" else 1
+def _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind, n):
+    legacy_multiplier = n // 64 if acc_layout_kind == "legacy" else 1
     return legacy_multiplier * _expected_plain_mma_op_count(kind, k)
 
 
@@ -6316,8 +6316,10 @@ MMA_TWOCTA_PLAIN_KIND_CASES = [
 ]
 
 MMA_M64_PLAIN_KIND_CASES = [
-    (kind, acc_layout_kind, k, use_acc)
-    for kind, acc_layout_kind, k, use_acc in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64), (False, True))
+    (kind, acc_layout_kind, n, k, use_acc)
+    for kind, acc_layout_kind, n, k, use_acc in product(
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64), (False, True)
+    )
 ]
 
 MMA_TILE_PERMUTED_CASES = [
@@ -6501,10 +6503,9 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, capfd):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind,k,use_acc", MMA_M64_PLAIN_KIND_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, k, use_acc):
+@pytest.mark.parametrize("kind,acc_layout_kind,n,k,use_acc", MMA_M64_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, n, k, use_acc):
     m = 64
-    n = 128
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     acc_layout = (
@@ -6560,7 +6561,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, k, use_a
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
-    assert len(mma_ops) == _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind)
+    assert len(mma_ops) == _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind, n)
     assert all(op == expected_kind for op in mma_ops)
     if use_acc:
         _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])

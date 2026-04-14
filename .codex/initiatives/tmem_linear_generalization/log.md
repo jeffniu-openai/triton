@@ -13225,3 +13225,19 @@ Open after this slice:
   - `git diff --check` passed.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3343 passed, 446 skipped`.
 - Next: commit/push this bounded `ld/st` dtype-coverage checkpoint, then continue staged ISA saturation in another gap; broad 32-bit dtype parity for the main one-CTA/two-CTA root surfaces is now explicit.
+## 2026-04-14 04:16 UTC: plain-MMAv5 blockM=64 N=256 coverage
+
+- Expanded `MMA_M64_PLAIN_KIND_CASES` from fixed `N=128` to `N in {128, 256}`.
+- The M64 matrix now covers every supported plain operand kind, both legacy/canonical M64 accumulator layouts, `K in {32,64}`, and both no-accumulator and `use_acc=True` at both N widths.
+- `_expected_m64_plain_mma_op_count` now receives `N`; the legacy M64 sugar count is `N // 64` times the plain-kind K-depth count, while canonical M64 linear remains at the root count.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH M64 collect selected `80/3829`;
+  - no-PYTHONPATH tight `mma` collect selected `542/3829`;
+  - representative f16 `N=256` selector passed `16` cases across four GPUs;
+  - focused M64 selector passed all `80` cases across four GPUs (`20` per group; group times about `8.94s`, `11.71s`, `10.47s`, and `10.16s`);
+  - tight MMA runner passed all `542` cases across four groups (`136`, `136`, `136`, `134`);
+  - `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=542`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3383 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another staged ISA coverage gap.

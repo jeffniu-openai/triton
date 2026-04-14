@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:16 UTC: plain-MMAv5 blockM=64 N=256 coverage
+
+- `test_tmem_runtime_matrix_mma_plain_kinds_m64` now spans `N in {128, 256}` for one-CTA root `M=64` MMAv5.
+- Coverage includes every supported plain operand kind, `K in {32, 64}`, both no-accumulator and `use_acc=True`, and both legacy M64 sugar plus canonical M64 TMEM-linear accumulator layouts.
+- `_expected_m64_plain_mma_op_count` now takes `N`; legacy M64 sugar uses `N // 64` 64-column chunks, while canonical M64 linear keeps the root count.
+- Current runtime-matrix collection is `3829` tests: `cp=322`, `mma=542`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3383 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH M64 collect selected `80/3829`; no-PYTHONPATH tight `mma` collect selected `542/3829`; representative f16 `N=256` M64 smoke passed `16` cases across four GPUs; focused M64 selector passed `80` cases across four GPUs (`20` each); tight MMA runner passed `542` cases across four groups (`136`, `136`, `136`, `134`); `git diff --check`.
+
 ## 2026-04-14 04:08 UTC: ld/st broad two-CTA i32 parity
 
 - `test_tmem_runtime_matrix_ldst_twocta_i32_broad_linear_layouts` adds the missing i32 `.b32` payload parity for the broad two-CTA `ld/st` root surface.

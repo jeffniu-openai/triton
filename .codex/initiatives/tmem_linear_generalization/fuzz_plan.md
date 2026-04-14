@@ -500,8 +500,8 @@ Every fuzz case records:
     opcode and instruction-count checks
 - supported MMAv5 tile families:
   - `blockM in {64, 128}`; current root `blockM=64` runtime coverage spans
-    every supported plain operand kind at `N=128`, `K in {32,64}`, both
-    legacy/canonical M64 accumulator layouts, and both no-accumulator and
+    every supported plain operand kind at `N in {128,256}`, `K in {32,64}`,
+    both legacy/canonical M64 accumulator layouts, and both no-accumulator and
     `use_acc=True` paths.
   - `blockN` and `K` values accepted by the in-tree verifier/matcher
 
