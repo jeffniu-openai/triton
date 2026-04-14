@@ -13670,3 +13670,11 @@ Open after this slice:
 - These remain clean unsupported because the current scaled-MMAv5 path requires `fp4_padded` shared-memory operand-A storage for mixed fp4A, not dense tensor-memory LHS storage. This is not a positive target without a real storage/model change.
 - Current runtime-matrix collection is `4977` tests: `cp=381`, `mma=852`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4531 passed, 446 skipped`.
 - Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `18/4977`; no-PYTHONPATH tight MMA collect selected `852/4977`; no-PYTHONPATH full-file collect reported `4977`; focused mixed-fp4A clean-negative selector passed all `18` cases across four GPUs (`5`, `5`, `5`, and `3` cases; group times `5.21s`, `5.20s`, `4.95s`, and `4.71s`).
+
+## 2026-04-14 07:22 UTC: M64 split-N ld/st i32 parity
+
+- Added `M64_SPLITN_DTYPES` and parameterized the identity M64 split-N immediate, auto-selection, and explicit `16x32bx2` equivalence checks over f32+i32.
+- This covers `64xN` split-N layouts for `N in {2,4,8,16,32,64,128}` through both explicit `32x32b_splitn` and auto-selected `16x32bx2` paths, while preserving exact immediate and opcode equality checks.
+- This is test-only coverage over already-supported `ld/st` lowering behavior; no compiler/lowering source changed.
+- Current runtime-matrix collection is `4998` tests: `cp=381`, `mma=852`, splitn/misc `=273`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4552 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `42/4998`; no-PYTHONPATH full-file collect reported `4998`; focused M64 split-N selector passed all `42` cases across four GPUs (`11`, `11`, `11`, and `9` cases; group times `4.79s`, `4.77s`, `5.00s`, and `5.78s`). Plain `-k splitn` remains intentionally avoided for bucket accounting because parameter IDs in `ld.red` and `ld/st` pollute the selector.

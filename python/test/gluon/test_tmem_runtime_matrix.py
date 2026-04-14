@@ -2950,13 +2950,21 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
     ),
 ]
 
-M64_SPLITN_CASES = []
+M64_SPLITN_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
+
+M64_SPLITN_BASE_CASES = []
 for n in (2, 4, 8, 16, 32, 64, 128):
     if n == 2:
-        M64_SPLITN_CASES.append((n, 2, [(0, 0)]))
+        M64_SPLITN_BASE_CASES.append((n, 2, [(0, 0)]))
     else:
         x = n // 4
-        M64_SPLITN_CASES.append((n, x, [(0, x), (2 * x, x)]))
+        M64_SPLITN_BASE_CASES.append((n, x, [(0, x), (2 * x, x)]))
+
+M64_SPLITN_CASES = [
+    (dtype_name, torch_dtype, n, splitn_x, offset_imm_pairs)
+    for dtype_name, torch_dtype in M64_SPLITN_DTYPES
+    for n, splitn_x, offset_imm_pairs in M64_SPLITN_BASE_CASES
+]
 
 M64_ROWCOL_PERMUTED_CASES = [
     (row_perm_kind, col_perm_kind, n, variant)
@@ -4851,11 +4859,11 @@ def test_tmem_runtime_matrix_block_descriptor_reports_clean_error(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("n,splitn_x,offset_imm_pairs", M64_SPLITN_CASES)
-def test_tmem_runtime_matrix_splitn_immediates(n, splitn_x, offset_imm_pairs):
+@pytest.mark.parametrize("dtype_name,torch_dtype,n,splitn_x,offset_imm_pairs", M64_SPLITN_CASES)
+def test_tmem_runtime_matrix_splitn_immediates(dtype_name, torch_dtype, n, splitn_x, offset_imm_pairs):
     m = 64
     layout = _make_tmem_linear_layout_m64(n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, "32x32b_splitn", num_warps=4)
@@ -4874,11 +4882,11 @@ def test_tmem_runtime_matrix_splitn_immediates(n, splitn_x, offset_imm_pairs):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("n,splitn_x,offset_imm_pairs", M64_SPLITN_CASES)
-def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(n, splitn_x, offset_imm_pairs):
+@pytest.mark.parametrize("dtype_name,torch_dtype,n,splitn_x,offset_imm_pairs", M64_SPLITN_CASES)
+def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(dtype_name, torch_dtype, n, splitn_x, offset_imm_pairs):
     m = 64
     layout = _make_tmem_linear_layout_m64(n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4)
@@ -4902,11 +4910,12 @@ def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(n, splitn_x, offset_im
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", M64_SPLITN_DTYPES)
 @pytest.mark.parametrize("n", [2, 4, 8, 16, 32, 64, 128])
-def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n):
+def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n, dtype_name, torch_dtype):
     m = 64
     layout = _make_tmem_linear_layout_m64(n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out_explicit = torch.empty_like(inp)
     out_splitn = torch.empty_like(inp)
 

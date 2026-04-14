@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4977-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4998-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current M64 split-N `ld/st` i32-parity checkpoint, 2026-04-14 07:22 UTC: the identity M64 split-N immediate, auto-selection, and explicit `16x32bx2` equivalence checks now cover f32+i32 for `64xN`, `N in {2,4,8,16,32,64,128}`, preserving exact immediate and opcode equality checks for explicit `32x32b_splitn` and auto-selected `16x32bx2`. This is test-only coverage over already-supported `ld/st` lowering. Current runtime-matrix collection is `4998` tests: `cp=381`, `mma=852`, splitn/misc `=273`, `ld_red=880`, and `ldst=2612`; bucketed evidence now aggregates to `4552 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `42/4998`; no-PYTHONPATH full-file collect reported `4998`; focused M64 split-N selector passed all `42` cases across split-4 on four GPUs (`11`, `11`, `11`, and `9` cases; slowest `5.78s`).
 
 - Current scaled-MMAv5 mixed fp4A clean-negative shape-parity checkpoint, 2026-04-14 07:19 UTC: the full-shape tile-permuted TMEM-LHS mixed `mxfp4/mxfp8` clean negative now covers `N in {64,128,256}`, `K=256`, and legacy plus canonical TMEM-linear accumulator layouts; the companion TMEM-LHS subview clean negative now covers `N in {64,128,256}`, `K in {128,256}`, and the same accumulator-layout pair. These remain clean unsupported because the current scaled-MMAv5 path requires `fp4_padded` shared-memory operand-A storage for mixed fp4A, not dense tensor-memory LHS storage. Current runtime-matrix collection is `4977` tests: `cp=381`, `mma=852`, splitn/misc `=252`, `ld_red=880`, and `ldst=2612`; bucketed evidence now aggregates to `4531 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `18/4977`; no-PYTHONPATH tight MMA collect selected `852/4977`; no-PYTHONPATH full-file collect reported `4977`; focused mixed-fp4A clean-negative selector passed all `18` cases across split-4 on four GPUs (`5`, `5`, `5`, and `3` cases; slowest `5.21s`).
 
