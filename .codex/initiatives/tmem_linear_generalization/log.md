@@ -13739,3 +13739,19 @@ Open after this slice:
   - four-GPU focused indexed-accumulator selector passed all `100` cases across split-4 (`25` per group; group times `4.32s`, `5.77s`, `6.60s`, and `7.57s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=950`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5076 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation. Good candidates are another non-parked MMAv5/scaled-MMAv5 descriptor-view gap, a concrete `ld.red` gap, or supported-API `ld/st` descriptor coverage.
+
+## 2026-04-14 08:08 UTC: scaled-MMAv5 indexed accumulator descriptor-view coverage
+
+- Added `tmem_mma_scaled_indexed_acc_format_kernel` and a 30-case focused matrix for scaled-MMAv5 accumulator `memdesc_index` views.
+- Coverage spans every current scaled format pair, `K in {128,256}`, legacy parent layouts at `N in {64,128}`, and canonical TMEM-linear parent layouts at `N=64`.
+- Discarded probes: the first 50-case attempt showed only tensor-memory OOR boundaries. Scaled-indexed linear `N=128` requires at least 520 columns once scale descriptors are live; scaled-indexed legacy `N=256` requires at least 524 columns. These stay omitted as resource limits, not compiler clean-negatives.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `30`;
+  - no-PYTHONPATH full-file collect reported `5552`;
+  - no-PYTHONPATH tight MMA collect selected `980/5552`;
+  - four-GPU focused scaled indexed-accumulator selector passed all `30` cases across split-4 (`8`, `8`, `8`, and `6` selected; group times `4.59s`, `6.07s`, `6.52s`, and `4.58s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=980`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5106 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation in another exact family.

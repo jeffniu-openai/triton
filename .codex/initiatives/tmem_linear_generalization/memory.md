@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:08 UTC: scaled-MMAv5 indexed accumulator descriptor-view coverage
+
+- Added `tmem_mma_scaled_indexed_acc_format_kernel` and `test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_matrix` to cover scaled-MMAv5 accumulator views produced by `memdesc_index` from a rank-3 parent.
+- The executable positive matrix covers every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, `nvfp4/nvfp4`), `K in {128,256}`, legacy parent layouts at `N in {64,128}`, and canonical TMEM-linear parent layouts at `N=64`.
+- Probed and omitted resource boundaries: scaled-indexed linear `N=128` requires at least 520 TMEM columns once scale descriptors are live, and scaled-indexed legacy `N=256` requires at least 524 columns, both above the 512-column hardware limit. These are launch-resource boundaries, not clean-negative compiler contracts.
+- The test validates scaled matmul numerics, exact scaled-MMAv5 opcode counts, exact commit opcode, `ttg.memdesc_index` in TTGIR, and the expected legacy or canonical TMEM-linear layout token.
+- Current runtime-matrix collection is `5552` tests: `cp=381`, `mma=980`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5106 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `30`; no-PYTHONPATH full-file collect reported `5552`; no-PYTHONPATH tight MMA collect selected `980/5552`; focused scaled indexed-accumulator selector passed all `30` cases across split-4 on four GPUs (`8`, `8`, `8`, and `6` selected; group times `4.59s`, `6.07s`, `6.52s`, and `4.58s`).
+- Next: continue staged TMEM ISA saturation in another bounded family. Good candidates are a remaining scaled-MMAv5 descriptor-view gap that is not a resource boundary, a concrete `ld.red` layout/modifier gap, or supported-API `ld/st` descriptor coverage.
+
 ## 2026-04-14 07:55 UTC: plain-MMAv5 indexed accumulator descriptor-view coverage
 
 - Expanded `test_tmem_runtime_matrix_mma_indexed_acc_view` from the old two-row f16-only anchor to a visible 100-case positive matrix over every supported plain MMAv5 operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`), `K in {32,64}`, and `use_acc in {False,True}`.

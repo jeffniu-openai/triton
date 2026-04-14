@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5522-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5552-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 indexed-accumulator descriptor-view checkpoint, 2026-04-14 08:08 UTC: scaled accumulator `memdesc_index` coverage now spans every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, `nvfp4/nvfp4`), `K in {128,256}`, legacy parent layouts at `N in {64,128}`, and canonical TMEM-linear parent layouts at `N=64`. The probed omitted shapes are resource boundaries: scaled-indexed linear `N=128` needs at least 520 TMEM columns once scale descriptors are live, and scaled-indexed legacy `N=256` needs at least 524 columns, both above the 512-column hardware limit. Current runtime-matrix collection is `5552` tests: `cp=381`, `mma=980`, splitn/misc `=499`, `ld_red=920`, and `ldst=2772`; bucketed evidence now aggregates to `5106 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH full-file collect reported `5552`; no-PYTHONPATH tight MMA collect selected `980/5552`; focused scaled indexed-accumulator selector passed all `30` cases across split-4 on four GPUs (`8`, `8`, `8`, and `6` selected; times `4.59s`, `6.07s`, `6.52s`, and `4.58s`).
 
 - Current plain-MMAv5 indexed-accumulator descriptor-view checkpoint, 2026-04-14 07:55 UTC: the accumulator `memdesc_index` positive matrix now covers every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`), `K in {32,64}`, `use_acc` false/true, legacy parent layouts at `N in {64,128,256}`, and canonical TMEM-linear parent layouts at `N in {64,128}`. The canonical linear `N=256` parent view is intentionally omitted because the live parent image is `[2,128,256]` and requires 1024 TMEM columns, exceeding the 512-column hardware limit before execution. Current runtime-matrix collection is `5522` tests: `cp=381`, `mma=950`, splitn/misc `=499`, `ld_red=920`, and `ldst=2772`; bucketed evidence now aggregates to `5076 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH full-file collect reported `5522`; no-PYTHONPATH tight MMA collect selected `950/5522`; focused indexed-accumulator selector passed all `100` cases across split-4 on four GPUs (`25` per group; times `4.32s`, `5.77s`, `6.60s`, and `7.57s`).
 

@@ -2099,6 +2099,94 @@ def tmem_mma_scaled_layout_format_kernel(
 
 
 @gluon.jit
+def tmem_mma_scaled_indexed_acc_format_kernel(
+    out_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    a,
+    b,
+    a_scale,
+    b_scale,
+    parent_layout: ttgl.constexpr,
+    VEC_SIZE: ttgl.constexpr,
+    A_ELEM_PER_BYTE: ttgl.constexpr,
+    B_ELEM_PER_BYTE: ttgl.constexpr,
+    A_FORMAT: ttgl.constexpr,
+    B_FORMAT: ttgl.constexpr,
+):
+    A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
+    B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
+    A_IS_FP4: ttgl.constexpr = A_ELEM_PER_BYTE == 2
+    B_IS_FP4: ttgl.constexpr = B_ELEM_PER_BYTE == 2
+    MIXED_PREC: ttgl.constexpr = A_ELEM_PER_BYTE != B_ELEM_PER_BYTE
+
+    reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
+    a_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [M, A_STORAGE_K],
+        a.dtype.element_ty,
+        fp4_padded=A_IS_FP4 and MIXED_PREC,
+    )
+    b_nvmma_layout: ttgl.constexpr = ttgl.NVMMASharedLayout.get_default_for(
+        [N, B_STORAGE_K],
+        b.dtype.element_ty,
+        fp4_padded=B_IS_FP4 and MIXED_PREC,
+    )
+    block_layout_a: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+    block_layout_b: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [ttgl.num_warps(), 1], [1, 0])
+
+    a_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, block_layout_a))[:, None]
+    a_offs_k = ttgl.arange(0, A_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_a))[None, :]
+    b_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, block_layout_b))[:, None]
+    b_offs_k = ttgl.arange(0, B_STORAGE_K, layout=ttgl.SliceLayout(0, block_layout_b))[None, :]
+
+    a_tile = ttgl.load(a + a_offs_m * A_STORAGE_K + a_offs_k)
+    b_tile = ttgl.load(b + b_offs_n * B_STORAGE_K + b_offs_k)
+    a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, A_STORAGE_K], a_nvmma_layout, a_tile)
+    b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, B_STORAGE_K], b_nvmma_layout, b_tile)
+
+    acc_parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
+    acc_tmem = acc_parent.index(1)
+    acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+    acc_tmem.store(ttgl.zeros([M, N], ttgl.float32, layout=acc_reg_layout))
+
+    scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
+    a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
+    b_scale_tmem = allocate_tensor_memory(b_scale.dtype.element_ty, [N, K // VEC_SIZE], scale_layout)
+    scale_reg_layout_m: ttgl.constexpr = a_scale_tmem.get_reg_layout()
+    scale_reg_layout_n: ttgl.constexpr = b_scale_tmem.get_reg_layout()
+
+    scale_offs_k_m = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_m))[None, :]
+    scale_offs_k_n = ttgl.arange(0, K // VEC_SIZE, layout=ttgl.SliceLayout(0, scale_reg_layout_n))[None, :]
+    scale_offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, scale_reg_layout_m))[:, None]
+    scale_offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(1, scale_reg_layout_n))[:, None]
+    a_scale_tmem.store(ttgl.load(a_scale + scale_offs_m * (K // VEC_SIZE) + scale_offs_k_m))
+    b_scale_tmem.store(ttgl.load(b_scale + scale_offs_n * (K // VEC_SIZE) + scale_offs_k_n))
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_mma_scaled(
+        a_smem,
+        b_smem.permute((1, 0)),
+        acc_tmem,
+        a_scale_tmem,
+        b_scale_tmem,
+        A_FORMAT,
+        B_FORMAT,
+        use_acc=True,
+    )
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+    mbarrier.invalidate(bar)
+
+    out_reg = acc_tmem.load()
+    offs_m = ttgl.arange(0, M, layout=ttgl.SliceLayout(1, reg_layout))[:, None]
+    offs_n = ttgl.arange(0, N, layout=ttgl.SliceLayout(0, reg_layout))[None, :]
+    offs = offs_m * N + offs_n
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out_reg, reg_layout))
+
+
+@gluon.jit
 def tmem_mma_scaled_lhs_subslice_kernel(
     out_ptr,
     M: ttgl.constexpr,
@@ -3136,6 +3224,18 @@ SCALED_MMA_ROOT_FORMAT_CASES = [
         CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
     )
 ]
+
+SCALED_MMA_INDEXED_ACC_FORMAT_CASES = [
+    (a_format, b_format, n, k, parent_layout_kind)
+    for (a_format, b_format), n, k, parent_layout_kind in product(
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
+    )
+    # The indexed accumulator parent keeps the whole [2, M, N] physical image live;
+    # scaled-MMA scale descriptors consume additional TMEM, so linear N=128+ and
+    # legacy N=256 exceed the 512-column hardware resource limit before execution.
+    if n == 64 or (parent_layout_kind == "legacy" and n == 128)
+]
+
 
 SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
     (a_format, b_format, acc_layout_kind)
@@ -7635,6 +7735,59 @@ def test_tmem_runtime_matrix_mma_scaled_root_format_matrix(a_format, b_format, n
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
     if acc_layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,k,parent_layout_kind", SCALED_MMA_INDEXED_ACC_FORMAT_CASES)
+def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_matrix(
+    a_format, b_format, n, k, parent_layout_kind
+):
+    m = 128
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+    parent_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if parent_layout_kind == "legacy"
+        else _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
+    )
+    layout_token = "tensor_memory_encoding" if parent_layout_kind == "legacy" else "tensor_memory_linear"
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_indexed_acc_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        parent_layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert layout_token in ttgir
+    if parent_layout_kind == "linear":
+        assert "tensor_memory_encoding" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

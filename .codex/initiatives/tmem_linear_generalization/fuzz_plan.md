@@ -602,6 +602,10 @@ Every fuzz case records:
   `blockN=256`, `parentN=512` positive probe also exceeds TMEM capacity
   (`Required: 524/536/560`, limit `512`). A `parent_n=384` alternative is not
   expressible by the current power-of-two MMAv5 two-CTA layout helper.
+- accumulator `memdesc_index` views from `[2, M, N]` parents now cover every
+  current scaled format pair, `K in {128,256}`, legacy parents at
+  `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider indexed
+  parents are resource-limited once scale descriptors are live.
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts. Subview operand-A
@@ -624,7 +628,9 @@ Every fuzz case records:
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.
-- PTX and LLIR use the same scaled-MMA opcode family and scale-vector suffix.
+- PTX and LLIR use the same scaled-MMA opcode family and scale-vector suffix;
+  root, accumulator-subview, accumulator-indexed, and TMEM-LHS families pin
+  exact opcode counts where covered.
 - Required `cp` / `commit` companion instructions appear when the pipeline
   needs them.
 
