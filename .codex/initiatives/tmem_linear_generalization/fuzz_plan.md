@@ -999,3 +999,10 @@ Every fuzz case records:
 - Do not promote the older `[1,1,2,M,N]` helper to `N=256`; that shape remains resource-bound. The unit-parent path still exercises `memdesc_index`, `memdesc_subslice`, `memdesc_reshape`, and `memdesc_trans`.
 - At `N=256`, all current public `ld/st` variants emit eight store and eight load messages for the tested rank-5 descriptor chain, even when opcode names overlap the `N=64` spelling.
 - Current full-file collection is `8013` tests and the `ldst` bucket is `2949` cases. Aggregate bucket evidence is `7562 passed, 451 skipped`.
+
+## 2026-04-14 13:44 UTC: Copy warpx2 Integer Subword Boundary Note
+
+- No-scales `warpx2` copy clean-negative coverage now shares the broader subword dtype table with the linear no-scales copy source-width matrix: f16/bf16/i16/i8 for single-CTA `warpx2::{01_23,02_13}` and f16/bf16/i16 for two-CTA `warpx2::{01_23,02_13}`.
+- Keep generating positive no-scales `warpx2` rows only with 32-bit source elements unless the production verifier/ISA contract changes. Subword rows are clean negatives for source width.
+- Two-CTA i8 should be tracked separately from this source-width boundary: current probes fail earlier at TMEM descriptor/register-layout selection (`TMEM layout 'auto' unsupported`) for int8 two-CTA descriptor views.
+- Current full-file collection is `8019` tests and the CP bucket is `604` cases. Aggregate bucket evidence is `7568 passed, 451 skipped`.

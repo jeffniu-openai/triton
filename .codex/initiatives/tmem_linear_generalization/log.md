@@ -14316,3 +14316,12 @@ Open after this slice:
 - Current runtime-matrix collection is `8013` tests: `cp=598`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7562 passed, 451 skipped`.
 - Validation: rank-5 unit-parent probes over every layout and all variants; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `40/8013`; no-PYTHONPATH rank-5 collect selected `130/8013`; no-PYTHONPATH `ldst` collect selected `2949/8013`; no-PYTHONPATH full-file collect reported `8013`; focused selector passed all `40` cases across split-4 (`10` per group; group times `305.64s`, `215.09s`, `252.79s`, and `203.92s`).
 - Next: run final hygiene, commit/push this `ld/st` descriptor-chain checkpoint, then move to another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:44 UTC: copy warpx2 integer subword clean-negative coverage
+
+- Shared `CP_NO_SCALES_SUBWORD_DTYPES` across linear no-scales copy and `warpx2` source-width clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Expanded `CP_NO_SCALES_WARPX2_SUBWORD_UNSUPPORTED_CASES` from f16/bf16 only to f16/bf16/i16/i8 for single-CTA `warpx2::{01_23,02_13}` and f16/bf16/i16 for two-CTA `warpx2::{01_23,02_13}`.
+- Two-CTA i8 remains outside this exact test because it hits a different clean boundary first: TMEM descriptor/register-layout selection reports `TMEM layout 'auto' unsupported` for int8 two-CTA descriptor views before the copy source-width verifier can run.
+- Current runtime-matrix collection is `8019` tests: `cp=604`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7568 passed, 451 skipped`.
+- Validation: all-i8 two-CTA scratch probe hit the distinct descriptor-layout boundary; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH exact collect selected `14/8019`; no-PYTHONPATH CP collect selected `604/8019`; no-PYTHONPATH full-file collect reported `8019`; exact selector passed all `14` cases across split-4 (`4`, `4`, `4`, and `2`; group times `4.56s`, `4.54s`, `4.69s`, and `4.26s`); `git diff --check` passed.
+- Next: commit/push this `tcgen05.cp` contract checkpoint, then continue another exact non-parked TMEM ISA coverage slice.

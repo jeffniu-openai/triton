@@ -3540,14 +3540,16 @@ CP_NO_SCALES_TWOCTA_CASES = [
     )
 ]
 
+CP_NO_SCALES_SUBWORD_DTYPES = (
+    ("f16", torch.float16),
+    ("bf16", torch.bfloat16),
+    ("i16", torch.int16),
+    ("i8", torch.int8),
+)
+
 CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES = [
     (dtype_name, torch_dtype, 128, n, 32)
-    for dtype_name, torch_dtype in (
-        ("f16", torch.float16),
-        ("bf16", torch.bfloat16),
-        ("i16", torch.int16),
-        ("i8", torch.int8),
-    )
+    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
     for n in (128, 256)
 ]
 
@@ -3577,7 +3579,8 @@ CP_NO_SCALES_WARPX2_SUBWORD_UNSUPPORTED_CASES = [
         ("twocta_01_23", 2, _make_tmem_copy_warpx2_tmem_layout_twocta()),
         ("twocta_02_13", 2, _make_tmem_copy_warpx2_tmem_layout_02_13_twocta()),
     )
-    for dtype_name, torch_dtype in (("f16", torch.float16), ("bf16", torch.bfloat16))
+    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
+    if cta_group == 1 or dtype_name != "i8"
 ]
 
 CP_SCALES_WARPX4_FORMAT_PAIRS = [

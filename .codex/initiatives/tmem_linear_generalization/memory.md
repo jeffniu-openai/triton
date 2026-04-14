@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:44 UTC: copy warpx2 integer subword clean-negative coverage
+
+- Shared the no-scales copy subword dtype table between linear `tcgen05.cp` and `warpx2` clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `CP_NO_SCALES_WARPX2_SUBWORD_UNSUPPORTED_CASES` now covers f16/bf16/i16/i8 for single-CTA `warpx2::{01_23,02_13}` and f16/bf16/i16 for two-CTA `warpx2::{01_23,02_13}`, asserting the clean `Source element type should be 32-bit.` diagnostic.
+- Two-CTA i8 is intentionally excluded from this source-width-contract selector because probes fail earlier in TMEM descriptor/register layout selection (`TMEM layout 'auto' unsupported` for int8 two-CTA descriptor views), not at the `ttng.tmem_copy` source-element verifier.
+- Current runtime-matrix collection is `8019` tests: `cp=604`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7568 passed, 451 skipped`.
+- Validation completed: failed all-i8 two-CTA probe demonstrated the distinct descriptor-layout boundary; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH exact collect selected `14/8019`; no-PYTHONPATH CP collect selected `604/8019`; no-PYTHONPATH full-file collect reported `8019`; exact selector passed all `14` cases across split-4 (`4`, `4`, `4`, and `2`; group times `4.56s`, `4.54s`, `4.69s`, and `4.26s`); `git diff --check` passed.
+- Next: commit/push this bounded copy-contract checkpoint, then move to the next non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 13:41 UTC: rank-5 descriptor ld/st N=256 lower-resource positives
 
 - Added `tmem_ldst_descriptor_rank5_unit_parent_roundtrip_kernel` and `LDST_DESCRIPTOR_RANK5_N256_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py`.
