@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:55 UTC: TMA-fed two-CTA f16 MMAv5 N-width/use-acc coverage
+
+- Expanded the descriptor-fed two-CTA f16 MMAv5 runtime-matrix anchor in `python/test/gluon/test_tmem_runtime_matrix.py`. `MMA_TWOCTA_TMA_F16_CASES` now spans `blockN in {64,128,256}`, both legacy and canonical two-CTA TMEM-linear accumulator layouts, and both no-accumulator plus `use_acc=True` paths.
+- Added `tmem_mma_twocta_use_acc_kernel`, which mirrors the existing TMA-fed f16 path but initializes the accumulator TMEM tile from a global `c` tensor and then calls multicast `tcgen05_mma(..., use_acc=True)`.
+- The test continues to pin numeric `a @ b` / `a @ b + c` correctness, exact PTX/LLIR `tcgen05.mma.cta_group::2.kind::f16` opcode counts, the two-CTA multicast commit opcode, and `tensor_memory_linear` TTGIR when the canonical layout spelling is used.
+- Fixed an adjacent latent test typo in `test_tmem_runtime_matrix_mma_twocta_plain_kinds`: the function now defines `cga_layout_c_arg` locally before passing it to `mma_kernel`, matching the surrounding two-CTA tests.
+- Current runtime-matrix collection is `7781` tests: `cp=580`, `mma=1873`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7330 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/7781`; no-PYTHONPATH full-file collect reported `7781`; focused TMA-fed f16 selector passed all `12` cases across split-4 (`3` per group; group times `6.72s`, `8.20s`, `6.52s`, and `8.31s`); adjacent direct two-CTA node `test_tmem_runtime_matrix_mma_twocta_plain_kinds[f16-legacy-64-32]` passed; `git diff --check` passed.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue the next non-parked ISA coverage slice. Hard frontiers remain unchanged: no-scales two-CTA `warpx2::02_13`, true tensor-memory-scales `warpx2`, and the two-CTA scaled `block_n=64` scale-descriptor helper issue.
+
 ## 2026-04-14 12:39 UTC: barrier and commit descriptor memory-space contracts
 
 - Tightened the shared barrier verifier in `lib/Dialect/TritonGPU/Transforms/Utility.cpp`: mbarrier operands must be shared-memory memdescs before their shape/layout is considered. This prevents `tc_gen5_commit`, async TMA, copy, MMA, wait, and related barrier users from accepting tensor-memory descriptors that lowering cannot legally treat as shared mbarriers.

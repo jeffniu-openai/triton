@@ -575,6 +575,10 @@ Every fuzz case records:
   `[256, 2*blockN]` parent at `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
   both slice starts, every supported plain kind, and both accumulator modes.
 - `multicast in {false, true}` where supported
+- TMA-fed two-CTA f16 has positive descriptor-fed coverage over `blockN in
+  {64, 128, 256}` for both legacy and canonical two-CTA TMEM-linear
+  accumulator layouts, including explicit nonzero accumulator-add coverage
+  through `use_acc=True`.
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared
   `permute((1, 0))` view; current coverage spans `blockN in {64, 128, 256}` for

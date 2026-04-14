@@ -14230,3 +14230,12 @@ Open after this slice:
 - This is compiler-only boundary coverage and does not change runtime-matrix counts: current collection remains `7771` tests with bucketed evidence `7320 passed, 451 skipped`.
 - Validation completed: `ninja triton-opt` no-op; initial lit run exposed an annotation offset bug; after fixing annotations, `lit -v test/TritonNvidiaGPU/invalid.mlir` passed; `make -j8`; `lit -v test/TritonNvidiaGPU/invalid.mlir` passed again after make.
 - Next: commit/push this bounded `warpx2` boundary checkpoint, then move to another non-parked TMEM ISA coverage slice. No-scales two-CTA `02_13` and true scales `warpx2` still remain hard descriptor/address/staging frontiers, not direct-offset fixes.
+
+## 2026-04-14 12:55 UTC: TMA-fed two-CTA f16 MMAv5 N-width/use-acc coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_twocta` from the old two-case f16 TMA descriptor anchor (`N=128`, no accumulator, legacy/linear) to `MMA_TWOCTA_TMA_F16_CASES`: `blockN in {64,128,256}`, legacy/canonical two-CTA accumulator layouts, and `use_acc in {False,True}`.
+- Added `tmem_mma_twocta_use_acc_kernel` to seed the TMA-fed f16 accumulator tile from a global `c` tensor and validate multicast `tcgen05_mma(..., use_acc=True)`.
+- Fixed the adjacent `test_tmem_runtime_matrix_mma_twocta_plain_kinds` local `cga_layout_c_arg` definition. A representative direct node passed after the fix.
+- Current runtime-matrix collection is `7781` tests: `cp=580`, `mma=1873`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7330 passed, 451 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/7781`; no-PYTHONPATH full-file collect reported `7781`; focused TMA-fed f16 selector passed all `12` cases across split-4 on four GPUs (`3` per group; group times `6.72s`, `8.20s`, `6.52s`, `8.31s`); adjacent direct two-CTA node `test_tmem_runtime_matrix_mma_twocta_plain_kinds[f16-legacy-64-32]` passed; `git diff --check` passed before and after docs.
+- Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
