@@ -961,3 +961,9 @@ Every fuzz case records:
 
 - `test/TritonNvidiaGPU/invalid.mlir` now pins the no-scales two-CTA `warpx2::02_13.64x128b` clean unsupported diagnostic. This keeps the fuzz boundary visible in compiler-only validation, not only in the GB200 runtime matrix.
 - The boundary is still classified as descriptor/address/staging work: a future positive must preserve the high source-column bit with `cta_group::2` granularity. Prior direct-source-offset, destination-delta, and mixed `cta_group::1` probes remain negative evidence, not obsolete tests.
+
+## 2026-04-14 TMA-fed Two-CTA TF32 K-Width Saturation Note
+
+- The TF32-specific TMA-fed two-CTA path now mirrors the plain-kind K-width axis: `blockK in {32,64}` over `blockN in {64,128,256}`, both accumulator-layout families, and both no-accumulator plus `use_acc=True` semantics.
+- The unsupported default `[K,N]` B descriptor is still intentionally covered as a clean transposed-float32 shared-operand diagnostic; the positive path remains the `[N,K]` descriptor plus shared `permute((1,0))` view.
+- Current full-file collection is `7883` tests and the tight MMA bucket is `1975` cases. Aggregate bucket evidence is `7432 passed, 451 skipped`.

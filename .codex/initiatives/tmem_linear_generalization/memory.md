@@ -8144,3 +8144,10 @@ rejection, not rescue
 - The no-scales two-CTA `warpx2::02_13.64x128b` boundary is now pinned in `test/TritonNvidiaGPU/invalid.mlir`, using the canonical shared-linear two-CTA source and the matching two-CTA TMEM-linear `02_13` destination.
 - This is deliberately a clean unsupported contract, not a support promotion. Existing probe evidence still says a positive path needs a real `cta_group::2` descriptor/address schedule that preserves the high source-column bit; direct-seed, destination-delta, source-offset, and mixed `cta_group::1` rewrites are not valid fixes.
 - Refreshed runtime evidence before the lit change: `-k warpx2` collected `21/7771` and passed across split-4 (`6`, `6`, `6`, `3`). Compiler validation after the lit change: `make -j8`; `lit -v test/TritonNvidiaGPU/invalid.mlir`.
+
+## Latest: 2026-04-14 13:15 UTC TMA-fed two-CTA TF32 K-width coverage
+
+- Runtime-matrix collection is now `7883` tests with bucket totals `cp=580`, `mma=1975`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7432 passed, 451 skipped`.
+- Latest coverage slice adds `blockK in {32,64}` to the TF32-specific descriptor-fed two-CTA TMA route. `MMA_TWOCTA_TMA_TF32_CASES` now spans legacy/canonical two-CTA accumulator layouts, `blockN in {64,128,256}`, and both supported K widths.
+- The default `[K,N]` B TMA descriptor path stays a clean negative for transposed float32 shared operands at both K widths. The supported `[N,K]` descriptor plus shared-memory `permute((1,0))` path now covers both no-accumulator and `use_acc=True` semantics and checks `_expected_plain_mma_op_count("tf32", block_k)`.
+- Validation for the latest slice: one-off K64 TF32 positive and clean-negative probes; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `36/7883`; no-PYTHONPATH full-file collect reported `7883`; focused TF32 TMA selector passed all `36` cases across split-4 (`9` per group; group times `4.26s`, `8.29s`, `12.10s`, and `17.77s`); `git diff --check` passed.

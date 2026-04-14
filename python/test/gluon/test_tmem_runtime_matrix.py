@@ -7438,6 +7438,11 @@ MMA_TWOCTA_TMA_NON_TF32_CASES = [
     )
 ]
 
+MMA_TWOCTA_TMA_TF32_CASES = [
+    (acc_layout_kind, block_n, block_k)
+    for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (64, 128, 256), (32, 64))
+]
+
 MMA_TWOCTA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind, block_n, block_k)
     for kind, acc_layout_kind, block_n, block_k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
@@ -8296,13 +8301,11 @@ def test_tmem_runtime_matrix_mma_twocta_acc_subslice_view_plain_kinds(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-@pytest.mark.parametrize("block_n", (64, 128, 256))
-def test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error(acc_layout_kind, block_n, capfd):
+@pytest.mark.parametrize("acc_layout_kind,block_n,block_k", MMA_TWOCTA_TMA_TF32_CASES)
+def test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error(acc_layout_kind, block_n, block_k, capfd):
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     block_m = 128 * ctas_per_cga[0]
-    block_k = 32
 
     cta_split_a = [ctas_per_cga[0], 1]
     cta_split_b = [1, ctas_per_cga_b[1]]
@@ -8355,12 +8358,10 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-@pytest.mark.parametrize("block_n", (64, 128, 256))
-def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_layout_kind, block_n):
+@pytest.mark.parametrize("acc_layout_kind,block_n,block_k", MMA_TWOCTA_TMA_TF32_CASES)
+def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_layout_kind, block_n, block_k):
     ctas_per_cga = [2, 1]
     block_m = 128 * ctas_per_cga[0]
-    block_k = 32
 
     cta_split = [ctas_per_cga[0], ctas_per_cga[1]]
     cta_order = [1, 0]
@@ -8409,7 +8410,7 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_lay
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS["tf32"]
+    assert len(ptx_ops) == _expected_plain_mma_op_count("tf32", block_k)
     assert all(op == "tcgen05.mma.cta_group::2.kind::tf32" for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -8421,12 +8422,10 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_lay
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-@pytest.mark.parametrize("block_n", (64, 128, 256))
-def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor_use_acc(acc_layout_kind, block_n):
+@pytest.mark.parametrize("acc_layout_kind,block_n,block_k", MMA_TWOCTA_TMA_TF32_CASES)
+def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor_use_acc(acc_layout_kind, block_n, block_k):
     ctas_per_cga = [2, 1]
     block_m = 128 * ctas_per_cga[0]
-    block_k = 32
 
     cta_split = [ctas_per_cga[0], ctas_per_cga[1]]
     cta_order = [1, 0]
@@ -8478,7 +8477,7 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor_use_acc
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS["tf32"]
+    assert len(ptx_ops) == _expected_plain_mma_op_count("tf32", block_k)
     assert all(op == "tcgen05.mma.cta_group::2.kind::tf32" for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,

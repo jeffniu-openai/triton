@@ -14264,3 +14264,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7865` tests: `cp=580`, `mma=1957`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7414 passed, 451 skipped`.
 - Validation: K64 descriptor-fed probes passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `96/7865`; no-PYTHONPATH full-file collect reported `7865`; focused selector passed all `96` cases across split-4 on four GPUs (`24` per group; slowest `16.89s`); `git diff --check` passed.
 - Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:15 UTC: TMA-fed two-CTA TF32 K-width coverage
+
+- Added `MMA_TWOCTA_TMA_TF32_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` and moved the three TF32 TMA tests onto the shared `(acc_layout_kind, block_n, block_k)` table.
+- The TF32 clean-negative test now checks the default `[K,N]` B descriptor at `blockK in {32,64}` for both accumulator-layout families and all current N widths, preserving the clean transposed-float32 shared-operand diagnostic.
+- The positive `[N,K]` descriptor route and its `use_acc=True` companion now cover the same K axis and assert `_expected_plain_mma_op_count("tf32", block_k)`, so `K=64` expects eight exact `tcgen05.mma.cta_group::2.kind::tf32` messages instead of the old fixed K32 count.
+- Current runtime-matrix collection is `7883` tests: `cp=580`, `mma=1975`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7432 passed, 451 skipped`.
+- Validation completed: one-off K64 TF32 probes passed for the positive route and confirmed the default descriptor route remains the clean transposed-float32 diagnostic; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `36/7883`; no-PYTHONPATH full-file collect reported `7883`; focused TF32 TMA selector passed all `36` cases across split-4 (`9` per group; group times `4.26s`, `8.29s`, `12.10s`, and `17.77s`); `git diff --check` passed.
+- Next: commit/push this bounded test-coverage checkpoint, then continue with the next non-parked TMEM ISA coverage slice.
