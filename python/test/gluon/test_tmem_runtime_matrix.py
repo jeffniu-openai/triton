@@ -4624,7 +4624,12 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
     )
     for layout_name, row_perm_kind, col_perm_kind in (
         ("col_reverse", "identity", "reverse"),
+        ("col_rotate1", "identity", "rotate1"),
+        ("col_even_odd", "identity", "even_odd"),
         ("row_reverse", "reverse", "identity"),
+        ("row_rotate1", "rotate1", "identity"),
+        ("row_even_odd", "even_odd", "identity"),
+        ("rowcol_even_odd_reverse", "even_odd", "reverse"),
         ("rowcol_rotate_reverse", "rotate1", "reverse"),
     )
     for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))

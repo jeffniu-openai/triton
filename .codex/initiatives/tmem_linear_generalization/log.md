@@ -14547,3 +14547,11 @@ Open after this slice:
 - Current runtime-matrix collection is `8890` tests: `cp=677`, `mma=2703`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8439 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8890`; focused `mma_lhs_subslice_view_plain_kinds` collect selected `180/8890`; focused selector passed all `180` cases across split-4 on four GPUs (`45` per group; group times `58.55s`, `56.56s`, `86.02s`, and `79.29s`).
 - Next: commit/push this bounded plain-MMAv5 checkpoint, then move to scaled-MMAv5 parity/frontier cleanup or another non-parked ISA family.
+
+## 2026-04-14 16:52 UTC: ld.red descriptor-chain permutation N-sweep coverage
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` with five auto-layout descriptor-chain families: `col_rotate1`, `col_even_odd`, `row_rotate1`, `row_even_odd`, and `rowcol_even_odd_reverse`.
+- The new rows run through the existing `tmem_ld_red_descriptor_chain_kernel` generic view chain, covering `N in {32,64,256}`, `min`/`max`, and all legal `abs`/`NaN` modifier modes. They complement the prior identity/tile/reverse-family rows without expanding the explicit variant matrix.
+- Current runtime-matrix collection is `9010` tests: `cp=677`, `mma=2703`, splitn/misc `=571`, `ld_red=2074`, and `ldst=2985`; current bucketed evidence aggregates to `8559 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; non-explicit descriptor-chain N-sweep collect selected `240/9010`; full-file collect reported `9010`; new-layout selector collect selected `120/9010`; new-layout selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `523.79s`, `527.49s`, `540.41s`, and `572.00s`).
+- Next: commit/push this bounded `ld.red` checkpoint, then continue the next non-parked ISA coverage slice. Good candidates are another `ld.red` direct/descriptor frontier if one is still unrepresented, `ld/st` descriptor-view tails, or a scaled-MMAv5 parity slice that avoids the known parked block-N=64 scale-descriptor issue.

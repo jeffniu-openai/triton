@@ -335,9 +335,13 @@ Every fuzz case records:
     identity, tile-permuted, pure column-reverse, pure row-reverse, and mixed
     row/column-permuted source layouts through `slice`/`index`/reshape views
     for `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` at `N=128` across
-    the legal modifier matrix. The descriptor-chain N-width sweep covers the
-    same identity/tile/pure-row/pure-column/mixed families at `N in {32,64,256}`
-    with both `auto` and the explicit compatible variants.
+    the legal modifier matrix. The descriptor-chain N-width `auto` sweep now
+    covers identity, tile-permuted, `col_reverse`, `col_rotate1`,
+    `col_even_odd`, `row_reverse`, `row_rotate1`, `row_even_odd`,
+    `rowcol_rotate_reverse`, and `rowcol_even_odd_reverse` at
+    `N in {32,64,256}`. Explicit compatible variants remain bounded to
+    identity, tile-permuted, `col_reverse`, `row_reverse`, and
+    `rowcol_rotate_reverse` at the same N widths.
   - direct explicit compatible register-layout variants now also cover the
     identity/tile/pure-row/pure-column/mixed families at `N in {32,64,256}` for
     `32x32b`, `16x32bx2`, and `32x32b_splitn`, matching the descriptor-chain
@@ -1190,3 +1194,9 @@ Every fuzz case records:
 - Plain TMEM-LHS `memdesc_subslice` fuzz generation may now include `K=128` for every supported plain kind, legacy/canonical accumulator layouts, and `N in {64,128,256}`.
 - Both zero-accumulator and `use_acc=True` TMEM-LHS subview paths consume the expanded `K in {32,64,128}` table and pin exact opcode counts using `blockK // 32`.
 - Current full-file collection is `8890` tests and the MMA bucket is `2703` cases. Aggregate bucket evidence is `8439 passed, 451 skipped`.
+
+## 2026-04-14 16:52 UTC: ld.red Descriptor-Chain Auto Permutation Note
+
+- Descriptor-chain `ld.red` auto-selection fuzz generation may now include the additional row/column permutation families `col_rotate1`, `col_even_odd`, `row_rotate1`, `row_even_odd`, and `rowcol_even_odd_reverse` at `N in {32,64,256}`.
+- These rows are positives only for the `auto` reduction-layout path. Do not infer explicit `16x32bx2` or `32x32b_splitn` support for these added layouts until those variants are separately validated.
+- Current full-file collection is `9010` tests and the `ld_red` bucket is `2074` cases. Aggregate bucket evidence is `8559 passed, 451 skipped`.
