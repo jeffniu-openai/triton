@@ -562,9 +562,12 @@ Every fuzz case records:
 - current one-CTA accumulator `memdesc_subslice` positive coverage spans every
   supported plain kind, `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
   `slice_start in {0, blockN}`, and `use_acc in {false, true}` by slicing from
-  a linear `[128, 2*blockN]` accumulator parent. This pins the plain-MMAv5
-  descriptor-subview path beside the existing indexed-accumulator and scaled
-  accumulator-subview surfaces.
+  linear `[128, 2*blockN]` accumulator parents. The same shape/K/slice/use-acc
+  matrix now covers `blockM=64` M64 linear parents `[64, 2*blockN]`; the
+  verifier must plan the active view shape and ignore only inactive backing
+  allocation column selector bits. This pins the plain-MMAv5 descriptor-subview
+  path beside the existing indexed-accumulator and scaled accumulator-subview
+  surfaces.
 - current two-CTA accumulator `memdesc_subslice` positive coverage mirrors that
   one-CTA slice for `cta_group::2`, using a linear two-CTA
   `[256, 2*blockN]` parent at `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
@@ -604,7 +607,8 @@ Every fuzz case records:
   - `blockM in {64, 128}`; current root `blockM=64` runtime coverage spans
     every supported plain operand kind at `N in {64,128,256}`, `K in {32,64}`,
     both legacy/canonical M64 accumulator layouts, and both no-accumulator and
-    `use_acc=True` paths.
+    `use_acc=True` paths. M64 accumulator `memdesc_subslice` views from wider
+    linear parents are also positive for the same kind/N/K/use-acc matrix.
   - `blockN` and `K` values accepted by the in-tree verifier/matcher
 
 #### Checks

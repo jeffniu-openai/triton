@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 7331-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full current runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current M64 MMAv5 accumulator-subview checkpoint, 2026-04-14 12:26 UTC: MMAv5 accumulator view planning now accepts legal `blockM=64` linear descriptor subviews when the backing allocation is wider than the active tile. The verifier restricts the canonical allocation layout to the active view and drops only inactive column selector bases, preserving pre-existing zero bases as layout semantics. Added a fast `ops.mlir` positive for `64x512 -> 64x256` and a 120-case runtime matrix over all supported plain kinds, `N in {64,128,256}`, `K in {32,64}`, both slice starts, and both accumulator modes. Runtime-matrix collection is now `7731` tests with bucketed evidence `7280 passed, 451 skipped`. Validation: `make -j8`; py-compile; focused collect `120/7731`; adjacent collect `360/7731`; split-4 focused and adjacent GPU sweeps passed; `lit -v test/TritonNvidiaGPU/ops.mlir` passed.
 
 - Current malformed `tmem_alloc` verifier checkpoint, 2026-04-14 12:09 UTC: `test/TritonNvidiaGPU/invalid.mlir` now pins clean diagnostics for `ttng.tmem_alloc` result/source contract mismatches: result shape vs alloc shape, source shape vs destination memdesc shape, and source element type vs destination element type. This is compiler-only lit coverage; runtime-matrix counts remain `7611` tests with bucketed evidence `7160 passed, 451 skipped`. Validation: affected invalid lit passed from the CMake build dir.
 

@@ -8074,3 +8074,11 @@ rejection, not rescue
 - Latest coverage slice adds nonzero accumulator semantics for the supported two-CTA scaled-MMAv5 accumulator-subslice matrix across all scaled format pairs, `slice_start in {0,128}`, `block_k in {128,256}`, and multicast on/off.
 - The test helper now has an `ACC_INIT` path for accumulator subviews; zero-init callers preserve old behavior, and the parked two-CTA `block_n=64` scale-descriptor frontier remains unchanged.
 - Validation for the latest slice: `make -j8`, py-compile, `git diff --check`, focused collect `40/6892`, tight MMA collect `1743/6892`, full-file collect `6892`, and four-GPU split execution of the focused selector passed all `40` cases.
+
+## Latest: 2026-04-14 12:26 UTC M64 MMAv5 accumulator subviews from wider linear parents
+
+- Runtime-matrix collection is now `7731` tests with bucket totals `cp=580`, `mma=1863`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2869`; current bucketed evidence aggregates to `7280 passed, 451 skipped`.
+- Latest coverage slice adds one-CTA `blockM=64` accumulator `memdesc_subslice` positives from linear `[64, 2*N]` parents for all supported plain kinds, `N in {64,128,256}`, `K in {32,64}`, both slice starts, and both accumulator modes.
+- Production fix: MMAv5 accumulator layout planning can now restrict a wider allocation layout to the active view shape and remove only column selector bases that address outside the narrowed view. This allows legal M64 subviews such as `64x256` from a `64x512` parent without treating backing-allocation bits as part of the active MMAv5 tile.
+- Fast lit guard: `test/TritonNvidiaGPU/ops.mlir` has a positive `tc_gen5_mma` case for the same M64 `64x512 -> 64x256` accumulator subview.
+- Validation for the latest slice: `make -j8`, py-compile, focused collect `120/7731`, adjacent collect `360/7731`, split-4 new selector passed all `120` cases, split-4 adjacent selector passed all `360` cases, and `lit -v test/TritonNvidiaGPU/ops.mlir` passed.

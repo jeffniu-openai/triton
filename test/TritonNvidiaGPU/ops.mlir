@@ -25,6 +25,7 @@
 #tmem_linear_rank3 = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [0, 2, 0], [0, 4, 0], [0, 8, 0], [0, 16, 0], [0, 32, 0], [1, 0, 0]], col = [[0, 0, 1], [0, 0, 2], [0, 0, 4], [0, 0, 8], [0, 0, 16], [0, 0, 32], [0, 0, 64]]}>
 #tmem_linear_rank3_small = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [0, 2, 0], [0, 4, 0], [0, 8, 0], [0, 16, 0], [0, 32, 0]], col = [[0, 0, 1], [0, 0, 2], [0, 0, 4], [0, 0, 8], [0, 0, 16], [0, 0, 32], [0, 0, 64]]}>
 #tmem_linear_half_rows = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_linear_m64_512 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [0, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128], [0, 256]]}>
 
 #linear = #ttg.linear<{register = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], lane = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]], warp = [[32, 0], [64, 0]], block = []}>
 
@@ -332,6 +333,23 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
        !ttg.memdesc<128x64xf16, #shared16, #ttg.shared_memory>,
        !ttg.memdesc<64x64xf16, #shared16t, #ttg.shared_memory>,
        !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tcgen5_tmem_linear_m64_acc_subslice
+  // CHECK: ttg.memdesc_subslice
+  // CHECK: ttng.tc_gen5_mma
+  tt.func @tcgen5_tmem_linear_m64_acc_subslice(
+      %a: !ttg.memdesc<64x64xf16, #shared16_32, #ttg.shared_memory>,
+      %b: !ttg.memdesc<64x256xf16, #shared16_32t, #ttg.shared_memory>,
+      %c: !ttg.memdesc<64x512xf32, #tmem_linear_m64_512, #ttng.tensor_memory, mutable>,
+      %useAcc: i1,
+      %pred: i1) {
+    %sub = ttg.memdesc_subslice %c [0, 256] : !ttg.memdesc<64x512xf32, #tmem_linear_m64_512, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x256xf32, #tmem_linear_m64_512, #ttng.tensor_memory, mutable, 64x512>
+    ttng.tc_gen5_mma %a, %b, %sub, %useAcc, %pred :
+       !ttg.memdesc<64x64xf16, #shared16_32, #ttg.shared_memory>,
+       !ttg.memdesc<64x256xf16, #shared16_32t, #ttg.shared_memory>,
+       !ttg.memdesc<64x256xf32, #tmem_linear_m64_512, #ttng.tensor_memory, mutable, 64x512>
     tt.return
   }
 

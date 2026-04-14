@@ -7421,6 +7421,12 @@ MMA_M64_PLAIN_KIND_CASES = [
     )
 ]
 
+MMA_M64_ACC_SUBSLICE_CASES = [
+    (kind, n, k, slice_start, use_acc)
+    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64), (False, True))
+    for slice_start in (0, n)
+]
+
 MMA_TILE_PERMUTED_CASES = [
     (n, tile_n, k)
     for n, tile_n in ((128, 32), (256, 64))
@@ -7563,6 +7569,53 @@ def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n, k
     )
     if acc_layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,n,k,slice_start,use_acc", MMA_M64_ACC_SUBSLICE_CASES)
+def test_tmem_runtime_matrix_mma_m64_acc_subslice_view_plain_kinds(kind, n, k, slice_start, use_acc):
+    m = 64
+    parent_layout = _make_tmem_linear_layout_m64(2 * n)
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    c = torch.randn((m, n), device="cuda", dtype=torch.float32)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_acc_subslice_kernel[(1, )](
+        a,
+        b,
+        c,
+        out,
+        m,
+        n,
+        k,
+        parent_layout,
+        slice_start,
+        block_layout_a,
+        block_layout_b,
+        shared_layout_a,
+        shared_layout_b,
+        use_acc,
+        num_warps=4,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    if use_acc:
+        ref = ref + c
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_m64_plain_mma_op_count(kind, k, "linear", n)
+    assert all(op == expected_kind for op in mma_ops)
+    if use_acc:
+        _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

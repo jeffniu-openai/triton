@@ -1031,6 +1031,61 @@ getMMAv5LhsLikeLayoutInfo(MemDescType memDescType) {
   return std::nullopt;
 }
 
+static std::optional<LinearLayout>
+tryRestrictMMAv5ViewLayoutToShape(const LinearLayout &layout,
+                                  ArrayRef<int64_t> shape) {
+  if (shape.size() != static_cast<size_t>(layout.getNumOutDims()))
+    return std::nullopt;
+
+  auto restricted = layout;
+  for (auto [idx, dim] : llvm::enumerate(layout.getOutDimNames())) {
+    if (shape[idx] > restricted.getOutDimSize(dim))
+      return std::nullopt;
+    restricted = restricted.resizeOutDim(dim, shape[idx]);
+  }
+
+  // A column subview of a wider allocation carries input bits that only select
+  // columns outside the active view. Drop those inactive column bases before
+  // comparing against MMAv5 tile families; keep zero bases that were already
+  // zero in the allocation layout, since those encode real col-stride/broadcast
+  // structure rather than the narrowed view boundary.
+  if (shape.size() != 2)
+    return restricted;
+  auto *ctx = (*layout.getOutDimNames().begin()).getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!layout.hasInDim(kCol) || !restricted.hasInDim(kCol))
+    return restricted;
+
+  auto outDimNames = llvm::to_vector(layout.getOutDimNames());
+  unsigned colOutIdx = layout.getOutDimIndex(outDimNames[1]);
+  auto originalIt = layout.getBases().find(kCol);
+  auto restrictedIt = restricted.getBases().find(kCol);
+  assert(originalIt != layout.getBases().end() &&
+         restrictedIt != restricted.getBases().end());
+  const auto &originalBases = originalIt->second;
+  const auto &restrictedBases = restrictedIt->second;
+  if (originalBases.size() != restrictedBases.size())
+    return restricted;
+
+  bool changed = false;
+  LinearLayout::BasesT bases = restricted.getBases();
+  auto &columnBases = bases[kCol];
+  columnBases.clear();
+  for (auto [originalBasis, restrictedBasis] :
+       llvm::zip(originalBases, restrictedBases)) {
+    if (static_cast<int64_t>(originalBasis[colOutIdx]) >= shape[1]) {
+      changed = true;
+      continue;
+    }
+    columnBases.push_back(std::vector<int32_t>(restrictedBasis.begin(),
+                                               restrictedBasis.end()));
+  }
+  if (!changed)
+    return restricted;
+  return LinearLayout(std::move(bases), restricted.getOutDims(),
+                      /*requireSurjective=*/false);
+}
+
 static std::optional<MMAv5AccumulatorLayoutInfo>
 getMMAv5AccumulatorLikeLayoutInfo(MemDescType memDescType,
                                   MMAv5FamilyPlanner planner,
@@ -1086,6 +1141,17 @@ getMMAv5AccumulatorLikeLayoutInfo(MemDescType memDescType,
                                 gpu::getCGALayout(layout), *twoCTAs,
                                 preferredColStride)) {
     return makeInfo(allocShape, *plan);
+  }
+
+  // Some descriptor views are MMAv5-compatible even when their backing
+  // allocation is intentionally wider than any single MMAv5 instruction family.
+  // Lowering uses the memdesc view op to compute the base offset, so after the
+  // full-allocation family check fails we can plan against the restricted view
+  // layout as long as that restricted layout is itself a supported family.
+  if (auto restricted = tryRestrictMMAv5ViewLayoutToShape(*maybeCanonical, shape)) {
+    if (auto plan = linearPlanner(shape, *restricted, gpu::getCGALayout(layout),
+                                  *twoCTAs, preferredColStride))
+      return makeInfo(shape, *plan);
   }
   return std::nullopt;
 }
