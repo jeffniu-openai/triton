@@ -2082,6 +2082,48 @@ def tmem_mma_twocta_indexed_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.con
 
 
 @gluon.jit
+def tmem_mma_twocta_acc_subslice_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr,
+                                         K: ttgl.constexpr, parent_layout: ttgl.constexpr,
+                                         slice_start: ttgl.constexpr, block_layout_a: ttgl.constexpr,
+                                         block_layout_b: ttgl.constexpr, block_layout_c: ttgl.constexpr,
+                                         shared_layout_a: ttgl.constexpr, shared_layout_b: ttgl.constexpr,
+                                         use_acc: ttgl.constexpr):
+    a_offs_m = ttgl.arange(0, M)[:, None]
+    a_offs_k = ttgl.arange(0, K)[None, :]
+    b_offs_k = ttgl.arange(0, K)[:, None]
+    b_offs_n = ttgl.arange(0, N)[None, :]
+    c_offs_m = ttgl.arange(0, M)[:, None]
+    c_offs_n = ttgl.arange(0, N)[None, :]
+
+    a = ttgl.load(ttgl.set_auto_layout(a_ptr + a_offs_m * K + a_offs_k, block_layout_a))
+    b = ttgl.load(ttgl.set_auto_layout(b_ptr + b_offs_k * N + b_offs_n, block_layout_b))
+    operand_dtype: ttgl.constexpr = a.dtype
+
+    smem_a = ttgl.allocate_shared_memory(operand_dtype, [M, K], shared_layout_a)
+    smem_b = ttgl.allocate_shared_memory(operand_dtype, [K, N], shared_layout_b)
+    smem_a.store(a)
+    smem_b.store(b)
+    fence_async_shared(cluster=True)
+
+    acc_parent = allocate_tensor_memory(ttgl.float32, [M, 2 * N], parent_layout)
+    acc_tmem = acc_parent.slice(slice_start, N, dim=1)
+    if use_acc:
+        c = ttgl.load(ttgl.set_auto_layout(c_ptr + c_offs_m * N + c_offs_n, block_layout_c))
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
+
+    bar = mbarrier.allocate_mbarrier()
+    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], True))
+    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, multicast=True, mbarriers=[bar])
+    mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
+    mbarrier.invalidate(bar)
+
+    out = acc_tmem.load()
+    out = ttgl.convert_layout(out, block_layout_c)
+    ttgl.store(out_ptr + c_offs_m * N + c_offs_n, out)
+
+
+@gluon.jit
 def tmem_mma_scaled_minimal_kernel(out_ptr, M: ttgl.constexpr, N: ttgl.constexpr, K: ttgl.constexpr, a, b, a_scale,
                                    b_scale):
     reg_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [32, 1], [ttgl.num_warps(), 1], [1, 0])
@@ -7035,6 +7077,12 @@ MMA_TWOCTA_INDEXED_ACC_CASES = [
     if not (parent_layout_kind == "linear" and block_n == 256)
 ]
 
+MMA_TWOCTA_ACC_SUBSLICE_CASES = [
+    (kind, block_n, block_k, slice_start, use_acc)
+    for kind, block_n, block_k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64), (False, True))
+    for slice_start in (0, block_n)
+]
+
 MMA_M64_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind, n, k, use_acc)
     for kind, acc_layout_kind, n, k, use_acc in product(
@@ -7726,6 +7774,70 @@ def test_tmem_runtime_matrix_mma_twocta_indexed_acc_view(kind, parent_layout_kin
     assert layout_token in ttgir
     if parent_layout_kind == "linear":
         assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,block_n,block_k,slice_start,use_acc", MMA_TWOCTA_ACC_SUBSLICE_CASES)
+def test_tmem_runtime_matrix_mma_twocta_acc_subslice_view_plain_kinds(
+    kind, block_n, block_k, slice_start, use_acc
+):
+    ctas_per_cga = [2, 1]
+    ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
+    cta_split_a = [ctas_per_cga[0], 1]
+    cta_split_b = [1, ctas_per_cga_b[1]]
+    cta_order = [1, 0]
+    cga_layout_a = _make_2cta_cga_layout(ctas_per_cga, cta_split_a, cta_order, 0)
+    cga_layout_b = _make_2cta_cga_layout(ctas_per_cga_b, cta_split_b, cta_order, 1)
+    cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
+
+    block_m = 256
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1], cga_layout=cga_layout_a)
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0], cga_layout=cga_layout_b)
+    block_layout_c = ttgl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
+                                        cga_layout=cga_layout_c)
+    parent_layout = _make_tmem_linear_layout_mmav5_twocta(block_m, 2 * block_n)
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_twocta_plain_kind_inputs(
+        kind, block_m, block_n, block_k, cga_layout_a, cga_layout_b
+    )
+    c = torch.randn((block_m, block_n), device="cuda", dtype=torch.float32)
+    out = torch.empty((block_m, block_n), device="cuda", dtype=torch.float32)
+
+    compiled = tmem_mma_twocta_acc_subslice_kernel[(1,)](
+        a,
+        b,
+        c,
+        out,
+        block_m,
+        block_n,
+        block_k,
+        parent_layout,
+        slice_start,
+        block_layout_a,
+        block_layout_b,
+        block_layout_c,
+        shared_layout_a,
+        shared_layout_b,
+        use_acc,
+        num_warps=4,
+        num_ctas=2,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    if use_acc:
+        ref = ref + c
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_plain_mma_op_count(kind, block_k)
+    assert all(op == expected_kind for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "two_ctas" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

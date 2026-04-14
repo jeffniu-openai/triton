@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:23 UTC: two-CTA plain-MMAv5 accumulator subslice descriptor-view coverage
+
+- Added `tmem_mma_twocta_acc_subslice_kernel`, `MMA_TWOCTA_ACC_SUBSLICE_CASES`, and `test_tmem_runtime_matrix_mma_twocta_acc_subslice_view_plain_kinds` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- This mirrors the one-CTA accumulator-subslice slice for `cta_group::2`: a linear two-CTA `[256, 2*N]` parent is sliced along N, initialized through the sliced view for `use_acc=True`, and consumed by multicast `tcgen05_mma`.
+- Coverage spans every supported plain operand kind, `N in {64,128,256}`, `K in {32,64}`, `slice_start in {0,N}`, and `use_acc in {False,True}`; the green run includes the `N=256` rows with a 512-column parent.
+- Current runtime-matrix collection is `6315` tests: `cp=381`, `mma=1598`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5869 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `mma_twocta_acc_subslice_view_plain_kinds` collect selected `120/6315`; no-PYTHONPATH tight MMA collect selected `1598/6315`; no-PYTHONPATH full-file collect reported `6315`; focused two-CTA accumulator-subslice selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `33.98s`, `36.59s`, `35.12s`, and `36.07s`).
+- Next: commit/push this two-CTA MMAv5 descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard copy `warpx2` frontiers remain parked without a real descriptor/address/staging hypothesis.
+
 ## 2026-04-14 09:20 UTC: plain-MMAv5 accumulator subslice descriptor-view coverage
 
 - Added `tmem_mma_acc_subslice_kernel`, `MMA_ACC_SUBSLICE_CASES`, and `test_tmem_runtime_matrix_mma_acc_subslice_view_plain_kinds` in `python/test/gluon/test_tmem_runtime_matrix.py`.

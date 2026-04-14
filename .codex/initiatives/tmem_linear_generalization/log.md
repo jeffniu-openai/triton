@@ -14016,3 +14016,19 @@ Open after this slice:
   - focused `mma_acc_subslice_view_plain_kinds` selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `27.11s`, `28.64s`, `26.84s`, and `27.04s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1478`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5749 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard copy `warpx2` frontiers remain parked unless there is a real descriptor/address/staging hypothesis.
+
+## 2026-04-14 09:23 UTC: two-CTA plain-MMAv5 accumulator subslice descriptor-view coverage
+
+- Added `tmem_mma_twocta_acc_subslice_kernel`, `MMA_TWOCTA_ACC_SUBSLICE_CASES`, and `test_tmem_runtime_matrix_mma_twocta_acc_subslice_view_plain_kinds`.
+- The kernel allocates a linear two-CTA `[M, 2*N]` f32 accumulator parent, forms `acc_parent.slice(slice_start, N, dim=1)`, optionally initializes that sliced view for `use_acc=True`, and runs multicast plain `tcgen05_mma` into the descriptor view.
+- Positive coverage mirrors the one-CTA accumulator-subview matrix for `cta_group::2`: every supported plain operand kind, `N in {64,128,256}`, `K in {32,64}`, `slice_start in {0,N}`, and `use_acc in {False,True}`. The `N=256` rows are executable with the 512-column parent and did not need a resource-bound exclusion.
+- Validation completed:
+  - `make -j8` -> no work to do;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed before docs;
+  - no-PYTHONPATH focused `mma_twocta_acc_subslice_view_plain_kinds` collect selected `120/6315`;
+  - no-PYTHONPATH tight MMA collect selected `1598/6315`;
+  - no-PYTHONPATH full-file collect reported `6315`;
+  - focused `mma_twocta_acc_subslice_view_plain_kinds` selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `33.98s`, `36.59s`, `35.12s`, and `36.07s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1598`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5869 passed, 446 skipped`.
+- Next: commit/push this bounded two-CTA MMAv5 descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard copy `warpx2` frontiers remain parked unless there is a real descriptor/address/staging hypothesis.

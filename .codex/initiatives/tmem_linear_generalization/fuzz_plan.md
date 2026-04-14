@@ -543,6 +543,10 @@ Every fuzz case records:
   a linear `[128, 2*blockN]` accumulator parent. This pins the plain-MMAv5
   descriptor-subview path beside the existing indexed-accumulator and scaled
   accumulator-subview surfaces.
+- current two-CTA accumulator `memdesc_subslice` positive coverage mirrors that
+  one-CTA slice for `cta_group::2`, using a linear two-CTA
+  `[256, 2*blockN]` parent at `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
+  both slice starts, every supported plain kind, and both accumulator modes.
 - `multicast in {false, true}` where supported
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared
