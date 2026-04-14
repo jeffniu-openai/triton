@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 14:20 UTC: scaled MMAv5 indexed-accumulator unit-parent coverage
+
+- Parameterized `tmem_mma_scaled_indexed_acc_format_kernel` by `parent_depth` and `parent_index`, matching the plain indexed-accumulator helpers and reshaping the indexed view back to `(M, N)` before accumulator register-layout queries, stores, and `tcgen05_mma_scaled`.
+- Added unit-parent scaled indexed rows for every current scaled format pair and `K in {128,256}`: canonical TMEM-linear parents now cover `N in {128,256}`, and legacy parents cover `N=256`. Both the zero-accumulator and explicit nonzero accumulator-add tests use the same resource-safe matrix.
+- The existing wider `[2,M,N]` linear `N>=128` and legacy `N=256` rows remain hardware-resource boundaries once scale descriptors are live. The new `[1,M,N].index(0)` rows are the executable descriptor-view fuzz construction; they do not reclassify the older live-parent shapes as legal.
+- Current runtime-matrix collection is `8127` tests: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7676 passed, 451 skipped`.
+- Validation completed: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; exact N128 unit-parent probe passed; direct N256 canonical-linear and legacy unit-parent probes passed; no-PYTHONPATH unit-parent collect selected `60/8127`; unit-parent selector passed all `60` cases across split-4 (`15` per group; `24.77s`, `43.13s`, `27.87s`, and `44.08s`); no-PYTHONPATH full scaled-indexed collect selected `120/8127`; full scaled-indexed selector passed all `120` cases across split-4 (`30` per group; `27.71s`, `21.32s`, `27.51s`, and `20.63s`); no-PYTHONPATH tight MMA collect selected `2075/8127`; no-PYTHONPATH full-file collect reported `8127`; `git diff --check` passed.
+- Next: commit/push this checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard parked frontiers remain true tensor-memory-scales `warpx2`, no-scales two-CTA `warpx2::02_13`, and scaled two-CTA `block_n=64` scale-descriptor construction.
+
 ## 2026-04-14 14:10 UTC: plain MMAv5 indexed-accumulator unit-parent N=256 coverage
 
 - Added resource-safe canonical TMEM-linear `N=256` accumulator `memdesc_index` coverage for one-CTA and two-CTA plain MMAv5 by parameterizing the indexed-accumulator helper kernels over parent depth/index.

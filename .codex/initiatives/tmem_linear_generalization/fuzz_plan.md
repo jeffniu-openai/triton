@@ -695,11 +695,14 @@ Every fuzz case records:
   represented cleanly or rejected by a stable high-level diagnostic.
 - accumulator `memdesc_index` views from `[2, M, N]` parents now cover every
   current scaled format pair, `K in {128,256}`, legacy parents at
-  `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider indexed
+  `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider live
   parents are resource-limited once scale descriptors are live.
-  The same resource-safe indexed matrix also has explicit nonzero
-  accumulator-add coverage, checking the `ttg.memdesc_index` view path with
-  `matmul + acc_init`.
+  Unit-parent views (`[1,M,N].index(0)` reshaped back to the active 2D MMA
+  descriptor) are the resource-safe positive construction for canonical
+  TMEM-linear `N in {128,256}` and legacy `N=256`, across the same format/K
+  matrix. Both the live-parent and unit-parent indexed matrices have explicit
+  nonzero accumulator-add coverage, checking the `ttg.memdesc_index` view path
+  with `matmul + acc_init`.
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts. Subview operand-A
@@ -1025,3 +1028,10 @@ Every fuzz case records:
 - The positive unit-parent matrix covers every supported plain kind, `K in {32,64}`, and `use_acc in {False,True}` for both CTA groups.
 - Do not generate `[2,M,N].index(1)` canonical-linear `N=256` positives as equivalent coverage; those still keep a 1024-column live parent image and remain a hardware resource boundary.
 - Current full-file collection is `8067` tests and the tight MMA bucket is `2015` cases. Aggregate bucket evidence is `7616 passed, 451 skipped`.
+
+## 2026-04-14 14:20 UTC: Scaled MMAv5 Indexed-Accumulator Unit-Parent Note
+
+- Scaled MMAv5 accumulator `memdesc_index` positive fuzz generation may now include unit-parent views for canonical TMEM-linear `N in {128,256}` and legacy `N=256`: allocate `[1,M,N]`, index `0`, then reshape the result back to the active `(M,N)` MMA descriptor.
+- The positive unit-parent matrix covers every current scaled format pair, `K in {128,256}`, and both zero-initialized plus explicit nonzero accumulator-add paths.
+- Do not generate the older `[2,M,N].index(1)` canonical-linear `N>=128` or legacy `N=256` scaled indexed rows as equivalent positives; with live scale descriptors those parent images remain hardware-resource boundaries.
+- Current full-file collection is `8127` tests and the tight MMA bucket is `2075` cases. Aggregate bucket evidence is `7676 passed, 451 skipped`.

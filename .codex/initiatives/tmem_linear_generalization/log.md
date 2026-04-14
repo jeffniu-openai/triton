@@ -206,6 +206,24 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-14 14:20 UTC: scaled MMAv5 indexed-accumulator unit-parent coverage
+
+- Added resource-safe scaled accumulator `memdesc_index` coverage for canonical TMEM-linear `N in {128,256}` and legacy `N=256` by parameterizing `tmem_mma_scaled_indexed_acc_format_kernel` over parent depth/index and reshaping `[1,M,N].index(0)` views back to the active 2D MMA descriptor.
+- The new rows cover every current scaled format pair, `K in {128,256}`, and both zero-initialized plus nonzero accumulator-add paths. The older `[2,M,N]` linear `N>=128` and legacy `N=256` indexed rows stay resource-bound once scale descriptors are live.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - exact N128 unit-parent probe -> passed;
+  - direct N256 canonical-linear and legacy unit-parent probes -> passed;
+  - no-PYTHONPATH unit-parent collect selected `60/8127`;
+  - unit-parent selector passed all `60` cases across split-4 (`15` per group; `24.77s`, `43.13s`, `27.87s`, `44.08s`);
+  - no-PYTHONPATH full scaled-indexed collect selected `120/8127`;
+  - full scaled-indexed selector passed all `120` cases across split-4 (`30` per group; `27.71s`, `21.32s`, `27.51s`, `20.63s`);
+  - no-PYTHONPATH tight MMA collect selected `2075/8127`;
+  - no-PYTHONPATH full-file collect reported `8127`;
+  - `git diff --check` -> passed.
+- Current runtime-matrix bucket totals: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1920`, `ldst=2949`; current bucketed evidence aggregates to `7676 passed, 451 skipped`.
+- Next: commit/push this checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 08:28 UTC: scaled-MMAv5 indexed-accumulator nonzero use-acc coverage
 
 - Added nonzero accumulator-add coverage for scaled-MMAv5 accumulator `memdesc_index` views in `python/test/gluon/test_tmem_runtime_matrix.py`.

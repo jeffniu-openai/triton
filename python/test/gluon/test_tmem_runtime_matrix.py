@@ -2488,6 +2488,8 @@ def tmem_mma_scaled_indexed_acc_format_kernel(
     a_scale,
     b_scale,
     parent_layout: ttgl.constexpr,
+    parent_depth: ttgl.constexpr,
+    parent_index: ttgl.constexpr,
     VEC_SIZE: ttgl.constexpr,
     A_ELEM_PER_BYTE: ttgl.constexpr,
     B_ELEM_PER_BYTE: ttgl.constexpr,
@@ -2525,8 +2527,8 @@ def tmem_mma_scaled_indexed_acc_format_kernel(
     a_smem = ttgl.allocate_shared_memory(a.dtype.element_ty, [M, A_STORAGE_K], a_nvmma_layout, a_tile)
     b_smem = ttgl.allocate_shared_memory(b.dtype.element_ty, [N, B_STORAGE_K], b_nvmma_layout, b_tile)
 
-    acc_parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
-    acc_tmem = acc_parent.index(1)
+    acc_parent = allocate_tensor_memory(ttgl.float32, [parent_depth, M, N], parent_layout)
+    acc_tmem = acc_parent.index(parent_index).reshape((M, N))
     acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
     acc_tmem.store(ttgl.full([M, N], ACC_INIT, ttgl.float32, layout=acc_reg_layout))
 
@@ -3679,6 +3681,12 @@ SCALED_MMA_INDEXED_ACC_FORMAT_CASES = [
     # scaled-MMA scale descriptors consume additional TMEM, so linear N=128+ and
     # legacy N=256 exceed the 512-column hardware resource limit before execution.
     if n == 64 or (parent_layout_kind == "legacy" and n == 128)
+] + [
+    (a_format, b_format, n, k, "linear_unit_parent")
+    for (a_format, b_format), n, k in product(CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256))
+] + [
+    (a_format, b_format, 256, k, "legacy_unit_parent")
+    for (a_format, b_format), k in product(CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256))
 ]
 
 
@@ -8499,7 +8507,7 @@ def test_tmem_runtime_matrix_mma_twocta_indexed_acc_view(kind, parent_layout_kin
     assert "ttg.memdesc_index" in ttgir
     assert "two_ctas" in ttgir
     assert layout_token in ttgir
-    if parent_layout_kind == "linear":
+    if parent_layout_kind.startswith("linear"):
         assert "tensor_memory_encoding" not in ttgir
 
 
@@ -8818,7 +8826,7 @@ def test_tmem_runtime_matrix_mma_indexed_acc_view(kind, parent_layout_kind, n, k
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_index" in ttgir
     assert layout_token in ttgir
-    if parent_layout_kind == "linear":
+    if parent_layout_kind.startswith("linear"):
         assert "tensor_memory_encoding" not in ttgir
 
 
@@ -9368,12 +9376,27 @@ def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_matrix(
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
-    parent_layout = (
-        TensorMemoryLayout((m, n), col_stride=1)
-        if parent_layout_kind == "legacy"
-        else _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
-    )
-    layout_token = "tensor_memory_encoding" if parent_layout_kind == "legacy" else "tensor_memory_linear"
+    if parent_layout_kind == "legacy":
+        parent_layout = TensorMemoryLayout((m, n), col_stride=1)
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_encoding"
+    elif parent_layout_kind == "legacy_unit_parent":
+        parent_layout = TensorMemoryLayout((m, n), col_stride=1)
+        parent_depth = 1
+        parent_index = 0
+        layout_token = "tensor_memory_encoding"
+    elif parent_layout_kind == "linear":
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_linear"
+    else:
+        assert parent_layout_kind == "linear_unit_parent"
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [1])
+        parent_depth = 1
+        parent_index = 0
+        layout_token = "tensor_memory_linear"
 
     torch.manual_seed(0)
     a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
@@ -9390,6 +9413,8 @@ def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_matrix(
         a_scale,
         b_scale,
         parent_layout,
+        parent_depth,
+        parent_index,
         vec_size,
         a_elem_per_byte,
         b_elem_per_byte,
@@ -9409,7 +9434,7 @@ def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_matrix(
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_index" in ttgir
     assert layout_token in ttgir
-    if parent_layout_kind == "linear":
+    if parent_layout_kind.startswith("linear"):
         assert "tensor_memory_encoding" not in ttgir
 
 
@@ -9423,12 +9448,27 @@ def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_use_acc(
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
-    parent_layout = (
-        TensorMemoryLayout((m, n), col_stride=1)
-        if parent_layout_kind == "legacy"
-        else _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
-    )
-    layout_token = "tensor_memory_encoding" if parent_layout_kind == "legacy" else "tensor_memory_linear"
+    if parent_layout_kind == "legacy":
+        parent_layout = TensorMemoryLayout((m, n), col_stride=1)
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_encoding"
+    elif parent_layout_kind == "legacy_unit_parent":
+        parent_layout = TensorMemoryLayout((m, n), col_stride=1)
+        parent_depth = 1
+        parent_index = 0
+        layout_token = "tensor_memory_encoding"
+    elif parent_layout_kind == "linear":
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_linear"
+    else:
+        assert parent_layout_kind == "linear_unit_parent"
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [1])
+        parent_depth = 1
+        parent_index = 0
+        layout_token = "tensor_memory_linear"
 
     torch.manual_seed(0)
     a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
@@ -9445,6 +9485,8 @@ def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_use_acc(
         a_scale,
         b_scale,
         parent_layout,
+        parent_depth,
+        parent_index,
         vec_size,
         a_elem_per_byte,
         b_elem_per_byte,
@@ -9464,7 +9506,7 @@ def test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_use_acc(
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_index" in ttgir
     assert layout_token in ttgir
-    if parent_layout_kind == "linear":
+    if parent_layout_kind.startswith("linear"):
         assert "tensor_memory_encoding" not in ttgir
 
 
