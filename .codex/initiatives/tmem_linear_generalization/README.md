@@ -1408,6 +1408,12 @@ When resuming the initiative:
 - Validation for the latest slice: `make -j8`, py-compile, `git diff --check`, focused collect `240/6842`, `ld_red` collect `1400/6842`, full-file collect `6842`, and final four-GPU split execution of the focused selector passed all `240` cases.
 - At `N=256`, both `col_reverse` and `rowcol_rotate_reverse` use legal explicit split offset order `[0, 128, 64, 192]` for `16x32bx2` and `32x32b_splitn`; identity, tile-permuted, and row-reverse keep the canonical order.
 
+## Latest: 2026-04-14 scaled-MMAv5 tile-permuted accumulator use-acc coverage
+
+- Runtime-matrix collection is now `6852` tests with bucket totals `cp=381`, `mma=1703`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6406 passed, 446 skipped`.
+- Latest coverage slice adds nonzero-accumulator coverage for the scaled-MMAv5 64-column tile-permuted accumulator positive matrix across all scaled format pairs and `K in {128,256}`.
+- Validation for the latest slice: `make -j8`, py-compile, `git diff --check`, focused collect `10/6852`, tight MMA collect `1703/6852`, full-file collect `6852`, and four-GPU split execution of the focused selector passed all `10` cases.
+
 ## Document Roles
 
 - `memory.md`

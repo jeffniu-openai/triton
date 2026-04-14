@@ -870,3 +870,11 @@ Every fuzz case records:
 - At `N=256`, `col_reverse` and `rowcol_rotate_reverse` split explicit variants
   emit `[0, 128, 64, 192]`; identity, tile-permuted, and row-reverse keep the
   canonical `[0, 64, 128, 192]`.
+
+## 2026-04-14 scaled-MMAv5 Accumulator Use-Acc Note
+
+- The runtime matrix now covers nonzero accumulator semantics for the scaled-MMAv5
+  64-column tile-permuted accumulator positive path across all scaled format pairs
+  and `K in {128,256}`.
+- Current full-file collection is `6852` tests; the tight MMA bucket is `1703`
+  cases. Aggregate bucket evidence is `6406 passed, 446 skipped`.

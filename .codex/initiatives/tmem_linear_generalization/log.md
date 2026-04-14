@@ -14132,3 +14132,12 @@ Open after this slice:
 - Current runtime-matrix collection is `6842` tests: `cp=381`, `mma=1693`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6396 passed, 446 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused collect selected `240/6842`; no-PYTHONPATH `ld_red` collect selected `1400/6842`; no-PYTHONPATH full-file collect reported `6842`; after pinning the `col_reverse` offset order, focused selector passed all `240` cases across split-4 on four GPUs (`60` per group; final warm-cache times `4.38s`, `4.39s`, `4.42s`, and `4.95s`).
 - Next: commit/push this `ld.red` saturation checkpoint, then continue another exact non-parked ISA coverage slice.
+
+## 2026-04-14 11:40 UTC: scaled-MMAv5 tile-permuted accumulator use-acc coverage
+
+- Added `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_use_acc` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- This mirrors the existing positive 64-column tile-permuted scaled-MMAv5 accumulator layout matrix, but initializes the accumulator path with a nonzero `acc_init=1.0` and checks `a_ref @ b_ref.T + acc_init`.
+- Coverage spans all scaled format pairs in `CP_SCALES_WARPX4_FORMAT_PAIRS` and `K in {128,256}`. The test pins exact scaled-MMAv5 PTX/LLIR opcode streams, the one-CTA commit opcode, and the surviving `tensor_memory_linear` / `ttng.tc_gen5_mma_scaled` TTGIR markers.
+- Current runtime-matrix collection is `6852` tests: `cp=381`, `mma=1703`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6406 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused collect selected `10/6852`; no-PYTHONPATH tight MMA collect selected `1703/6852`; no-PYTHONPATH full-file collect reported `6852`; focused selector passed all `10` cases across split-4 on four GPUs (`3`, `3`, `3`, and `1` selected; group times `13.33s`, `13.24s`, `12.58s`, and `7.44s`).
+- Next: commit/push this scaled-MMAv5 checkpoint, then continue another exact non-parked ISA coverage slice.
