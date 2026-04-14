@@ -12838,3 +12838,28 @@ Open after this slice:
   - `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --dry-run --categories ldst --store-durations` emitted per-group private duration paths;
   - `env -u PYTHONPATH python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories splitn --store-durations --cache-prefix /tmp/triton-cache-tmem-store-duration-smoke --timeout-per-group 300` passed all `252` splitn/misc tests across four GPUs and merged exactly `252` duration entries.
 - This does not alter default scheduling. It is a maintenance tool for keeping duration caches current without concurrent pytest workers clobbering the same JSON file.
+
+
+## 2026-04-14 selected-shard speed helper and CP 128x128b dtype coverage
+
+- Added selected-shard runtime-matrix runner controls:
+  - `--groups` runs only specified pytest-split groups for selected buckets;
+  - selected groups preserve the canonical group-to-GPU assignment so stable per-GPU caches stay hot across exact reruns;
+  - `--xdist-override BUCKET=N` allows local xdist experiments without changing bucket defaults.
+- Speed result:
+  - dry-run for `ldst --groups 5 8` emitted group 5 on GPU 0 and group 8 on GPU 3;
+  - actual selected rerun passed group 5 (`77 passed, 27 skipped in 9.57s`, `11.3s` runner wall) and group 8 (`74 passed, 28 skipped in 9.39s`, `11.1s` runner wall);
+  - warm `ldst` probes with `-n 8` were slower than `-n 4`, so retained defaults are unchanged.
+- Added a bounded long-term ISA coverage slice for `tcgen05.cp.128x128b`:
+  - single-CTA 128x128 copy helper now stages/allocates with the input dtype;
+  - two-CTA 128x128 copy helper now stages/allocates with the input dtype;
+  - single-CTA legacy/linear, linear indexed-view, and two-CTA cases cover both f32 and i32 while preserving exact PTX/LLIR opcode checks.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`;
+  - `make -j8` -> no work to do;
+  - collect-only with `PYTHONPATH` unset: `3156` total runtime-matrix tests, `318` CP-selected tests;
+  - focused CP slice across four GPUs: `17` selected tests passed;
+  - selected `ldst` runner smoke: groups 5 and 8 passed;
+  - full `cp` runner bucket: `313 passed, 5 skipped`;
+  - `git diff --check` passed.
+- Next: commit/push this checkpoint, then continue the long-term TMEM ISA coverage frontiers (`ld.red`, no-scales/scales copy `warpx2`, broader MMAv5/scaled-MMAv5 saturation, and staged broad validation).

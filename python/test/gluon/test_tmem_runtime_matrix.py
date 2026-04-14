@@ -1556,8 +1556,8 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr, tmem_layout: tt
         offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
         alignment=16,
     )
-    smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], layout=smem_layout)
-    tmem = allocate_tensor_memory(ttgl.int32, [M, N], layout=tmem_layout)
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=tmem_layout)
     tmem_reg_layout: ttgl.constexpr = tmem.get_reg_layout()
 
     barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
@@ -1576,7 +1576,7 @@ def tmem_copy_128x128_kernel(in_ptr, out_ptr, M: ttgl.constexpr, tmem_layout: tt
 def tmem_copy_128x128_twocta_kernel(in_ptr, out_ptr, tmem_layout: ttgl.constexpr):
     M: ttgl.constexpr = 256
     N: ttgl.constexpr = 4
-    tmem = allocate_tensor_memory(ttgl.int32, [M, N], layout=tmem_layout)
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=tmem_layout)
     reg_layout: ttgl.constexpr = tmem.get_reg_layout()
 
     offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
@@ -1589,7 +1589,7 @@ def tmem_copy_128x128_twocta_kernel(in_ptr, out_ptr, tmem_layout: ttgl.constexpr
         block_bases=[[128, 0]],
         alignment=16,
     )
-    smem = ttgl.allocate_shared_memory(ttgl.int32, [M, N], layout=smem_layout)
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
     smem.store(value)
     fence_async_shared(cluster=True)
 
@@ -2936,15 +2936,18 @@ CP_LINEAR_NO_SCALES_32BIT_DTYPE_CASES = [
 CP_INDEXED_VIEW_128X128_CASES = (128, )
 
 CP_LINEAR_INDEXED_VIEW_CASES = [
-    (
-        "128x128b",
-        torch.int32,
-        128,
-        4,
-        _make_tmem_copy_128x128_shared_layout(),
-        1,
-        "tcgen05.cp.cta_group::1.128x128b",
-    ),
+    *[
+        (
+            f"128x128b_{dtype_name}",
+            torch_dtype,
+            128,
+            4,
+            _make_tmem_copy_128x128_shared_layout(),
+            1,
+            "tcgen05.cp.cta_group::1.128x128b",
+        )
+        for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
+    ],
     *[
         (
             f"128x256b_{dtype_name}_swizzle{swizzle}",
@@ -3006,9 +3009,16 @@ CP_NO_SCALES_SWIZZLE_CASES = [
     for (m, n, block_n) in ((128, 128, 128), (128, 256, 256), (256, 128, 64))
 ]
 
+CP_NO_SCALES_128X128_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
+
 CP_NO_SCALES_128X128_CASES = [
-    ("legacy", 128),
-    ("linear", 128),
+    (layout_kind, dtype_name, torch_dtype, 128)
+    for layout_kind, (dtype_name, torch_dtype) in product(("legacy", "linear"), CP_NO_SCALES_128X128_DTYPES)
+]
+
+CP_NO_SCALES_TWOCTA_128X128_CASES = [
+    (layout_kind, dtype_name, torch_dtype)
+    for layout_kind, (dtype_name, torch_dtype) in product(("linear", "legacy"), CP_NO_SCALES_128X128_DTYPES)
 ]
 
 CP_SCALES_WARPX4_FORMAT_PAIRS = [
@@ -5674,44 +5684,44 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen():
-    for layout_kind in ("linear", "legacy"):
-        M = 256
-        N = 4
-        cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
-        if layout_kind == "linear":
-            layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
-        else:
-            layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+@pytest.mark.parametrize("layout_kind,dtype_name,torch_dtype", CP_NO_SCALES_TWOCTA_128X128_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen(layout_kind, dtype_name, torch_dtype):
+    M = 256
+    N = 4
+    cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+    if layout_kind == "linear":
+        layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
+    else:
+        layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
 
-        inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
-        out = torch.empty_like(inp)
-        compiled = tmem_copy_128x128_twocta_kernel[(1, )](
-            inp,
-            out,
-            layout,
-            num_ctas=2,
-            num_warps=4,
-        )
-        torch.cuda.synchronize()
-        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
+    out = torch.empty_like(inp)
+    compiled = tmem_copy_128x128_twocta_kernel[(1, )](
+        inp,
+        out,
+        layout,
+        num_ctas=2,
+        num_warps=4,
+    )
+    torch.cuda.synchronize()
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-        _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x128b"])
-        ptx = compiled.asm["ptx"]
-        llir = compiled.asm["llir"]
-        first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x128b")
-        first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x128b")
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x128b"])
+    ptx = compiled.asm["ptx"]
+    llir = compiled.asm["llir"]
+    first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x128b")
+    first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x128b")
 
-        _assert_exact_commit_ptx_llir_match(
-            compiled,
-            ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
-        )
-        assert "tcgen05.cp.cta_group::1" not in ptx
-        assert ptx.count("fence.proxy.async.shared::cluster") == 1
-        assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
-        assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
-        if layout_kind == "linear":
-            assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert ptx.count("fence.proxy.async.shared::cluster") == 1
+    assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
+    assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
+    if layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 
@@ -5803,10 +5813,10 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_kind,M", CP_NO_SCALES_128X128_CASES)
-def test_tmem_runtime_matrix_cp_128x128(layout_kind, M):
+@pytest.mark.parametrize("layout_kind,dtype_name,torch_dtype,M", CP_NO_SCALES_128X128_CASES)
+def test_tmem_runtime_matrix_cp_128x128(layout_kind, dtype_name, torch_dtype, M):
     N = 4
-    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
     out = torch.empty_like(inp)
     if layout_kind == "legacy":
         layout = TensorMemoryLayout((M, N), col_stride=1)

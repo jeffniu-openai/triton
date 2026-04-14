@@ -75,6 +75,7 @@ def make_command(
     durations_path: str | None = None,
     store_durations: bool = False,
     clean_durations: bool = False,
+    xdist_override: int | None = None,
 ) -> list[str]:
     cmd = [
         "pytest",
@@ -95,8 +96,9 @@ def make_command(
         cmd.append("--clean-durations")
     if bucket.splitting_algorithm:
         cmd.extend(["--splitting-algorithm", bucket.splitting_algorithm])
-    if bucket.xdist:
-        cmd.extend(["-n", str(bucket.xdist)])
+    xdist = bucket.xdist if xdist_override is None else xdist_override
+    if xdist:
+        cmd.extend(["-n", str(xdist)])
     cmd.extend(bucket.pytest_args)
     cmd.extend(extra_pytest_args)
     return cmd
@@ -152,6 +154,7 @@ def run_one(
         durations_path=durations_path,
         store_durations=args.store_durations,
         clean_durations=args.clean_durations,
+        xdist_override=args.xdist_overrides.get(bucket.name),
     )
     log_path = log_dir / f"{bucket.name}_g{group:02d}_gpu{gpu}.log"
     env = os.environ.copy()
@@ -194,9 +197,54 @@ def format_command(bucket: Bucket, group: int, gpu: str, args: argparse.Namespac
         durations_path=durations_path,
         store_durations=args.store_durations,
         clean_durations=args.clean_durations,
+        xdist_override=args.xdist_overrides.get(bucket.name),
     )
     cache_dir = f"{args.cache_prefix}-gpu{gpu}"
     return " ".join([f"CUDA_VISIBLE_DEVICES={gpu}", f"TRITON_CACHE_DIR={cache_dir}"] + cmd)
+
+
+def parse_xdist_overrides(values: list[str]) -> dict[str, int]:
+    overrides: dict[str, int] = {}
+    for value in values:
+        if "=" not in value:
+            raise SystemExit(f"--xdist-override expects BUCKET=N, got {value!r}")
+        bucket_name, count_text = value.split("=", 1)
+        if bucket_name not in BUCKETS:
+            raise SystemExit(f"unknown bucket in --xdist-override: {bucket_name!r}")
+        try:
+            count = int(count_text)
+        except ValueError:
+            raise SystemExit(f"xdist worker count must be an integer, got {count_text!r}") from None
+        if count < 0:
+            raise SystemExit("xdist worker count must be non-negative")
+        overrides[bucket_name] = count
+    return overrides
+
+
+def selected_groups(bucket: Bucket, args: argparse.Namespace) -> list[int]:
+    groups = list(range(1, bucket.splits + 1)) if args.groups is None else sorted(set(args.groups))
+    invalid = [group for group in groups if group < 1 or group > bucket.splits]
+    if invalid:
+        raise SystemExit(
+            f"bucket {bucket.name!r} has {bucket.splits} groups; invalid --groups values: {invalid}"
+        )
+    return groups
+
+
+def gpu_for_group(group: int, args: argparse.Namespace) -> str:
+    return args.gpus[(group - 1) % len(args.gpus)]
+
+
+def group_waves(groups: list[int], args: argparse.Namespace) -> list[list[tuple[int, str]]]:
+    by_gpu = {gpu: [group for group in groups if gpu_for_group(group, args) == gpu] for gpu in args.gpus}
+    waves: list[list[tuple[int, str]]] = []
+    while any(by_gpu.values()):
+        wave: list[tuple[int, str]] = []
+        for gpu in args.gpus:
+            if by_gpu[gpu]:
+                wave.append((by_gpu[gpu].pop(0), gpu))
+        waves.append(wave)
+    return waves
 
 
 def parse_args() -> argparse.Namespace:
@@ -239,9 +287,31 @@ def parse_args() -> argparse.Namespace:
         help="with --store-durations, drop stale duration entries not seen by any group",
     )
     parser.add_argument(
+        "--groups",
+        nargs="+",
+        type=int,
+        default=None,
+        help=(
+            "run only these pytest-split group numbers for each selected bucket; "
+            "use this for exact shard reruns after a failure or timeout"
+        ),
+    )
+    parser.add_argument(
+        "--xdist-override",
+        action="append",
+        default=[],
+        metavar="BUCKET=N",
+        help=(
+            "override inner pytest-xdist worker count for one bucket, for example "
+            "ldst=8; repeat for multiple buckets. Defaults remain unchanged."
+        ),
+    )
+    parser.add_argument(
         "--pytest-arg", action="append", default=[], help="extra argument appended to every pytest command"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.xdist_overrides = parse_xdist_overrides(args.xdist_override)
+    return args
 
 
 def main() -> int:
@@ -257,18 +327,20 @@ def main() -> int:
     failures: list[tuple[str, int, str, int, float, Path]] = []
     for name in args.categories:
         bucket = BUCKETS[name]
-        print(f"== {bucket.name}: {bucket.splits} split groups, xdist={bucket.xdist or 0} ==")
+        groups_to_run = selected_groups(bucket, args)
+        xdist = args.xdist_overrides.get(bucket.name, bucket.xdist)
+        print(f"== {bucket.name}: {len(groups_to_run)}/{bucket.splits} split groups, xdist={xdist or 0} ==")
+        waves = group_waves(groups_to_run, args)
         if args.dry_run:
-            for group in range(1, bucket.splits + 1):
-                gpu = args.gpus[(group - 1) % len(args.gpus)]
-                print(format_command(bucket, group, gpu, args, log_dir))
+            for wave in waves:
+                for group, gpu in wave:
+                    print(format_command(bucket, group, gpu, args, log_dir))
             continue
-        for wave_start in range(1, bucket.splits + 1, len(args.gpus)):
-            groups = list(range(wave_start, min(bucket.splits, wave_start + len(args.gpus) - 1) + 1))
-            with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+        for wave in waves:
+            with ThreadPoolExecutor(max_workers=len(wave)) as pool:
                 future_map = {
-                    pool.submit(run_one, bucket, group, args.gpus[i], args, log_dir): (group, args.gpus[i])
-                    for i, group in enumerate(groups)
+                    pool.submit(run_one, bucket, group, gpu, args, log_dir): (group, gpu)
+                    for group, gpu in wave
                 }
                 for future in as_completed(future_map):
                     group, gpu = future_map[future]

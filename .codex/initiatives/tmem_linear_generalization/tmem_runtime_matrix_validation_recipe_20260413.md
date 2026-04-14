@@ -6,17 +6,17 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `3150` tests. The coverage-preserving bucket split is:
+Full collection with `PYTHONPATH` unset reports `3156` tests after the 2026-04-14 CP coverage expansion. The coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
-| `cp` | `-k cp` | 312 | split 4, one process per GPU |
+| `cp` | `-k cp` | 318 | split 4, one process per GPU |
 | `mma` | `-k test_tmem_runtime_matrix_mma` | 301 | split 4, one process per GPU |
 | `splitn` / misc | exact function nodeids | 252 | split 4, one process per GPU |
 | `ld_red` | `-k ld_red` | 643 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
 | `ldst` | `-k ldst` | 1642 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `3150` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `3156` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
 
 ## Canonical Command
 
@@ -41,6 +41,12 @@ python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sw
 # Run only the heavy families when validating the timeout fix.
 python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ld_red ldst
 
+# Rerun exact split groups after a shard failure while preserving canonical GPU/cache mapping.
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ldst --groups 5 8
+
+# Temporarily experiment with inner xdist for one bucket without changing defaults.
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ldst --groups 5 8 --xdist-override ldst=8
+
 # Keep caches separate for an experiment while still stable across waves.
 python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --cache-prefix /tmp/triton-cache-tmem-runtime-matrix-experiment
 
@@ -55,7 +61,7 @@ The runner removes inherited `PYTHONPATH`, sets a stable per-GPU `TRITON_CACHE_D
 
 Small buckets are not the timeout source:
 
-- `cp`: `307 passed, 5 skipped` across four groups in about `48s`, `58s`, `68s`, and `66s`.
+- `cp`: after the 2026-04-14 CP 128x128b dtype expansion, `313 passed, 5 skipped` across four groups in about `50s`, `58s`, `66s`, and `69s` pytest time (`52.6s`, `60.0s`, `68.5s`, `71.9s` runner wall).
 - `mma`: `301 passed` across four groups in about `63s`, `142s`, `126s`, and `131s`.
 - true exact-nodeid `splitn` / misc bucket: runner smoke passed `252` tests across four groups (`63` per group) in `8.95s`, `16.06s`, `15.93s`, and `14.22s` pytest time.
 
@@ -68,7 +74,10 @@ Heavy buckets need finer scheduling:
 - Duration-cache refresh on 2026-04-13: after those `440` cases became pre-execution skips, their stored `ldst_pytest_durations_20260413.json` entries were set to `0.001s` so least-duration splitting no longer treats them as cold OOR compiles. The full `ldst` runner still reports `1201 passed, 441 skipped`; group times on the validation run were `208.7s` to `263.8s`.
 - Rejected kernel-reuse idea: runtime `variant_id` selector kernels work only with `@gluon.jit(do_not_specialize=["variant_id"])`, but they were worse under the real split-16/xdist workflow because each distinct layout compiles a larger multi-branch kernel. Do not replace the current per-variant ld/st tests with selector kernels without first changing grouping to batch all variants for the same layout and proving a full-bucket timing win.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `2704 passed, 446 skipped` across all `3150` collected cases. This is a bucketed full sweep, not a reduced selector.
+- 2026-04-14 selected-shard rerun result: runner `--categories ldst --groups 5 8` preserved canonical GPU/cache mapping and passed group 5 in `11.3s` wall (`77 passed, 27 skipped in 9.57s`) and group 8 in `11.1s` wall (`74 passed, 28 skipped in 9.39s`). This is the preferred exact-rerun path after a shard failure/timeout and is not a reduced full-matrix replacement.
+- `pytest-xdist -n 8` was tested on warm `ldst` shards and was slower than the retained `-n 4` default; keep default xdist unchanged unless a full-bucket timing proves a real win.
+
+Aggregating the current per-bucket evidence gives full matrix coverage: `2710 passed, 446 skipped` across all `3156` collected cases. This is a bucketed full sweep, not a reduced selector.
 
 Representative compile evidence:
 
