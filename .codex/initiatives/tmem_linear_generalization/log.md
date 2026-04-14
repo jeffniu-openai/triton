@@ -14563,3 +14563,11 @@ Open after this slice:
 - Current runtime-matrix collection is `9082` tests: `cp=677`, `mma=2703`, splitn/misc `=571`, `ld_red=2146`, and `ldst=2985`; current bucketed evidence aggregates to `8631 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; exact new-layout collect selected `72/9082`; full-file collect reported `9082`; exact selector passed all `72` cases across split-4 on four GPUs (`18` per group; group times `307.03s`, `346.47s`, `329.70s`, and `332.42s`).
 - Next: commit/push this bounded `ld.red` checkpoint, then either finish the remaining mixed descriptor-chain auto layouts (`row_rotate1`/`row_even_odd` with `rotate1`/`even_odd` columns) or move to another non-parked ISA family.
+
+## 2026-04-14 17:09 UTC: ld.red descriptor-chain full mixed auto N-sweep coverage
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES` with the final four mixed auto families: `rowcol_rotate_rotate1`, `rowcol_rotate_even_odd`, `rowcol_even_odd_rotate1`, and `rowcol_even_odd_even_odd`.
+- The descriptor-chain N-width `auto` sweep now covers identity, tile-permuted, and the full non-identity row/column permutation cross-product at `N in {32,64,256}` across `min`/`max` and all legal `abs`/`NaN` modifier modes. Explicit variants remain intentionally narrower.
+- Current runtime-matrix collection is `9178` tests: `cp=677`, `mma=2703`, splitn/misc `=571`, `ld_red=2242`, and `ldst=2985`; current bucketed evidence aggregates to `8727 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; exact final-mixed collect selected `96/9178`; full-file collect reported `9178`; exact selector passed all `96` cases across split-4 on four GPUs (`24` per group; group times `429.25s`, `429.64s`, `422.54s`, and `424.92s`).
+- Next: commit/push this closure checkpoint, then move away from descriptor-chain auto permutations. Remaining `ld.red` possibilities are explicit variants for the new layouts or separate direct/helper frontiers, but the auto N-sweep row/column family is now saturated.

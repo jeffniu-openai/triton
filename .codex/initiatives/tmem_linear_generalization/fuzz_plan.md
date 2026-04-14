@@ -336,12 +336,9 @@ Every fuzz case records:
     row/column-permuted source layouts through `slice`/`index`/reshape views
     for `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` at `N=128` across
     the legal modifier matrix. The descriptor-chain N-width `auto` sweep now
-    covers identity, tile-permuted, `col_reverse`, `col_rotate1`,
-    `col_even_odd`, `row_reverse`, `row_rotate1`, `row_even_odd`,
-    `rowcol_reverse_rotate1`, `rowcol_reverse_even_odd`,
-    `rowcol_reverse_reverse`, `rowcol_rotate_reverse`, and
-    `rowcol_even_odd_reverse` at `N in {32,64,256}`. Explicit compatible
-    variants remain bounded to
+    covers identity, tile-permuted, and the full non-identity
+    row/column permutation cross-product from `PERMUTED_LAYOUT_KINDS` at
+    `N in {32,64,256}`. Explicit compatible variants remain bounded to
     identity, tile-permuted, `col_reverse`, `row_reverse`, and
     `rowcol_rotate_reverse` at the same N widths.
   - direct explicit compatible register-layout variants now also cover the
@@ -1208,3 +1205,9 @@ Every fuzz case records:
 - Descriptor-chain `ld.red` auto-selection fuzz generation may now include `rowcol_reverse_rotate1`, `rowcol_reverse_even_odd`, and `rowcol_reverse_reverse` at `N in {32,64,256}`.
 - These are auto-only positives. Explicit `16x32bx2` and `32x32b_splitn` variants for these layouts remain future work until separately validated.
 - Current full-file collection is `9082` tests and the `ld_red` bucket is `2146` cases. Aggregate bucket evidence is `8631 passed, 451 skipped`.
+
+## 2026-04-14 17:09 UTC: ld.red Descriptor-Chain Full Mixed Auto Note
+
+- Descriptor-chain `ld.red` auto-selection fuzz generation may now include the full non-identity row/column permutation cross-product at `N in {32,64,256}`.
+- This closes the auto N-sweep permutation family. Explicit compatible variants remain bounded to the identity/tile/reverse-family layouts until separately validated.
+- Current full-file collection is `9178` tests and the `ld_red` bucket is `2242` cases. Aggregate bucket evidence is `8727 passed, 451 skipped`.
