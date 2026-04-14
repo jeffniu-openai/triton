@@ -330,7 +330,11 @@ Every fuzz case records:
     for `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` at `N=128` across
     the legal modifier matrix. The descriptor-chain N-width sweep covers the
     same identity/tile/pure-row/pure-column/mixed families at `N in {64,256}`
-    with `auto`.
+    with both `auto` and the explicit compatible variants.
+  - direct explicit compatible register-layout variants now also cover the
+    identity/tile/pure-row/pure-column/mixed families at `N in {64,256}` for
+    `32x32b`, `16x32bx2`, and `32x32b_splitn`, matching the descriptor-chain
+    N-width explicit matrix.
   - any additional TMEM-linear family that compile-only search proves emits
     legal reduction code
 
@@ -356,9 +360,11 @@ Every fuzz case records:
 - Explicit compatible register-layout variants also cover non-identity
   compatible TMEM-linear source families (`tile_permuted`, `col_reverse`,
   `row_reverse`, and `rowcol_rotate_reverse`) across the same operation and
-  modifier matrix, proving they still canonicalize to
-  `tcgen05.ld.red.sync.aligned.32x32b.x128` rather than discovering a new
-  reduction atom.
+  modifier matrix, proving they still canonicalize to the `32x32b` reduction
+  family rather than discovering a new reduction atom. The direct and
+  descriptor-chain N-width explicit matrices pin `N=64` as `32x32b.x64` and
+  `N=256` as four `32x32b.x64` messages; the `N=256` split variants for
+  `col_reverse` and `rowcol_rotate_reverse` use offsets `[0, 128, 64, 192]`.
 - Positive runtime-matrix `ld.red` tests assert exactly one `wait <store>`
   before reduction loads, exactly one `wait <load>` after `ld.red`, and the
   PTX/LLIR ordering `store -> wait.store -> ld.red -> wait.load`.

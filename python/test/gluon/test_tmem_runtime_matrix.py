@@ -1069,11 +1069,10 @@ def tmem_scales_ldst_variant_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.
 
 @gluon.jit
 def tmem_ld_red_explicit_layout_kernel(
-    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, load_variant: ttgl.constexpr,
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
     red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
 ):
     M: ttgl.constexpr = 128
-    N: ttgl.constexpr = 128
     num_warps: ttgl.constexpr = 4
     global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
     global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
@@ -4065,6 +4064,8 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
     for load_variant in ("32x32b", "16x32bx2", "32x32b_splitn")
 ]
 
+LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES = LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES
+
 
 def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
     if layout_name == "identity":
@@ -6065,7 +6066,7 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
-        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        inp, out, red, layout, N, load_variant, red_op, use_abs, propagate_nan, num_warps=4
     )
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
@@ -6192,6 +6193,56 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep_explicit_variants(
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize(
+    "layout_name,N,expected_shape,load_variant,expected_offsets",
+    LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES,
+)
+def test_tmem_runtime_matrix_ld_red_explicit_n_sweep_variants(
+    layout_name,
+    N,
+    expected_shape,
+    load_variant,
+    expected_offsets,
+    use_abs,
+    propagate_nan,
+    red_op,
+):
+    M = 128
+    layout = _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
+        inp,
+        out,
+        red,
+        layout,
+        N,
+        load_variant,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=4,
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        expected_shape,
+        red_op,
+        use_abs,
+        propagate_nan,
+        expected_offsets=expected_offsets,
+    )
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,layout_factory", LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES)
 @pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
 def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b(
@@ -6205,7 +6256,7 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_can
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
-        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
     )
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
@@ -6227,7 +6278,7 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsu
 
     with pytest.raises(Exception) as err:
         tmem_ld_red_explicit_layout_kernel[(1, )](
-            inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+            inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
         )
 
     captured = capfd.readouterr()

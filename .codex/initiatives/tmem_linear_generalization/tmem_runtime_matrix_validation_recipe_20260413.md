@@ -6,17 +6,17 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `6931` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
+Full collection with `PYTHONPATH` unset reports `7171` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
 | `cp` | `-k cp` | 420 | split 4, one process per GPU |
 | `mma` | `-k test_tmem_runtime_matrix_mma` | 1743 | split 4, one process per GPU |
 | `splitn` / misc | exact function nodeids | 499 | split 4, one process per GPU |
-| `ld_red` | `-k ld_red` | 1400 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
+| `ld_red` | `-k ld_red` | 1640 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
 | `ldst` | `-k ldst` | 2869 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `6931` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `7171` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
 
 ## Canonical Command
 
@@ -98,8 +98,9 @@ Heavy buckets need finer scheduling:
 - After the 2026-04-14 scaled-MMAv5 tile-permuted accumulator use-acc expansion, the focused selector selected `10/6852`, the tight MMA selector selected `1703/6852`, and the full file collected `6852`. The focused selector passed all `10` cases across split-4 on four GPUs (`3`, `3`, `3`, and `1` selected) in `13.33s`, `13.24s`, `12.58s`, and `7.44s`. The current aggregate evidence is `6406 passed, 446 skipped`.
 - After the 2026-04-14 two-CTA scaled-MMAv5 accumulator-subslice use-acc expansion, the focused selector selected `40/6892`, the tight MMA selector selected `1743/6892`, and the full file collected `6892`. The focused selector passed all `40` cases across split-4 on four GPUs (`10` per group) in `12.78s`, `13.01s`, `12.80s`, and `12.73s`. The current aggregate evidence is `6446 passed, 446 skipped`.
 - After the 2026-04-14 legacy single-CTA no-scales CP dtype-parity expansion, the exact root+swizzle selector selected `78/6931`, the full CP selector selected `420/6931`, and the full file collected `6931`. The exact root+swizzle selector passed/skipped `68 passed, 10 skipped` across split-4 on four GPUs; the full CP bucket passed/skipped `410 passed, 10 skipped` across split-4 (`95 passed, 10 skipped`, `105 passed`, `105 passed`, and `105 passed`). The current aggregate evidence is `6480 passed, 451 skipped`.
+- After the 2026-04-14 direct `ld.red` explicit N-width expansion, the new direct selector selected `240/7171`, the full `ld_red` selector selected `1640/7171`, and the full file collected `7171`. The new direct selector passed all `240` cases across split-4 on four GPUs (`60` per group; `189.99s`, `410.82s`, `573.50s`, and `542.42s`). Adjacent N=128 explicit and unsupported selectors passed all `184` cases across split-4 (`46` per group; `160.11s`, `293.51s`, `308.59s`, and `180.22s`). The current aggregate evidence is `6720 passed, 451 skipped`.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `6480 passed, 451 skipped` across all `6931` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
+Aggregating the current per-bucket evidence gives full matrix coverage: `6720 passed, 451 skipped` across all `7171` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
 
 Representative compile evidence:
 

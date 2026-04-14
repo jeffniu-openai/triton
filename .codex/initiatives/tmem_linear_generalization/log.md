@@ -14159,3 +14159,13 @@ Open after this slice:
 - Current runtime-matrix collection is `6931` tests: `cp=420`, `mma=1743`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6480 passed, 451 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH exact root+swizzle collect selected `78/6931`; no-PYTHONPATH full CP collect selected `420/6931`; no-PYTHONPATH full-file collect reported `6931`; exact root+swizzle selector passed/skipped `68 passed, 10 skipped` across split-4 on four GPUs; full CP bucket passed/skipped `410 passed, 10 skipped` across split-4 (`95 passed, 10 skipped`, `105 passed`, `105 passed`, `105 passed`; slowest `93.37s`).
 - Next: commit/push this bounded CP checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 12:20 UTC: direct ld.red explicit N-width coverage
+
+- Generalized `tmem_ld_red_explicit_layout_kernel` to accept `N` as a constexpr, preserving existing `N=128` callers by passing `128` explicitly.
+- Added `LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES` and `test_tmem_runtime_matrix_ld_red_explicit_n_sweep_variants`.
+- The new direct `ld.red` positive matrix spans identity, tile-permuted, pure column reverse, pure row reverse, and mixed row/column reverse layouts at `N in {64,256}`, explicit variants `32x32b`, `16x32bx2`, and `32x32b_splitn`, both `min`/`max`, and all legal modifier modes.
+- Runtime values, reductions, wait ordering, exact opcodes, and exact offsets passed for every case. Like the descriptor-chain matrix, `col_reverse` and `rowcol_rotate_reverse` at `N=256` use split offsets `[0, 128, 64, 192]` for `16x32bx2` and `32x32b_splitn`.
+- Current runtime-matrix collection is `7171` tests: `cp=420`, `mma=1743`, splitn/misc `=499`, `ld_red=1640`, and `ldst=2869`; current bucketed evidence aggregates to `6720 passed, 451 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH new direct collect selected `240/7171`; no-PYTHONPATH full `ld_red` collect selected `1640/7171`; no-PYTHONPATH full-file collect reported `7171`; new direct selector passed all `240` cases across split-4 on four GPUs (`60` per group; group times `189.99s`, `410.82s`, `573.50s`, and `542.42s`); adjacent N=128 explicit and unsupported selectors passed all `184` cases across split-4 (`46` per group; group times `160.11s`, `293.51s`, `308.59s`, and `180.22s`).
+- Next: commit/push this `ld.red` checkpoint, then continue another exact non-parked TMEM ISA coverage slice.

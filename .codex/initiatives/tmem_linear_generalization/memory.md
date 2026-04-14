@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:20 UTC: direct ld.red explicit N-width coverage
+
+- Generalized `tmem_ld_red_explicit_layout_kernel` so direct explicit-layout reductions take `N` as a constexpr instead of being fixed at `N=128`.
+- Added `test_tmem_runtime_matrix_ld_red_explicit_n_sweep_variants`, covering identity, tile-permuted, pure column reverse, pure row reverse, and mixed row/column reverse layouts at `N in {64,256}` for explicit `32x32b`, `16x32bx2`, and `32x32b_splitn`, both `min`/`max`, and every legal `abs` / `PropagateNan` modifier mode.
+- This mirrors the descriptor-chain explicit N-width matrix on the direct source path; the same `N=256` split offset exception applies for `col_reverse` and `rowcol_rotate_reverse` (`[0, 128, 64, 192]`).
+- Current runtime-matrix collection is `7171` tests: `cp=420`, `mma=1743`, splitn/misc `=499`, `ld_red=1640`, and `ldst=2869`; current bucketed evidence aggregates to `6720 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH new direct collect selected `240/7171`; no-PYTHONPATH full `ld_red` collect selected `1640/7171`; no-PYTHONPATH full-file collect reported `7171`; new direct selector passed all `240` cases across split-4 (`60` per group; times `189.99s`, `410.82s`, `573.50s`, and `542.42s`); adjacent N=128 explicit and unsupported selectors passed all `184` cases across split-4 (`46` per group; times `160.11s`, `293.51s`, `308.59s`, and `180.22s`).
+- Next: commit/push this bounded `ld.red` coverage checkpoint, then continue staged TMEM ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 12:05 UTC: legacy single-CTA no-scales copy dtype parity
 
 - Expanded the original single-CTA no-scales CP root and swizzle matrices in `python/test/gluon/test_tmem_runtime_matrix.py` to use `CP_NO_SCALES_128X128_DTYPES`, so they now cover `f32` beside the existing `i32` payloads.
