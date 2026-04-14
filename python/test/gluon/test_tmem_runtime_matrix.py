@@ -8772,13 +8772,13 @@ MMA_TWOCTA_TMA_NON_TF32_CASES = [
     (dtype_name, acc_layout_kind, block_n, block_k, use_acc)
     for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES
     for acc_layout_kind, block_n, block_k, use_acc in product(
-        ("legacy", "linear"), (64, 128, 256), (32, 64), (False, True)
+        ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
     )
 ]
 
 MMA_TWOCTA_TMA_TF32_CASES = [
     (acc_layout_kind, block_n, block_k)
-    for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (64, 128, 256), (32, 64))
+    for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (64, 128, 256), (32, 64, 128))
 ]
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [

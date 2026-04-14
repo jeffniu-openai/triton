@@ -14520,3 +14520,12 @@ Open after this slice:
 - Current runtime-matrix collection is `8704` tests: `cp=677`, `mma=2517`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8253 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8704`; focused `mma_twocta_acc_subslice_view_plain_kinds` collect selected `180/8704`; focused selector passed all `180` cases across split-4 on four GPUs (`45` per group; group times `54.86s`, `57.05s`, `55.86s`, and `56.98s`).
 - Next: commit/push this bounded MMAv5 descriptor-view checkpoint, then continue another non-parked K-depth slice. The direct two-CTA plain root/index/subslice trio is now at K128; remaining good candidates are TMA-fed K128 or scaled-MMAv5 parity.
+
+## 2026-04-14 16:32 UTC: TMA-fed two-CTA plain MMAv5 K=128 coverage
+
+- Expanded `MMA_TWOCTA_TMA_NON_TF32_CASES` and `MMA_TWOCTA_TMA_TF32_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from `K in {32,64}` to `K in {32,64,128}`.
+- Non-TF32 descriptor-fed two-CTA positives now cover f16, bf16, f8e5m2, and f8e4m3 at `N in {64,128,256}`, legacy/canonical two-CTA accumulators, and both no-accumulator plus `use_acc=True` paths at `K=128`.
+- TF32 descriptor-fed rows now include `K=128` for both the clean-negative default `[K,N]` shared-transpose route and the positive B-transposed `[N,K]` descriptor route, including `use_acc=True`.
+- Current runtime-matrix collection is `8770` tests: `cp=677`, `mma=2583`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8319 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8770`; exact TMA-fed node-id collect selected `198`; exact TMA-fed selector passed all `198` cases across split-4 on four GPUs (`50`, `50`, `50`, and `48`; group times `60.94s`, `60.96s`, `53.20s`, and `47.25s`).
+- Next: commit/push this bounded TMA-fed K-depth checkpoint. Direct/TMA-fed plain MMAv5 K128 coverage is now broad; scaled-MMAv5 parity is the remaining likely K-depth family.

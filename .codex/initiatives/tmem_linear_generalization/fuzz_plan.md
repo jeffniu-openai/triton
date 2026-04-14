@@ -612,16 +612,16 @@ Every fuzz case records:
 - `multicast in {false, true}` where supported
 - TMA-fed two-CTA non-TF32 plain dtypes (`f16`, `bf16`, `f8e5m2`, and
   `f8e4m3`) have positive descriptor-fed coverage over `blockN in {64, 128,
-  256}` and `blockK in {32, 64}` for both legacy and canonical two-CTA
+  256}` and `blockK in {32, 64, 128}` for both legacy and canonical two-CTA
   TMEM-linear accumulator layouts, including explicit nonzero accumulator-add
   coverage through `use_acc=True`.
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared
-  `permute((1, 0))` view; current coverage spans `blockN in {64, 128, 256}` for
-  both legacy and canonical TMEM-linear accumulator layouts, including explicit
-  nonzero accumulator-add coverage through `use_acc=True`. Default `[K, N]` B
-  descriptors remain a clean negative because TMA descriptors cannot be
-  transposed.
+  `permute((1, 0))` view; current coverage spans `blockN in {64, 128, 256}` and
+  `blockK in {32, 64, 128}` for both legacy and canonical TMEM-linear
+  accumulator layouts, including explicit nonzero accumulator-add coverage
+  through `use_acc=True`. Default `[K, N]` B descriptors remain a clean negative
+  at the same shapes because TMA descriptors cannot be transposed.
 - accumulator layout family:
   - legacy TMEM layout
   - canonical TMEM-linear equivalent
@@ -1170,3 +1170,10 @@ Every fuzz case records:
 - The direct two-CTA plain root, indexed-accumulator, and accumulator-subview matrices now all cover `K in {32,64,128}`.
 - Do not infer K128 support for TMA-fed matrices or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices.
 - Current full-file collection is `8704` tests and the MMA bucket is `2517` cases. Aggregate bucket evidence is `8253 passed, 451 skipped`.
+
+## 2026-04-14 16:32 UTC: TMA-fed Two-CTA Plain MMAv5 K=128 Note
+
+- TMA-fed two-CTA non-TF32 plain fuzz generation may now include `K=128` for f16, bf16, f8e5m2, and f8e4m3 across `N in {64,128,256}`, legacy/canonical two-CTA accumulators, and both accumulator modes.
+- TMA-fed two-CTA TF32 generation may now include `K=128` for the clean-negative default `[K,N]` descriptor route and for the positive B-transposed `[N,K]` descriptor route, including `use_acc=True`.
+- Direct two-CTA plain root, indexed accumulator, accumulator subview, and TMA-fed matrices now all cover `K=128` where their existing shape/resource construction applies.
+- Current full-file collection is `8770` tests and the MMA bucket is `2583` cases. Aggregate bucket evidence is `8319 passed, 451 skipped`.
