@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 10:12 UTC: ld.red descriptor-chain pure row/column layout coverage
+
+- Expanded descriptor-view `ld.red` coverage in `python/test/gluon/test_tmem_runtime_matrix.py` to include pure column-reverse and pure row-reverse TMEM-linear source layouts.
+- `LD_RED_DESCRIPTOR_CHAIN_LAYOUT_CASES` now covers those two pure non-identity layouts at `N=128` across every compatible explicit reduction register-layout request (`auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`).
+- `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES` now also covers both pure layouts at `N in {64,256}` with `auto`, beside identity, tile-permuted, and mixed row/column layouts.
+- This is test-only coverage over the existing descriptor-chain reduction lowering through `slice`/`index`/reshape views; it closes the descriptor-view parity gap against the direct pure row/column reduction sweeps.
+- Current runtime-matrix collection is `6596` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1160`, and `ldst=2869`; current bucketed evidence aggregates to `6150 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; `git diff --check`; no-PYTHONPATH descriptor-chain collect selected `240/6596`; no-PYTHONPATH `ld_red` collect selected `1160/6596`; no-PYTHONPATH full-file collect reported `6596`; focused pure row/column descriptor-chain selector passed all `96` cases across split-4 on four GPUs (`24` per group; group times `446.98s`, `450.46s`, `446.67s`, and `487.70s`).
+- Next: commit/push this bounded `ld.red` coverage checkpoint, then continue another staged non-parked TMEM ISA slice.
+
 ## 2026-04-14 10:03 UTC: copy warpx2 conversion lit and non-surjective layout asm round-trip
 
 - Fixed generic `LinearLayout` textual assembly for non-surjective layouts by adding optional `out = [...]` parse/print support in `lib/Dialect/TritonGPU/IR/LinearLayoutAsm.cpp`.

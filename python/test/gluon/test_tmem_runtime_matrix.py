@@ -3941,6 +3941,8 @@ LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [
 LD_RED_DESCRIPTOR_CHAIN_LAYOUT_CASES = [
     ("identity", lambda: _make_tmem_linear_layout(128, 128)),
     ("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32)),
+    ("col_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "identity", "reverse")),
+    ("row_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "reverse", "identity")),
     ("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse")),
 ]
 
@@ -3966,11 +3968,18 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
     for n, tile_n, expected_shape in ((64, 16, "32x32b.x64"), (256, 64, "32x32b.x64"))
 ] + [
     pytest.param(
-        "rowcol_rotate_reverse",
-        lambda n=n: _make_tmem_linear_layout_permuted(128, n, "rotate1", "reverse"),
+        layout_name,
+        lambda n=n, row_perm_kind=row_perm_kind, col_perm_kind=col_perm_kind: _make_tmem_linear_layout_permuted(
+            128, n, row_perm_kind, col_perm_kind
+        ),
         n,
         expected_shape,
-        id=f"rowcol_rotate_reverse_n{n}",
+        id=f"{layout_name}_n{n}",
+    )
+    for layout_name, row_perm_kind, col_perm_kind in (
+        ("col_reverse", "identity", "reverse"),
+        ("row_reverse", "reverse", "identity"),
+        ("rowcol_rotate_reverse", "rotate1", "reverse"),
     )
     for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
