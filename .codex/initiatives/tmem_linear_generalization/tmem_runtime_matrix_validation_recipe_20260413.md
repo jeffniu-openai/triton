@@ -43,6 +43,10 @@ python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sw
 
 # Keep caches separate for an experiment while still stable across waves.
 python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --cache-prefix /tmp/triton-cache-tmem-runtime-matrix-experiment
+
+# Refresh duration data without concurrent shards clobbering one JSON file.
+# The runner writes per-group duration files and merges them after each bucket passes.
+python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ldst --store-durations
 ```
 
 The runner removes inherited `PYTHONPATH`, sets a stable per-GPU `TRITON_CACHE_DIR`, and writes per-shard logs under `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_<timestamp>/`. It does not delete caches by default.
@@ -78,3 +82,4 @@ Representative compile evidence:
 - Use `pytest-split` for outer GPU sharding and only use `pytest-xdist` inside the compile-heavy single-GPU buckets (`ld_red`, `ld/st`) unless a focused experiment shows it is safe elsewhere.
 - Treat xdist OOMs as potentially false negatives. Rerun exact failing nodeids on an isolated GPU before classifying them as product failures.
 - If a future runner shard times out while still printing progress, inspect the shard log and rerun the slow exact nodeids with the same cache before raising the timeout.
+- Use runner `--store-durations` after material test-status or timing changes instead of running pytest-split `--store-durations` directly across concurrent shards; the raw plugin writes one shared JSON path and can race.

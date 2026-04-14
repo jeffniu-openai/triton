@@ -5,7 +5,7 @@
 - Current `ldst` duration cache has been adjusted for the `440` lifted descriptor roundtrip cases that now pre-skip: their stored durations are `0.001s`, so least-duration splitting no longer overweights tests that do no compile/runtime work.
 - Full retained validation: runner `--categories ldst --timeout-per-group 1800` passed `1201` and skipped `441` across all `1642` selected cases. Group times were `208.7s..263.8s`.
 - Runtime-selector kernel reuse was explored and reverted. It is functionally possible only with `@gluon.jit(do_not_specialize=["variant_id"])`, but it is not currently a suite-speed win: xdist runs many different layouts concurrently, and selector-backed tests compile a much larger branchy kernel per layout. Do not reintroduce this pattern without changing grouping so all variants for the same layout are batched in one worker and proving the full `ldst` bucket improves.
-- Safe remaining speed ideas: keep stable per-GPU caches, keep duration data current after skip/status changes, investigate grouping by `(test family, layout, n)` to maximize cache locality, and profile individual descriptor families before changing test kernels.
+- Safe remaining speed ideas: keep stable per-GPU caches, keep duration data current after skip/status changes, investigate grouping by `(test family, layout, n)` to maximize cache locality, and profile individual descriptor families before changing test kernels. Use `run_tmem_runtime_matrix_sweep.py --store-durations` for duration refreshes so concurrent shards write private duration files and merge after the bucket passes.
 
 ## Goal
 - Canonicalize TMEM layouts on `tensor_memory_linear`.

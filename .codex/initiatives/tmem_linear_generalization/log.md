@@ -12804,3 +12804,17 @@ Open after this slice:
   - keep the duration-cache update;
   - do not replace the current ld/st variant-parametrized tests with runtime multi-variant selector kernels unless the runner changes to batch all variants for the same layout in one worker and a full-bucket timing proves a real win;
   - further speedups should target scheduling, cache reuse, or test grouping around existing per-variant kernels before adding larger branchy test kernels.
+
+
+## 2026-04-14 00:01 UTC: race-free duration refresh mode for runtime-matrix runner
+
+- Added `--store-durations` to `run_tmem_runtime_matrix_sweep.py`:
+  - each pytest-split group writes a private `<bucket>_gNN_durations.json` file under the run log directory;
+  - for buckets with an existing `durations_path` (currently `ldst`), the runner copies the base duration file into each private file before running so splitting still uses the current model;
+  - after a bucket passes, the runner merges the private files back into the bucket duration file, or into `<bucket>_pytest_durations.json` in the run directory for buckets without a canonical duration file.
+- Added `--clean-durations` passthrough for intentional stale-entry cleanup after all groups have run.
+- Validation:
+  - `python3 -m py_compile .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`;
+  - `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --dry-run --categories ldst --store-durations` emitted per-group private duration paths;
+  - `env -u PYTHONPATH python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories splitn --store-durations --cache-prefix /tmp/triton-cache-tmem-store-duration-smoke --timeout-per-group 300` passed all `252` splitn/misc tests across four GPUs and merged exactly `252` duration entries.
+- This does not alter default scheduling. It is a maintenance tool for keeping duration caches current without concurrent pytest workers clobbering the same JSON file.

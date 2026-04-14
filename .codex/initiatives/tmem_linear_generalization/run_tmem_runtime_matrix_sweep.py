@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -66,7 +68,14 @@ BUCKETS = {
 DEFAULT_BUCKETS = ("cp", "mma", "splitn", "ld_red", "ldst")
 
 
-def make_command(bucket: Bucket, group: int, extra_pytest_args: list[str]) -> list[str]:
+def make_command(
+    bucket: Bucket,
+    group: int,
+    extra_pytest_args: list[str],
+    durations_path: str | None = None,
+    store_durations: bool = False,
+    clean_durations: bool = False,
+) -> list[str]:
     cmd = [
         "pytest",
         "-s",
@@ -77,8 +86,13 @@ def make_command(bucket: Bucket, group: int, extra_pytest_args: list[str]) -> li
         str(group),
         "-q",
     ]
-    if bucket.durations_path:
-        cmd.extend(["--durations-path", bucket.durations_path])
+    effective_durations_path = durations_path if durations_path is not None else bucket.durations_path
+    if effective_durations_path:
+        cmd.extend(["--durations-path", effective_durations_path])
+    if store_durations:
+        cmd.append("--store-durations")
+    if clean_durations:
+        cmd.append("--clean-durations")
     if bucket.splitting_algorithm:
         cmd.extend(["--splitting-algorithm", bucket.splitting_algorithm])
     if bucket.xdist:
@@ -88,10 +102,57 @@ def make_command(bucket: Bucket, group: int, extra_pytest_args: list[str]) -> li
     return cmd
 
 
+def duration_file_for_group(bucket: Bucket, group: int, log_dir: Path) -> Path:
+    return log_dir / f"{bucket.name}_g{group:02d}_durations.json"
+
+
+def prepare_duration_file(bucket: Bucket, group: int, args: argparse.Namespace, log_dir: Path) -> str | None:
+    if not args.store_durations:
+        return bucket.durations_path
+
+    duration_path = duration_file_for_group(bucket, group, log_dir)
+    if bucket.durations_path:
+        source = REPO_ROOT / bucket.durations_path
+        if source.exists():
+            shutil.copyfile(source, duration_path)
+    return str(duration_path)
+
+
+def merge_duration_files(bucket: Bucket, args: argparse.Namespace, log_dir: Path) -> Path | None:
+    if not args.store_durations:
+        return None
+
+    if bucket.durations_path:
+        target = REPO_ROOT / bucket.durations_path
+    else:
+        target = log_dir / f"{bucket.name}_pytest_durations.json"
+
+    merged: dict[str, float] = {}
+    if target.exists() and not args.clean_durations:
+        merged.update(json.loads(target.read_text()))
+
+    for group in range(1, bucket.splits + 1):
+        duration_path = duration_file_for_group(bucket, group, log_dir)
+        if duration_path.exists():
+            merged.update(json.loads(duration_path.read_text()))
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(merged, indent=2) + "\n")
+    return target
+
+
 def run_one(
     bucket: Bucket, group: int, gpu: str, args: argparse.Namespace, log_dir: Path
 ) -> tuple[int, float, Path]:
-    cmd = make_command(bucket, group, args.pytest_arg)
+    durations_path = prepare_duration_file(bucket, group, args, log_dir)
+    cmd = make_command(
+        bucket,
+        group,
+        args.pytest_arg,
+        durations_path=durations_path,
+        store_durations=args.store_durations,
+        clean_durations=args.clean_durations,
+    )
     log_path = log_dir / f"{bucket.name}_g{group:02d}_gpu{gpu}.log"
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
@@ -122,8 +183,18 @@ def run_one(
     return rc, elapsed, log_path
 
 
-def format_command(bucket: Bucket, group: int, gpu: str, args: argparse.Namespace) -> str:
-    cmd = make_command(bucket, group, args.pytest_arg)
+def format_command(bucket: Bucket, group: int, gpu: str, args: argparse.Namespace, log_dir: Path) -> str:
+    durations_path = None
+    if args.store_durations:
+        durations_path = str(duration_file_for_group(bucket, group, log_dir))
+    cmd = make_command(
+        bucket,
+        group,
+        args.pytest_arg,
+        durations_path=durations_path,
+        store_durations=args.store_durations,
+        clean_durations=args.clean_durations,
+    )
     cache_dir = f"{args.cache_prefix}-gpu{gpu}"
     return " ".join([f"CUDA_VISIBLE_DEVICES={gpu}", f"TRITON_CACHE_DIR={cache_dir}"] + cmd)
 
@@ -155,6 +226,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true", help="print commands without running them")
     parser.add_argument(
+        "--store-durations",
+        action="store_true",
+        help=(
+            "store per-test durations without shard write races; each group writes a "
+            "private durations file, then the runner merges them after the bucket passes"
+        ),
+    )
+    parser.add_argument(
+        "--clean-durations",
+        action="store_true",
+        help="with --store-durations, drop stale duration entries not seen by any group",
+    )
+    parser.add_argument(
         "--pytest-arg", action="append", default=[], help="extra argument appended to every pytest command"
     )
     return parser.parse_args()
@@ -177,7 +261,7 @@ def main() -> int:
         if args.dry_run:
             for group in range(1, bucket.splits + 1):
                 gpu = args.gpus[(group - 1) % len(args.gpus)]
-                print(format_command(bucket, group, gpu, args))
+                print(format_command(bucket, group, gpu, args, log_dir))
             continue
         for wave_start in range(1, bucket.splits + 1, len(args.gpus)):
             groups = list(range(wave_start, min(bucket.splits, wave_start + len(args.gpus) - 1) + 1))
@@ -201,6 +285,9 @@ def main() -> int:
                 break
         if failures and args.dry_run is False:
             break
+        merged_durations = merge_duration_files(bucket, args, log_dir)
+        if merged_durations is not None:
+            print(f"{bucket.name}: merged durations into {merged_durations}")
 
     if failures:
         print("\nFailures:")
