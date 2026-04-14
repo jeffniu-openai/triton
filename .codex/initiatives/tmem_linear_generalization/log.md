@@ -13046,3 +13046,19 @@ Open after this slice:
   - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `404` cases across four groups (`101` each).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=404`, splitn/misc `=252`, `ld_red=771`, `ldst=1732`; current bucketed evidence aggregates to `3035 passed, 446 skipped`.
 - Next: commit/push this MMA coverage checkpoint, then continue another bounded long-term ISA coverage slice.
+
+## 2026-04-14 ld.red tile-permuted width coverage
+
+- Expanded `LD_RED_TILE_PERMUTED_CASES` from five representative tile-permuted layouts to ten legal helper tile widths: `N=32/tile_n=8`, `N=64/tile_n in {8,16}`, `N=128/tile_n in {8,16,32}`, and `N=256/tile_n in {8,16,32,64}`.
+- The expansion adds `40` positive runtime cases across min/max and the four legal abs/NaN modifier combinations; all retain exact `32x32b` `ld.red` opcode checks, exact offsets, and wait-order assertions.
+- Probe note: `legacy_equivalent_256` with `N=256` was checked as an apparent positive gap but is not executable with the current helper on this GB200 (`262148` bytes shared memory required, `232448` limit).
+- Validation:
+  - scratch baseline probe passed all `10` `(N,tile_n)` pairs;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `80/3521`;
+  - no-PYTHONPATH `ld_red` collect selected `811/3521`;
+  - focused tile-permuted selector passed `80` cases across four GPUs (`20` per group; slowest about `2:25`);
+  - `run_tmem_runtime_matrix_sweep.py --categories ld_red --timeout-per-group 900` passed `811` cases across split-16/xdist groups.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=404`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3075 passed, 446 skipped`.
+- Next: commit/push this bounded `ld.red` checkpoint, then continue another long-term ISA coverage slice outside the parked copy `warpx2` direct-offset frontier.

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:04 UTC: ld.red tile-permuted width coverage
+
+- `LD_RED_TILE_PERMUTED_CASES` now spans all currently proven legal helper tile widths for tile-permuted `128xN` f32 reductions: `N=32/tile_n=8`, `N=64/tile_n in {8,16}`, `N=128/tile_n in {8,16,32}`, and `N=256/tile_n in {8,16,32,64}`.
+- This adds five tile-permuted layouts and `40` positive runtime cases across min/max plus the four legal abs/NaN modifier combinations, while preserving exact `tcgen05.ld.red.sync.aligned.32x32b` opcode, offset, and wait-order checks.
+- Probe boundary: the apparent `legacy_equivalent_256` `N=256` positive is not executable on this GB200 because the helper requires `262148` bytes shared memory versus the `232448` byte limit; keep it out of positive coverage unless the helper shape changes.
+- Current runtime-matrix collection is `3521` tests: `cp=322`, `mma=404`, splitn/misc `=252`, `ld_red=811`, and `ldst=1732`; current bucketed evidence aggregates to `3075 passed, 446 skipped`.
+- Validation: scratch tile-permutation probe passed all `10` legal `(N,tile_n)` pairs for baseline `min`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `80/3521`; no-PYTHONPATH `ld_red` collect selected `811/3521`; focused tile-permuted selector passed `80` across four GPUs (`20` each); full `ld_red` runner passed all `811` cases across split-16/xdist groups.
+- Remaining long-term work: continue staged ISA saturation in another bounded family; copy `warpx2` remains parked until a real descriptor/address/view/staging model exists.
+
 ## 2026-04-14 02:51 UTC: plain-MMAv5 K-depth coverage
 
 - Plain one-CTA and two-CTA root/use-acc MMA matrices now cover `K in {32, 64}` for all supported plain operand kinds (`f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`), both legacy/canonical accumulator layouts, and `N in {128, 256}`.

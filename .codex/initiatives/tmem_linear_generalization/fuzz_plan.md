@@ -262,8 +262,10 @@ Every fuzz case records:
   - row-256 reduction-friendly physical forms where the source layout still
     has a 128-row reduction block and carries the high row bit through the
     column/query frame
-  - tile-permuted `128x{64,128,256}` layouts where the tile permutation is
-    well-defined, including the minimal `N=64, tile_n=16` case
+  - tile-permuted `128xN` layouts across all currently proven helper widths:
+    `N=32/tile_n=8`, `N=64/tile_n in {8,16}`,
+    `N=128/tile_n in {8,16,32}`, and
+    `N=256/tile_n in {8,16,32,64}`
   - pure column-permuted, pure row-permuted, and non-identity row/column
     cross-product `128x{64,128,256}` layouts, which are now proven to emit
     `32x32b` reduction-family opcodes across legal modifiers
