@@ -12942,3 +12942,18 @@ Open after this slice:
   - full `cp` runner: `317 passed, 5 skipped`;
   - `git diff --check` passed.
 - Conclusion: no production support path is justified for no-scales two-CTA `warpx2::02_13` from direct source-offset or destination-delta patching. True scales `warpx2` remains an unsupported descriptor/view/staging frontier. The copy `warpx2` workstream is now at a reasonable stopping point until a real descriptor/address schedule is derived; move to the next long-term TMEM ISA coverage bucket.
+
+## 2026-04-14 02:24 UTC: scaled-MMAv5 accumulator tile-permuted K=256 coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix` from the single `K=128` depth to `K in {128, 256}` across all current scaled format pairs.
+- The test keeps the existing `M=128, N=256, tile_n=64` accumulator tile-permuted layout, numeric dequantized reference check, exact PTX/LLIR opcode matching, `tensor_memory_linear` assertion, and `ttng.tc_gen5_mma_scaled` assertion.
+- Expected scaled-MMAv5 opcode count now uses `4 * (K // 128) * base_count`, so `K=256` doubles the pinned instruction count for the accumulator-tile-permuted path just like the root and LHS-subview K-depth matrices.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector: `10/3303` selected;
+  - focused selector across four GPUs: `10 passed` (`3`, `3`, `3`, `1` by split group);
+  - tight `mma` runner: `316 passed` across four groups (`79` each).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=316`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2857 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 saturation checkpoint, then continue mining broader MMAv5/scaled-MMAv5 gaps or move into the `ld/st` fuzz/layout breadth workstream.

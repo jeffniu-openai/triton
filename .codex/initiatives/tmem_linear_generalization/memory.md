@@ -1,6 +1,14 @@
 # TMEM Linear Generalization
 
-## 2026-04-14 current: copy warpx2 frontier closure and negative coverage
+## 2026-04-14 02:24 UTC: scaled-MMAv5 accumulator tile-permuted K=256 coverage
+
+- `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix` now spans every current scaled format pair at `K in {128, 256}` for the existing `M=128, N=256, tile_n=64` accumulator tile-permuted layout.
+- The expected opcode assertion now scales by `(K // 128)`, so `K=256` pins the doubled K-depth scaled-MMAv5 instruction count instead of only checking numeric correctness.
+- Current runtime-matrix collection is `3303` tests: `cp=322`, `mma=316`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; current bucketed evidence aggregates to `2857 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `10/3303`; focused selector passed `10` cases across four GPUs; tight `mma` runner passed `316` cases across four groups (`79`, `79`, `79`, `79`).
+- Remaining long-term work: keep mining bounded MMAv5/scaled-MMAv5 parity gaps, then continue `ld/st` fuzz/layout breadth and descriptor/address/staging research for the copy `warpx2` frontiers.
+
+## 2026-04-14 02:03 UTC: copy warpx2 frontier closure and negative coverage
 
 - No production two-CTA `warpx2::02_13` lowering was added. A widened direct-PTX scan over `sourceOffsetB128=0..72` with destination deltas `0..15`, plus `sourceOffsetB128=73..127` at the newly confirmed aligned deltas `8` and `12`, produced `1278` records with zero matches to the extended two-CTA `02_13` oracle. All `292` executing variants duplicated source-column pairs; the other `986` failed (`876` misaligned-address failures for non-dword-aligned deltas and `110` high-source launch failures). Compact evidence is in `experiments/results/probe_cp_warpx2_02_13_twocta_dst_deltas_current_summary.json`.
 - A scratch alternate shared block-basis probe was also negative: `block_bases=[[64, 0]]` collides with the canonical `[64, 0]` offset basis, while the nearby bijective offset variant still fails descriptor-plan synthesis.

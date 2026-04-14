@@ -3061,6 +3061,12 @@ SCALED_MMA_ACC_SUBSLICE_N_CASES = [
     for slice_start in (0, n)
 ]
 
+SCALED_MMA_ACC_TILE_PERMUTED_K_CASES = [
+    (a_format, b_format, k)
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+    for k in (128, 256)
+]
+
 CP_SCALES_WARPX4_SCALED_MMA_CASES = [
     (a_format, b_format, block_n, block_k, num_ctas, multicast, acc_layout_kind)
     for (a_format, b_format), block_n, block_k, num_ctas, multicast, acc_layout_kind in product(
@@ -7361,9 +7367,9 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_mixed_fp4a_reports_cle
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
-def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_format, b_format):
-    m, n, k = 128, 256, 128
+@pytest.mark.parametrize("a_format,b_format,k", SCALED_MMA_ACC_TILE_PERMUTED_K_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_format, b_format, k):
+    m, n = 128, 256
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
@@ -7394,7 +7400,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_for
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
 
-    expected_count = 4 * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
