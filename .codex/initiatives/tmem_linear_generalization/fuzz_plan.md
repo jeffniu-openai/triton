@@ -1006,3 +1006,11 @@ Every fuzz case records:
 - Keep generating positive no-scales `warpx2` rows only with 32-bit source elements unless the production verifier/ISA contract changes. Subword rows are clean negatives for source width.
 - Two-CTA i8 should be tracked separately from this source-width boundary: current probes fail earlier at TMEM descriptor/register-layout selection (`TMEM layout 'auto' unsupported`) for int8 two-CTA descriptor views.
 - Current full-file collection is `8019` tests and the CP bucket is `604` cases. Aggregate bucket evidence is `7568 passed, 451 skipped`.
+
+## 2026-04-14 14:01 UTC: Copy warpx2 Subslice-View Positive Note
+
+- Single-CTA no-scales `tcgen05.copy.warpx2::01_23` and `warpx2::02_13` are now valid through a wider TMEM-linear parent descriptor sliced along columns, as long as the active `128x4` view preserves the same physical row mapping and source element type is 32-bit.
+- Fuzz generation may now include `128x8 -> 128x4` column-slice parents for those two single-CTA families at column starts `0` and `4`, with `f32`/`i32` payloads and exact `ttg.memdesc_subslice` view chains.
+- Preserve row/column zero bases in generated expected layouts. A zero basis is semantic broadcast/repetition state, not removable padding.
+- Do not use this as evidence for true tensor-memory-scales `warpx2` or no-scales two-CTA `warpx2::02_13`; both remain parked descriptor/address/staging frontiers.
+- Current full-file collection is `8027` tests and the CP bucket is `612` cases. Aggregate bucket evidence is `7576 passed, 451 skipped`.

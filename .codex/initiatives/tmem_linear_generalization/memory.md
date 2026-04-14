@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 14:01 UTC: copy warpx2 subslice-view support and zero-basis preservation
+
+- Fixed standalone TMEM view reconstruction for pure 2D column `memdesc_subslice` views over non-surjective TMEM-linear layouts. `inferTMemSubsliceEncoding` now mirrors the ld/st query path: preserve the source row mapping, narrow only the logical/materialized column span, and keep zero row bases as semantic broadcast/repetition axes.
+- Fixed TMEM subview pointer lowering for the same pure column-slice shape by computing the base offset from the source/destination ld/st query-origin delta. This avoids pseudoinverting non-surjective warpx2 layouts when lowering the `memdesc_subslice` pointer.
+- Fixed `tryMakeTMemViewEncoding` so it no longer trims row/column trailing zero bases while rebuilding descriptor views. Only inactive block bases are trimmed. The removed row/col trimming was the root cause for single-CTA `warpx2::02_13` subslice views losing the zero row basis that classifies the copy family.
+- Added runtime-matrix coverage for no-scales single-CTA `tcgen05.copy.warpx2::{01_23,02_13}` through a wider `128x8` TMEM-linear parent sliced to the active `128x4` view at `slice_start in {0,4}`, for both `f32` and `i32`. The new test asserts exact `tcgen05.cp.cta_group::1.warpx2::*` opcodes, commit opcodes, `tensor_memory_linear`, surviving `ttg.memdesc_subslice`, absence of legacy `ttng.tmem_subslice`, and runtime output against the existing warpx2 oracles.
+- Current runtime-matrix collection is `8027` tests: `cp=612`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7576 passed, 451 skipped`.
+- Validation completed: `make -j8`; scratch `/tmp/probe_warpx2_subslice.py` passed `01_23`/`02_13` at slice starts `0` and `4`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH exact collect selected `8/8027`; no-PYTHONPATH warpx2 collect selected `38/8027`; no-PYTHONPATH CP collect selected `612/8027`; exact selector passed all `8` cases across split-4 (`2` per group); full warpx2 selector passed all `38` cases across split-4 (`10`, `10`, `10`, and `8` selected); full CP selector passed/skipped `602 passed, 10 skipped` across split-4 (`143 passed/10 skipped`, `153 passed`, `153 passed`, `153 passed`); frontend zero-basis parse selector passed `2`; lit `test/TritonNvidiaGPU/invalid.mlir` and `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed; `git diff --check` passed.
+- Remaining hard copy frontiers are unchanged: true tensor-memory-scales `warpx2` and no-scales two-CTA `warpx2::02_13`. The single-CTA descriptor-view gap is now covered as a supported positive path.
+
 ## 2026-04-14 13:44 UTC: copy warpx2 integer subword clean-negative coverage
 
 - Shared the no-scales copy subword dtype table between linear `tcgen05.cp` and `warpx2` clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.

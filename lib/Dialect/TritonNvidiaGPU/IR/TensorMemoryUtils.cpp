@@ -2771,6 +2771,33 @@ uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets) 
   return getTMemViewOffset(memTy, offsets);
 }
 
+static std::optional<uint32_t> getTMemLdStQueryOriginDeltaBaseOffset(
+    const TMemLdStQueryLayout &srcQuery, const TMemLdStQueryLayout &dstQuery,
+    int bitwidth) {
+  auto *ctx = dstQuery.layout.getInDimNames().begin()->getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto srcInDims = llvm::to_vector(srcQuery.layout.getInDimNames());
+  auto dstInDims = llvm::to_vector(dstQuery.layout.getInDimNames());
+
+  auto lookupOrigin = [](ArrayRef<StringAttr> dims, ArrayRef<int32_t> origin,
+                         StringAttr dim) -> int32_t {
+    auto it = llvm::find(dims, dim);
+    if (it == dims.end())
+      return 0;
+    return origin[std::distance(dims.begin(), it)];
+  };
+
+  int32_t srcRow = lookupOrigin(srcInDims, srcQuery.origin, kRow);
+  int32_t srcCol = lookupOrigin(srcInDims, srcQuery.origin, kCol);
+  int32_t dstRow = lookupOrigin(dstInDims, dstQuery.origin, kRow);
+  int32_t dstCol = lookupOrigin(dstInDims, dstQuery.origin, kCol);
+  if (dstRow < srcRow || dstCol < srcCol)
+    return std::nullopt;
+  return (static_cast<uint32_t>(dstCol - srcCol) * bitwidth / 32) |
+         (static_cast<uint32_t>(dstRow - srcRow) << 16);
+}
+
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
   auto srcTy = cast<MemDescType>(op.getSrc().getType());
   if (auto specialOffset = getCanonicalContiguous32x32SubviewOffset(op))
@@ -2791,6 +2818,31 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
     SmallVector<int32_t> rootOffsets(rootTy.getRank(), 0);
     rootOffsets[0] = dstTy.getShape()[1];
     return getTMemViewOffsetForLowering(reshape.getSrc(), rootOffsets);
+  }
+  auto dstTy = cast<MemDescType>(op.getType());
+  auto tmemSpace = TensorMemorySpaceAttr::get(op.getContext());
+  bool isPureTMem2DColumnSubview =
+      srcTy.getMemorySpace() == tmemSpace &&
+      dstTy.getMemorySpace() == tmemSpace &&
+      isTensorMemoryEncoding(srcTy.getEncoding()) &&
+      !isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()) &&
+      srcTy.getRank() == 2 && dstTy.getRank() == 2 &&
+      op.getOffsets().size() == 2 && op.getOffsets()[0] == 0 &&
+      srcTy.getShape()[0] == dstTy.getShape()[0] &&
+      srcTy.getShape()[1] >= dstTy.getShape()[1] &&
+      op.getOffsets()[1] >= 0 &&
+      op.getOffsets()[1] + dstTy.getShape()[1] <= srcTy.getShape()[1];
+  if (isPureTMem2DColumnSubview) {
+    std::string error;
+    auto srcQuery = inferStandaloneTMemLdStQueryLayout(
+        op.getSrc(), /*preserveNonCanonicalView=*/true, &error);
+    auto dstQuery = inferStandaloneTMemLdStQueryLayout(
+        op.getResult(), /*preserveNonCanonicalView=*/true, &error);
+    if (succeeded(srcQuery) && succeeded(dstQuery)) {
+      if (auto offset = getTMemLdStQueryOriginDeltaBaseOffset(
+              *srcQuery, *dstQuery, srcTy.getElementTypeBitWidth()))
+        return *offset;
+    }
   }
   SmallVector<int32_t> offsets(op.getOffsets().begin(), op.getOffsets().end());
   return getTMemViewOffsetForLowering(op.getSrc(), offsets);
@@ -4085,8 +4137,9 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
     }
     ll = LinearLayout(std::move(bases), ll.getOutDims(), ll.isSurjective());
   };
-  trimTrailingZeroBases(kRow);
-  trimTrailingZeroBases(kCol);
+  // Row and column zero bases are semantic: they describe physical TMEM
+  // broadcast/repetition axes used by families such as tcgen05.copy.warpx2.
+  // Only trim inactive block bases when retrying non-two-CTA encodings.
   trimTrailingZeroBases(kBlock);
   SmallVector<std::pair<StringAttr, int32_t>> canonicalOutDims;
   canonicalOutDims.reserve(ll.getNumOutDims());
@@ -4314,6 +4367,35 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
                    [](int32_t offset) { return offset == 0; })) {
     auto result =
         tryMakeTMemViewEncoding(ctx, ll, maybeSrcLayout->twoCTAs, error);
+    if (!result)
+      return failure();
+    return *result;
+  }
+
+  // Pure 2D column subviews preserve the same row mapping and only narrow the
+  // materialized logical column span. This also keeps non-injective row support
+  // bases, such as the zero-row basis used by the public warpx2 copy layouts,
+  // instead of sending them through the generic inverse path.
+  if (extraRank == 0 && layoutRank == 2 && dstShape[0] == srcShape[0] &&
+      offsets[0] == 0 && dstShape[1] <= srcShape[1] && offsets[1] >= 0 &&
+      offsets[1] + dstShape[1] <= srcShape[1]) {
+    auto kCol = StringAttr::get(ctx, "col");
+    auto logicalDims = llvm::to_vector(ll.getOutDimNames());
+    if (logicalDims.size() != 2 || !ll.hasInDim(kCol) ||
+        ll.getInDimSize(kCol) < dstShape[1] ||
+        ll.getOutDimSize(logicalDims[1]) < dstShape[1]) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_subslice view";
+      return failure();
+    }
+    auto narrowedLayout = ll;
+    if (narrowedLayout.getOutDimSize(logicalDims[1]) != dstShape[1])
+      narrowedLayout =
+          narrowedLayout.resizeOutDim(logicalDims[1], dstShape[1]);
+    if (narrowedLayout.getInDimSize(kCol) != dstShape[1])
+      narrowedLayout = narrowedLayout.resizeInDim(kCol, dstShape[1]);
+    auto result = tryMakeTMemViewEncoding(ctx, narrowedLayout,
+                                          maybeSrcLayout->twoCTAs, error);
     if (!result)
       return failure();
     return *result;
