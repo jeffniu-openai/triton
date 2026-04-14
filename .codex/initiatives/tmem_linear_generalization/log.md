@@ -13391,3 +13391,19 @@ Open after this slice:
 - Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=1982`; current bucketed evidence aggregates to `3651 passed, 446 skipped`.
 - Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed descriptor-heavy cases were run directly. Use the duration-aware `ldst` runner before claiming a fresh whole-bucket timing.
 - Next: commit/push this bounded `ld/st` checkpoint, then continue another staged ISA coverage slice. Good nearby options are another descriptor-view dtype/layout parity gap or a reduction layout slice; copy `warpx2` hard frontiers remain parked without a new descriptor/address/staging hypothesis.
+## 2026-04-14 05:32 UTC: ld/st broad diagonal permutation i32 parity
+
+- Expanded `LDST_PERMUTED_CASES` from f32-only to f32+i32 for the broad diagonal permutation `ld/st` matrix.
+- This covers direct and descriptor-chain `128x{64,128,256}` roundtrips for identity plus `rotate1`, `even_odd`, and `reverse` diagonal row/column permutations over every public `ld/st` variant.
+- The direct and descriptor-composition tests now seed int32 tensors and cast to the requested dtype. The descriptor expectation uses `inp + 3` instead of `inp + 3.0` so integer outputs remain dtype-preserving.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `240/4217`;
+  - no-PYTHONPATH `ldst` collect selected `2102/4217`;
+  - initial split-4 focused run passed groups 1 and 2 (`60` cases each, `264.71s` and `258.27s`) but groups 3 and 4 timed out in the descriptor-heavy tail after making progress;
+  - split-8 focused rerun passed all `240` cases (`30` per group; `4.33s`, `159.08s`, `106.34s`, `159.25s`, `535.99s`, `754.10s`, `376.30s`, and `407.55s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=2102`; current bucketed evidence aggregates to `3771 passed, 446 skipped`.
+- Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed cases were run directly. Do not validate this selector cold with only split-4; use split-8 or the duration-aware ldst runner.
+- Next: commit/push this bounded `ld/st` checkpoint, then continue another staged ISA coverage slice. Good nearby options are row/column broad i32 parity with duration-aware grouping, a smaller exotic-layout parity slice, or an `ld.red` layout slice.

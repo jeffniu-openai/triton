@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 05:32 UTC: ld/st broad diagonal permutation i32 parity
+
+- `LDST_PERMUTED_CASES` now parameterizes over `LDST_32BIT_DTYPES`, adding i32 parity beside the existing f32 broad diagonal permutation roundtrips.
+- Coverage spans direct and descriptor-chain `128x{64,128,256}` layouts for identity plus `rotate1`, `even_odd`, and `reverse` diagonal row/column permutations over every public `ld/st` variant.
+- The affected direct/descriptor tests now seed int32 data, cast to f32/i32, and use dtype-preserving descriptor-chain `inp + 3` expectations while retaining exact opcode-shape assertions.
+- Current runtime-matrix collection is `4217` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=2102`; current bucketed evidence aggregates to `3771 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `240/4217`; no-PYTHONPATH `ldst` collect selected `2102/4217`; initial split-4 focused run passed groups 1 and 2 but groups 3 and 4 timed out in descriptor-heavy shards; split-8 focused rerun passed all `240` cases (`30` per group; group times `4.33s`, `159.08s`, `106.34s`, `159.25s`, `535.99s`, `754.10s`, `376.30s`, and `407.55s`). Full `ldst` bucket was not rerun because no shared lowering changed.
+
 ## 2026-04-14 05:00 UTC: ld/st N=32 non-identity i32 parity
 
 - `LDST_PERMUTED_N32_CASES`, `LDST_ROWCOL_N32_CASES`, and `LDST_EXOTIC_N32_CASES` now parameterize over `LDST_32BIT_DTYPES`, adding i32 parity beside the existing f32 N32 non-identity roundtrips.

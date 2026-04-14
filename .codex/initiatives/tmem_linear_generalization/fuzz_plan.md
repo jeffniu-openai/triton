@@ -183,6 +183,10 @@ Every fuzz case records:
   - current root `128x32` coverage includes `rotate1`, `even_odd`, and
     `reverse` permutations for direct and descriptor-chain f32 and i32
     roundtrips over every public `ld/st` variant.
+  - current broad `128x{64,128,256}` diagonal coverage includes identity plus
+    `rotate1`, `even_odd`, and `reverse` layouts for direct and
+    descriptor-chain f32 and i32 roundtrips over every public `ld/st`
+    variant.
 - representative non-diagonal row/column permutations:
   - current root `128x32` coverage includes pure row (`rotate1,identity`),
     pure column (`identity,reverse`), and mixed row+column (`even_odd,reverse`)

@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4097-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4217-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld/st` broad diagonal permutation i32 parity checkpoint, 2026-04-14 05:32 UTC: `LDST_PERMUTED_CASES` now covers both f32 and i32 for the broad `128x{64,128,256}` diagonal row/column permutation matrix, including direct access and descriptor-chain compositions over every public `ld/st` variant. This adds dtype parity to identity plus `rotate1`, `even_odd`, and `reverse` diagonal layouts while preserving the exact expected opcode-shape checks. Current runtime-matrix collection is `4217` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=2102`; bucketed evidence now aggregates to `3771 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `240/4217`; no-PYTHONPATH `ldst` collect selected `2102/4217`; the first split-4 focused run passed groups 1 and 2 (`60` each) but groups 3 and 4 timed out in the descriptor-heavy tail while making progress; the coverage-preserving split-8 rerun passed all `240` cases (`30` per group, slowest `12:34`). A full `ldst` bucket rerun remains deferred because no shared lowering changed.
 
 - Current `ld/st` N=32 non-identity i32 parity checkpoint, 2026-04-14 05:00 UTC: `LDST_PERMUTED_N32_CASES`, `LDST_ROWCOL_N32_CASES`, and `LDST_EXOTIC_N32_CASES` now cover both f32 and i32 for direct and descriptor-chain `128x32` roundtrips over every public `ld/st` variant. This extends the earlier f32-only N32 diagonal, row/column, and scrambled layout slices to match the existing identity and two-CTA f32+i32 N32 coverage while keeping the exact minimal `x32/x16/x8/x4` opcode checks. Current runtime-matrix collection is `4097` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=1982`; bucketed evidence now aggregates to `3651 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `160/4097`; no-PYTHONPATH `ldst` collect selected `1982/4097`; focused N32 non-identity selector passed all `160` cases across four GPUs (`40` each; group times about `7:19`, `8:26`, `9:47`, and `8:53`). A full `ldst` bucket rerun was intentionally deferred because this is a test-only parity expansion and the changed cases were covered directly.
 
