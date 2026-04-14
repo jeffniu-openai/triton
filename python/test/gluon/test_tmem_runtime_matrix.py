@@ -5794,6 +5794,8 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_
     text = str(excinfo.value) + captured.err + captured.out
     assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
     assert "could not synthesize a compatible shared-memory descriptor plan" in text
+    assert "preserves the high source-column bit" in text
+    assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

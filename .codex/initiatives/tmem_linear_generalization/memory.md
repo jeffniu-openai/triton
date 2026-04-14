@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:47 UTC: copy warpx2 diagnostic closure
+
+- The no-scales two-CTA `warpx2::02_13` clean-negative diagnostic now says exactly what remains missing: a `cta_group::2` descriptor/address schedule that preserves the high source-column bit.
+- Scratch direct-PTX decomposition check: replacing the two-CTA copy with `cta_group::1` is not viable because the function still uses `cta_group::2` TMEM alloc/dealloc; ptxas rejects mixed granularity with `uses single CTA(.cta_group::1) and CTA pair granularity(.cta_group::2) and that is not allowed`.
+- Existing evidence remains unchanged: direct two-CTA `02_13` source-offset/destination-delta scans produce duplicate source-column pairs or launch failures, and tensor-memory-scales `warpx2` source-offset scans produce no full-tile match. Keep both frontiers clean unsupported until a real descriptor/address/staging schedule is derived.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; focused two-CTA `02_13` clean-negative selector passed the two non-empty split groups; nearby no-PYTHONPATH `-k warpx2` selector passed `17` cases across four GPUs (`5`, `5`, `5`, `2`).
+
 ## 2026-04-14 03:45 UTC: ld/st identity N=32 32-bit dtype coverage
 
 - `test_tmem_runtime_matrix_ldst_identity_n32_linear_layout` now covers f32 and i32 payloads for canonical identity `128x32` direct and descriptor-chain `ld/st` over all public variants.

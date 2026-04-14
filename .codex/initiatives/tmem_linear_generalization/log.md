@@ -13170,3 +13170,15 @@ Open after this slice:
   - focused identity N=32 selector passed `20` cases across four GPUs (`5` each);
   - representative existing f32 direct/descriptor smoke passed four exact nodeids across four split groups.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1762`; current bucketed evidence aggregates to `3203 passed, 446 skipped`.
+
+## 2026-04-14 03:47 UTC copy warpx2 diagnostic closure
+
+- Added a targeted verifier note for no-scales two-CTA `tcgen05.copy.warpx2::02_13.64x128b` when the descriptor plan cannot be synthesized. The diagnostic now records that a future fix must synthesize a `cta_group::2` descriptor/address schedule that preserves the high source-column bit.
+- Updated `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported` to assert the new actionable note.
+- Scratch PTX check of the tempting `cta_group::1` decomposition path: starting from the two-CTA `01_23` PTX and replacing the copy with `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b` fails ptxas because the function still has `tcgen05.alloc/dealloc.cta_group::2`; ptxas reports `uses single CTA(.cta_group::1) and CTA pair granularity(.cta_group::2) and that is not allowed`. This rules out a mixed-granularity software split for the current two-CTA TMEM view.
+- Validation:
+  - `make -j8` rebuilt `Ops.cpp` and relinked;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - no-PYTHONPATH focused clean-negative selector passed the two selected dtype cases on the two non-empty pytest-split groups;
+  - nearby no-PYTHONPATH `-k warpx2` selector passed all `17` cases across four GPUs (`5`, `5`, `5`, `2`).
+- Conclusion: current copy `warpx2` production positives and clean negatives are stable. Remaining true support work is not another direct-offset or `cta_group::1` rewrite; it needs a real descriptor/address/staging model for no-scales two-CTA `02_13` and tensor-memory-scales `warpx2`.
