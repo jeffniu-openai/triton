@@ -3106,7 +3106,7 @@ SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
 SCALED_MMA_LHS_SUBSLICE_NK_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
-    for n, k in product((128, 256), (128, 256))
+    for n, k in product((64, 128, 256), (128, 256))
 ]
 
 SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = [

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:43 UTC: scaled-MMAv5 TMEM-LHS subview N=64 parity
+
+- `SCALED_MMA_LHS_SUBSLICE_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- The positive TMEM-LHS subview matrix covers the packed-storage reachable format pairs (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`), `K in {128,256}`, and both legacy/canonical accumulator layouts at all three N widths.
+- This is the descriptor-view companion to the direct scaled-root N64 parity checkpoint; exact scaled-MMAv5 opcode counts remain `(K // 128) * base_count`.
+- Current runtime-matrix collection is `4001` tests: `cp=322`, `mma=714`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3555 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `48/4001`; no-PYTHONPATH tight `mma` collect selected `714/4001`; focused scaled-LHS subview selector passed `48` cases across four GPUs (`12` each); tight MMA runner passed `714` across groups `179`, `179`, `179`, and `177`.
+
 ## 2026-04-14 04:40 UTC: direct-i8 MMAv5 clean-negative blockN parity
 
 - `test_tmem_runtime_matrix_mma_i8_reports_clean_error` now parameterizes one-CTA direct-i8 over `N in {64, 128, 256}` for both legacy and canonical accumulator layouts.

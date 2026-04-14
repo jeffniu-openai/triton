@@ -13340,3 +13340,19 @@ Open after this slice:
   - tight MMA runner passed all `698` cases across groups `175`, `175`, `175`, and `173` with runner wall times about `7.1s`, `8.9s`, `11.3s`, and `11.9s`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=698`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3539 passed, 446 skipped`.
 - Next: commit/push this bounded clean-negative checkpoint, then continue staged ISA saturation in another exact family.
+
+## 2026-04-14 04:43 UTC: scaled-MMAv5 TMEM-LHS subview N=64 parity
+
+- Expanded `SCALED_MMA_LHS_SUBSLICE_NK_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- The descriptor-view TMEM-LHS subview matrix now covers the packed-storage reachable scaled format pairs, `K in {128,256}`, both legacy/canonical accumulator layouts, and all three N widths.
+- This closes a bounded scaled-MMAv5 LHS-subview parity gap and keeps exact scaled-MMA opcode counts pinned as `(K // 128) * base_count`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `48/4001`;
+  - no-PYTHONPATH tight `mma` collect selected `714/4001`;
+  - focused scaled-LHS subview selector passed all `48` cases across four GPUs (`12` per group; group times about `27.61s`, `26.59s`, `24.14s`, and `24.19s`);
+  - tight MMA runner passed all `714` cases across groups `179`, `179`, `179`, and `177` with runner wall times about `6.9s`, `11.7s`, `8.5s`, and `35.4s`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=714`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3555 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation in another exact family.

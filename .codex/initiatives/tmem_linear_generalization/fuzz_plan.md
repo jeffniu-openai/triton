@@ -553,7 +553,7 @@ Every fuzz case records:
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts. Subview operand-A
-  descriptors now span `blockN in {128, 256}` and `blockK in {128, 256}` with
+  descriptors now span `blockN in {64, 128, 256}` and `blockK in {128, 256}` with
   exact scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`.
   Full-shape tile-permuted operand-A descriptors cover all reachable packed
   storage pairs at logical `K=256`, and the mxfp8-storage LHS pairs

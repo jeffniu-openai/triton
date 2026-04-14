@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 3985-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4001-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 TMEM-LHS subview `N=64` parity checkpoint, 2026-04-14 04:43 UTC: `SCALED_MMA_LHS_SUBSLICE_NK_CASES` now spans `N in {64, 128, 256}` for the packed-storage reachable TMEM-LHS subview format pairs (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`), `K in {128, 256}`, and both legacy plus canonical TMEM-linear accumulator layouts. This closes the LHS-subview N64 parity gap after direct scaled-root N64 was added. Current runtime-matrix collection is `4001` tests: `cp=322`, `mma=714`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3555 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `48/4001`; no-PYTHONPATH tight `mma` collect selected `714/4001`; focused scaled-LHS subview selector passed all `48` cases across four GPUs (`12` each); tight MMA runner passed all `714` cases across four groups (`179`, `179`, `179`, `177`).
 
 - Current direct-i8 MMAv5 clean-negative blockN parity checkpoint, 2026-04-14 04:40 UTC: the one-CTA and two-CTA direct-i8 clean-negative tests now span `blockN in {64, 128, 256}` for both legacy and canonical TMEM-linear accumulator layouts. The tests continue to assert the dedicated `direct tcgen05_mma kind::i8 is not supported on sm_... current Blackwell lowering` diagnostic and absence of PassManager/assertion noise. Current runtime-matrix collection is `3985` tests: `cp=322`, `mma=698`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3539 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH i8 collect selected `12/3985`; no-PYTHONPATH tight `mma` collect selected `698/3985`; focused i8 selector passed all `12` cases across four GPUs (`3` each); tight MMA runner passed all `698` cases across four groups (`175`, `175`, `175`, `173`).
 
