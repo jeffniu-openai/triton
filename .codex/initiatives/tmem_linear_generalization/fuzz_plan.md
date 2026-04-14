@@ -712,23 +712,19 @@ Every fuzz case records:
 - accumulator subview starts that preserve the same supported physical family,
   currently including one-CTA root-aligned and offset direct subviews at
   `blockN in {64,128}`, `blockK in {128,256}`, and every current scaled format
-  pair, plus two-CTA cga-aware `block_n=128`, `parent_n=256`,
-  `slice_start in {0,128}`, `blockK in {128,256}`, and multicast false/true
-  direct subviews across the proven format pairs. Exact scaled-MMAv5 opcode
-  counts scale by `blockK // 128`, and the two-CTA companion scaled-copy count
-  is pinned as `(1 + blockN // 128) * (blockK // 128) * (32 // vec_size)`. The
-  obvious two-CTA `block_n=256`,
-  `parent_n=512` offset-subview
-  extension exceeds TMEM capacity (`Required: 524`, limit `512`); the one-CTA
-  `blockN=256`, `parentN=512` positive probe also exceeds TMEM capacity
-  (`Required: 524/536/560`, limit `512`). A `parent_n=384` alternative is not
-  expressible by the current power-of-two MMAv5 two-CTA layout helper. A
-  2026-04-14 scratch probe of two-CTA `block_n=64`, `parent_n=128` failed
-  during B-scale shared descriptor construction with a zero descriptor dimension
-  (`shape must have power-of-2 and non-zero dimensions; got 1, 0, ...`). Keep
-  this as a scale-descriptor helper frontier, not a positive row or
-  ISA-impossible clean negative, until the B-scale descriptor shape can be
-  represented cleanly or rejected by a stable high-level diagnostic.
+  pair, plus two-CTA cga-aware `block_n in {64,128}` with
+  `parent_n=2*block_n`, both slice starts, `blockK in {128,256}`, and
+  multicast false/true direct subviews across the proven format pairs. Exact
+  scaled-MMAv5 opcode counts scale by `blockK // 128`, and the two-CTA
+  companion scaled-copy count is pinned as
+  `(1 + max(blockN, 128) // 128) * (blockK // 128) * (32 // vec_size)` because
+  the packed scale descriptor has a 128-row minimum even when the active
+  `block_n` is 64. The obvious two-CTA `block_n=256`, `parent_n=512`
+  offset-subview extension exceeds TMEM capacity (`Required: 524`, limit
+  `512`); the one-CTA `blockN=256`, `parentN=512` positive probe also exceeds
+  TMEM capacity (`Required: 524/536/560`, limit `512`). A `parent_n=384`
+  alternative is not expressible by the current power-of-two MMAv5 two-CTA
+  layout helper.
 - accumulator `memdesc_index` views from `[2, M, N]` parents now cover every
   current scaled format pair, `K in {128,256}`, legacy parents at
   `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider live
@@ -961,8 +957,9 @@ Every fuzz case records:
   both slice starts, both supported K widths, and multicast on/off.
 - Current full-file collection is `6892` tests; the tight MMA bucket is `1743`
   cases. Aggregate bucket evidence is `6446 passed, 446 skipped`.
-- The two-CTA `block_n=64` scale-descriptor/shared-layout case remains parked;
-  this checkpoint only extends the already-supported `block_n=128` path.
+- The later 17:14 UTC checkpoint unparked the two-CTA `block_n=64`,
+  `parent_n=128` case by using a padded 128-row scale descriptor while keeping
+  the active accumulator/output tile at N=64.
 
 ## 2026-04-14 ld.red Minimal-N Descriptor/Direct Explicit Variant Note
 
@@ -1211,3 +1208,9 @@ Every fuzz case records:
 - Descriptor-chain `ld.red` auto-selection fuzz generation may now include the full non-identity row/column permutation cross-product at `N in {32,64,256}`.
 - This closes the auto N-sweep permutation family. Explicit compatible variants remain bounded to the identity/tile/reverse-family layouts until separately validated.
 - Current full-file collection is `9178` tests and the `ld_red` bucket is `2242` cases. Aggregate bucket evidence is `8727 passed, 451 skipped`.
+
+## 2026-04-14 17:14 UTC: Scaled Two-CTA MMAv5 block_n=64 Note
+
+- Two-CTA scaled-MMAv5 accumulator-subview fuzz generation may now include `block_n=64`, `parent_n=128` for every current scaled format pair, `blockK in {128,256}`, both slice starts, multicast false/true, and both zero-accumulator plus `use_acc=True` paths.
+- The required scale descriptor construction uses the packed scale format's 128-row minimum: descriptors and scale TMEM use padded 128-row scale tiles, while accumulator/output tensors still use the active 64-column N tile.
+- Current full-file collection is `9258` tests and the MMA bucket is `2783` cases. Aggregate bucket evidence is `8807 passed, 451 skipped`.

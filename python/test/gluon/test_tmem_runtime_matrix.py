@@ -3348,8 +3348,10 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
     two_ctas: ttgl.constexpr = num_ctas > 1
     scale_layout_a: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[1, 0]] if two_ctas else [])
     scale_layout_b: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[0, 0]] if two_ctas else [])
-    a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [BLOCK_M, BLOCK_K // VEC_SIZE], scale_layout_a)
-    b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [BLOCK_N, BLOCK_K // VEC_SIZE], scale_layout_b)
+    A_SCALE_MN: ttgl.constexpr = a_scale_desc.block_type.shape[1] * 128
+    B_SCALE_MN: ttgl.constexpr = b_scale_desc.block_type.shape[1] * 128
+    a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [A_SCALE_MN, BLOCK_K // VEC_SIZE], scale_layout_a)
+    b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [B_SCALE_MN, BLOCK_K // VEC_SIZE], scale_layout_b)
     acc_parent = allocate_tensor_memory(ttgl.float32, [BLOCK_M, PARENT_N], acc_parent_layout)
     acc_tmem = acc_parent.slice(slice_start, BLOCK_N, dim=1)
     if ACC_INIT != 0.0:
@@ -3403,8 +3405,8 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
         mbarrier.wait(tma_bar, phase_tma, deps=[a_smem, b_smem, a_scale_smem, b_scale_smem])
         phase_tma ^= 1
 
-        a_scale = unswizzle_scales_shared_memory(a_scale_smem, BLOCK_M, BLOCK_K, VEC_SIZE)
-        b_scale = unswizzle_scales_shared_memory(b_scale_smem, BLOCK_N, BLOCK_K, VEC_SIZE)
+        a_scale = unswizzle_scales_shared_memory(a_scale_smem, A_SCALE_MN, BLOCK_K, VEC_SIZE)
+        b_scale = unswizzle_scales_shared_memory(b_scale_smem, B_SCALE_MN, BLOCK_K, VEC_SIZE)
         tcgen05_copy(a_scale, a_scale_tmem)
         tcgen05_copy(b_scale, b_scale_tmem)
 
@@ -3470,8 +3472,12 @@ def mma_scaled_tcgen05_acc_subslice_copy(
     a_desc = make_operand_descriptor(A, BLOCK_M, BLOCK_K, mixed_prec, cga_layout=cga_layout_a)
     b_desc = make_operand_descriptor(B, BLOCK_N, BLOCK_K, mixed_prec, cga_layout=cga_layout_b)
     c_desc = make_output_descriptor(M, N, torch.float16, BLOCK_M, BLOCK_N, cga_layout=cga_layout_c)
-    a_scale_desc = make_scales_descriptor(A_scale, BLOCK_M, BLOCK_K, VEC_SIZE, cga_layout=cga_layout_a_scale)
-    b_scale_desc = make_scales_descriptor(B_scale, BLOCK_N, BLOCK_K, VEC_SIZE, cga_layout=cga_layout_b_scale)
+    a_scale_desc = make_scales_descriptor(
+        A_scale, max(BLOCK_M, 128), BLOCK_K, VEC_SIZE, cga_layout=cga_layout_a_scale
+    )
+    b_scale_desc = make_scales_descriptor(
+        B_scale, max(BLOCK_N, 128), BLOCK_K, VEC_SIZE, cga_layout=cga_layout_b_scale
+    )
 
     a_scale_layout = ttgl.NVMMASharedLayout(
         swizzle_byte_width=0,
@@ -4133,9 +4139,10 @@ SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
 ]
 
 SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = [
-    (a_format, b_format, slice_start, block_k, multicast)
+    (a_format, b_format, block_n, slice_start, block_k, multicast)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
-    for slice_start, block_k, multicast in product((0, 128), (128, 256), (False, True))
+    for block_n, block_k, multicast in product((64, 128), (128, 256), (False, True))
+    for slice_start in (0, block_n)
 ]
 
 CP_SCALES_WARPX4_SCALED_MMA_CASES = [
@@ -10723,13 +10730,12 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_use_acc(a_forma
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,slice_start,block_k,multicast", SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES)
+@pytest.mark.parametrize("a_format,b_format,block_n,slice_start,block_k,multicast", SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES)
 def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
-    a_format, b_format, slice_start, block_k, multicast
+    a_format, b_format, block_n, slice_start, block_k, multicast
 ):
     block_m = 256
-    block_n = 128
-    parent_n = 256
+    parent_n = 2 * block_n
     vec_size = 16 if a_format == "nvfp4" else 32
 
     torch.manual_seed(0)
@@ -10757,7 +10763,7 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
 
     cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
     assert cp_ops
-    assert len(cp_ops) == (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)
+    assert len(cp_ops) == (1 + max(block_n, 128) // 128) * (block_k // 128) * (32 // vec_size)
     assert all(op == _expected_scaled_cp_opcode(2) for op in cp_ops)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
@@ -10775,13 +10781,12 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,slice_start,block_k,multicast", SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES)
+@pytest.mark.parametrize("a_format,b_format,block_n,slice_start,block_k,multicast", SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES)
 def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc(
-    a_format, b_format, slice_start, block_k, multicast
+    a_format, b_format, block_n, slice_start, block_k, multicast
 ):
     block_m = 256
-    block_n = 128
-    parent_n = 256
+    parent_n = 2 * block_n
     acc_init = 1.0
     vec_size = 16 if a_format == "nvfp4" else 32
 
@@ -10816,7 +10821,7 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc(
 
     cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
     assert cp_ops
-    assert len(cp_ops) == (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)
+    assert len(cp_ops) == (1 + max(block_n, 128) // 128) * (block_k // 128) * (32 // vec_size)
     assert all(op == _expected_scaled_cp_opcode(2) for op in cp_ops)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
