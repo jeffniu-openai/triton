@@ -356,8 +356,11 @@ Every fuzz case records:
   - legacy `TensorMemoryLayout`
   - canonical TMEM-linear equivalent
 - Dense `cta_group::2` no-scales coverage now includes exact `128x128b` and
-  `128x256b` opcode checks; keep future dense two-CTA additions focused on
-  new shapes/layouts rather than re-proving those two base families.
+  `128x256b` opcode checks. The broad `128x256b` two-CTA matrix is now a
+  visible pytest matrix over legacy/canonical TMEM destinations, f32+i32
+  payloads, and the existing `N`/swizzle shapes, so future dense two-CTA
+  additions should target genuinely new shapes/layouts rather than re-proving
+  those base families.
 - Special no-scales `cta_group::1` `warpx2::{01_23,02_13}.64x128b` paths are
   covered by executable candidate tests with runtime oracles and exact commit
   opcode checks. Dense shared-layout `warpx2` forms are clean negatives until a

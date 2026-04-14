@@ -13573,3 +13573,19 @@ Open after this slice:
   - tight MMA selector passed all `824` cases across split-4 on four GPUs (`206` per group; `6.23s`, `15.53s`, `21.26s`, and `16.95s`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4391 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation. Copy `warpx2` hard frontiers remain parked without a descriptor/address/staging model.
+
+## 2026-04-14 06:56 UTC: broad two-CTA no-scales copy dtype parity
+
+- Converted `test_tmem_runtime_matrix_cp_no_scales_twocta_codegen` from one hidden-loop f32 test into a visible pytest matrix driven by `CP_NO_SCALES_TWOCTA_CASES`.
+- The matrix now covers legacy/canonical two-CTA destination layouts, f32+i32 payloads, the existing `N`/swizzle shapes, exact `tcgen05.cp.cta_group::2.128x256b` counts, and the existing multicast commit/barrier checks.
+- This keeps the no-scales two-CTA `128x256b` surface positive where it is already supported while adding i32 parity and improving split scheduling visibility. No compiler or lowering source changed.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `56/4892`;
+  - no-PYTHONPATH full `cp` bucket selected `377/4892` through split-4;
+  - focused two-CTA no-scales selector passed all `56` cases across split-4 on four GPUs (`14` per group; `11.34s`, `11.01s`, `11.36s`, and `11.16s`);
+  - full `cp` bucket passed `372` and skipped `5` across split-4 on four GPUs (`90 passed, 5 skipped` in `72.22s`, `95 passed` in `35.08s`, `95 passed` in `81.12s`, and `92 passed` in `79.59s`).
+- Current runtime-matrix bucket totals: `cp=377`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4446 passed, 446 skipped`.
+- Next: commit/push this bounded CP checkpoint, then move to another staged ISA-coverage slice. Copy `warpx2` hard frontiers remain parked until there is a real descriptor/address/staging model, but reachable no-scales dense copy surfaces should continue to get dtype/layout parity where the current matcher already supports them.

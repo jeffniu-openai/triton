@@ -3038,10 +3038,13 @@ MMA_INDEXED_ACC_CASES = [
     ("linear_parent", _lift_tmem_layout(_make_tmem_linear_layout(128, 128), [2]), "tensor_memory_linear"),
 ]
 
+CP_NO_SCALES_128X128_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
+
 CP_NO_SCALES_TWOCTA_CASES = [
-    (layout_kind, n, swizzle, expected_count)
-    for layout_kind, (n, swizzle, expected_count) in product(
+    (layout_kind, dtype_name, torch_dtype, n, swizzle, expected_count)
+    for layout_kind, (dtype_name, torch_dtype), (n, swizzle, expected_count) in product(
         ("linear", "legacy"),
+        CP_NO_SCALES_128X128_DTYPES,
         (
             (16, 32, 2),
             (16, 64, 2),
@@ -3072,8 +3075,6 @@ CP_NO_SCALES_SWIZZLE_CASES = [
     for swizzle in (32, 64, 128)
     for (m, n, block_n) in ((128, 128, 128), (128, 256, 256), (256, 128, 64))
 ]
-
-CP_NO_SCALES_128X128_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
 CP_NO_SCALES_128X128_CASES = [
     (layout_kind, dtype_name, torch_dtype, 128)
@@ -6018,54 +6019,56 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_cle
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen():
-    for layout_kind, N, swizzle, expected_count in CP_NO_SCALES_TWOCTA_CASES:
-        M = 256
-        cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
-        if layout_kind == "linear":
-            layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
-        else:
-            layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
+@pytest.mark.parametrize("layout_kind,dtype_name,torch_dtype,N,swizzle,expected_count", CP_NO_SCALES_TWOCTA_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_twocta_codegen(
+    layout_kind, dtype_name, torch_dtype, N, swizzle, expected_count
+):
+    M = 256
+    cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+    if layout_kind == "linear":
+        layout = _make_tmem_linear_layout_mmav5_twocta(M, N)
+    else:
+        layout = TensorMemoryLayout(block=(128, N), col_stride=1, cga_layout=cga_layout, two_ctas=True)
 
-        inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
-        out = torch.empty_like(inp)
-        compiled = tmem_copy_no_scales_twocta_kernel[(1, )](
-            inp,
-            out,
-            layout,
-            tuple(tuple(basis) for basis in cga_layout),
-            M,
-            N,
-            swizzle,
-            num_ctas=2,
-            num_warps=4,
-        )
-        torch.cuda.synchronize()
-        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+    compiled = tmem_copy_no_scales_twocta_kernel[(1, )](
+        inp,
+        out,
+        layout,
+        tuple(tuple(basis) for basis in cga_layout),
+        M,
+        N,
+        swizzle,
+        num_ctas=2,
+        num_warps=4,
+    )
+    torch.cuda.synchronize()
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-        _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x256b"] * expected_count)
-        ptx = compiled.asm["ptx"]
-        llir = compiled.asm["llir"]
-        first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x256b")
-        first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x256b")
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.128x256b"] * expected_count)
+    ptx = compiled.asm["ptx"]
+    llir = compiled.asm["llir"]
+    first_cp_ptx = ptx.index("tcgen05.cp.cta_group::2.128x256b")
+    first_cp_llir = llir.index("tcgen05.cp.cta_group::2.128x256b")
 
-        _assert_exact_commit_ptx_llir_match(
-            compiled,
-            ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
-        )
-        assert "tcgen05.cp.cta_group::1" not in ptx
-        assert ptx.count("fence.proxy.async.shared::cluster") == 1
-        assert ptx.count("barrier.cluster.arrive.aligned;") == 2
-        assert ptx.count("barrier.cluster.wait.aligned;") == 2
-        assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
-        assert "barrier.cluster.arrive.relaxed.aligned" not in ptx
-        assert llir.count("llvm.nvvm.fence.proxy.async.shared_cluster") == 2
-        assert llir.count("llvm.nvvm.barrier.cluster.arrive.aligned") == 3
-        assert llir.count("llvm.nvvm.barrier.cluster.wait.aligned") == 3
-        assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
-        assert "llvm.nvvm.barrier.cluster.arrive.relaxed.aligned" not in llir
-        if layout_kind == "linear":
-            assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert ptx.count("fence.proxy.async.shared::cluster") == 1
+    assert ptx.count("barrier.cluster.arrive.aligned;") == 2
+    assert ptx.count("barrier.cluster.wait.aligned;") == 2
+    assert ptx.index("barrier.cluster.arrive.aligned") < ptx.index("barrier.cluster.wait.aligned") < first_cp_ptx
+    assert "barrier.cluster.arrive.relaxed.aligned" not in ptx
+    assert llir.count("llvm.nvvm.fence.proxy.async.shared_cluster") == 2
+    assert llir.count("llvm.nvvm.barrier.cluster.arrive.aligned") == 3
+    assert llir.count("llvm.nvvm.barrier.cluster.wait.aligned") == 3
+    assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
+    assert "llvm.nvvm.barrier.cluster.arrive.relaxed.aligned" not in llir
+    if layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

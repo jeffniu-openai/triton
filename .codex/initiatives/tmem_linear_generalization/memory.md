@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:56 UTC: broad two-CTA no-scales copy dtype parity
+
+- `CP_NO_SCALES_TWOCTA_CASES` now parameterizes `test_tmem_runtime_matrix_cp_no_scales_twocta_codegen` directly instead of hiding a f32-only loop inside one pytest node.
+- Coverage spans legacy and canonical two-CTA destination layouts, f32 and i32 payloads, the existing `N`/swizzle shape matrix, exact `tcgen05.cp.cta_group::2.128x256b` opcode counts, and multicast commit/barrier ordering.
+- This is a test-only coverage/scheduling change: no compiler/lowering source changed. The broad two-CTA no-scales copy surface now has dtype parity with the nearby `128x128b` f32+i32 path, and pytest-split can schedule all 56 cases directly.
+- Current runtime-matrix collection is `4892` tests: `cp=377`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4446 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `56/4892`; no-PYTHONPATH `cp` bucket selected `377/4892`; focused two-CTA no-scales selector passed all `56` cases across four GPUs (`14` per group; group times `11.34s`, `11.01s`, `11.36s`, and `11.16s`); full `cp` bucket passed `372` and skipped `5` across four GPUs (`90 passed, 5 skipped`, `95 passed`, `95 passed`, and `92 passed`; slowest `81.12s`).
+
 ## 2026-04-14 06:52 UTC: scaled-MMAv5 two-CTA accumulator-subview K-depth parity
 
 - `SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES` now drives `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`.

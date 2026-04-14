@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4837-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4892-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current broad two-CTA no-scales copy dtype-parity checkpoint, 2026-04-14 06:56 UTC: `CP_NO_SCALES_TWOCTA_CASES` is now a visible pytest matrix over legacy/canonical two-CTA destination layouts, f32+i32 payloads, `N`/swizzle shapes, exact `tcgen05.cp.cta_group::2.128x256b` counts, and multicast commit/barrier ordering. This replaces the previous hidden in-test f32-only loop, so pytest-split can schedule the 56 cases directly while the test also proves i32 parity for the broad two-CTA no-scales copy surface. Current runtime-matrix collection is `4892` tests: `cp=377`, `mma=824`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4446 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `56/4892`; no-PYTHONPATH `cp` collect selected `377/4892` through split-4; focused two-CTA no-scales selector passed all `56` cases across split-4 on four GPUs (`14` per group; slowest `11.36s`); full `cp` bucket passed `372` and skipped `5` across split-4 on four GPUs (`95`, `95`, `95`, and `92` selected; slowest `81.12s`).
 
 - Current scaled-MMAv5 two-CTA accumulator-subview K-depth checkpoint, 2026-04-14 06:52 UTC: `SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES` now covers every current scaled format pair, `slice_start in {0,128}`, `blockK in {128,256}`, and multicast false/true for the supported two-CTA `blockN=128`, `parentN=256` accumulator-subview path. The test now pins exact scaled-copy and scaled-MMAv5 opcode counts as functions of `blockK // 128`, matching the adjacent one-CTA accumulator-subview K-depth contract. Current runtime-matrix collection is `4837` tests: `cp=322`, `mma=824`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4391 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused scaled two-CTA accumulator-subview collect selected `40` cases; no-PYTHONPATH tight MMA collect selected `824/4837`; no-PYTHONPATH full-file collect reported `4837`; focused scaled two-CTA accumulator-subview selector passed all `40` cases across split-4 on four GPUs (`10` per group; slowest `9.78s`); tight MMA selector passed all `824` cases across split-4 on four GPUs (`206` per group; slowest `21.26s`).
 
