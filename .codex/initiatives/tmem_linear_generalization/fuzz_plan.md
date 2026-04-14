@@ -379,9 +379,10 @@ Every fuzz case records:
 
 #### Negative frontier / covered clean negatives
 - Covered by `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`:
-  `i32` plain reductions, `i32` reductions with `NaN` or `abs` modifiers, and
-  legacy-unpacked `f16` reduction attempts all fail before lowering with clean
-  verifier diagnostics for both `min` and `max`.
+  `i32`, `bf16`, `f16`, `i16`, and `i8` plain reductions, selected `NaN` or
+  `abs` modifier rows for `i32`/bf16/f16, and legacy-unpacked `f16` reduction
+  attempts all fail before lowering with clean verifier diagnostics for both
+  `min` and `max`.
 - Explicit N-sharded register-layout clean negatives (`16x64b`, `16x128b`,
   and `16x256b`) are covered across `min`/`max`, `abs` false/true, and
   `PropagateNan.NONE/ALL`; additional N-sharded register layouts remain a
@@ -1035,3 +1036,10 @@ Every fuzz case records:
 - The positive unit-parent matrix covers every current scaled format pair, `K in {128,256}`, and both zero-initialized plus explicit nonzero accumulator-add paths.
 - Do not generate the older `[2,M,N].index(1)` canonical-linear `N>=128` or legacy `N=256` scaled indexed rows as equivalent positives; with live scale descriptors those parent images remain hardware-resource boundaries.
 - Current full-file collection is `8127` tests and the tight MMA bucket is `2075` cases. Aggregate bucket evidence is `7676 passed, 451 skipped`.
+
+## 2026-04-14 14:25 UTC: ld.red Non-F32 Direct Dtype Boundary Note
+
+- `ld.red` clean-negative coverage now includes direct bf16/f16/i16/i8 source layouts in addition to the existing i32 and legacy f16-unpacked cases.
+- Fuzz generation should keep non-f32 reduction rows in the clean-unsupported bucket unless the production verifier and lowering grow a real non-f32 reduction contract.
+- A quick row-256 `N=256` helper probe did not produce a lower-resource positive path: full reduction-only still exceeds shared memory and split-store fails on the second-half descriptor view.
+- Current full-file collection is `8143` tests and the `ld_red` bucket is `1936` cases. Aggregate bucket evidence is `7692 passed, 451 skipped`.

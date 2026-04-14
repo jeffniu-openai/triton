@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 14:25 UTC: ld.red non-f32 direct dtype-boundary coverage
+
+- Expanded `LD_RED_NON_F32_CONTRACT_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` beyond i32 and legacy f16-unpacked coverage. The direct-source clean-negative matrix now includes bf16, f16, i16, and i8 plain reductions, plus bf16/f16 `NaN` and `abs` modifier diagnostics.
+- This is test-only contract coverage: current `tcgen05.ld.red` lowering remains f32-only, and non-f32 rows must fail with stable verifier diagnostics rather than late PassManager or assertion noise.
+- Side probe: row-256 reduction-friendly `N=256` remains a helper/resource frontier. A full reduction-only helper still hit shared-memory OOR (`Required: 262148`, limit `232448`), while a split-store helper failed descriptor-view register-layout selection for the second half. Do not treat it as an easy positive until there is a lower-resource store/reduction helper that preserves the row-256 physical family.
+- Current runtime-matrix collection is `8143` tests: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1936`, and `ldst=2949`; current bucketed evidence aggregates to `7692 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH non-f32 collect selected `24/8143`; non-f32 selector passed all `24` cases across split-4 (`6` per group; `4.74s`, `4.80s`, `5.13s`, and `5.10s`); no-PYTHONPATH `ld_red` collect selected `1936/8143`; no-PYTHONPATH full-file collect reported `8143`; `git diff --check` passed.
+- Next: commit/push this bounded `ld.red` clean-negative checkpoint, then continue another non-parked ISA coverage slice. Good candidates remain `ld/st` descriptor-view gaps, remaining `ld.red` discovery/negative boundaries, or MMAv5/scaled-MMAv5 coverage that does not depend on parked copy `warpx2` hypotheses.
+
 ## 2026-04-14 14:20 UTC: scaled MMAv5 indexed-accumulator unit-parent coverage
 
 - Parameterized `tmem_mma_scaled_indexed_acc_format_kernel` by `parent_depth` and `parent_index`, matching the plain indexed-accumulator helpers and reshaping the indexed view back to `(M, N)` before accumulator register-layout queries, stores, and `tcgen05_mma_scaled`.

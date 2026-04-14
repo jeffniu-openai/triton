@@ -206,6 +206,22 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-14 14:25 UTC: ld.red non-f32 direct dtype-boundary coverage
+
+- Expanded `LD_RED_NON_F32_CONTRACT_CASES` to cover direct bf16/f16/i16/i8 source layouts for plain reductions, and bf16/f16 `NaN` plus `abs` modifier diagnostics. Existing i32 and legacy f16-unpacked rows remain.
+- The expected behavior is clean verifier rejection before lowering: non-f32 plain reductions report `tmem_load reduction currently requires f32 element type`, and modifier rows report the stable f32-only `NaN` / `abs` diagnostics.
+- Side probe: row-256 `ld.red` `N=256` is still not an easy promotion. The full reduction-only helper still exceeds shared memory (`Required: 262148`, hardware limit `232448`), and a split-store helper failed descriptor-view register-layout selection on the second 128-row slice.
+- Validation:
+  - `make -j8` -> no work to do;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - no-PYTHONPATH non-f32 collect selected `24/8143`;
+  - non-f32 selector passed all `24` cases across split-4 (`6` per group; `4.74s`, `4.80s`, `5.13s`, `5.10s`);
+  - no-PYTHONPATH `ld_red` collect selected `1936/8143`;
+  - no-PYTHONPATH full-file collect reported `8143`;
+  - `git diff --check` -> passed.
+- Current runtime-matrix bucket totals: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1936`, `ldst=2949`; current bucketed evidence aggregates to `7692 passed, 451 skipped`.
+- Next: commit/push this checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 14:20 UTC: scaled MMAv5 indexed-accumulator unit-parent coverage
 
 - Added resource-safe scaled accumulator `memdesc_index` coverage for canonical TMEM-linear `N in {128,256}` and legacy `N=256` by parameterizing `tmem_mma_scaled_indexed_acc_format_kernel` over parent depth/index and reshaping `[1,M,N].index(0)` views back to the active 2D MMA descriptor.
