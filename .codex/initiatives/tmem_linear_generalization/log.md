@@ -12897,3 +12897,20 @@ Open after this slice:
   - tight `mma` runner: `311 passed` across four groups (`78`, `78`, `78`, `77`);
   - `git diff --check` passed.
 - This closes one bounded single-CTA scaled-MMAv5 descriptor-view gap. Remaining frontiers include copy `warpx2`, broader MMAv5/scaled-MMAv5 saturation, and staged broad validation.
+
+
+## 2026-04-14 copy warpx2 dtype coverage
+
+- Expanded supported no-scales `tcgen05.cp` `warpx2` positives from f32-only to f32+i32:
+  - single-CTA `warpx2::01_23`;
+  - single-CTA `warpx2::02_13`;
+  - two-CTA `warpx2::01_23`.
+- This is a bounded coverage expansion for already-supported copy paths. It does not change the known unsupported frontiers: two-CTA `warpx2::02_13` and true scales `warpx2` still require descriptor/address/staging synthesis.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - collect-only with `PYTHONPATH` unset: `3297` total tests, `321` CP tests;
+  - focused `warpx2` dtype selector: `6 passed` across non-empty split groups;
+  - full `cp` runner: `316 passed, 5 skipped`;
+  - `git diff --check` passed.
+- Current bucketed matrix evidence is `2851 passed, 446 skipped` across `3297` collected tests.

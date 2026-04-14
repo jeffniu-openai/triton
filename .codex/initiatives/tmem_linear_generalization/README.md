@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 3294-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 3297-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -91,7 +91,9 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- Current scaled-MMAv5 coverage checkpoint, 2026-04-14 01:24 UTC: single-CTA scaled-MMAv5 accumulator-subslice format coverage now includes `N=128` subviews at starts `0` and `128`, in addition to the existing `N=64` start-0/start-64 cases, across all five scaled format pairs. The format helper now sizes the parent accumulator descriptor as `2 * N`, preserving the existing `N=64` behavior while enabling the larger subview. Current runtime-matrix collection is `3294` tests: `cp=318`, `mma=311`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; bucketed evidence now aggregates to `2848 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; focused scaled accumulator-subslice format slice passed `20` cases across four GPUs; tight `mma` runner bucket passed `311` cases across four GPUs; `git diff --check` passed.
+- Current copy `warpx2` coverage checkpoint, 2026-04-14 01:26 UTC: supported no-scales `warpx2` copy positives now cover both f32 and i32 on single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23`. This keeps the known two-CTA `02_13` and scales `warpx2` descriptor/address frontiers unchanged. Current runtime-matrix collection is `3297` tests: `cp=321`, `mma=311`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; bucketed evidence now aggregates to `2851 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; focused `warpx2` dtype selector passed all `6` selected cases across the non-empty split groups; full `cp` runner bucket passed `316`, skipped `5`; `git diff --check` passed.
+
+- Prior scaled-MMAv5 coverage checkpoint, 2026-04-14 01:24 UTC: single-CTA scaled-MMAv5 accumulator-subslice format coverage now includes `N=128` subviews at starts `0` and `128`, in addition to the existing `N=64` start-0/start-64 cases, across all five scaled format pairs. The format helper now sizes the parent accumulator descriptor as `2 * N`, preserving the existing `N=64` behavior while enabling the larger subview. Current runtime-matrix collection is `3294` tests: `cp=318`, `mma=311`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; bucketed evidence now aggregates to `2848 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; focused scaled accumulator-subslice format slice passed `20` cases across four GPUs; tight `mma` runner bucket passed `311` cases across four GPUs; `git diff --check` passed.
 
 - Prior `ld.red` coverage checkpoint, 2026-04-14 01:18 UTC: non-identity compatible reduction-source layouts now include the missing `N=32` shape for tile-permuted, pure column-permuted, pure row-permuted, and row+column-permuted families. This adds `128` positive runtime cases that all pin the `tcgen05.ld.red.sync.aligned.32x32b.x32` opcode family across min/max and all `abs`/NaN modifier combinations. Current runtime-matrix collection is `3284` tests: `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; bucketed evidence now aggregates to `2838 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; focused new `N=32` slice passed `128` cases across four GPUs; full `ld_red` runner bucket passed `771` cases across 16 split groups; `git diff --check` passed.
 

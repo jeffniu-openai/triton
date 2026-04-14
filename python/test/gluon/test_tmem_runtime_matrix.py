@@ -3021,6 +3021,8 @@ CP_NO_SCALES_TWOCTA_128X128_CASES = [
     for layout_kind, (dtype_name, torch_dtype) in product(("linear", "legacy"), CP_NO_SCALES_128X128_DTYPES)
 ]
 
+CP_NO_SCALES_WARPX2_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
+
 CP_SCALES_WARPX4_FORMAT_PAIRS = [
     ("mxfp8", "mxfp8"),
     ("mxfp4", "mxfp4"),
@@ -5475,12 +5477,13 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_subslice_view(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive():
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive(dtype_name, torch_dtype):
     M = 128
     N = 4
     shared_layout = _make_tmem_copy_warpx2_shared_layout()
     tmem_layout = _make_tmem_copy_warpx2_tmem_layout()
-    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
     out = torch.empty_like(inp)
 
     compiled = tmem_copy_no_scales_warpx2_candidate_kernel[(1, )](
@@ -5501,12 +5504,13 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_candidate_positive():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive():
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive(dtype_name, torch_dtype):
     M = 128
     N = 4
     shared_layout = _make_tmem_copy_warpx2_shared_layout()
     tmem_layout = _make_tmem_copy_warpx2_tmem_layout_02_13()
-    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
     out = torch.empty_like(inp)
 
     compiled = tmem_copy_no_scales_warpx2_candidate_kernel[(1, )](
@@ -5527,12 +5531,13 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive():
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive(dtype_name, torch_dtype):
     M = 256
     N = 4
     shared_layout = _make_tmem_copy_warpx2_shared_layout_twocta()
     tmem_layout = _make_tmem_copy_warpx2_tmem_layout_twocta()
-    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
     out = torch.empty_like(inp)
 
     compiled = tmem_copy_no_scales_warpx2_twocta_kernel[(1, )](
