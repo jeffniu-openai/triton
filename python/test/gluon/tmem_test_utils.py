@@ -333,7 +333,7 @@ def unswizzle_scales_shared_memory(smem, BLOCK_MN: ttgl.constexpr, BLOCK_K: ttgl
 @gluon.jit
 def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale_desc, VEC_SIZE: ttgl.constexpr,
                                    block_layout_c: ttgl.constexpr, acc_tmem_layout: ttgl.constexpr,
-                                   multicast: ttgl.constexpr):
+                                   ACC_INIT: ttgl.constexpr, multicast: ttgl.constexpr):
     A_IS_FP4: ttgl.constexpr = a_desc.dtype == ttgl.uint8
     B_IS_FP4: ttgl.constexpr = b_desc.dtype == ttgl.uint8
     A_ELEM_PER_BYTE: ttgl.constexpr = 2 if A_IS_FP4 else 1
@@ -353,6 +353,11 @@ def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale
     a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [BLOCK_M, BLOCK_K // VEC_SIZE], scale_layout_a)
     b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [BLOCK_N, BLOCK_K // VEC_SIZE], scale_layout_b)
     acc_tmem = allocate_tensor_memory(ttgl.float32, [BLOCK_M, BLOCK_N], acc_tmem_layout)
+    if ACC_INIT != 0.0:
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(
+            ttgl.full([BLOCK_M, BLOCK_N], ACC_INIT, ttgl.float32, layout=acc_reg_layout)
+        )
 
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=two_ctas)
     mma_bar = mbarrier.allocate_mbarrier()
@@ -400,7 +405,7 @@ def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale
         a_format: ttgl.constexpr = "e2m1" if A_IS_FP4 else "e4m3"
         b_format: ttgl.constexpr = "e2m1" if B_IS_FP4 else "e4m3"
         tcgen05_mma_scaled(a_smem, b_smem.permute((1, 0)), acc_tmem, a_scale_tmem, b_scale_tmem, a_format, b_format,
-                           use_acc=(k != 0))
+                           use_acc=(ACC_INIT != 0.0 or k != 0))
         tcgen05_commit(mma_bar)
         mbarrier.wait(mma_bar, phase_mma)
         phase_mma ^= 1
@@ -418,7 +423,7 @@ def mma_scaled_tcgen05_copy_kernel(a_desc, b_desc, c_desc, a_scale_desc, b_scale
 
 
 def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, BLOCK_K, num_ctas, multicast,
-                            out_dtype=torch.float16, acc_layout_kind="legacy"):
+                            out_dtype=torch.float16, acc_layout_kind="legacy", acc_init=0.0):
     from dataclasses import replace
     M, N = A.shape[0], B.shape[0]
     MIXED_PREC = A.dtype != B.dtype
@@ -478,6 +483,7 @@ def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, 
         VEC_SIZE,
         block_layout_c,
         acc_tmem_layout,
+        acc_init,
         num_warps=num_warps,
         num_ctas=num_ctas,
         multicast=multicast,

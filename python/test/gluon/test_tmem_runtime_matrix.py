@@ -3608,6 +3608,7 @@ CP_SCALES_WARPX4_SCALED_MMA_CASES = [
         CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256), (1, 2), (False, True), ("legacy", "linear")
     )
 ]
+CP_SCALES_WARPX4_SCALED_MMA_USE_ACC_CASES = CP_SCALES_WARPX4_SCALED_MMA_CASES
 
 CP_SCALES_WARPX4_GEOMETRY_CASES = [
     (block_n, block_k, multicast, num_ctas, acc_layout_kind)
@@ -7212,6 +7213,54 @@ def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix(
         acc_layout_kind=acc_layout_kind,
     )
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected = _expected_scaled_cp_opcode(num_ctas)
+    expected_count = (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)
+    _assert_exact_cp_ptx_llir_match(compiled, [expected] * expected_count)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    expected_mma_count = (block_k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert len(mma_ops) == expected_mma_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(num_ctas)])
+    ttgir = compiled.asm["ttgir"]
+    if multicast and num_ctas == 2:
+        assert "{multicast}" in ttgir
+    else:
+        assert "{multicast}" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,block_n,block_k,num_ctas,multicast,acc_layout_kind",
+                         CP_SCALES_WARPX4_SCALED_MMA_USE_ACC_CASES)
+def test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix_use_acc(
+    a_format, b_format, block_n, block_k, num_ctas, multicast, acc_layout_kind
+):
+    block_m = 256 if num_ctas == 2 else 128
+    m, n, k = block_m, block_n, block_k
+    acc_init = 1.0
+    vec_size = 16 if a_format == "nvfp4" else 32
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    a_scale = swizzle_scales_packed_block(a_scale, vec_size)
+    b_scale = swizzle_scales_packed_block(b_scale, vec_size)
+
+    out, compiled = mma_scaled_tcgen05_copy(
+        a,
+        b,
+        a_scale,
+        b_scale,
+        vec_size,
+        block_m,
+        block_n,
+        block_k,
+        num_ctas=num_ctas,
+        multicast=multicast,
+        acc_layout_kind=acc_layout_kind,
+        acc_init=acc_init,
+    )
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + acc_init, atol=1e-3, rtol=1e-3)
 
     expected = _expected_scaled_cp_opcode(num_ctas)
     expected_count = (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)

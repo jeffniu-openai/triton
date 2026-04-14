@@ -445,7 +445,10 @@ Every fuzz case records:
   count is `(1 + blockN // 128) * (blockK // 128) * (32 // vec_size)`. The
   companion scaled-MMA instruction count is pinned as
   `base_count * (blockK // 128)`, and only two-CTA multicast cases should carry
-  the TTGIR `{multicast}` marker.
+  the TTGIR `{multicast}` marker. The same matrix now has nonzero accumulator
+  coverage (`acc_init=1.0`) through the shared scaled-copy helper, proving the
+  first scaled-MMA chunk uses `use_acc=True` while the exact scaled-copy opcode
+  stream remains unchanged.
 - Do not use the historical public-layout "warpx2 candidate" as proof of a
   scales `warpx2` path: it currently classifies as `warpx4.32x128b` under
   `TensorMemoryScalesLayout` because the scales layout carries broadcast row
@@ -883,11 +886,13 @@ Every fuzz case records:
 
 ## 2026-04-14 scaled-MMAv5 Accumulator Use-Acc Note
 
-- The runtime matrix now covers nonzero accumulator semantics for the scaled-MMAv5
-  64-column tile-permuted accumulator positive path across all scaled format pairs
-  and `K in {128,256}`.
-- Current full-file collection is `6852` tests; the tight MMA bucket is `1703`
-  cases. Aggregate bucket evidence is `6406 passed, 446 skipped`.
+- The runtime matrix now covers nonzero accumulator semantics for the supported
+  scaled-MMAv5 root, accumulator-subview, indexed-accumulator, TMEM-LHS
+  subview/tile-permuted, 64-column tile-permuted accumulator, two-CTA
+  accumulator-subslice, and scaled-copy-helper `warpx4` paths.
+- Latest full-file collection is `7331` tests; the current bucket totals are
+  `cp=580` and tight `mma=1743`. Aggregate bucket evidence is
+  `6880 passed, 451 skipped`.
 
 ## 2026-04-14 two-CTA scaled-MMAv5 Accumulator Use-Acc Note
 

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:35 UTC: scaled warpx4 copy-helper use-acc coverage
+
+- Extended `python/test/gluon/tmem_test_utils.py::mma_scaled_tcgen05_copy_kernel` with an `ACC_INIT` constexpr. Existing callers keep the zero-init path, while nonzero init seeds the accumulator TMEM tile and makes the first `tcgen05_mma_scaled` chunk run with `use_acc=True`.
+- Added `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix_use_acc`, mirroring the existing scaled-copy helper matrix over every current scaled format pair, `blockN in {128,256}`, `blockK in {128,256}`, `num_ctas in {1,2}`, multicast false/true, and legacy/canonical accumulator layouts.
+- The new matrix validates `a_ref @ b_ref.T + 1.0`, exact `tcgen05.copy.warpx4.32x128b` opcode counts, exact scaled-MMAv5 opcode counts, commit opcodes, and the two-CTA multicast TTGIR marker policy.
+- Current runtime-matrix collection is `7331` tests: `cp=580`, `mma=1743`, splitn/misc `=499`, `ld_red=1640`, and `ldst=2869`; current bucketed evidence aggregates to `6880 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/tmem_test_utils.py python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused use-acc collect selected `160/7331`; no-PYTHONPATH `cp_scales_warpx4` collect selected `354/7331`; no-PYTHONPATH full-file collect reported `7331`; focused use-acc selector passed all `160` cases across split-4 (`40` per group; times `51.74s`, `52.20s`, `52.83s`, and `52.43s`); adjacent `cp_scales_warpx4` selector passed all `354` cases across split-4 (`89`, `89`, `89`, and `87` selected; times `73.89s`, `88.59s`, `89.01s`, and `46.18s`).
+- Next: commit/push this scaled-copy use-acc checkpoint, then continue another exact non-parked TMEM ISA coverage slice. The hard `warpx2` copy frontiers and two-CTA `block_n=64` scale-descriptor issue remain parked without a new descriptor/address/staging or scale-helper hypothesis.
+
 ## 2026-04-14 12:20 UTC: direct ld.red explicit N-width coverage
 
 - Generalized `tmem_ld_red_explicit_layout_kernel` so direct explicit-layout reductions take `N` as a constexpr instead of being fixed at `N=128`.

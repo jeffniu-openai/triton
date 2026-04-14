@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 6500-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 7331-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled `warpx4` copy-helper use-acc checkpoint, 2026-04-14 12:35 UTC: the shared scaled-copy helper now accepts `ACC_INIT` and can seed the accumulator TMEM tile before the first scaled MMA chunk. `test_tmem_runtime_matrix_cp_scales_warpx4_via_scaled_mma_copy_matrix_use_acc` mirrors the existing scaled-copy helper matrix over every current format pair, `blockN in {128,256}`, `blockK in {128,256}`, CTA group, multicast, and accumulator-layout combination, checking `matmul + 1.0` while still pinning exact scaled-copy and scaled-MMAv5 opcode streams. Runtime-matrix collection is now `7331` tests: `cp=580`, `mma=1743`, splitn/misc `=499`, `ld_red=1640`, and `ldst=2869`; bucketed evidence aggregates to `6880 passed, 451 skipped`. Validation: `make -j8`; py-compile; `git diff --check`; focused use-acc collect `160/7331`; `cp_scales_warpx4` collect `354/7331`; full-file collect `7331`; focused use-acc selector passed all `160` cases across split-4 (`40` per group; slowest `52.83s`); adjacent `cp_scales_warpx4` selector passed all `354` cases across split-4 (`89`, `89`, `89`, `87`; slowest `89.01s`).
 
 - Current direct `ld.red` explicit N-width checkpoint, 2026-04-14 12:20 UTC: direct hardware reductions now cover the same N-width explicit-variant matrix that descriptor-chain reductions already covered. `tmem_ld_red_explicit_layout_kernel` takes `N` as a constexpr, and the new direct matrix spans identity, tile-permuted, pure column reverse, pure row reverse, and mixed row/column reverse layouts at `N in {64,256}` for explicit `32x32b`, `16x32bx2`, and `32x32b_splitn` requests, both reductions, and all legal modifier modes. Runtime-matrix collection is now `7171` tests: `cp=420`, `mma=1743`, splitn/misc `=499`, `ld_red=1640`, and `ldst=2869`; bucketed evidence aggregates to `6720 passed, 451 skipped`. Validation: `make -j8`; py-compile; `git diff --check`; new direct explicit N-sweep collect `240/7171`; full `ld_red` collect `1640/7171`; full-file collect `7171`; new direct selector passed all `240` cases across split-4 on four GPUs (`60` per group; slowest `573.50s`); adjacent N=128 explicit/unsupported selectors passed all `184` cases across split-4 (`46` per group; slowest `308.59s`).
 
