@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:26 UTC: scaled-MMAv5 use-acc K-depth parity
+
+- Expanded `SCALED_MMA_ROOT_USE_ACC_CASES` and `SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES` over `K in {128,256}` instead of only `K=128`.
+- The direct-root nonzero accumulator-add matrix now covers every current scaled format pair, `N in {64,128,256}`, both legacy/canonical accumulator layouts, and both K depths.
+- The accumulator-subview nonzero accumulator-add matrix now covers every current scaled format pair, `N in {64,128}`, `slice_start in {0,N}`, and both K depths through the supported `ttg.memdesc_subslice` accumulator path.
+- Expected scaled-MMAv5 opcode counts now multiply by `K // 128`, so the new `K=256` rows prove doubled instruction depth while still checking `a_ref @ b_ref.T + acc_init` and exact commit opcode counts.
+- Current runtime-matrix collection is `5797` tests: `cp=381`, `mma=1204`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5351 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `100/5797`; no-PYTHONPATH tight MMA collect selected `1204/5797`; focused root+subview use-acc selector passed all `100` cases across split-4 on four GPUs (`25` per group; group times `32.70s`, `41.00s`, `28.67s`, and `27.19s`).
+- Next: run final hygiene, commit/push this bounded scaled-MMAv5 checkpoint, then move to another exact non-parked TMEM ISA slice. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until a concrete descriptor/address/staging hypothesis exists.
+
 ## 2026-04-14 08:23 UTC: scaled-MMAv5 accumulator-subview nonzero-accumulator coverage
 
 - Added `ACC_INIT` to `tmem_mma_scaled_acc_subslice_format_kernel` and kept the existing accumulator-subview and tile-permuted clean-negative callers on explicit `0.0` initialization.

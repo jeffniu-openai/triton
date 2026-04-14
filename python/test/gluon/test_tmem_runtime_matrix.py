@@ -3269,9 +3269,9 @@ SCALED_MMA_ROOT_FORMAT_CASES = [
 ]
 
 SCALED_MMA_ROOT_USE_ACC_CASES = [
-    (a_format, b_format, n, acc_layout_kind)
-    for (a_format, b_format), n, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), ("legacy", "linear")
+    (a_format, b_format, n, k, acc_layout_kind)
+    for (a_format, b_format), n, k, acc_layout_kind in product(
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
     )
 ]
 
@@ -3334,9 +3334,9 @@ SCALED_MMA_ACC_SUBSLICE_N_CASES = [
 ]
 
 SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES = [
-    (a_format, b_format, n, slice_start)
+    (a_format, b_format, n, slice_start, k)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
-    for n in (64, 128)
+    for n, k in product((64, 128), (128, 256))
     for slice_start in (0, n)
 ]
 
@@ -8009,10 +8009,9 @@ def test_tmem_runtime_matrix_mma_scaled_root_format_matrix(a_format, b_format, n
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,n,acc_layout_kind", SCALED_MMA_ROOT_USE_ACC_CASES)
-def test_tmem_runtime_matrix_mma_scaled_root_format_use_acc(a_format, b_format, n, acc_layout_kind):
+@pytest.mark.parametrize("a_format,b_format,n,k,acc_layout_kind", SCALED_MMA_ROOT_USE_ACC_CASES)
+def test_tmem_runtime_matrix_mma_scaled_root_format_use_acc(a_format, b_format, n, k, acc_layout_kind):
     m = 128
-    k = 128
     acc_init = 1.0
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
@@ -8050,7 +8049,7 @@ def test_tmem_runtime_matrix_mma_scaled_root_format_use_acc(a_format, b_format, 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + acc_init, atol=1e-3, rtol=1e-3)
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
-    expected_count = _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
@@ -8190,10 +8189,9 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,n,slice_start", SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES)
-def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_use_acc(a_format, b_format, n, slice_start):
+@pytest.mark.parametrize("a_format,b_format,n,slice_start,k", SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_use_acc(a_format, b_format, n, slice_start, k):
     m = 128
-    k = 128
     acc_init = 1.0
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
@@ -8227,7 +8225,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_use_acc(a_forma
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + acc_init, atol=1e-3, rtol=1e-3)
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
-    expected_count = _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])

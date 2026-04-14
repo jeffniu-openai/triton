@@ -598,11 +598,11 @@ Every fuzz case records:
   for both legacy and canonical TMEM-linear accumulator layouts, with exact
   scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`. The
   root matrix also includes explicit nonzero accumulator-add coverage at
-  `blockK=128` for every format pair, `blockN in {64,128,256}`, and both
-  accumulator layout families, checking `matmul + acc_init` rather than only
+  `blockK in {128,256}` for every format pair, `blockN in {64,128,256}`,
+  and both accumulator layout families, checking `matmul + acc_init` rather than only
   the zero-initialized path.
   Descriptor-view accumulator-subview coverage now also includes explicit
-  nonzero accumulator-add checks at `blockK=128` for every format pair,
+  nonzero accumulator-add checks at `blockK in {128,256}` for every format pair,
   `blockN in {64,128}`, and `slice_start in {0,N}`, checking the sliced
   `ttg.memdesc_subslice` accumulator path with `matmul + acc_init`.
 - accumulator subview starts that preserve the same supported physical family,

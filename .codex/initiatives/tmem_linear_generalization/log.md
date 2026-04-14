@@ -115,6 +115,21 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-14 08:26 UTC: scaled-MMAv5 use-acc K-depth parity
+
+- Expanded scaled-MMAv5 nonzero accumulator-add coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `SCALED_MMA_ROOT_USE_ACC_CASES` now includes `K in {128,256}` for every format pair, `N in {64,128,256}`, and legacy/canonical accumulator layouts.
+- `SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES` now includes `K in {128,256}` for every format pair, `N in {64,128}`, and `slice_start in {0,N}`.
+- The root and subview use-acc tests now compute expected scaled-MMAv5 opcode counts as `(k // 128) * _expected_scaled_mma_acc_subslice_count(...)`, preserving exact opcode checks for the doubled K-depth surface.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `100/5797`;
+  - no-PYTHONPATH tight MMA collect selected `1204/5797`;
+  - focused root+subview use-acc selector passed all `100` cases across split-4 on four GPUs (`25` per group; `32.70s`, `41.00s`, `28.67s`, `27.19s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1204`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5351 passed, 446 skipped`.
+- Next: final hygiene, commit/push, then continue staged ISA saturation in another exact family.
+
 ## 2026-04-14 08:23 UTC: scaled-MMAv5 accumulator-subview nonzero-accumulator coverage
 
 - Added nonzero accumulator-add coverage for descriptor-view scaled-MMAv5 accumulator subviews in `python/test/gluon/test_tmem_runtime_matrix.py`.
