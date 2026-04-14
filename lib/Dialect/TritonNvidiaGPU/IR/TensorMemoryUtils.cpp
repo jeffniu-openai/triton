@@ -890,6 +890,158 @@ addPrefixOffsetsToQueryOrigin(const LinearLayout &layout,
   return updated;
 }
 
+struct LeadingUnitSubviewLayout {
+  LinearLayout layout;
+  SmallVector<int32_t> origin;
+};
+
+static std::optional<LeadingUnitSubviewLayout>
+tryMakeLeadingUnitSubviewLayout(const LinearLayout &srcLayout,
+                                ArrayRef<int64_t> srcShape,
+                                ArrayRef<int64_t> dstShape,
+                                ArrayRef<int32_t> offsets,
+                                ArrayRef<int32_t> srcOrigin,
+                                std::string *error) {
+  if (srcShape.size() != dstShape.size() || srcShape.size() != offsets.size() ||
+      srcShape.size() != static_cast<size_t>(srcLayout.getNumOutDims()))
+    return std::nullopt;
+
+  auto logicalDims = llvm::to_vector(srcLayout.getOutDimNames());
+  unsigned prefixRank = 0;
+  while (prefixRank < srcShape.size() &&
+         (srcShape[prefixRank] != dstShape[prefixRank] ||
+          offsets[prefixRank] != 0)) {
+    if (dstShape[prefixRank] != 1 || offsets[prefixRank] < 0 ||
+        offsets[prefixRank] >= srcShape[prefixRank]) {
+      if (error)
+        *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+      return std::nullopt;
+    }
+    ++prefixRank;
+  }
+  if (prefixRank == 0)
+    return std::nullopt;
+  for (unsigned dim = prefixRank; dim < srcShape.size(); ++dim) {
+    if (srcShape[dim] != dstShape[dim] || offsets[dim] != 0)
+      return std::nullopt;
+  }
+
+  auto inDims = llvm::to_vector(srcLayout.getInDimNames());
+  SmallVector<int32_t> origin;
+  if (srcOrigin.empty()) {
+    origin.assign(srcLayout.getNumInDims(), 0);
+  } else if (srcOrigin.size() == static_cast<size_t>(srcLayout.getNumInDims())) {
+    origin.assign(srcOrigin.begin(), srcOrigin.end());
+  } else {
+    if (error)
+      *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+    return std::nullopt;
+  }
+
+  SmallVector<std::pair<StringAttr, SmallVector<unsigned>>> eraseByDim;
+  auto recordErase = [&](StringAttr inDim, unsigned basisIdx) {
+    auto it = llvm::find_if(eraseByDim, [&](auto &entry) {
+      return entry.first == inDim;
+    });
+    if (it == eraseByDim.end()) {
+      eraseByDim.push_back({inDim, SmallVector<unsigned>{basisIdx}});
+      return;
+    }
+    if (!llvm::is_contained(it->second, basisIdx))
+      it->second.push_back(basisIdx);
+  };
+
+  auto findLogicalBasis = [&](unsigned logicalIdx, int32_t bit)
+      -> std::optional<std::pair<unsigned, unsigned>> {
+    std::optional<std::pair<unsigned, unsigned>> match;
+    auto allBases = srcLayout.getBases();
+    for (auto [inIdx, inDim] : llvm::enumerate(inDims)) {
+      auto basesIt = allBases.find(inDim);
+      if (basesIt == allBases.end())
+        continue;
+      for (auto [basisIdx, basis] : llvm::enumerate(basesIt->second)) {
+        bool exact = true;
+        for (auto [outIdx, value] : llvm::enumerate(basis)) {
+          int32_t expected = outIdx == logicalIdx ? bit : 0;
+          if (value != expected) {
+            exact = false;
+            break;
+          }
+        }
+        if (!exact)
+          continue;
+        if (match)
+          return std::nullopt;
+        match = {std::pair<unsigned, unsigned>{inIdx, basisIdx}};
+      }
+    }
+    return match;
+  };
+
+  for (unsigned dim = 0; dim < prefixRank; ++dim) {
+    int32_t remainingOffset = offsets[dim];
+    for (int64_t bit64 = 1; bit64 < srcShape[dim]; bit64 <<= 1) {
+      auto match = findLogicalBasis(dim, static_cast<int32_t>(bit64));
+      if (!match) {
+        if (error)
+          *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+        return std::nullopt;
+      }
+      auto [inIdx, basisIdx] = *match;
+      recordErase(inDims[inIdx], basisIdx);
+      if (remainingOffset & static_cast<int32_t>(bit64)) {
+        origin[inIdx] += static_cast<int32_t>(1u << basisIdx);
+        remainingOffset &= ~static_cast<int32_t>(bit64);
+      }
+    }
+    if (remainingOffset != 0) {
+      if (error)
+        *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+      return std::nullopt;
+    }
+  }
+
+  auto viewLayout = srcLayout;
+  for (unsigned dim = 0; dim < prefixRank; ++dim)
+    viewLayout = viewLayout.resizeOutDim(logicalDims[dim], 1);
+  for (unsigned dim = 0; dim < prefixRank; ++dim)
+    viewLayout = viewLayout.squeezeOuts(logicalDims[dim]);
+
+  auto bases = viewLayout.getBases();
+  for (auto &[inDim, basisIndices] : eraseByDim) {
+    auto basesIt = bases.find(inDim);
+    if (basesIt == bases.end()) {
+      if (error)
+        *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+      return std::nullopt;
+    }
+    llvm::sort(basisIndices);
+    basisIndices.erase(std::unique(basisIndices.begin(), basisIndices.end()),
+                       basisIndices.end());
+    for (unsigned basisIdx : basisIndices) {
+      if (basisIdx >= basesIt->second.size() ||
+          !llvm::all_of(basesIt->second[basisIdx],
+                        [](int32_t value) { return value == 0; })) {
+        if (error)
+          *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+        return std::nullopt;
+      }
+    }
+    for (unsigned idx = basisIndices.size(); idx > 0; --idx) {
+      unsigned basisIdx = basisIndices[idx - 1];
+      if (basisIdx + 1 != basesIt->second.size()) {
+        if (error)
+          *error = "unsupported tensor memory leading-unit memdesc_subslice view";
+        return std::nullopt;
+      }
+      basesIt->second.erase(basesIt->second.begin() + basisIdx);
+    }
+  }
+  viewLayout = LinearLayout(std::move(bases), viewLayout.getOutDims(),
+                            viewLayout.isSurjective());
+  return LeadingUnitSubviewLayout{std::move(viewLayout), std::move(origin)};
+}
+
 static FailureOr<TMemLdStQueryLayout>
 inferTMemSubsliceQueryLayout(ArrayRef<int64_t> srcShape,
                              const TMemLdStQueryLayout &srcQuery,
@@ -913,6 +1065,16 @@ inferTMemSubsliceQueryLayout(ArrayRef<int64_t> srcShape,
     return TMemLdStQueryLayout{
         srcQuery.layout, srcQuery.twoCTAs,
         addPrefixOffsetsToQueryOrigin(srcQuery.layout, srcQuery.origin,
+                                      srcShape.take_front(extraRank),
+                                      offsets.take_front(extraRank), bitwidth)};
+  }
+
+  if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
+          ll, srcShape.drop_front(extraRank), dstShape.drop_front(extraRank),
+          offsets.drop_front(extraRank), srcQuery.origin, error)) {
+    return TMemLdStQueryLayout{
+        leadingUnit->layout, srcQuery.twoCTAs,
+        addPrefixOffsetsToQueryOrigin(leadingUnit->layout, leadingUnit->origin,
                                       srcShape.take_front(extraRank),
                                       offsets.take_front(extraRank), bitwidth)};
   }
@@ -976,7 +1138,8 @@ inferTMemSubsliceQueryLayout(ArrayRef<int64_t> srcShape,
       encodedOffsets.clear();
       encodedOffsets.reserve(layoutRank);
       for (auto [dim, offset] : llvm::enumerate(offsets.drop_front(extraRank)))
-        encodedOffsets.push_back({logicalDims[dim], static_cast<int32_t>(offset)});
+        encodedOffsets.push_back(
+            {logicalDims[dim], static_cast<int32_t>(offset)});
       llInv = std::move(normalizedInv);
     } else {
       if (error && error->empty())
@@ -2853,6 +3016,47 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
     }
   }
   SmallVector<int32_t> offsets(op.getOffsets().begin(), op.getOffsets().end());
+  if (srcTy.getMemorySpace() == tmemSpace &&
+      dstTy.getMemorySpace() == tmemSpace &&
+      isTensorMemoryEncoding(srcTy.getEncoding()) &&
+      !isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
+    std::string error;
+    auto srcQuery = inferStandaloneTMemLdStQueryLayout(
+        op.getSrc(), /*preserveNonCanonicalView=*/true, &error);
+    if (succeeded(srcQuery)) {
+      SmallVector<int64_t> srcShape(srcTy.getShape().begin(),
+                                    srcTy.getShape().end());
+      SmallVector<int64_t> dstShape(dstTy.getShape().begin(),
+                                    dstTy.getShape().end());
+      auto layoutRank = srcQuery->layout.getNumOutDims();
+      auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
+      if (extraRank >= 0) {
+        if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
+                srcQuery->layout, ArrayRef<int64_t>(srcShape).drop_front(extraRank),
+                ArrayRef<int64_t>(dstShape).drop_front(extraRank),
+                ArrayRef<int32_t>(offsets).drop_front(extraRank),
+                srcQuery->origin, &error)) {
+          auto dstQuery = inferStandaloneTMemLdStQueryLayout(
+              op.getResult(), /*preserveNonCanonicalView=*/true, &error);
+          if (succeeded(dstQuery)) {
+            if (auto offset = getTMemLdStQueryOriginDeltaBaseOffset(
+                    *srcQuery, *dstQuery, srcTy.getElementTypeBitWidth()))
+              return *offset;
+          }
+          auto leadingOrigin = addPrefixOffsetsToQueryOrigin(
+              leadingUnit->layout, leadingUnit->origin,
+              ArrayRef<int64_t>(srcShape).take_front(extraRank),
+              ArrayRef<int32_t>(offsets).take_front(extraRank),
+              srcTy.getElementTypeBitWidth());
+          TMemLdStQueryLayout leadingQuery{leadingUnit->layout,
+                                           srcQuery->twoCTAs, leadingOrigin};
+          if (auto offset = getTMemLdStQueryOriginDeltaBaseOffset(
+                  *srcQuery, leadingQuery, srcTy.getElementTypeBitWidth()))
+            return *offset;
+        }
+      }
+    }
+  }
   return getTMemViewOffsetForLowering(op.getSrc(), offsets);
 }
 
@@ -4392,6 +4596,31 @@ LogicalResult inferTMemSubsliceOpEncoding(ArrayRef<int64_t> srcShape,
                                           Attribute &dstEncoding,
                                           std::optional<Location> loc) {
   auto *ctx = srcEncoding.getContext();
+  if (isTensorMemoryEncoding(srcEncoding) &&
+      !isa<TensorMemoryScalesEncodingAttr>(srcEncoding)) {
+    std::string leadingUnitError;
+    if (auto maybeSrcLayout =
+            getTMemViewAnalysisLayout(srcShape, srcEncoding, &leadingUnitError)) {
+      auto layoutRank = maybeSrcLayout->layout.getNumOutDims();
+      auto extraRank = static_cast<int64_t>(srcShape.size()) - layoutRank;
+      if (extraRank >= 0) {
+        if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
+                maybeSrcLayout->layout, srcShape.drop_front(extraRank),
+                dstShape.drop_front(extraRank), offsets.drop_front(extraRank),
+                /*srcOrigin=*/{}, &leadingUnitError)) {
+          if (auto result = tryMakeTMemViewEncoding(
+                  ctx, leadingUnit->layout, maybeSrcLayout->twoCTAs,
+                  &leadingUnitError)) {
+            if (canMaterializeTMemViewEncoding(ctx, dstShape, srcAllocShape,
+                                               *result)) {
+              dstEncoding = *result;
+              return success();
+            }
+          }
+        }
+      }
+    }
+  }
   if (auto preserved = tryPreserveExactTMemViewEncoding(
           ctx, dstShape, srcAllocShape, srcEncoding, /*error=*/nullptr)) {
     dstEncoding = *preserved;
@@ -4461,6 +4690,16 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
                    [](int32_t offset) { return offset == 0; })) {
     auto result =
         tryMakeTMemViewEncoding(ctx, ll, maybeSrcLayout->twoCTAs, error);
+    if (!result)
+      return failure();
+    return *result;
+  }
+
+  if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
+          ll, srcShape.drop_front(extraRank), dstShape.drop_front(extraRank),
+          offsets.drop_front(extraRank), /*srcOrigin=*/{}, error)) {
+    auto result = tryMakeTMemViewEncoding(ctx, leadingUnit->layout,
+                                          maybeSrcLayout->twoCTAs, error);
     if (!result)
       return failure();
     return *result;

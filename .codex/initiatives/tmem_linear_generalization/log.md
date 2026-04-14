@@ -14477,3 +14477,19 @@ Open after this slice:
 - Current runtime-matrix collection is `8508` tests: `cp=661`, `mma=2337`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8057 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH full-file collect reported `8508`; no-PYTHONPATH `warpx2` collect selected `67/8508`; no-PYTHONPATH CP collect selected `661/8508`; four-GPU `warpx2` selector passed all `67` cases (`17`, `17`, `17`, and `16`; slowest `67.26s`); four-GPU CP selector passed/skipped `651 passed, 10 skipped` (`156 passed/10 skipped`, `166 passed`, `166 passed`, and `163 passed`; slowest `225.83s`); `git diff --check` passed.
 - Next: commit/push this bounded `warpx2` indexed-view checkpoint, then continue staged ISA saturation. Hard copy frontiers remain true tensor-memory-scales `warpx2`, no-scales two-CTA `warpx2::02_13`, and slice-plus-index view algebra unless a concrete descriptor/address/staging hypothesis appears.
+
+## 2026-04-14 16:14 UTC: copy warpx2 slice-plus-index support
+
+- Added general leading-unit TMEM subview algebra in `lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` and used it in query inference, encoding inference, and subview base-offset lowering.
+- Added `tmem_copy_no_scales_warpx2_slice_index_view_kernel` and `tmem_copy_no_scales_warpx2_twocta_slice_index_view_kernel` plus positive/clean-negative runtime tests in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Updated `test/TritonNvidiaGPU/ops.mlir` for the squeezed encoding inferred by leading-unit subslice views.
+- Validation:
+  - `make -j8` passed;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` passed;
+  - collect counts: full file `8524`, `slice_index_view=16`, `warpx2=83`, `cp_no_scales=310`;
+  - `slice_index_view` split across GPUs 0..3 passed all `16` cases;
+  - `warpx2` split across GPUs 0..3 passed all `83` cases;
+  - `cp_no_scales` split across GPUs 0..3 passed/skipped `300 passed, 10 skipped`;
+  - `lit -v test/TritonNvidiaGPU/invalid.mlir test/TritonNvidiaGPU/ops.mlir test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed;
+  - `git diff --check` passed.
+- Remaining copy frontiers: true tensor-memory-scales `warpx2` and no-scales two-CTA `warpx2::02_13` remain hard descriptor/address/staging problems, not covered by this view-algebra fix.

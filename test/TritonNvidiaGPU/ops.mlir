@@ -432,8 +432,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
     %c1 = arith.constant 1 : i32
     %idx = ttg.memdesc_index %arg0[%c1] : !ttg.memdesc<2x128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable>
     %reshape = ttg.memdesc_reshape %idx : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable>
-    %slice = ttg.memdesc_subslice %reshape [1, 0, 0] : !ttg.memdesc<2x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable, 2x64x128>
-    %result = ttg.memdesc_index %slice[%c0] : !ttg.memdesc<1x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable, 2x64x128> -> !ttg.memdesc<64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable>
+    %slice = ttg.memdesc_subslice %reshape [1, 0, 0] : !ttg.memdesc<2x64x128xf32, #tmem_linear_rank3, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable, 2x64x128>
+    %result = ttg.memdesc_index %slice[%c0] : !ttg.memdesc<1x64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable, 2x64x128> -> !ttg.memdesc<64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable>
     tt.return %result : !ttg.memdesc<64x128xf32, #tmem_linear_half_rows, #ttng.tensor_memory, mutable>
   }
 
