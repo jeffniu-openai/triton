@@ -193,9 +193,10 @@ Every fuzz case records:
     layouts for direct and descriptor-chain f32 and i32 roundtrips over every
     public `ld/st` variant.
   - current broad `128x{64,128,256}` coverage includes the full f32 row/column
-    cross-product plus i32 pure-row and pure-column layouts for direct and
-    descriptor-chain roundtrips over every public `ld/st` variant. Mixed
-    non-identity row+column i32 remains a future duration-aware slice.
+    cross-product plus i32 for every non-identity row/column layout for direct
+    and descriptor-chain roundtrips over every public `ld/st` variant.
+    Identity/identity i32 is covered by the broad identity/mixed i32 tests
+    rather than duplicated in this matrix.
 - scrambled/exotic linear families:
   - current root `128x32` coverage includes `scrambled_cols` and
     `scrambled_rows_cols` layouts for direct and descriptor-chain f32 and i32

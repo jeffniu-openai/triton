@@ -13437,3 +13437,18 @@ Open after this slice:
 - Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=2342`; current bucketed evidence aggregates to `4011 passed, 446 skipped`.
 - Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed cases were run directly. Keep split-8 or duration-aware grouping for descriptor-heavy `ld/st` selectors.
 - Next: commit/push this bounded `ld/st` checkpoint. The remaining broad row/column i32 parity is the mixed non-identity cross-product; either decompose that further or switch to a bounded `ld.red` layout slice.
+## 2026-04-14 06:17 UTC: ld/st broad mixed row/column i32 parity
+
+- Expanded `LDST_ROWCOL_PERMUTED_CASES` so the existing f32 full row/column cross-product remains intact and i32 now covers every non-identity broad row/column layout.
+- This covers direct and descriptor-chain `128x{64,128,256}` roundtrips over every public `ld/st` variant for pure row, pure column, and mixed non-identity row+column permutations. Identity/identity i32 remains covered by the broad identity/mixed i32 tests rather than duplicated here.
+- No compiler/lowering source changed in this slice; it is a coverage expansion over already-supported lowering behavior.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused i32 mixed collect selected `270/4727`;
+  - no-PYTHONPATH `ldst` collect selected `2612/4727`;
+  - focused mixed row/column i32 selector passed all `270` cases across split-16 on four GPUs (`17` cases for groups 1-15 and `15` cases for group 16; group times `95.87s`, `90.37s`, `98.35s`, `51.10s`, `91.40s`, `95.88s`, `98.71s`, `9.62s`, `425.76s`, `417.78s`, `423.54s`, `212.60s`, `422.09s`, `430.72s`, `435.20s`, and `4.17s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=2612`; current bucketed evidence aggregates to `4281 passed, 446 skipped`.
+- Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed cases were run directly. Keep split-16 or duration-aware grouping for descriptor-heavy row/column selectors.
+- Next: commit/push this bounded `ld/st` checkpoint, then move to a bounded `ld.red` layout/ISA coverage slice or another recorded long-term ISA gap. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.

@@ -2806,7 +2806,7 @@ LDST_ROWCOL_PERMUTED_CASES = [
     for (dtype_name, torch_dtype), (row_perm_kind, col_perm_kind), n, variant in product(
         LDST_32BIT_DTYPES, PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_VARIANTS
     )
-    if dtype_name == "f32" or (row_perm_kind == "identity") != (col_perm_kind == "identity")
+    if dtype_name == "f32" or not (row_perm_kind == "identity" and col_perm_kind == "identity")
 ]
 
 LDST_EXOTIC_CASES = [
