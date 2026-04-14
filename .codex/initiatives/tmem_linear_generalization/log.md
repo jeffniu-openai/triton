@@ -13182,3 +13182,16 @@ Open after this slice:
   - no-PYTHONPATH focused clean-negative selector passed the two selected dtype cases on the two non-empty pytest-split groups;
   - nearby no-PYTHONPATH `-k warpx2` selector passed all `17` cases across four GPUs (`5`, `5`, `5`, `2`).
 - Conclusion: current copy `warpx2` production positives and clean negatives are stable. Remaining true support work is not another direct-offset or `cta_group::1` rewrite; it needs a real descriptor/address/staging model for no-scales two-CTA `02_13` and tensor-memory-scales `warpx2`.
+
+## 2026-04-14 03:52 UTC ld/st two-CTA N=32 32-bit dtype coverage
+
+- Expanded `LDST_TWOCTA_N32_CASES` from f32-only to `LDST_32BIT_DTYPES = ((f32, torch.float32), (i32, torch.int32))`.
+- The test now covers direct and descriptor-chain `256x32` two-CTA roundtrips for both `block_two_ctas` and MMAv5-like layouts, over every public `ld/st` variant.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `40/3669`;
+  - no-PYTHONPATH `ldst` collect selected `1782/3669`;
+  - focused two-CTA N=32 selector passed all `40` cases across four GPUs (`10` each), with the cold descriptor-heavy groups taking about `2:18`;
+  - `git diff --check`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1782`; current bucketed evidence aggregates to `3223 passed, 446 skipped`.

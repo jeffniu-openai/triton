@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:52 UTC: ld/st two-CTA N=32 32-bit dtype coverage
+
+- `test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout` now covers f32 and i32 payloads for `256x32` two-CTA direct and descriptor-chain `ld/st` over both `block_two_ctas` and MMAv5-like two-CTA layouts, across all public variants.
+- This is dtype parity for the existing minimal-N two-CTA surface, using the dtype-generic helper kernels introduced for the single-CTA N=32 coverage.
+- Current runtime-matrix collection is `3669` tests: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, and `ldst=1782`; current bucketed evidence aggregates to `3223 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `40/3669`; no-PYTHONPATH `ldst` collect selected `1782/3669`; focused two-CTA N=32 selector passed `40` across four GPUs (`10` each); `git diff --check`.
+
 ## 2026-04-14 03:47 UTC: copy warpx2 diagnostic closure
 
 - The no-scales two-CTA `warpx2::02_13` clean-negative diagnostic now says exactly what remains missing: a `cta_group::2` descriptor/address schedule that preserves the high source-column bit.

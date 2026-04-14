@@ -2746,8 +2746,10 @@ LDST_TWOCTA_DESCRIPTOR_CASES = [
 ]
 
 LDST_TWOCTA_N32_CASES = [
-    (mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for mode, layout_name, variant in product(("direct", "descriptor"), LDST_TWOCTA_LAYOUTS.keys(), LDST_VARIANTS)
+    (dtype_name, torch_dtype, mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
+    for (dtype_name, torch_dtype), mode, layout_name, variant in product(
+        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_TWOCTA_LAYOUTS.keys(), LDST_VARIANTS
+    )
 ]
 
 ALLOC_LIFETIME_LDST_CASES = [
@@ -3782,12 +3784,14 @@ def test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout(mode, layout_name, va
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("mode,layout_name,variant,expected_shape", LDST_TWOCTA_N32_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout(mode, layout_name, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,mode,layout_name,variant,expected_shape", LDST_TWOCTA_N32_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout(
+    dtype_name, torch_dtype, mode, layout_name, variant, expected_shape
+):
     m = 256
     n = 32
     layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     if mode == "direct":
@@ -3800,7 +3804,7 @@ def test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout(mode, layout_name, va
         compiled = tmem_ldst_descriptor_chain_kernel[(1, )](
             inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
         )
-        torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+        torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
