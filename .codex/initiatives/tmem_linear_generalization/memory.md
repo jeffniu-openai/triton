@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:03 UTC: ld/st identity N=32 direct and descriptor coverage
+
+- `test_tmem_runtime_matrix_ldst_identity_n32_linear_layout` covers canonical identity `128x32` f32 TMEM roundtrips for both direct access and the supported descriptor-chain view path.
+- The slice spans all public `ld/st` variants (`auto`, `32x32b`, `16x64b`, `16x128b`, `16x256b`) and pins the expected minimal atom shapes (`32x32b.x32`, `16x64b.x16`, `16x128b.x8`, `16x256b.x4`) in both PTX and LLIR.
+- Current runtime-matrix collection is `3321` tests: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, and `ldst=1652`; current bucketed evidence aggregates to `2875 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `10/3321`; focused selector passed `10` cases across four GPUs (`3`, `3`, `3`, `1`).
+- Remaining long-term work: broaden `ld/st` layout/view fuzzing beyond this root identity N=32 slice, then continue staged `ld.red`, copy, and MMAv5/scaled-MMAv5 saturation.
+
 ## 2026-04-14 02:42 UTC: scaled-MMAv5 TMEM-LHS tile-permuted N=256 coverage
 
 - `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_matrix` now spans `N in {128, 256}` at `K=256` for the reachable full-shape tile-permuted TMEM-LHS format pairs and both legacy/canonical accumulator layouts.

@@ -12972,3 +12972,18 @@ Open after this slice:
   - tight `mma` runner: `324 passed` across four groups (`81` each).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2865 passed, 446 skipped`.
 - Next: commit/push this scaled-MMAv5 saturation checkpoint, then continue with another bounded MMAv5/scaled-MMAv5 gap or move into the `ld/st` fuzz/layout breadth workstream.
+
+## 2026-04-14 03:03 UTC: ld/st identity N=32 direct and descriptor coverage
+
+- Added `LDST_IDENTITY_N32_CASES` and `test_tmem_runtime_matrix_ldst_identity_n32_linear_layout`.
+- The new slice covers canonical identity `M=128, N=32` f32 TMEM roundtrips for both direct root access and the supported descriptor-chain path.
+- All public `ld/st` variants are covered: `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`; expected PTX/LLIR opcodes are `32x32b.x32`, `16x64b.x16`, `16x128b.x8`, and `16x256b.x4`.
+- This is intentionally bounded to the missing root identity N=32 surface rather than adding N=32 to every slow `ldst` layout family at once.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector: `10/3321` selected;
+  - focused selector across four GPUs: `10 passed` (`3`, `3`, `3`, `1` by split group).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1652`; current bucketed evidence aggregates to `2875 passed, 446 skipped`.
+- Next: commit/push this bounded `ld/st` coverage checkpoint, then continue with another targeted `ld/st` layout/view slice or staged `ld.red`/copy/MMAv5 coverage.

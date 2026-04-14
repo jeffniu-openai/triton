@@ -172,6 +172,9 @@ Every fuzz case records:
 - canonical identity:
   - `M in {64, 128, 256}`
   - `N in {32, 64, 128, 256}`
+  - current root identity `128x32` coverage includes direct and descriptor-chain
+    f32 roundtrips over every public `ld/st` variant, pinning the minimal
+    `x32/x16/x8/x4` opcode families.
 - canonical mixed/interleaved linear families:
   - current `128 x {64, 128, 256}` mixed family
   - additional mixed bases discovered by compile-only sweep over row/col basis
