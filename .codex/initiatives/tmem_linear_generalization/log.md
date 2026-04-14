@@ -13755,3 +13755,17 @@ Open after this slice:
   - four-GPU focused scaled indexed-accumulator selector passed all `30` cases across split-4 (`8`, `8`, `8`, and `6` selected; group times `4.59s`, `6.07s`, `6.52s`, and `4.58s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=980`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5106 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation in another exact family.
+
+## 2026-04-14 08:12 UTC: two-CTA plain-MMAv5 indexed accumulator descriptor-view coverage
+
+- Added `tmem_mma_twocta_indexed_acc_kernel` plus a 100-case positive matrix for two-CTA accumulator `memdesc_index` views.
+- Coverage spans every supported plain operand kind, `K in {32,64}`, `use_acc` false/true, legacy parent layouts at `N in {64,128,256}`, and canonical TMEM-linear parent layouts at `N in {64,128}`.
+- Omitted boundary: canonical linear `N=256` would keep a live `[2,256,256]` parent image and require 1024 TMEM columns, so it remains a resource boundary rather than a clean-negative compiler contract.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `100/5652`;
+  - no-PYTHONPATH tight MMA collect selected `1080/5652`;
+  - four-GPU focused two-CTA indexed-accumulator selector passed all `100` cases across split-4 (`25` per group; group times `4.69s`, `4.69s`, `4.69s`, and `4.63s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5206 passed, 446 skipped`.
+- Next: run final hygiene, commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact family.

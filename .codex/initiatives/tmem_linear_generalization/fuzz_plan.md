@@ -508,11 +508,12 @@ Every fuzz case records:
   layouts, `blockN in {64, 128, 256}`, and `blockK in {32, 64}`.
 - current accumulator `memdesc_index` positive coverage spans every supported
   plain kind, `blockK in {32, 64}`, and `use_acc in {false, true}` by indexing
-  from a `[2, 128, blockN]` accumulator parent. Legacy parents are covered at
-  `blockN in {64, 128, 256}`; canonical TMEM-linear parents are covered at
-  `blockN in {64, 128}`. Canonical linear `blockN=256` is a hardware resource
-  boundary for this parent-view test because the live parent image requires
-  1024 TMEM columns.
+  from `[2, M, blockN]` accumulator parents. One-CTA coverage uses
+  `M=128`; two-CTA coverage uses `M=256` with multicast commit checks. Legacy
+  parents are covered at `blockN in {64, 128, 256}`; canonical TMEM-linear
+  parents are covered at `blockN in {64, 128}`. Canonical linear
+  `blockN=256` is a hardware resource boundary for this parent-view test
+  because the live parent image requires 1024 TMEM columns.
 - `multicast in {false, true}` where supported
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared
@@ -553,7 +554,7 @@ Every fuzz case records:
 - PTX and LLIR use the same `tcgen05.mma` opcode family, with exact op counts
   pinned for the plain-kind root matrices, tile-permuted accumulator coverage,
   full-shape tile-permuted TMEM-LHS coverage, TMEM-LHS subview coverage, and
-  accumulator `memdesc_index` descriptor-view coverage.
+  one-CTA plus two-CTA accumulator `memdesc_index` descriptor-view coverage.
 - `commit` opcode family and multicast suffix are correct.
 - TMEM accumulator layout must remain canonical TMEM-linear in TTGIR when the
   source came from `TensorMemoryLinearLayout`.

@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:12 UTC: two-CTA plain-MMAv5 indexed accumulator descriptor-view coverage
+
+- Added `tmem_mma_twocta_indexed_acc_kernel` and `test_tmem_runtime_matrix_mma_twocta_indexed_acc_view` to cover two-CTA accumulator views produced by `memdesc_index` from a rank-3 parent.
+- The executable positive matrix covers every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`), `K in {32,64}`, `use_acc in {False,True}`, legacy two-CTA parents at `N in {64,128,256}`, and canonical TMEM-linear two-CTA parents at `N in {64,128}`.
+- The canonical linear `N=256` two-CTA indexed parent is intentionally omitted as a hardware resource boundary: the live `[2,256,256]` parent image requires 1024 TMEM columns.
+- The test validates numerical matmul with and without accumulator add, exact two-CTA MMAv5 opcode counts, exact multicast commit opcode, `ttg.memdesc_index` in TTGIR, `two_ctas` in TTGIR, and the expected legacy or canonical TMEM-linear layout token.
+- Current runtime-matrix collection is `5652` tests: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5206 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `100/5652`; no-PYTHONPATH tight MMA collect selected `1080/5652`; focused two-CTA indexed-accumulator selector passed all `100` cases across split-4 on four GPUs (`25` per group; group times `4.69s`, `4.69s`, `4.69s`, and `4.63s`).
+- Next: continue staged TMEM ISA saturation in another bounded family. Good candidates are remaining supported-API `ld/st` descriptor coverage, a concrete `ld.red` layout/modifier gap, or another non-parked scaled-MMAv5 descriptor-view gap.
+
 ## 2026-04-14 08:08 UTC: scaled-MMAv5 indexed accumulator descriptor-view coverage
 
 - Added `tmem_mma_scaled_indexed_acc_format_kernel` and `test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_matrix` to cover scaled-MMAv5 accumulator views produced by `memdesc_index` from a rank-3 parent.
