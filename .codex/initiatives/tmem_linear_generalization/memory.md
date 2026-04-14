@@ -1,11 +1,20 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 01:24 UTC: scaled-MMAv5 accumulator subview N=128 coverage
+
+- Single-CTA scaled-MMAv5 accumulator-subslice format coverage now spans `N=64` and `N=128` subviews, with start offsets `0` and `N`, for all five scaled format pairs.
+- `tmem_mma_scaled_acc_subslice_format_kernel` now derives the parent accumulator width as `2 * N`, so existing `N=64` cases keep their `128`-column parent and the new `N=128` cases use a `256`-column parent.
+- The slice adds `10` runtime cases and keeps exact scaled-MMAv5 PTX/LLIR opcode checks plus the descriptor-subview and `tensor_memory_linear` assertions.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8` no-op success; collect-only with `PYTHONPATH` unset reports `3294` total runtime-matrix tests and `311` tight MMA/scaled-MMA tests; focused accumulator-subslice format selector passed `20` cases across four GPUs; tight `mma` runner bucket passed `311` cases across four GPUs; `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=318`, `mma=311`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2848 passed, 446 skipped`.
+- Remaining long-term work: no-scales/scales copy `warpx2`, broader MMAv5/scaled-MMAv5 saturation beyond this single-CTA subview slice, and staged broad validation.
+
 ## 2026-04-14 01:18 UTC: ld.red N=32 non-identity coverage slice
 
 - `tcgen05.ld.red` coverage now includes the missing `N=32` compatible non-identity layouts: tile-permuted (`tile_n=8`), pure column permutations, pure row permutations, and row+column permutation cross-product.
 - The slice adds `128` positive runtime cases across `red_op in {min,max}` and all legal `abs` / `PropagateNan` modifier pairs. All cases pin the `tcgen05.ld.red.sync.aligned.32x32b.x32` PTX/LLIR family and the existing wait/offset invariants.
 - Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8` no-op success; collect-only with `PYTHONPATH` unset reports `3284` total runtime-matrix tests and `771` `ld_red` tests; focused new `N=32` slice passed `128` selected cases across four GPUs; full `ld_red` runner bucket passed `771` cases across 16 split groups; `git diff --check` passed.
-- Current runtime-matrix bucket totals: `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2838 passed, 446 skipped`.
+- Before the later scaled-MMAv5 subview expansion, runtime-matrix bucket totals were `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; bucketed evidence aggregated to `2838 passed, 446 skipped`.
 - Remaining long-term coverage work is still broader fuzzing/clean negatives beyond this positive slice, no-scales/scales copy `warpx2`, and broader MMAv5/scaled-MMAv5 saturation.
 
 ## 2026-04-14 01:03 UTC: selected-shard speed helper and first CP 128x128b ISA coverage slice

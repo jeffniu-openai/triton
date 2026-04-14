@@ -2399,7 +2399,7 @@ def tmem_mma_scaled_acc_subslice_format_kernel(
     A_FORMAT: ttgl.constexpr,
     B_FORMAT: ttgl.constexpr,
 ):
-    parent_n: ttgl.constexpr = 128
+    parent_n: ttgl.constexpr = 2 * N
     A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
     B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
     A_IS_FP4: ttgl.constexpr = A_ELEM_PER_BYTE == 2
@@ -3051,6 +3051,12 @@ SCALED_MMA_LHS_SUBSLICE_NK_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
     for n, k in product((128, 256), (128, 256))
+]
+
+SCALED_MMA_ACC_SUBSLICE_N_CASES = [
+    (n, slice_start)
+    for n in (64, 128)
+    for slice_start in (0, n)
 ]
 
 CP_SCALES_WARPX4_SCALED_MMA_CASES = [
@@ -6978,10 +6984,9 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view(n):
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
-@pytest.mark.parametrize("slice_start", (0, 64))
-def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format, b_format, slice_start):
+@pytest.mark.parametrize("n,slice_start", SCALED_MMA_ACC_SUBSLICE_N_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format, b_format, n, slice_start):
     m = k = 128
-    n = 64
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
@@ -7000,7 +7005,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format
         b,
         a_scale,
         b_scale,
-        _make_tmem_linear_layout(m, 128),
+        _make_tmem_linear_layout(m, 2 * n),
         slice_start,
         vec_size,
         a_elem_per_byte,

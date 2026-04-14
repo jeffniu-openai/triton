@@ -12882,3 +12882,18 @@ Open after this slice:
   - full `ld_red` runner: `771 passed` across 16 split groups, with pytest shard times from `27.66s` to `110.05s`;
   - `git diff --check` passed.
 - This closes the obvious `N=32` compatible non-identity gap in the current fuzz plan. Remaining long-term work is broader layout fuzzing/clean diagnostics, copy `warpx2`, and broader MMAv5/scaled-MMAv5 coverage.
+
+
+## 2026-04-14 scaled-MMAv5 accumulator subview N=128 coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix` from `N=64` subviews only to `N in {64, 128}`, with `slice_start in {0, N}`.
+- `tmem_mma_scaled_acc_subslice_format_kernel` now uses parent accumulator width `2 * N`; existing `N=64` cases still use a 128-column parent, while new `N=128` cases use a 256-column parent.
+- This adds `10` cases across the five scaled format pairs while preserving exact scaled-MMAv5 opcode checks, commit checks, descriptor-subview assertions, and `tensor_memory_linear` assertions.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - collect-only with `PYTHONPATH` unset: `3294` total tests, `311` tight MMA/scaled-MMA tests;
+  - focused selector: `20 passed` across four GPUs;
+  - tight `mma` runner: `311 passed` across four groups (`78`, `78`, `78`, `77`);
+  - `git diff --check` passed.
+- This closes one bounded single-CTA scaled-MMAv5 descriptor-view gap. Remaining frontiers include copy `warpx2`, broader MMAv5/scaled-MMAv5 saturation, and staged broad validation.
