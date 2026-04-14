@@ -13984,3 +13984,20 @@ Open after this slice:
   - focused `ld_red_descriptor_chain` selector passed all `24` cases across split-4 on four GPUs (`6` per group; group times `25.60s`, `39.63s`, `72.78s`, and `117.55s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=944`, `ldst=2869`; current bucketed evidence aggregates to `5605 passed, 446 skipped`.
 - Next: commit/push this checkpoint, then continue another exact non-parked coverage slice.
+
+## 2026-04-14 09:16 UTC: ld.red descriptor-view explicit variants
+
+- Extended the descriptor-view `ld.red` coverage slice:
+  - `tmem_ld_red_descriptor_chain_kernel` now accepts `load_variant`;
+  - identity views cover `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`;
+  - tile-permuted and row/column-permuted descriptor views remain covered through `auto`.
+- This expands the focused selector from `24` to `48` cases while avoiding a full non-identity layout × variant cross-product.
+- Validation completed:
+  - `make -j8` no-op success;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `48/6075`;
+  - no-PYTHONPATH `ld_red` collect selected `968/6075`;
+  - focused `ld_red_descriptor_chain` selector passed all `48` cases across split-4 on four GPUs (`12` per group; group times `44.84s`, `48.10s`, `58.35s`, and `190.20s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5629 passed, 446 skipped`.
+- Next: commit/push this checkpoint, then continue another exact non-parked coverage slice.

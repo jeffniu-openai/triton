@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 6051-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 6075-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld.red` descriptor-view explicit-variant checkpoint, 2026-04-14 09:16 UTC: extended the TMEM descriptor-view reduction slice so identity views cover every compatible explicit reduction register-layout request (`auto`, `32x32b`, `16x32bx2`, `32x32b_splitn`) while tile-permuted and row/column-permuted descriptor views continue to cover `auto`. Current runtime-matrix collection is `6075` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=968`, and `ldst=2869`; bucketed evidence now aggregates to `5629 passed, 446 skipped`. Validation: `make -j8` no-op success; py-compile passed; `git diff --check` passed; no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `48/6075`; no-PYTHONPATH `ld_red` collect selected `968/6075`; focused `ld_red_descriptor_chain` selector passed all `48` cases across split-4 on four GPUs (`12` per group; times `44.84s`, `48.10s`, `58.35s`, and `190.20s`).
 
 - Current `ld.red` descriptor-view checkpoint, 2026-04-14 09:11 UTC: added positive hardware-reduction coverage through a TMEM descriptor chain in `python/test/gluon/test_tmem_runtime_matrix.py`. The new kernel stores through a `[2,128,128]` parent, reduces through a `slice`/`index`/`reshape` descriptor view, and covers identity, tile-permuted, and row/column-permuted source layouts across `min`/`max` plus all legal `abs`/`NaN` modifier modes. Current runtime-matrix collection is `6051` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=944`, and `ldst=2869`; bucketed evidence now aggregates to `5605 passed, 446 skipped`. Validation: `make -j8` no-op success; py-compile passed; `git diff --check` passed; no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `24/6051`; no-PYTHONPATH `ld_red` collect selected `944/6051`; focused `ld_red_descriptor_chain` selector passed all `24` cases across split-4 on four GPUs (`6` per group; times `25.60s`, `39.63s`, `72.78s`, and `117.55s`). Note: an initial lifted-layout version of this probe aborted in `get_reg_layout` with a descriptor-dimension mismatch; the committed test follows the existing multibuffer `ld/st` pattern by passing the base 2D layout into the `[2,M,N]` allocation.
 

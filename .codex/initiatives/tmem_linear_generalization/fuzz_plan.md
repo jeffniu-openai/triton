@@ -325,8 +325,9 @@ Every fuzz case records:
     cross-product `128x{64,128,256}` layouts, which are now proven to emit
     `32x32b` reduction-family opcodes across legal modifiers
   - descriptor-view reductions over a `[2,128,128]` parent, currently covering
-    identity, tile-permuted, and row/column-permuted source layouts through
-    `slice`/`index`/reshape views across the legal modifier matrix
+    identity views for `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`, plus
+    tile-permuted and row/column-permuted source layouts through
+    `slice`/`index`/reshape auto views across the legal modifier matrix
   - any additional TMEM-linear family that compile-only search proves emits
     legal reduction code
 

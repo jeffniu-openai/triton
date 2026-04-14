@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:16 UTC: ld.red descriptor-view explicit variants
+
+- Extended `tmem_ld_red_descriptor_chain_kernel` with a `load_variant` constexpr and changed `LD_RED_DESCRIPTOR_CHAIN_CASES` from 3 auto-only layout cases to 6 layout/variant cases.
+- Identity descriptor views now cover `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`; tile-permuted and row/column-permuted descriptor views remain on `auto`. This expands the descriptor-view reduction slice from `24` to `48` cases without multiplying every non-identity layout by every variant.
+- Current runtime-matrix collection is `6075` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5629 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `48/6075`; no-PYTHONPATH `ld_red` collect selected `968/6075`; focused `ld_red_descriptor_chain` selector passed all `48` cases across split-4 on four GPUs (`12` per group; group times `44.84s`, `48.10s`, `58.35s`, and `190.20s`).
+- Next: commit/push this explicit-variant descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 09:11 UTC: ld.red descriptor-view positives
 
 - Added `tmem_ld_red_descriptor_chain_kernel`, `LD_RED_DESCRIPTOR_CHAIN_CASES`, and `test_tmem_runtime_matrix_ld_red_descriptor_chain` in `python/test/gluon/test_tmem_runtime_matrix.py`.

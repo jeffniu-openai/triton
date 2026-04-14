@@ -1103,8 +1103,8 @@ def tmem_ld_red_explicit_layout_kernel(
 
 @gluon.jit
 def tmem_ld_red_descriptor_chain_kernel(
-    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, red_op: ttgl.constexpr, use_abs: ttgl.constexpr,
-    propagate_nan: ttgl.constexpr
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, load_variant: ttgl.constexpr, red_op: ttgl.constexpr,
+    use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
 ):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -1124,7 +1124,7 @@ def tmem_ld_red_descriptor_chain_kernel(
 
     view = base.reshape((M // 2, 2, N)).reshape((M, N))
     view = view.slice(0, M, dim=0).slice(0, N, dim=1)
-    load_layout: ttgl.constexpr = view.get_reg_layout()
+    load_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=load_variant)
     if red_op == "min":
         output, reduced = view.load_min(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
     else:
@@ -3841,11 +3841,16 @@ LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [
 ]
 
 LD_RED_DESCRIPTOR_CHAIN_CASES = [
-    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), id="identity"),
-    pytest.param("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32),
-                 id="tile_permuted"),
+    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "auto", id="identity_auto"),
+    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "32x32b", id="identity_32x32b"),
+    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "16x32bx2",
+                 id="identity_16x32bx2"),
+    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "32x32b_splitn",
+                 id="identity_32x32b_splitn"),
+    pytest.param("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32), "auto",
+                 id="tile_permuted_auto"),
     pytest.param("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse"),
-                 id="rowcol_rotate_reverse"),
+                 "auto", id="rowcol_rotate_reverse_auto"),
 ]
 
 LD_RED_MIXED_CASES = [
@@ -5842,9 +5847,9 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
-@pytest.mark.parametrize("layout_name,layout_factory", LD_RED_DESCRIPTOR_CHAIN_CASES)
+@pytest.mark.parametrize("layout_name,layout_factory,load_variant", LD_RED_DESCRIPTOR_CHAIN_CASES)
 def test_tmem_runtime_matrix_ld_red_descriptor_chain(
-    layout_name, layout_factory, use_abs, propagate_nan, red_op
+    layout_name, layout_factory, load_variant, use_abs, propagate_nan, red_op
 ):
     M = N = 128
     layout = layout_factory()
@@ -5854,7 +5859,7 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain(
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
-        inp, out, red, layout, red_op, use_abs, propagate_nan, num_warps=4
+        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
     )
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
