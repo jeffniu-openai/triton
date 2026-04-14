@@ -13407,3 +13407,18 @@ Open after this slice:
 - Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=2102`; current bucketed evidence aggregates to `3771 passed, 446 skipped`.
 - Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed cases were run directly. Do not validate this selector cold with only split-4; use split-8 or the duration-aware ldst runner.
 - Next: commit/push this bounded `ld/st` checkpoint, then continue another staged ISA coverage slice. Good nearby options are row/column broad i32 parity with duration-aware grouping, a smaller exotic-layout parity slice, or an `ld.red` layout slice.
+## 2026-04-14 05:42 UTC: ld/st broad scrambled/exotic i32 parity
+
+- Expanded `LDST_EXOTIC_CASES` and `LDST_EXOTIC_DESCRIPTOR_CASES` from f32-only to f32+i32 for the broad scrambled/exotic `ld/st` matrix.
+- This covers direct and descriptor-chain `128x{64,128,256}` roundtrips for `scrambled_cols` and `scrambled_rows_cols` layouts over every public `ld/st` variant.
+- The direct and descriptor-composition tests now seed int32 tensors and cast to the requested dtype. The descriptor expectation uses `inp + 3` instead of `inp + 3.0` so integer outputs remain dtype-preserving.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `120/4277`;
+  - no-PYTHONPATH `ldst` collect selected `2162/4277`;
+  - focused exotic selector passed all `120` cases across split-8 on four GPUs (`15` per group; `84.72s`, `4.16s`, `80.59s`, `4.11s`, `373.27s`, `4.07s`, `378.23s`, and `4.15s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=2162`; current bucketed evidence aggregates to `3831 passed, 446 skipped`.
+- Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed cases were run directly. Keep split-8 or duration-aware grouping for descriptor-heavy `ld/st` selectors.
+- Next: commit/push this bounded `ld/st` checkpoint, then continue another staged ISA coverage slice. Remaining broad row/column i32 parity is larger and should use duration-aware grouping or be decomposed; an `ld.red` layout slice is also a good next target.

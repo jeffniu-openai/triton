@@ -196,6 +196,9 @@ Every fuzz case records:
   - current root `128x32` coverage includes `scrambled_cols` and
     `scrambled_rows_cols` layouts for direct and descriptor-chain f32 and i32
     roundtrips over every public `ld/st` variant.
+  - current broad `128x{64,128,256}` coverage includes `scrambled_cols` and
+    `scrambled_rows_cols` layouts for direct and descriptor-chain f32 and i32
+    roundtrips over every public `ld/st` variant.
 - canonical mixed/interleaved linear families:
   - current `128 x {64, 128, 256}` mixed family
   - additional mixed bases discovered by compile-only sweep over row/col basis

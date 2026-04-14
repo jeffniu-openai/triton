@@ -2809,8 +2809,10 @@ LDST_ROWCOL_PERMUTED_CASES = [
 ]
 
 LDST_EXOTIC_CASES = [
-    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_EXOTIC_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
+    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
+    for (dtype_name, torch_dtype), layout_name, n, variant in product(
+        LDST_32BIT_DTYPES, LDST_EXOTIC_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS
+    )
 ]
 
 LDST_EXOTIC_N32_CASES = [
@@ -2821,9 +2823,10 @@ LDST_EXOTIC_N32_CASES = [
 ]
 
 LDST_EXOTIC_DESCRIPTOR_CASES = [
-    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(("scrambled_cols", "scrambled_rows_cols"), (64, 128, 256),
-                                           LDST_VARIANTS)
+    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
+    for (dtype_name, torch_dtype), layout_name, n, variant in product(
+        LDST_32BIT_DTYPES, ("scrambled_cols", "scrambled_rows_cols"), (64, 128, 256), LDST_VARIANTS
+    )
 ]
 
 LDST_EXOTIC_UNSUPPORTED_CASES = [
@@ -3924,11 +3927,13 @@ def test_tmem_runtime_matrix_ldst_rowcol_permuted_layout_sweep(row_perm_kind, co
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_EXOTIC_CASES)
-def test_tmem_runtime_matrix_ldst_exotic_linear_layouts(layout_name, n, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant,expected_shape", LDST_EXOTIC_CASES)
+def test_tmem_runtime_matrix_ldst_exotic_linear_layouts(
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape
+):
     m = 128
     layout = LDST_EXOTIC_LAYOUTS[layout_name](n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
@@ -4055,15 +4060,17 @@ def test_tmem_runtime_matrix_ldst_descriptor_compositions_rowcol_permuted_layout
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_EXOTIC_DESCRIPTOR_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_compositions_exotic_layouts(layout_name, n, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant,expected_shape", LDST_EXOTIC_DESCRIPTOR_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_compositions_exotic_layouts(
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape
+):
     m = 128
     layout = LDST_EXOTIC_LAYOUTS[layout_name](n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-    torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
