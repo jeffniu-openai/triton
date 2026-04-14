@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:00 UTC: TMA-fed two-CTA BF16 parity
+
+- Expanded the descriptor-fed two-CTA f16-like MMAv5 runtime-matrix anchor in `python/test/gluon/test_tmem_runtime_matrix.py`. `MMA_TWOCTA_TMA_F16_LIKE_CASES` now spans `dtype in {f16,bf16}`, `blockN in {64,128,256}`, both legacy and canonical two-CTA TMEM-linear accumulator layouts, and both no-accumulator plus `use_acc=True` paths.
+- BF16 uses `ttgl.bfloat16` TMA shared layouts and `torch.bfloat16` inputs, emits the same exact `tcgen05.mma.cta_group::2.kind::f16` PTX/LLIR opcode stream as direct BF16 MMAv5 coverage, and checks `a @ b` / `a @ b + c` with BF16 tolerance.
+- The previous FP16 rows remain unchanged, including exact multicast commit opcode checks, exact MMAv5 opcode counts, `two_ctas` TTGIR checks, and `tensor_memory_linear` checks for the canonical accumulator layout spelling.
+- Current runtime-matrix collection is `7793` tests: `cp=580`, `mma=1885`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7342 passed, 451 skipped`.
+- Validation completed: one-off BF16 descriptor-fed probe passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `24/7793`; no-PYTHONPATH full-file collect reported `7793`; focused TMA-fed f16/bf16 selector passed all `24` cases across split-4 (`6` per group; group times `8.40s`, `10.41s`, `10.77s`, and `10.37s`); `git diff --check` passed.
+- Side finding: do not blindly promote rank-5 descriptor `ld/st` `N=256` in the current `[1,1,2,M,N]` helper. Direct probes for single-CTA identity and two-CTA block/MMAv5-like layouts failed with tensor-memory OOR (`Required: 1024`, hardware limit `512`), so a future positive needs a different lower-resource helper rather than only a tiling-aware opcode assertion.
+- Next: commit/push this BF16 parity checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 12:55 UTC: TMA-fed two-CTA f16 MMAv5 N-width/use-acc coverage
 
 - Expanded the descriptor-fed two-CTA f16 MMAv5 runtime-matrix anchor in `python/test/gluon/test_tmem_runtime_matrix.py`. `MMA_TWOCTA_TMA_F16_CASES` now spans `blockN in {64,128,256}`, both legacy and canonical two-CTA TMEM-linear accumulator layouts, and both no-accumulator plus `use_acc=True` paths.

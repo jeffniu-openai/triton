@@ -14239,3 +14239,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7781` tests: `cp=580`, `mma=1873`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7330 passed, 451 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/7781`; no-PYTHONPATH full-file collect reported `7781`; focused TMA-fed f16 selector passed all `12` cases across split-4 on four GPUs (`3` per group; group times `6.72s`, `8.20s`, `6.52s`, `8.31s`); adjacent direct two-CTA node `test_tmem_runtime_matrix_mma_twocta_plain_kinds[f16-legacy-64-32]` passed; `git diff --check` passed before and after docs.
 - Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:00 UTC: TMA-fed two-CTA BF16 parity
+
+- Expanded `test_tmem_runtime_matrix_mma_twocta` from f16-only descriptor-fed TMA coverage to f16/bf16 via `MMA_TWOCTA_TMA_F16_LIKE_CASES`, preserving the existing `blockN in {64,128,256}`, legacy/canonical accumulator layout, and `use_acc in {False,True}` axes.
+- BF16 rows use `ttgl.bfloat16` TMA shared layouts and assert the same exact `tcgen05.mma.cta_group::2.kind::f16` PTX/LLIR opcode stream expected for direct BF16 MMAv5.
+- One-off rank-5 `N=256` `ld/st` probes failed tensor-memory OOR (`Required: 1024`, hardware limit `512`), so that previously noted follow-up is not a simple assertion-only promotion for the current `[1,1,2,M,N]` helper.
+- Current runtime-matrix collection is `7793` tests: `cp=580`, `mma=1885`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7342 passed, 451 skipped`.
+- Validation: BF16 descriptor-fed probe passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `24/7793`; no-PYTHONPATH full-file collect reported `7793`; focused selector passed all `24` cases across split-4 on four GPUs (`6` per group; slowest `10.77s`); `git diff --check` passed.
+- Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
