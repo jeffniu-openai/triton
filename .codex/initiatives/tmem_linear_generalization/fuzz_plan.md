@@ -332,7 +332,7 @@ Every fuzz case records:
 - Covered by `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`:
   `i32` plain reductions, `i32` reductions with `NaN` or `abs` modifiers, and
   legacy-unpacked `f16` reduction attempts all fail before lowering with clean
-  verifier diagnostics.
+  verifier diagnostics for both `min` and `max`.
 - Explicit N-sharded register-layout clean negatives (`16x64b`, `16x128b`,
   and `16x256b`) are covered across `min`/`max`, `abs` false/true, and
   `PropagateNan.NONE/ALL`; additional N-sharded register layouts remain a

@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:08 UTC: ld.red non-f32 min/max contract parity
+
+- `tmem_ld_red_non_f32_contract_kernel` now takes `red_op` and calls `load_min` or `load_max`, so `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported` covers both reduction ops for each non-f32 contract case.
+- Coverage remains the same contract surface: i32 plain reductions, i32 reductions with NaN/abs modifiers, and legacy-unpacked f16 attempts must fail before lowering with clean diagnostics and no PassManager/assertion noise.
+- Current runtime-matrix collection is `4949` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4503 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `8/4949`; no-PYTHONPATH `ld_red` bucket selected `880/4949`; focused non-f32 contract selector passed all `8` cases across four GPUs (`2` per group; group times `4.43s`, `4.23s`, `4.23s`, and `3.96s`).
+
 ## 2026-04-14 07:06 UTC: ld.red explicit N-sharded modifier matrix
 
 - `test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported` now covers explicit N-sharded register-layout variants `16x64b`, `16x128b`, and `16x256b` across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`.

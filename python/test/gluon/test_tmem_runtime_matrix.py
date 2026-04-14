@@ -1062,6 +1062,7 @@ def tmem_ld_red_non_f32_contract_kernel(
     red_ptr,
     layout: ttgl.constexpr,
     load_variant: ttgl.constexpr,
+    red_op: ttgl.constexpr,
     use_abs: ttgl.constexpr,
     propagate_nan: ttgl.constexpr,
 ):
@@ -1081,7 +1082,10 @@ def tmem_ld_red_non_f32_contract_kernel(
     value = ttgl.convert_layout(value, store_layout)
     tmem.store(value)
 
-    output, reduced = tmem.load_min(layout=store_layout, abs=use_abs, propagate_nan=propagate_nan)
+    if red_op == "min":
+        output, reduced = tmem.load_min(layout=store_layout, abs=use_abs, propagate_nan=propagate_nan)
+    else:
+        output, reduced = tmem.load_max(layout=store_layout, abs=use_abs, propagate_nan=propagate_nan)
     output = ttgl.convert_layout(output, global_layout)
     ttgl.store(out_ptr + offs, output)
 
@@ -5370,11 +5374,12 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsu
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize(
     "name,dtype,layout,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_CONTRACT_CASES
 )
 def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
-    name, dtype, layout, load_variant, use_abs, propagate_nan, expected_diag, capfd
+    name, dtype, layout, load_variant, use_abs, propagate_nan, expected_diag, red_op, capfd
 ):
     inp = torch.zeros((128, 128), dtype=dtype, device="cuda")
     out = torch.empty_like(inp)
@@ -5382,7 +5387,7 @@ def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
 
     with pytest.raises(Exception) as err:
         tmem_ld_red_non_f32_contract_kernel[(1, )](
-            inp, out, red, layout, load_variant, use_abs, propagate_nan, num_warps=4
+            inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
         )
 
     captured = capfd.readouterr()

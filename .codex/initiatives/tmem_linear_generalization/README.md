@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4945-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4949-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld.red` non-f32 min/max contract checkpoint, 2026-04-14 07:08 UTC: `tmem_ld_red_non_f32_contract_kernel` now exercises both `load_min` and `load_max`, so the clean non-f32 reduction diagnostics cover `min`/`max` for i32 plain reductions, i32 NaN/abs modifier rejections, and the legacy-unpacked f16 attempt. Current runtime-matrix collection is `4949` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=880`, and `ldst=2612`; bucketed evidence now aggregates to `4503 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `8/4949`; no-PYTHONPATH `ld_red` collect selected `880/4949`; focused non-f32 contract selector passed all `8` cases across split-4 on four GPUs (`2` per group; slowest `4.43s`).
 
 - Current `ld.red` explicit N-sharded modifier-matrix checkpoint, 2026-04-14 07:06 UTC: the clean-negative test for explicit N-sharded `tcgen05.ld.red` register layouts (`16x64b`, `16x128b`, and `16x256b`) now covers `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` instead of only the default `min`/no-abs/no-NaN case. These layouts remain clean unsupported because reduction requires the N dimension in registers and M unsharded. Current runtime-matrix collection is `4945` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=876`, and `ldst=2612`; bucketed evidence now aggregates to `4499 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `24/4945`; no-PYTHONPATH `ld_red` collect selected `876/4945`; focused N-sharded clean-negative selector passed all `24` cases across split-4 on four GPUs (`6` per group; slowest `4.70s`). Discarded probe: adding the row-256 reduction-friendly `N=256` positive shape hits helper shared-memory OOR (`Required: 262148`, limit `232448`), so it remains omitted rather than reclassified as an ISA/compiler failure.
 

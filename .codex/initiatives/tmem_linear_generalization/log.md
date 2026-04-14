@@ -13632,3 +13632,16 @@ Open after this slice:
   - no-PYTHONPATH full `ld_red` bucket selected `876/4945`;
   - four-GPU focused N-sharded selector passed `24` cases across split-4 (`6` per group; group times `4.61s`, `4.51s`, `4.46s`, and `4.70s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=876`, `ldst=2612`; current bucketed evidence aggregates to `4499 passed, 446 skipped`.
+
+## 2026-04-14 07:08 UTC: ld.red non-f32 min/max contract parity
+
+- Added `red_op` to `tmem_ld_red_non_f32_contract_kernel` and branched to `load_min` or `load_max`.
+- `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported` now covers both `min` and `max` for i32 plain reductions, i32 NaN/abs modifier diagnostics, and legacy-unpacked f16 reductions.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `8/4949`;
+  - no-PYTHONPATH full `ld_red` bucket selected `880/4949`;
+  - four-GPU focused non-f32 selector passed `8` cases across split-4 (`2` per group; group times `4.43s`, `4.23s`, `4.23s`, and `3.96s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4503 passed, 446 skipped`.
