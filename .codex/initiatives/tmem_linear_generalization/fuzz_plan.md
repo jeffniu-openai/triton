@@ -158,8 +158,12 @@ Every fuzz case records:
   copy/MMA paths including scaled-MMA copy-helper kernels, and allocation-pass
   rounding boundaries for raw live totals
   `96`, `192`, and `384` to supported module sizes `128`, `256`, and `512`.
-  Remaining allocator fuzzing is specialized standalone/malformed commit
-  configurations beyond these anchors.
+  Standalone two-CTA `tc_gen5_commit` lowering with no descriptor operands and
+  with two descriptor operands is now pinned in conversion lit, and a malformed
+  three-descriptor standalone commit is pinned as a clean verifier negative.
+  Remaining allocator fuzzing is specialized incompatible barrier/commit
+  configurations and malformed or mismatched allocation result types beyond
+  these anchors.
 
 #### Negative matrix
 - `size > 512`
@@ -800,8 +804,9 @@ Every fuzz case records:
   - `mma` runtime coverage beyond the already-proven anchor cases
   - `mma_scaled` runtime coverage beyond the current minimal and accumulator
     slice-start anchors
-  - specialized standalone/malformed commit configurations beyond the current
-    runtime and allocation-pass anchors
+  - remaining specialized incompatible barrier/commit configurations and
+    malformed allocation-result cases beyond the current runtime,
+    allocation-pass, and standalone-commit lit anchors
 
 ## Immediate Next Code Changes
 - Near-term code changes should focus on the planner/lowering core, not on

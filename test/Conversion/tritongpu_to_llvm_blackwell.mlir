@@ -946,6 +946,30 @@ tt.func public @tmem_copy_2d_2cta_no_barrier(%src: !ttg.memdesc<128x32xi8, #shar
   ttng.tmem_copy %src, %dst : !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>, !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>
   tt.return
 }
+
+// CHECK-LABEL: @tc_gen5_commit_twocta_no_descs
+tt.func public @tc_gen5_commit_twocta_no_descs(
+    %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>,
+    %pred: i1) {
+  // CHECK: tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64
+  ttng.tc_gen5_commit %barrier, %pred :
+      !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>
+  tt.return
+}
+
+// CHECK-LABEL: @tc_gen5_commit_twocta_with_descs
+tt.func public @tc_gen5_commit_twocta_with_descs(
+    %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>,
+    %src0: !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>,
+    %src1: !ttg.memdesc<256x4xi8, #shared3, #ttg.shared_memory>,
+    %pred: i1) {
+  // CHECK: tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64
+  ttng.tc_gen5_commit %barrier, %pred descs %src0, %src1 :
+      !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory, mutable>,
+      !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>,
+      !ttg.memdesc<256x4xi8, #shared3, #ttg.shared_memory>
+  tt.return
+}
 }
 
 // -----

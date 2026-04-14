@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:07 UTC: standalone commit lit coverage
+
+- Added conversion-lit coverage for standalone `ttng.tc_gen5_commit` in a two-CTA module, both with no descriptor operands and with two descriptor operands. Both forms now pin lowering to `tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64`.
+- Added a verifier negative for `ttng.tc_gen5_commit` with three descriptors, pinning the clean `expected 0, 1, or 2 descriptors, got 3` diagnostic.
+- This is compiler-only contract coverage; it does not change the runtime matrix size or bucket totals. Current runtime-matrix collection remains `7611` tests: `cp=580`, `mma=1743`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2869`; current bucketed evidence remains `7160 passed, 451 skipped`.
+- Validation completed: `make -j8`; `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonNvidiaGPU/invalid.mlir` from the CMake build dir.
+- Next: run final hygiene and commit/push this compiler-only checkpoint, then continue another non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 12:50 UTC: ld.red minimal-N descriptor/direct explicit variants
 
 - Added `N=32` to `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES`, covering descriptor-chain reductions through identity, tile-permuted, pure column-reverse, pure row-reverse, and mixed row/column-reverse TMEM-linear views with `auto` register-layout selection.

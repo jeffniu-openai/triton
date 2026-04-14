@@ -14184,3 +14184,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7611` tests: `cp=580`, `mma=1743`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2869`; current bucketed evidence aggregates to `7160 passed, 451 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused selector collect selected `280/7611`; no-PYTHONPATH full `ld_red` collect selected `1920/7611`; no-PYTHONPATH full-file collect reported `7611`; focused selector passed all `280` cases across split-4 (`70` per group; group times `774.99s`, `1402.19s`, `599.46s`, and `547.65s`).
 - Next: commit/push this `ld.red` checkpoint, then continue staged TMEM ISA saturation in another exact non-parked family.
+
+## 2026-04-14 12:07 UTC: standalone commit lit coverage
+
+- Added conversion-lit checks in `test/Conversion/tritongpu_to_llvm_blackwell.mlir` for standalone `ttng.tc_gen5_commit` in a two-CTA module.
+- The no-descriptor and two-descriptor standalone forms now both pin the expected two-CTA multicast commit opcode: `tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64`.
+- Added `test/TritonNvidiaGPU/invalid.mlir` coverage for malformed `ttng.tc_gen5_commit` with three descriptor operands, requiring the clean verifier diagnostic `expected 0, 1, or 2 descriptors, got 3`.
+- This is compiler-only coverage and does not change runtime-matrix counts: current full-file collection remains `7611` tests with bucket evidence `7160 passed, 451 skipped`.
+- Validation: `make -j8`; from the CMake build dir, `ninja triton-opt && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonNvidiaGPU/invalid.mlir` passed both tests.
+- Next: commit/push this bounded compiler-only checkpoint, then continue staged TMEM ISA saturation in another exact non-parked family.

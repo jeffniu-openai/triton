@@ -653,6 +653,28 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32} {
 }
 
 // -----
+#barrier = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
+#shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 16}>
+#smem = #ttg.shared_memory
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_commit_too_many_descs(
+      %bar: !ttg.memdesc<1xi64, #barrier, #smem, mutable>,
+      %desc0: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %desc1: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %desc2: !ttg.memdesc<128x128xf16, #shared, #smem>,
+      %pred: i1) {
+    // expected-error @below {{expected 0, 1, or 2 descriptors, got 3}}
+    ttng.tc_gen5_commit %bar, %pred descs %desc0, %desc1, %desc2 :
+      !ttg.memdesc<1xi64, #barrier, #smem, mutable>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>,
+      !ttg.memdesc<128x128xf16, #shared, #smem>
+    tt.return
+  }
+}
+
+// -----
+
 
 #shared_tmembad = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32, CGALayout = [[1, 0]]}>
 #tmem_linear_bad = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[128, 0]]}, twoCTAs = true>
