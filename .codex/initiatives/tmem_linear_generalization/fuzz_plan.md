@@ -204,8 +204,12 @@ Every fuzz case records:
   - canonical MMAv5-equivalent 2 CTA families from
     `ttgl.to_linear_layout(TensorMemoryLayout(...))`
   - current root `256x32` coverage includes both `block_two_ctas` and
-    `mmav5_twocta` layouts for direct and descriptor-chain f32 roundtrips over
-    every public `ld/st` variant.
+    `mmav5_twocta` layouts for direct and descriptor-chain f32 and i32
+    roundtrips over every public `ld/st` variant.
+  - current broad two-CTA `256x{64,128,256}` coverage includes direct and
+    descriptor-chain i32 roundtrips for `block_two_ctas` and MMAv5-like
+    layouts over every public `ld/st` variant, complementing the existing broad
+    f32 direct/descriptor tests.
 - m64 / split-N families:
   - `64 x {2, 4, 8, 16, 32, 64, 128}`
 - subword families:

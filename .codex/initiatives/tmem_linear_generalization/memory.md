@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:08 UTC: ld/st broad two-CTA i32 parity
+
+- `test_tmem_runtime_matrix_ldst_twocta_i32_broad_linear_layouts` adds the missing i32 `.b32` payload parity for the broad two-CTA `ld/st` root surface.
+- The new matrix covers `block_two_ctas` and MMAv5-like two-CTA TMEM-linear layouts at `N in {64, 128, 256}`, both direct TMEM access and the supported descriptor-chain path, and every public `ld/st` variant.
+- Existing broad two-CTA f32 direct/descriptor coverage remains in the original tests; this follows the prior single-CTA i32 parity pattern without rewriting established f32 nodeids.
+- Current runtime-matrix collection is `3789` tests: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3343 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `60/3789`; no-PYTHONPATH `ldst` collect selected `1902/3789`; focused two-CTA i32 broad selector passed `60` across four GPUs (`15` each), with group times about `74.63s`, `21.09s`, `304.62s`, and `152.89s`; `git diff --check`.
+
 ## 2026-04-14 04:01 UTC: ld/st broad single-CTA i32 parity
 
 - `test_tmem_runtime_matrix_ldst_i32_broad_linear_layouts` adds the missing i32 `.b32` payload parity for the broad single-CTA `ld/st` root surface.
