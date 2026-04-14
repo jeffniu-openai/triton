@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5673-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5697-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current direct-i8 MMAv5 clean-negative checkpoint, 2026-04-14 08:14 UTC: direct `tcgen05.mma.kind::i8` clean-negative coverage now has K-depth parity (`K in {32,64}`) for one-CTA and two-CTA legacy/canonical accumulator layouts, and now covers the M64 accumulator family across `N in {64,128,256}`, `K in {32,64}`, and legacy/canonical M64 layouts. These remain clean Blackwell unsupported boundaries, not positive MMAv5 targets. Current runtime-matrix collection is `5697` tests: `cp=381`, `mma=1104`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5251 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `36/5697`; no-PYTHONPATH tight MMA collect selected `1104/5697`; focused direct-i8 clean-negative selector passed all `36` cases across split-4 on four GPUs (`9` per group; times `4.43s`, `4.21s`, `4.34s`, and `4.29s`).
 
 - Current x1 i32 `ld/st` descriptor coverage checkpoint, 2026-04-14 08:13 UTC: the one-column 32-bit `ld/st` surface now has f32+i32 parity across direct and descriptor-chain roundtrips for canonical single-CTA, legacy single-CTA, and canonical two-CTA layouts. The positive matrix covers `auto` and explicit `32x32b` variants and pins exact `tcgen05.st/ld.sync.aligned.32x32b.x1.b32` emission; the clean-negative matrix covers explicit `16x64b`, `16x128b`, and `16x256b` one-column variants for i32 with the same unsupported-descriptor diagnostic contract as f32. Current runtime-matrix collection is `5673` tests: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5227 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `21/5673`; focused x1 i32 selector passed all `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3` selected; times `7.75s`, `41.66s`, `4.65s`, and `4.64s`).
 

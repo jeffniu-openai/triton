@@ -1,3 +1,17 @@
+## 2026-04-14 08:14 UTC: direct-i8 MMAv5 clean-negative K-depth and M64 coverage
+
+- Parameterized the one-CTA and two-CTA direct-i8 MMAv5 clean-negative tests over `K in {32,64}`.
+- Added `test_tmem_runtime_matrix_mma_m64_i8_reports_clean_error` to pin the same clean Blackwell unsupported diagnostic for M64 accumulator layouts at `N in {64,128,256}` and `K in {32,64}`.
+- This is test-only boundary coverage; direct `kind::i8` remains unsupported on current Blackwell lowering.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `36/5697`;
+  - no-PYTHONPATH tight MMA collect selected `1104/5697`;
+  - focused i8 clean-negative selector passed all `36` cases across split-4 on four GPUs (`9` per group; group times `4.43s`, `4.21s`, `4.34s`, and `4.29s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1104`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5251 passed, 446 skipped`.
+
 ## 2026-04-14 08:13 UTC: x1 i32 ld/st descriptor coverage
 
 - Added `test_tmem_runtime_matrix_ldst_x1_i32_roundtrip`, `test_tmem_runtime_matrix_ldst_x1_i32_descriptor_chain_roundtrip`, and `test_tmem_runtime_matrix_ldst_x1_i32_unsupported_variants_report_clean_unsupported`.

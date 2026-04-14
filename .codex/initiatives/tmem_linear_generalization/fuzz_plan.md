@@ -568,7 +568,9 @@ Every fuzz case records:
 #### Negative frontier
 - Direct `i8` MMAv5 remains a clean Blackwell unsupported boundary; runtime
   coverage now includes one-CTA and two-CTA legacy/canonical accumulator
-  layouts at `blockN in {64, 128, 256}`.
+  layouts at `blockN in {64, 128, 256}` and `blockK in {32, 64}`, plus the
+  M64 accumulator family across legacy/canonical layouts, `N in {64,128,256}`,
+  and `K in {32,64}`.
 - non-MMAv5-equivalent TMEM-linear accumulator layouts
   - current tile-permuted clean-negative coverage pins `128x64/tile_n=16` for
     every supported plain kind, `blockK in {32,64}`, and both no-accumulator plus

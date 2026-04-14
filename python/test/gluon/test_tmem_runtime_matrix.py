@@ -6908,9 +6908,9 @@ def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n, k
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
 @pytest.mark.parametrize("n", (64, 128, 256))
-def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, capfd):
+@pytest.mark.parametrize("k", (32, 64))
+def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, k, capfd):
     m = 128
-    k = 32
     a = torch.randint(-8, 8, (m, k), device="cuda", dtype=torch.int8)
     b = torch.randint(-8, 8, (k, n), device="cuda", dtype=torch.int8)
     out = torch.empty((m, n), device="cuda", dtype=torch.int32)
@@ -6920,6 +6920,54 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, capf
     shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
     shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
     acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
+
+    with pytest.raises(Exception) as excinfo:
+        mma_kernel[(1, )](
+            a,
+            b,
+            out,
+            m,
+            n,
+            k,
+            block_layout_a,
+            block_layout_b,
+            (),
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            ttgl.int32,
+            False,
+            True,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    msg = str(excinfo.value) + captured.err + captured.out
+    assert "direct tcgen05_mma kind::i8 is not supported on sm_" in msg
+    assert "current Blackwell lowering" in msg
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+@pytest.mark.parametrize("n", (64, 128, 256))
+@pytest.mark.parametrize("k", (32, 64))
+def test_tmem_runtime_matrix_mma_m64_i8_reports_clean_error(acc_layout_kind, n, k, capfd):
+    m = 64
+    a = torch.randint(-8, 8, (m, k), device="cuda", dtype=torch.int8)
+    b = torch.randint(-8, 8, (k, n), device="cuda", dtype=torch.int8)
+    out = torch.empty((m, n), device="cuda", dtype=torch.int32)
+
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    shared_layout_a = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=False, element_bitwidth=8, rank=2)
+    shared_layout_b = ttgl.NVMMASharedLayout(swizzle_byte_width=32, transposed=True, element_bitwidth=8, rank=2)
+    acc_layout = (
+        TensorMemoryLayout((64, 64), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout_m64(n)
+    )
 
     with pytest.raises(Exception) as excinfo:
         mma_kernel[(1, )](
@@ -7019,7 +7067,8 @@ def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, n, k, us
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
 @pytest.mark.parametrize("block_n", (64, 128, 256))
-def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, block_n, capfd):
+@pytest.mark.parametrize("block_k", (32, 64))
+def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, block_n, block_k, capfd):
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     cta_split_a = [ctas_per_cga[0], 1]
@@ -7030,7 +7079,7 @@ def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, 
     cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
     cga_layout_c_arg = tuple(tuple(basis) for basis in cga_layout_c)
 
-    block_m, block_k = 256, 32
+    block_m = 256
     a = torch.randint(-8, 8, (block_m, block_k), device="cuda", dtype=torch.int8)
     b = torch.randint(-8, 8, (block_k, block_n), device="cuda", dtype=torch.int8)
     out = torch.empty((block_m, block_n), device="cuda", dtype=torch.int32)

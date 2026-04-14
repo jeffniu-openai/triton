@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:14 UTC: direct-i8 MMAv5 clean-negative K-depth and M64 coverage
+
+- Expanded direct `tcgen05.mma.kind::i8` clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Existing one-CTA and two-CTA i8 clean-negative tests now cover `K in {32,64}` instead of only `K=32` across legacy and canonical accumulator layouts at `N in {64,128,256}`.
+- Added M64 direct-i8 clean-negative coverage across legacy/canonical M64 accumulator layouts, `N in {64,128,256}`, and `K in {32,64}`. This pins the direct-i8 unsupported diagnostic for the M64 family beside the supported f16/tf32/bf16/f8 M64 positives.
+- Current runtime-matrix collection is `5697` tests: `cp=381`, `mma=1104`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5251 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `36/5697`; no-PYTHONPATH tight MMA collect selected `1104/5697`; focused i8 clean-negative selector passed all `36` cases across split-4 on four GPUs (`9` per group; group times `4.43s`, `4.21s`, `4.34s`, and `4.29s`).
+- Next: commit/push this bounded MMAv5 clean-negative checkpoint, then continue staged ISA saturation in another exact family. Good candidates remain a concrete `ld.red` layout/modifier gap or a non-resource-bound scaled-MMAv5 descriptor-view gap.
+
 ## 2026-04-14 08:13 UTC: x1 i32 ld/st descriptor coverage
 
 - Added x1 32-bit integer parity for `ld/st` in `python/test/gluon/test_tmem_runtime_matrix.py`: direct roundtrip, descriptor-chain roundtrip, and clean unsupported explicit variant checks now cover i32 beside the existing f32 x1 surface.
