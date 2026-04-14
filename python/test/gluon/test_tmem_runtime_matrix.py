@@ -2851,6 +2851,7 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
     acc_parent_layout: ttgl.constexpr,
     PARENT_N: ttgl.constexpr,
     slice_start: ttgl.constexpr,
+    ACC_INIT: ttgl.constexpr,
     multicast: ttgl.constexpr,
 ):
     A_IS_FP4: ttgl.constexpr = a_desc.dtype == ttgl.uint8
@@ -2873,6 +2874,11 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
     b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [BLOCK_N, BLOCK_K // VEC_SIZE], scale_layout_b)
     acc_parent = allocate_tensor_memory(ttgl.float32, [BLOCK_M, PARENT_N], acc_parent_layout)
     acc_tmem = acc_parent.slice(slice_start, BLOCK_N, dim=1)
+    if ACC_INIT != 0.0:
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(
+            ttgl.full([BLOCK_M, BLOCK_N], ACC_INIT, ttgl.float32, layout=acc_reg_layout)
+        )
 
     tma_bar = mbarrier.allocate_mbarrier(two_ctas=two_ctas)
     mma_bar = mbarrier.allocate_mbarrier()
@@ -2934,7 +2940,7 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
             b_scale_tmem,
             a_format,
             b_format,
-            use_acc=(k != 0),
+            use_acc=(ACC_INIT != 0.0 or k != 0),
         )
         tcgen05_commit(mma_bar)
         mbarrier.wait(mma_bar, phase_mma)
@@ -2965,6 +2971,7 @@ def mma_scaled_tcgen05_acc_subslice_copy(
     slice_start,
     num_ctas,
     multicast,
+    acc_init=0.0,
 ):
     M, N = A.shape[0], B.shape[0]
     mixed_prec = A.dtype != B.dtype
@@ -3025,6 +3032,7 @@ def mma_scaled_tcgen05_acc_subslice_copy(
         acc_parent_layout,
         PARENT_N,
         slice_start,
+        acc_init,
         num_warps=num_warps,
         num_ctas=num_ctas,
         multicast=multicast,
@@ -9110,6 +9118,65 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
     )
 
     torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
+    assert cp_ops
+    assert len(cp_ops) == (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)
+    assert all(op == _expected_scaled_cp_opcode(2) for op in cp_ops)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == (block_k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 2) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "two_ctas" in ttgir
+    if multicast:
+        assert "{multicast}" in ttgir
+    else:
+        assert "{multicast}" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,slice_start,block_k,multicast", SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES)
+def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc(
+    a_format, b_format, slice_start, block_k, multicast
+):
+    block_m = 256
+    block_n = 128
+    parent_n = 256
+    acc_init = 1.0
+    vec_size = 16 if a_format == "nvfp4" else 32
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(block_m, block_k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(block_n, block_k, b_format)
+    a_scale = swizzle_scales_packed_block(a_scale, vec_size)
+    b_scale = swizzle_scales_packed_block(b_scale, vec_size)
+
+    out, compiled = mma_scaled_tcgen05_acc_subslice_copy(
+        a,
+        b,
+        a_scale,
+        b_scale,
+        vec_size,
+        block_m,
+        block_n,
+        block_k,
+        parent_n,
+        slice_start,
+        num_ctas=2,
+        multicast=multicast,
+        acc_init=acc_init,
+    )
+
+    torch.testing.assert_close(
+        out.to(torch.float32),
+        a_ref @ b_ref.T + acc_init,
+        atol=1e-3,
+        rtol=1e-3,
+    )
 
     cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
     assert cp_ops

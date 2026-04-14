@@ -8015,3 +8015,10 @@ rejection, not rescue
 - Runtime-matrix collection is now `6852` tests with bucket totals `cp=381`, `mma=1703`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6406 passed, 446 skipped`.
 - Latest coverage slice adds nonzero-accumulator coverage for the scaled-MMAv5 64-column tile-permuted accumulator positive matrix across all scaled format pairs and `K in {128,256}`.
 - Validation for the latest slice: `make -j8`, py-compile, `git diff --check`, focused collect `10/6852`, tight MMA collect `1703/6852`, full-file collect `6852`, and four-GPU split execution of the focused selector passed all `10` cases.
+
+## Latest: 2026-04-14 two-CTA scaled-MMAv5 accumulator-subslice use-acc coverage
+
+- Runtime-matrix collection is now `6892` tests with bucket totals `cp=381`, `mma=1743`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6446 passed, 446 skipped`.
+- Latest coverage slice adds nonzero accumulator semantics for the supported two-CTA scaled-MMAv5 accumulator-subslice matrix across all scaled format pairs, `slice_start in {0,128}`, `block_k in {128,256}`, and multicast on/off.
+- The test helper now has an `ACC_INIT` path for accumulator subviews; zero-init callers preserve old behavior, and the parked two-CTA `block_n=64` scale-descriptor frontier remains unchanged.
+- Validation for the latest slice: `make -j8`, py-compile, `git diff --check`, focused collect `40/6892`, tight MMA collect `1743/6892`, full-file collect `6892`, and four-GPU split execution of the focused selector passed all `40` cases.

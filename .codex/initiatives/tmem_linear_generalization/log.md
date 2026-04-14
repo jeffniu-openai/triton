@@ -14141,3 +14141,12 @@ Open after this slice:
 - Current runtime-matrix collection is `6852` tests: `cp=381`, `mma=1703`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6406 passed, 446 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused collect selected `10/6852`; no-PYTHONPATH tight MMA collect selected `1703/6852`; no-PYTHONPATH full-file collect reported `6852`; focused selector passed all `10` cases across split-4 on four GPUs (`3`, `3`, `3`, and `1` selected; group times `13.33s`, `13.24s`, `12.58s`, and `7.44s`).
 - Next: commit/push this scaled-MMAv5 checkpoint, then continue another exact non-parked ISA coverage slice.
+
+## 2026-04-14 11:55 UTC: two-CTA scaled-MMAv5 accumulator-subslice use-acc coverage
+
+- Extended the test helper `mma_scaled_tcgen05_acc_subslice_copy_kernel` with an `ACC_INIT` constexpr. When nonzero, it seeds the sliced accumulator TMEM view and uses `tcgen05_mma_scaled(..., use_acc=True)` on the first K chunk; the existing zero-init path keeps the old `use_acc=(k != 0)` behavior.
+- Added `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc`, covering the existing supported two-CTA scaled accumulator-subslice matrix with nonzero accumulator semantics. Coverage spans all scaled format pairs, `slice_start in {0,128}`, `block_k in {128,256}`, and multicast on/off.
+- The new test validates output against `a_ref @ b_ref.T + 1.0`, exact scaled copy opcodes, exact scaled MMAv5 opcodes, the two-CTA commit opcode, and descriptor-view TTGIR markers. It does not touch the parked `block_n=64` two-CTA scale-descriptor frontier.
+- Current runtime-matrix collection is `6892` tests: `cp=381`, `mma=1743`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6446 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused collect selected `40/6892`; no-PYTHONPATH tight MMA collect selected `1743/6892`; no-PYTHONPATH full-file collect reported `6892`; focused selector passed all `40` cases across split-4 on four GPUs (`10` per group; group times `12.78s`, `13.01s`, `12.80s`, and `12.73s`).
+- Next: commit/push this scaled-MMAv5 checkpoint, then continue another exact non-parked ISA coverage slice.

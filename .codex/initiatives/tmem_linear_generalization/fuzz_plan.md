@@ -878,3 +878,13 @@ Every fuzz case records:
   and `K in {128,256}`.
 - Current full-file collection is `6852` tests; the tight MMA bucket is `1703`
   cases. Aggregate bucket evidence is `6406 passed, 446 skipped`.
+
+## 2026-04-14 two-CTA scaled-MMAv5 Accumulator Use-Acc Note
+
+- The runtime matrix now covers nonzero accumulator semantics for the supported
+  two-CTA scaled-MMAv5 accumulator-subslice path across all scaled format pairs,
+  both slice starts, both supported K widths, and multicast on/off.
+- Current full-file collection is `6892` tests; the tight MMA bucket is `1743`
+  cases. Aggregate bucket evidence is `6446 passed, 446 skipped`.
+- The two-CTA `block_n=64` scale-descriptor/shared-layout case remains parked;
+  this checkpoint only extends the already-supported `block_n=128` path.
