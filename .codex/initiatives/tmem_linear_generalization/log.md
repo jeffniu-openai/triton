@@ -13554,3 +13554,22 @@ Open after this slice:
   - tight MMA selector passed all `804` cases across split-4 on four GPUs (`201` per group; `5.75s`, `12.66s`, `8.95s`, and `9.50s`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=804`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4371 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 clean-negative checkpoint, then continue staged ISA saturation in another exact family. Copy `warpx2` hard frontiers remain parked without a descriptor/address/staging model.
+
+## 2026-04-14 06:52 UTC: scaled-MMAv5 two-CTA accumulator-subview K-depth parity
+
+- Added `SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES` and expanded `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` from fixed `blockK=128` to `blockK in {128,256}`.
+- Coverage spans every current scaled format pair, `slice_start in {0,128}`, and multicast false/true for the supported two-CTA `blockN=128`, `parentN=256` accumulator-subview path.
+- Exact opcode checks now cover both companion scaled-copy and scaled-MMAv5 instruction counts:
+  - scaled copy: `(1 + block_n // 128) * (block_k // 128) * (32 // vec_size)`;
+  - scaled MMAv5: `(block_k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8`;
+  - no-PYTHONPATH focused collect selected `40` cases;
+  - no-PYTHONPATH tight MMA collect selected `824/4837`;
+  - no-PYTHONPATH full-file collect reported `4837` tests;
+  - focused scaled two-CTA accumulator-subview selector passed all `40` cases across split-4 on four GPUs (`10` per group; `9.65s`, `9.65s`, `9.78s`, and `7.76s`);
+  - tight MMA selector passed all `824` cases across split-4 on four GPUs (`206` per group; `6.23s`, `15.53s`, `21.26s`, and `16.95s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4391 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation. Copy `warpx2` hard frontiers remain parked without a descriptor/address/staging model.

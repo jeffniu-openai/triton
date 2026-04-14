@@ -3145,6 +3145,12 @@ SCALED_MMA_ACC_TILE_PERMUTED_K_CASES = [
     for k in (128, 256)
 ]
 
+SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = [
+    (a_format, b_format, slice_start, block_k, multicast)
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+    for slice_start, block_k, multicast in product((0, 128), (128, 256), (False, True))
+]
+
 CP_SCALES_WARPX4_SCALED_MMA_CASES = [
     (a_format, b_format, block_n, block_k, num_ctas, multicast, acc_layout_kind)
     for (a_format, b_format), block_n, block_k, num_ctas, multicast, acc_layout_kind in product(
@@ -7552,15 +7558,12 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix(a_format
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
-@pytest.mark.parametrize("slice_start", (0, 128))
-@pytest.mark.parametrize("multicast", (False, True))
+@pytest.mark.parametrize("a_format,b_format,slice_start,block_k,multicast", SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES)
 def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
-    a_format, b_format, slice_start, multicast
+    a_format, b_format, slice_start, block_k, multicast
 ):
     block_m = 256
     block_n = 128
-    block_k = 128
     parent_n = 256
     vec_size = 16 if a_format == "nvfp4" else 32
 
@@ -7589,9 +7592,11 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
 
     cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
     assert cp_ops
+    assert len(cp_ops) == (1 + block_n // 128) * (block_k // 128) * (32 // vec_size)
     assert all(op == _expected_scaled_cp_opcode(2) for op in cp_ops)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
+    assert len(mma_ops) == (block_k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 2) for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
     ttgir = compiled.asm["ttgir"]

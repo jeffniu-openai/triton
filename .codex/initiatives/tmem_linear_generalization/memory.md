@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:52 UTC: scaled-MMAv5 two-CTA accumulator-subview K-depth parity
+
+- `SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES` now drives `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix`.
+- The supported two-CTA accumulator-subview path now covers every current scaled format pair, `slice_start in {0,128}`, `blockK in {128,256}`, and multicast false/true at `blockN=128`, `parentN=256`.
+- Exact opcode checks now pin both companion scaled-copy count `(1 + block_n // 128) * (block_k // 128) * (32 // vec_size)` and scaled-MMAv5 count `(block_k // 128) * _expected_scaled_mma_acc_subslice_count(...)`.
+- Current runtime-matrix collection is `4837` tests: `cp=322`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4391 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `40` cases; no-PYTHONPATH tight MMA collect selected `824/4837`; no-PYTHONPATH full-file collect reported `4837`; focused scaled two-CTA accumulator-subview selector passed all `40` cases across four GPUs (`10` per group; group times `9.65s`, `9.65s`, `9.78s`, and `7.76s`); tight MMA selector passed all `824` cases across four GPUs (`206` per group; group times `6.23s`, `15.53s`, `21.26s`, and `16.95s`).
+
 ## 2026-04-14 06:48 UTC: plain-MMAv5 tile-permuted accumulator N64 clean negative
 
 - `MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES` now pins `128x64/tile_n=16` tile-permuted accumulators as clean unsupported for direct MMAv5.
