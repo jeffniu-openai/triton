@@ -1049,3 +1049,9 @@ Every fuzz case records:
 - Rank-5 descriptor `ld/st` positive coverage now includes the minimal `N=32` opcode family for the executable layouts whose base layout is defined at that width: `single_identity`, `twocta_block`, and `twocta_mmav5`, crossed with `f32`/`i32` and every public `ld/st` variant.
 - Do not generate `single_mixed,N=32` rows: `_make_tmem_linear_layout_mixed` requires `N >= 64`, and the failed initial table expansion confirmed that this is not a valid fuzz atom.
 - Current full-file collection is `8173`; the `ldst` bucket is `2979`; aggregate bucket evidence is `7722 passed, 451 skipped`.
+
+## 2026-04-14 14:37 UTC: ld.red Descriptor-Chain Non-F32 Contract Note
+
+- Non-f32 `ld.red` clean-negative fuzzing now includes descriptor-chain sources through the generic memdesc view path, not only direct TMEM sources. Covered descriptor-chain dtypes/modifiers are i32/bf16/f16/i16/i8 plain plus bf16/f16 `NaN` and `abs`, crossed with min/max.
+- Fuzz generators should pass the base 2D layout to the descriptor-chain helper and let the descriptor API form the higher-rank view; manually lifting the layout is the wrong construction for this helper and aborts too early.
+- Current full-file collection is `8191`; the `ld_red` bucket is `1954`; aggregate bucket evidence is `7740 passed, 451 skipped`.

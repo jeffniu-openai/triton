@@ -14385,3 +14385,10 @@ Open after this slice:
 - Added `N=32` full-tile opcode spellings to `LDST_SHAPE_MAP`; the same expected names are now used by rank-5 small assertions.
 - Current runtime-matrix collection is `8173` tests: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1936`, and `ldst=2979`; bucketed evidence aggregates to `7722 passed, 451 skipped`.
 - Validation: `make -j8`; py-compile; collect `rank5_small=110/8173`, `ldst=2979/8173`, full-file `8173`; corrected rank-5 split-4 selector passed all `110` cases across four GPUs. The first overbroad split run failed only for invalid `single_mixed,N=32` table rows and those rows were removed.
+
+## 2026-04-14 14:37 UTC: ld.red descriptor-chain non-f32 contract coverage
+
+- Added descriptor-chain clean-negative `ld.red` non-f32 coverage. The matrix covers i32/bf16/f16/i16/i8 plain sources plus bf16/f16 NaN and abs modifier diagnostics through the generic memdesc slice/index/reshape path, crossed with min/max.
+- Correct construction detail: pass the base 2D TMEM-linear layout to `tmem_ld_red_descriptor_chain_kernel`. A pre-lifted layout aborts during `get_reg_layout` before the intended verifier path.
+- Current runtime-matrix collection is `8191` tests: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2979`; bucketed evidence aggregates to `7740 passed, 451 skipped`.
+- Validation: `make -j8`; py-compile; collect `ld_red_non_f32_descriptor_chain=18/8191`, `ld_red=1954/8191`, full-file `8191`; corrected descriptor-chain non-f32 split-4 selector passed all `18` cases.

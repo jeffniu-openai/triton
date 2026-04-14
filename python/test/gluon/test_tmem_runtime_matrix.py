@@ -4432,6 +4432,90 @@ LD_RED_NON_F32_CONTRACT_CASES = [
     ),
 ]
 
+LD_RED_NON_F32_DESCRIPTOR_CHAIN_CASES = [
+    pytest.param(
+        "i32_plain_descriptor",
+        torch.int32,
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="i32_plain_descriptor",
+    ),
+    pytest.param(
+        "bf16_plain_descriptor",
+        torch.bfloat16,
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="bf16_plain_descriptor",
+    ),
+    pytest.param(
+        "bf16_nan_descriptor",
+        torch.bfloat16,
+        "auto",
+        False,
+        tl.PropagateNan.ALL,
+        "'NaN' requires floating-point element type (f32)",
+        id="bf16_nan_descriptor",
+    ),
+    pytest.param(
+        "bf16_abs_descriptor",
+        torch.bfloat16,
+        "auto",
+        True,
+        tl.PropagateNan.NONE,
+        "'abs' requires floating-point element type (f32)",
+        id="bf16_abs_descriptor",
+    ),
+    pytest.param(
+        "f16_plain_descriptor",
+        torch.float16,
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="f16_plain_descriptor",
+    ),
+    pytest.param(
+        "f16_nan_descriptor",
+        torch.float16,
+        "auto",
+        False,
+        tl.PropagateNan.ALL,
+        "'NaN' requires floating-point element type (f32)",
+        id="f16_nan_descriptor",
+    ),
+    pytest.param(
+        "f16_abs_descriptor",
+        torch.float16,
+        "auto",
+        True,
+        tl.PropagateNan.NONE,
+        "'abs' requires floating-point element type (f32)",
+        id="f16_abs_descriptor",
+    ),
+    pytest.param(
+        "i16_plain_descriptor",
+        torch.int16,
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="i16_plain_descriptor",
+    ),
+    pytest.param(
+        "i8_plain_descriptor",
+        torch.int8,
+        "auto",
+        False,
+        tl.PropagateNan.NONE,
+        "tmem_load reduction currently requires f32 element type",
+        id="i8_plain_descriptor",
+    ),
+]
+
 LDST_EXPECTED_OFFSETS_128x256 = {
     "auto": [
         ("tcgen05.st.sync.aligned.32x32b.x64.b32", 0),
@@ -6594,6 +6678,31 @@ def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
     with pytest.raises(Exception) as err:
         tmem_ld_red_non_f32_contract_kernel[(1, )](
             inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert expected_diag in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize(
+    "name,dtype,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_DESCRIPTOR_CHAIN_CASES
+)
+def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_unsupported(
+    name, dtype, load_variant, use_abs, propagate_nan, expected_diag, red_op, capfd
+):
+    layout = _make_tmem_linear_layout(128, 128)
+    inp = torch.zeros((128, 128), dtype=dtype, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((128,), dtype=dtype, device="cuda")
+
+    with pytest.raises(Exception) as err:
+        tmem_ld_red_descriptor_chain_kernel[(1, )](
+            inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
         )
 
     captured = capfd.readouterr()
