@@ -6195,6 +6195,11 @@ def _expected_plain_mma_op_count(kind, k):
     return MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind] * (k // 32)
 
 
+def _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind):
+    legacy_multiplier = 2 if acc_layout_kind == "legacy" else 1
+    return legacy_multiplier * _expected_plain_mma_op_count(kind, k)
+
+
 MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
     kind: count * 4 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
 }
@@ -6227,6 +6232,11 @@ MMA_TWOCTA_CASES = [
 MMA_TWOCTA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind, block_n, block_k)
     for kind, acc_layout_kind, block_n, block_k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64))
+]
+
+MMA_M64_PLAIN_KIND_CASES = [
+    (kind, acc_layout_kind, k, use_acc)
+    for kind, acc_layout_kind, k, use_acc in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64), (False, True))
 ]
 
 MMA_TILE_PERMUTED_CASES = [
@@ -6407,6 +6417,74 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, capfd):
     assert "current Blackwell lowering" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,acc_layout_kind,k,use_acc", MMA_M64_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, k, use_acc):
+    m = 64
+    n = 128
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    acc_layout = (
+        TensorMemoryLayout((64, 64), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout_m64(n)
+    )
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    c = torch.randn((m, n), device="cuda", dtype=torch.float32)
+    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
+
+    if use_acc:
+        compiled = tmem_mma_plain_kind_use_acc_kernel[(1, )](
+            a,
+            b,
+            c,
+            out,
+            m,
+            n,
+            k,
+            block_layout_a,
+            block_layout_b,
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            num_warps=4,
+        )
+    else:
+        compiled = mma_kernel[(1, )](
+            a,
+            b,
+            out,
+            m,
+            n,
+            k,
+            block_layout_a,
+            block_layout_b,
+            (),
+            acc_layout,
+            shared_layout_a,
+            shared_layout_b,
+            ttgl.float32,
+            False,
+            True,
+            num_warps=4,
+        )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    if use_acc:
+        ref = ref + c
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_m64_plain_mma_op_count(kind, k, acc_layout_kind)
+    assert all(op == expected_kind for op in mma_ops)
+    if use_acc:
+        _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:24 UTC: plain-MMAv5 blockM=64 runtime-matrix coverage
+
+- `test_tmem_runtime_matrix_mma_plain_kinds_m64` adds one-CTA root `M=64, N=128` MMAv5 coverage for all supported plain operand kinds, `K in {32, 64}`, both no-accumulator and `use_acc=True`, and both legacy M64 sugar and canonical M64 TMEM-linear accumulator layouts.
+- `_expected_m64_plain_mma_op_count(kind, k, acc_layout_kind)` pins exact PTX/LLIR opcode counts; the legacy M64 sugar path emits twice the canonical M64 linear count, matching the observed legal lowering.
+- Current runtime-matrix collection is `3639` tests: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, and `ldst=1752`; current bucketed evidence aggregates to `3193 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; scratch probes passed all plain kinds at `K=32` and `K=64`; no-PYTHONPATH focused collect selected `40/3639`; focused M64 selector passed `40` across four GPUs (`10` each); no-PYTHONPATH tight `mma` collect selected `502/3639`; no-PYTHONPATH full-file collect selected all `3639`; tight `mma` runner passed `502` across four groups (`126`, `126`, `126`, `124`); `git diff --check` passed.
+- Remaining long-term work: continue staged ISA saturation in another bounded family; the old legacy M64 xfail docket is stale on current head, and this matrix makes the M64 MMAv5 surface explicit.
+
 ## 2026-04-14 03:20 UTC: ld/st exotic N=32 direct and descriptor coverage
 
 - `test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout` adds minimal-N root `128x32` f32 roundtrips for the existing scrambled-column and scrambled-row+column TMEM-linear layout families.

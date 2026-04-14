@@ -13127,3 +13127,21 @@ Open after this slice:
   - `git diff --check` passed.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, `ldst=1752`; current bucketed evidence aggregates to `3153 passed, 446 skipped`.
 - Next: commit/push this bounded `ld/st` checkpoint, then continue another long-term ISA coverage slice.
+
+## 2026-04-14 03:24 UTC plain-MMAv5 blockM=64 runtime-matrix coverage
+
+- Added `MMA_M64_PLAIN_KIND_CASES`, `_expected_m64_plain_mma_op_count`, and `test_tmem_runtime_matrix_mma_plain_kinds_m64`.
+- The new slice covers one-CTA root `M=64, N=128` MMAv5 for every supported plain operand kind, both legacy/canonical M64 accumulator layouts, `K in {32, 64}`, and both no-accumulator and `use_acc=True` paths.
+- The test pins exact PTX/LLIR opcode counts, including the legacy M64 sugar path's doubled opcode stream relative to canonical M64 TMEM-linear.
+- Validation:
+  - scratch probes passed all plain kinds at `K=32` and `K=64`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `40/3639`;
+  - focused selector passed `40` cases across four GPUs (`10` per group);
+  - no-PYTHONPATH tight `mma` collect selected `502/3639`;
+  - no-PYTHONPATH full-file collect selected all `3639`;
+  - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `502` cases across four groups (`126`, `126`, `126`, `124`);
+  - `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1752`; current bucketed evidence aggregates to `3193 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another long-term ISA coverage slice.
