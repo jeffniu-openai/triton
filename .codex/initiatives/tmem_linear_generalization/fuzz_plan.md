@@ -285,7 +285,10 @@ Every fuzz case records:
   - canonical identity for the 128-row reduction block
   - row-256 reduction-friendly physical forms where the source layout still
     has a 128-row reduction block and carries the high row bit through the
-    column/query frame
+    column/query frame; current runtime positives cover `N in {32,64,128}`.
+    The apparent `N=256` extension exceeds the current helper's shared-memory
+    budget (`Required: 262148`, hardware limit `232448`), so keep it omitted
+    unless a lower-smem validation helper is introduced.
   - tile-permuted `128xN` layouts across all currently proven helper widths:
     `N=32/tile_n=8`, `N=64/tile_n in {8,16}`,
     `N=128/tile_n in {8,16,32}`, and
@@ -330,9 +333,10 @@ Every fuzz case records:
   `i32` plain reductions, `i32` reductions with `NaN` or `abs` modifiers, and
   legacy-unpacked `f16` reduction attempts all fail before lowering with clean
   verifier diagnostics.
-- Additional N-sharded register layouts beyond the explicit `16x64b`,
-  `16x128b`, and `16x256b` clean-negative coverage remain a watch item if new
-  explicit variants become reachable.
+- Explicit N-sharded register-layout clean negatives (`16x64b`, `16x128b`,
+  and `16x256b`) are covered across `min`/`max`, `abs` false/true, and
+  `PropagateNan.NONE/ALL`; additional N-sharded register layouts remain a
+  watch item if new explicit variants become reachable.
 - M64 and block-basis TMEM-linear source layouts are now covered as clean
   unsupported runtime-matrix cases across the legal modifier matrix; keep them
   on the negative frontier unless a future planner grows a real direct

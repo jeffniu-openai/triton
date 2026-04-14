@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:06 UTC: ld.red explicit N-sharded modifier matrix
+
+- `test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported` now covers explicit N-sharded register-layout variants `16x64b`, `16x128b`, and `16x256b` across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`.
+- This is a test-only clean-negative saturation slice: direct `tcgen05.ld.red` still requires all N elements in the register dimension and M unsharded, so these explicit layouts must keep the clean verifier diagnostic without PassManager/assertion noise.
+- Current runtime-matrix collection is `4945` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=876`, `ldst=2612`; current bucketed evidence aggregates to `4499 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `24/4945`; no-PYTHONPATH `ld_red` bucket selected `876/4945`; focused N-sharded clean-negative selector passed all `24` cases across four GPUs (`6` per group; group times `4.61s`, `4.51s`, `4.46s`, and `4.70s`). A full `ld_red` bucket rerun was not required because no shared lowering changed.
+- Discarded probe: adding `legacy_equivalent_256, M=256, N=256` to the positive identity-linear matrix collected, but every new modifier case failed launch metadata with shared-memory OOR (`Required: 262148`, hardware limit `232448`). Keep that helper shape omitted unless a lower-smem validation kernel is introduced.
+
 ## 2026-04-14 07:02 UTC: ld.red identity-256 unsupported modifier matrix
 
 - `test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported` now covers identity `256xN` unsupported source layouts across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` instead of only the default modifier tuple.

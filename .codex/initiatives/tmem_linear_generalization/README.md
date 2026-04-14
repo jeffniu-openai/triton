@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4924-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4945-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld.red` explicit N-sharded modifier-matrix checkpoint, 2026-04-14 07:06 UTC: the clean-negative test for explicit N-sharded `tcgen05.ld.red` register layouts (`16x64b`, `16x128b`, and `16x256b`) now covers `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` instead of only the default `min`/no-abs/no-NaN case. These layouts remain clean unsupported because reduction requires the N dimension in registers and M unsharded. Current runtime-matrix collection is `4945` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=876`, and `ldst=2612`; bucketed evidence now aggregates to `4499 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `24/4945`; no-PYTHONPATH `ld_red` collect selected `876/4945`; focused N-sharded clean-negative selector passed all `24` cases across split-4 on four GPUs (`6` per group; slowest `4.70s`). Discarded probe: adding the row-256 reduction-friendly `N=256` positive shape hits helper shared-memory OOR (`Required: 262148`, limit `232448`), so it remains omitted rather than reclassified as an ISA/compiler failure.
 
 - Current `ld.red` identity-256 unsupported modifier-matrix checkpoint, 2026-04-14 07:02 UTC: the identity `256xN` TMEM-linear source-layout clean-negative test now covers `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` instead of only the default `min`/no-abs/no-NaN case. These layouts remain clean unsupported direct `tcgen05.ld.red` sources and must report the software-reduction diagnostic without PassManager/assertion noise. Current runtime-matrix collection is `4924` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=855`, and `ldst=2612`; bucketed evidence now aggregates to `4478 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `32/4924`; no-PYTHONPATH `ld_red` collect selected `855/4924`; focused identity-256 clean-negative selector passed all `32` cases across split-4 on four GPUs (`8` per group; slowest `5.15s`). A broad `ld_red` rerun remains deferred because this is a small negative-only test expansion over existing diagnostics.
 

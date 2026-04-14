@@ -13618,3 +13618,17 @@ Open after this slice:
   - no-PYTHONPATH full `ld_red` bucket selected `855/4924`;
   - four-GPU focused identity-256 selector passed `32` cases across split-4 (`8` per group; group times `5.02s`, `4.94s`, `5.15s`, and `4.97s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=855`, `ldst=2612`; current bucketed evidence aggregates to `4478 passed, 446 skipped`.
+
+## 2026-04-14 07:06 UTC: ld.red explicit N-sharded modifier matrix
+
+- Expanded `test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported` over `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` for explicit `16x64b`, `16x128b`, and `16x256b` N-sharded register layouts.
+- The expected diagnostic remains the clean verifier message that reduction requires all N elements to reside in the register dimension and M to be unsharded; no lowering source changed.
+- Discarded probe: adding `legacy_equivalent_256, M=256, N=256` as a positive `ld.red` row-256 case collected but failed all new modifier cases with shared-memory OOR (`Required: 262148`, limit `232448`), so that helper shape stays omitted.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `24/4945`;
+  - no-PYTHONPATH full `ld_red` bucket selected `876/4945`;
+  - four-GPU focused N-sharded selector passed `24` cases across split-4 (`6` per group; group times `4.61s`, `4.51s`, `4.46s`, and `4.70s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=876`, `ldst=2612`; current bucketed evidence aggregates to `4499 passed, 446 skipped`.
