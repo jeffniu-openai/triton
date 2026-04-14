@@ -6,17 +6,17 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `5697` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
+Full collection with `PYTHONPATH` unset reports `5727` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
 | `cp` | `-k cp` | 381 | split 4, one process per GPU |
-| `mma` | `-k test_tmem_runtime_matrix_mma` | 1104 | split 4, one process per GPU |
+| `mma` | `-k test_tmem_runtime_matrix_mma` | 1134 | split 4, one process per GPU |
 | `splitn` / misc | exact function nodeids | 499 | split 4, one process per GPU |
 | `ld_red` | `-k ld_red` | 920 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
 | `ldst` | `-k ldst` | 2793 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `5697` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `5727` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
 
 ## Canonical Command
 
@@ -62,7 +62,7 @@ The runner removes inherited `PYTHONPATH`, sets a stable per-GPU `TRITON_CACHE_D
 Small buckets are not the timeout source:
 
 - `cp`: after the 2026-04-14 CP 128x128b, supported `warpx2` dtype expansions, broad two-CTA no-scales `128x256b` f32+i32 parity expansion, and `warpx2` dense-shared clean-negative dtype parity, `376 passed, 5 skipped` across four groups. The latest warm-cache CP bucket pass took `4.97s`, `7.20s`, `6.62s`, and `5.66s` pytest time; the prior cold/warm-mixed broad two-CTA validation took `72.22s`, `35.08s`, `81.12s`, and `79.59s`.
-- `mma`: after the 2026-04-14 direct-i8 clean-negative K-depth/M64 expansion, the tight MMA bucket collects `1104` cases. The latest focused i8 clean-negative selector passed `36` cases across four groups (`9` per group) in `4.43s`, `4.21s`, `4.34s`, and `4.29s`; the prior focused two-CTA indexed-accumulator selector passed `100` cases across four groups (`25` per group) in `4.69s`, `4.69s`, `4.69s`, and `4.63s`; the focused scaled indexed-accumulator selector passed `30` cases across four groups (`8`, `8`, `8`, and `6`) in `4.59s`, `6.07s`, `6.52s`, and `4.58s`.
+- `mma`: after the 2026-04-14 scaled-MMAv5 root nonzero-accumulator expansion, the tight MMA bucket collects `1134` cases. The latest focused use-acc selector passed `30` cases across four groups (`8`, `8`, `8`, and `6`) in `15.75s`, `14.97s`, `15.54s`, and `11.66s`; the adjacent scaled root/tile selector passed `80` cases across four groups (`20` per group) in `34.83s`, `35.73s`, `35.99s`, and `32.12s`; the prior direct-i8 clean-negative selector passed `36` cases across four groups (`9` per group) in `4.43s`, `4.21s`, `4.34s`, and `4.29s`; the two-CTA indexed-accumulator selector passed `100` cases across four groups (`25` per group) in `4.69s`, `4.69s`, `4.69s`, and `4.63s`.
 - true exact-nodeid `splitn` / misc bucket: after the 2026-04-14 M64 row/column split-N f32+i32 parity expansion, the bucket contains `499` cases. The latest focused M64 row/column split-N selector passed `452` cases across split-8 (`57`, `57`, `57`, `57`, `57`, `57`, `57`, and `53`) in `7.44s`, `14.24s`, `14.32s`, `13.94s`, `8.52s`, `14.91s`, `14.67s`, and `13.53s`; the prior identity M64 split-N selector passed `42` cases across four groups (`11`, `11`, `11`, and `9`) before this expansion.
 
 Heavy buckets need finer scheduling:
@@ -86,7 +86,7 @@ Heavy buckets need finer scheduling:
 - After the 2026-04-14 subword descriptor-chain expansion, the focused selector passed `60` cases across split-4 on four GPUs (`15` per group) in `151.24s`, `153.02s`, `150.40s`, and `152.90s`. The full `ldst` bucket then collected `2772` cases; refresh the full `ldst` runner after shared lowering changes or before a phase boundary.
 - After the 2026-04-14 x1 i32 expansion, the focused selector passed `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3` selected) in `7.75s`, `41.66s`, `4.65s`, and `4.64s`. The full `ldst` bucket now collects `2793` cases; this is a test-only dtype-parity expansion over the existing one-column 32-bit lowering.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `5251 passed, 446 skipped` across all `5697` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
+Aggregating the current per-bucket evidence gives full matrix coverage: `5281 passed, 446 skipped` across all `5727` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
 
 Representative compile evidence:
 

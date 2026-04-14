@@ -2068,6 +2068,7 @@ def tmem_mma_scaled_layout_format_kernel(
     B_ELEM_PER_BYTE: ttgl.constexpr,
     A_FORMAT: ttgl.constexpr,
     B_FORMAT: ttgl.constexpr,
+    ACC_INIT: ttgl.constexpr,
 ):
     A_STORAGE_K: ttgl.constexpr = K // A_ELEM_PER_BYTE
     B_STORAGE_K: ttgl.constexpr = K // B_ELEM_PER_BYTE
@@ -2101,7 +2102,7 @@ def tmem_mma_scaled_layout_format_kernel(
 
     acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
     acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
-    acc_tmem.store(ttgl.zeros([M, N], ttgl.float32, layout=acc_reg_layout))
+    acc_tmem.store(ttgl.full([M, N], ACC_INIT, ttgl.float32, layout=acc_reg_layout))
 
     scale_layout: ttgl.constexpr = TensorMemoryScalesLayout()
     a_scale_tmem = allocate_tensor_memory(a_scale.dtype.element_ty, [M, K // VEC_SIZE], scale_layout)
@@ -3263,6 +3264,13 @@ SCALED_MMA_ROOT_FORMAT_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for (a_format, b_format), n, k, acc_layout_kind in product(
         CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
+    )
+]
+
+SCALED_MMA_ROOT_USE_ACC_CASES = [
+    (a_format, b_format, n, acc_layout_kind)
+    for (a_format, b_format), n, acc_layout_kind in product(
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), ("legacy", "linear")
     )
 ]
 
@@ -7976,6 +7984,7 @@ def test_tmem_runtime_matrix_mma_scaled_root_format_matrix(a_format, b_format, n
         b_elem_per_byte,
         a_tcgen_format,
         b_tcgen_format,
+        0.0,
         num_warps=4,
     )
 
@@ -7983,6 +7992,57 @@ def test_tmem_runtime_matrix_mma_scaled_root_format_matrix(a_format, b_format, n
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     expected_count = (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+    if acc_layout_kind == "linear":
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,acc_layout_kind", SCALED_MMA_ROOT_USE_ACC_CASES)
+def test_tmem_runtime_matrix_mma_scaled_root_format_use_acc(a_format, b_format, n, acc_layout_kind):
+    m = 128
+    k = 128
+    acc_init = 1.0
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+    acc_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout(m, n)
+    )
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_scaled_layout_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        acc_layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        acc_init,
+        num_warps=4,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T + acc_init, atol=1e-3, rtol=1e-3)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    expected_count = _expected_scaled_mma_acc_subslice_count(a_format, b_format)
     assert len(mma_ops) == expected_count
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
@@ -8530,6 +8590,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_for
         b_elem_per_byte,
         a_tcgen_format,
         b_tcgen_format,
+        0.0,
         num_warps=4,
     )
 
@@ -8575,6 +8636,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_report
             b_elem_per_byte,
             a_tcgen_format,
             b_tcgen_format,
+            0.0,
             num_warps=4,
         )
 

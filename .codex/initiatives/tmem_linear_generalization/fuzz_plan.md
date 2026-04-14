@@ -596,7 +596,11 @@ Every fuzz case records:
   format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`,
   and `nvfp4/nvfp4`) at `blockN in {64, 128, 256}` and `blockK in {128, 256}`
   for both legacy and canonical TMEM-linear accumulator layouts, with exact
-  scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`.
+  scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`. The
+  root matrix also includes explicit nonzero accumulator-add coverage at
+  `blockK=128` for every format pair, `blockN in {64,128,256}`, and both
+  accumulator layout families, checking `matmul + acc_init` rather than only
+  the zero-initialized path.
 - accumulator subview starts that preserve the same supported physical family,
   currently including one-CTA root-aligned and offset direct subviews at
   `blockN in {64,128}`, `blockK in {128,256}`, and every current scaled format

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:19 UTC: scaled-MMAv5 root nonzero-accumulator coverage
+
+- Added `ACC_INIT` to `tmem_mma_scaled_layout_format_kernel` and kept the existing root-format callers on explicit `0.0` initialization.
+- Added `test_tmem_runtime_matrix_mma_scaled_root_format_use_acc`, covering every current scaled format pair, `N in {64,128,256}`, `K=128`, and legacy plus canonical TMEM-linear accumulator layouts with `acc_init=1.0`.
+- The new test validates nonzero accumulator-add semantics (`a_ref @ b_ref.T + acc_init`) and exact scaled-MMAv5 plus commit opcode counts. This closes the gap where root scaled-MMAv5 only proved the zero-initialized accumulator path even though `tcgen05_mma_scaled(..., use_acc=True)` was used.
+- Current runtime-matrix collection is `5727` tests: `cp=381`, `mma=1134`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5281 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `30/5727`; no-PYTHONPATH tight MMA collect selected `1134/5727`; no-PYTHONPATH adjacent changed-callsite collect selected `80/5727`; focused use-acc selector passed all `30` cases across split-4 on four GPUs (`8`, `8`, `8`, and `6`; group times `15.75s`, `14.97s`, `15.54s`, and `11.66s`); adjacent scaled root/tile selector passed all `80` cases across split-4 (`20` per group; group times `34.83s`, `35.73s`, `35.99s`, and `32.12s`).
+- Next: commit/push this bounded scaled-MMAv5 coverage checkpoint, then move to another exact TMEM ISA slice. Since the easy copy `warpx2` parity work is done, the remaining `warpx2` frontiers still need a real descriptor/address/staging model before more positives should be attempted.
+
 ## 2026-04-14 08:14 UTC: direct-i8 MMAv5 clean-negative K-depth and M64 coverage
 
 - Expanded direct `tcgen05.mma.kind::i8` clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.

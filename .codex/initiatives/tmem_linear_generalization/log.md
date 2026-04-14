@@ -1,3 +1,20 @@
+## 2026-04-14 08:19 UTC: scaled-MMAv5 root nonzero-accumulator coverage
+
+- Added nonzero accumulator-add coverage for direct root scaled-MMAv5 in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `tmem_mma_scaled_layout_format_kernel` now takes `ACC_INIT`, so existing root/tile-format callers use `0.0` explicitly while the new use-acc matrix initializes the accumulator to `1.0`.
+- `test_tmem_runtime_matrix_mma_scaled_root_format_use_acc` covers all current scaled format pairs, `N in {64,128,256}`, `K=128`, and legacy/canonical accumulator layouts, and checks `a_ref @ b_ref.T + acc_init` plus exact scaled-MMAv5/commit opcode counts.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed before docs and will be rerun after docs;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `30/5727`;
+  - no-PYTHONPATH tight MMA collect selected `1134/5727`;
+  - no-PYTHONPATH adjacent scaled root/tile collect selected `80/5727`;
+  - focused use-acc selector passed all `30` cases across split-4 on four GPUs (`8`, `8`, `8`, `6`; `15.75s`, `14.97s`, `15.54s`, `11.66s`);
+  - adjacent scaled root/tile selector passed all `80` cases across split-4 on four GPUs (`20` per group; `34.83s`, `35.73s`, `35.99s`, `32.12s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1134`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5281 passed, 446 skipped`.
+- Next: commit/push this checkpoint and continue staged ISA saturation in another exact family; do not re-open parked `warpx2` hard frontiers without a descriptor/address/staging hypothesis.
+
 ## 2026-04-14 08:14 UTC: direct-i8 MMAv5 clean-negative K-depth and M64 coverage
 
 - Parameterized the one-CTA and two-CTA direct-i8 MMAv5 clean-negative tests over `K in {32,64}`.

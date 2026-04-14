@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5697-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5727-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 root nonzero-accumulator checkpoint, 2026-04-14 08:19 UTC: direct root scaled-MMAv5 coverage now explicitly validates `use_acc=True` semantics with a nonzero initialized accumulator (`acc_init=1.0`) for every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, `nvfp4/nvfp4`), `N in {64,128,256}`, `K=128`, and both legacy plus canonical TMEM-linear accumulator layouts. Existing zero-accumulator root-format callers now pass `ACC_INIT=0.0`, while the new matrix checks `a_ref @ b_ref.T + acc_init` and still pins exact scaled-MMAv5 and commit opcode counts. Current runtime-matrix collection is `5727` tests: `cp=381`, `mma=1134`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5281 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `30/5727`; no-PYTHONPATH tight MMA collect selected `1134/5727`; no-PYTHONPATH adjacent changed-callsite collect selected `80/5727`; focused use-acc selector passed all `30` cases across split-4 on four GPUs (`8`, `8`, `8`, and `6` selected; times `15.75s`, `14.97s`, `15.54s`, and `11.66s`); adjacent scaled root/tile selectors passed all `80` cases across split-4 (`20` per group; times `34.83s`, `35.73s`, `35.99s`, and `32.12s`).
 
 - Current direct-i8 MMAv5 clean-negative checkpoint, 2026-04-14 08:14 UTC: direct `tcgen05.mma.kind::i8` clean-negative coverage now has K-depth parity (`K in {32,64}`) for one-CTA and two-CTA legacy/canonical accumulator layouts, and now covers the M64 accumulator family across `N in {64,128,256}`, `K in {32,64}`, and legacy/canonical M64 layouts. These remain clean Blackwell unsupported boundaries, not positive MMAv5 targets. Current runtime-matrix collection is `5697` tests: `cp=381`, `mma=1104`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5251 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `36/5697`; no-PYTHONPATH tight MMA collect selected `1104/5697`; focused direct-i8 clean-negative selector passed all `36` cases across split-4 on four GPUs (`9` per group; times `4.43s`, `4.21s`, `4.34s`, and `4.29s`).
 
