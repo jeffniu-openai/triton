@@ -8801,7 +8801,7 @@ MMA_TWOCTA_INDEXED_ACC_CASES = [
 
 MMA_TWOCTA_ACC_SUBSLICE_CASES = [
     (kind, block_n, block_k, slice_start, use_acc)
-    for kind, block_n, block_k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64), (False, True))
+    for kind, block_n, block_k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128), (False, True))
     for slice_start in (0, block_n)
 ]
 

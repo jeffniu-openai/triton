@@ -607,7 +607,7 @@ Every fuzz case records:
   surfaces.
 - current two-CTA accumulator `memdesc_subslice` positive coverage mirrors that
   one-CTA slice for `cta_group::2`, using a linear two-CTA
-  `[256, 2*blockN]` parent at `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
+  `[256, 2*blockN]` parent at `blockN in {64, 128, 256}`, `blockK in {32, 64, 128}`,
   both slice starts, every supported plain kind, and both accumulator modes.
 - `multicast in {false, true}` where supported
 - TMA-fed two-CTA non-TF32 plain dtypes (`f16`, `bf16`, `f8e5m2`, and
@@ -1163,3 +1163,10 @@ Every fuzz case records:
 - The `linear_unit_parent` rows remain the resource-safe positive construction for canonical-linear `N=256`; do not reclassify the live `[2,256,256]` parent image as legal.
 - Do not infer K128 support for two-CTA accumulator subviews, TMA-fed matrices, or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices.
 - Current full-file collection is `8644` tests and the MMA bucket is `2457` cases. Aggregate bucket evidence is `8193 passed, 451 skipped`.
+
+## 2026-04-14 16:29 UTC: Plain Two-CTA MMAv5 Accumulator-Subview K=128 Note
+
+- Plain two-CTA accumulator `memdesc_subslice` fuzz generation may now include `K=128` for every supported plain kind, `N in {64,128,256}`, both slice starts, and both accumulator modes through linear `[256,2*N]` parents.
+- The direct two-CTA plain root, indexed-accumulator, and accumulator-subview matrices now all cover `K in {32,64,128}`.
+- Do not infer K128 support for TMA-fed matrices or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices.
+- Current full-file collection is `8704` tests and the MMA bucket is `2517` cases. Aggregate bucket evidence is `8253 passed, 451 skipped`.
