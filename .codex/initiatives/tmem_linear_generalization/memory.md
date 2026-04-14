@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 14:49 UTC: two-CTA no-scales copy indexed-view coverage
+
+- Added `tmem_copy_no_scales_twocta_linear_indexed_view_kernel`, `CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES`, and `test_tmem_runtime_matrix_cp_no_scales_twocta_linear_indexed_view` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new positive matrix covers dense no-scales `tcgen05.cp.cta_group::2.128x256b` through a depth-two canonical TMEM-linear parent `[2,256,N]` indexed to the active `[256,N]` view. Axes are `f32`/`i32`, `N in {64,128}`, and swizzle byte widths `{32,64,128}`.
+- The helper mirrors the two-CTA copy synchronization path: two-CTA CGA shared layout, `fence_async_shared(cluster=True)`, multicast mbarrier commit, exact `cta_group::2` copy opcodes, no `cta_group::1` copies, and generic `ttg.memdesc_index` rather than legacy tensor-memory encoding fallback.
+- Added an explicit `N=256` depth-two OOR guard. That tempting parent image requires `1024` TMEM columns against the `512` hardware limit, so future wider indexed-copy positives need a unit-parent or other lower-resource construction.
+- Current runtime-matrix collection is `8216` tests: `cp=637`, `mma=2075`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2979`; current bucketed evidence aggregates to `7765 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `13/8216`; no-PYTHONPATH CP collect selected `637/8216`; no-PYTHONPATH full-file collect reported `8216`; focused selector passed all `13` cases across split-4 on four GPUs (`4`, `4`, `4`, and `1`; slowest `6.65s`); full CP selector passed/skipped `627 passed, 10 skipped` across split-4 (`150 passed/10 skipped`, `160 passed`, `160 passed`, and `157 passed`; slowest `64.31s`); `git diff --check` passed.
+- Next: commit/push this bounded copy indexed-view checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 14:44 UTC: two-CTA no-scales copy subview coverage
 
 - Added `tmem_copy_no_scales_twocta_linear_subslice_view_kernel`, `CP_TWOCTA_LINEAR_SUBSLICE_VIEW_CASES`, and `test_tmem_runtime_matrix_cp_no_scales_twocta_linear_subslice_view` in `python/test/gluon/test_tmem_runtime_matrix.py`.

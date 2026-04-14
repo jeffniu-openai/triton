@@ -1341,6 +1341,47 @@ def tmem_copy_no_scales_indexed_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
 
 
 @gluon.jit
+def tmem_copy_no_scales_twocta_linear_indexed_view_kernel(
+    in_ptr,
+    out_ptr,
+    parent_layout: ttgl.constexpr,
+    cga_layout: ttgl.constexpr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    swizzle: ttgl.constexpr,
+    parent_depth: ttgl.constexpr,
+    parent_index: ttgl.constexpr,
+):
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [parent_depth, M, N], layout=parent_layout)
+    view = tmem.index(parent_index)
+    reg_layout: ttgl.constexpr = view.get_reg_layout()
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=32,
+        rank=2,
+        cga_layout=cga_layout,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared(cluster=True)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, view)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    output = view.load(reg_layout)
+    ttgl.store(out_ptr + offs, output)
+
+
+@gluon.jit
 def tmem_copy_no_scales_shared_subslice_bad_offset_kernel(in_ptr, out_ptr, slice_start: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -3610,6 +3651,13 @@ CP_LINEAR_INDEXED_VIEW_CASES = [
         for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
         for swizzle in (32, 64, 128)
     ],
+]
+
+CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES = [
+    (dtype_name, torch_dtype, 256, n, swizzle, expected_count, "tcgen05.cp.cta_group::2.128x256b")
+    for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
+    for n, expected_count in ((64, 8), (128, 16))
+    for swizzle in (32, 64, 128)
 ]
 
 CP_LINEAR_SUBSLICE_VIEW_CASES = [
@@ -7171,6 +7219,77 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_indexed_view(name, torch_dtype,
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir
     assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,M,N,swizzle,expected_count,expected_opcode",
+    CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES,
+)
+def test_tmem_runtime_matrix_cp_no_scales_twocta_linear_indexed_view(
+    dtype_name, torch_dtype, M, N, swizzle, expected_count, expected_opcode
+):
+    cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+    parent_layout = _lift_tmem_layout(_make_tmem_linear_layout_mmav5_twocta(M, N), [2])
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_copy_no_scales_twocta_linear_indexed_view_kernel[(1, )](
+        inp,
+        out,
+        parent_layout,
+        tuple(tuple(basis) for basis in cga_layout),
+        M,
+        N,
+        swizzle,
+        2,
+        1,
+        num_ctas=2,
+        num_warps=4,
+    )
+    torch.cuda.synchronize()
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode] * expected_count)
+    _assert_exact_commit_ptx_llir_match(
+        compiled,
+        ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],
+    )
+    ptx = compiled.asm["ptx"]
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert ptx.count("fence.proxy.async.shared::cluster") == 1
+    assert ptx.count("barrier.cluster.arrive.aligned;") == 2
+    assert ptx.count("barrier.cluster.wait.aligned;") == 2
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_twocta_linear_indexed_view_full_256x256_reports_tmem_oor():
+    M = 256
+    N = 256
+    swizzle = 128
+    cga_layout = _make_2cta_cga_layout((2, 1), (2, 1), (1, 0), 0)
+    parent_layout = _lift_tmem_layout(_make_tmem_linear_layout_mmav5_twocta(M, N), [2])
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(triton.runtime.errors.OutOfResources, match="tensor memory"):
+        tmem_copy_no_scales_twocta_linear_indexed_view_kernel[(1, )](
+            inp,
+            out,
+            parent_layout,
+            tuple(tuple(basis) for basis in cga_layout),
+            M,
+            N,
+            swizzle,
+            2,
+            1,
+            num_ctas=2,
+            num_warps=4,
+        )
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

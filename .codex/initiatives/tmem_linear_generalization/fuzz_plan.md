@@ -424,6 +424,14 @@ Every fuzz case records:
   are pinned through generic `ttg.memdesc_subslice`, so future dense copy view
   work should target a genuinely different descriptor chain such as indexing or
   higher-rank composition.
+- Dense `cta_group::2` no-scales indexed descriptor-view coverage now includes
+  a canonical TMEM-linear `[2,M,N].index(1)` matrix for `M=256`,
+  `N in {64,128}`, f32+i32 payloads, and swizzle widths `{32,64,128}`. The
+  exact `128x256b` opcode counts and multicast commit path are pinned through
+  generic `ttg.memdesc_index`. The analogous depth-two `N=256` construction is
+  tensor-memory OOR (`1024` required, `512` hardware limit), so future wider
+  indexed-copy positives should use a unit-parent or another resource-safe
+  construction rather than forcing that live parent image.
 - Legacy single-CTA no-scales root and swizzle matrices now also cover both
   f32 and i32 payloads through `CP_NO_SCALES_128X128_DTYPES`, so follow-up
   single-CTA no-scales work should target new layout/view/atom surfaces rather
@@ -1028,6 +1036,14 @@ Every fuzz case records:
 - Preserve row/column zero bases in generated expected layouts. A zero basis is semantic broadcast/repetition state, not removable padding.
 - Do not use this as evidence for true tensor-memory-scales `warpx2` or no-scales two-CTA `warpx2::02_13`; both remain parked descriptor/address/staging frontiers.
 - Current full-file collection is `8027` tests and the CP bucket is `612` cases. Aggregate bucket evidence is `7576 passed, 451 skipped`.
+
+
+## 2026-04-14 14:49 UTC: Two-CTA No-Scales Copy Indexed-View Note
+
+- Dense two-CTA no-scales `tcgen05.cp.cta_group::2.128x256b` positive fuzz generation may now include generic `ttg.memdesc_index` views from `[2,256,N].index(1)` for `N in {64,128}`, f32/i32 payloads, and swizzle widths `{32,64,128}`.
+- The positive rows assert exact copy counts (`8` for `N=64`, `16` for `N=128`), cluster fence/barrier synchronization, multicast commit, and absence of `cta_group::1` or legacy tensor-memory encodings.
+- Do not promote `[2,256,256].index(1)` as a positive row. It requires `1024` TMEM columns against the `512` hardware limit and is pinned as an OOR boundary.
+- Current full-file collection is `8216` tests and the CP bucket is `637` cases. Aggregate bucket evidence is `7765 passed, 451 skipped`.
 
 
 ## 2026-04-14 14:10 UTC: Plain MMAv5 Indexed-Accumulator Unit-Parent N=256 Note

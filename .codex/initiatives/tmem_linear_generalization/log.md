@@ -14402,3 +14402,13 @@ Open after this slice:
 - Correct construction detail: pass the base 2D TMEM-linear layout to `tmem_ld_red_descriptor_chain_kernel`. A pre-lifted layout aborts during `get_reg_layout` before the intended verifier path.
 - Current runtime-matrix collection is `8191` tests: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2979`; bucketed evidence aggregates to `7740 passed, 451 skipped`.
 - Validation: `make -j8`; py-compile; collect `ld_red_non_f32_descriptor_chain=18/8191`, `ld_red=1954/8191`, full-file `8191`; corrected descriptor-chain non-f32 split-4 selector passed all `18` cases.
+
+## 2026-04-14 14:49 UTC: two-CTA no-scales copy indexed-view coverage
+
+- Added `tmem_copy_no_scales_twocta_linear_indexed_view_kernel`, `CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES`, and `test_tmem_runtime_matrix_cp_no_scales_twocta_linear_indexed_view` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new positive matrix covers `tcgen05.cp.cta_group::2.128x256b` through a depth-two canonical TMEM-linear parent: allocate `[2,256,N]`, take `index(1)`, and copy the active `256xN` view with the two-CTA shared-layout/CGA path.
+- Coverage spans `f32`/`i32`, `N in {64,128}`, swizzle byte widths `{32,64,128}`, exact copy opcode counts (`8` and `16`), multicast commit, cluster fence/barriers, surviving generic `ttg.memdesc_index`, and absence of `cta_group::1` or legacy tensor-memory encodings.
+- Added an explicit OOR guard for the tempting `N=256` depth-two parent. That construction requires `1024` TMEM columns against the `512` hardware limit, so it is a resource boundary rather than a missing positive row.
+- Current runtime-matrix collection is `8216` tests: `cp=637`, `mma=2075`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2979`; current bucketed evidence aggregates to `7765 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `13/8216`; no-PYTHONPATH CP collect selected `637/8216`; no-PYTHONPATH full-file collect reported `8216`; focused selector passed all `13` cases across split-4 (`4`, `4`, `4`, and `1`); full CP selector passed/skipped `627 passed, 10 skipped` across split-4 (`150 passed/10 skipped`, `160 passed`, `160 passed`, and `157 passed`); `git diff --check` passed.
+- Next: commit/push this bounded CP descriptor-view checkpoint, then move to another non-parked TMEM ISA coverage slice.
