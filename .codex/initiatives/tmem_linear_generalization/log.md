@@ -13356,3 +13356,21 @@ Open after this slice:
   - tight MMA runner passed all `714` cases across groups `179`, `179`, `179`, and `177` with runner wall times about `6.9s`, `11.7s`, `8.5s`, and `35.4s`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=714`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3555 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation in another exact family.
+## 2026-04-14 04:46 UTC: scaled-MMAv5 full-shape tile-permuted TMEM-LHS N=64 parity
+
+- Expanded `SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- Positive coverage now spans every currently reachable full-shape tile-permuted TMEM-LHS scaled format pair:
+  - all packed-storage reachable pairs (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`) at `K=256`;
+  - mxfp8-storage LHS pairs (`mxfp8/mxfp8` and `mxfp8/mxfp4`) at `K=128`;
+  - both legacy and canonical TMEM-linear accumulator layouts at `N in {64,128,256}`.
+- Expanded the fp4-storage `K=128` full-shape tile-permuted LHS clean-negative matrix to the same N range. These cases remain an intentional verifier boundary because storage-width-64 tile-permuted LHS descriptors are not MMAv5-compatible for the fp4-storage pairs.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `48/4017`;
+  - no-PYTHONPATH tight `mma` collect selected `730/4017`;
+  - focused scaled-LHS tile-permuted selector passed all `48` cases across four GPUs (`12` per group; group times about `39.50s`, `38.49s`, `37.76s`, and `7.35s`);
+  - tight MMA runner passed all `730` cases across groups `183`, `183`, `183`, and `181` with pytest times about `4.98s`, `10.64s`, `7.66s`, and `40.79s`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3571 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 checkpoint, then move to the next staged ISA coverage family. With the nearby MMAv5 N64 parity gaps mostly closed, prefer a descriptor-view `ld/st` or `ld.red` layout slice unless another exact scaled-MMAv5 gap is discovered.

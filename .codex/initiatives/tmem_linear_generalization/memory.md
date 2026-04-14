@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:46 UTC: scaled-MMAv5 full-shape tile-permuted TMEM-LHS N=64 parity
+
+- `SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- The positive full-shape tile-permuted TMEM-LHS scaled-MMAv5 matrix covers every packed-storage reachable format pair at `K=256`, the mxfp8-storage LHS pairs at `K=128`, and both legacy/canonical accumulator layouts at all three N widths.
+- The fp4-storage `K=128` full-shape tile-permuted LHS clean-negative matrix also spans `N in {64, 128, 256}` and continues to assert the clean MMAv5-compatible-layout verifier diagnostic.
+- Current runtime-matrix collection is `4017` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3571 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `48/4017`; no-PYTHONPATH tight `mma` collect selected `730/4017`; focused scaled-LHS tile-permuted selector passed `48` cases across four GPUs (`12` each); tight MMA runner passed `730` across groups `183`, `183`, `183`, and `181`.
+
 ## 2026-04-14 04:43 UTC: scaled-MMAv5 TMEM-LHS subview N=64 parity
 
 - `SCALED_MMA_LHS_SUBSLICE_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

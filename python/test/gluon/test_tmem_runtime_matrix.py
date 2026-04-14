@@ -3112,7 +3112,7 @@ SCALED_MMA_LHS_SUBSLICE_NK_CASES = [
 SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
-    for n in (128, 256)
+    for n in (64, 128, 256)
     for k in (128, 256)
     if k == 256 or a_format == "mxfp8"
 ]
@@ -3120,7 +3120,7 @@ SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = [
 SCALED_MMA_LHS_TILE_PERMUTED_FP4_STORAGE_K128_UNSUPPORTED_CASES = [
     (a_format, b_format, n, acc_layout_kind)
     for a_format, b_format in (("mxfp4", "mxfp4"), ("nvfp4", "nvfp4"))
-    for n, acc_layout_kind in product((128, 256), ("legacy", "linear"))
+    for n, acc_layout_kind in product((64, 128, 256), ("legacy", "linear"))
 ]
 
 SCALED_MMA_ACC_SUBSLICE_N_CASES = [
