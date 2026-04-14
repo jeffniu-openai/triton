@@ -2735,6 +2735,12 @@ LDST_DESCRIPTOR_CASES = [
     for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
+LDST_I32_BROAD_CASES = [
+    (mode, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
+    for mode, layout_name, n, variant in product(("direct", "descriptor"), LDST_LAYOUTS.keys(), (64, 128, 256),
+                                                LDST_VARIANTS)
+]
+
 LDST_TWOCTA_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
@@ -3957,6 +3963,33 @@ def test_tmem_runtime_matrix_ldst_descriptor_compositions(layout_name, n, varian
 
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("mode,layout_name,n,variant,expected_shape", LDST_I32_BROAD_CASES)
+def test_tmem_runtime_matrix_ldst_i32_broad_linear_layouts(mode, layout_name, n, variant, expected_shape):
+    m = 128
+    layout = LDST_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    if mode == "direct":
+        if variant == "auto":
+            compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4)
+        else:
+            compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    else:
+        compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+        torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -13195,3 +13195,18 @@ Open after this slice:
   - focused two-CTA N=32 selector passed all `40` cases across four GPUs (`10` each), with the cold descriptor-heavy groups taking about `2:18`;
   - `git diff --check`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1782`; current bucketed evidence aggregates to `3223 passed, 446 skipped`.
+
+## 2026-04-14 04:01 UTC: ld/st broad single-CTA i32 parity
+
+- Added `LDST_I32_BROAD_CASES` and `test_tmem_runtime_matrix_ldst_i32_broad_linear_layouts`.
+- The new coverage spans identity and mixed `128x{64,128,256}` TMEM-linear layouts, direct and descriptor-chain modes, and `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b` variants using int32 payloads.
+- This complements the existing broad f32 direct/descriptor tests instead of rewriting their nodeids.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `60/3729`;
+  - no-PYTHONPATH `ldst` collect selected `1842/3729`;
+  - focused selector passed all `60` cases across four GPUs (`15` per group; group times about `21.81s`, `83.40s`, `152.87s`, and `377.62s`);
+  - `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1842`; current bucketed evidence aggregates to `3283 passed, 446 skipped`.
+- Next: commit/push this bounded `ld/st` dtype-coverage checkpoint, then continue staged ISA saturation, likely two-CTA broad i32 parity or another reduction/view-chain gap.
