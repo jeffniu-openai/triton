@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:37 UTC: plain-MMAv5 TMEM-LHS subview N=64 parity
+
+- `MMA_LHS_SUBSLICE_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds` therefore covers every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`) through the supported `ttg.memdesc_subslice` TMEM-LHS path at `K in {32,64}`, both legacy/canonical accumulator layouts, and all three N widths.
+- This is the descriptor-view companion to the recently added one-CTA root, two-CTA root, and TMA-fed TF32 `N=64` plain-MMAv5 coverage. Exact opcode counts remain `_expected_plain_mma_op_count(kind, k)`, independent of N for this LHS-subview family.
+- Current runtime-matrix collection is `4767` tests: `cp=322`, `mma=754`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; current bucketed evidence aggregates to `4321 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `40/4767` for the N64/K64-sensitive selector; no-PYTHONPATH tight MMA collect selected `754/4767`; the full LHS-subview function passed all `60` cases across four GPUs (`15` per group; group times `18.68s`, `19.74s`, `9.68s`, and `19.39s`); tight MMA selector passed all `754` cases across four GPUs (`189`, `189`, `189`, and `187`; group times `6.70s`, `23.23s`, `18.77s`, and `17.94s`).
+- Discarded probe before commit: expanding the scaled-copy `tcgen05.copy.warpx4` helper matrices to `blockN=64` is not a valid positive target under the current public scales TMA descriptor helper. `make_scales_descriptor` computes `REP_MN = BLOCK_MN // 128`, so a B-scale descriptor with `BLOCK_N=64` gets block shape `[1, 0, REP_K, 2, 256]` and fails shared-memory allocation with a zero dimension. Revisit only with a real sub-128 scale-descriptor/staging model, not by committing broad failing cases.
+
 ## 2026-04-14 06:33 UTC: TMA-fed two-CTA TF32 N=64 parity
 
 - `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error` now parameterizes `block_n` over `64`, `128`, and `256` for both legacy and canonical two-CTA TMEM-linear accumulator layouts.

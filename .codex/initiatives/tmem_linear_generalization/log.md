@@ -13487,3 +13487,20 @@ Open after this slice:
   - tight MMA selector passed all `734` cases across split-4 on four GPUs (`184`, `184`, `184`, and `182`; `124.75s`, `117.27s`, `326.59s`, and `300.99s`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=734`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4301 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA coverage. Good next slices are another concrete MMAv5/scaled-MMAv5 parity gap or non-parked copy-family coverage; keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.
+
+## 2026-04-14 06:37 UTC: plain-MMAv5 TMEM-LHS subview N=64 parity
+
+- Expanded `MMA_LHS_SUBSLICE_NK_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- The plain TMEM-LHS subview runtime matrix now covers all supported plain operand kinds, `K in {32,64}`, both legacy/canonical accumulator layouts, and all three N widths through `ttg.memdesc_subslice` + `tensor_memory_linear`.
+- This is test-only coverage over already-supported lowering behavior; exact MMAv5 opcode counts remain `_expected_plain_mma_op_count(kind, k)`.
+- Discarded probe before commit: adding `blockN=64` to the scaled-copy `CP_SCALES_WARPX4_*` matrices failed immediately because `make_scales_descriptor` derives `REP_MN = BLOCK_MN // 128`, producing a zero B-scale descriptor dimension for `BLOCK_N=64` and `allocate_shared_memory` rejected shapes such as `[1, 0, 1, 2, 256]`. Keep this as a future descriptor/staging-model frontier, not a broad positive matrix.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `40/4767` for `mma_lhs_subslice_view_plain_kinds and 64`;
+  - no-PYTHONPATH tight MMA collect selected `754/4767`;
+  - full LHS-subview function passed `60` cases across split-4 on four GPUs (`15` per group; `18.68s`, `19.74s`, `9.68s`, and `19.39s`);
+  - tight MMA selector passed all `754` cases across split-4 on four GPUs (`189`, `189`, `189`, and `187`; `6.70s`, `23.23s`, `18.77s`, and `17.94s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=754`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4321 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA coverage. Good next slices are either plain full-shape TMEM-LHS N64 if the helper can avoid the known tf32 shared-memory OOR boundary, scaled accumulator K-depth/subview parity, or another non-parked copy/ld.red descriptor frontier. True scales `warpx2` and no-scales two-CTA `warpx2::02_13` remain parked until there is a real descriptor/address/staging hypothesis.

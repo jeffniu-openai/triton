@@ -6419,7 +6419,7 @@ MMA_LHS_TILE_PERMUTED_NK_CASES = [
 
 MMA_LHS_SUBSLICE_NK_CASES = [
     (kind, acc_layout_kind, n, k)
-    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64))
+    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
 ]
 
 
