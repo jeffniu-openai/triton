@@ -14103,3 +14103,13 @@ Open after this slice:
 - Current runtime-matrix collection is `6596` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1160`, and `ldst=2869`; current bucketed evidence aggregates to `6150 passed, 446 skipped`.
 - Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; `git diff --check`; no-PYTHONPATH descriptor-chain collect selected `240/6596`; no-PYTHONPATH `ld_red` collect selected `1160/6596`; no-PYTHONPATH full-file collect reported `6596`; focused pure row/column descriptor-chain selector passed all `96` cases across split-4 on four GPUs (`24` per group; group times `446.98s`, `450.46s`, `446.67s`, and `487.70s`).
 - Next: commit/push this bounded `ld.red` coverage checkpoint, then continue another staged non-parked TMEM ISA slice.
+
+## 2026-04-14 10:22 UTC: two-CTA TMA-fed TF32 MMAv5 use-acc coverage
+
+- Added `tmem_mma_twocta_tma_b_transposed_use_acc_kernel` and `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor_use_acc` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- This extends the existing reachable TMA-fed two-CTA TF32 path where B is supplied as a non-transposed `[N,K]` descriptor and then `memdesc_trans` / shared-permuted into MMAv5's expected `[K,N]` operand view.
+- The new coverage initializes the accumulator TMEM tile from a global `c` tensor, calls multicast `tcgen05_mma(..., use_acc=True)`, and checks `tf32(a) @ tf32(b).T + c`.
+- Positive matrix: `blockN in {64,128,256}` across both legacy and canonical TMEM-linear two-CTA accumulator layouts, matching the existing no-accumulator TMA-positive surface.
+- Current runtime-matrix collection is `6602` tests: `cp=381`, `mma=1693`, splitn/misc `=499`, `ld_red=1160`, and `ldst=2869`; current bucketed evidence aggregates to `6156 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; `git diff --check`; no-PYTHONPATH focused collect selected `6/6602`; no-PYTHONPATH tight MMA collect selected `1693/6602`; split-4 focused execution passed the three non-empty groups (`2` cases each; group 4 empty because the selector has only six cases); aggregate exact selector run passed all `6` cases in one process.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another staged non-parked TMEM ISA slice.

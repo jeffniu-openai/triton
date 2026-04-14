@@ -554,8 +554,9 @@ Every fuzz case records:
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared
   `permute((1, 0))` view; current coverage spans `blockN in {64, 128, 256}` for
-  both legacy and canonical TMEM-linear accumulator layouts. Default `[K, N]`
-  B descriptors remain a clean negative because TMA descriptors cannot be
+  both legacy and canonical TMEM-linear accumulator layouts, including explicit
+  nonzero accumulator-add coverage through `use_acc=True`. Default `[K, N]` B
+  descriptors remain a clean negative because TMA descriptors cannot be
   transposed.
 - accumulator layout family:
   - legacy TMEM layout
