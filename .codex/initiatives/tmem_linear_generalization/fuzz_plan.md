@@ -587,7 +587,7 @@ Every fuzz case records:
   through unit parents (`[1, M, blockN].index(0)`) for both one-CTA and two-CTA
   paths over the same kind/K/use-acc matrix.
 - current one-CTA accumulator `memdesc_subslice` positive coverage spans every
-  supported plain kind, `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
+  supported plain kind, `blockN in {64, 128, 256}`, `blockK in {32, 64, 128}`,
   `slice_start in {0, blockN}`, and `use_acc in {false, true}` by slicing from
   linear `[128, 2*blockN]` accumulator parents. The same shape/K/slice/use-acc
   matrix now covers `blockM=64` M64 linear parents `[64, 2*blockN]`; the
@@ -640,8 +640,8 @@ Every fuzz case records:
     every supported plain operand kind at `N in {64,128,256}`, `K in {32,64,128}`,
     both legacy/canonical M64 accumulator layouts, and both no-accumulator and
     `use_acc=True` paths. M64 accumulator `memdesc_subslice` views from wider
-    linear parents remain positive for `K in {32,64}` and should be widened in a
-    separate descriptor-view coverage slice.
+    linear parents are also positive for `K in {32,64,128}` across the same
+    kind/N/slice/use-acc matrix.
   - `blockN` and `K` values accepted by the in-tree verifier/matcher
 
 #### Checks
@@ -1119,3 +1119,11 @@ Every fuzz case records:
 - Tile-permuted accumulator generation may include `K=128` for `128x128/tile_n=32` and `128x256/tile_n=64`, including all supported plain kinds and the accumulator-add path.
 - Do not infer K=128 support for indexed/subslice descriptor-view MMA, two-CTA/TMA-fed MMA, or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices with different resource and descriptor constraints.
 - Current full-file collection is `8372` tests and the tight MMA bucket is `2217` cases. Aggregate bucket evidence is `7921 passed, 451 skipped`.
+
+
+## 2026-04-14 15:46 UTC: Plain MMAv5 Accumulator-Subview K=128 Note
+
+- Plain one-CTA accumulator `memdesc_subslice` MMAv5 fuzz generation may now include `K=128` for every supported plain kind, `N in {64,128,256}`, both slice starts, and both accumulator modes.
+- M64 accumulator `memdesc_subslice` generation may also include `K=128` for the same kind/N/slice/use-acc matrix.
+- Do not infer K=128 support for indexed accumulator views, two-CTA descriptor-view MMA, TMA-fed MMA, or scaled-MMAv5 from this checkpoint; keep those as independently validated slices.
+- Current full-file collection is `8492` tests and the tight MMA bucket is `2337` cases. Aggregate bucket evidence is `8041 passed, 451 skipped`.

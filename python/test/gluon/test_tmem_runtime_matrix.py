@@ -8328,7 +8328,7 @@ MMA_INDEXED_ACC_CASES = [
 
 MMA_ACC_SUBSLICE_CASES = [
     (kind, n, k, slice_start, use_acc)
-    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64), (False, True))
+    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128), (False, True))
     for slice_start in (0, n)
 ]
 
@@ -8390,7 +8390,7 @@ MMA_M64_PLAIN_KIND_CASES = [
 
 MMA_M64_ACC_SUBSLICE_CASES = [
     (kind, n, k, slice_start, use_acc)
-    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64), (False, True))
+    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128), (False, True))
     for slice_start in (0, n)
 ]
 

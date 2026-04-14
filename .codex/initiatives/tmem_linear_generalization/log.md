@@ -14455,3 +14455,13 @@ Open after this slice:
 - Current runtime-matrix collection is `8372` tests: `cp=645`, `mma=2217`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `7921 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8372`; adjacent MMA collect selected `426/8372`; four-GPU split execution of the adjacent selector passed all `426` cases (`107`, `107`, `107`, and `105`; slowest `154.90s`).
 - Scope note: descriptor-view indexed/subslice, two-CTA/TMA, and scaled-MMAv5 K surfaces were not widened by this checkpoint. Keep those as separate coverage slices so failures can be attributed cleanly.
+
+
+## 2026-04-14 15:46 UTC: plain MMAv5 accumulator-subview K=128 coverage
+
+- Expanded the plain one-CTA MMAv5 accumulator `memdesc_subslice` descriptor-view matrix from `K in {32,64}` to `K in {32,64,128}`.
+- `MMA_ACC_SUBSLICE_CASES` now covers all supported plain kinds, `N in {64,128,256}`, both column slice starts, and both no-accumulator plus `use_acc=True` paths through linear `[128,2*N]` parents.
+- `MMA_M64_ACC_SUBSLICE_CASES` now covers the same K-depth expansion for `blockM=64` linear `[64,2*N]` parent subviews.
+- Current runtime-matrix collection is `8492` tests: `cp=645`, `mma=2337`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8041 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8492`; adjacent accumulator-subslice collect selected `360/8492`; four-GPU split execution passed all `360` cases (`90` per group; slowest `89.53s`).
+- Scope note: indexed accumulator views, two-CTA descriptor-view MMA, TMA-fed MMA, and scaled-MMAv5 K-depth expansions were not changed in this slice.
