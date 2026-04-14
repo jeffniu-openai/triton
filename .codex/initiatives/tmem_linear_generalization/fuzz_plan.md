@@ -333,6 +333,10 @@ Every fuzz case records:
 - Additional N-sharded register layouts beyond the explicit `16x64b`,
   `16x128b`, and `16x256b` clean-negative coverage remain a watch item if new
   explicit variants become reachable.
+- M64 and block-basis TMEM-linear source layouts are now covered as clean
+  unsupported runtime-matrix cases across the legal modifier matrix; keep them
+  on the negative frontier unless a future planner grows a real direct
+  reduction lowering.
 - Plain identity `256xN` source layouts are already pinned as not the current
   direct `tcgen05.ld.red` source form and should keep the clean
   software-reduction diagnostic unless the planner grows a real positive

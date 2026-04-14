@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:23 UTC: ld.red additional unsupported-layout clean negatives
+
+- Added `LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES` and `test_tmem_runtime_matrix_ld_red_additional_unsupported_layouts_report_clean_unsupported`.
+- Coverage pins M64 `64x64` and block-basis `128x64` TMEM-linear source layouts as unsupported for direct hardware `tcgen05.ld.red` reduction. Each layout is checked across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`.
+- The M64 layout must report the dedicated `tmem_load reduction source layout is not directly tcgen05.ld.red-compatible` software-reduction diagnostic. The block-basis layout must report `TMEM layout '32x32b' unsupported for descriptor view`. Both must avoid PassManager/assertion noise.
+- Current runtime-matrix collection is `4743` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; current bucketed evidence aggregates to `4297 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `16/4743`; no-PYTHONPATH `ld_red` collect selected `827/4743`; focused unsupported-layout selector passed all `16` cases across split-4 on four GPUs (`4` per group; group times `4.15s`, `4.03s`, `5.02s`, and `5.23s`). Full `ld_red` bucket was not rerun because this is a small negative-only coverage expansion over existing diagnostics.
+
 ## 2026-04-14 06:17 UTC: ld/st broad mixed row/column i32 parity
 
 - `LDST_ROWCOL_PERMUTED_CASES` now keeps f32 for the full row/column cross-product and adds i32 for every non-identity broad row/column layout (`not (row=identity and col=identity)`).

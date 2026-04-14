@@ -3498,6 +3498,27 @@ LD_RED_MIXED_CASES = [
     (128, 256, 4),
 ]
 
+LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
+    pytest.param(
+        "m64_64x64",
+        lambda: _make_tmem_linear_layout_m64(64),
+        64,
+        64,
+        4,
+        "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+        id="m64_64x64",
+    ),
+    pytest.param(
+        "block_128x64",
+        lambda: _make_tmem_linear_layout_block(128, 64),
+        128,
+        64,
+        4,
+        "TMEM layout '32x32b' unsupported for descriptor view",
+        id="block_128x64",
+    ),
+]
+
 LD_RED_UNSUPPORTED_SOURCE_CASES = [
     ("identity_256x32", 256, 32, 8),
     ("identity_256x64", 256, 64, 8),
@@ -5507,6 +5528,32 @@ def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupporte
     assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
     assert "tmem.load(...)+tt.reduce(...)" in text
     assert "tt.reduce" in text
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize(
+    "layout_name,layout_factory,M,N,num_warps,expected_diag", LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES
+)
+def test_tmem_runtime_matrix_ld_red_additional_unsupported_layouts_report_clean_unsupported(
+    red_op, use_abs, propagate_nan, layout_name, layout_factory, M, N, num_warps, expected_diag, capfd
+):
+    with pytest.raises(Exception) as err:
+        _run_tmem_reduction_case(
+            layout_factory(),
+            M,
+            N,
+            red_op,
+            use_abs,
+            propagate_nan,
+            num_warps=num_warps,
+        )
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert expected_diag in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

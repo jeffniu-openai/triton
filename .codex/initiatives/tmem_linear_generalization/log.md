@@ -13452,3 +13452,22 @@ Open after this slice:
 - Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, `ldst=2612`; current bucketed evidence aggregates to `4281 passed, 446 skipped`.
 - Full `ldst` bucket rerun was deferred because this is a test-only coverage expansion and the changed cases were run directly. Keep split-16 or duration-aware grouping for descriptor-heavy row/column selectors.
 - Next: commit/push this bounded `ld/st` checkpoint, then move to a bounded `ld.red` layout/ISA coverage slice or another recorded long-term ISA gap. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.
+
+## 2026-04-14 06:23 UTC: ld.red additional unsupported-layout clean negatives
+
+- Added runtime-matrix clean-negative coverage for M64 `64x64` and block-basis `128x64` TMEM-linear source layouts.
+- Both layouts are checked across the full legal reduction modifier matrix (`min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`).
+- Expected diagnostics:
+  - M64: `tmem_load reduction source layout is not directly tcgen05.ld.red-compatible`;
+  - block-basis: `TMEM layout '32x32b' unsupported for descriptor view`;
+  - both cases also assert no PassManager/assertion noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `16/4743`;
+  - no-PYTHONPATH `ld_red` collect selected `827/4743`;
+  - focused unsupported-layout selector passed all `16` cases across split-4 on four GPUs (`4` per group; `4.15s`, `4.03s`, `5.02s`, and `5.23s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4297 passed, 446 skipped`.
+- Full `ld_red` bucket rerun was deferred because this is a small negative-only coverage expansion over existing diagnostics.
+- Next: commit/push this bounded `ld.red` checkpoint, then continue with another recorded long-term ISA gap: broader `ld.red` fuzzing if a concrete slice is available, otherwise MMAv5/scaled-MMAv5 coverage saturation or copy surfaces that do not depend on the parked `warpx2` hypotheses.

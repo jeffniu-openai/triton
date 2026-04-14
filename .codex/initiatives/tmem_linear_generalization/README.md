@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4727-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4743-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld.red` additional unsupported-layout checkpoint, 2026-04-14 06:23 UTC: the runtime matrix now pins clean diagnostics for two more unsupported reduction source layouts: M64 `64x64` TMEM-linear layout and block-basis `128x64` TMEM-linear layout. Each is covered across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`; the M64 case must report the dedicated `tcgen05.ld.red-compatible` software-reduction diagnostic, and the block-basis case must report the descriptor-view register-layout diagnostic without PassManager/assertion noise. Current runtime-matrix collection is `4743` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4297 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `16/4743`; no-PYTHONPATH `ld_red` collect selected `827/4743`; focused unsupported-layout selector passed all `16` cases across split-4 on four GPUs (`4` per group; slowest `5.23s`). A broad `ld_red` rerun remains deferred because this is a small negative-only test expansion over existing diagnostics.
 
 - Current `ld/st` broad mixed row/column i32 parity checkpoint, 2026-04-14 06:17 UTC: `LDST_ROWCOL_PERMUTED_CASES` now keeps the full f32 row/column cross-product and adds i32 for every non-identity broad row/column `128x{64,128,256}` layout, direct plus descriptor-chain, over every public `ld/st` variant. This completes staged broad row/column i32 parity after the earlier pure row/column slice; identity/identity i32 remains covered by the broad identity/mixed i32 tests rather than duplicated here. Current runtime-matrix collection is `4727` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=2612`; bucketed evidence now aggregates to `4281 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused i32 mixed collect selected `270/4727`; no-PYTHONPATH `ldst` collect selected `2612/4727`; focused mixed row/column i32 selector passed all `270` cases across split-16 on four GPUs (groups 1-15 selected `17` cases each and group 16 selected `15`; slowest `7:15`). A full `ldst` bucket rerun remains deferred because no shared lowering changed.
 
