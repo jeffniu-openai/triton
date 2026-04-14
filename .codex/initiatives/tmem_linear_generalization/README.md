@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 3979-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 3985-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current direct-i8 MMAv5 clean-negative blockN parity checkpoint, 2026-04-14 04:40 UTC: the one-CTA and two-CTA direct-i8 clean-negative tests now span `blockN in {64, 128, 256}` for both legacy and canonical TMEM-linear accumulator layouts. The tests continue to assert the dedicated `direct tcgen05_mma kind::i8 is not supported on sm_... current Blackwell lowering` diagnostic and absence of PassManager/assertion noise. Current runtime-matrix collection is `3985` tests: `cp=322`, `mma=698`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3539 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH i8 collect selected `12/3985`; no-PYTHONPATH tight `mma` collect selected `698/3985`; focused i8 selector passed all `12` cases across four GPUs (`3` each); tight MMA runner passed all `698` cases across four groups (`175`, `175`, `175`, `173`).
 
 - Current plain-MMAv5 two-CTA root/use-acc `N=64` checkpoint, 2026-04-14 04:39 UTC: `MMA_TWOCTA_PLAIN_KIND_CASES` now spans `blockN in {64, 128, 256}` for the standard two-CTA plain-MMAv5 root matrix. Coverage includes every supported plain operand kind, `blockK in {32,64}`, both no-accumulator and `use_acc=True` paths, and both legacy plus canonical two-CTA TMEM-linear accumulator layouts. This closes the positive two-CTA plain-MMAv5 N64 parity gap after the one-CTA, M64, and scaled-root N64 slices. Current runtime-matrix collection is `3979` tests: `cp=322`, `mma=692`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3533 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `120/3979`; no-PYTHONPATH tight `mma` collect selected `692/3979`; focused two-CTA plain/use-acc selector passed all `120` cases across four GPUs (`30` each); tight MMA runner passed all `692` cases across four groups (`173` each).
 

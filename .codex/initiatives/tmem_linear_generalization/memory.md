@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:40 UTC: direct-i8 MMAv5 clean-negative blockN parity
+
+- `test_tmem_runtime_matrix_mma_i8_reports_clean_error` now parameterizes one-CTA direct-i8 over `N in {64, 128, 256}` for both legacy and canonical accumulator layouts.
+- `test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error` now parameterizes two-CTA direct-i8 over `blockN in {64, 128, 256}` for both legacy and canonical two-CTA accumulator layouts.
+- The boundary remains clean unsupported, not a new positive target: every case asserts the dedicated direct-i8 Blackwell diagnostic and absence of PassManager/assertion noise.
+- Current runtime-matrix collection is `3985` tests: `cp=322`, `mma=698`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3539 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH i8 collect selected `12/3985`; no-PYTHONPATH tight `mma` collect selected `698/3985`; focused i8 selector passed `12` cases across four GPUs (`3` each); tight MMA runner passed `698` across groups `175`, `175`, `175`, and `173`.
+
 ## 2026-04-14 04:39 UTC: plain-MMAv5 two-CTA root/use-acc N=64 coverage
 
 - `MMA_TWOCTA_PLAIN_KIND_CASES` now spans `blockN in {64, 128, 256}` instead of only `blockN in {128, 256}`.

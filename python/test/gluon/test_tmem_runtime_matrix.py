@@ -6461,8 +6461,9 @@ def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n, k
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, capfd):
-    m = n = 128
+@pytest.mark.parametrize("n", (64, 128, 256))
+def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, capfd):
+    m = 128
     k = 32
     a = torch.randint(-8, 8, (m, k), device="cuda", dtype=torch.int8)
     b = torch.randint(-8, 8, (k, n), device="cuda", dtype=torch.int8)
@@ -6571,7 +6572,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, n, k, us
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-@pytest.mark.parametrize("block_n", (128, 256))
+@pytest.mark.parametrize("block_n", (64, 128, 256))
 def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, block_n, capfd):
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]

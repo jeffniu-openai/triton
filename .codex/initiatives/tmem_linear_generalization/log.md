@@ -13323,3 +13323,20 @@ Open after this slice:
   - tight MMA runner passed all `692` cases across groups `173`, `173`, `173`, and `173` with runner wall times about `8.0s`, `32.5s`, `39.2s`, and `26.0s`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=692`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3533 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact family.
+
+## 2026-04-14 04:40 UTC: direct-i8 MMAv5 clean-negative blockN parity
+
+- Expanded the direct-i8 clean-negative surface:
+  - one-CTA `test_tmem_runtime_matrix_mma_i8_reports_clean_error` now covers `N in {64,128,256}` for legacy and canonical accumulator layouts;
+  - two-CTA `test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error` now covers `blockN in {64,128,256}` for legacy and canonical two-CTA accumulator layouts.
+- The diagnostic contract is unchanged: direct `tcgen05_mma kind::i8` remains clean unsupported on the current Blackwell lowering, with no PassManager/assertion noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH i8 collect selected `12/3985`;
+  - no-PYTHONPATH tight `mma` collect selected `698/3985`;
+  - focused i8 selector passed all `12` cases across four GPUs (`3` per group; group times about `4.32s`, `4.33s`, `4.47s`, and `4.27s`);
+  - tight MMA runner passed all `698` cases across groups `175`, `175`, `175`, and `173` with runner wall times about `7.1s`, `8.9s`, `11.3s`, and `11.9s`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=698`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3539 passed, 446 skipped`.
+- Next: commit/push this bounded clean-negative checkpoint, then continue staged ISA saturation in another exact family.
