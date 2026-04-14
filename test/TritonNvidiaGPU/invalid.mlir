@@ -712,6 +712,38 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
 
 // -----
 
+#tmem_barrier = #ttng.tensor_memory_linear<{row = [[1, 0]], col = [[0, 1]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_commit_barrier_memory_space(
+      %bar: !ttg.memdesc<2x2xi64, #tmem_barrier, #ttng.tensor_memory, mutable>,
+      %pred: i1) {
+    // expected-error @below {{barrier allocation must be a shared memory descriptor}}
+    ttng.tc_gen5_commit %bar, %pred : !ttg.memdesc<2x2xi64, #tmem_barrier, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}
+
+// -----
+
+#barrier = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
+#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+#smem = #ttg.shared_memory
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+  tt.func @tcgen5_commit_desc_memory_space(
+      %bar: !ttg.memdesc<1xi64, #barrier, #smem, mutable>,
+      %desc: !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory>,
+      %pred: i1) {
+    // expected-error @below {{descriptor operands must be shared memory descriptors}}
+    ttng.tc_gen5_commit %bar, %pred descs %desc :
+      !ttg.memdesc<1xi64, #barrier, #smem, mutable>,
+      !ttg.memdesc<128x128xf16, #tmem, #ttng.tensor_memory>
+    tt.return
+  }
+}
+
+
+// -----
+
 
 #shared_tmembad = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32, CGALayout = [[1, 0]]}>
 #tmem_linear_bad = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]], block = [[128, 0]]}, twoCTAs = true>

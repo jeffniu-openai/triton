@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:39 UTC: barrier and commit descriptor memory-space contracts
+
+- Tightened the shared barrier verifier in `lib/Dialect/TritonGPU/Transforms/Utility.cpp`: mbarrier operands must be shared-memory memdescs before their shape/layout is considered. This prevents `tc_gen5_commit`, async TMA, copy, MMA, wait, and related barrier users from accepting tensor-memory descriptors that lowering cannot legally treat as shared mbarriers.
+- Tightened `ttng.tc_gen5_commit` in `lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp`: optional multicast descriptor operands must also be shared-memory memdescs, matching the lowering contract that derives multicast masks from shared/TMA descriptor layouts.
+- Added `test/TritonNvidiaGPU/invalid.mlir` coverage for both contracts: a commit with a tensor-memory barrier descriptor and a commit whose `descs` operand is a tensor-memory descriptor now fail with clean verifier diagnostics.
+- Runtime-matrix counts are unchanged at the latest `7731` collected tests with bucketed evidence `7280 passed, 451 skipped`; this is compiler-only allocation/commit contract coverage.
+- Validation completed: `make -j8`; from the CMake build dir, `ninja triton-opt && lit -v test/TritonNvidiaGPU/invalid.mlir`; adjacent lit `test/Conversion/tritongpu_to_llvm_blackwell.mlir`, `test/NVWS/lower_aref.mlir`, `test/TritonGPU/loop-pipeline-expand.mlir`, `test/TritonGPU/pipeline-lower-loop.mlir`, and `test/TritonNvidiaGPU/mma_lowering.mlir`.
+- Next: run final hygiene, commit/push this contract checkpoint, then continue exact non-parked TMEM ISA coverage. Remaining hard frontiers stay parked: no-scales two-CTA `warpx2::02_13`, true tensor-memory-scales `warpx2`, and the two-CTA scaled `block_n=64` scale-descriptor helper issue.
+
 ## 2026-04-14 12:09 UTC: malformed tmem_alloc verifier coverage
 
 - Added `test/TritonNvidiaGPU/invalid.mlir` coverage for malformed `ttng.tmem_alloc` result/source contracts: result shape differing from alloc shape, source tensor shape differing from destination memdesc shape, and source element type differing from destination element type.

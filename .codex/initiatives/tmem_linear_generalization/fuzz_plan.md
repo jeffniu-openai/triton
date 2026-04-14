@@ -161,10 +161,12 @@ Every fuzz case records:
   Standalone two-CTA `tc_gen5_commit` lowering with no descriptor operands and
   with two descriptor operands is now pinned in conversion lit, and a malformed
   three-descriptor standalone commit is pinned as a clean verifier negative.
-  Malformed `ttng.tmem_alloc` result/source contracts are also pinned for
-  alloc-shape mismatch, source-shape mismatch, and source element-type mismatch.
-  Remaining allocator fuzzing is specialized incompatible barrier/commit
-  configurations beyond these anchors.
+  Commit barriers are now required to be shared-memory memdescs through the
+  shared barrier verifier, and `tc_gen5_commit` descriptor operands are also
+  required to be shared-memory memdescs. Malformed `ttng.tmem_alloc`
+  result/source contracts are pinned for alloc-shape mismatch, source-shape
+  mismatch, and source element-type mismatch. Remaining allocator fuzzing is
+  specialized incompatible barrier/commit configurations beyond these anchors.
 
 #### Negative matrix
 - `size > 512`
@@ -930,3 +932,16 @@ Every fuzz case records:
 - The focused `N=32` descriptor/direct selector passed all `280` cases across
   split-4 (`70` per group; `774.99s`, `1402.19s`, `599.46s`, and `547.65s`).
   Group 2 was a duration imbalance and kept printing progress.
+
+## 2026-04-14 Barrier/Commit Memory-Space Contract Note
+
+- `verifyBarrierType` now rejects mbarrier operands whose memdesc memory space is
+  not shared memory before checking shape or broadcast layout. This shared helper
+  covers `tc_gen5_commit`, async TMA, TMEM copy, MMA, wait, and related mbarrier
+  users.
+- `ttng.tc_gen5_commit` now also verifies that optional `descs` operands are
+  shared-memory descriptors, matching the lowering contract that computes
+  multicast masks from shared/TMA descriptor layouts.
+- `test/TritonNvidiaGPU/invalid.mlir` pins clean diagnostics for a tensor-memory
+  commit barrier and a tensor-memory commit descriptor operand. Runtime-matrix
+  counts are unchanged because this is compiler-only contract coverage.
