@@ -585,8 +585,8 @@ Every fuzz case records:
   `blockN in {64, 128, 256}` and `blockK in {32, 64, 128}`, and direct
   two-CTA root layouts now cover the same K axis.
 - current accumulator `memdesc_index` positive coverage spans every supported
-  plain kind, `blockK in {32, 64, 128}` for two-CTA indexed views and
-  `blockK in {32, 64}` for one-CTA indexed views, with `use_acc in {false, true}` by indexing
+  plain kind, `blockK in {32, 64, 128}` for both one-CTA and two-CTA indexed
+  views, with `use_acc in {false, true}` by indexing
   from `[2, M, blockN]` accumulator parents. One-CTA coverage uses
   `M=128`; two-CTA coverage uses `M=256` with multicast commit checks. Legacy
   parents are covered at `blockN in {64, 128, 256}`; canonical TMEM-linear
@@ -1177,3 +1177,10 @@ Every fuzz case records:
 - TMA-fed two-CTA TF32 generation may now include `K=128` for the clean-negative default `[K,N]` descriptor route and for the positive B-transposed `[N,K]` descriptor route, including `use_acc=True`.
 - Direct two-CTA plain root, indexed accumulator, accumulator subview, and TMA-fed matrices now all cover `K=128` where their existing shape/resource construction applies.
 - Current full-file collection is `8770` tests and the MMA bucket is `2583` cases. Aggregate bucket evidence is `8319 passed, 451 skipped`.
+
+## 2026-04-14 16:36 UTC: Plain One-CTA MMAv5 Indexed-Accumulator K=128 Note
+
+- Plain one-CTA accumulator `memdesc_index` fuzz generation may now include `K=128` for every supported plain kind, `N in {64,128,256}`, both accumulator modes, legacy parents, fitting canonical-linear parents, and canonical-linear unit parents for `N=256`.
+- The `linear_unit_parent` rows remain the resource-safe positive construction for canonical-linear `N=256`; do not reclassify the live `[2,128,256]` parent image as legal.
+- One-CTA and two-CTA indexed accumulator matrices now both cover `K in {32,64,128}`.
+- Current full-file collection is `8830` tests and the MMA bucket is `2643` cases. Aggregate bucket evidence is `8379 passed, 451 skipped`.

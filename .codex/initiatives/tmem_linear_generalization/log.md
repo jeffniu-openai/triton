@@ -14529,3 +14529,12 @@ Open after this slice:
 - Current runtime-matrix collection is `8770` tests: `cp=677`, `mma=2583`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8319 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8770`; exact TMA-fed node-id collect selected `198`; exact TMA-fed selector passed all `198` cases across split-4 on four GPUs (`50`, `50`, `50`, and `48`; group times `60.94s`, `60.96s`, `53.20s`, and `47.25s`).
 - Next: commit/push this bounded TMA-fed K-depth checkpoint. Direct/TMA-fed plain MMAv5 K128 coverage is now broad; scaled-MMAv5 parity is the remaining likely K-depth family.
+
+## 2026-04-14 16:36 UTC: one-CTA plain MMAv5 indexed-accumulator K=128 coverage
+
+- Expanded `MMA_INDEXED_ACC_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from `K in {32,64}` to `K in {32,64,128}` for both live-depth parent rows and the `linear_unit_parent` `N=256` construction.
+- The one-CTA accumulator `memdesc_index` matrix now covers every supported plain kind, legacy parent layouts at `N in {64,128,256}`, canonical linear parent layouts at `N in {64,128}`, canonical linear unit parents at `N=256`, and both no-accumulator plus `use_acc=True` paths at `K=128`.
+- This is test-only descriptor-view saturation over already-supported lowering. The live `[2,128,256]` canonical-linear parent remains a 1024-column resource boundary; the unit parent remains the positive construction.
+- Current runtime-matrix collection is `8830` tests: `cp=677`, `mma=2643`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8379 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8830`; focused one-CTA `mma_indexed_acc_view` collect selected `180/8830`; focused selector passed all `180` cases across split-4 on four GPUs (`45` per group; group times `96.47s`, `91.37s`, `90.24s`, and `78.73s`).
+- Next: commit/push this bounded one-CTA descriptor-view checkpoint, then reassess remaining plain-MMAv5 LHS descriptor-view gaps and scaled-MMAv5 frontiers.
