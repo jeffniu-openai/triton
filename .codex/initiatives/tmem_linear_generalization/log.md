@@ -13002,3 +13002,17 @@ Open after this slice:
   - cold descriptor-heavy split time reached about `2:58`, so keep using exact selectors for these bounded additions.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1682`; current bucketed evidence aggregates to `2905 passed, 446 skipped`.
 - Next: commit/push this bounded `ld/st` permuted-layout checkpoint, then continue with another targeted `ld/st` slice or staged `ld.red`/copy/MMAv5 coverage.
+
+## 2026-04-14 03:34 UTC: two-CTA ld/st N=32 direct and descriptor coverage
+
+- Added `LDST_TWOCTA_N32_CASES` and `test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout`.
+- The new slice covers root `M=256, N=32` f32 TMEM roundtrips for `block_two_ctas` and `mmav5_twocta` layouts.
+- Both direct root access and the supported descriptor-chain path are covered across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`; exact PTX/LLIR opcodes are the minimal `32x32b.x32`, `16x64b.x16`, `16x128b.x8`, and `16x256b.x4` families.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector: `20/3371` selected;
+  - focused selector across four GPUs: `20 passed` (`5` per split group); slowest split about `1:35`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1702`; current bucketed evidence aggregates to `2925 passed, 446 skipped`.
+- Next: commit/push this bounded two-CTA `ld/st` checkpoint, then continue with row/column cross-product or descriptor-view breadth before any broad `ldst` runner refresh.

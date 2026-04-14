@@ -2739,6 +2739,11 @@ LDST_TWOCTA_DESCRIPTOR_CASES = [
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
+LDST_TWOCTA_N32_CASES = [
+    (mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
+    for mode, layout_name, variant in product(("direct", "descriptor"), LDST_TWOCTA_LAYOUTS.keys(), LDST_VARIANTS)
+]
+
 ALLOC_LIFETIME_LDST_CASES = [
     ("identity", 1, 1, 128, n, n) for n in (32, 64, 128, 256, 512)
 ] + [
@@ -3677,6 +3682,37 @@ def test_tmem_runtime_matrix_ldst_permuted_n32_linear_layout(mode, perm_kind, va
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("mode,layout_name,variant,expected_shape", LDST_TWOCTA_N32_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_n32_linear_layout(mode, layout_name, variant, expected_shape):
+    m = 256
+    n = 32
+    layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    if mode == "direct":
+        if variant == "auto":
+            compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4, num_ctas=2)
+        else:
+            compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4, num_ctas=2)
+        torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    else:
+        compiled = tmem_ldst_descriptor_chain_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+        torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+        assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+    assert "twoCTAs = true" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

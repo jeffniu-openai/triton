@@ -190,6 +190,9 @@ Every fuzz case records:
   - generic block-basis `two_ctas=true`
   - canonical MMAv5-equivalent 2 CTA families from
     `ttgl.to_linear_layout(TensorMemoryLayout(...))`
+  - current root `256x32` coverage includes both `block_two_ctas` and
+    `mmav5_twocta` layouts for direct and descriptor-chain f32 roundtrips over
+    every public `ld/st` variant.
 - m64 / split-N families:
   - `64 x {2, 4, 8, 16, 32, 64, 128}`
 - subword families:
