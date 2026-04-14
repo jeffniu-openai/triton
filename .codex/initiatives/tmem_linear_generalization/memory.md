@@ -8091,3 +8091,10 @@ rejection, not rescue
 - Production fix: MMAv5 accumulator layout planning can now restrict a wider allocation layout to the active view shape and remove only column selector bases that address outside the narrowed view. This allows legal M64 subviews such as `64x256` from a `64x512` parent without treating backing-allocation bits as part of the active MMAv5 tile.
 - Fast lit guard: `test/TritonNvidiaGPU/ops.mlir` has a positive `tc_gen5_mma` case for the same M64 `64x512 -> 64x256` accumulator subview.
 - Validation for the latest slice: `make -j8`, py-compile, focused collect `120/7731`, adjacent collect `360/7731`, split-4 new selector passed all `120` cases, split-4 adjacent selector passed all `360` cases, and `lit -v test/TritonNvidiaGPU/ops.mlir` passed.
+
+## 2026-04-14 Rank-5 Descriptor ld/st N-Width Note
+
+- The executable rank-5 descriptor `ld/st` positive matrix now covers `N in {64,128}` for the `[1,1,2,M,N]` parent shape, both `f32` and `i32` payloads, single-CTA identity/mixed layouts, two-CTA block/MMAv5-like layouts, and every public `ld/st` variant.
+- Current full-file collection is `7771` tests; bucket totals are `cp=580`, `mma=1863`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`. Aggregate bucket evidence is `7320 passed, 451 skipped`.
+- The focused rank-5 small selector passed all `80` cases across split-4 (`20` per group; `258.61s`, `191.60s`, `260.54s`, and `187.16s`).
+- Do not blindly add `N=256` to this exact table: the opcode names overlap `N=64` for some variants, so the assertion needs a tiling-aware expected message count before that width becomes positive coverage.

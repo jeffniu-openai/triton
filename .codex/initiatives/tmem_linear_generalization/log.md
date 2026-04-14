@@ -14212,3 +14212,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7731` tests: `cp=580`, `mma=1863`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2869`; current bucketed evidence aggregates to `7280 passed, 451 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `120/7731`; no-PYTHONPATH adjacent collect selected `360/7731`; focused new selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `11.31s`, `11.65s`, `11.10s`, and `11.65s`); adjacent M64-root plus one-CTA accumulator-subview selector passed all `360` cases across split-4 (`90` per group; group times `19.28s`, `31.27s`, `45.98s`, and `84.36s`); `lit -v test/TritonNvidiaGPU/ops.mlir` passed.
 - Next: commit/push this MMAv5 subview checkpoint, then move back to the copy `warpx2` frontier with the current evidence boundaries in mind: supported no-scales `warpx2` stays anchored, while no-scales two-CTA `warpx2::02_13` and true tensor-memory-scales `warpx2` still need a real descriptor/address/staging model before becoming positive coverage.
+
+## 2026-04-14 13:15 UTC: rank-5 descriptor ld/st N-width coverage
+
+- Expanded `LDST_DESCRIPTOR_RANK5_SMALL_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from the fixed `N=64` width to `N in {64,128}`.
+- This keeps the same executable `[1,1,2,M,N]` descriptor-view chain and crosses both `f32`/`i32`, single-CTA identity/mixed layouts, two-CTA block/MMAv5-like layouts, and all public `ld/st` variants.
+- Current runtime-matrix collection is `7771` tests: `cp=580`, `mma=1863`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7320 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `80/7771`; no-PYTHONPATH `ldst` collect selected `2909/7771`; focused rank-5 small selector passed all `80` cases across split-4 (`20` per group; group times `258.61s`, `191.60s`, `260.54s`, and `187.16s`); `git diff --check` passed before docs.
+- `N=256` is intentionally left as follow-up because the current expected opcode count is family-based and would need to become tiling-aware when `N=256` reuses `N=64` opcode names.
+- Next: commit/push this bounded `ld/st` checkpoint, then move to the next non-parked TMEM ISA coverage slice.

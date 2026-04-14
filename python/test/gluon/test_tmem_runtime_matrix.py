@@ -3376,10 +3376,11 @@ LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES = (
 )
 
 LDST_DESCRIPTOR_RANK5_SMALL_CASES = [
-    (dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, 64, variant,
-     LDST_SHAPE_MAP[variant][64])
+    (dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, n, variant,
+     LDST_SHAPE_MAP[variant][n])
     for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
+    for n in (64, 128)
     for variant in LDST_VARIANTS
 ]
 

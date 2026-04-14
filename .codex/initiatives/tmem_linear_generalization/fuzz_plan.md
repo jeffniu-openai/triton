@@ -945,3 +945,9 @@ Every fuzz case records:
 - `test/TritonNvidiaGPU/invalid.mlir` pins clean diagnostics for a tensor-memory
   commit barrier and a tensor-memory commit descriptor operand. Runtime-matrix
   counts are unchanged because this is compiler-only contract coverage.
+
+## 2026-04-14 Rank-5 Descriptor ld/st N-Width Saturation Note
+
+- Executable rank-5 descriptor `ld/st` positive coverage now reaches `N in {64,128}` for the `[1,1,2,M,N]` parent shape across `f32`/`i32`, single-CTA identity/mixed layouts, two-CTA block/MMAv5-like layouts, and every public `ld/st` variant.
+- Current full-file collection is `7771` tests and the `ldst` bucket is `2909` cases; focused rank-5 small execution passed all `80` cases across split-4.
+- Keep `N=256` as a fuzz follow-up, not an automatic table extension: opcode names overlap `N=64` for some variants, so the expected-message-count check must be made tiling-aware before adding those rows.
