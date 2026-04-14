@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5384-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5424-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld.red` additional unsupported-layout shape sweep checkpoint, 2026-04-14 07:49 UTC: the additional unsupported-layout clean-negative matrix now covers M64 `64xN`, `N in {32,64,128,256}`, and block-basis `128xN`, `N in {64,128,256}`, across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`. These remain clean unsupported direct hardware `tcgen05.ld.red` source layouts: M64 rows must report the dedicated software-reduction diagnostic, and block-basis rows must report the descriptor-view register-layout diagnostic without PassManager/assertion noise. Current runtime-matrix collection is `5424` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=920`, and `ldst=2772`; bucketed evidence now aggregates to `4978 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH full-file collect reported `5424`; no-PYTHONPATH `ld_red` collect selected `920/5424`; focused unsupported-layout selector passed all `56` cases across split-4 on four GPUs (`14` per group; times `4.42s`, `4.42s`, `6.79s`, and `8.01s`).
 
 - Current subword descriptor-chain `ld/st` checkpoint, 2026-04-14 07:47 UTC: broad subword descriptor-chain coverage now includes `f16`, `bf16`, `i16`, and `i8` identity TMEM-linear layouts at `N in {64,128,256}` across every public `ld/st` variant. This complements the existing direct subword matrix and the x1 subword/two-CTA descriptor special cases by proving the generic supported descriptor chain (`subslice`, `index`, `reshape`, `trans`, bitcast) for non-32-bit payloads. Current runtime-matrix collection is `5384` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, and `ldst=2772`; bucketed evidence now aggregates to `4938 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `60/5384`; no-PYTHONPATH full-file collect reported `5384`; focused subword descriptor-chain selector passed all `60` cases across split-4 on four GPUs (`15` per group; times `151.24s`, `153.02s`, `150.40s`, and `152.90s`).
 

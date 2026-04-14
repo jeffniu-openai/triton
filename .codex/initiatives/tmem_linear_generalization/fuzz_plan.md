@@ -346,7 +346,8 @@ Every fuzz case records:
   and `16x256b`) are covered across `min`/`max`, `abs` false/true, and
   `PropagateNan.NONE/ALL`; additional N-sharded register layouts remain a
   watch item if new explicit variants become reachable.
-- M64 and block-basis TMEM-linear source layouts are now covered as clean
+- M64 `64xN`, `N in {32,64,128,256}`, and block-basis `128xN`,
+  `N in {64,128,256}`, TMEM-linear source layouts are now covered as clean
   unsupported runtime-matrix cases across the legal modifier matrix; keep them
   on the negative frontier unless a future planner grows a real direct
   reduction lowering.

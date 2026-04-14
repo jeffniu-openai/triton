@@ -3550,24 +3550,30 @@ LD_RED_MIXED_CASES = [
 ]
 
 LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
-    pytest.param(
-        "m64_64x64",
-        lambda: _make_tmem_linear_layout_m64(64),
-        64,
-        64,
-        4,
-        "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
-        id="m64_64x64",
-    ),
-    pytest.param(
-        "block_128x64",
-        lambda: _make_tmem_linear_layout_block(128, 64),
-        128,
-        64,
-        4,
-        "TMEM layout '32x32b' unsupported for descriptor view",
-        id="block_128x64",
-    ),
+    *[
+        pytest.param(
+            f"m64_64x{n}",
+            lambda n=n: _make_tmem_linear_layout_m64(n),
+            64,
+            n,
+            4,
+            "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+            id=f"m64_64x{n}",
+        )
+        for n in (32, 64, 128, 256)
+    ],
+    *[
+        pytest.param(
+            f"block_128x{n}",
+            lambda n=n: _make_tmem_linear_layout_block(128, n),
+            128,
+            n,
+            4,
+            "TMEM layout '32x32b' unsupported for descriptor view",
+            id=f"block_128x{n}",
+        )
+        for n in (64, 128, 256)
+    ],
 ]
 
 LD_RED_UNSUPPORTED_SOURCE_CASES = [

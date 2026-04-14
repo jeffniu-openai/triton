@@ -13704,3 +13704,23 @@ Open after this slice:
 - Current runtime-matrix collection is `5384` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, `ldst=2772`; current bucketed evidence aggregates to `4938 passed, 446 skipped`.
 - Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `60/5384`; no-PYTHONPATH full-file collect reported `5384`; focused subword descriptor-chain selector passed all `60` cases across split-4 on four GPUs (`15` each; group times `151.24s`, `153.02s`, `150.40s`, and `152.90s`).
 - Next: continue staged TMEM ISA saturation in another bounded family. Remaining candidates include scales `ld/st` descriptor/view gaps if a supported API path exists, `ld.red` layout/modifier coverage, or a concrete MMAv5/scaled-MMAv5 parity gap.
+
+## 2026-04-14 07:49 UTC: ld.red unsupported-layout shape sweep
+
+- Expanded `LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES` from the original M64 `64x64` plus block-basis `128x64` rows to a broader clean-negative shape sweep:
+  - M64 `64xN`, `N in {32,64,128,256}`;
+  - block-basis `128xN`, `N in {64,128,256}`.
+- Every row is checked across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`. This is a test-only clean-negative slice: no compiler/lowering source changed.
+- Diagnostic contract:
+  - M64 rows must report `tmem_load reduction source layout is not directly tcgen05.ld.red-compatible`;
+  - block-basis rows must report `TMEM layout '32x32b' unsupported for descriptor view`;
+  - neither path should surface PassManager or assertion noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH full-file collect reported `5424`;
+  - no-PYTHONPATH full `ld_red` bucket selected `920/5424`;
+  - four-GPU focused unsupported-layout selector passed all `56` cases across split-4 (`14` per group; group times `4.42s`, `4.42s`, `6.79s`, and `8.01s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `4978 passed, 446 skipped`.
+- Next: commit/push this bounded `ld.red` checkpoint, then continue staged ISA saturation. Keep hard copy `warpx2` frontiers parked without a real descriptor/address/staging model.

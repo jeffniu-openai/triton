@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:49 UTC: ld.red unsupported-layout shape sweep
+
+- Expanded `LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES` from two rows to seven rows: M64 `64xN` for `N in {32,64,128,256}` and block-basis `128xN` for `N in {64,128,256}`.
+- The test remains a clean-negative `ld.red` coverage slice across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`; M64 rows keep the dedicated software-reduction diagnostic, while block-basis rows keep the descriptor-view register-layout diagnostic.
+- Current runtime-matrix collection is `5424` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `4978 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH full-file collect reported `5424`; no-PYTHONPATH `ld_red` collect selected `920/5424`; focused unsupported-layout selector passed all `56` cases across split-4 on four GPUs (`14` per group; group times `4.42s`, `4.42s`, `6.79s`, and `8.01s`).
+- Next: continue staged TMEM ISA saturation in another bounded family. Good candidates are another concrete `ld.red` positive/negative gap, a non-parked MMAv5/scaled-MMAv5 parity gap, or supported-API `ld/st` descriptor coverage; keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging model.
+
 ## 2026-04-14 07:47 UTC: subword descriptor-chain ld/st coverage
 
 - Added broad subword descriptor-chain coverage for `f16`, `bf16`, `i16`, and `i8` identity TMEM-linear layouts at `N in {64,128,256}` across every public `ld/st` variant.
