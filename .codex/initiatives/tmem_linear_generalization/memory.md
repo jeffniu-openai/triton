@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:35 UTC: scaled two-CTA N64 accumulator-subview probe parked
+
+- A scratch expansion of `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` from the committed two-CTA scaled-MMAv5 accumulator subview shape (`block_n=128`, `parent_n=256`) to `block_n=64`, `parent_n=128` was rejected before commit.
+- The `block_n=64` rows fail before reaching MMAv5 lowering because the current scale-descriptor/shared-layout construction produces a zero dimension for the B-scale shared descriptor, for example `shape must have power-of-2 and non-zero dimensions; got 1, 0, 1, 2, 256` at `ttgl.allocate_shared_memory(b_scale_desc.dtype, b_scale_desc.block_type.shape, b_scale_desc.layout)`.
+- This is not a proven tensor-memory resource boundary and not a polished clean-negative contract. Treat it as a scale-descriptor construction frontier: keep the positive matrix at `block_n=128` until the B-scale descriptor helper can represent the `block_n=64` two-CTA shape without zero dimensions, or until a stable high-level diagnostic is added.
+- The scratch source change was reverted, restoring the current green `6363`-case preserve-set. Validation after revert: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH collect for `mma_scaled_twocta_acc_subslice_view_format_matrix or ld_red_descriptor_chain` selected `136/6363`.
+
 ## 2026-04-14 09:32 UTC: ld.red descriptor-chain non-identity explicit variants
 
 - Expanded `LD_RED_DESCRIPTOR_CHAIN_CASES` so descriptor-view reductions cover `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` for every current descriptor-chain layout: identity, tile-permuted, and row/column-permuted.

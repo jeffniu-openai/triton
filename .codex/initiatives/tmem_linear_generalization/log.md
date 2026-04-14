@@ -14048,3 +14048,10 @@ Open after this slice:
   - focused `ld_red_descriptor_chain` selector passed all `96` cases across split-4 on four GPUs (`24` per group; group times `49.01s`, `159.29s`, `276.27s`, and `458.74s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1598`, splitn/misc `=499`, `ld_red=1016`, `ldst=2869`; current bucketed evidence aggregates to `5917 passed, 446 skipped`.
 - Next: commit/push this bounded `ld.red` descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. The slowest shard was cold-compile/progress-bound, not a hang.
+
+## 2026-04-14 09:35 UTC: parked scaled two-CTA N64 accumulator-subview probe
+
+- Tried extending the scaled-MMAv5 two-CTA accumulator-subview matrix from `block_n=128` / `parent_n=256` to also include `block_n=64` / `parent_n=128`.
+- Focused split-4 execution showed the new `block_n=64` rows fail while the existing `block_n=128` rows continue to pass. Representative failure: `RuntimeError: shape must have power-of-2 and non-zero dimensions; got 1, 0, 1, 2, 256` while allocating the B-scale shared descriptor in `mma_scaled_tcgen05_acc_subslice_copy_kernel`.
+- Diagnosis: current scaled two-CTA scale-descriptor/shared-layout construction cannot express this B-scale shape without a zero dimension. This is a parked helper/layout frontier, not a committed positive or clean-negative matrix row.
+- Reverted the scratch test change back to the last pushed green matrix. Validation after revert: py-compile passed, `git diff --check` passed, and no-PYTHONPATH collect selected `136/6363` for `mma_scaled_twocta_acc_subslice_view_format_matrix or ld_red_descriptor_chain`.

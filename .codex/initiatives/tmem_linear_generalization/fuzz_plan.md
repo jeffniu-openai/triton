@@ -646,7 +646,13 @@ Every fuzz case records:
   extension exceeds TMEM capacity (`Required: 524`, limit `512`); the one-CTA
   `blockN=256`, `parentN=512` positive probe also exceeds TMEM capacity
   (`Required: 524/536/560`, limit `512`). A `parent_n=384` alternative is not
-  expressible by the current power-of-two MMAv5 two-CTA layout helper.
+  expressible by the current power-of-two MMAv5 two-CTA layout helper. A
+  2026-04-14 scratch probe of two-CTA `block_n=64`, `parent_n=128` failed
+  during B-scale shared descriptor construction with a zero descriptor dimension
+  (`shape must have power-of-2 and non-zero dimensions; got 1, 0, ...`). Keep
+  this as a scale-descriptor helper frontier, not a positive row or
+  ISA-impossible clean negative, until the B-scale descriptor shape can be
+  represented cleanly or rejected by a stable high-level diagnostic.
 - accumulator `memdesc_index` views from `[2, M, N]` parents now cover every
   current scaled format pair, `K in {128,256}`, legacy parents at
   `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider indexed
