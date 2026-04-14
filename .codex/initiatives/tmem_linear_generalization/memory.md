@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:09 UTC: malformed tmem_alloc verifier coverage
+
+- Added `test/TritonNvidiaGPU/invalid.mlir` coverage for malformed `ttng.tmem_alloc` result/source contracts: result shape differing from alloc shape, source tensor shape differing from destination memdesc shape, and source element type differing from destination element type.
+- This further narrows the allocation/lifetime fuzz frontier. Standalone commit descriptor arity and malformed alloc result/source types are now pinned as clean lit diagnostics; the remaining compiler-only allocation bucket is incompatible barrier/commit configurations plus any genuinely new allocation-pass lifetime shapes.
+- Runtime-matrix counts are unchanged at `7611` collected tests with bucketed evidence `7160 passed, 451 skipped`.
+- Validation completed: from the CMake build dir, `ninja triton-opt && lit -v test/TritonNvidiaGPU/invalid.mlir`.
+- Next: run hygiene and commit/push, then move to another non-parked ISA coverage slice.
+
 ## 2026-04-14 12:07 UTC: standalone commit lit coverage
 
 - Added conversion-lit coverage for standalone `ttng.tc_gen5_commit` in a two-CTA module, both with no descriptor operands and with two descriptor operands. Both forms now pin lowering to `tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64`.

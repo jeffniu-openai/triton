@@ -161,9 +161,10 @@ Every fuzz case records:
   Standalone two-CTA `tc_gen5_commit` lowering with no descriptor operands and
   with two descriptor operands is now pinned in conversion lit, and a malformed
   three-descriptor standalone commit is pinned as a clean verifier negative.
+  Malformed `ttng.tmem_alloc` result/source contracts are also pinned for
+  alloc-shape mismatch, source-shape mismatch, and source element-type mismatch.
   Remaining allocator fuzzing is specialized incompatible barrier/commit
-  configurations and malformed or mismatched allocation result types beyond
-  these anchors.
+  configurations beyond these anchors.
 
 #### Negative matrix
 - `size > 512`
@@ -804,9 +805,9 @@ Every fuzz case records:
   - `mma` runtime coverage beyond the already-proven anchor cases
   - `mma_scaled` runtime coverage beyond the current minimal and accumulator
     slice-start anchors
-  - remaining specialized incompatible barrier/commit configurations and
-    malformed allocation-result cases beyond the current runtime,
-    allocation-pass, and standalone-commit lit anchors
+  - remaining specialized incompatible barrier/commit configurations beyond
+    the current runtime, allocation-pass, standalone-commit, and malformed
+    allocation-contract lit anchors
 
 ## Immediate Next Code Changes
 - Near-term code changes should focus on the planner/lowering core, not on

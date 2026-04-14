@@ -14193,3 +14193,13 @@ Open after this slice:
 - This is compiler-only coverage and does not change runtime-matrix counts: current full-file collection remains `7611` tests with bucket evidence `7160 passed, 451 skipped`.
 - Validation: `make -j8`; from the CMake build dir, `ninja triton-opt && lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir test/TritonNvidiaGPU/invalid.mlir` passed both tests.
 - Next: commit/push this bounded compiler-only checkpoint, then continue staged TMEM ISA saturation in another exact non-parked family.
+
+## 2026-04-14 12:09 UTC: malformed tmem_alloc verifier coverage
+
+- Added invalid-lit coverage for malformed `ttng.tmem_alloc` result/source contracts:
+  - result memdesc shape differs from alloc shape;
+  - source tensor shape differs from destination memdesc shape;
+  - source tensor element type differs from destination memdesc element type.
+- These tests pin clean verifier diagnostics in `test/TritonNvidiaGPU/invalid.mlir`; no production lowering changed and runtime-matrix counts remain unchanged at `7611` collected tests with bucket evidence `7160 passed, 451 skipped`.
+- Validation: from the CMake build dir, `ninja triton-opt && lit -v test/TritonNvidiaGPU/invalid.mlir` passed.
+- Next: commit/push this compiler-only checkpoint, then continue staged TMEM ISA saturation in another non-parked family.

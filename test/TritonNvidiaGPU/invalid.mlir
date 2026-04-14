@@ -10,6 +10,43 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
 }
 
 // -----
+#tmem_linear_64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32]]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65536 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tmem_alloc_result_alloc_shape_mismatch() {
+    // expected-error @+1 {{result shape and its alloc shape must match}}
+    %0 = ttng.tmem_alloc : () -> !ttg.memdesc<64x64xf32, #tmem_linear_64, #ttng.tensor_memory, mutable, 128x128>
+    tt.return
+  }
+}
+
+// -----
+
+#blocked_128x64 = #ttg.blocked<{sizePerThread = [1, 64], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+#tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65536 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tmem_alloc_source_shape_mismatch() {
+    %cst = arith.constant dense<0.000000e+00> : tensor<128x64xf32, #blocked_128x64>
+    // expected-error @+1 {{source shape [128, 64] must match}}
+    %0 = ttng.tmem_alloc %cst : (tensor<128x64xf32, #blocked_128x64>) -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory>
+    tt.return
+  }
+}
+
+// -----
+
+#blocked = #ttg.blocked<{sizePerThread = [1, 128], threadsPerWarp = [32, 1], warpsPerCTA = [4, 1], order = [0, 1]}>
+#tmem_f16 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 2>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65536 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tmem_alloc_source_element_type_mismatch() {
+    %cst = arith.constant dense<0.000000e+00> : tensor<128x128xf32, #blocked>
+    // expected-error @+1 {{source element type}}
+    %0 = ttng.tmem_alloc %cst : (tensor<128x128xf32, #blocked>) -> !ttg.memdesc<128x128xf16, #tmem_f16, #ttng.tensor_memory>
+    tt.return
+  }
+}
+
+// -----
+
 
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 4 : i32, ttg.shared = 65536 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
