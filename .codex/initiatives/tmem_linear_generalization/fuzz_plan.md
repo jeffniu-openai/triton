@@ -973,3 +973,10 @@ Every fuzz case records:
 - No-scales `warpx2` copy coverage now explicitly rejects f16/bf16 source payloads for single-CTA `01_23`, single-CTA `02_13`, two-CTA `01_23`, and two-CTA `02_13` through the clean `Source element type should be 32-bit.` verifier path.
 - This records the current dtype boundary for fuzz generation. Generate positive no-scales `warpx2` cases only with 32-bit elements unless the production verifier/ISA contract changes; keep subword rows as clean negatives.
 - Current full-file collection is `7891` tests and the CP bucket is `588` cases. Aggregate bucket evidence is `7440 passed, 451 skipped`.
+
+## 2026-04-14 M64 Split-N ld/st N=256 Saturation Note
+
+- M64 split-N `ld/st` runtime coverage now reaches `N=256` for identity split-N immediate checks, auto-selected `16x32bx2`, explicit `16x32bx2` equivalence, and the full row/column-permuted M64 split-N sweep.
+- The widened row/column matrix covers f32+i32 over `N in {2,4,8,16,32,64,128,256}` and explicit `32x32b_splitn` / `16x32bx2`; the representative auto-selection rows now include `identity/reverse,N=256`.
+- Current full-file collection is `7963` tests; current bucket totals are `cp=588`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`. Aggregate bucket evidence is `7512 passed, 451 skipped`.
+- Keep rank-5 descriptor `ld/st` `N=256` separate in fuzz planning: the current executable rank-5 helper is TMEM-resource-bound at that width and needs a lower-resource construction before promotion.

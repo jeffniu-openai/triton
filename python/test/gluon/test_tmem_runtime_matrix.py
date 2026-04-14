@@ -3365,7 +3365,7 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
 M64_SPLITN_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
 M64_SPLITN_BASE_CASES = []
-for n in (2, 4, 8, 16, 32, 64, 128):
+for n in (2, 4, 8, 16, 32, 64, 128, 256):
     if n == 2:
         M64_SPLITN_BASE_CASES.append((n, 2, [(0, 0)]))
     else:
@@ -3382,14 +3382,18 @@ M64_ROWCOL_PERMUTED_CASES = [
     (dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant)
     for dtype_name, torch_dtype in M64_SPLITN_DTYPES
     for (row_perm_kind, col_perm_kind), n, variant in product(
-        PERMUTED_ROW_COL_LAYOUT_KINDS, (2, 4, 8, 16, 32, 64, 128), ("32x32b_splitn", "16x32bx2")
+        PERMUTED_ROW_COL_LAYOUT_KINDS, (2, 4, 8, 16, 32, 64, 128, 256), ("32x32b_splitn", "16x32bx2")
     )
 ]
 
 M64_ROWCOL_PERMUTED_AUTO_CASES = [
     (dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n)
     for dtype_name, torch_dtype in M64_SPLITN_DTYPES
-    for row_perm_kind, col_perm_kind, n in (("rotate1", "identity", 2), ("reverse", "even_odd", 128))
+    for row_perm_kind, col_perm_kind, n in (
+        ("rotate1", "identity", 2),
+        ("reverse", "even_odd", 128),
+        ("identity", "reverse", 256),
+    )
 ]
 
 LDST_DESCRIPTOR_RANK5_CASES = [
@@ -5532,7 +5536,7 @@ def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(dtype_name, torch_dtyp
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype", M64_SPLITN_DTYPES)
-@pytest.mark.parametrize("n", [2, 4, 8, 16, 32, 64, 128])
+@pytest.mark.parametrize("n", [2, 4, 8, 16, 32, 64, 128, 256])
 def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n, dtype_name, torch_dtype):
     m = 64
     layout = _make_tmem_linear_layout_m64(n)

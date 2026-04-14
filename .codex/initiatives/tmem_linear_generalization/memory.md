@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:19 UTC: M64 split-N ld/st N=256 coverage
+
+- Expanded `python/test/gluon/test_tmem_runtime_matrix.py` M64 split-N coverage from `N <= 128` to `N=256`. The identity split-N immediate checks, auto-selected `16x32bx2`, explicit `16x32bx2` equivalence, full row/column-permuted sweep, and representative row/column auto-selection rows now include the widest executable M64 split-N width.
+- Coverage spans `f32`/`i32`, `64xN`, `N in {2,4,8,16,32,64,128,256}`, row/column layout pairs over explicit `32x32b_splitn` and `16x32bx2`, plus a new `identity/reverse,N=256` auto-selection representative.
+- Current runtime-matrix collection is `7963` tests: `cp=588`, `mma=1975`, splitn/misc `=571` (this bucket owns the M64 split-N `ld/st` family in current accounting), `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7512 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH full-file collect reported `7963`; no-PYTHONPATH focused split-N collect selected `566/7963`; focused selector passed all `566` cases across split-4 on four GPUs (`142`, `142`, `142`, and `140`; group times `16.28s`, `30.57s`, `24.51s`, and `30.90s`); `git diff --check` passed.
+- Side finding remains relevant: rank-5 descriptor `ld/st` `N=256` is not the same problem and remains resource-bound in the current `[1,1,2,M,N]` helper. Direct rank-5 probes need a different lower-resource helper before becoming positive coverage.
+- Next: commit/push this checkpoint, then continue another non-parked TMEM ISA coverage slice. Hard parked frontiers remain true scales `warpx2`, no-scales two-CTA `warpx2::02_13`, and scaled two-CTA `block_n=64` scale-descriptor construction.
+
 ## 2026-04-14 13:05 UTC: TMA-fed two-CTA non-TF32 K-width coverage
 
 - Expanded `MMA_TWOCTA_TMA_NON_TF32_CASES` with `blockK in {32,64}`. The descriptor-fed two-CTA TMA anchor now matches the direct two-CTA plain-kind K-width surface for all non-TF32 TMA dtypes.

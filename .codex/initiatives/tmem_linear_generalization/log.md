@@ -14282,3 +14282,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7891` tests: `cp=588`, `mma=1975`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7440 passed, 451 skipped`.
 - Validation completed: f16/bf16 probes for all four family/CTA combinations; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH subword collect selected `8/7891`; no-PYTHONPATH full `warpx2` collect selected `29/7891`; no-PYTHONPATH CP collect selected `588/7891`; no-PYTHONPATH full-file collect reported `7891`; full `warpx2` selector passed all `29` cases across split-4 (`8`, `8`, `8`, and `5`; group times `8.57s`, `4.87s`, `5.02s`, and `4.58s`); `git diff --check` passed.
 - Next: commit/push this bounded copy-contract checkpoint, then continue another non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:19 UTC: M64 split-N ld/st N=256 coverage
+
+- Expanded `M64_SPLITN_BASE_CASES` and the explicit `16x32bx2` equivalence matrix from `N <= 128` to `N=256`, preserving f32/i32 parity and exact immediate/opcode assertions.
+- Expanded the full M64 row/column-permuted split-N sweep to include `N=256` for both explicit `32x32b_splitn` and `16x32bx2`, and added `identity/reverse,N=256` to the representative auto-selection rows.
+- Current runtime-matrix collection is `7963` tests: `cp=588`, `mma=1975`, splitn/misc `=571` (including the M64 split-N ld/st-family rows), `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7512 passed, 451 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH full-file collect reported `7963`; no-PYTHONPATH focused split-N collect selected `566/7963`; focused split-N selector passed all `566` cases across split-4 (`142`, `142`, `142`, and `140`; group times `16.28s`, `30.57s`, `24.51s`, and `30.90s`); `git diff --check` passed.
+- Note: the earlier rank-5 descriptor `ld/st` `N=256` probe remains a separate resource-bound helper problem, not covered by this M64 split-N expansion.
+- Next: commit/push this bounded `ld/st` coverage checkpoint, then move to another exact non-parked TMEM ISA coverage slice.
