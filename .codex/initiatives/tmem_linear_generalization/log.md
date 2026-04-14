@@ -14444,3 +14444,14 @@ Open after this slice:
 - Current runtime-matrix collection is `8230` tests: `cp=645`, `mma=2075`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `7779 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; focused `ldst_scales_descriptor_view` split-4 selector passed all six non-empty cases; broader `ldst_scales` split-4 selector passed all `101` cases; scaled-MMA smoke selector passed all nine non-empty cases; lit `test/TritonNvidiaGPU/ops.mlir`, `test/TritonNvidiaGPU/invalid.mlir`, and `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed.
 - Remaining frontier: true positive two-CTA/CGA scales descriptor views need exact physical/support query lowering. Do not re-enable the type-only fallback for these views; it is proven wrong-code for the `256x*` probes.
+
+
+## 2026-04-14 15:39 UTC: plain MMAv5 K=128 root coverage
+
+- Expanded plain one-CTA MMAv5 root instruction coverage from `K in {32,64}` to `K in {32,64,128}` for direct root accumulator matrices.
+- `MMA_PLAIN_KIND_ACC_CASES` now covers all supported plain kinds, legacy/canonical TMEM-linear accumulators, `N in {64,128,256}`, and `K=128`; both `test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc` and `test_tmem_runtime_matrix_mma_plain_kinds_use_acc` consume the expanded table.
+- `MMA_M64_PLAIN_KIND_CASES` now covers the same K-depth expansion for `blockM=64` root accumulator layouts, including both accumulator modes.
+- Tile-permuted accumulator coverage now includes `K=128` for `128x128/tile_n=32` and `128x256/tile_n=64`, including the f16 anchor plus all plain-kind no-accumulator and `use_acc=True` rows.
+- Current runtime-matrix collection is `8372` tests: `cp=645`, `mma=2217`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `7921 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8372`; adjacent MMA collect selected `426/8372`; four-GPU split execution of the adjacent selector passed all `426` cases (`107`, `107`, `107`, and `105`; slowest `154.90s`).
+- Scope note: descriptor-view indexed/subslice, two-CTA/TMA, and scaled-MMAv5 K surfaces were not widened by this checkpoint. Keep those as separate coverage slices so failures can be attributed cleanly.

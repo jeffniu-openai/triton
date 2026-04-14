@@ -566,14 +566,15 @@ Every fuzz case records:
   boundary on the current Blackwell target.
 - `cta_group in {1, 2}`
 - current one-CTA root plain-kind matrix covers `blockN in {64, 128, 256}` and
-  `blockK in {32, 64}` for legacy and canonical TMEM-linear accumulator layouts,
+  `blockK in {32, 64, 128}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
 - current two-CTA plain-kind matrix covers `blockN in {64, 128, 256}` and
   `blockK in {32, 64}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
 - `use_acc in {false, true}`; current 1-CTA and 2-CTA `use_acc=true`
-  coverage spans all supported plain kinds, both legacy/canonical accumulator
-  layouts, `blockN in {64, 128, 256}`, and `blockK in {32, 64}`.
+  coverage spans all supported plain kinds for one-CTA root layouts at
+  `blockN in {64, 128, 256}` and `blockK in {32, 64, 128}`, while two-CTA
+  root layouts remain covered at `blockK in {32, 64}`.
 - current accumulator `memdesc_index` positive coverage spans every supported
   plain kind, `blockK in {32, 64}`, and `use_acc in {false, true}` by indexing
   from `[2, M, blockN]` accumulator parents. One-CTA coverage uses
@@ -616,7 +617,7 @@ Every fuzz case records:
   - canonical TMEM-linear equivalent
   - tile-permuted canonical TMEM-linear accumulators for all supported plain
     operand kinds, currently positive at `128x128/tile_n=32` and
-    `128x256/tile_n=64`, `blockK in {32, 64}`, including the `use_acc=True`
+    `128x256/tile_n=64`, `blockK in {32, 64, 128}`, including the `use_acc=True`
     accumulator-add path; exact opcode counts scale by `blockK // 32`
 - A operand:
   - shared-memory path
@@ -636,10 +637,11 @@ Every fuzz case records:
     `ttg.memdesc_subslice` path.
 - supported MMAv5 tile families:
   - `blockM in {64, 128}`; current root `blockM=64` runtime coverage spans
-    every supported plain operand kind at `N in {64,128,256}`, `K in {32,64}`,
+    every supported plain operand kind at `N in {64,128,256}`, `K in {32,64,128}`,
     both legacy/canonical M64 accumulator layouts, and both no-accumulator and
     `use_acc=True` paths. M64 accumulator `memdesc_subslice` views from wider
-    linear parents are also positive for the same kind/N/K/use-acc matrix.
+    linear parents remain positive for `K in {32,64}` and should be widened in a
+    separate descriptor-view coverage slice.
   - `blockN` and `K` values accepted by the in-tree verifier/matcher
 
 #### Checks
@@ -1108,3 +1110,12 @@ Every fuzz case records:
 - Fuzz generators should treat two-CTA int8 descriptor views with support/broadcast bases as exact-query-required. If the generator or frontend cannot prove the physical TMEM projection is preserved, the expected result is `CLEAN_UNSUPPORTED`, not a canonical type-only `PASS`.
 - The reason is correctness, not only verifier policy: before this checkpoint the `256x*` probes compiled through type-only fallback and produced wrong runtime data by losing the descriptor's support/broadcast physical mapping.
 - Current full-file collection is `8230` tests and the `ldst` bucket is `2985` cases. Aggregate bucket evidence is `7779 passed, 451 skipped`.
+
+
+## 2026-04-14 15:39 UTC: Plain MMAv5 K=128 Root-Coverage Note
+
+- Plain one-CTA root MMAv5 fuzz generation may now include `K=128` for every supported plain kind, legacy/canonical accumulator layouts, and `N in {64,128,256}`. Both no-accumulator and `use_acc=True` paths are covered.
+- Root `blockM=64` plain MMAv5 generation may also include `K=128` for the same kind/N/layout/accumulator-mode matrix.
+- Tile-permuted accumulator generation may include `K=128` for `128x128/tile_n=32` and `128x256/tile_n=64`, including all supported plain kinds and the accumulator-add path.
+- Do not infer K=128 support for indexed/subslice descriptor-view MMA, two-CTA/TMA-fed MMA, or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices with different resource and descriptor constraints.
+- Current full-file collection is `8372` tests and the tight MMA bucket is `2217` cases. Aggregate bucket evidence is `7921 passed, 451 skipped`.

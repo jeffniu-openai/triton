@@ -8334,7 +8334,7 @@ MMA_ACC_SUBSLICE_CASES = [
 
 MMA_PLAIN_KIND_ACC_CASES = [
     (kind, acc_layout_kind, n, k)
-    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
+    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128))
 ]
 
 MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
@@ -8384,7 +8384,7 @@ MMA_TWOCTA_ACC_SUBSLICE_CASES = [
 MMA_M64_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind, n, k, use_acc)
     for kind, acc_layout_kind, n, k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64), (False, True)
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
     )
 ]
 
@@ -8397,14 +8397,14 @@ MMA_M64_ACC_SUBSLICE_CASES = [
 MMA_TILE_PERMUTED_CASES = [
     (n, tile_n, k)
     for n, tile_n in ((128, 32), (256, 64))
-    for k in (32, 64)
+    for k in (32, 64, 128)
 ]
 
 MMA_TILE_PERMUTED_KIND_CASES = [
     (kind, n, tile_n, k)
     for kind in MMA_PLAIN_KINDS
     for n, tile_n in ((128, 32), (256, 64))
-    for k in (32, 64)
+    for k in (32, 64, 128)
 ]
 
 MMA_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
