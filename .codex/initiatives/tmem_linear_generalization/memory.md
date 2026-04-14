@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:20 UTC: ld/st exotic N=32 direct and descriptor coverage
+
+- `test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout` adds minimal-N root `128x32` f32 roundtrips for the existing scrambled-column and scrambled-row+column TMEM-linear layout families.
+- Each layout covers direct TMEM access and the supported descriptor-chain path across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`, pinning the minimal `x32/x16/x8/x4` opcode families in PTX and LLIR.
+- The descriptor path continues to assert `tensor_memory_linear`; this is a coverage-only `ld/st` matrix expansion, not a lowering source change.
+- Current runtime-matrix collection is `3599` tests: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, and `ldst=1752`; current bucketed evidence aggregates to `3153 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `20/3599`; focused exotic N=32 selector passed `20` across four GPUs (`5` each), with cold descriptor-heavy splits at about `92s` and `113s`; no-PYTHONPATH `ldst` collect selected `1752/3599`; `git diff --check` passed.
+- Remaining long-term work: continue staged ISA saturation in another bounded family; reserve broad `ldst` runner refresh for shared-lowering changes or a larger accumulated `ld/st` checkpoint.
+
 ## 2026-04-14 03:16 UTC: scaled-MMAv5 TMEM-LHS tile-permuted K=128 coverage
 
 - Full-shape tile-permuted TMEM-LHS scaled-MMAv5 coverage now includes the reachable logical `K=128` positive surface for mxfp8-storage operand-A formats: `mxfp8/mxfp8` and `mxfp8/mxfp4`, at `N in {128, 256}` and both legacy/canonical accumulator layouts.

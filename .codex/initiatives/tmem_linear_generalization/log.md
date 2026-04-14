@@ -13112,3 +13112,18 @@ Open after this slice:
   - `git diff --check` passed.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3133 passed, 446 skipped`.
 - Next: commit/push this scaled-MMAv5 checkpoint, then continue another long-term ISA coverage slice.
+
+## 2026-04-14 03:20 UTC ld/st exotic N=32 direct and descriptor coverage
+
+- Added `LDST_EXOTIC_N32_CASES` and `test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout`.
+- The new slice covers root `M=128, N=32` f32 TMEM roundtrips for `scrambled_cols` and `scrambled_rows_cols` layouts.
+- Both direct root access and the supported descriptor-chain path are covered across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`; exact PTX/LLIR opcodes are the minimal `32x32b.x32`, `16x64b.x16`, `16x128b.x8`, and `16x256b.x4` families.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `20/3599`;
+  - focused selector passed `20` cases across four GPUs (`5` per group); cold descriptor-heavy splits took about `92s` and `113s`;
+  - no-PYTHONPATH `ldst` collect selected `1752/3599`;
+  - `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, `ldst=1752`; current bucketed evidence aggregates to `3153 passed, 446 skipped`.
+- Next: commit/push this bounded `ld/st` checkpoint, then continue another long-term ISA coverage slice.
