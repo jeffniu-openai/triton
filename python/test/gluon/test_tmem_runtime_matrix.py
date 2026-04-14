@@ -1305,32 +1305,44 @@ def tmem_copy_no_scales_linear_subslice_view_kernel(in_ptr, out_ptr, parent_layo
 
 
 @gluon.jit
-def tmem_mma_indexed_acc_kernel(a_ptr, b_ptr, out_ptr, parent_layout: ttgl.constexpr):
-    M: ttgl.constexpr = 128
-    N: ttgl.constexpr = 128
-    K: ttgl.constexpr = 32
+def tmem_mma_indexed_acc_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    out_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    parent_layout: ttgl.constexpr,
+    block_layout_a: ttgl.constexpr,
+    block_layout_b: ttgl.constexpr,
+    shared_layout_a: ttgl.constexpr,
+    shared_layout_b: ttgl.constexpr,
+    use_acc: ttgl.constexpr,
+):
     a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
     b_offs = ttgl.arange(0, K)[:, None] * N + ttgl.arange(0, N)[None, :]
     c_offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
 
-    blocked_a: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
-    blocked_b: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
-    a = ttgl.load(ttgl.set_auto_layout(a_ptr + a_offs, blocked_a))
-    b = ttgl.load(ttgl.set_auto_layout(b_ptr + b_offs, blocked_b))
+    a = ttgl.load(ttgl.set_auto_layout(a_ptr + a_offs, block_layout_a))
+    b = ttgl.load(ttgl.set_auto_layout(b_ptr + b_offs, block_layout_b))
+    c = ttgl.load(c_ptr + c_offs)
+    operand_dtype: ttgl.constexpr = a.dtype
 
-    smem_a_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=32, element_bitwidth=16, rank=2)
-    smem_b_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=32, element_bitwidth=16, rank=2)
-    smem_a = ttgl.allocate_shared_memory(ttgl.float16, [M, K], layout=smem_a_layout)
-    smem_b = ttgl.allocate_shared_memory(ttgl.float16, [K, N], layout=smem_b_layout)
+    smem_a = ttgl.allocate_shared_memory(operand_dtype, [M, K], layout=shared_layout_a)
+    smem_b = ttgl.allocate_shared_memory(operand_dtype, [K, N], layout=shared_layout_b)
     smem_a.store(a)
     smem_b.store(b)
 
     acc_parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
     acc_tmem = acc_parent.index(1)
+    if use_acc:
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
-    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=False, mbarriers=[bar])
+    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, mbarriers=[bar])
     mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
     mbarrier.invalidate(bar)
 
@@ -3058,11 +3070,6 @@ CP_LINEAR_SUBSLICE_VIEW_CASES = [
     (dtype_name, torch_dtype, 128, 128, swizzle, 16, "tcgen05.cp.cta_group::1.128x256b")
     for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
     for swizzle in (32, 64, 128)
-]
-
-MMA_INDEXED_ACC_CASES = [
-    ("legacy_parent", TensorMemoryLayout((128, 128), col_stride=1), "tensor_memory_encoding"),
-    ("linear_parent", _lift_tmem_layout(_make_tmem_linear_layout(128, 128), [2]), "tensor_memory_linear"),
 ]
 
 CP_NO_SCALES_128X128_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
@@ -6491,6 +6498,16 @@ MMA_PLAIN_KIND_CASES = [
     for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
 ]
 
+MMA_INDEXED_ACC_CASES = [
+    (kind, parent_layout_kind, n, k, use_acc)
+    for kind, parent_layout_kind, n, k, use_acc in product(
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64), (False, True)
+    )
+    # Linear parent views keep the whole [2, M, N] physical image live; N=256
+    # needs 1024 TMEM columns and is therefore a hardware resource boundary.
+    if not (parent_layout_kind == "linear" and n == 256)
+]
+
 MMA_PLAIN_KIND_ACC_CASES = [
     (kind, acc_layout_kind, n, k)
     for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
@@ -7202,28 +7219,57 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor(acc_lay
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("name,parent_layout,layout_token", MMA_INDEXED_ACC_CASES)
-def test_tmem_runtime_matrix_mma_indexed_acc_view(name, parent_layout, layout_token):
-    m = n = 128
-    k = 32
-    a = torch.randn((m, k), dtype=torch.float16, device="cuda")
-    b = torch.randn((k, n), dtype=torch.float16, device="cuda")
+@pytest.mark.parametrize("kind,parent_layout_kind,n,k,use_acc", MMA_INDEXED_ACC_CASES)
+def test_tmem_runtime_matrix_mma_indexed_acc_view(kind, parent_layout_kind, n, k, use_acc):
+    m = 128
+    parent_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if parent_layout_kind == "legacy"
+        else _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
+    )
+    layout_token = "tensor_memory_encoding" if parent_layout_kind == "legacy" else "tensor_memory_linear"
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    c = torch.randn((m, n), device="cuda", dtype=torch.float32)
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
-    compiled = tmem_mma_indexed_acc_kernel[(1, )](a, b, out, parent_layout, num_warps=4)
+    compiled = tmem_mma_indexed_acc_kernel[(1, )](
+        a,
+        b,
+        c,
+        out,
+        m,
+        n,
+        k,
+        parent_layout,
+        block_layout_a,
+        block_layout_b,
+        shared_layout_a,
+        shared_layout_b,
+        use_acc,
+        num_warps=4,
+    )
 
     ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
-    torch.testing.assert_close(out.to(torch.float32), ref, atol=1e-1, rtol=8e-2)
+    if use_acc:
+        ref = ref + c
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
 
     ptx_ops = _extract_tcgen05_mma_opcodes(compiled.asm["ptx"])
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
-    assert "ttg.memdesc_index" in compiled.asm["ttgir"]
-    assert layout_token in compiled.asm["ttgir"]
-    if name == "linear_parent":
-        assert "tensor_memory_encoding" not in compiled.asm["ttgir"]
+    assert len(ptx_ops) == _expected_plain_mma_op_count(kind, k)
+    assert all(op == expected_kind for op in ptx_ops)
+    if use_acc:
+        _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_index" in ttgir
+    assert layout_token in ttgir
+    if parent_layout_kind == "linear":
+        assert "tensor_memory_encoding" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

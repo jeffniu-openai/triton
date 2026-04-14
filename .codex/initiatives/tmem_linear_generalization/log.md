@@ -13724,3 +13724,18 @@ Open after this slice:
   - four-GPU focused unsupported-layout selector passed all `56` cases across split-4 (`14` per group; group times `4.42s`, `4.42s`, `6.79s`, and `8.01s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `4978 passed, 446 skipped`.
 - Next: commit/push this bounded `ld.red` checkpoint, then continue staged ISA saturation. Keep hard copy `warpx2` frontiers parked without a real descriptor/address/staging model.
+
+## 2026-04-14 07:55 UTC: plain-MMAv5 indexed accumulator descriptor-view coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_indexed_acc_view` from the old two-row f16 anchor to a 100-case positive matrix over every supported plain operand kind, `K in {32,64}`, and `use_acc` false/true.
+- The matrix covers legacy parent layouts at `N in {64,128,256}` and canonical TMEM-linear parent layouts at `N in {64,128}`. A probe of canonical linear `N=256` failed before execution with tensor-memory OOR (`Required: 1024, Hardware limit: 512`) because the indexed view keeps the whole `[2,128,256]` parent physical image live, so that subfamily is omitted as a hardware resource boundary rather than asserted as a compiler negative.
+- The generalized kernel now loads format-specific operands, allocates shared memory from the operand dtype and shared layouts, stores the initial f32 accumulator through the indexed view when `use_acc=True`, and validates matmul plus optional accumulator add. The test pins exact `tcgen05.mma` opcode counts, exact commit opcode when `use_acc=True`, `ttg.memdesc_index` in TTGIR, and the expected legacy/linear layout token.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH full-file collect reported `5522`;
+  - no-PYTHONPATH tight MMA collect selected `950/5522`;
+  - four-GPU focused indexed-accumulator selector passed all `100` cases across split-4 (`25` per group; group times `4.32s`, `5.77s`, `6.60s`, and `7.57s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=950`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5076 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation. Good candidates are another non-parked MMAv5/scaled-MMAv5 descriptor-view gap, a concrete `ld.red` gap, or supported-API `ld/st` descriptor coverage.

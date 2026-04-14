@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:55 UTC: plain-MMAv5 indexed accumulator descriptor-view coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_indexed_acc_view` from the old two-row f16-only anchor to a visible 100-case positive matrix over every supported plain MMAv5 operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`), `K in {32,64}`, and `use_acc in {False,True}`.
+- Coverage spans legacy accumulator parents at `N in {64,128,256}` and canonical TMEM-linear parents at `N in {64,128}`. The canonical linear `N=256` parent view is omitted deliberately: because the test indexes from a live `[2,128,256]` parent, the parent physical image needs 1024 TMEM columns and trips the 512-column hardware resource limit before execution. This is a resource boundary, not a clean-negative compiler contract.
+- The kernel now initializes the indexed accumulator view when `use_acc=True`, validates the accumulator-add result numerically, pins exact plain-MMAv5 opcode counts, checks the exact commit opcode for `use_acc`, and asserts the TTGIR keeps `ttg.memdesc_index` plus the expected legacy or linear layout token.
+- Current runtime-matrix collection is `5522` tests: `cp=381`, `mma=950`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5076 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH full-file collect reported `5522`; no-PYTHONPATH tight MMA collect selected `950/5522`; focused indexed-accumulator selector passed all `100` cases across split-4 on four GPUs (`25` per group; group times `4.32s`, `5.77s`, `6.60s`, and `7.57s`).
+- Next: continue staged TMEM ISA saturation in another bounded family. The most useful next slices are non-parked MMAv5/scaled-MMAv5 descriptor-view gaps, a concrete `ld.red` positive/negative layout gap, or supported-API `ld/st` descriptor coverage. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging model.
+
 ## 2026-04-14 07:49 UTC: ld.red unsupported-layout shape sweep
 
 - Expanded `LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES` from two rows to seven rows: M64 `64xN` for `N in {32,64,128,256}` and block-basis `128xN` for `N in {64,128,256}`.
