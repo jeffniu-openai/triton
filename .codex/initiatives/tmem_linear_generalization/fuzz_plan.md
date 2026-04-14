@@ -1091,3 +1091,11 @@ Every fuzz case records:
 - Non-f32 `ld.red` clean-negative fuzzing now includes descriptor-chain sources through the generic memdesc view path, not only direct TMEM sources. Covered descriptor-chain dtypes/modifiers are i32/bf16/f16/i16/i8 plain plus bf16/f16 `NaN` and `abs`, crossed with min/max.
 - Fuzz generators should pass the base 2D layout to the descriptor-chain helper and let the descriptor API form the higher-rank view; manually lifting the layout is the wrong construction for this helper and aborts too early.
 - Current full-file collection is `8191`; the `ld_red` bucket is `1954`; aggregate bucket evidence is `7740 passed, 451 skipped`.
+
+## 2026-04-14 15:09 UTC: Scales ld/st Descriptor-View Note
+
+- Default/no-CGA `TensorMemoryScalesLayout()` positive fuzz generation may now include descriptor-view `ld/st` roundtrips where a scales root is reshaped/permuted/reshaped into a canonical `tensor_memory_linear` view.
+- Current positive rows are `(M,N) in {(128,32),(128,64),(256,64)}` with `dtype_bits=4`, root scales op families `16x32bx2.x32.b32`, `16x32bx2.x64.b32`, and `16x32bx2.x128.b32`, and view op families `32x32b.x32.b32`, `32x32b.x64.b32`, and `32x32b.x128.b32`.
+- Fuzz assertions should expect root store/load through `tensor_memory_scales_encoding`, intervening `ttg.memdesc_reshape` plus `ttg.memdesc_trans`, and view load/store through `tensor_memory_linear`.
+- Do not generate positive multibuffer scales descriptor views, non-default-CGA/two-CTA scales descriptor views, true scales `warpx2`, or low-shape row-anchor cases from this checkpoint. Keep those as separate frontier work until a real planner/layout proof exists.
+- Current full-file collection is `8227` tests and the `ldst` bucket is `2982` cases. Aggregate bucket evidence is `7776 passed, 451 skipped`.

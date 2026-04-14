@@ -13,6 +13,7 @@
 #tmem_int32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 256, colStride = 1>
 #tmem_f32 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 #tmem_scales = #ttng.tensor_memory_scales_encoding<>
+#tmem_scales_reshape_64x2x32 = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [1, 0, 0], [2, 0, 0], [4, 0, 0], [8, 0, 0], [0, 0, 0], [0, 0, 0]], col = [[0, 0, 1], [0, 0, 2], [16, 0, 0], [32, 0, 0], [0, 0, 4], [0, 0, 8], [0, 0, 16]]}>
 #tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 #tmem_linear_tile_perm_128_32 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 64], [0, 32]]}>
 #tmem_linear_256 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
@@ -451,6 +452,17 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
     %3 = ttg.memdesc_subslice %2 [0, 64] : !ttg.memdesc<128x128xf32, #tmem_linear, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
     %4 = ttg.memdesc_reinterpret %3 : !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128> -> !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
     tt.return %4 : !ttg.memdesc<128x64xf32, #tmem_linear, #ttng.tensor_memory, mutable, 128x128>
+  }
+
+  // CHECK-LABEL: @tmem_scales_reshape_to_linear_view
+  // CHECK: ttg.memdesc_reshape
+  // CHECK-SAME: #tmem_scales
+  // CHECK-SAME: #tmem_linear{{[0-9]*}}
+  tt.func @tmem_scales_reshape_to_linear_view(
+      %arg0: !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable>)
+      -> !ttg.memdesc<64x2x32xi8, #tmem_scales_reshape_64x2x32, #ttng.tensor_memory, mutable> {
+    %0 = ttg.memdesc_reshape %arg0 : !ttg.memdesc<128x32xi8, #tmem_scales, #ttng.tensor_memory, mutable> -> !ttg.memdesc<64x2x32xi8, #tmem_scales_reshape_64x2x32, #ttng.tensor_memory, mutable>
+    tt.return %0 : !ttg.memdesc<64x2x32xi8, #tmem_scales_reshape_64x2x32, #ttng.tensor_memory, mutable>
   }
 
   tt.func @scale_encoding() {

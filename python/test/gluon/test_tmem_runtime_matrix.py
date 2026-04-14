@@ -703,6 +703,15 @@ def _expected_ldst_ops(op_shape: str, offsets):
     return ops
 
 
+def _expected_scales_ldst_descriptor_view_ops(root_shape: str, view_shape: str):
+    return [
+        (f"tcgen05.st.sync.aligned.{root_shape}", 0),
+        (f"tcgen05.ld.sync.aligned.{view_shape}", 0),
+        (f"tcgen05.st.sync.aligned.{view_shape}", 0),
+        (f"tcgen05.ld.sync.aligned.{root_shape}", 0),
+    ]
+
+
 SCALES_LDST_N_SHARDED_VARIANT_WIDTHS = {
     "16x64b": 64,
     "16x128b": 128,
@@ -1128,6 +1137,26 @@ def tmem_scales_ldst_variant_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.
     tmem.store(ttgl.convert_layout(value, reg_layout))
     value = tmem.load(reg_layout)
     ttgl.store(out_ptr + offs, ttgl.convert_layout(value, reg_layout))
+
+
+@gluon.jit
+def tmem_scales_ldst_descriptor_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr,
+                                            instr_variant: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout())
+    root_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, root_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, root_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, root_layout))
+
+    view = tmem.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    view_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
+    view_value = view.load(view_layout)
+    view.store(view_value + ttgl.full([M, N], 3, ttgl.int8, layout=view_layout))
+
+    out = tmem.load(root_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, root_layout))
 
 
 @gluon.jit
@@ -4180,6 +4209,30 @@ SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
     ),
 ] + SCALES_LDST_N_SHARDED_VARIANT_CLEAN_UNSUPPORTED_CASES
 
+SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
+    (
+        128,
+        32,
+        4,
+        "32x32b",
+        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
+    ),
+    (
+        128,
+        64,
+        4,
+        "32x32b",
+        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x64.b32", "32x32b.x64.b32"),
+    ),
+    (
+        256,
+        64,
+        4,
+        "32x32b",
+        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x128.b32", "32x32b.x128.b32"),
+    ),
+]
+
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),
     ("identity", 128, 64, 4, "32x32b.x64"),
@@ -6388,6 +6441,28 @@ def test_tmem_runtime_matrix_ldst_scales_variant_sweep(M, N, num_warps, instr_va
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     assert ops == expected_ops
     assert "tensor_memory_scales_encoding" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("M,N,num_warps,instr_variant,expected_ops", SCALES_LDST_DESCRIPTOR_VIEW_CASES)
+def test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip(
+    M, N, num_warps, instr_variant, expected_ops
+):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_scales_ldst_descriptor_view_kernel[(1, )](
+        inp, out, M, N, instr_variant, num_warps=num_warps
+    )
+    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == expected_ops
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_scales_encoding" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

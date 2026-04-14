@@ -749,13 +749,20 @@ getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
       shape.take_back(layoutRank), encoding, error);
   if (!maybeLayout)
     return std::nullopt;
-  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
-  if (!maybeTwoCTAs) {
-    if (error)
-      *error = "expected tensor memory layout encoding";
-    return std::nullopt;
+  // Scales encodings carry CGA layout but no legacy twoCTAs bit. Descriptor
+  // views materialize as canonical TMEM-linear layouts, so default scales views
+  // use the one-CTA linear view planner.
+  bool twoCTAs = false;
+  if (!isa<TensorMemoryScalesEncodingAttr>(encoding)) {
+    auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
+    if (!maybeTwoCTAs) {
+      if (error)
+        *error = "expected tensor memory layout encoding";
+      return std::nullopt;
+    }
+    twoCTAs = *maybeTwoCTAs;
   }
-  return TMemLdStQueryLayout{*maybeLayout, *maybeTwoCTAs,
+  return TMemLdStQueryLayout{*maybeLayout, twoCTAs,
                              SmallVector<int32_t>(maybeLayout->getNumInDims(),
                                                   0)};
 }

@@ -3438,8 +3438,7 @@ public:
   inferReshapeOpEncoding(ArrayRef<int64_t> srcShape, Attribute srcEnc,
                          ArrayRef<int64_t> dstShape, Attribute &dstEnc,
                          std::optional<Location> loc) const override {
-    if (isTensorMemoryEncoding(srcEnc) &&
-        !isa<TensorMemoryScalesEncodingAttr>(srcEnc)) {
+    if (isTensorMemoryEncoding(srcEnc)) {
       return inferTMemReshapeOpEncoding(srcShape, srcEnc, dstShape, dstEnc,
                                         loc);
     }
