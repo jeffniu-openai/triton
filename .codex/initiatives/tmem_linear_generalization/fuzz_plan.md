@@ -585,7 +585,8 @@ Every fuzz case records:
   `blockN in {64, 128, 256}` and `blockK in {32, 64, 128}`, and direct
   two-CTA root layouts now cover the same K axis.
 - current accumulator `memdesc_index` positive coverage spans every supported
-  plain kind, `blockK in {32, 64}`, and `use_acc in {false, true}` by indexing
+  plain kind, `blockK in {32, 64, 128}` for two-CTA indexed views and
+  `blockK in {32, 64}` for one-CTA indexed views, with `use_acc in {false, true}` by indexing
   from `[2, M, blockN]` accumulator parents. One-CTA coverage uses
   `M=128`; two-CTA coverage uses `M=256` with multicast commit checks. Legacy
   parents are covered at `blockN in {64, 128, 256}`; canonical TMEM-linear
@@ -1155,3 +1156,10 @@ Every fuzz case records:
 - Both no-accumulator and `use_acc=True` two-CTA root matrices consume the expanded `K in {32,64,128}` table and pin exact opcode counts using `blockK // 32`.
 - Do not infer K128 support for two-CTA indexed accumulator views, two-CTA accumulator subviews, TMA-fed matrices, or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices with their own resource and descriptor constraints.
 - Current full-file collection is `8584` tests and the MMA bucket is `2397` cases. Aggregate bucket evidence is `8133 passed, 451 skipped`.
+
+## 2026-04-14 16:27 UTC: Plain Two-CTA MMAv5 Indexed-Accumulator K=128 Note
+
+- Plain two-CTA accumulator `memdesc_index` fuzz generation may now include `K=128` for every supported plain kind, `N in {64,128,256}`, both accumulator modes, legacy parents, fitting canonical-linear parents, and canonical-linear unit parents for `N=256`.
+- The `linear_unit_parent` rows remain the resource-safe positive construction for canonical-linear `N=256`; do not reclassify the live `[2,256,256]` parent image as legal.
+- Do not infer K128 support for two-CTA accumulator subviews, TMA-fed matrices, or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices.
+- Current full-file collection is `8644` tests and the MMA bucket is `2457` cases. Aggregate bucket evidence is `8193 passed, 451 skipped`.

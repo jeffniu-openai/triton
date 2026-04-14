@@ -8789,14 +8789,14 @@ MMA_TWOCTA_PLAIN_KIND_CASES = [
 MMA_TWOCTA_INDEXED_ACC_CASES = [
     (kind, parent_layout_kind, block_n, block_k, use_acc)
     for kind, parent_layout_kind, block_n, block_k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64), (False, True)
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
     )
     # Linear parent views keep the whole [2, M, N] two-CTA physical image live;
     # N=256 needs 1024 TMEM columns and is a hardware resource boundary.
     if not (parent_layout_kind == "linear" and block_n == 256)
 ] + [
     (kind, "linear_unit_parent", 256, block_k, use_acc)
-    for kind, block_k, use_acc in product(MMA_PLAIN_KINDS, (32, 64), (False, True))
+    for kind, block_k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128), (False, True))
 ]
 
 MMA_TWOCTA_ACC_SUBSLICE_CASES = [

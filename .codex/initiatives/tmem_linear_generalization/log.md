@@ -14502,3 +14502,12 @@ Open after this slice:
 - Current runtime-matrix collection is `8584` tests: `cp=677`, `mma=2397`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8133 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8584`; focused `mma_twocta_plain_kinds` collect selected `180/8584`; broad `-k 'mma and not cp'` collect selected `2632/8584` because MMAv5-flavored `ld/st` parameter ids also match; focused selector passed all `180` cases across split-4 on four GPUs (`45` per group; group times `40.75s`, `37.77s`, `102.76s`, and `93.56s`); `git diff --check` passed before docs.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another non-parked ISA coverage slice. Good candidates are two-CTA indexed-accumulator K128, two-CTA accumulator-subview K128, TMA-fed K128, or scaled-MMAv5 K-depth parity, while parked copy/scales frontiers stay parked.
+
+## 2026-04-14 16:27 UTC: two-CTA plain MMAv5 indexed-accumulator K=128 coverage
+
+- Expanded `MMA_TWOCTA_INDEXED_ACC_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from `K in {32,64}` to `K in {32,64,128}` for both the live-depth parent rows and the `linear_unit_parent` `N=256` construction.
+- The two-CTA accumulator `memdesc_index` matrix now covers every supported plain kind, legacy parent layouts at `N in {64,128,256}`, canonical linear parent layouts at `N in {64,128}`, canonical linear unit parents at `N=256`, and both no-accumulator plus `use_acc=True` paths at `K=128`.
+- This is test-only descriptor-view saturation over already-supported lowering. It does not claim K128 coverage for two-CTA accumulator subviews, TMA-fed matrices, or scaled-MMAv5.
+- Current runtime-matrix collection is `8644` tests: `cp=677`, `mma=2457`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8193 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8644`; focused `mma_twocta_indexed_acc_view` collect selected `180/8644`; focused selector passed all `180` cases across split-4 on four GPUs (`45` per group; group times `111.01s`, `107.54s`, `103.81s`, and `104.83s`).
+- Next: commit/push this bounded MMAv5 descriptor-view checkpoint, then continue another non-parked K-depth slice. Good candidates are two-CTA accumulator-subview K128, TMA-fed K128 if resource-safe, or scaled-MMAv5 K-depth parity.
