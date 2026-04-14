@@ -567,13 +567,16 @@ Every fuzz case records:
   - full-shape tile-permuted TMEM-LHS coverage now spans `f16`, `bf16`,
     `f8e5m2`, and `f8e4m3` at `N in {64, 128, 256}`, and `tf32` at
     `N in {64, 128}`, for `K in {128, 256}`, with exact PTX/LLIR opcode checks
-    and K-depth-scaled instruction counts. The direct shared-B
-    `tf32, N=256, K=256` helper shape exceeds shared memory and is not a
-    positive target.
+    and K-depth-scaled instruction counts. The same surface now has explicit
+    nonzero accumulator-add coverage (`acc_init=1.0`, `use_acc=True`) checking
+    `matmul + acc_init`. The direct shared-B `tf32, N=256, K=256` helper shape
+    exceeds shared memory and is not a positive target.
   - current TMEM-LHS subview coverage spans `f16`, `tf32`, `bf16`, `f8e5m2`,
     and `f8e4m3` at `N in {64, 128, 256}` and `K in {32, 64}` for both
     legacy and canonical TMEM-linear accumulator layouts, with exact PTX/LLIR
-    opcode and instruction-count checks
+    opcode and instruction-count checks. The same subview surface now has
+    explicit nonzero accumulator-add coverage over the supported
+    `ttg.memdesc_subslice` path.
 - supported MMAv5 tile families:
   - `blockM in {64, 128}`; current root `blockM=64` runtime coverage spans
     every supported plain operand kind at `N in {64,128,256}`, `K in {32,64}`,

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:41 UTC: plain-MMAv5 TMEM-LHS nonzero use-acc coverage
+
+- Added `USE_ACC` and `ACC_INIT` constexpr controls to the plain TMEM-LHS helper kernels, preserving the existing no-accumulator tests with `0.0/False` while enabling nonzero accumulator-add coverage with `1.0/True`.
+- Added `test_tmem_runtime_matrix_mma_lhs_tile_permuted_use_acc` over the existing full-shape tile-permuted TMEM-LHS surface and `test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds_use_acc` over the existing plain TMEM-LHS subview surface.
+- The new coverage validates `a @ b + acc_init`, exact MMAv5 opcode counts, exact commit opcodes, and the expected `tensor_memory_linear` / `ttg.memdesc_subslice` markers.
+- Current runtime-matrix collection is `6452` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1016`, `ldst=2869`; current bucketed evidence aggregates to `6006 passed, 446 skipped`.
+- Validation: `make -j8` no-op success; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused new-use-acc collect selected `89/6452`; no-PYTHONPATH adjacent old+new LHS collect selected `178/6452`; no-PYTHONPATH tight MMA collect selected `1687/6452`; no-PYTHONPATH full-file collect reported `6452`; focused new-use-acc selector passed all `89` cases across split-4 on four GPUs (`23`, `23`, `23`, and `20` selected; group times `92.71s`, `46.25s`, `36.91s`, and `32.84s`); adjacent old+new LHS selector passed all `178` cases across split-4 (`45`, `45`, `45`, and `43` selected; group times `90.52s`, `59.17s`, `59.93s`, and `37.13s`).
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 09:35 UTC: scaled two-CTA N64 accumulator-subview probe parked
 
 - A scratch expansion of `test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix` from the committed two-CTA scaled-MMAv5 accumulator subview shape (`block_n=128`, `parent_n=256`) to `block_n=64`, `parent_n=128` was rejected before commit.

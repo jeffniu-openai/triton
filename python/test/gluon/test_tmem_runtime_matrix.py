@@ -1486,6 +1486,8 @@ def tmem_mma_lhs_kernel(
     smem_b_layout: ttgl.constexpr,
     N: ttgl.constexpr,
     K: ttgl.constexpr,
+    ACC_INIT: ttgl.constexpr,
+    USE_ACC: ttgl.constexpr,
 ):
     M: ttgl.constexpr = 128
     a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
@@ -1506,10 +1508,13 @@ def tmem_mma_lhs_kernel(
     smem_b.store(b)
 
     acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    if USE_ACC:
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(ttgl.full([M, N], ACC_INIT, ttgl.float32, layout=acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
-    tcgen05_mma(lhs_tmem, smem_b, acc_tmem, use_acc=False)
+    tcgen05_mma(lhs_tmem, smem_b, acc_tmem, use_acc=USE_ACC)
     tcgen05_commit(bar)
     mbarrier.wait(bar, phase=0)
     mbarrier.invalidate(bar)
@@ -1528,6 +1533,8 @@ def tmem_mma_lhs_subslice_kernel(
     smem_b_layout: ttgl.constexpr,
     N: ttgl.constexpr,
     K: ttgl.constexpr,
+    ACC_INIT: ttgl.constexpr,
+    USE_ACC: ttgl.constexpr,
 ):
     M: ttgl.constexpr = 128
     PARENT_K: ttgl.constexpr = 2 * K
@@ -1550,10 +1557,13 @@ def tmem_mma_lhs_subslice_kernel(
     smem_b.store(b)
 
     acc_tmem = allocate_tensor_memory(ttgl.float32, [M, N], acc_layout)
+    if USE_ACC:
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(ttgl.full([M, N], ACC_INIT, ttgl.float32, layout=acc_reg_layout))
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
     mbarrier.init(bar, count=1)
-    tcgen05_mma(lhs_tmem, smem_b, acc_tmem, use_acc=False)
+    tcgen05_mma(lhs_tmem, smem_b, acc_tmem, use_acc=USE_ACC)
     tcgen05_commit(bar)
     mbarrier.wait(bar, phase=0)
     mbarrier.invalidate(bar)
@@ -8260,7 +8270,7 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind, n, k, tile_n):
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
     compiled = tmem_mma_lhs_kernel[(1, )](
-        a, b, out, lhs_layout, acc_layout, shared_layout_b, n, k, num_warps=4
+        a, b, out, lhs_layout, acc_layout, shared_layout_b, n, k, 0.0, False, num_warps=4
     )
 
     expected = torch.matmul(a.to(torch.float32), b.to(torch.float32))
@@ -8272,6 +8282,33 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind, n, k, tile_n):
     assert ptx_ops
     assert len(ptx_ops) == _expected_lhs_tile_permuted_mma_op_count(kind, k)
     assert all(op == expected_kind for op in ptx_ops)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,n,k,tile_n", MMA_LHS_TILE_PERMUTED_NK_CASES)
+def test_tmem_runtime_matrix_mma_lhs_tile_permuted_use_acc(kind, n, k, tile_n):
+    m = 128
+    acc_init = 1.0
+    lhs_layout = _make_tmem_linear_layout_tile_permuted(m, k, tile_n)
+    acc_layout = _make_tmem_linear_layout(m, n)
+    a, b, _shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(
+        kind, m, n, k
+    )
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_lhs_kernel[(1, )](
+        a, b, out, lhs_layout, acc_layout, shared_layout_b, n, k, acc_init, True, num_warps=4
+    )
+
+    expected = torch.matmul(a.to(torch.float32), b.to(torch.float32)) + acc_init
+    torch.testing.assert_close(out.to(torch.float32), expected.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_lhs_tile_permuted_mma_op_count(kind, k)
+    assert all(op == expected_kind for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
@@ -8300,10 +8337,56 @@ def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_
         shared_layout_b,
         n,
         k,
+        0.0,
+        False,
         num_warps=4,
     )
 
     expected = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    torch.testing.assert_close(out.to(torch.float32), expected.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_plain_mma_op_count(kind, k)
+    assert all(op == expected_kind for op in mma_ops)
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "tensor_memory_linear" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,acc_layout_kind,n,k", MMA_LHS_SUBSLICE_NK_CASES)
+def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds_use_acc(kind, acc_layout_kind, n, k):
+    m = 128
+    acc_init = 1.0
+    parent_layout = _make_tmem_linear_layout(m, 2 * k)
+    acc_layout = (
+        TensorMemoryLayout((m, n), col_stride=1)
+        if acc_layout_kind == "legacy"
+        else _make_tmem_linear_layout(m, n)
+    )
+
+    a, b, _shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(
+        kind, m, n, k
+    )
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_lhs_subslice_kernel[(1, )](
+        a,
+        b,
+        out,
+        parent_layout,
+        acc_layout,
+        shared_layout_b,
+        n,
+        k,
+        acc_init,
+        True,
+        num_warps=4,
+    )
+
+    expected = torch.matmul(a.to(torch.float32), b.to(torch.float32)) + acc_init
     torch.testing.assert_close(out.to(torch.float32), expected.to(torch.float32), atol=atol, rtol=rtol)
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
