@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 10:02 UTC: ld.red descriptor-chain N-width sweep
+
+- Generalized `tmem_ld_red_descriptor_chain_kernel` so descriptor-view reductions take `N` as a constexpr instead of being fixed at `N=128`.
+- Added `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES` and `test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new positive matrix covers descriptor-chain `ld.red` through identity, tile-permuted, and row/column-permuted TMEM-linear views at `N in {64,256}` with `auto` register-layout selection, across `min`/`max` and all legal `abs` / `PropagateNan` modifier combinations. This complements the existing variant-rich `N=128` descriptor-chain matrix.
+- Current runtime-matrix collection is `6500` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1064`, and `ldst=2869`; current bucketed evidence aggregates to `6054 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused new-sweep collect selected `48/6500`; no-PYTHONPATH adjacent descriptor-chain collect selected `144/6500`; no-PYTHONPATH `ld_red` collect selected `1064/6500`; no-PYTHONPATH full-file collect reported `6500`; focused new-sweep selector passed all `48` cases across split-4 on four GPUs (`12` per group; group times `44.02s`, `181.07s`, `176.21s`, and `235.70s`); adjacent descriptor-chain selector passed all `144` cases across split-4 (`36` per group; group times `162.14s`, `346.08s`, `501.35s`, and `309.42s`).
+- Next: commit/push this bounded `ld.red` descriptor-view checkpoint, then continue staged ISA saturation in the next exact non-parked family. Hard copy `warpx2` frontiers remain parked until there is a real descriptor/address/staging hypothesis.
+
 ## 2026-04-14 09:41 UTC: plain-MMAv5 TMEM-LHS nonzero use-acc coverage
 
 - Added `USE_ACC` and `ACC_INIT` constexpr controls to the plain TMEM-LHS helper kernels, preserving the existing no-accumulator tests with `0.0/False` while enabling nonzero accumulator-add coverage with `1.0/True`.

@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 6363-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 6500-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -91,7 +91,7 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- Current plain-MMAv5 TMEM-LHS use-acc checkpoint, 2026-04-14 09:41 UTC: added nonzero accumulator-add coverage for the existing full-shape tile-permuted TMEM-LHS and TMEM-LHS subview matrices. Runtime-matrix collection is now `6452` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1016`, and `ldst=2869`; bucketed evidence aggregates to `6006 passed, 446 skipped`. Validation included py-compile, `git diff --check`, focused new-use-acc collect `89/6452`, adjacent old+new LHS collect `178/6452`, tight MMA collect `1687/6452`, full collect `6452`, four-GPU new-use-acc execution, and four-GPU adjacent LHS execution.
+- Current `ld.red` descriptor-chain N-width checkpoint, 2026-04-14 10:02 UTC: `tmem_ld_red_descriptor_chain_kernel` now takes `N` as a constexpr and the descriptor-chain reduction matrix has an additional N-width sweep. The new positive slice covers `N=64` and `N=256` for identity, tile-permuted, and row/column-permuted descriptor-view layouts with `auto` register-layout selection, across `min`/`max` and all legal `abs`/`NaN` modifier modes. Runtime-matrix collection is now `6500` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1064`, and `ldst=2869`; bucketed evidence aggregates to `6054 passed, 446 skipped`. Validation included py-compile, `git diff --check`, `make -j8`, focused new-sweep collect `48/6500`, adjacent descriptor-chain collect `144/6500`, full `ld_red` collect `1064/6500`, full-file collect `6500`, four-GPU new-sweep execution (`12` per shard; slowest `235.70s`), and four-GPU adjacent descriptor-chain execution (`36` per shard; slowest `501.35s`).
 
 - Parked frontier, 2026-04-14 09:35 UTC: a scratch extension of scaled two-CTA MMAv5 accumulator-subview coverage to `block_n=64` / `parent_n=128` fails during B-scale shared descriptor construction with a zero descriptor dimension (`shape must have power-of-2 and non-zero dimensions; got 1, 0, ...`). The source was reverted to the green `6363`-case matrix. Do not treat this as a positive or ISA-impossible clean negative until the scale-descriptor helper path is understood.
 

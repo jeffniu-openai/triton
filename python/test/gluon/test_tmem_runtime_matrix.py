@@ -1103,11 +1103,10 @@ def tmem_ld_red_explicit_layout_kernel(
 
 @gluon.jit
 def tmem_ld_red_descriptor_chain_kernel(
-    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, load_variant: ttgl.constexpr, red_op: ttgl.constexpr,
-    use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
+    red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
 ):
     M: ttgl.constexpr = 128
-    N: ttgl.constexpr = 128
     num_warps: ttgl.constexpr = 4
     global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
     global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
@@ -3953,6 +3952,29 @@ LD_RED_DESCRIPTOR_CHAIN_CASES = [
     for load_variant in LD_RED_DESCRIPTOR_CHAIN_VARIANTS
 ]
 
+LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
+    pytest.param("identity", lambda n=n: _make_tmem_linear_layout(128, n), n, expected_shape, id=f"identity_n{n}")
+    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+] + [
+    pytest.param(
+        "tile_permuted",
+        lambda n=n, tile_n=tile_n: _make_tmem_linear_layout_tile_permuted(128, n, tile_n),
+        n,
+        expected_shape,
+        id=f"tile_permuted_n{n}",
+    )
+    for n, tile_n, expected_shape in ((64, 16, "32x32b.x64"), (256, 64, "32x32b.x64"))
+] + [
+    pytest.param(
+        "rowcol_rotate_reverse",
+        lambda n=n: _make_tmem_linear_layout_permuted(128, n, "rotate1", "reverse"),
+        n,
+        expected_shape,
+        id=f"rowcol_rotate_reverse_n{n}",
+    )
+    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+]
+
 LD_RED_MIXED_CASES = [
     (128, 64, 4),
     (128, 128, 4),
@@ -5959,11 +5981,38 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain(
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
-        inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        inp, out, red, layout, N, load_variant, red_op, use_abs, propagate_nan, num_warps=4
     )
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
     _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, use_abs, propagate_nan)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("layout_name,layout_factory,N,expected_shape", LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES)
+def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep(
+    layout_name, layout_factory, N, expected_shape, use_abs, propagate_nan, red_op
+):
+    M = 128
+    layout = layout_factory()
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
+        inp, out, red, layout, N, "auto", red_op, use_abs, propagate_nan, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir

@@ -1,3 +1,20 @@
+## 2026-04-14 10:02 UTC: ld.red descriptor-chain N-width sweep
+
+- Generalized `tmem_ld_red_descriptor_chain_kernel` so descriptor-view reductions take `N` as a constexpr instead of being fixed at `N=128`.
+- Added a positive N-width descriptor-chain matrix over identity, tile-permuted, and row/column-permuted layouts at `N in {64,256}` with `auto` register-layout selection. The existing variant-rich descriptor-chain matrix continues to cover `N=128`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed before docs and will be rerun after docs;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused new-sweep collect selected `48/6500`;
+  - no-PYTHONPATH adjacent descriptor-chain collect selected `144/6500`;
+  - no-PYTHONPATH `ld_red` collect selected `1064/6500`;
+  - no-PYTHONPATH full-file collect reported `6500`;
+  - focused new-sweep selector passed all `48` cases across split-4 on four GPUs (`12` per group; group times `44.02s`, `181.07s`, `176.21s`, and `235.70s`);
+  - adjacent descriptor-chain selector passed all `144` cases across split-4 (`36` per group; group times `162.14s`, `346.08s`, `501.35s`, and `309.42s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1064`, `ldst=2869`; current bucketed evidence aggregates to `6054 passed, 446 skipped`.
+- Next: commit/push this checkpoint and continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 08:48 UTC: scaled-MMAv5 narrow tile-permuted accumulator clean negatives
 
 - Added `SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES` and `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported` to `python/test/gluon/test_tmem_runtime_matrix.py`.
