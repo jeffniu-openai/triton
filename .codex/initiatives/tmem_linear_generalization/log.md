@@ -14265,7 +14265,7 @@ Open after this slice:
 - Validation: K64 descriptor-fed probes passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `96/7865`; no-PYTHONPATH full-file collect reported `7865`; focused selector passed all `96` cases across split-4 on four GPUs (`24` per group; slowest `16.89s`); `git diff --check` passed.
 - Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
 
-## 2026-04-14 13:15 UTC: TMA-fed two-CTA TF32 K-width coverage
+## 2026-04-14 13:10 UTC: TMA-fed two-CTA TF32 K-width coverage
 
 - Added `MMA_TWOCTA_TMA_TF32_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` and moved the three TF32 TMA tests onto the shared `(acc_layout_kind, block_n, block_k)` table.
 - The TF32 clean-negative test now checks the default `[K,N]` B descriptor at `blockK in {32,64}` for both accumulator-layout families and all current N widths, preserving the clean transposed-float32 shared-operand diagnostic.
@@ -14273,3 +14273,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7883` tests: `cp=580`, `mma=1975`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7432 passed, 451 skipped`.
 - Validation completed: one-off K64 TF32 probes passed for the positive route and confirmed the default descriptor route remains the clean transposed-float32 diagnostic; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `36/7883`; no-PYTHONPATH full-file collect reported `7883`; focused TF32 TMA selector passed all `36` cases across split-4 (`9` per group; group times `4.26s`, `8.29s`, `12.10s`, and `17.77s`); `git diff --check` passed.
 - Next: commit/push this bounded test-coverage checkpoint, then continue with the next non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:11 UTC: copy warpx2 subword clean-negative coverage
+
+- Added `CP_NO_SCALES_WARPX2_SUBWORD_UNSUPPORTED_CASES` and `test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_error` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new clean-negative rows cover f16/bf16 source payloads for single-CTA `warpx2::01_23`, single-CTA `warpx2::02_13`, two-CTA `warpx2::01_23`, and two-CTA `warpx2::02_13`.
+- This records the current public copy contract that `warpx2` source elements must be 32-bit. It is not a support promotion and does not change the hard frontier status of true scales `warpx2` or no-scales two-CTA `02_13`.
+- Current runtime-matrix collection is `7891` tests: `cp=588`, `mma=1975`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7440 passed, 451 skipped`.
+- Validation completed: f16/bf16 probes for all four family/CTA combinations; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH subword collect selected `8/7891`; no-PYTHONPATH full `warpx2` collect selected `29/7891`; no-PYTHONPATH CP collect selected `588/7891`; no-PYTHONPATH full-file collect reported `7891`; full `warpx2` selector passed all `29` cases across split-4 (`8`, `8`, `8`, and `5`; group times `8.57s`, `4.87s`, `5.02s`, and `4.58s`); `git diff --check` passed.
+- Next: commit/push this bounded copy-contract checkpoint, then continue another non-parked TMEM ISA coverage slice.

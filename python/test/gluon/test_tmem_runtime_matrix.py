@@ -3525,6 +3525,17 @@ CP_NO_SCALES_TWOCTA_128X128_CASES = [
 
 CP_NO_SCALES_WARPX2_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
+CP_NO_SCALES_WARPX2_SUBWORD_UNSUPPORTED_CASES = [
+    (case_name, cta_group, tmem_layout, dtype_name, torch_dtype)
+    for case_name, cta_group, tmem_layout in (
+        ("single_01_23", 1, _make_tmem_copy_warpx2_tmem_layout()),
+        ("single_02_13", 1, _make_tmem_copy_warpx2_tmem_layout_02_13()),
+        ("twocta_01_23", 2, _make_tmem_copy_warpx2_tmem_layout_twocta()),
+        ("twocta_02_13", 2, _make_tmem_copy_warpx2_tmem_layout_02_13_twocta()),
+    )
+    for dtype_name, torch_dtype in (("f16", torch.float16), ("bf16", torch.bfloat16))
+]
+
 CP_SCALES_WARPX4_FORMAT_PAIRS = [
     ("mxfp8", "mxfp8"),
     ("mxfp4", "mxfp4"),
@@ -6920,6 +6931,42 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_
     assert "preserves the high source-column bit" in text
     assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "case_name,cta_group,tmem_layout,dtype_name,torch_dtype",
+    CP_NO_SCALES_WARPX2_SUBWORD_UNSUPPORTED_CASES,
+)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_error(
+    case_name, cta_group, tmem_layout, dtype_name, torch_dtype, capfd
+):
+    M = 128 if cta_group == 1 else 256
+    N = 4
+    shared_layout = (
+        _make_tmem_copy_warpx2_shared_layout()
+        if cta_group == 1
+        else _make_tmem_copy_warpx2_shared_layout_twocta()
+    )
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        if cta_group == 1:
+            tmem_copy_no_scales_warpx2_candidate_kernel[(1, )](
+                inp, out, shared_layout, tmem_layout, num_warps=4
+            )
+        else:
+            tmem_copy_no_scales_warpx2_twocta_kernel[(1, )](
+                inp, out, shared_layout, tmem_layout, num_warps=4, num_ctas=2
+            )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "Source element type should be 32-bit." in text
+    assert "error encountered during parsing" in str(excinfo.value)
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

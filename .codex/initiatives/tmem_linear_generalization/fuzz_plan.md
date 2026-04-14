@@ -967,3 +967,9 @@ Every fuzz case records:
 - The TF32-specific TMA-fed two-CTA path now mirrors the plain-kind K-width axis: `blockK in {32,64}` over `blockN in {64,128,256}`, both accumulator-layout families, and both no-accumulator plus `use_acc=True` semantics.
 - The unsupported default `[K,N]` B descriptor is still intentionally covered as a clean transposed-float32 shared-operand diagnostic; the positive path remains the `[N,K]` descriptor plus shared `permute((1,0))` view.
 - Current full-file collection is `7883` tests and the tight MMA bucket is `1975` cases. Aggregate bucket evidence is `7432 passed, 451 skipped`.
+
+## 2026-04-14 Copy warpx2 Subword Boundary Note
+
+- No-scales `warpx2` copy coverage now explicitly rejects f16/bf16 source payloads for single-CTA `01_23`, single-CTA `02_13`, two-CTA `01_23`, and two-CTA `02_13` through the clean `Source element type should be 32-bit.` verifier path.
+- This records the current dtype boundary for fuzz generation. Generate positive no-scales `warpx2` cases only with 32-bit elements unless the production verifier/ISA contract changes; keep subword rows as clean negatives.
+- Current full-file collection is `7891` tests and the CP bucket is `588` cases. Aggregate bucket evidence is `7440 passed, 451 skipped`.
