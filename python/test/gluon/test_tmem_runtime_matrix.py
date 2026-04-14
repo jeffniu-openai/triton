@@ -6545,9 +6545,10 @@ def test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsu
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_128X128_DTYPES)
 @pytest.mark.parametrize("M,N,BLOCK_N,swizzle", CP_NO_SCALES_CASES)
-def test_tmem_runtime_matrix_cp_no_scales(M, N, BLOCK_N, swizzle):
-    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
+def test_tmem_runtime_matrix_cp_no_scales(dtype_name, torch_dtype, M, N, BLOCK_N, swizzle):
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
     out = torch.empty_like(inp)
 
     try:
@@ -6562,9 +6563,10 @@ def test_tmem_runtime_matrix_cp_no_scales(M, N, BLOCK_N, swizzle):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_128X128_DTYPES)
 @pytest.mark.parametrize("M,N,BLOCK_N,swizzle", CP_NO_SCALES_SWIZZLE_CASES)
-def test_tmem_runtime_matrix_cp_no_scales_swizzles(M, N, BLOCK_N, swizzle):
-    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N)
+def test_tmem_runtime_matrix_cp_no_scales_swizzles(dtype_name, torch_dtype, M, N, BLOCK_N, swizzle):
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
     out = torch.empty_like(inp)
 
     try:

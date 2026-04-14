@@ -14150,3 +14150,12 @@ Open after this slice:
 - Current runtime-matrix collection is `6892` tests: `cp=381`, `mma=1743`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6446 passed, 446 skipped`.
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused collect selected `40/6892`; no-PYTHONPATH tight MMA collect selected `1743/6892`; no-PYTHONPATH full-file collect reported `6892`; focused selector passed all `40` cases across split-4 on four GPUs (`10` per group; group times `12.78s`, `13.01s`, `12.80s`, and `12.73s`).
 - Next: commit/push this scaled-MMAv5 checkpoint, then continue another exact non-parked ISA coverage slice.
+
+## 2026-04-14 12:05 UTC: legacy single-CTA no-scales copy dtype parity
+
+- Expanded `test_tmem_runtime_matrix_cp_no_scales` and `test_tmem_runtime_matrix_cp_no_scales_swizzles` to run over `CP_NO_SCALES_128X128_DTYPES`.
+- The original single-CTA no-scales root and swizzle coverage now covers both `f32` and `i32` payloads without changing the existing shape, `BLOCK_N`, or swizzle matrix.
+- This is test-only coverage over the already-supported no-scales copy path. It does not unpark no-scales two-CTA `warpx2::02_13` or true tensor-memory-scales `warpx2`.
+- Current runtime-matrix collection is `6931` tests: `cp=420`, `mma=1743`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6480 passed, 451 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH exact root+swizzle collect selected `78/6931`; no-PYTHONPATH full CP collect selected `420/6931`; no-PYTHONPATH full-file collect reported `6931`; exact root+swizzle selector passed/skipped `68 passed, 10 skipped` across split-4 on four GPUs; full CP bucket passed/skipped `410 passed, 10 skipped` across split-4 (`95 passed, 10 skipped`, `105 passed`, `105 passed`, `105 passed`; slowest `93.37s`).
+- Next: commit/push this bounded CP checkpoint, then continue another exact non-parked TMEM ISA coverage slice.

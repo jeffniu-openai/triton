@@ -402,6 +402,10 @@ Every fuzz case records:
   payloads, and the existing `N`/swizzle shapes, so future dense two-CTA
   additions should target genuinely new shapes/layouts rather than re-proving
   those base families.
+- Legacy single-CTA no-scales root and swizzle matrices now also cover both
+  f32 and i32 payloads through `CP_NO_SCALES_128X128_DTYPES`, so follow-up
+  single-CTA no-scales work should target new layout/view/atom surfaces rather
+  than duplicating the base dtype parity.
 - Special no-scales `cta_group::1` `warpx2::{01_23,02_13}.64x128b` paths are
   covered by executable candidate tests with runtime oracles and exact commit
   opcode checks. Dense shared-layout `warpx2` forms are clean negatives for

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:05 UTC: legacy single-CTA no-scales copy dtype parity
+
+- Expanded the original single-CTA no-scales CP root and swizzle matrices in `python/test/gluon/test_tmem_runtime_matrix.py` to use `CP_NO_SCALES_128X128_DTYPES`, so they now cover `f32` beside the existing `i32` payloads.
+- This is a test-only parity expansion over the already-supported no-scales copy lowering. It does not change the parked hard frontiers: no-scales two-CTA `warpx2::02_13` and true tensor-memory-scales `warpx2` still require a real descriptor/address/staging model.
+- Current runtime-matrix collection is `6931` tests: `cp=420`, `mma=1743`, splitn/misc `=499`, `ld_red=1400`, and `ldst=2869`; current bucketed evidence aggregates to `6480 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH exact root+swizzle collect selected `78/6931`; no-PYTHONPATH full CP collect selected `420/6931`; no-PYTHONPATH full-file collect reported `6931`; exact root+swizzle selector passed/skipped `68 passed, 10 skipped` across split-4; full CP bucket passed/skipped `410 passed, 10 skipped` across split-4 on four GPUs (`95 passed, 10 skipped`, `105 passed`, `105 passed`, `105 passed`).
+- Next: commit/push this bounded CP dtype-parity checkpoint, then continue staged TMEM ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 10:22 UTC: two-CTA TMA-fed TF32 MMAv5 use-acc coverage
 
 - Added `tmem_mma_twocta_tma_b_transposed_use_acc_kernel` and `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor_use_acc` in `python/test/gluon/test_tmem_runtime_matrix.py`.
