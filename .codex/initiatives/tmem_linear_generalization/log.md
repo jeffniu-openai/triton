@@ -13965,3 +13965,22 @@ Open after this slice:
   - focused `rank5_small` selector passed all `40` cases across split-4 on four GPUs (`10` per group; group times `127.35s`, `92.63s`, `127.20s`, and `92.18s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2869`; current bucketed evidence aggregates to `5581 passed, 446 skipped`.
 - Next: commit/push this bounded dtype-parity checkpoint, then continue the next exact non-parked coverage slice.
+
+## 2026-04-14 09:11 UTC: ld.red descriptor-view positives
+
+- Added hardware-reduction coverage through TMEM descriptor views:
+  - `tmem_ld_red_descriptor_chain_kernel`;
+  - `LD_RED_DESCRIPTOR_CHAIN_CASES`;
+  - `test_tmem_runtime_matrix_ld_red_descriptor_chain`.
+- The new cases cover `identity`, `tile_permuted`, and `rowcol_rotate_reverse` source layouts at `128x128`, across `min`/`max` and all legal `abs` / `PropagateNan` modifier combinations.
+- The test stores through a `[2,M,N]` parent and reduces through `slice`/`index` plus reshape descriptor views, then checks runtime equality, exact `tcgen05.ld.red.sync.aligned.32x32b.x128` opcode/modifier behavior, wait ordering, and surviving generic memdesc ops.
+- Probe note: using an explicitly lifted `[2]` TMEM-linear layout for the parent first caused a frontend/compiler abort in `get_reg_layout` (`Dimensions must match ... ["dim0", "dim1"] and ["dim1", "dim2"]`). Matching the existing multibuffer `ld/st` pattern, where the parent allocation receives the base 2D layout, avoids that abort and is the committed shape.
+- Validation completed:
+  - `make -j8` no-op success;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `24/6051`;
+  - no-PYTHONPATH `ld_red` collect selected `944/6051`;
+  - focused `ld_red_descriptor_chain` selector passed all `24` cases across split-4 on four GPUs (`6` per group; group times `25.60s`, `39.63s`, `72.78s`, and `117.55s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=944`, `ldst=2869`; current bucketed evidence aggregates to `5605 passed, 446 skipped`.
+- Next: commit/push this checkpoint, then continue another exact non-parked coverage slice.

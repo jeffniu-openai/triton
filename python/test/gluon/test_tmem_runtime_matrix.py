@@ -1102,6 +1102,42 @@ def tmem_ld_red_explicit_layout_kernel(
 
 
 @gluon.jit
+def tmem_ld_red_descriptor_chain_kernel(
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, red_op: ttgl.constexpr, use_abs: ttgl.constexpr,
+    propagate_nan: ttgl.constexpr
+):
+    M: ttgl.constexpr = 128
+    N: ttgl.constexpr = 128
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [2, M, N], layout=layout)
+    base = tmem.slice(1, 1, dim=0).index(0)
+    base_layout: ttgl.constexpr = base.get_reg_layout()
+    base.store(ttgl.convert_layout(value, base_layout))
+
+    view = base.reshape((M // 2, 2, N)).reshape((M, N))
+    view = view.slice(0, M, dim=0).slice(0, N, dim=1)
+    load_layout: ttgl.constexpr = view.get_reg_layout()
+    if red_op == "min":
+        output, reduced = view.load_min(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
+    else:
+        output, reduced = view.load_max(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
+    output = ttgl.convert_layout(output, global_layout)
+    ttgl.store(out_ptr + offs, output)
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_ld_red_non_f32_contract_kernel(
     in_ptr,
     out_ptr,
@@ -3804,6 +3840,14 @@ LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [
                  id="rowcol_rotate_reverse"),
 ]
 
+LD_RED_DESCRIPTOR_CHAIN_CASES = [
+    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), id="identity"),
+    pytest.param("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32),
+                 id="tile_permuted"),
+    pytest.param("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse"),
+                 id="rowcol_rotate_reverse"),
+]
+
 LD_RED_MIXED_CASES = [
     (128, 64, 4),
     (128, 128, 4),
@@ -5793,6 +5837,33 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
     _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, use_abs, propagate_nan)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("layout_name,layout_factory", LD_RED_DESCRIPTOR_CHAIN_CASES)
+def test_tmem_runtime_matrix_ld_red_descriptor_chain(
+    layout_name, layout_factory, use_abs, propagate_nan, red_op
+):
+    M = N = 128
+    layout = layout_factory()
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
+        inp, out, red, layout, red_op, use_abs, propagate_nan, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    _assert_ld_red_opcode_pairs(compiled, N, "32x32b.x128", red_op, use_abs, propagate_nan)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

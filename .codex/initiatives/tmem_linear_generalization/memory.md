@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:11 UTC: ld.red descriptor-view positives
+
+- Added `tmem_ld_red_descriptor_chain_kernel`, `LD_RED_DESCRIPTOR_CHAIN_CASES`, and `test_tmem_runtime_matrix_ld_red_descriptor_chain` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new positive slice stores f32 data through a `[2,128,128]` TMEM parent, takes a `slice`/`index` descriptor view, applies reshape-only descriptor composition, and runs `load_min`/`load_max` through that view.
+- Coverage spans identity, `tile_permuted`, and `rowcol_rotate_reverse` source layouts across `min`/`max` and all legal `abs` / `PropagateNan` modifier combinations. It pins value equality, reduction equality, exact `tcgen05.ld.red.sync.aligned.32x32b.x128` opcode/modifier behavior, wait ordering, and surviving generic memdesc ops (`index`, `subslice`, `reshape`).
+- Important probe result: passing a lifted `[2]` layout to the `[2,M,N]` allocation initially aborted during `get_reg_layout` with `Dimensions must match ... ["dim0", "dim1"] and ["dim1", "dim2"]`. The green version follows the existing multibuffer `ld/st` descriptor-chain pattern: pass the base 2D layout to the parent allocation and let the descriptor API form the slice/index view.
+- Current runtime-matrix collection is `6051` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=944`, `ldst=2869`; current bucketed evidence aggregates to `5605 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `24/6051`; no-PYTHONPATH `ld_red` collect selected `944/6051`; focused `ld_red_descriptor_chain` selector passed all `24` cases across split-4 on four GPUs (`6` per group; group times `25.60s`, `39.63s`, `72.78s`, and `117.55s`).
+- Next: commit/push this `ld.red` descriptor-view checkpoint, then continue staged ISA saturation in the next exact non-parked family.
+
 ## 2026-04-14 09:02 UTC: rank-5 descriptor ld/st dtype parity
 
 - Updated `tmem_ldst_descriptor_rank5_small_roundtrip_kernel` so the executable rank-5 descriptor roundtrip allocates TMEM with `in_ptr.dtype.element_ty` and forms the delta in that same element type.

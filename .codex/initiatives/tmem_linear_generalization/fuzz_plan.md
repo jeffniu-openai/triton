@@ -324,6 +324,9 @@ Every fuzz case records:
   - pure column-permuted, pure row-permuted, and non-identity row/column
     cross-product `128x{64,128,256}` layouts, which are now proven to emit
     `32x32b` reduction-family opcodes across legal modifiers
+  - descriptor-view reductions over a `[2,128,128]` parent, currently covering
+    identity, tile-permuted, and row/column-permuted source layouts through
+    `slice`/`index`/reshape views across the legal modifier matrix
   - any additional TMEM-linear family that compile-only search proves emits
     legal reduction code
 
