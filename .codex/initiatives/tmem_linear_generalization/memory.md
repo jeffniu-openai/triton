@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:16 UTC: scaled-MMAv5 TMEM-LHS tile-permuted K=128 coverage
+
+- Full-shape tile-permuted TMEM-LHS scaled-MMAv5 coverage now includes the reachable logical `K=128` positive surface for mxfp8-storage operand-A formats: `mxfp8/mxfp8` and `mxfp8/mxfp4`, at `N in {128, 256}` and both legacy/canonical accumulator layouts.
+- Existing `K=256` coverage remains for every packed-storage reachable format pair; the test now parameterizes the full-shape tile-permuted LHS matrix over `K` and keeps exact scaled-MMAv5 opcode counts at `(K // 128) * base_count`.
+- The fp4-storage `K=128` boundary for `mxfp4/mxfp4` and `nvfp4/nvfp4` is now an explicit clean negative: storage-width-64 tile-permuted LHS descriptors fail the verifier as not MMAv5-compatible, with no PassManager/assertion noise.
+- Current runtime-matrix collection is `3579` tests: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, and `ldst=1732`; current bucketed evidence aggregates to `3133 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `32/3579`; no-PYTHONPATH tight `mma` collect selected `462/3579`; no-PYTHONPATH full-file collect selected all `3579`; focused scaled-LHS tile-permuted selector passed `32` across four GPUs (`8` each); tight `mma` runner passed `462` across four groups (`116`, `116`, `116`, `114`).
+- Remaining long-term work: continue staged ISA saturation in another bounded family, likely descriptor-view `ld/st` breadth or another scaled-MMAv5 parity gap; copy `warpx2` remains parked until a real descriptor/address/view/staging model exists.
+
 ## 2026-04-14 03:10 UTC: plain-MMAv5 tile-permuted accumulator K-depth coverage
 
 - Tile-permuted accumulator MMAv5 runtime-matrix coverage now spans `K in {32, 64}` for the simple f16 anchor and for every supported plain operand kind in both no-accumulator and `use_acc=True` paths.

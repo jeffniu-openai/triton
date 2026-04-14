@@ -13094,3 +13094,21 @@ Open after this slice:
   - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `446` cases across four groups (`112`, `112`, `112`, `110`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=446`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3117 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another long-term ISA coverage slice.
+
+## 2026-04-14 03:16 UTC scaled-MMAv5 TMEM-LHS tile-permuted K=128 coverage
+
+- Expanded the full-shape tile-permuted TMEM-LHS scaled-MMAv5 matrix so the test takes logical `K` instead of hard-coding `K=256`.
+- Positive coverage now includes `K=128` for mxfp8-storage operand-A formats (`mxfp8/mxfp8` and `mxfp8/mxfp4`) at `N in {128, 256}` and both legacy/canonical accumulator layouts; all previous `K=256` packed-storage reachable cases remain.
+- Added a clean-negative matrix for fp4-storage `K=128` full-shape tile-permuted LHS descriptors (`mxfp4/mxfp4` and `nvfp4/nvfp4`) because their storage-width-64 tile-permuted layout is not MMAv5-compatible.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - scratch probe confirmed the fp4-storage `K=128` cases fail with the MMAv5-compatible-layout verifier diagnostic;
+  - no-PYTHONPATH focused collect selected `32/3579`;
+  - focused selector passed `32` cases across four GPUs (`8` per group);
+  - no-PYTHONPATH tight `mma` collect selected `462/3579`;
+  - no-PYTHONPATH full-file collect selected all `3579`;
+  - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `462` cases across four groups (`116`, `116`, `116`, `114`);
+  - `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3133 passed, 446 skipped`.
+- Next: commit/push this scaled-MMAv5 checkpoint, then continue another long-term ISA coverage slice.

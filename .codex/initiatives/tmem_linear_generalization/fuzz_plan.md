@@ -534,14 +534,17 @@ Every fuzz case records:
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts. Subview operand-A
   descriptors now span `blockN in {128, 256}` and `blockK in {128, 256}` with
-  exact scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`,
-  while full-shape tile-permuted operand-A descriptors remain covered at
-  logical `K=256`. Mixed `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape
+  exact scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`.
+  Full-shape tile-permuted operand-A descriptors cover all reachable packed
+  storage pairs at logical `K=256`, and the mxfp8-storage LHS pairs
+  (`mxfp8/mxfp8` and `mxfp8/mxfp4`) at logical `K=128`; fp4-storage `K=128`
+  tile-permuted LHS descriptors are pinned as a clean MMAv5-layout-compatible
+  verifier negative. Mixed `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape
   tile-permuted TMEM-LHS descriptors are clean unsupported boundaries, not
   positive targets yet, because `mxf8f6f4` fp4 LHS currently requires
   `fp4_padded` shared-memory operand-A storage. The subview frontier is pinned
   by `experiments/probe_mma_scaled_lhs_subslice_formats.py`, and the runtime
-  matrix now also pins the full-shape tile-permuted clean-negative path.
+  matrix now also pins the full-shape tile-permuted clean-negative paths.
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.
