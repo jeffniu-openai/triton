@@ -857,3 +857,16 @@ Every fuzz case records:
   order `[0, 128, 64, 192]` rather than the canonical `[0, 64, 128, 192]`.
   Future fuzz assertions should check semantic coverage and exact emitted order
   together, not assume one global offset order across all layouts.
+
+## 2026-04-14 ld.red Descriptor-Chain All-Layout Saturation Note
+
+- Descriptor-chain `ld.red` explicit variants at `N in {64,256}` now cover all
+  currently supported N-sweep layouts: identity, tile-permuted, pure column
+  reverse, pure row reverse, and mixed row/column reverse. The matrix covers
+  `32x32b`, `16x32bx2`, and `32x32b_splitn`, both reductions, and all legal
+  modifier modes.
+- Current full-file collection is `6842` tests; the `ld_red` bucket is `1400`
+  cases. Aggregate bucket evidence is `6396 passed, 446 skipped`.
+- At `N=256`, `col_reverse` and `rowcol_rotate_reverse` split explicit variants
+  emit `[0, 128, 64, 192]`; identity, tile-permuted, and row-reverse keep the
+  canonical `[0, 64, 128, 192]`.
