@@ -173,8 +173,8 @@ Every fuzz case records:
   - `M in {64, 128, 256}`
   - `N in {32, 64, 128, 256}`
   - current root identity `128x32` coverage includes direct and descriptor-chain
-    f32 roundtrips over every public `ld/st` variant, pinning the minimal
-    `x32/x16/x8/x4` opcode families.
+    f32 and i32 roundtrips over every public `ld/st` variant, pinning the
+    minimal `x32/x16/x8/x4` opcode families.
 - diagonal row/column permutations:
   - current root `128x32` coverage includes `rotate1`, `even_odd`, and
     `reverse` permutations for direct and descriptor-chain f32 roundtrips over

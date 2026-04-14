@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:45 UTC: ld/st identity N=32 32-bit dtype coverage
+
+- `test_tmem_runtime_matrix_ldst_identity_n32_linear_layout` now covers f32 and i32 payloads for canonical identity `128x32` direct and descriptor-chain `ld/st` over all public variants.
+- The first i32 attempt exposed that the shared direct/descriptor `ldst` kernels hard-coded `ttgl.float32` TMEM allocation; `tmem_ldst_auto_kernel`, `tmem_ldst_variant_kernel`, and `tmem_ldst_descriptor_chain_kernel` now allocate/bitcast with `in_ptr.dtype.element_ty`. Existing f32 paths remain covered by the same tests and by a representative f32 direct/descriptor smoke.
+- Current runtime-matrix collection is `3649` tests: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, and `ldst=1762`; current bucketed evidence aggregates to `3203 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `20/3649`; focused identity N=32 selector passed `20` across four GPUs (`5` each); four representative existing f32 direct/descriptor nodeids passed across four split groups.
+
 ## 2026-04-14 03:31 UTC: scales warpx2 direct-source-offset scan complete
 
 - Completed the missing tensor-memory-scales `tcgen05.copy` `warpx2` high-half source-offset scan for `sourceOffsetB128=73..119`, `dst_delta=4`, and both `warpx2::{01_23,02_13}` opcodes.

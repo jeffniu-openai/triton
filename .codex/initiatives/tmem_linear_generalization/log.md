@@ -13157,3 +13157,16 @@ Open after this slice:
 - Combined with existing tracked shards, `sourceOffsetB128=0..136` is now complete for `dst_delta=4`: `274` records, zero matches, `18` wrong-data executions at offsets `0..8`, and `256` faulting records at offsets `9..136`.
 - Wrote compact summary `experiments/results/probe_cp_scales_warpx2_offsets_dst4_current_summary.json`.
 - Conclusion: no source-offset/opcode-swap lowering is justified for true scales `warpx2`; it remains a descriptor/address/view/staging frontier or clean unsupported boundary.
+
+## 2026-04-14 03:45 UTC ld/st identity N=32 32-bit dtype coverage
+
+- Expanded `LDST_IDENTITY_N32_CASES` from f32-only to `LDST_32BIT_DTYPES = ((f32, torch.float32), (i32, torch.int32))`.
+- Generalized `tmem_ldst_auto_kernel`, `tmem_ldst_variant_kernel`, and `tmem_ldst_descriptor_chain_kernel` to allocate/bitcast tensor memory with `in_ptr.dtype.element_ty` instead of hard-coded `ttgl.float32`.
+- The failed first focused run is intentionally recorded: i32 direct and descriptor cases failed at frontend compile time because the kernels allocated fp32 TMEM and attempted to store int32 values. The final patch fixes the test helper contract rather than weakening coverage.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `20/3649`;
+  - focused identity N=32 selector passed `20` cases across four GPUs (`5` each);
+  - representative existing f32 direct/descriptor smoke passed four exact nodeids across four split groups.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1762`; current bucketed evidence aggregates to `3203 passed, 446 skipped`.

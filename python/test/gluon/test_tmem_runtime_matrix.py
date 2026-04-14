@@ -671,7 +671,8 @@ def _expected_ldst_ops(op_shape: str, offsets):
 def tmem_ldst_variant_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr,
                              instr_variant: ttgl.constexpr):
     offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
-    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, N], layout)
     reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
     value = ttgl.load(in_ptr + offs)
     tmem.store(ttgl.convert_layout(value, reg_layout))
@@ -682,7 +683,8 @@ def tmem_ldst_variant_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.co
 @gluon.jit
 def tmem_ldst_auto_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr, N: ttgl.constexpr):
     offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
-    tmem = allocate_tensor_memory(ttgl.float32, [M, N], layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [M, N], layout)
     reg_layout: ttgl.constexpr = tmem.get_reg_layout()
     value = ttgl.load(in_ptr + offs)
     tmem.store(ttgl.convert_layout(value, reg_layout))
@@ -709,17 +711,18 @@ def tmem_ldst_descriptor_chain_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
                                       instr_variant: ttgl.constexpr):
     offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
     value = ttgl.load(in_ptr + offs)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
 
-    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    tmem = allocate_tensor_memory(element_ty, [2, M, N], layout)
     view = tmem.slice(1, 1, dim=0).index(0).reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
     view = view.permute([1, 0]).permute([1, 0])
     view = view.slice(0, M, dim=0).slice(0, N, dim=1)
-    view = view.bitcast(ttgl.float32, [M, N], layout)
+    view = view.bitcast(element_ty, [M, N], layout)
 
     reg_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     view.store(ttgl.convert_layout(value, reg_layout))
     out = view.load(reg_layout)
-    out = out + ttgl.full([M, N], 3.0, ttgl.float32, layout=reg_layout)
+    out = out + ttgl.full([M, N], 3, element_ty, layout=reg_layout)
     view.store(out)
     out = tmem.index(1).load(reg_layout)
     ttgl.store(out_ptr + offs, out)
@@ -2713,6 +2716,7 @@ LDST_TWOCTA_LAYOUTS = {
 }
 
 LDST_VARIANTS = ("auto", "32x32b", "16x64b", "16x128b", "16x256b")
+LDST_32BIT_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
 LDST_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
@@ -2720,8 +2724,10 @@ LDST_CASES = [
 ]
 
 LDST_IDENTITY_N32_CASES = [
-    (mode, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for mode, variant in product(("direct", "descriptor"), LDST_VARIANTS)
+    (dtype_name, torch_dtype, mode, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
+    for (dtype_name, torch_dtype), mode, variant in product(
+        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_VARIANTS
+    )
 ]
 
 LDST_DESCRIPTOR_CASES = [
@@ -3659,12 +3665,12 @@ def test_tmem_runtime_matrix_ldst(layout_name, n, variant, expected_shape):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("mode,variant,expected_shape", LDST_IDENTITY_N32_CASES)
-def test_tmem_runtime_matrix_ldst_identity_n32_linear_layout(mode, variant, expected_shape):
+@pytest.mark.parametrize("dtype_name,torch_dtype,mode,variant,expected_shape", LDST_IDENTITY_N32_CASES)
+def test_tmem_runtime_matrix_ldst_identity_n32_linear_layout(dtype_name, torch_dtype, mode, variant, expected_shape):
     m = 128
     n = 32
     layout = _make_tmem_linear_layout(m, n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     if mode == "direct":
@@ -3675,7 +3681,7 @@ def test_tmem_runtime_matrix_ldst_identity_n32_linear_layout(mode, variant, expe
         torch.testing.assert_close(out, inp, atol=0, rtol=0)
     else:
         compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-        torch.testing.assert_close(out, inp + 3.0, atol=0, rtol=0)
+        torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
