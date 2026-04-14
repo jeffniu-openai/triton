@@ -346,6 +346,26 @@ def _make_tmem_copy_warpx2_tmem_layout_twocta():
     )
 
 
+def _make_tmem_copy_warpx2_parent_tmem_layout_twocta():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
+        cols=[[0, 1], [0, 2], [0, 4]],
+        block_bases=[[128, 0]],
+        shape=[256, 8],
+        two_ctas=True,
+    )
+
+
+def _make_tmem_copy_warpx2_parent_tmem_layout_02_13_twocta():
+    return TensorMemoryLinearLayout(
+        rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
+        cols=[[0, 1], [0, 2], [0, 4]],
+        block_bases=[[128, 0]],
+        shape=[256, 8],
+        two_ctas=True,
+    )
+
+
 def _make_tmem_copy_warpx2_tmem_layout_02_13_twocta():
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]],
@@ -1818,6 +1838,52 @@ def tmem_copy_no_scales_warpx2_twocta_kernel(in_ptr, out_ptr, shared_layout: ttg
     reg_layout: ttgl.constexpr = tmem.get_reg_layout()
 
     smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=shared_layout, value=value)
+    fence_async_shared(cluster=True)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    out = tmem.load(reg_layout)
+    out_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    out_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_offs_m[:, None] * N + out_offs_n[None, :]
+    ttgl.store(out_ptr + out_offs, out)
+
+
+@gluon.jit
+def tmem_copy_no_scales_warpx2_twocta_subslice_view_kernel(
+    in_ptr,
+    out_ptr,
+    shared_layout: ttgl.constexpr,
+    parent_layout: ttgl.constexpr,
+    slice_start: ttgl.constexpr,
+):
+    M: ttgl.constexpr = 256
+    N: ttgl.constexpr = 4
+    PARENT_N: ttgl.constexpr = 8
+    shared_reg_layout: ttgl.constexpr = ttgl.DistributedLinearLayout(
+        reg_bases=[[0, 1], [0, 2]],
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
+        warp_bases=[[32, 0], [64, 0]],
+        block_bases=[[128, 0]],
+        shape=[M, N],
+    )
+    in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, shared_reg_layout))
+    in_offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, shared_reg_layout))
+    in_offs = in_offs_m[:, None] * N + in_offs_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+    parent = allocate_tensor_memory(
+        in_ptr.dtype.element_ty, [M, PARENT_N], layout=parent_layout
+    )
+    tmem = parent.slice(slice_start, N, dim=1)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+
+    smem = ttgl.allocate_shared_memory(
+        in_ptr.dtype.element_ty, [M, N], layout=shared_layout, value=value
+    )
     fence_async_shared(cluster=True)
 
     barrier = mbarrier.allocate_mbarrier()
@@ -7509,6 +7575,70 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive(dtype_nam
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+@pytest.mark.parametrize("slice_start", [0, 4])
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_subslice_view_positive(
+    dtype_name, torch_dtype, slice_start
+):
+    M = 256
+    N = 4
+    shared_layout = _make_tmem_copy_warpx2_shared_layout_twocta()
+    parent_layout = _make_tmem_copy_warpx2_parent_tmem_layout_twocta()
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_copy_no_scales_warpx2_twocta_subslice_view_kernel[(1, )](
+        inp, out, shared_layout, parent_layout, slice_start, num_warps=4, num_ctas=2
+    )
+
+    expected = _expected_tmem_copy_warpx2_01_23_twocta_output(inp)
+    assert not torch.equal(out, inp)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(
+        compiled,
+        ["tcgen05.cp.cta_group::2.warpx2::01_23.64x128b"],
+    )
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
+    ptx = compiled.asm["ptx"]
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert "tcgen05.cp.cta_group::2.warpx2::02_13" not in ptx
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttng.tmem_subslice" not in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+@pytest.mark.parametrize("slice_start", [0, 4])
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_subslice_view_reports_clean_unsupported(
+    dtype_name, torch_dtype, slice_start, capfd
+):
+    M = 256
+    N = 4
+    shared_layout = _make_tmem_copy_warpx2_shared_layout_twocta()
+    parent_layout = _make_tmem_copy_warpx2_parent_tmem_layout_02_13_twocta()
+    inp = torch.arange(M * N, device="cuda", dtype=torch_dtype).reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_copy_no_scales_warpx2_twocta_subslice_view_kernel[(1, )](
+            inp, out, shared_layout, parent_layout, slice_start, num_warps=4, num_ctas=2
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
+    assert "could not synthesize a compatible shared-memory descriptor plan" in text
+    assert "preserves the high source-column bit" in text
+    assert "cta_group::1 copies is not valid" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

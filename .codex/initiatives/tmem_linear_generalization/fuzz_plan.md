@@ -443,6 +443,11 @@ Every fuzz case records:
   previously emitted opcodes but copied wrong data.
 - No-scales `cta_group::2` `warpx2::01_23.64x128b` is covered by an
   executable public-layout test with exact copy and multicast commit opcodes.
+  It is also covered through generic `ttg.memdesc_subslice` descriptor views
+  from a wider canonical two-CTA `[256,8]` parent sliced to `[256,4]` at
+  column starts `0` and `4`, with `f32`/`i32` payloads. The analogous
+  two-CTA `02_13` subviews are clean negatives and must stay that way unless a
+  real descriptor/address schedule preserves the high source-column bit.
   `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the
   canonical candidate shared layout is pinned as a clean descriptor-plan
   unsupported case, and the dense shared-layout form is rejected to avoid
@@ -1036,6 +1041,14 @@ Every fuzz case records:
 - Preserve row/column zero bases in generated expected layouts. A zero basis is semantic broadcast/repetition state, not removable padding.
 - Do not use this as evidence for true tensor-memory-scales `warpx2` or no-scales two-CTA `warpx2::02_13`; both remain parked descriptor/address/staging frontiers.
 - Current full-file collection is `8027` tests and the CP bucket is `612` cases. Aggregate bucket evidence is `7576 passed, 451 skipped`.
+
+
+## 2026-04-14 14:57 UTC: Copy warpx2 Two-CTA Subview Note
+
+- No-scales `cta_group::2 warpx2::01_23.64x128b` positive fuzz generation may now include `[256,8] -> [256,4]` column subviews at starts `0` and `4`, with `f32`/`i32` payloads and exact generic `ttg.memdesc_subslice` view chains.
+- The analogous `cta_group::2 warpx2::02_13` parent subviews remain clean negatives. Subviewing a wider parent does not solve the high source-column-bit descriptor/address problem.
+- Lifted `warpx2` indexed views are not a current positive target: direct outer `index` fails generic result-type inference, and slice-plus-index leaves an inactive zero column basis before copy lowering. Track this separately as an indexed-view inference/algebra gap.
+- Current full-file collection is `8224` tests and the CP bucket is `645` cases. Aggregate bucket evidence is `7773 passed, 451 skipped`.
 
 
 ## 2026-04-14 14:49 UTC: Two-CTA No-Scales Copy Indexed-View Note
