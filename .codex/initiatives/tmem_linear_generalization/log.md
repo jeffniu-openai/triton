@@ -13661,3 +13661,12 @@ Open after this slice:
   - focused repeated-N32 clean-negative selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `4.98s`, `4.97s`, `5.13s`, and `5.46s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=838`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4517 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 clean-negative checkpoint, then continue staged ISA saturation. Nearby remaining work is no longer this repeated-N32 boundary; keep it as clean unsupported unless the scale-descriptor model grows sub-64-column matrix-B scale fragments.
+
+## 2026-04-14 07:19 UTC: scaled-MMAv5 mixed fp4A clean-negative shape parity
+
+- Added `SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES` and `SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES`.
+- The full-shape tile-permuted TMEM-LHS mixed `mxfp4/mxfp8` clean-negative matrix now covers `N in {64,128,256}`, `K=256`, and both legacy plus canonical TMEM-linear accumulator layouts.
+- The companion TMEM-LHS subview mixed `mxfp4/mxfp8` clean-negative matrix now covers `N in {64,128,256}`, `K in {128,256}`, and the same accumulator-layout pair.
+- These remain clean unsupported because the current scaled-MMAv5 path requires `fp4_padded` shared-memory operand-A storage for mixed fp4A, not dense tensor-memory LHS storage. This is not a positive target without a real storage/model change.
+- Current runtime-matrix collection is `4977` tests: `cp=381`, `mma=852`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4531 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `18/4977`; no-PYTHONPATH tight MMA collect selected `852/4977`; no-PYTHONPATH full-file collect reported `4977`; focused mixed-fp4A clean-negative selector passed all `18` cases across four GPUs (`5`, `5`, `5`, and `3` cases; group times `5.21s`, `5.20s`, `4.95s`, and `4.71s`).

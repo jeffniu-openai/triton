@@ -3138,6 +3138,15 @@ SCALED_MMA_LHS_TILE_PERMUTED_FP4_STORAGE_K128_UNSUPPORTED_CASES = [
     for n, acc_layout_kind in product((64, 128, 256), ("legacy", "linear"))
 ]
 
+SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES = [
+    (n, acc_layout_kind) for n, acc_layout_kind in product((64, 128, 256), ("legacy", "linear"))
+]
+
+SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES = [
+    (n, k, acc_layout_kind)
+    for n, k, acc_layout_kind in product((64, 128, 256), (128, 256), ("legacy", "linear"))
+]
+
 SCALED_MMA_ACC_SUBSLICE_N_CASES = [
     (n, slice_start, k)
     for n, k in product((64, 128), (128, 256))
@@ -7863,11 +7872,11 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_fp4_storage_k128_repor
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+@pytest.mark.parametrize("n,acc_layout_kind", SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported(
-    acc_layout_kind, capfd
+    n, acc_layout_kind, capfd
 ):
-    m = n = 128
+    m = 128
     k = 256
     a_format, b_format = "mxfp4", "mxfp8"
     vec_size = 32
@@ -7914,11 +7923,11 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_cle
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
+@pytest.mark.parametrize("n,k,acc_layout_kind", SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported(
-    acc_layout_kind, capfd
+    n, k, acc_layout_kind, capfd
 ):
-    m = n = k = 128
+    m = 128
     a_format, b_format = "mxfp4", "mxfp8"
     vec_size = 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)

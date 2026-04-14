@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:19 UTC: scaled-MMAv5 mixed fp4A clean-negative shape parity
+
+- Added `SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES` and `SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES`.
+- The full-shape tile-permuted TMEM-LHS mixed `mxfp4/mxfp8` clean-negative matrix now covers `N in {64,128,256}`, `K=256`, and both legacy plus canonical TMEM-linear accumulator layouts.
+- The companion TMEM-LHS subview mixed `mxfp4/mxfp8` clean-negative matrix now covers `N in {64,128,256}`, `K in {128,256}`, and the same accumulator-layout pair.
+- These remain clean unsupported because the current scaled-MMAv5 path requires `fp4_padded` shared-memory operand-A storage for mixed fp4A, not dense tensor-memory LHS storage. This is not a positive target without a real storage/model change.
+- Current runtime-matrix collection is `4977` tests: `cp=381`, `mma=852`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4531 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `18/4977`; no-PYTHONPATH tight MMA collect selected `852/4977`; no-PYTHONPATH full-file collect reported `4977`; focused mixed-fp4A clean-negative selector passed all `18` cases across four GPUs (`5`, `5`, `5`, and `3` cases; group times `5.21s`, `5.20s`, `4.95s`, and `4.71s`).
+
 ## 2026-04-14 07:14 UTC: scaled-MMAv5 repeated-N32 clean-negative format/K parity
 
 - Added `SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES` and expanded the direct `128x128/tile_n=32` repeated-N32 accumulator clean-negative to every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`) and `K in {128,256}`.

@@ -599,7 +599,10 @@ Every fuzz case records:
   positive targets yet, because `mxf8f6f4` fp4 LHS currently requires
   `fp4_padded` shared-memory operand-A storage. The subview frontier is pinned
   by `experiments/probe_mma_scaled_lhs_subslice_formats.py`, and the runtime
-  matrix now also pins the full-shape tile-permuted clean-negative paths.
+  matrix now pins the full-shape tile-permuted clean-negative paths at
+  `N in {64,128,256}`, `K=256`, and legacy/canonical accumulator layouts plus
+  the subview clean-negative paths at `N in {64,128,256}`, `K in {128,256}`,
+  and legacy/canonical accumulator layouts.
 
 #### Checks
 - Runtime result matches a dequantized reference within established tolerances.
