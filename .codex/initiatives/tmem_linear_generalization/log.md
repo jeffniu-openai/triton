@@ -13259,3 +13259,19 @@ Open after this slice:
   - tight MMA runner passed all `552` cases across groups `138`, `138`, `138`, and `138`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=552`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3393 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation outside the parked copy `warpx2` descriptor/address frontiers.
+
+## 2026-04-14 04:28 UTC: plain-MMAv5 blockM=64 N=64 coverage
+
+- Expanded `MMA_M64_PLAIN_KIND_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- The M64 matrix now covers every supported plain operand kind, both legacy/canonical M64 accumulator layouts, `K in {32,64}`, and both no-accumulator and `use_acc=True` at all three N widths.
+- `_expected_m64_plain_mma_op_count` already handles the new shape: legacy M64 sugar uses `N // 64`, so the new `N=64` cases emit one 64-column chunk; canonical M64 linear remains at the root count.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH M64 collect selected `120/3879`;
+  - no-PYTHONPATH tight `mma` collect selected `592/3879`;
+  - focused M64 selector passed all `120` cases across four GPUs (`30` each);
+  - tight MMA runner passed all `592` cases across groups `148`, `148`, `148`, and `148`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=592`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3433 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another staged ISA coverage gap.

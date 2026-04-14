@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:28 UTC: plain-MMAv5 blockM=64 N=64 coverage
+
+- `MMA_M64_PLAIN_KIND_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- `test_tmem_runtime_matrix_mma_plain_kinds_m64` therefore covers the smaller legal one-CTA root `M=64,N=64` MMAv5 surface for every supported plain operand kind, both legacy/canonical M64 accumulator layouts, `K in {32,64}`, and both no-accumulator and `use_acc=True` paths.
+- The existing expected-count helper already models this shape: legacy M64 sugar uses `N // 64`, which is one chunk at `N=64`, and canonical M64 linear remains at the root count.
+- Current runtime-matrix collection is `3879` tests: `cp=322`, `mma=592`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3433 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH M64 collect selected `120/3879`; no-PYTHONPATH tight `mma` collect selected `592/3879`; focused M64 selector passed `120` cases across four GPUs (`30` each); tight MMA runner passed `592` across four groups (`148` each).
+
 ## 2026-04-14 04:24 UTC: plain-MMAv5 full-shape tile-permuted TMEM-LHS K-depth coverage
 
 - `tmem_mma_lhs_kernel` now takes `K` as a constexpr instead of hard-coding `K=256`.

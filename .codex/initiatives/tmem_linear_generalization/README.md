@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 3839-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 3879-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current plain-MMAv5 `blockM=64, N=64` checkpoint, 2026-04-14 04:28 UTC: `test_tmem_runtime_matrix_mma_plain_kinds_m64` now covers `N in {64, 128, 256}` for one-CTA root `M=64` MMAv5, every supported plain operand kind, `K in {32,64}`, both no-accumulator and `use_acc=True`, and both legacy M64 sugar plus canonical M64 TMEM-linear accumulator layouts. The existing `_expected_m64_plain_mma_op_count(kind, K, acc_layout_kind, N)` logic naturally handles the new `N=64` surface: legacy M64 sugar emits one 64-column chunk, while canonical M64 linear keeps the root count. Current runtime-matrix collection is `3879` tests: `cp=322`, `mma=592`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3433 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; no-PYTHONPATH M64 collect selected `120/3879`; no-PYTHONPATH tight `mma` collect selected `592/3879`; focused M64 selector passed all `120` cases across four GPUs (`30` each); tight MMA runner passed all `592` cases across four groups (`148` each); `git diff --check` passed.
 
 - Current plain-MMAv5 full-shape tile-permuted TMEM-LHS K-depth checkpoint, 2026-04-14 04:24 UTC: `tmem_mma_lhs_kernel` now takes `K` as a constexpr and `test_tmem_runtime_matrix_mma_lhs_tile_permuted` covers `K in {128, 256}` for the existing legal full-shape tile-permuted TMEM-LHS plain-MMAv5 surface. The new `K=128` cases use `tile_n=32`; the existing `K=256` cases keep `tile_n=64`. Coverage spans every supported plain operand kind at `N=128`, plus the non-OOR `N=256` shapes including `tf32,K=128`; only `tf32,N=256,K=256` remains omitted because this direct shared-B helper exceeds shared memory at that tile. Exact opcode counts now use `_expected_lhs_tile_permuted_mma_op_count(kind, K)`, so the matrix pins both half-depth and full-depth instruction counts. Current runtime-matrix collection is `3839` tests: `cp=322`, `mma=552`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3393 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `19/3839`; no-PYTHONPATH tight `mma` collect selected `552/3839`; focused selector passed all `19` cases across four GPUs (`5`, `5`, `5`, `4`); tight MMA runner passed all `552` cases across four groups (`138`, `138`, `138`, `138`); `git diff --check` passed. A provisional `N=128,tile_n=64` scaled-accumulator probe was discarded before commit because it is not a meaningful nontrivial linear tile permutation under the current helper: there is no second tile-selector bit to swap at exactly two 64-column tiles.
 
