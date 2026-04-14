@@ -14001,3 +14001,18 @@ Open after this slice:
   - focused `ld_red_descriptor_chain` selector passed all `48` cases across split-4 on four GPUs (`12` per group; group times `44.84s`, `48.10s`, `58.35s`, and `190.20s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5629 passed, 446 skipped`.
 - Next: commit/push this checkpoint, then continue another exact non-parked coverage slice.
+## 2026-04-14 09:20 UTC: plain-MMAv5 accumulator subslice descriptor-view coverage
+
+- Added `tmem_mma_acc_subslice_kernel` plus `MMA_ACC_SUBSLICE_CASES` and `test_tmem_runtime_matrix_mma_acc_subslice_view_plain_kinds`.
+- The kernel allocates a linear `[M, 2*N]` f32 accumulator parent, takes `acc_parent.slice(slice_start, N, dim=1)`, optionally initializes the sliced accumulator when `use_acc=True`, runs plain `tcgen05_mma` into that descriptor view, and loads the view back for validation.
+- Positive coverage spans all supported plain operand kinds, `N in {64,128,256}`, `K in {32,64}`, `slice_start in {0,N}`, and `use_acc in {False,True}`. The test pins runtime matmul equality, optional accumulator add, exact PTX/LLIR `tcgen05.mma` opcode counts, exact commit opcode when `use_acc=True`, and surviving `ttg.memdesc_subslice` plus `tensor_memory_linear` TTGIR markers.
+- Validation completed:
+  - `make -j8` -> no work to do;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed before docs;
+  - no-PYTHONPATH focused `mma_acc_subslice_view_plain_kinds` collect selected `120/6195`;
+  - no-PYTHONPATH tight MMA collect selected `1478/6195`;
+  - no-PYTHONPATH full-file collect reported `6195`;
+  - focused `mma_acc_subslice_view_plain_kinds` selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `27.11s`, `28.64s`, `26.84s`, and `27.04s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1478`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5749 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard copy `warpx2` frontiers remain parked unless there is a real descriptor/address/staging hypothesis.

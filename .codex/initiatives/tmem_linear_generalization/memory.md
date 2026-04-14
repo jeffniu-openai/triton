@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:20 UTC: plain-MMAv5 accumulator subslice descriptor-view coverage
+
+- Added `tmem_mma_acc_subslice_kernel`, `MMA_ACC_SUBSLICE_CASES`, and `test_tmem_runtime_matrix_mma_acc_subslice_view_plain_kinds` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- This closes the plain-MMAv5 accumulator `ttg.memdesc_subslice` descriptor-view gap beside the existing indexed-accumulator coverage and the scaled-MMAv5 accumulator-subview coverage.
+- Coverage spans every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`), `N in {64,128,256}`, `K in {32,64}`, `slice_start in {0,N}`, and `use_acc in {False,True}` through a linear `[128, 2*N]` accumulator parent.
+- Current runtime-matrix collection is `6195` tests: `cp=381`, `mma=1478`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5749 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `mma_acc_subslice_view_plain_kinds` collect selected `120/6195`; no-PYTHONPATH tight MMA collect selected `1478/6195`; no-PYTHONPATH full-file collect reported `6195`; focused accumulator-subslice selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `27.11s`, `28.64s`, `26.84s`, and `27.04s`).
+- Next: commit/push this MMAv5 descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard copy `warpx2` frontiers remain parked unless there is a real descriptor/address/staging hypothesis.
+
 ## 2026-04-14 09:16 UTC: ld.red descriptor-view explicit variants
 
 - Extended `tmem_ld_red_descriptor_chain_kernel` with a `load_variant` constexpr and changed `LD_RED_DESCRIPTOR_CHAIN_CASES` from 3 auto-only layout cases to 6 layout/variant cases.

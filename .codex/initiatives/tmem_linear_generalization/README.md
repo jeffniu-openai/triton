@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 6075-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 6195-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current plain-MMAv5 accumulator-subslice descriptor-view checkpoint, 2026-04-14 09:20 UTC: added a 120-case positive matrix for `tcgen05.mma` accumulator views formed with `ttg.memdesc_subslice` from a linear `[128, 2*N]` parent. Coverage spans every supported plain operand kind, `N in {64,128,256}`, `K in {32,64}`, both `slice_start=0` and `slice_start=N`, and both no-accumulator plus `use_acc=True` paths. Current runtime-matrix collection is `6195` tests: `cp=381`, `mma=1478`, splitn/misc `=499`, `ld_red=968`, and `ldst=2869`; bucketed evidence now aggregates to `5749 passed, 446 skipped`. Validation: `make -j8` no-op success; py-compile passed; `git diff --check` passed before docs; no-PYTHONPATH focused `mma_acc_subslice_view_plain_kinds` collect selected `120/6195`; no-PYTHONPATH tight MMA collect selected `1478/6195`; full-file collect reported `6195`; focused selector passed all `120` cases across split-4 on four GPUs (`30` per group; times `27.11s`, `28.64s`, `26.84s`, and `27.04s`).
 
 - Current `ld.red` descriptor-view explicit-variant checkpoint, 2026-04-14 09:16 UTC: extended the TMEM descriptor-view reduction slice so identity views cover every compatible explicit reduction register-layout request (`auto`, `32x32b`, `16x32bx2`, `32x32b_splitn`) while tile-permuted and row/column-permuted descriptor views continue to cover `auto`. Current runtime-matrix collection is `6075` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=968`, and `ldst=2869`; bucketed evidence now aggregates to `5629 passed, 446 skipped`. Validation: `make -j8` no-op success; py-compile passed; `git diff --check` passed; no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `48/6075`; no-PYTHONPATH `ld_red` collect selected `968/6075`; focused `ld_red_descriptor_chain` selector passed all `48` cases across split-4 on four GPUs (`12` per group; times `44.84s`, `48.10s`, `58.35s`, and `190.20s`).
 

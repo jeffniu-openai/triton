@@ -1430,6 +1430,53 @@ def tmem_mma_indexed_acc_kernel(
 
 
 @gluon.jit
+def tmem_mma_acc_subslice_kernel(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    out_ptr,
+    M: ttgl.constexpr,
+    N: ttgl.constexpr,
+    K: ttgl.constexpr,
+    parent_layout: ttgl.constexpr,
+    slice_start: ttgl.constexpr,
+    block_layout_a: ttgl.constexpr,
+    block_layout_b: ttgl.constexpr,
+    shared_layout_a: ttgl.constexpr,
+    shared_layout_b: ttgl.constexpr,
+    use_acc: ttgl.constexpr,
+):
+    a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
+    b_offs = ttgl.arange(0, K)[:, None] * N + ttgl.arange(0, N)[None, :]
+    c_offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+
+    a = ttgl.load(ttgl.set_auto_layout(a_ptr + a_offs, block_layout_a))
+    b = ttgl.load(ttgl.set_auto_layout(b_ptr + b_offs, block_layout_b))
+    operand_dtype: ttgl.constexpr = a.dtype
+
+    smem_a = ttgl.allocate_shared_memory(operand_dtype, [M, K], layout=shared_layout_a)
+    smem_b = ttgl.allocate_shared_memory(operand_dtype, [K, N], layout=shared_layout_b)
+    smem_a.store(a)
+    smem_b.store(b)
+
+    acc_parent = allocate_tensor_memory(ttgl.float32, [M, 2 * N], parent_layout)
+    acc_tmem = acc_parent.slice(slice_start, N, dim=1)
+    if use_acc:
+        c = ttgl.load(c_ptr + c_offs)
+        acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
+        acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=tcgen05_mma_barrier_count([smem_a, smem_b], False))
+    tcgen05_mma(smem_a, smem_b, acc_tmem, use_acc=use_acc, mbarriers=[bar])
+    mbarrier.wait(bar, phase=0, deps=[smem_a, smem_b])
+    mbarrier.invalidate(bar)
+
+    out = acc_tmem.load()
+    ttgl.store(out_ptr + c_offs, out)
+
+
+@gluon.jit
 def tmem_mma_lhs_kernel(
     a_ptr,
     b_ptr,
@@ -6957,6 +7004,12 @@ MMA_INDEXED_ACC_CASES = [
     if not (parent_layout_kind == "linear" and n == 256)
 ]
 
+MMA_ACC_SUBSLICE_CASES = [
+    (kind, n, k, slice_start, use_acc)
+    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64), (False, True))
+    for slice_start in (0, n)
+]
+
 MMA_PLAIN_KIND_ACC_CASES = [
     (kind, acc_layout_kind, n, k)
     for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
@@ -7852,6 +7905,53 @@ def test_tmem_runtime_matrix_mma_indexed_acc_view(kind, parent_layout_kind, n, k
     assert layout_token in ttgir
     if parent_layout_kind == "linear":
         assert "tensor_memory_encoding" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,n,k,slice_start,use_acc", MMA_ACC_SUBSLICE_CASES)
+def test_tmem_runtime_matrix_mma_acc_subslice_view_plain_kinds(kind, n, k, slice_start, use_acc):
+    m = 128
+    parent_layout = _make_tmem_linear_layout(m, 2 * n)
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+
+    a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    c = torch.randn((m, n), device="cuda", dtype=torch.float32)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_mma_acc_subslice_kernel[(1, )](
+        a,
+        b,
+        c,
+        out,
+        m,
+        n,
+        k,
+        parent_layout,
+        slice_start,
+        block_layout_a,
+        block_layout_b,
+        shared_layout_a,
+        shared_layout_b,
+        use_acc,
+        num_warps=4,
+    )
+
+    ref = torch.matmul(a.to(torch.float32), b.to(torch.float32))
+    if use_acc:
+        ref = ref + c
+    torch.testing.assert_close(out.to(torch.float32), ref.to(torch.float32), atol=atol, rtol=rtol)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_plain_mma_op_count(kind, k)
+    assert all(op == expected_kind for op in mma_ops)
+    if use_acc:
+        _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "tensor_memory_encoding" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
