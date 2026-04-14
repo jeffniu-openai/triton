@@ -6840,9 +6840,11 @@ MMA_TILE_PERMUTED_KIND_CASES = [
     for k in (32, 64)
 ]
 
-MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES = [
-    (kind, k, use_acc)
-    for kind, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64), (False, True))
+MMA_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
+    (kind, n, tile_n, k, use_acc)
+    for kind, (n, tile_n), k, use_acc in product(
+        MMA_PLAIN_KINDS, ((32, 8), (64, 16)), (32, 64), (False, True)
+    )
 ]
 
 MMA_LHS_TILE_PERMUTED_NK_CASES = [
@@ -7814,11 +7816,12 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, 
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,k,use_acc", MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_mma_acc_tile_permuted_n64_reports_clean_unsupported(kind, k, use_acc, capfd):
+@pytest.mark.parametrize("kind,n,tile_n,k,use_acc", MMA_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_mma_acc_tile_permuted_narrow_reports_clean_unsupported(
+    kind, n, tile_n, k, use_acc, capfd
+):
     m = 128
-    n = 64
-    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, 16)
+    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     a, b, shared_layout_a, shared_layout_b, _expected_kind, _atol, _rtol = _make_mma_plain_kind_inputs(kind, m, n, k)

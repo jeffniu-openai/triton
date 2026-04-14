@@ -579,9 +579,9 @@ Every fuzz case records:
   M64 accumulator family across legacy/canonical layouts, `N in {64,128,256}`,
   and `K in {32,64}`.
 - non-MMAv5-equivalent TMEM-linear accumulator layouts
-  - current tile-permuted clean-negative coverage pins `128x64/tile_n=16` for
-    every supported plain kind, `blockK in {32,64}`, and both no-accumulator plus
-    `use_acc=True` paths.
+  - current tile-permuted clean-negative coverage pins `128x32/tile_n=8` and
+    `128x64/tile_n=16` for every supported plain kind, `blockK in {32,64}`, and
+    both no-accumulator plus `use_acc=True` paths.
 - transposed float32 shared operands
   - current live nuance: direct non-TMA 2-CTA TF32 coverage is green, and
     TMA-fed 2-CTA TF32 is positive at `blockN in {64, 128, 256}` when B is loaded

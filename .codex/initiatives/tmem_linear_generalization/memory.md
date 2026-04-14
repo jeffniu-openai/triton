@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:44 UTC: plain-MMAv5 narrow tile-permuted accumulator clean negatives
+
+- Expanded plain-MMAv5 tile-permuted accumulator clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `MMA_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES` now covers both `128x32/tile_n=8` and `128x64/tile_n=16`, every supported plain operand kind, `K in {32,64}`, and both no-accumulator plus `use_acc=True` paths.
+- The test continues to require the clean MMAv5-compatible tensor-memory-layout verifier diagnostic and rejects PassManager/assertion noise. Positive tile-permuted accumulator coverage remains `128x128/tile_n=32` and `128x256/tile_n=64`.
+- Current runtime-matrix collection is `5967` tests: `cp=381`, `mma=1338`, splitn/misc `=499`, `ld_red=920`, `ldst=2829`; current bucketed evidence aggregates to `5521 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused `tile_permuted_narrow` collect selected `40/5967`; no-PYTHONPATH tight MMA collect selected `1338/5967`; no-PYTHONPATH full-file collect reported `5967`; focused `tile_permuted_narrow` selector passed all `40` cases across split-4 on four GPUs (`10` per group; group times `5.76s`, `5.98s`, `5.90s`, and `5.76s`).
+- Next: commit/push this bounded MMAv5 clean-negative checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 08:40 UTC: scales ld/st explicit N-sharded variant coverage
 
 - Added generated tensor-memory-scales `ld/st` coverage for explicit N-sharded variants `16x64b`, `16x128b`, and `16x256b` in `python/test/gluon/test_tmem_runtime_matrix.py`.
