@@ -667,6 +667,12 @@ Every fuzz case records:
 
 #### Negative frontier
 - unsupported TMEM-linear accumulator or scale layouts
+- direct scaled-MMAv5 narrow tile-permuted accumulator layouts that are not
+  directly representable by the current block-scaled tensor-memory layout
+  contract. Current clean-negative coverage includes `128x32/tile_n=8` and
+  `128x64/tile_n=16` for every current scaled format pair at `K in {128,256}`
+  and should keep the clean directly-supported block-scaled tensor-memory
+  diagnostic.
 - tile-permuted accumulators or accumulator subviews that would require
   repeated `N=32` block-scaled MMAv5 instructions. Current clean-negative
   coverage includes the direct `128x128/tile_n=32` accumulator path and the

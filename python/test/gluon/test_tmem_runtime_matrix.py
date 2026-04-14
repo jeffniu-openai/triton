@@ -3371,6 +3371,13 @@ SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES = [
     for k in (128, 256)
 ]
 
+SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
+    (a_format, b_format, n, tile_n, k)
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+    for n, tile_n in ((32, 8), (64, 16))
+    for k in (128, 256)
+]
+
 SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = [
     (a_format, b_format, slice_start, block_k, multicast)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
@@ -8876,6 +8883,50 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_for
     assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
     assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("a_format,b_format,n,tile_n,k", SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported(
+    a_format, b_format, n, tile_n, k, capfd
+):
+    m = 128
+    layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_scaled_layout_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            layout,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            0.0,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "directly supported MMAv5 block-scaled tensor memory" in text
+    assert "tile-permuted accumulator layouts are not directly representable" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

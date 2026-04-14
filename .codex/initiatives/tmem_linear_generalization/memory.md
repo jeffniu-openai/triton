@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:48 UTC: scaled-MMAv5 narrow tile-permuted accumulator clean negatives
+
+- Added a separate scaled-MMAv5 clean-negative matrix for narrow direct tile-permuted accumulator layouts in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES` covers `128x32/tile_n=8` and `128x64/tile_n=16` for every current scaled format pair and `K in {128,256}`.
+- These cases fail cleanly with the directly-supported block-scaled tensor-memory diagnostic because narrow tile-permuted accumulators are not directly representable for the current direct block-scaled MMAv5 path. Keep this distinct from the existing repeated-`N=32` `128x128/tile_n=32` negative, which is the matrix-B scale-fragment 64-column-alignment boundary.
+- Current runtime-matrix collection is `5987` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2829`; current bucketed evidence aggregates to `5541 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check` after docs; `make -j8`; no-PYTHONPATH focused `scaled_acc_tile_permuted_narrow` collect selected `20/5987`; no-PYTHONPATH tight MMA collect selected `1358/5987`; no-PYTHONPATH full-file collect reported `5987`; focused `scaled_acc_tile_permuted_narrow` selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `5.82s`, `5.90s`, `5.69s`, and `6.08s`).
+- Next: commit/push this bounded scaled-MMAv5 clean-negative checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 08:44 UTC: plain-MMAv5 narrow tile-permuted accumulator clean negatives
 
 - Expanded plain-MMAv5 tile-permuted accumulator clean-negative coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.
