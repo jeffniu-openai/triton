@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:59 UTC: warpx2 dense-shared clean-negative dtype parity
+
+- The no-scales `warpx2` dense-shared clean-negative tests now cover f32+i32 payloads for both single-CTA and two-CTA destination layouts, across `warpx2::01_23.64x128b` and `warpx2::02_13.64x128b` TMEM layouts.
+- This is a test-only boundary/parity change: production lowering remains unchanged, supported `warpx2` positives remain the f32+i32 single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23` paths, and the hard two-CTA `02_13` plus true scales frontiers remain parked without a descriptor/address/staging model.
+- Current runtime-matrix collection is `4896` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4450 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `8/4896`; no-PYTHONPATH `cp` bucket selected `381/4896`; focused dense-shared `warpx2` clean-negative selector passed all `8` cases across four GPUs (`2` per group; group times `4.08s`, `4.30s`, `4.17s`, and `4.35s`); full `cp` bucket passed `376` and skipped `5` across four GPUs (`91 passed, 5 skipped`, `96 passed`, `96 passed`, and `93 passed`; slowest `7.20s` on warm caches).
+
 ## 2026-04-14 06:56 UTC: broad two-CTA no-scales copy dtype parity
 
 - `CP_NO_SCALES_TWOCTA_CASES` now parameterizes `test_tmem_runtime_matrix_cp_no_scales_twocta_codegen` directly instead of hiding a f32-only loop inside one pytest node.

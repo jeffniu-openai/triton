@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4892-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4896-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `warpx2` dense-shared clean-negative dtype-parity checkpoint, 2026-04-14 06:59 UTC: the single-CTA and two-CTA dense-shared clean-negative tests for no-scales `tcgen05.copy.warpx2::{01_23,02_13}.64x128b` now cover f32+i32 payloads instead of f32 only. This does not change the supported-positive or parked-frontier status: executable `warpx2` positives remain f32+i32 for single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23`; two-CTA `02_13` and true scales `warpx2` still require a real descriptor/address/staging model. Current runtime-matrix collection is `4896` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4450 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `8/4896`; no-PYTHONPATH `cp` collect selected `381/4896`; focused dense-shared `warpx2` clean-negative selector passed all `8` cases across split-4 on four GPUs (`2` per group; slowest `4.35s`); full `cp` bucket passed `376` and skipped `5` across split-4 on four GPUs (`96`, `96`, `96`, and `93` selected; slowest `7.20s` on warm caches).
 
 - Current broad two-CTA no-scales copy dtype-parity checkpoint, 2026-04-14 06:56 UTC: `CP_NO_SCALES_TWOCTA_CASES` is now a visible pytest matrix over legacy/canonical two-CTA destination layouts, f32+i32 payloads, `N`/swizzle shapes, exact `tcgen05.cp.cta_group::2.128x256b` counts, and multicast commit/barrier ordering. This replaces the previous hidden in-test f32-only loop, so pytest-split can schedule the 56 cases directly while the test also proves i32 parity for the broad two-CTA no-scales copy surface. Current runtime-matrix collection is `4892` tests: `cp=377`, `mma=824`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4446 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `56/4892`; no-PYTHONPATH `cp` collect selected `377/4892` through split-4; focused two-CTA no-scales selector passed all `56` cases across split-4 on four GPUs (`14` per group; slowest `11.36s`); full `cp` bucket passed `372` and skipped `5` across split-4 on four GPUs (`95`, `95`, `95`, and `92` selected; slowest `81.12s`).
 

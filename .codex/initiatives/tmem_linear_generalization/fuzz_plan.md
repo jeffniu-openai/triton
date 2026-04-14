@@ -363,9 +363,9 @@ Every fuzz case records:
   those base families.
 - Special no-scales `cta_group::1` `warpx2::{01_23,02_13}.64x128b` paths are
   covered by executable candidate tests with runtime oracles and exact commit
-  opcode checks. Dense shared-layout `warpx2` forms are clean negatives until a
-  correct descriptor/address model exists; they previously emitted opcodes but
-  copied wrong data.
+  opcode checks. Dense shared-layout `warpx2` forms are clean negatives for
+  f32+i32 payloads until a correct descriptor/address model exists; they
+  previously emitted opcodes but copied wrong data.
 - No-scales `cta_group::2` `warpx2::01_23.64x128b` is covered by an
   executable public-layout test with exact copy and multicast commit opcodes.
   `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the

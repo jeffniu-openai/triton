@@ -13589,3 +13589,19 @@ Open after this slice:
   - full `cp` bucket passed `372` and skipped `5` across split-4 on four GPUs (`90 passed, 5 skipped` in `72.22s`, `95 passed` in `35.08s`, `95 passed` in `81.12s`, and `92 passed` in `79.59s`).
 - Current runtime-matrix bucket totals: `cp=377`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4446 passed, 446 skipped`.
 - Next: commit/push this bounded CP checkpoint, then move to another staged ISA-coverage slice. Copy `warpx2` hard frontiers remain parked until there is a real descriptor/address/staging model, but reachable no-scales dense copy surfaces should continue to get dtype/layout parity where the current matcher already supports them.
+
+## 2026-04-14 06:59 UTC: warpx2 dense-shared clean-negative dtype parity
+
+- Parameterized the single-CTA and two-CTA no-scales dense-shared `warpx2` clean-negative tests over `CP_NO_SCALES_WARPX2_DTYPES`.
+- Coverage now includes f32+i32 for dense-shared source layouts rejected against `warpx2::{01_23,02_13}.64x128b` TMEM destinations, preserving the clean canonical-shared-layout diagnostic and absence of PassManager/assertion noise.
+- This is a test-only boundary expansion. It does not change the supported-positive set or the hard frontiers: true scales `warpx2` and no-scales two-CTA `warpx2::02_13` remain descriptor/address/staging problems.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `8/4896`;
+  - no-PYTHONPATH full `cp` bucket selected `381/4896` through split-4;
+  - focused dense-shared `warpx2` clean-negative selector passed all `8` cases across split-4 on four GPUs (`2` per group; `4.08s`, `4.30s`, `4.17s`, and `4.35s`);
+  - full `cp` bucket passed `376` and skipped `5` across split-4 on four GPUs (`91 passed, 5 skipped` in `4.97s`, `96 passed` in `7.20s`, `96 passed` in `6.62s`, and `93 passed` in `5.66s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4450 passed, 446 skipped`.
+- Next: commit/push this bounded `warpx2` checkpoint. Remaining copy `warpx2` work is no longer another easy dtype/layout parity gap; do not force the parked hard frontiers without a real descriptor/address/staging hypothesis. Move to another non-parked TMEM ISA coverage family if no such hypothesis is available.

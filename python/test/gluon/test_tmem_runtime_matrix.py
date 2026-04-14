@@ -5957,6 +5957,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
 @pytest.mark.parametrize(
     "family,tmem_layout",
     [
@@ -5965,12 +5966,12 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_
     ],
 )
 def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsupported(
-    family, tmem_layout, capfd
+    family, tmem_layout, dtype_name, torch_dtype, capfd
 ):
     M = 128
     N = 4
     shared_layout = _make_tmem_copy_128x128_shared_layout()
-    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
     out = torch.empty((1, ), device="cuda", dtype=torch.int32)
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -5988,6 +5989,7 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsu
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
 @pytest.mark.parametrize(
     "family,tmem_layout",
     [
@@ -5996,12 +5998,12 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsu
     ],
 )
 def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported(
-    family, tmem_layout, capfd
+    family, tmem_layout, dtype_name, torch_dtype, capfd
 ):
     M = 256
     N = 4
     shared_layout = _make_tmem_copy_128x128_shared_layout_twocta()
-    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
     out = torch.empty_like(inp)
 
     with pytest.raises(RuntimeError) as excinfo:
