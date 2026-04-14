@@ -91,6 +91,21 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Latest GB200 status checkpoint, 2026-04-14 00:46 UTC: current branch `codex/tmem`
+  is clean and synced at `cfef1b94f`. Fresh current-HEAD checks after the
+  runtime-matrix runner/duration-only commits: `make -j8` success,
+  `make test-cpp` `240/240` passed, `make test-lit` `248 passed, 2 unsupported`,
+  four-GPU split `python/test/gsan python/test/regression` aggregate
+  `1110 passed, 216 skipped`, and `test-microbenchmark` passed with median
+  launch overhead `22.5695`. A broad `python/test/unit` four-GPU refresh was
+  stopped after three shards were green and the fourth was still making progress
+  because no compiler/runtime source changed since the full GB200-green
+  inventory; use the existing inventory plus targeted reruns for unchanged
+  surfaces instead of spending dev time on blanket retests. Current conclusion:
+  no known branch-caused GB200 CI failures; Proton still has the known
+  merge-base-reproducing cudagraph / periodic-flushing failures and remains
+  non-actionable for this TMEM branch.
+
 - Latest runtime-matrix speed checkpoint, 2026-04-13 23:01 UTC: the five lifted `ld/st` descriptor roundtrip matrices that previously compiled to `OutOfResources` and then skipped are now marked as known pre-execution skips. This preserves instruction/op coverage because those `440` cases never emitted or executed `tcgen05` op coverage; they only consumed compile time before `pytest.skip`. Validation: py-compile passed; `make -j8` no-op success; `env -u PYTHONPATH pytest --collect-only -q python/test/gluon/test_tmem_runtime_matrix.py -k ldst` still collects `1642/3150`; the exact five skip-only functions now report `440 skipped in 2.40s`; full runner `ldst` passed with the same `1201 passed, 441 skipped`, while shard times improved from the prior `271.68s..350.27s` range to `194.71s..273.96s`.
 
 - Latest runtime-matrix validation-velocity checkpoint, 2026-04-13 22:15 UTC: the full `python/test/gluon/test_tmem_runtime_matrix.py` local sweep now has a coverage-preserving runner, `.codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`, plus `tmem_runtime_matrix_validation_recipe_20260413.md`. Full collection remains `3150` tests. The runner partitions the matrix into `cp` (`312`), tight `mma` (`301`), exact-nodeid splitn/misc (`252`), `ld_red` (`643`), and `ldst` (`1642`) buckets, summing to the full matrix. The timeout diagnosis is cold compilation plus bad static partitioning, not a deadlock: representative `ldst` cold/warm timing was about `31s`/`3s`, and representative `ld_red` cold/warm timing was about `10s`/`3s`. Validation: `make -j8` no-op success; runner py-compile passed; runner `--dry-run` emitted deterministic commands; exact-nodeid `splitn` runner smoke passed `252` tests; full runner `ld_red` passed `643` tests with shard times from about `14s` to `96s`; full runner `ldst` passed `1201` and skipped `441` with shard times from about `4:32` to `5:50`. Current per-bucket evidence aggregates to full-matrix coverage: `2704 passed, 446 skipped` across all `3150` collected cases, without reducing the matrix.

@@ -1,3 +1,23 @@
+## 2026-04-14 00:46 UTC
+
+- Refreshed GB200 status after the runner-duration-only commits at
+  `cfef1b94f`.
+- Fresh current-HEAD checks completed:
+  - `make -j8`: success;
+  - `make test-cpp`: `240/240` passed;
+  - `make test-lit`: `248 passed, 2 unsupported`;
+  - four-GPU split `python/test/gsan python/test/regression`:
+    `1110 passed, 216 skipped` aggregate;
+  - launch-overhead microbenchmark passed with median `22.5695`.
+- A broad `python/test/unit` four-GPU refresh was intentionally stopped after
+  three shards completed green and the fourth was still making progress. This
+  is a validation-velocity lesson, not a product failure: no compiler/runtime
+  source changed since the full GB200-green inventory, so future status checks
+  should use the inventory plus targeted reruns instead of blanket retesting.
+- Current actionable GB200 status remains empty: no known deterministic
+  branch-caused failures. Proton's known cudagraph / periodic-flushing failures
+  remain merge-base-preexisting noise.
+
 ## 2026-04-12 09:33 UTC: GB200 preserve-set before TMEM attribute cleanup
 
 - Recorded `gb200_preserve_set_20260412.md` before removing branch-only TMEM

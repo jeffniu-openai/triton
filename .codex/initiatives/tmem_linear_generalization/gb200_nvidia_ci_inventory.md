@@ -22,6 +22,33 @@ noise lives in `gb200_failure_classification_20260412.md`.
 
 ## Current Broad Validation Checkpoint (2026-04-13 05:41 UTC)
 
+### 2026-04-14 00:46 UTC Refresh On `cfef1b94f`
+
+- Current branch state:
+  - `codex/tmem` is clean and synced to `origin/codex/tmem` at `cfef1b94f`.
+  - Since the full current-head GB200 inventory, intervening commits only
+    changed initiative docs, TMEM runtime-matrix duration data, and the local
+    runtime-matrix runner; compiler/runtime source behavior did not change.
+- Fresh current-HEAD checks completed:
+  - `make -j8`: success;
+  - `make test-cpp`: `240/240` passed;
+  - `make test-lit`: `248 passed, 2 unsupported`;
+  - four-GPU split `python/test/gsan python/test/regression`:
+    `1110 passed, 216 skipped` aggregate;
+  - `make test-microbenchmark` equivalent:
+    passed with median launch overhead `22.5695`.
+- Broad `python/test/unit` refresh note:
+  - a four-GPU split rerun was stopped for dev-velocity reasons after three
+    split groups had already completed green and the remaining group was still
+    making progress;
+  - do not interpret this as a product failure or as a changed red list;
+  - for unchanged code paths, carry the existing full GB200 inventory and run
+    targeted exact/surface tests instead of blanket reruns.
+- Current branch-actionable conclusion:
+  - no known deterministic branch-caused GB200 CI failure;
+  - Proton's cudagraph / periodic-flushing failures remain
+    `PREEXISTING_ON_MERGE_BASE` noise.
+
 - Current checkpoint:
   - `b475e2883` on `origin/codex/tmem`.
 - Rebuild/current-head compiler checks:
