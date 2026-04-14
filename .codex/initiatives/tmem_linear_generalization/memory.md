@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:34 UTC: scaled-MMAv5 TMEM-LHS nonzero use-acc coverage
+
+- Added `ACC_INIT` to `tmem_mma_scaled_lhs_subslice_format_kernel` and `tmem_mma_scaled_lhs_tile_permuted_format_kernel`; existing positive and clean-negative callers pass `0.0` explicitly.
+- Added `test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_format_use_acc` and `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_use_acc`, each using `acc_init=1.0`.
+- The subview matrix covers the existing positive TMEM-LHS subview surface over current packed-storage reachable scaled format pairs, `N in {64,128,256}`, `K in {128,256}`, and legacy/canonical accumulator layouts.
+- The full-shape tile-permuted matrix covers the existing positive full-shape TMEM-LHS surface: all reachable packed-storage pairs at `K=256` plus the mxfp8-storage pairs at `K=128`, again over `N in {64,128,256}` and both accumulator layout families.
+- The new tests validate `a_ref @ b_ref.T + acc_init`, exact K-scaled scaled-MMAv5 opcode counts, exact commit opcode, and the expected `ttg.memdesc_subslice` or full-shape `tensor_memory_linear` markers. This closes the nearby gap where TMEM-LHS scaled-MMAv5 paths only proved zero-initialized accumulators.
+- Current runtime-matrix collection is `5911` tests: `cp=381`, `mma=1318`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5465 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check` before docs; `make -j8`; no-PYTHONPATH focused use-acc collect selected `84/5911`; no-PYTHONPATH tight MMA collect selected `1318/5911`; no-PYTHONPATH adjacent changed-callsite collect selected `198/5911`; focused use-acc selector passed all `84` cases across split-4 on four GPUs (`21` per group; group times `44.69s`, `41.20s`, `59.75s`, and `67.78s`); adjacent changed-callsite selector passed all `198` cases across split-4 (`50`, `50`, `50`, and `48` selected; group times `100.77s`, `146.15s`, `59.66s`, and `9.47s`).
+- Next: run final hygiene, commit/push this bounded scaled-MMAv5 TMEM-LHS checkpoint, then continue staged ISA saturation in another exact non-parked family. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.
+
 ## 2026-04-14 08:28 UTC: scaled-MMAv5 indexed-accumulator nonzero use-acc coverage
 
 - Added `ACC_INIT` to `tmem_mma_scaled_indexed_acc_format_kernel`; the existing indexed-accumulator matrix passes `0.0` explicitly.

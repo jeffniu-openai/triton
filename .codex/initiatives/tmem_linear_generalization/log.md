@@ -1,3 +1,21 @@
+## 2026-04-14 08:34 UTC: scaled-MMAv5 TMEM-LHS nonzero use-acc coverage
+
+- Added nonzero accumulator-add coverage for scaled-MMAv5 TMEM-LHS subview and full-shape tile-permuted operand-A paths in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `tmem_mma_scaled_lhs_subslice_format_kernel` and `tmem_mma_scaled_lhs_tile_permuted_format_kernel` now take `ACC_INIT`; existing positive and clean-negative callers pass `0.0`, and the new use-acc matrices initialize the accumulator to `1.0`.
+- The new subview matrix covers current packed-storage reachable scaled format pairs, `N in {64,128,256}`, `K in {128,256}`, and legacy/canonical accumulator layouts through `ttg.memdesc_subslice`.
+- The new full-shape tile-permuted matrix covers the existing reachable tile-permuted LHS surface, including all packed-storage pairs at `K=256` plus mxfp8-storage pairs at `K=128`, over `N in {64,128,256}` and both accumulator layout families.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed before docs and will be rerun after docs;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused use-acc collect selected `84/5911`;
+  - no-PYTHONPATH tight MMA collect selected `1318/5911`;
+  - no-PYTHONPATH adjacent changed-callsite collect selected `198/5911`;
+  - focused use-acc selector passed all `84` cases across split-4 on four GPUs (`21` per group; `44.69s`, `41.20s`, `59.75s`, `67.78s`);
+  - adjacent selector passed all `198` cases across split-4 on four GPUs (`50`, `50`, `50`, `48` selected; `100.77s`, `146.15s`, `59.66s`, `9.47s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1318`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5465 passed, 446 skipped`.
+- Next: commit/push this checkpoint and continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 08:19 UTC: scaled-MMAv5 root nonzero-accumulator coverage
 
 - Added nonzero accumulator-add coverage for direct root scaled-MMAv5 in `python/test/gluon/test_tmem_runtime_matrix.py`.

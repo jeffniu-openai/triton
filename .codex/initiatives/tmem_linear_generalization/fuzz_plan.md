@@ -634,7 +634,11 @@ Every fuzz case records:
   Full-shape tile-permuted operand-A descriptors now span `blockN in {64,
   128, 256}` for all reachable packed storage pairs at logical `K=256`, and
   the mxfp8-storage LHS pairs (`mxfp8/mxfp8` and `mxfp8/mxfp4`) at logical
-  `K=128`; fp4-storage `K=128` tile-permuted LHS descriptors are pinned over
+  `K=128`. Both supported TMEM-LHS positive families now have explicit
+  nonzero accumulator-add coverage (`acc_init=1.0`) that checks
+  `matmul + acc_init`, exact scaled-MMAv5 opcode counts, commit opcodes, and
+  the expected `ttg.memdesc_subslice` or full-shape `tensor_memory_linear`
+  markers. fp4-storage `K=128` tile-permuted LHS descriptors are pinned over
   the same N range as a clean MMAv5-layout-compatible verifier negative.
   Mixed `mxfp4/mxfp8` dense TMEM-LHS subviews and full-shape
   tile-permuted TMEM-LHS descriptors are clean unsupported boundaries, not
