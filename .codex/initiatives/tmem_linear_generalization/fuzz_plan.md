@@ -640,7 +640,7 @@ Every fuzz case records:
     `matmul + acc_init`. The direct shared-B `tf32, N=256, K=256` helper shape
     exceeds shared memory and is not a positive target.
   - current TMEM-LHS subview coverage spans `f16`, `tf32`, `bf16`, `f8e5m2`,
-    and `f8e4m3` at `N in {64, 128, 256}` and `K in {32, 64}` for both
+    and `f8e4m3` at `N in {64, 128, 256}` and `K in {32, 64, 128}` for both
     legacy and canonical TMEM-linear accumulator layouts, with exact PTX/LLIR
     opcode and instruction-count checks. The same subview surface now has
     explicit nonzero accumulator-add coverage over the supported
@@ -1184,3 +1184,9 @@ Every fuzz case records:
 - The `linear_unit_parent` rows remain the resource-safe positive construction for canonical-linear `N=256`; do not reclassify the live `[2,128,256]` parent image as legal.
 - One-CTA and two-CTA indexed accumulator matrices now both cover `K in {32,64,128}`.
 - Current full-file collection is `8830` tests and the MMA bucket is `2643` cases. Aggregate bucket evidence is `8379 passed, 451 skipped`.
+
+## 2026-04-14 16:39 UTC: Plain MMAv5 TMEM-LHS Subview K=128 Note
+
+- Plain TMEM-LHS `memdesc_subslice` fuzz generation may now include `K=128` for every supported plain kind, legacy/canonical accumulator layouts, and `N in {64,128,256}`.
+- Both zero-accumulator and `use_acc=True` TMEM-LHS subview paths consume the expanded `K in {32,64,128}` table and pin exact opcode counts using `blockK // 32`.
+- Current full-file collection is `8890` tests and the MMA bucket is `2703` cases. Aggregate bucket evidence is `8439 passed, 451 skipped`.
