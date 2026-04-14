@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:41 UTC: rank-5 descriptor ld/st N=256 lower-resource positives
+
+- Added `tmem_ldst_descriptor_rank5_unit_parent_roundtrip_kernel` and `LDST_DESCRIPTOR_RANK5_N256_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new helper uses a `[1,1,1,M,N]` rank-5 tensor-memory parent and reshapes the indexed base view back to `[M,N]`, keeping descriptor `index`/`subslice`/`reshape`/`trans` coverage while avoiding the 1024-column OOR from the older `[1,1,2,M,N]` helper at `N=256`.
+- Coverage spans `f32`/`i32`, single-CTA identity/mixed layouts, two-CTA block/MMAv5-like layouts, every public `ld/st` variant, and exact eight-message store/load counts for the `N=256` tiled opcode stream.
+- Current runtime-matrix collection is `8013` tests: `cp=598`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7562 passed, 451 skipped`.
+- Validation completed: rank-5 unit-parent scratch probes over every layout and all variants; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `40/8013`; no-PYTHONPATH rank-5 collect selected `130/8013`; no-PYTHONPATH `ldst` collect selected `2949/8013`; no-PYTHONPATH full-file collect reported `8013`; focused selector passed all `40` cases across split-4 (`10` per group; group times `305.64s`, `215.09s`, `252.79s`, and `203.92s`).
+- Note: the historical skipped `[2,2,2]` and resource-bound `[1,1,2]` rank-5 shapes remain distinct boundaries; future `N=256` positive fuzz rows should use the unit-parent construction unless the hardware-resource budget changes.
+- Next: run final hygiene, commit/push this rank-5 checkpoint, then continue another non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 13:27 UTC: linear no-scales copy subword integer clean-negative coverage
 
 - Expanded `CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from f16/bf16 only to `dtype in {f16,bf16,i16,i8}` at `M=128`, `N in {128,256}`, and `swizzle=32`.

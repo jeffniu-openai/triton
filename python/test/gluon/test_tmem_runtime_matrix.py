@@ -831,6 +831,33 @@ def tmem_ldst_descriptor_rank5_small_roundtrip_kernel(in_ptr, out_ptr, layout: t
 
 
 @gluon.jit
+def tmem_ldst_descriptor_rank5_unit_parent_roundtrip_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
+                                                           M: ttgl.constexpr, N: ttgl.constexpr,
+                                                           instr_variant: ttgl.constexpr, delta: ttgl.constexpr):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+
+    tmem = allocate_tensor_memory(element_ty, [1, 1, 1, M, N], layout)
+    base = tmem.index(0).index(0).index(0).reshape((M, N))
+    base_reg_layout: ttgl.constexpr = base.get_reg_layout(instr_variant=instr_variant)
+    base.store(ttgl.convert_layout(value, base_reg_layout))
+
+    alias = tmem.slice(0, 1, dim=0).index(0).slice(0, 1, dim=0).index(0).slice(0, 1, dim=0).index(0)
+    alias = alias.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    alias = alias.permute([1, 0]).permute([1, 0])
+    alias = alias.slice(0, M, dim=0).slice(0, N, dim=1)
+
+    alias_reg_layout: ttgl.constexpr = alias.get_reg_layout(instr_variant=instr_variant)
+    out = alias.load(alias_reg_layout)
+    out = out + ttgl.full([M, N], delta, element_ty, layout=alias_reg_layout)
+    alias.store(out)
+
+    out = base.load(base_reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, base_reg_layout))
+
+
+@gluon.jit
 def tmem_ldst_descriptor_higher_rank_index_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
                                                   N: ttgl.constexpr, instr_variant: ttgl.constexpr):
     element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
@@ -3419,6 +3446,13 @@ LDST_DESCRIPTOR_RANK5_SMALL_CASES = [
     for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
     for n in (64, 128)
+    for variant in LDST_VARIANTS
+]
+
+LDST_DESCRIPTOR_RANK5_N256_CASES = [
+    (dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, variant, LDST_SHAPE_MAP[variant][256])
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
+    for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
     for variant in LDST_VARIANTS
 ]
 
@@ -6070,6 +6104,43 @@ def test_tmem_runtime_matrix_ldst_descriptor_rank5_small_roundtrip(
     expected_message_count = 2 if expected_shape.startswith("32x32b") else 4
     assert observed_opcodes.count(expected_st) == expected_message_count
     assert observed_opcodes.count(expected_ld) == expected_message_count
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
+    if num_ctas == 2:
+        assert "twoCTAs = true" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,case_name,layout_group,layout_name,m,num_ctas,variant,expected_shape",
+    LDST_DESCRIPTOR_RANK5_N256_CASES,
+)
+def test_tmem_runtime_matrix_ldst_descriptor_rank5_unit_parent_n256_roundtrip(
+    dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, variant, expected_shape
+):
+    n = 256
+    base_layout = LDST_LAYOUTS[layout_name](n) if layout_group == "single" else LDST_TWOCTA_LAYOUTS[layout_name](n)
+    layout = _lift_tmem_layout(base_layout, [1, 1, 1])
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
+    out = torch.empty_like(inp)
+    delta = 29 if dtype_name == "i32" else 29.0
+
+    compiled = tmem_ldst_descriptor_rank5_unit_parent_roundtrip_kernel[(1, )](
+        inp, out, layout, m, n, variant, delta, num_warps=4, num_ctas=num_ctas
+    )
+    torch.testing.assert_close(out, inp + delta, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert observed_opcodes.count(expected_st) == 8
+    assert observed_opcodes.count(expected_ld) == 8
 
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir

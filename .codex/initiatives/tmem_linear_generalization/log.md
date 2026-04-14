@@ -14307,3 +14307,12 @@ Open after this slice:
 - Current runtime-matrix collection is `7973` tests: `cp=598`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7522 passed, 451 skipped`.
 - Validation: i16/i8 scratch probes hit the intended clean diagnostic; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH exact collect selected `8/7973`; no-PYTHONPATH CP collect selected `598/7973`; no-PYTHONPATH full-file collect reported `7973`; exact selector passed all `8` cases across split-4 (`2` per group; group times `4.11s`, `4.11s`, `4.09s`, and `4.52s`); `git diff --check` passed.
 - Next: commit/push this bounded copy-contract checkpoint, then move to another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:41 UTC: rank-5 descriptor ld/st N=256 lower-resource positives
+
+- Added a lower-resource rank-5 descriptor roundtrip helper using a `[1,1,1,M,N]` parent and an explicit base-view reshape to `[M,N]`. This preserves the rank-5 descriptor chain markers while avoiding the old `N=256` tensor-memory OOR from `[1,1,2,M,N]`.
+- Added `LDST_DESCRIPTOR_RANK5_N256_CASES` and `test_tmem_runtime_matrix_ldst_descriptor_rank5_unit_parent_n256_roundtrip`, covering f32/i32, single identity/mixed, two-CTA block/MMAv5-like layouts, and every public `ld/st` variant at `N=256`.
+- The new rows assert exact eight-message store/load counts for the tiled `N=256` opcode stream, including the variants whose opcode names overlap smaller widths.
+- Current runtime-matrix collection is `8013` tests: `cp=598`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7562 passed, 451 skipped`.
+- Validation: rank-5 unit-parent probes over every layout and all variants; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `40/8013`; no-PYTHONPATH rank-5 collect selected `130/8013`; no-PYTHONPATH `ldst` collect selected `2949/8013`; no-PYTHONPATH full-file collect reported `8013`; focused selector passed all `40` cases across split-4 (`10` per group; group times `305.64s`, `215.09s`, `252.79s`, and `203.92s`).
+- Next: run final hygiene, commit/push this `ld/st` descriptor-chain checkpoint, then move to another exact non-parked TMEM ISA coverage slice.

@@ -992,3 +992,10 @@ Every fuzz case records:
 - Linear no-scales `tcgen05.cp` clean-negative coverage now rejects f16/bf16/i16/i8 subword source payloads at `N in {128,256}` through the same public `Source element type should be 32-bit.` verifier path.
 - Generate positive no-scales linear copy rows only with 32-bit source elements unless the production verifier/ISA contract changes; keep subword rows as clean negatives.
 - Current full-file collection is `7973` tests and the CP bucket is `598` cases. Aggregate bucket evidence is `7522 passed, 451 skipped`.
+
+## 2026-04-14 13:41 UTC: Rank-5 Descriptor ld/st N=256 Unit-Parent Note
+
+- Rank-5 descriptor `ld/st` positive coverage now reaches `N=256` via a lower-resource `[1,1,1,M,N]` unit-parent helper. This is the preferred fuzz construction for executable rank-5 `N=256` positives.
+- Do not promote the older `[1,1,2,M,N]` helper to `N=256`; that shape remains resource-bound. The unit-parent path still exercises `memdesc_index`, `memdesc_subslice`, `memdesc_reshape`, and `memdesc_trans`.
+- At `N=256`, all current public `ld/st` variants emit eight store and eight load messages for the tested rank-5 descriptor chain, even when opcode names overlap the `N=64` spelling.
+- Current full-file collection is `8013` tests and the `ldst` bucket is `2949` cases. Aggregate bucket evidence is `7562 passed, 451 skipped`.
