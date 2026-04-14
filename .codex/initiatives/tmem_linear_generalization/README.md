@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4896-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4924-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld.red` identity-256 unsupported modifier-matrix checkpoint, 2026-04-14 07:02 UTC: the identity `256xN` TMEM-linear source-layout clean-negative test now covers `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` instead of only the default `min`/no-abs/no-NaN case. These layouts remain clean unsupported direct `tcgen05.ld.red` sources and must report the software-reduction diagnostic without PassManager/assertion noise. Current runtime-matrix collection is `4924` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=855`, and `ldst=2612`; bucketed evidence now aggregates to `4478 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `32/4924`; no-PYTHONPATH `ld_red` collect selected `855/4924`; focused identity-256 clean-negative selector passed all `32` cases across split-4 on four GPUs (`8` per group; slowest `5.15s`). A broad `ld_red` rerun remains deferred because this is a small negative-only test expansion over existing diagnostics.
 
 - Current `warpx2` dense-shared clean-negative dtype-parity checkpoint, 2026-04-14 06:59 UTC: the single-CTA and two-CTA dense-shared clean-negative tests for no-scales `tcgen05.copy.warpx2::{01_23,02_13}.64x128b` now cover f32+i32 payloads instead of f32 only. This does not change the supported-positive or parked-frontier status: executable `warpx2` positives remain f32+i32 for single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23`; two-CTA `02_13` and true scales `warpx2` still require a real descriptor/address/staging model. Current runtime-matrix collection is `4896` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4450 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `8/4896`; no-PYTHONPATH `cp` collect selected `381/4896`; focused dense-shared `warpx2` clean-negative selector passed all `8` cases across split-4 on four GPUs (`2` per group; slowest `4.35s`); full `cp` bucket passed `376` and skipped `5` across split-4 on four GPUs (`96`, `96`, `96`, and `93` selected; slowest `7.20s` on warm caches).
 

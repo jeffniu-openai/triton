@@ -337,10 +337,11 @@ Every fuzz case records:
   unsupported runtime-matrix cases across the legal modifier matrix; keep them
   on the negative frontier unless a future planner grows a real direct
   reduction lowering.
-- Plain identity `256xN` source layouts are already pinned as not the current
-  direct `tcgen05.ld.red` source form and should keep the clean
-  software-reduction diagnostic unless the planner grows a real positive
-  lowering.
+- Plain identity `256xN` source layouts are pinned as not the current
+  direct `tcgen05.ld.red` source form across the legal modifier matrix
+  (`min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`) and should
+  keep the clean software-reduction diagnostic unless the planner grows a real
+  positive lowering.
 - If compile-only discovery reaches a true f32 unpacked/reinterpret descriptor
   view for reduction, it must either fail with the packed-format diagnostic or
   be promoted only after a proven legal lowering exists.

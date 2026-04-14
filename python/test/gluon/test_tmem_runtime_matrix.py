@@ -5564,9 +5564,11 @@ def test_tmem_runtime_matrix_ld_red_additional_unsupported_layouts_report_clean_
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("name,M,N,num_warps", LD_RED_UNSUPPORTED_SOURCE_CASES)
 def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported(
-    name, M, N, num_warps, capfd
+    red_op, use_abs, propagate_nan, name, M, N, num_warps, capfd
 ):
     layout = _make_tmem_linear_layout(M, N)
     with pytest.raises(Exception) as err:
@@ -5574,9 +5576,9 @@ def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_uns
             layout,
             M,
             N,
-            "min",
-            False,
-            tl.PropagateNan.NONE,
+            red_op,
+            use_abs,
+            propagate_nan,
             num_warps=num_warps,
         )
     captured = capfd.readouterr()
@@ -5584,6 +5586,8 @@ def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_uns
     assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
     assert "tmem.load(...)+tt.reduce(...)" in text
     assert "tt.reduce" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

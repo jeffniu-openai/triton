@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:02 UTC: ld.red identity-256 unsupported modifier matrix
+
+- `test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported` now covers identity `256xN` unsupported source layouts across `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL` instead of only the default modifier tuple.
+- This is a test-only clean-negative saturation slice: identity `256xN` remains outside the current direct `tcgen05.ld.red` source-layout contract and must keep the software-reduction diagnostic without PassManager/assertion noise.
+- Current runtime-matrix collection is `4924` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=855`, `ldst=2612`; current bucketed evidence aggregates to `4478 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `32/4924`; no-PYTHONPATH `ld_red` bucket selected `855/4924`; focused identity-256 clean-negative selector passed all `32` cases across four GPUs (`8` per group; group times `5.02s`, `4.94s`, `5.15s`, and `4.97s`). A full `ld_red` bucket rerun was not required for this negative-only test expansion because no shared lowering changed.
+
 ## 2026-04-14 06:59 UTC: warpx2 dense-shared clean-negative dtype parity
 
 - The no-scales `warpx2` dense-shared clean-negative tests now cover f32+i32 payloads for both single-CTA and two-CTA destination layouts, across `warpx2::01_23.64x128b` and `warpx2::02_13.64x128b` TMEM layouts.

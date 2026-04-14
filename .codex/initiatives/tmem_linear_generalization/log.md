@@ -13605,3 +13605,16 @@ Open after this slice:
   - full `cp` bucket passed `376` and skipped `5` across split-4 on four GPUs (`91 passed, 5 skipped` in `4.97s`, `96 passed` in `7.20s`, `96 passed` in `6.62s`, and `93 passed` in `5.66s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4450 passed, 446 skipped`.
 - Next: commit/push this bounded `warpx2` checkpoint. Remaining copy `warpx2` work is no longer another easy dtype/layout parity gap; do not force the parked hard frontiers without a real descriptor/address/staging hypothesis. Move to another non-parked TMEM ISA coverage family if no such hypothesis is available.
+
+## 2026-04-14 07:02 UTC: ld.red identity-256 unsupported modifier matrix
+
+- Expanded `test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported` across the legal modifier matrix: `min`/`max`, `abs` false/true, and `PropagateNan.NONE/ALL`.
+- The identity `256xN` layouts remain clean unsupported direct `tcgen05.ld.red` source layouts and continue to require the software-reduction diagnostic; the test now also rejects PassManager/assertion noise for every modifier tuple.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `32/4924`;
+  - no-PYTHONPATH full `ld_red` bucket selected `855/4924`;
+  - four-GPU focused identity-256 selector passed `32` cases across split-4 (`8` per group; group times `5.02s`, `4.94s`, `5.15s`, and `4.97s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=855`, `ldst=2612`; current bucketed evidence aggregates to `4478 passed, 446 skipped`.
