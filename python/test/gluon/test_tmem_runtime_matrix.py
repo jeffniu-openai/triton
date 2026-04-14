@@ -3168,11 +3168,16 @@ def mma_scaled_tcgen05_acc_subslice_copy(
 
 
 LDST_SHAPE_MAP = {
-    "auto": {64: "32x32b.x64.b32", 128: "32x32b.x128.b32", 256: "32x32b.x64.b32"},
-    "32x32b": {64: "32x32b.x64.b32", 128: "32x32b.x128.b32", 256: "32x32b.x64.b32"},
-    "16x64b": {64: "16x64b.x32.b32", 128: "16x64b.x64.b32", 256: "16x64b.x64.b32"},
-    "16x128b": {64: "16x128b.x16.b32", 128: "16x128b.x32.b32", 256: "16x128b.x32.b32"},
-    "16x256b": {64: "16x256b.x8.b32", 128: "16x256b.x16.b32", 256: "16x256b.x16.b32"},
+    "auto": {32: "32x32b.x32.b32", 64: "32x32b.x64.b32", 128: "32x32b.x128.b32",
+             256: "32x32b.x64.b32"},
+    "32x32b": {32: "32x32b.x32.b32", 64: "32x32b.x64.b32", 128: "32x32b.x128.b32",
+               256: "32x32b.x64.b32"},
+    "16x64b": {32: "16x64b.x16.b32", 64: "16x64b.x32.b32", 128: "16x64b.x64.b32",
+               256: "16x64b.x64.b32"},
+    "16x128b": {32: "16x128b.x8.b32", 64: "16x128b.x16.b32", 128: "16x128b.x32.b32",
+                256: "16x128b.x32.b32"},
+    "16x256b": {32: "16x256b.x4.b32", 64: "16x256b.x8.b32", 128: "16x256b.x16.b32",
+                256: "16x256b.x16.b32"},
 }
 
 LDST_SUBVIEW_SHAPE_MAP = {
@@ -3512,7 +3517,7 @@ LDST_DESCRIPTOR_RANK5_SMALL_CASES = [
      LDST_SHAPE_MAP[variant][n])
     for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
-    for n in (64, 128)
+    for n in ((64, 128) if layout_name == "mixed" else (32, 64, 128))
     for variant in LDST_VARIANTS
 ]
 

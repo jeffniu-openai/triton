@@ -1043,3 +1043,9 @@ Every fuzz case records:
 - Fuzz generation should keep non-f32 reduction rows in the clean-unsupported bucket unless the production verifier and lowering grow a real non-f32 reduction contract.
 - A quick row-256 `N=256` helper probe did not produce a lower-resource positive path: full reduction-only still exceeds shared memory and split-store fails on the second-half descriptor view.
 - Current full-file collection is `8143` tests and the `ld_red` bucket is `1936` cases. Aggregate bucket evidence is `7692 passed, 451 skipped`.
+
+## 2026-04-14 14:34 UTC: Rank-5 Descriptor ld/st Minimal-N Note
+
+- Rank-5 descriptor `ld/st` positive coverage now includes the minimal `N=32` opcode family for the executable layouts whose base layout is defined at that width: `single_identity`, `twocta_block`, and `twocta_mmav5`, crossed with `f32`/`i32` and every public `ld/st` variant.
+- Do not generate `single_mixed,N=32` rows: `_make_tmem_linear_layout_mixed` requires `N >= 64`, and the failed initial table expansion confirmed that this is not a valid fuzz atom.
+- Current full-file collection is `8173`; the `ldst` bucket is `2979`; aggregate bucket evidence is `7722 passed, 451 skipped`.

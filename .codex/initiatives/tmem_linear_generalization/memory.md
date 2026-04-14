@@ -1,5 +1,9 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 14:34 UTC: rank-5 descriptor ld/st minimal-N coverage
+
+- Current rank-5 descriptor `ld/st` minimal-N checkpoint, 2026-04-14 14:34 UTC: executable rank-5 descriptor-chain roundtrips now include the minimal `N=32` opcode family where the underlying layout is defined. The expanded rank-5 small matrix adds `N=32` for `single_identity`, `twocta_block`, and `twocta_mmav5` layouts across `f32`/`i32` and every public `ld/st` variant; `single_mixed,N=32` is intentionally omitted because the existing mixed TMEM-linear helper is only meaningful for `N >= 64`. `LDST_SHAPE_MAP` now contains the full-tile `N=32` opcode spellings used by these assertions. Runtime-matrix collection is now `8173` tests: `cp=612`, `mma=2075`, splitn/misc `=571`, `ld_red=1936`, and `ldst=2979`; bucketed evidence aggregates to `7722 passed, 451 skipped`. Validation: `make -j8`; py-compile; rank-5 collect `110/8173`; `ldst` collect `2979/8173`; full-file collect `8173`; corrected rank-5 split-4 selector passed all `110` cases (`28`, `28`, `28`, and `26`). An initial overbroad table attempt selected `single_mixed,N=32` and failed at the layout helper precondition, confirming that row is not a valid coverage target.
+
 ## 2026-04-14 14:25 UTC: ld.red non-f32 direct dtype-boundary coverage
 
 - Expanded `LD_RED_NON_F32_CONTRACT_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` beyond i32 and legacy f16-unpacked coverage. The direct-source clean-negative matrix now includes bf16, f16, i16, and i8 plain reductions, plus bf16/f16 `NaN` and `abs` modifier diagnostics.
