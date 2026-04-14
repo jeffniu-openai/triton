@@ -980,3 +980,9 @@ Every fuzz case records:
 - The widened row/column matrix covers f32+i32 over `N in {2,4,8,16,32,64,128,256}` and explicit `32x32b_splitn` / `16x32bx2`; the representative auto-selection rows now include `identity/reverse,N=256`.
 - Current full-file collection is `7963` tests; current bucket totals are `cp=588`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`. Aggregate bucket evidence is `7512 passed, 451 skipped`.
 - Keep rank-5 descriptor `ld/st` `N=256` separate in fuzz planning: the current executable rank-5 helper is TMEM-resource-bound at that width and needs a lower-resource construction before promotion.
+
+## 2026-04-14 Linear No-Scales Copy Subslice N=256 Note
+
+- Linear no-scales `tcgen05.cp` descriptor-view coverage now includes `N=256` for the supported `memdesc_subslice` path, in addition to the existing `N=128` rows.
+- The active view is sliced from a `128x(2*N)` TMEM-linear parent and emits exact `tcgen05.cp.cta_group::1.128x256b` counts: `16` messages at `N=128` and `32` at `N=256`.
+- Current full-file collection is `7969` tests and the CP bucket is `594` cases. Aggregate bucket evidence is `7518 passed, 451 skipped`.

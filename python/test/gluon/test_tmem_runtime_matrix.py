@@ -3474,8 +3474,9 @@ CP_LINEAR_INDEXED_VIEW_CASES = [
 ]
 
 CP_LINEAR_SUBSLICE_VIEW_CASES = [
-    (dtype_name, torch_dtype, 128, 128, swizzle, 16, "tcgen05.cp.cta_group::1.128x256b")
+    (dtype_name, torch_dtype, 128, n, swizzle, expected_count, "tcgen05.cp.cta_group::1.128x256b")
     for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
+    for n, expected_count in ((128, 16), (256, 32))
     for swizzle in (32, 64, 128)
 ]
 

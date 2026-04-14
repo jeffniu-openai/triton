@@ -14291,3 +14291,11 @@ Open after this slice:
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH full-file collect reported `7963`; no-PYTHONPATH focused split-N collect selected `566/7963`; focused split-N selector passed all `566` cases across split-4 (`142`, `142`, `142`, and `140`; group times `16.28s`, `30.57s`, `24.51s`, and `30.90s`); `git diff --check` passed.
 - Note: the earlier rank-5 descriptor `ld/st` `N=256` probe remains a separate resource-bound helper problem, not covered by this M64 split-N expansion.
 - Next: commit/push this bounded `ld/st` coverage checkpoint, then move to another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:24 UTC: linear no-scales copy subslice N=256 coverage
+
+- Expanded `CP_LINEAR_SUBSLICE_VIEW_CASES` from `N=128` only to `N in {128,256}` for both f32 and i32 across swizzles 32/64/128.
+- The new `N=256` rows use the existing `128x(2*N)` parent TMEM-linear descriptor-view chain, keep `ttg.memdesc_subslice` in TTGIR, and assert exact `tcgen05.cp.cta_group::1.128x256b` counts of `32` messages.
+- Current runtime-matrix collection is `7969` tests: `cp=594`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7518 passed, 451 skipped`.
+- Validation: representative f32/i32 N=256 probes; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/7969`; no-PYTHONPATH CP collect selected `594/7969`; no-PYTHONPATH full-file collect reported `7969`; focused selector passed all `12` cases across split-4 (`3` per group; times `4.02s`, `4.98s`, `5.26s`, and `5.46s`); `git diff --check` passed.
+- Next: commit/push this bounded `tcgen05.cp` descriptor-view coverage checkpoint, then move to another exact non-parked TMEM ISA coverage slice.

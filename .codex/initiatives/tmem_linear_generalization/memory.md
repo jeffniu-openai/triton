@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:24 UTC: linear no-scales copy subslice N=256 coverage
+
+- Expanded `CP_LINEAR_SUBSLICE_VIEW_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from fixed `N=128` to `N in {128,256}`. The existing `tmem_copy_no_scales_linear_subslice_view_kernel` now validates a `128x512` parent TMEM-linear allocation sliced to a `128x256` active view.
+- Coverage spans `f32`/`i32`, swizzle byte widths `{32,64,128}`, exact `tcgen05.cp.cta_group::1.128x256b` opcode counts (`16` for `N=128`, `32` for `N=256`), `tensor_memory_linear` TTGIR, and surviving generic `ttg.memdesc_subslice` rather than legacy `ttng.tmem_subslice`.
+- Current runtime-matrix collection is `7969` tests: `cp=594`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7518 passed, 451 skipped`.
+- Validation completed: representative N=256 f32/i32 probes passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/7969`; no-PYTHONPATH CP collect selected `594/7969`; no-PYTHONPATH full-file collect reported `7969`; focused selector passed all `12` cases across split-4 (`3` per group; group times `4.02s`, `4.98s`, `5.26s`, and `5.46s`); `git diff --check` passed.
+- Next: commit/push this bounded copy-view checkpoint, then continue another non-parked TMEM ISA coverage slice. Hard parked copy frontiers remain true scales `warpx2` and no-scales two-CTA `warpx2::02_13`.
+
 ## 2026-04-14 13:19 UTC: M64 split-N ld/st N=256 coverage
 
 - Expanded `python/test/gluon/test_tmem_runtime_matrix.py` M64 split-N coverage from `N <= 128` to `N=256`. The identity split-N immediate checks, auto-selected `16x32bx2`, explicit `16x32bx2` equivalence, full row/column-permuted sweep, and representative row/column auto-selection rows now include the widest executable M64 split-N width.
