@@ -8098,3 +8098,9 @@ rejection, not rescue
 - Current full-file collection is `7771` tests; bucket totals are `cp=580`, `mma=1863`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`. Aggregate bucket evidence is `7320 passed, 451 skipped`.
 - The focused rank-5 small selector passed all `80` cases across split-4 (`20` per group; `258.61s`, `191.60s`, `260.54s`, and `187.16s`).
 - Do not blindly add `N=256` to this exact table: the opcode names overlap `N=64` for some variants, so the assertion needs a tiling-aware expected message count before that width becomes positive coverage.
+
+## 2026-04-14 Copy warpx2 Lit-Boundary Note
+
+- The no-scales two-CTA `warpx2::02_13.64x128b` boundary is now pinned in `test/TritonNvidiaGPU/invalid.mlir`, using the canonical shared-linear two-CTA source and the matching two-CTA TMEM-linear `02_13` destination.
+- This is deliberately a clean unsupported contract, not a support promotion. Existing probe evidence still says a positive path needs a real `cta_group::2` descriptor/address schedule that preserves the high source-column bit; direct-seed, destination-delta, source-offset, and mixed `cta_group::1` rewrites are not valid fixes.
+- Refreshed runtime evidence before the lit change: `-k warpx2` collected `21/7771` and passed across split-4 (`6`, `6`, `6`, `3`). Compiler validation after the lit change: `make -j8`; `lit -v test/TritonNvidiaGPU/invalid.mlir`.

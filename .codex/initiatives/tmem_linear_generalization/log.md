@@ -14213,7 +14213,7 @@ Open after this slice:
 - Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `120/7731`; no-PYTHONPATH adjacent collect selected `360/7731`; focused new selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `11.31s`, `11.65s`, `11.10s`, and `11.65s`); adjacent M64-root plus one-CTA accumulator-subview selector passed all `360` cases across split-4 (`90` per group; group times `19.28s`, `31.27s`, `45.98s`, and `84.36s`); `lit -v test/TritonNvidiaGPU/ops.mlir` passed.
 - Next: commit/push this MMAv5 subview checkpoint, then move back to the copy `warpx2` frontier with the current evidence boundaries in mind: supported no-scales `warpx2` stays anchored, while no-scales two-CTA `warpx2::02_13` and true tensor-memory-scales `warpx2` still need a real descriptor/address/staging model before becoming positive coverage.
 
-## 2026-04-14 13:15 UTC: rank-5 descriptor ld/st N-width coverage
+## 2026-04-14 12:45 UTC: rank-5 descriptor ld/st N-width coverage
 
 - Expanded `LDST_DESCRIPTOR_RANK5_SMALL_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from the fixed `N=64` width to `N in {64,128}`.
 - This keeps the same executable `[1,1,2,M,N]` descriptor-view chain and crosses both `f32`/`i32`, single-CTA identity/mixed layouts, two-CTA block/MMAv5-like layouts, and all public `ld/st` variants.
@@ -14221,3 +14221,12 @@ Open after this slice:
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `80/7771`; no-PYTHONPATH `ldst` collect selected `2909/7771`; focused rank-5 small selector passed all `80` cases across split-4 (`20` per group; group times `258.61s`, `191.60s`, `260.54s`, and `187.16s`); `git diff --check` passed before docs.
 - `N=256` is intentionally left as follow-up because the current expected opcode count is family-based and would need to become tiling-aware when `N=256` reuses `N=64` opcode names.
 - Next: commit/push this bounded `ld/st` checkpoint, then move to the next non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 12:49 UTC: copy warpx2 two-CTA 02_13 lit boundary
+
+- Rechecked the exact `warpx2` runtime selector at current head: no-PYTHONPATH collect selected `21/7771`, and split-4 execution across GPUs 0..3 passed all selected cases (`6`, `6`, `6`, and `3` selected; group times `6.46s`, `15.35s`, `4.56s`, and `4.26s`).
+- Added `test/TritonNvidiaGPU/invalid.mlir` coverage for the remaining no-scales two-CTA `warpx2::02_13.64x128b` clean-unsupported path using the canonical two-CTA shared-linear source layout and matching two-CTA TMEM-linear destination.
+- The lit diagnostic records the current hard requirement: future support needs a `cta_group::2` descriptor/address schedule that preserves the high source-column bit; decomposing this view into `cta_group::1` copies is not valid because the allocation uses two-CTA granularity.
+- This is compiler-only boundary coverage and does not change runtime-matrix counts: current collection remains `7771` tests with bucketed evidence `7320 passed, 451 skipped`.
+- Validation completed: `ninja triton-opt` no-op; initial lit run exposed an annotation offset bug; after fixing annotations, `lit -v test/TritonNvidiaGPU/invalid.mlir` passed; `make -j8`; `lit -v test/TritonNvidiaGPU/invalid.mlir` passed again after make.
+- Next: commit/push this bounded `warpx2` boundary checkpoint, then move to another non-parked TMEM ISA coverage slice. No-scales two-CTA `02_13` and true scales `warpx2` still remain hard descriptor/address/staging frontiers, not direct-offset fixes.

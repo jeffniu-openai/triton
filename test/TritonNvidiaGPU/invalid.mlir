@@ -335,6 +335,23 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
 
 // -----
 
+#shared_cp_warpx2_02_13_twocta = #ttg.shared_linear<{offset = [[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]], block = [[128, 0]]}, alignment = 16>
+#tmem_cp_warpx2_02_13_twocta = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]], col = [[0, 1], [0, 2]], block = [[128, 0]], out = [256, 4]}, twoCTAs = true>
+module attributes {"ttg.num-ctas" = 2 : i32, "ttng.two-ctas" = true, "ttg.num-warps" = 4 : i32, ttg.shared = 65536 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tmem_copy_no_scales_warpx2_02_13_twocta_clean_unsupported(
+      %src: !ttg.memdesc<256x4xi32, #shared_cp_warpx2_02_13_twocta, #ttg.shared_memory, mutable>,
+      %dst: !ttg.memdesc<256x4xi32, #tmem_cp_warpx2_02_13_twocta, #ttng.tensor_memory, mutable>) {
+    // expected-error @+4 {{The source shared layout maps to tcgen05.copy.warpx2::02_13.64x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-note @+3 {{The two-CTA warpx2::02_13 path remains unsupported until Triton can synthesize a cta_group::2 descriptor/address schedule that preserves the high source-column bit; decomposing this tensor-memory view into cta_group::1 copies is not valid because two-CTA TMEM allocation uses cta_group::2 granularity.}}
+    // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.warpx2::02_13.64x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
+    // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
+    ttng.tmem_copy %src, %dst : !ttg.memdesc<256x4xi32, #shared_cp_warpx2_02_13_twocta, #ttg.shared_memory, mutable>, !ttg.memdesc<256x4xi32, #tmem_cp_warpx2_02_13_twocta, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}
+
+// -----
+
 #shared_f32 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32}>
 #tmem_linear_m64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
