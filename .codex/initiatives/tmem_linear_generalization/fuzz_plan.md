@@ -223,11 +223,10 @@ Every fuzz case records:
     layouts over every public `ld/st` variant, complementing the existing broad
     f32 direct/descriptor tests.
 - m64 / split-N families:
-  - identity `64 x {2, 4, 8, 16, 32, 64, 128}` split-N coverage includes
-    f32 and i32 through explicit `32x32b_splitn`, auto-selected `16x32bx2`,
-    and exact equivalence between explicit `16x32bx2` and split-N lowering.
-  - row/column-permuted M64 split-N coverage currently remains f32-only and is
-    the next adjacent dtype-parity slice if continuing in this family.
+  - identity and row/column-permuted `64 x {2, 4, 8, 16, 32, 64, 128}`
+    split-N coverage includes f32 and i32 through explicit `32x32b_splitn`,
+    explicit `16x32bx2`, auto-selected `16x32bx2`, and exact equivalence
+    checks where applicable.
 - subword families:
   - `dtype in {f16, bf16, i16, i8}`
   - packed, unpacked, and padded one-column cases

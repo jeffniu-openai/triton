@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:24 UTC: M64 row/column split-N ld/st i32 parity
+
+- Parameterized `M64_ROWCOL_PERMUTED_CASES` and `M64_ROWCOL_PERMUTED_AUTO_CASES` over f32+i32.
+- This covers every row/column-permuted M64 split-N layout in the existing sweep for `N in {2,4,8,16,32,64,128}` and variants `32x32b_splitn` plus `16x32bx2`, with exact runtime roundtrip and `16x32bx2` opcode checks.
+- The representative M64 row/column auto-selection checks now also cover f32+i32.
+- This is test-only coverage over already-supported `ld/st` lowering behavior; no compiler/lowering source changed.
+- Current runtime-matrix collection is `5224` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4778 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `452/5224`; no-PYTHONPATH full-file collect reported `5224`; focused M64 row/column split-N selector passed all `452` cases across split-8 on four GPUs (`57`, `57`, `57`, `57`, `57`, `57`, `57`, and `53` cases; group times `7.44s`, `14.24s`, `14.32s`, `13.94s`, `8.52s`, `14.91s`, `14.67s`, and `13.53s`).
+
 ## 2026-04-14 07:22 UTC: M64 split-N ld/st i32 parity
 
 - Added `M64_SPLITN_DTYPES` and parameterized the identity M64 split-N immediate, auto-selection, and explicit `16x32bx2` equivalence checks over f32+i32.

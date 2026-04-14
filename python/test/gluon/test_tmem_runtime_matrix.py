@@ -2967,15 +2967,17 @@ M64_SPLITN_CASES = [
 ]
 
 M64_ROWCOL_PERMUTED_CASES = [
-    (row_perm_kind, col_perm_kind, n, variant)
+    (dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant)
+    for dtype_name, torch_dtype in M64_SPLITN_DTYPES
     for (row_perm_kind, col_perm_kind), n, variant in product(
         PERMUTED_ROW_COL_LAYOUT_KINDS, (2, 4, 8, 16, 32, 64, 128), ("32x32b_splitn", "16x32bx2")
     )
 ]
 
 M64_ROWCOL_PERMUTED_AUTO_CASES = [
-    ("rotate1", "identity", 2),
-    ("reverse", "even_odd", 128),
+    (dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n)
+    for dtype_name, torch_dtype in M64_SPLITN_DTYPES
+    for row_perm_kind, col_perm_kind, n in (("rotate1", "identity", 2), ("reverse", "even_odd", 128))
 ]
 
 LDST_DESCRIPTOR_RANK5_CASES = [
@@ -4938,11 +4940,13 @@ def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n, dtype_name, tor
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n,variant", M64_ROWCOL_PERMUTED_CASES)
-def test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep(row_perm_kind, col_perm_kind, n, variant):
+@pytest.mark.parametrize("dtype_name,torch_dtype,row_perm_kind,col_perm_kind,n,variant", M64_ROWCOL_PERMUTED_CASES)
+def test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep(
+    dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant
+):
     m = 64
     layout = _make_tmem_linear_layout_m64_permuted(n, row_perm_kind, col_perm_kind)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
@@ -4956,11 +4960,13 @@ def test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep(row_perm_kind, 
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("row_perm_kind,col_perm_kind,n", M64_ROWCOL_PERMUTED_AUTO_CASES)
-def test_tmem_runtime_matrix_splitn_rowcol_permuted_auto_selects_16x32bx2(row_perm_kind, col_perm_kind, n):
+@pytest.mark.parametrize("dtype_name,torch_dtype,row_perm_kind,col_perm_kind,n", M64_ROWCOL_PERMUTED_AUTO_CASES)
+def test_tmem_runtime_matrix_splitn_rowcol_permuted_auto_selects_16x32bx2(
+    dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n
+):
     m = 64
     layout = _make_tmem_linear_layout_m64_permuted(n, row_perm_kind, col_perm_kind)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4)
