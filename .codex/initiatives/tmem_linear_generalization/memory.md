@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 02:51 UTC: plain-MMAv5 K-depth coverage
+
+- Plain one-CTA and two-CTA root/use-acc MMA matrices now cover `K in {32, 64}` for all supported plain operand kinds (`f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`), both legacy/canonical accumulator layouts, and `N in {128, 256}`.
+- `_expected_plain_mma_op_count(kind, k)` pins instruction depth as the existing per-`K=32` base count times `K // 32`; the new `K=64` cases therefore require doubled `tcgen05.mma` opcode counts instead of only checking numerics.
+- Current runtime-matrix collection is `3481` tests: `cp=322`, `mma=404`, splitn/misc `=252`, `ld_red=771`, and `ldst=1732`; current bucketed evidence aggregates to `3035 passed, 446 skipped`.
+- Validation: one-CTA and two-CTA scratch probes passed `K=64` for all plain kinds with doubled opcode counts; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `160/3481`; focused K-depth selector passed `160` cases across four GPUs (`40` each, slowest about `1:27`); tight `mma` runner passed `404` cases across four groups (`101` each).
+- Remaining long-term work: continue staged ISA saturation in another family or another bounded MMA/scaled-MMA gap; this test-only MMA change does not require a broad `ld/st` refresh.
+
 ## 2026-04-14 03:53 UTC: ld/st representative row/column N=32 coverage
 
 - `test_tmem_runtime_matrix_ldst_rowcol_n32_linear_layout` covers representative non-diagonal root `128x32` f32 TMEM layouts: pure row permutation (`rotate1,identity`), pure column permutation (`identity,reverse`), and mixed row+column permutation (`even_odd,reverse`).

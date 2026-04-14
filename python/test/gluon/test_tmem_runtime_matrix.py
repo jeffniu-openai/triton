@@ -6141,6 +6141,13 @@ MMA_PLAIN_KIND_EXPECTED_OP_COUNTS = {
     "f8e5m2": 1,
     "f8e4m3": 1,
 }
+
+
+def _expected_plain_mma_op_count(kind, k):
+    assert k % 32 == 0
+    return MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind] * (k // 32)
+
+
 MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
     kind: count * 4 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
 }
@@ -6154,8 +6161,8 @@ MMA_PLAIN_KIND_CASES = [
 ]
 
 MMA_PLAIN_KIND_ACC_CASES = [
-    (kind, acc_layout_kind, n)
-    for kind, acc_layout_kind, n in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256))
+    (kind, acc_layout_kind, n, k)
+    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64))
 ]
 
 MMA_TWOCTA_CASES = [
@@ -6164,8 +6171,8 @@ MMA_TWOCTA_CASES = [
 ]
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [
-    (kind, acc_layout_kind, block_n)
-    for kind, acc_layout_kind, block_n in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256))
+    (kind, acc_layout_kind, block_n, block_k)
+    for kind, acc_layout_kind, block_n, block_k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64))
 ]
 
 MMA_TILE_PERMUTED_CASES = [
@@ -6212,10 +6219,9 @@ def test_tmem_runtime_matrix_mma(name, layout, use_acc):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind,n", MMA_PLAIN_KIND_ACC_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_kind, n):
+@pytest.mark.parametrize("kind,acc_layout_kind,n,k", MMA_PLAIN_KIND_ACC_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_kind, n, k):
     m = 128
-    k = 32
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
@@ -6249,7 +6255,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(ptx_ops) == _expected_plain_mma_op_count(kind, k)
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -6260,10 +6266,9 @@ def test_tmem_runtime_matrix_mma_plain_kinds_with_linear_acc(kind, acc_layout_ki
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind,n", MMA_PLAIN_KIND_ACC_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n):
+@pytest.mark.parametrize("kind,acc_layout_kind,n,k", MMA_PLAIN_KIND_ACC_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n, k):
     m = 128
-    k = 32
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     acc_layout = TensorMemoryLayout((m, n), col_stride=1) if acc_layout_kind == "legacy" else _make_tmem_linear_layout(m, n)
@@ -6295,7 +6300,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_use_acc(kind, acc_layout_kind, n):
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(ptx_ops) == _expected_plain_mma_op_count(kind, k)
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -6519,8 +6524,8 @@ def test_tmem_runtime_matrix_mma_twocta(name, layout_kind):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind,block_n", MMA_TWOCTA_PLAIN_KIND_CASES)
-def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind, block_n):
+@pytest.mark.parametrize("kind,acc_layout_kind,block_n,block_k", MMA_TWOCTA_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind, block_n, block_k):
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     cta_split_a = [ctas_per_cga[0], 1]
@@ -6531,7 +6536,7 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind, block
     cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
     cga_layout_c_arg = tuple(tuple(basis) for basis in cga_layout_c)
 
-    block_m, block_k = 256, 32
+    block_m = 256
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1], cga_layout=cga_layout_a)
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0], cga_layout=cga_layout_b)
 
@@ -6577,7 +6582,7 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind, block
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(ptx_ops) == _expected_plain_mma_op_count(kind, block_k)
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
@@ -6589,8 +6594,8 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds(kind, acc_layout_kind, block
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind,block_n", MMA_TWOCTA_PLAIN_KIND_CASES)
-def test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc(kind, acc_layout_kind, block_n):
+@pytest.mark.parametrize("kind,acc_layout_kind,block_n,block_k", MMA_TWOCTA_PLAIN_KIND_CASES)
+def test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc(kind, acc_layout_kind, block_n, block_k):
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     cta_split_a = [ctas_per_cga[0], 1]
@@ -6600,7 +6605,7 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc(kind, acc_layout_kin
     cga_layout_b = _make_2cta_cga_layout(ctas_per_cga_b, cta_split_b, cta_order, 1)
     cga_layout_c = _make_2cta_cga_layout(ctas_per_cga, ctas_per_cga, cta_order, 0)
 
-    block_m, block_k = 256, 32
+    block_m = 256
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1], cga_layout=cga_layout_a)
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0], cga_layout=cga_layout_b)
     block_layout_c = ttgl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
@@ -6647,7 +6652,7 @@ def test_tmem_runtime_matrix_mma_twocta_plain_kinds_use_acc(kind, acc_layout_kin
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops
     assert ptx_ops == llir_ops
-    assert len(ptx_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(ptx_ops) == _expected_plain_mma_op_count(kind, block_k)
     assert all(op == expected_kind for op in ptx_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,

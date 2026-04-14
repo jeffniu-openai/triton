@@ -13030,3 +13030,19 @@ Open after this slice:
   - focused selector across four GPUs: `30 passed` (`8`, `8`, `8`, `6` by split group); slowest split about `2:39`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1732`; current bucketed evidence aggregates to `2955 passed, 446 skipped`.
 - Next: commit/push this bounded `ld/st` row/column checkpoint, then continue descriptor-view breadth or stage a wider ldst rerun if enough coverage slices accumulate.
+
+## 2026-04-14 plain-MMAv5 K-depth coverage
+
+- Expanded plain one-CTA and two-CTA root/use-acc MMAv5 runtime-matrix coverage from fixed `K=32` to `K in {32, 64}`.
+- This covers every supported plain kind, both legacy/canonical accumulator layouts, and `N in {128, 256}` for both no-accumulator and `use_acc=True` paths.
+- Added `_expected_plain_mma_op_count(kind, k)` so exact PTX/LLIR opcode counts scale by `K // 32`; the `K=64` cases now require doubled counts (`f16/bf16` 4, `tf32` 8, and `f8f6f4` 2 per root tile).
+- Validation:
+  - scratch one-CTA and two-CTA probes passed `K=64` for all plain kinds with doubled opcode counts;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector selected `160/3481`;
+  - focused selector passed `160` cases across four GPUs (`40` per group; slowest split about `1:27`);
+  - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `404` cases across four groups (`101` each).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=404`, splitn/misc `=252`, `ld_red=771`, `ldst=1732`; current bucketed evidence aggregates to `3035 passed, 446 skipped`.
+- Next: commit/push this MMA coverage checkpoint, then continue another bounded long-term ISA coverage slice.
