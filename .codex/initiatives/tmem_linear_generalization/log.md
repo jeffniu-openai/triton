@@ -13538,3 +13538,19 @@ Open after this slice:
   - tight MMA selector passed all `784` cases across split-4 on four GPUs (`196` per group; `6.10s`, `23.12s`, `5.60s`, and `21.00s`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=784`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4351 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation in another exact family. Remaining long-term frontiers include broader `ld.red` fuzzing, non-parked copy surfaces, and eventually the parked true scales `warpx2` / no-scales two-CTA `warpx2::02_13` descriptor-address problems once there is a concrete hypothesis.
+## 2026-04-14 06:48 UTC: plain-MMAv5 tile-permuted accumulator N64 clean negative
+
+- Added `MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES` and `test_tmem_runtime_matrix_mma_acc_tile_permuted_n64_reports_clean_unsupported`.
+- A direct positive probe of `128x64/tile_n=16` tile-permuted accumulators failed at the MMAv5-compatible layout verifier for the swapped 16/32 column-basis layout; this checkpoint records that as a clean unsupported boundary instead of forcing the layout through lowering.
+- Coverage spans every supported plain operand kind, `K in {32,64}`, and both no-accumulator plus `use_acc=True` paths.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused tile-permuted accumulator collect selected `64` cases;
+  - no-PYTHONPATH tight MMA collect selected `804/4817`;
+  - no-PYTHONPATH full-file collect reported `4817` tests;
+  - focused tile-permuted accumulator selector passed `64` cases across split-4 on four GPUs (`16` per group; `11.06s`, `25.16s`, `5.72s`, and `7.86s`);
+  - tight MMA selector passed all `804` cases across split-4 on four GPUs (`201` per group; `5.75s`, `12.66s`, `8.95s`, and `9.50s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=804`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4371 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 clean-negative checkpoint, then continue staged ISA saturation in another exact family. Copy `warpx2` hard frontiers remain parked without a descriptor/address/staging model.

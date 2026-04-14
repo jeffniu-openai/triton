@@ -499,7 +499,7 @@ Every fuzz case records:
   - legacy TMEM layout
   - canonical TMEM-linear equivalent
   - tile-permuted canonical TMEM-linear accumulators for all supported plain
-    operand kinds, currently covered at `128x128/tile_n=32` and
+    operand kinds, currently positive at `128x128/tile_n=32` and
     `128x256/tile_n=64`, `blockK in {32, 64}`, including the `use_acc=True`
     accumulator-add path; exact opcode counts scale by `blockK // 32`
 - A operand:
@@ -537,6 +537,9 @@ Every fuzz case records:
   coverage now includes one-CTA and two-CTA legacy/canonical accumulator
   layouts at `blockN in {64, 128, 256}`.
 - non-MMAv5-equivalent TMEM-linear accumulator layouts
+  - current tile-permuted clean-negative coverage pins `128x64/tile_n=16` for
+    every supported plain kind, `blockK in {32,64}`, and both no-accumulator plus
+    `use_acc=True` paths.
 - transposed float32 shared operands
   - current live nuance: direct non-TMA 2-CTA TF32 coverage is green, and
     TMA-fed 2-CTA TF32 is positive at `blockN in {64, 128, 256}` when B is loaded

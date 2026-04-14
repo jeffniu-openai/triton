@@ -6410,6 +6410,11 @@ MMA_TILE_PERMUTED_KIND_CASES = [
     for k in (32, 64)
 ]
 
+MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES = [
+    (kind, k, use_acc)
+    for kind, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64), (False, True))
+]
+
 MMA_LHS_TILE_PERMUTED_NK_CASES = [
     (kind, n, k, k // 4)
     for kind, n, k in product(MMA_PLAIN_KINDS, (64, 128, 256), (128, 256))
@@ -7226,6 +7231,64 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, 
     assert all(op == expected_kind for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("kind,k,use_acc", MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_mma_acc_tile_permuted_n64_reports_clean_unsupported(kind, k, use_acc, capfd):
+    m = 128
+    n = 64
+    acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, 16)
+    block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
+    block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
+    a, b, shared_layout_a, shared_layout_b, _expected_kind, _atol, _rtol = _make_mma_plain_kind_inputs(kind, m, n, k)
+    out = torch.empty((m, n), device="cuda", dtype=torch.float32)
+
+    with pytest.raises(Exception) as err:
+        if use_acc:
+            c = torch.randn((m, n), device="cuda", dtype=torch.float32)
+            tmem_mma_plain_kind_use_acc_kernel[(1, )](
+                a,
+                b,
+                c,
+                out,
+                m,
+                n,
+                k,
+                block_layout_a,
+                block_layout_b,
+                acc_layout,
+                shared_layout_a,
+                shared_layout_b,
+                num_warps=4,
+            )
+        else:
+            mma_kernel[(1, )](
+                a,
+                b,
+                out,
+                m,
+                n,
+                k,
+                block_layout_a,
+                block_layout_b,
+                (),
+                acc_layout,
+                shared_layout_a,
+                shared_layout_b,
+                ttgl.float32,
+                False,
+                True,
+                num_warps=4,
+            )
+
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "return operand must have a MMAv5-compatible tensor memory layout" in text
+    assert "Use a directly supported #ttng.tensor_memory_linear layout" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("kind,n,k,tile_n", MMA_LHS_TILE_PERMUTED_NK_CASES)

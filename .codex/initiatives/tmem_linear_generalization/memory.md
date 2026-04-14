@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:48 UTC: plain-MMAv5 tile-permuted accumulator N64 clean negative
+
+- `MMA_TILE_PERMUTED_N64_UNSUPPORTED_CASES` now pins `128x64/tile_n=16` tile-permuted accumulators as clean unsupported for direct MMAv5.
+- Coverage spans every supported plain operand kind, `K in {32,64}`, and no-accumulator plus `use_acc=True` paths; each case must fail at the MMAv5-compatible tensor-memory-layout verifier with no PassManager/assertion noise.
+- Positive tile-permuted accumulator coverage remains `128x128/tile_n=32` and `128x256/tile_n=64`; the N64 layout swaps the 16/32 column-basis bits and is not promoted as a reachable MMAv5 family.
+- Current runtime-matrix collection is `4817` tests: `cp=322`, `mma=804`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; current bucketed evidence aggregates to `4371 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `64` cases; no-PYTHONPATH tight MMA collect selected `804/4817`; no-PYTHONPATH full-file collect reported `4817`; focused tile-permuted accumulator selector passed all `64` cases across four GPUs (`16` per group; group times `11.06s`, `25.16s`, `5.72s`, and `7.86s`); tight MMA selector passed all `804` cases across four GPUs (`201` per group; group times `5.75s`, `12.66s`, `8.95s`, and `9.50s`).
+
 ## 2026-04-14 06:42 UTC: scaled-MMAv5 accumulator-subview K-depth parity
 
 - `SCALED_MMA_ACC_SUBSLICE_N_CASES` now spans `K in {128, 256}` instead of only `K=128`.

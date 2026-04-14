@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4797-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4817-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current plain-MMAv5 tile-permuted accumulator N64 clean-negative checkpoint, 2026-04-14 06:48 UTC: a direct `128x64/tile_n=16` tile-permuted accumulator layout is now pinned as a clean MMAv5-compatible-layout verifier boundary for every supported plain operand kind, `K in {32,64}`, and both no-accumulator plus `use_acc=True` paths. The existing positive tile-permuted accumulator surface remains `128x128/tile_n=32` and `128x256/tile_n=64`; N64 is not promoted as a positive because the verifier rejects its swapped 16/32 column-basis layout before lowering. Current runtime-matrix collection is `4817` tests: `cp=322`, `mma=804`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4371 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused tile-permuted accumulator collect selected `64` cases; no-PYTHONPATH tight MMA collect selected `804/4817`; no-PYTHONPATH full-file collect reported `4817`; focused tile-permuted accumulator selector passed all `64` cases across split-4 on four GPUs (`16` per group; slowest `25.16s`); tight MMA selector passed all `804` cases across split-4 on four GPUs (`201` per group; slowest `12.66s`).
 
 - Current scaled-MMAv5 accumulator-subview K-depth parity checkpoint, 2026-04-14 06:42 UTC: `SCALED_MMA_ACC_SUBSLICE_N_CASES` now covers `K in {128, 256}` for every current scaled format pair, `N in {64, 128}`, and both root-aligned plus offset accumulator subviews. The exact PTX/LLIR opcode-count assertion now scales by `K // 128`, matching the existing root and TMEM-LHS scaled-MMAv5 K-depth contract. Current runtime-matrix collection is `4797` tests: `cp=322`, `mma=784`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4351 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused scaled accumulator-subview collect selected `40` cases; no-PYTHONPATH tight MMA collect selected `784/4797`; no-PYTHONPATH full-file collect reported `4797`; focused scaled accumulator-subview function passed all `40` cases across split-4 on four GPUs (`10` per group; slowest `17.98s`); tight MMA selector passed all `784` cases across split-4 on four GPUs (`196` per group; slowest `23.12s`).
 
