@@ -477,9 +477,9 @@ Every fuzz case records:
     eight-times-root instruction counts. The direct shared-B `tf32, N=256,
     K=256` helper shape exceeds shared memory and is not a positive target.
   - current TMEM-LHS subview coverage spans `f16`, `tf32`, `bf16`, `f8e5m2`,
-    and `f8e4m3` at `N in {128, 256}` for both legacy and canonical
-    TMEM-linear accumulator layouts, with exact PTX/LLIR opcode and
-    instruction-count checks
+    and `f8e4m3` at `N in {128, 256}` and `K in {32, 64}` for both
+    legacy and canonical TMEM-linear accumulator layouts, with exact PTX/LLIR
+    opcode and instruction-count checks
 - supported MMAv5 tile families:
   - `blockM in {64, 128}`
   - `blockN` and `K` values accepted by the in-tree verifier/matcher

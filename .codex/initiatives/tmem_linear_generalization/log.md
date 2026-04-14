@@ -13062,3 +13062,18 @@ Open after this slice:
   - `run_tmem_runtime_matrix_sweep.py --categories ld_red --timeout-per-group 900` passed `811` cases across split-16/xdist groups.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=404`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3075 passed, 446 skipped`.
 - Next: commit/push this bounded `ld.red` checkpoint, then continue another long-term ISA coverage slice outside the parked copy `warpx2` direct-offset frontier.
+
+## 2026-04-14 plain-MMAv5 TMEM-LHS subview K-depth coverage
+
+- Generalized `tmem_mma_lhs_subslice_kernel` so the TMEM-LHS subview helper takes `K` as a constexpr instead of hard-coding `K=32`.
+- Expanded `MMA_LHS_SUBSLICE_NK_CASES` to cover `K in {32, 64}` across all supported plain kinds, both legacy/canonical accumulator layouts, and `N in {128, 256}`.
+- The test now asserts exact MMAv5 opcode counts through `_expected_plain_mma_op_count(kind, k)`, so `K=64` requires doubled instruction depth while still checking the `ttg.memdesc_subslice` path and canonical TMEM-linear TTGIR.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `40/3541`;
+  - no-PYTHONPATH tight `mma` collect selected `424/3541`;
+  - focused LHS-subview selector passed `40` cases across four GPUs (`10` per group);
+  - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `424` cases across four groups (`106` each).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=424`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3095 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another long-term ISA coverage slice.

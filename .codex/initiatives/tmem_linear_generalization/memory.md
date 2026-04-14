@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:07 UTC: plain-MMAv5 TMEM-LHS subview K-depth coverage
+
+- `tmem_mma_lhs_subslice_kernel` now accepts `K` as a constexpr, and `MMA_LHS_SUBSLICE_NK_CASES` covers `K in {32, 64}` for all supported plain operand kinds, both legacy/canonical accumulator layouts, and `N in {128, 256}`.
+- The test now uses `_expected_plain_mma_op_count(kind, k)`, so `K=64` proves doubled instruction depth through the supported `ttg.memdesc_subslice` TMEM-LHS path instead of only checking numerics.
+- Current runtime-matrix collection is `3541` tests: `cp=322`, `mma=424`, splitn/misc `=252`, `ld_red=811`, and `ldst=1732`; current bucketed evidence aggregates to `3095 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `40/3541`; no-PYTHONPATH tight `mma` collect selected `424/3541`; focused LHS-subview selector passed `40` across four GPUs (`10` each); tight `mma` runner passed `424` across four groups (`106` each).
+- Remaining long-term work: continue staged ISA saturation in another bounded family, likely scaled-MMAv5 parity or descriptor-view `ld/st` breadth; copy `warpx2` remains parked until a real descriptor/address/view/staging model exists.
+
 ## 2026-04-14 03:04 UTC: ld.red tile-permuted width coverage
 
 - `LD_RED_TILE_PERMUTED_CASES` now spans all currently proven legal helper tile widths for tile-permuted `128xN` f32 reductions: `N=32/tile_n=8`, `N=64/tile_n in {8,16}`, `N=128/tile_n in {8,16,32}`, and `N=256/tile_n in {8,16,32,64}`.

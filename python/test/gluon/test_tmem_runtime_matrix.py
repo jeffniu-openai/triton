@@ -1379,9 +1379,9 @@ def tmem_mma_lhs_subslice_kernel(
     acc_layout: ttgl.constexpr,
     smem_b_layout: ttgl.constexpr,
     N: ttgl.constexpr,
+    K: ttgl.constexpr,
 ):
     M: ttgl.constexpr = 128
-    K: ttgl.constexpr = 32
     PARENT_K: ttgl.constexpr = 2 * K
     a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
     b_offs = ttgl.arange(0, K)[:, None] * N + ttgl.arange(0, N)[None, :]
@@ -6198,9 +6198,9 @@ MMA_LHS_TILE_PERMUTED_N_CASES = [
     if not (kind == "tf32" and n == 256)
 ]
 
-MMA_LHS_SUBSLICE_N_CASES = [
-    (kind, acc_layout_kind, n)
-    for kind, acc_layout_kind, n in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256))
+MMA_LHS_SUBSLICE_NK_CASES = [
+    (kind, acc_layout_kind, n, k)
+    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64))
 ]
 
 
@@ -6969,10 +6969,9 @@ def test_tmem_runtime_matrix_mma_lhs_tile_permuted(kind, n):
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,acc_layout_kind,n", MMA_LHS_SUBSLICE_N_CASES)
-def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_kind, n):
+@pytest.mark.parametrize("kind,acc_layout_kind,n,k", MMA_LHS_SUBSLICE_NK_CASES)
+def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_kind, n, k):
     m = 128
-    k = 32
     parent_layout = _make_tmem_linear_layout(m, 2 * k)
     acc_layout = (
         TensorMemoryLayout((m, n), col_stride=1)
@@ -6993,6 +6992,7 @@ def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_
         acc_layout,
         shared_layout_b,
         n,
+        k,
         num_warps=4,
     )
 
@@ -7001,7 +7001,7 @@ def test_tmem_runtime_matrix_mma_lhs_subslice_view_plain_kinds(kind, acc_layout_
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
-    assert len(mma_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(mma_ops) == _expected_plain_mma_op_count(kind, k)
     assert all(op == expected_kind for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     ttgir = compiled.asm["ttgir"]
