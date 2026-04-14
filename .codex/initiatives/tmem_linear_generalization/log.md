@@ -14299,3 +14299,11 @@ Open after this slice:
 - Current runtime-matrix collection is `7969` tests: `cp=594`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7518 passed, 451 skipped`.
 - Validation: representative f32/i32 N=256 probes; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/7969`; no-PYTHONPATH CP collect selected `594/7969`; no-PYTHONPATH full-file collect reported `7969`; focused selector passed all `12` cases across split-4 (`3` per group; times `4.02s`, `4.98s`, `5.26s`, and `5.46s`); `git diff --check` passed.
 - Next: commit/push this bounded `tcgen05.cp` descriptor-view coverage checkpoint, then move to another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:27 UTC: linear no-scales copy subword integer clean negatives
+
+- Expanded `CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES` from f16/bf16 to f16/bf16/i16/i8, preserving `M=128`, `N in {128,256}`, and `swizzle=32`.
+- The new integer rows pin the same clean no-scales copy verifier contract as the floating subword rows: `Source element type should be 32-bit.`. This is a test-only clean-negative expansion and does not change supported copy lowering.
+- Current runtime-matrix collection is `7973` tests: `cp=598`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7522 passed, 451 skipped`.
+- Validation: i16/i8 scratch probes hit the intended clean diagnostic; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH exact collect selected `8/7973`; no-PYTHONPATH CP collect selected `598/7973`; no-PYTHONPATH full-file collect reported `7973`; exact selector passed all `8` cases across split-4 (`2` per group; group times `4.11s`, `4.11s`, `4.09s`, and `4.52s`); `git diff --check` passed.
+- Next: commit/push this bounded copy-contract checkpoint, then move to another exact non-parked TMEM ISA coverage slice.

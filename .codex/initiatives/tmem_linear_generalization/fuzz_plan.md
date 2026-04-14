@@ -986,3 +986,9 @@ Every fuzz case records:
 - Linear no-scales `tcgen05.cp` descriptor-view coverage now includes `N=256` for the supported `memdesc_subslice` path, in addition to the existing `N=128` rows.
 - The active view is sliced from a `128x(2*N)` TMEM-linear parent and emits exact `tcgen05.cp.cta_group::1.128x256b` counts: `16` messages at `N=128` and `32` at `N=256`.
 - Current full-file collection is `7969` tests and the CP bucket is `594` cases. Aggregate bucket evidence is `7518 passed, 451 skipped`.
+
+## 2026-04-14 13:27 UTC: Linear No-Scales Copy Subword Integer Boundary Note
+
+- Linear no-scales `tcgen05.cp` clean-negative coverage now rejects f16/bf16/i16/i8 subword source payloads at `N in {128,256}` through the same public `Source element type should be 32-bit.` verifier path.
+- Generate positive no-scales linear copy rows only with 32-bit source elements unless the production verifier/ISA contract changes; keep subword rows as clean negatives.
+- Current full-file collection is `7973` tests and the CP bucket is `598` cases. Aggregate bucket evidence is `7522 passed, 451 skipped`.

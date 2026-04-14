@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:27 UTC: linear no-scales copy subword integer clean-negative coverage
+
+- Expanded `CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from f16/bf16 only to `dtype in {f16,bf16,i16,i8}` at `M=128`, `N in {128,256}`, and `swizzle=32`.
+- The new i16/i8 rows preserve the public no-scales copy contract that source elements must be 32-bit; they assert the clean `Source element type should be 32-bit.` verifier diagnostic with no PassManager/assertion noise.
+- Current runtime-matrix collection is `7973` tests: `cp=598`, `mma=1975`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7522 passed, 451 skipped`.
+- Validation completed: i16/i8 scratch probes hit the intended diagnostic; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH exact collect selected `8/7973`; no-PYTHONPATH CP collect selected `598/7973`; no-PYTHONPATH full-file collect reported `7973`; exact selector passed all `8` cases across split-4 on four GPUs (`2` per group; group times `4.11s`, `4.11s`, `4.09s`, and `4.52s`).
+- Next: commit/push this bounded copy-contract checkpoint, then continue another non-parked TMEM ISA coverage slice. Hard parked copy frontiers remain true tensor-memory-scales `warpx2` and no-scales two-CTA `warpx2::02_13`.
+
 ## 2026-04-14 13:24 UTC: linear no-scales copy subslice N=256 coverage
 
 - Expanded `CP_LINEAR_SUBSLICE_VIEW_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py` from fixed `N=128` to `N in {128,256}`. The existing `tmem_copy_no_scales_linear_subslice_view_kernel` now validates a `128x512` parent TMEM-linear allocation sliced to a `128x256` active view.

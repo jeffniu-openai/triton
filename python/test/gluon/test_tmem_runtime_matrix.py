@@ -3508,7 +3508,12 @@ CP_NO_SCALES_TWOCTA_CASES = [
 
 CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES = [
     (dtype_name, torch_dtype, 128, n, 32)
-    for dtype_name, torch_dtype in (("f16", torch.float16), ("bf16", torch.bfloat16))
+    for dtype_name, torch_dtype in (
+        ("f16", torch.float16),
+        ("bf16", torch.bfloat16),
+        ("i16", torch.int16),
+        ("i8", torch.int8),
+    )
     for n in (128, 256)
 ]
 
