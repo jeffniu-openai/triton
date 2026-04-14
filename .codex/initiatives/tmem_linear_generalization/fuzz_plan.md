@@ -578,12 +578,12 @@ Every fuzz case records:
   `blockK in {32, 64, 128}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
 - current two-CTA plain-kind matrix covers `blockN in {64, 128, 256}` and
-  `blockK in {32, 64}` for legacy and canonical TMEM-linear accumulator layouts,
+  `blockK in {32, 64, 128}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
 - `use_acc in {false, true}`; current 1-CTA and 2-CTA `use_acc=true`
   coverage spans all supported plain kinds for one-CTA root layouts at
-  `blockN in {64, 128, 256}` and `blockK in {32, 64, 128}`, while two-CTA
-  root layouts remain covered at `blockK in {32, 64}`.
+  `blockN in {64, 128, 256}` and `blockK in {32, 64, 128}`, and direct
+  two-CTA root layouts now cover the same K axis.
 - current accumulator `memdesc_index` positive coverage spans every supported
   plain kind, `blockK in {32, 64}`, and `use_acc in {false, true}` by indexing
   from `[2, M, blockN]` accumulator parents. One-CTA coverage uses
@@ -1148,3 +1148,10 @@ Every fuzz case records:
 - Positive no-scales `warpx2` fuzz generation may now include leading-unit `ttg.memdesc_subslice` followed by `ttg.memdesc_index` for the reachable public families: single-CTA `warpx2::{01_23,02_13}.64x128b` from `[2,128,4].slice(parent_index,1,dim=0).index(0)` and two-CTA `warpx2::01_23.64x128b` from `[2,256,4].slice(parent_index,1,dim=0).index(0)`, with `parent_index in {0,1}` and 32-bit payloads (`f32`/`i32`).
 - The generic planner support is limited to leading logical dimensions sliced to unit length with unchanged trailing layout dimensions. It is not arbitrary subview algebra, but it is enough to remove the earlier inactive-zero-column-basis gap for this descriptor-chain shape.
 - The two-CTA `warpx2::02_13` slice-plus-index form is still a clean negative for the same reason as direct/subslice/indexed two-CTA `02_13`: current lowering lacks a descriptor/address schedule that preserves the high source-column bit. True tensor-memory-scales `warpx2` remains parked separately.
+
+## 2026-04-14 16:22 UTC: Plain Two-CTA MMAv5 K=128 Root Note
+
+- Plain direct two-CTA root MMAv5 fuzz generation may now include `K=128` for every supported plain kind, legacy/canonical two-CTA accumulator layouts, and `N in {64,128,256}`.
+- Both no-accumulator and `use_acc=True` two-CTA root matrices consume the expanded `K in {32,64,128}` table and pin exact opcode counts using `blockK // 32`.
+- Do not infer K128 support for two-CTA indexed accumulator views, two-CTA accumulator subviews, TMA-fed matrices, or scaled-MMAv5 from this checkpoint. Those remain separate coverage slices with their own resource and descriptor constraints.
+- Current full-file collection is `8584` tests and the MMA bucket is `2397` cases. Aggregate bucket evidence is `8133 passed, 451 skipped`.
