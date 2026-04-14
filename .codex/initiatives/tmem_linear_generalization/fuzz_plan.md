@@ -463,7 +463,7 @@ Every fuzz case records:
   runtime coverage; direct `i8` remains a clean frontend/ptxas-negative
   boundary on the current Blackwell target.
 - `cta_group in {1, 2}`
-- current one-CTA root plain-kind matrix covers `blockN in {128, 256}` and
+- current one-CTA root plain-kind matrix covers `blockN in {64, 128, 256}` and
   `blockK in {32, 64}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
 - current two-CTA plain-kind matrix covers `blockN in {128, 256}` and
@@ -471,7 +471,7 @@ Every fuzz case records:
   with exact opcode counts scaling by `blockK // 32`.
 - `use_acc in {false, true}`; current 1-CTA and 2-CTA `use_acc=true`
   coverage spans all supported plain kinds, both legacy/canonical accumulator
-  layouts, `blockN in {128, 256}`, and `blockK in {32, 64}`.
+  layouts, `blockN in {64, 128, 256}`, and `blockK in {32, 64}`.
 - `multicast in {false, true}` where supported
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared

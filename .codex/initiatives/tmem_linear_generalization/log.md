@@ -13291,3 +13291,19 @@ Open after this slice:
   - tight MMA runner passed all `612` cases across groups `153`, `153`, `153`, and `153` with runner wall times about `8.1s`, `9.0s`, `22.8s`, and `20.4s`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=612`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3453 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation. Copy `warpx2` frontiers remain parked unless a new descriptor/address/staging model appears; otherwise move to another bounded `ld/st`, `ld.red`, MMAv5, or scaled-MMAv5 gap.
+
+## 2026-04-14 04:35 UTC: plain-MMAv5 one-CTA root/use-acc N=64 coverage
+
+- Expanded `MMA_PLAIN_KIND_ACC_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- The standard `M=128` one-CTA root/use-acc matrix now covers every supported plain operand kind, both legacy/canonical accumulator layouts, `K in {32,64}`, and both no-accumulator and `use_acc=True` at all three N widths.
+- This closes a direct root plain-MMAv5 N64 parity gap and complements the existing M64 N64 and scaled-root N64 surfaces.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `120/3939`;
+  - no-PYTHONPATH tight `mma` collect selected `652/3939`;
+  - focused plain root/use-acc selector passed all `120` cases across four GPUs (`30` per group; group times about `26.87s`, `25.13s`, `42.97s`, and `40.18s`);
+  - tight MMA runner passed all `652` cases across groups `163`, `163`, `163`, and `163` with runner wall times about `46.2s`, `16.7s`, `26.7s`, and `21.0s`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=652`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3493 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact family.

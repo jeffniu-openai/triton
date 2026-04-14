@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:35 UTC: plain-MMAv5 one-CTA root/use-acc N=64 coverage
+
+- `MMA_PLAIN_KIND_ACC_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- The standard `M=128` one-CTA plain-MMAv5 root/use-acc matrix now covers the small-N root surface for every supported plain operand kind, `K in {32,64}`, both no-accumulator and `use_acc=True`, and both legacy/canonical TMEM-linear accumulator layouts.
+- This is the direct standard-root companion to the just-landed M64 and scaled-root N64 parity slices. Exact opcode counts remain `_expected_plain_mma_op_count(kind, K)`, independent of N for this root family.
+- Current runtime-matrix collection is `3939` tests: `cp=322`, `mma=652`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3493 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `120/3939`; no-PYTHONPATH tight `mma` collect selected `652/3939`; focused plain root/use-acc selector passed `120` cases across four GPUs (`30` each); tight MMA runner passed `652` across four groups (`163` each).
+
 ## 2026-04-14 04:31 UTC: direct scaled-MMAv5 root-format N=64 parity
 
 - `SCALED_MMA_ROOT_FORMAT_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

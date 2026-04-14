@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 3899-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 3939-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current plain-MMAv5 one-CTA root/use-acc `N=64` checkpoint, 2026-04-14 04:35 UTC: `MMA_PLAIN_KIND_ACC_CASES` now spans `N in {64, 128, 256}` for the standard `M=128` one-CTA root accumulator matrix. Coverage includes every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, and `f8e4m3`), `K in {32,64}`, both no-accumulator and `use_acc=True` paths, and both legacy plus canonical TMEM-linear accumulator layouts. This closes the standard root plain-MMAv5 N64 parity gap after the M64 and scaled-root N64 slices. Current runtime-matrix collection is `3939` tests: `cp=322`, `mma=652`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3493 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `120/3939`; no-PYTHONPATH tight `mma` collect selected `652/3939`; focused plain root/use-acc selector passed all `120` cases across four GPUs (`30` each); tight MMA runner passed all `652` cases across four groups (`163` each).
 
 - Current direct scaled-MMAv5 root-format `N=64` parity checkpoint, 2026-04-14 04:31 UTC: `SCALED_MMA_ROOT_FORMAT_CASES` now spans `N in {64, 128, 256}` for every current direct scaled-MMAv5 format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`), `K in {128, 256}`, and both legacy plus canonical TMEM-linear accumulator layouts. This closes the direct root accumulator `N=64` parity gap; earlier `N=64` coverage existed only through subview/specialized paths, not the root format matrix. Current runtime-matrix collection is `3899` tests: `cp=322`, `mma=612`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; bucketed evidence now aggregates to `3453 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `60/3899`; no-PYTHONPATH tight `mma` collect selected `612/3899`; focused scaled-root selector passed all `60` cases across four GPUs (`15` each); tight MMA runner passed all `612` cases across four groups (`153` each).
 
