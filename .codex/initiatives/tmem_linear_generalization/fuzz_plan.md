@@ -491,7 +491,7 @@ Every fuzz case records:
 - `multicast in {false, true}` where supported
 - TMA-fed two-CTA TF32 has a positive reachable route when matrix B is supplied
   as a non-transposed `[N, K]` descriptor and passed to MMAv5 through a shared
-  `permute((1, 0))` view; current coverage spans `blockN in {128, 256}` for
+  `permute((1, 0))` view; current coverage spans `blockN in {64, 128, 256}` for
   both legacy and canonical TMEM-linear accumulator layouts. Default `[K, N]`
   B descriptors remain a clean negative because TMA descriptors cannot be
   transposed.
@@ -538,10 +538,10 @@ Every fuzz case records:
 - non-MMAv5-equivalent TMEM-linear accumulator layouts
 - transposed float32 shared operands
   - current live nuance: direct non-TMA 2-CTA TF32 coverage is green, and
-    TMA-fed 2-CTA TF32 is positive at `blockN in {128, 256}` when B is loaded
+    TMA-fed 2-CTA TF32 is positive at `blockN in {64, 128, 256}` when B is loaded
     as `[N, K]` and then shared-permuted into MMAv5's required `[K, N]` operand
     view. The default `[K, N]` B TMA descriptor shape is covered as a clean
-    unsupported boundary at the same `blockN in {128, 256}` shapes because TMA
+    unsupported boundary at the same `blockN in {64, 128, 256}` shapes because TMA
     descriptors cannot themselves be transposed.
 - CGA mismatches between descriptors and the module CTA topology
 

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:33 UTC: TMA-fed two-CTA TF32 N=64 parity
+
+- `test_tmem_runtime_matrix_mma_twocta_tma_tf32_reports_clean_shared_transpose_error` now parameterizes `block_n` over `64`, `128`, and `256` for both legacy and canonical two-CTA TMEM-linear accumulator layouts.
+- `test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor` now covers the same N range for the positive route where B is supplied as a non-transposed `[N,K]` TMA descriptor and passed into MMAv5 through a shared-memory `permute((1,0))` view.
+- This closes the small-N TMA-fed TF32 parity gap beside the broader two-CTA plain-kind `N=64` coverage. The default `[K,N]` B TMA descriptor remains a clean transposed-float32 shared-operand negative.
+- Current runtime-matrix collection is `4747` tests: `cp=322`, `mma=734`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; current bucketed evidence aggregates to `4301 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused `tma_tf32` collect selected `12/4747`; focused `tma_tf32` selector passed all `12` cases across split-4 (`3` per group; group times `4.27s`, `4.13s`, `5.97s`, and `6.67s`); no-PYTHONPATH tight MMA collect selected `734/4747`; tight MMA selector passed all `734` cases across split-4 (`184`, `184`, `184`, and `182`; group times `124.75s`, `117.27s`, `326.59s`, and `300.99s`).
+
 ## 2026-04-14 06:23 UTC: ld.red additional unsupported-layout clean negatives
 
 - Added `LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES` and `test_tmem_runtime_matrix_ld_red_additional_unsupported_layouts_report_clean_unsupported`.

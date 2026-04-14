@@ -13471,3 +13471,19 @@ Open after this slice:
 - Current runtime-matrix bucket totals: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4297 passed, 446 skipped`.
 - Full `ld_red` bucket rerun was deferred because this is a small negative-only coverage expansion over existing diagnostics.
 - Next: commit/push this bounded `ld.red` checkpoint, then continue with another recorded long-term ISA gap: broader `ld.red` fuzzing if a concrete slice is available, otherwise MMAv5/scaled-MMAv5 coverage saturation or copy surfaces that do not depend on the parked `warpx2` hypotheses.
+
+## 2026-04-14 06:33 UTC: TMA-fed two-CTA TF32 N=64 parity
+
+- Expanded the two TMA-fed two-CTA TF32 runtime-matrix tests from `blockN in {128, 256}` to `blockN in {64, 128, 256}`.
+- The clean-negative path keeps the default `[K,N]` B TMA descriptor pinned to the transposed-float32 shared-operand diagnostic.
+- The positive path uses the supported `[N,K]` B descriptor and shared-memory `permute((1,0))` view, and now validates N64 for both legacy and canonical two-CTA TMEM-linear accumulator layouts.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused `tma_tf32` collect selected `12/4747`;
+  - focused `tma_tf32` selector passed all `12` cases across split-4 on four GPUs (`3` per group; `4.27s`, `4.13s`, `5.97s`, and `6.67s`);
+  - no-PYTHONPATH tight MMA collect selected `734/4747`;
+  - tight MMA selector passed all `734` cases across split-4 on four GPUs (`184`, `184`, `184`, and `182`; `124.75s`, `117.27s`, `326.59s`, and `300.99s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=734`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4301 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA coverage. Good next slices are another concrete MMAv5/scaled-MMAv5 parity gap or non-parked copy-family coverage; keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.
