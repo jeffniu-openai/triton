@@ -13504,3 +13504,20 @@ Open after this slice:
   - tight MMA selector passed all `754` cases across split-4 on four GPUs (`189`, `189`, `189`, and `187`; `6.70s`, `23.23s`, `18.77s`, and `17.94s`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=754`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4321 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA coverage. Good next slices are either plain full-shape TMEM-LHS N64 if the helper can avoid the known tf32 shared-memory OOR boundary, scaled accumulator K-depth/subview parity, or another non-parked copy/ld.red descriptor frontier. True scales `warpx2` and no-scales two-CTA `warpx2::02_13` remain parked until there is a real descriptor/address/staging hypothesis.
+
+## 2026-04-14 06:40 UTC: plain-MMAv5 full-shape TMEM-LHS N=64 parity
+
+- Expanded `MMA_LHS_TILE_PERMUTED_NK_CASES` from `N in {128, 256}` to `N in {64, 128, 256}`.
+- The full-shape tile-permuted TMEM-LHS plain-MMAv5 matrix now covers N64 for every supported plain operand kind and `K in {128,256}`.
+- The existing `tf32,N=256,K=256` case remains omitted because the direct shared-B helper exceeds shared memory at that shape; the new N64 cases are positive and validated numerically plus exact PTX/LLIR opcode counts.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect for the full LHS tile-permuted nodeid selected `29` cases;
+  - no-PYTHONPATH tight MMA collect selected `764/4777`;
+  - no-PYTHONPATH full-file collect reported `4777` tests;
+  - focused LHS tile-permuted function passed `29` cases across split-4 on four GPUs (`8`, `8`, `8`, and `5`; `14.25s`, `11.30s`, `10.57s`, and `6.61s`);
+  - tight MMA selector passed all `764` cases across split-4 on four GPUs (`191` per group; `5.58s`, `12.93s`, `22.81s`, and `15.78s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=764`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4331 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA coverage. Scaled accumulator K-depth/subview parity or another non-parked copy/ld.red descriptor frontier are good next targets. True scales `warpx2` and no-scales two-CTA `warpx2::02_13` remain parked until there is a real descriptor/address/staging hypothesis.

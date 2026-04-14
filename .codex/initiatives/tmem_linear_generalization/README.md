@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4767-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4777-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current plain-MMAv5 full-shape TMEM-LHS `N=64` parity checkpoint, 2026-04-14 06:40 UTC: `MMA_LHS_TILE_PERMUTED_NK_CASES` now covers `N in {64, 128, 256}` for every supported plain operand kind and `K in {128,256}` through the full-shape tile-permuted TMEM-LHS path. The existing `tf32,N=256,K=256` omission remains because that direct shared-B helper exceeds shared memory; N64 is a positive target and passed numerically with exact PTX/LLIR opcode-count checks. Current runtime-matrix collection is `4777` tests: `cp=322`, `mma=764`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4331 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH full LHS tile-permuted collect selected `29` cases; no-PYTHONPATH tight MMA collect selected `764/4777`; no-PYTHONPATH full-file collect reported `4777`; focused LHS tile-permuted function passed all `29` cases across split-4 on four GPUs (`8`, `8`, `8`, `5`; slowest `14.25s`); tight MMA selector passed all `764` cases across split-4 on four GPUs (`191` each; slowest `22.81s`).
 
 - Current plain-MMAv5 TMEM-LHS subview `N=64` parity checkpoint, 2026-04-14 06:37 UTC: `MMA_LHS_SUBSLICE_NK_CASES` now covers `N in {64, 128, 256}` for every supported plain operand kind, `K in {32,64}`, and both legacy plus canonical TMEM-linear accumulator layouts through the supported `ttg.memdesc_subslice` TMEM-LHS path. This closes the descriptor-view companion to the plain root/two-CTA/TMA-fed `N=64` MMAv5 coverage; exact opcode counts remain `_expected_plain_mma_op_count(kind, K)`. Current runtime-matrix collection is `4767` tests: `cp=322`, `mma=754`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4321 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `40/4767`; no-PYTHONPATH tight MMA collect selected `754/4767`; the full LHS-subview function passed all `60` cases across split-4 on four GPUs (`15` per group; slowest `19.74s`); tight MMA selector passed all `754` cases across split-4 on four GPUs (`189`, `189`, `189`, `187`; slowest `23.23s`). A discarded scaled-copy `blockN=64` probe showed the current public scales descriptor helper creates a zero B-scale descriptor dimension (`REP_MN = BLOCK_N // 128`), so do not add those as positives without a real sub-128 scale-descriptor/staging model.
 

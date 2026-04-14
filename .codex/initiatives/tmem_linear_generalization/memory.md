@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:40 UTC: plain-MMAv5 full-shape TMEM-LHS N=64 parity
+
+- `MMA_LHS_TILE_PERMUTED_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.
+- `test_tmem_runtime_matrix_mma_lhs_tile_permuted` therefore covers full-shape tile-permuted TMEM-LHS descriptors at N64 for every supported plain operand kind and `K in {128,256}`, while retaining the existing `tf32,N=256,K=256` omission because the direct shared-B helper exceeds shared memory at that shape.
+- This closes the full-shape companion to the just-landed plain TMEM-LHS subview N64 parity. The LHS layout is over K, so N64 only shrinks the shared-B operand and accumulator surface; exact opcode counts remain `_expected_lhs_tile_permuted_mma_op_count(kind, k)`.
+- Current runtime-matrix collection is `4777` tests: `cp=322`, `mma=764`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; current bucketed evidence aggregates to `4331 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH full LHS tile-permuted collect selected `29` cases; no-PYTHONPATH tight MMA collect selected `764/4777`; no-PYTHONPATH full-file collect reported `4777`; focused LHS tile-permuted function passed all `29` cases across four GPUs (`8`, `8`, `8`, and `5`; group times `14.25s`, `11.30s`, `10.57s`, and `6.61s`); tight MMA selector passed all `764` cases across four GPUs (`191` per group; group times `5.58s`, `12.93s`, `22.81s`, and `15.78s`).
+
 ## 2026-04-14 06:37 UTC: plain-MMAv5 TMEM-LHS subview N=64 parity
 
 - `MMA_LHS_SUBSLICE_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

@@ -506,10 +506,11 @@ Every fuzz case records:
   - shared-memory path
   - TMEM path where the op and backend support it
   - full-shape tile-permuted TMEM-LHS coverage now spans `f16`, `bf16`,
-    `f8e5m2`, and `f8e4m3` at `N in {128, 256}`, and `tf32` at `N=128`, for
-    a `128x256` operand-A tile, with exact PTX/LLIR opcode checks and
-    eight-times-root instruction counts. The direct shared-B `tf32, N=256,
-    K=256` helper shape exceeds shared memory and is not a positive target.
+    `f8e5m2`, and `f8e4m3` at `N in {64, 128, 256}`, and `tf32` at
+    `N in {64, 128}`, for `K in {128, 256}`, with exact PTX/LLIR opcode checks
+    and K-depth-scaled instruction counts. The direct shared-B
+    `tf32, N=256, K=256` helper shape exceeds shared memory and is not a
+    positive target.
   - current TMEM-LHS subview coverage spans `f16`, `tf32`, `bf16`, `f8e5m2`,
     and `f8e4m3` at `N in {64, 128, 256}` and `K in {32, 64}` for both
     legacy and canonical TMEM-linear accumulator layouts, with exact PTX/LLIR
