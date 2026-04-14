@@ -623,6 +623,9 @@ Every fuzz case records:
   current scaled format pair, `K in {128,256}`, legacy parents at
   `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider indexed
   parents are resource-limited once scale descriptors are live.
+  The same resource-safe indexed matrix also has explicit nonzero
+  accumulator-add coverage, checking the `ttg.memdesc_index` view path with
+  `matmul + acc_init`.
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts. Subview operand-A

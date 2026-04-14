@@ -115,6 +115,21 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-14 08:28 UTC: scaled-MMAv5 indexed-accumulator nonzero use-acc coverage
+
+- Added nonzero accumulator-add coverage for scaled-MMAv5 accumulator `memdesc_index` views in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `tmem_mma_scaled_indexed_acc_format_kernel` now takes `ACC_INIT`; the existing zero path passes `0.0`, and the new use-acc test passes `1.0`.
+- The use-acc test mirrors `SCALED_MMA_INDEXED_ACC_FORMAT_CASES`, covering every current scaled format pair, `K in {128,256}`, legacy parents at `N in {64,128}`, and canonical TMEM-linear parents at `N=64`.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused indexed collect selected `60/5827`;
+  - no-PYTHONPATH tight MMA collect selected `1234/5827`;
+  - adjacent indexed selector passed all `60` cases across split-4 on four GPUs (`15` per group; `27.19s`, `27.75s`, `27.17s`, `27.42s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1234`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5381 passed, 446 skipped`.
+- Next: commit/push this checkpoint, then continue staged ISA saturation in another exact family.
+
 ## 2026-04-14 08:26 UTC: scaled-MMAv5 use-acc K-depth parity
 
 - Expanded scaled-MMAv5 nonzero accumulator-add coverage in `python/test/gluon/test_tmem_runtime_matrix.py`.

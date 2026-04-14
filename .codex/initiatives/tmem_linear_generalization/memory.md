@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:28 UTC: scaled-MMAv5 indexed-accumulator nonzero use-acc coverage
+
+- Added `ACC_INIT` to `tmem_mma_scaled_indexed_acc_format_kernel`; the existing indexed-accumulator matrix passes `0.0` explicitly.
+- Added `test_tmem_runtime_matrix_mma_scaled_indexed_acc_view_format_use_acc`, reusing `SCALED_MMA_INDEXED_ACC_FORMAT_CASES` with `acc_init=1.0`.
+- Coverage mirrors the resource-safe scaled indexed matrix: every current scaled format pair, `K in {128,256}`, legacy parents at `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider indexed parents remain omitted because they exceed TMEM capacity with live scale descriptors.
+- The new test validates `a_ref @ b_ref.T + acc_init`, exact K-scaled scaled-MMAv5 opcode counts, exact commit opcode, `ttg.memdesc_index`, and the expected legacy/canonical layout marker.
+- Current runtime-matrix collection is `5827` tests: `cp=381`, `mma=1234`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5381 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused indexed collect selected `60/5827`; no-PYTHONPATH tight MMA collect selected `1234/5827`; adjacent indexed selector passed all `60` cases across split-4 on four GPUs (`15` per group; group times `27.19s`, `27.75s`, `27.17s`, and `27.42s`).
+- Next: commit/push this bounded scaled-MMAv5 descriptor-view checkpoint, then continue another exact non-parked TMEM ISA slice. Keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a concrete descriptor/address/staging hypothesis.
+
 ## 2026-04-14 08:26 UTC: scaled-MMAv5 use-acc K-depth parity
 
 - Expanded `SCALED_MMA_ROOT_USE_ACC_CASES` and `SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES` over `K in {128,256}` instead of only `K=128`.

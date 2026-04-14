@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5797-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5827-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 indexed-accumulator use-acc checkpoint, 2026-04-14 08:28 UTC: scaled-MMAv5 accumulator `memdesc_index` coverage now validates nonzero accumulator-add semantics. `tmem_mma_scaled_indexed_acc_format_kernel` takes `ACC_INIT`; the existing zero path passes `0.0`, and the new use-acc matrix initializes the indexed accumulator view to `1.0`. Coverage mirrors the resource-safe indexed matrix: every current scaled format pair, `K in {128,256}`, legacy parents at `N in {64,128}`, and canonical TMEM-linear parents at `N=64`; wider indexed parents remain hardware-resource-limited once scale descriptors are live. The new test checks `a_ref @ b_ref.T + acc_init`, exact K-scaled scaled-MMAv5 opcode counts, exact commit opcodes, and `ttg.memdesc_index`/layout markers. Current runtime-matrix collection is `5827` tests: `cp=381`, `mma=1234`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5381 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused indexed collect selected `60/5827`; no-PYTHONPATH tight MMA collect selected `1234/5827`; adjacent indexed selector passed all `60` cases across split-4 on four GPUs (`15` per group; times `27.19s`, `27.75s`, `27.17s`, and `27.42s`).
 
 - Current scaled-MMAv5 use-acc K-depth checkpoint, 2026-04-14 08:26 UTC: scaled-MMAv5 nonzero accumulator-add coverage now has K-depth parity with the zero-accumulator matrices. Both the direct root and descriptor-view accumulator-subview `use_acc=True` matrices now cover `K in {128,256}` instead of only `K=128`; root coverage spans every current scaled format pair, `N in {64,128,256}`, and legacy/canonical accumulator layouts, while accumulator-subview coverage spans every format pair, `N in {64,128}`, and `slice_start in {0,N}`. The expected scaled-MMAv5 opcode counts now scale by `K // 128`, so the new `K=256` cases prove doubled instruction depth while still checking `a_ref @ b_ref.T + acc_init` and exact commit opcode counts. Current runtime-matrix collection is `5797` tests: `cp=381`, `mma=1204`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5351 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `100/5797`; no-PYTHONPATH tight MMA collect selected `1204/5797`; focused root+subview use-acc selector passed all `100` cases across split-4 on four GPUs (`25` per group; times `32.70s`, `41.00s`, `28.67s`, and `27.19s`).
 
