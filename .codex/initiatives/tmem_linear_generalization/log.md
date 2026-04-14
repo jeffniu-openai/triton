@@ -14465,3 +14465,15 @@ Open after this slice:
 - Current runtime-matrix collection is `8492` tests: `cp=645`, `mma=2337`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8041 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; full-file collect reported `8492`; adjacent accumulator-subslice collect selected `360/8492`; four-GPU split execution passed all `360` cases (`90` per group; slowest `89.53s`).
 - Scope note: indexed accumulator views, two-CTA descriptor-view MMA, TMA-fed MMA, and scaled-MMAv5 K-depth expansions were not changed in this slice.
+
+
+## 2026-04-14 15:54 UTC: copy warpx2 indexed-view coverage
+
+- Added `tmem_copy_no_scales_warpx2_indexed_view_kernel` and `tmem_copy_no_scales_warpx2_twocta_indexed_view_kernel` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- Single-CTA no-scales `tcgen05.cp.cta_group::1.warpx2::{01_23,02_13}.64x128b` now has positive generic `ttg.memdesc_index` coverage through `[2,128,4].index(parent_index)` for `parent_index in {0,1}` and `f32`/`i32` payloads. The tests check runtime oracles plus exact copy and commit opcodes.
+- Two-CTA no-scales `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b` now has the analogous `[2,256,4].index(parent_index)` positive coverage with exact multicast commit checks and no `cta_group::1` or `02_13` opcode leakage.
+- Two-CTA no-scales `warpx2::02_13.64x128b` indexed views are clean negatives with the same high-source-column-bit descriptor/address diagnostic as the direct and subview forms.
+- This updates the previous scratch finding: direct outer `memdesc_index` is now a positive surface; slice-plus-index remains a generic indexed-view algebra frontier, and true tensor-memory-scales `warpx2` remains parked without a descriptor/address/staging model.
+- Current runtime-matrix collection is `8508` tests: `cp=661`, `mma=2337`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2985`; current bucketed evidence aggregates to `8057 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH full-file collect reported `8508`; no-PYTHONPATH `warpx2` collect selected `67/8508`; no-PYTHONPATH CP collect selected `661/8508`; four-GPU `warpx2` selector passed all `67` cases (`17`, `17`, `17`, and `16`; slowest `67.26s`); four-GPU CP selector passed/skipped `651 passed, 10 skipped` (`156 passed/10 skipped`, `166 passed`, `166 passed`, and `163 passed`; slowest `225.83s`); `git diff --check` passed.
+- Next: commit/push this bounded `warpx2` indexed-view checkpoint, then continue staged ISA saturation. Hard copy frontiers remain true tensor-memory-scales `warpx2`, no-scales two-CTA `warpx2::02_13`, and slice-plus-index view algebra unless a concrete descriptor/address/staging hypothesis appears.

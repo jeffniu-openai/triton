@@ -445,9 +445,11 @@ Every fuzz case records:
   executable public-layout test with exact copy and multicast commit opcodes.
   It is also covered through generic `ttg.memdesc_subslice` descriptor views
   from a wider canonical two-CTA `[256,8]` parent sliced to `[256,4]` at
-  column starts `0` and `4`, with `f32`/`i32` payloads. The analogous
-  two-CTA `02_13` subviews are clean negatives and must stay that way unless a
-  real descriptor/address schedule preserves the high source-column bit.
+  column starts `0` and `4`, with `f32`/`i32` payloads, and through generic
+  `ttg.memdesc_index` descriptor views from `[2,256,4].index(parent_index)`
+  for `parent_index in {0,1}`. The analogous two-CTA `02_13` subviews and
+  indexed views are clean negatives and must stay that way unless a real
+  descriptor/address schedule preserves the high source-column bit.
   `cta_group::2 warpx2::02_13` remains a layout-surface frontier: the
   canonical candidate shared layout is pinned as a clean descriptor-plan
   unsupported case, and the dense shared-layout form is rejected to avoid
@@ -1049,7 +1051,7 @@ Every fuzz case records:
 
 - No-scales `cta_group::2 warpx2::01_23.64x128b` positive fuzz generation may now include `[256,8] -> [256,4]` column subviews at starts `0` and `4`, with `f32`/`i32` payloads and exact generic `ttg.memdesc_subslice` view chains.
 - The analogous `cta_group::2 warpx2::02_13` parent subviews remain clean negatives. Subviewing a wider parent does not solve the high source-column-bit descriptor/address problem.
-- Lifted `warpx2` indexed views are not a current positive target: direct outer `index` fails generic result-type inference, and slice-plus-index leaves an inactive zero column basis before copy lowering. Track this separately as an indexed-view inference/algebra gap.
+- Direct outer `warpx2` indexed views are now positive for reachable public-layout cases: single-CTA `01_23`/`02_13` use `[2,128,4].index(parent_index)`, and two-CTA `01_23` uses `[2,256,4].index(parent_index)`, all with `parent_index in {0,1}` and `f32`/`i32` payloads. The two-CTA `02_13` indexed view remains a clean negative with the high-source-column-bit diagnostic. Slice-plus-index forms that leave inactive zero column bases remain a separate indexed-view inference/algebra gap.
 - Current full-file collection is `8224` tests and the CP bucket is `645` cases. Aggregate bucket evidence is `7773 passed, 451 skipped`.
 
 
@@ -1127,3 +1129,9 @@ Every fuzz case records:
 - M64 accumulator `memdesc_subslice` generation may also include `K=128` for the same kind/N/slice/use-acc matrix.
 - Do not infer K=128 support for indexed accumulator views, two-CTA descriptor-view MMA, TMA-fed MMA, or scaled-MMAv5 from this checkpoint; keep those as independently validated slices.
 - Current full-file collection is `8492` tests and the tight MMA bucket is `2337` cases. Aggregate bucket evidence is `8041 passed, 451 skipped`.
+
+## 2026-04-14 15:54 UTC: Copy warpx2 Indexed-View Note
+
+- Positive no-scales `warpx2` fuzz generation may now include direct outer `ttg.memdesc_index` views for the public reachable layouts: single-CTA `warpx2::{01_23,02_13}.64x128b` from `[2,128,4].index(parent_index)` and two-CTA `warpx2::01_23.64x128b` from `[2,256,4].index(parent_index)`, with `parent_index in {0,1}` and 32-bit payloads (`f32`/`i32`).
+- The two-CTA `warpx2::02_13` indexed-view form is a clean negative, not a missing positive, until a descriptor/address schedule preserves the high source-column bit.
+- Slice-plus-index `warpx2` forms remain a generic indexed-view algebra frontier; do not generate them as positives from this checkpoint. True tensor-memory-scales `warpx2` remains parked separately.
