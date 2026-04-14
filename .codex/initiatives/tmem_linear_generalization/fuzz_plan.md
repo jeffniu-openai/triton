@@ -558,9 +558,12 @@ Every fuzz case records:
   from `[2, M, blockN]` accumulator parents. One-CTA coverage uses
   `M=128`; two-CTA coverage uses `M=256` with multicast commit checks. Legacy
   parents are covered at `blockN in {64, 128, 256}`; canonical TMEM-linear
-  parents are covered at `blockN in {64, 128}`. Canonical linear
-  `blockN=256` is a hardware resource boundary for this parent-view test
-  because the live parent image requires 1024 TMEM columns.
+  `[2, M, blockN]` parents are covered at `blockN in {64, 128}`. Canonical
+  linear `blockN=256` is a hardware resource boundary for the `[2, M, blockN]`
+  parent-view test because the live parent image requires 1024 TMEM columns.
+  Resource-safe canonical-linear `blockN=256` indexed coverage is now positive
+  through unit parents (`[1, M, blockN].index(0)`) for both one-CTA and two-CTA
+  paths over the same kind/K/use-acc matrix.
 - current one-CTA accumulator `memdesc_subslice` positive coverage spans every
   supported plain kind, `blockN in {64, 128, 256}`, `blockK in {32, 64}`,
   `slice_start in {0, blockN}`, and `use_acc in {false, true}` by slicing from
@@ -1014,3 +1017,11 @@ Every fuzz case records:
 - Preserve row/column zero bases in generated expected layouts. A zero basis is semantic broadcast/repetition state, not removable padding.
 - Do not use this as evidence for true tensor-memory-scales `warpx2` or no-scales two-CTA `warpx2::02_13`; both remain parked descriptor/address/staging frontiers.
 - Current full-file collection is `8027` tests and the CP bucket is `612` cases. Aggregate bucket evidence is `7576 passed, 451 skipped`.
+
+
+## 2026-04-14 14:10 UTC: Plain MMAv5 Indexed-Accumulator Unit-Parent N=256 Note
+
+- Plain MMAv5 accumulator `memdesc_index` positive fuzz generation may now include canonical TMEM-linear unit-parent `N=256` cases for one-CTA and two-CTA paths: `[1,128,N].index(0)` and `[1,256,N].index(0)`, reshaped back to the active 2D MMA descriptor.
+- The positive unit-parent matrix covers every supported plain kind, `K in {32,64}`, and `use_acc in {False,True}` for both CTA groups.
+- Do not generate `[2,M,N].index(1)` canonical-linear `N=256` positives as equivalent coverage; those still keep a 1024-column live parent image and remain a hardware resource boundary.
+- Current full-file collection is `8067` tests and the tight MMA bucket is `2015` cases. Aggregate bucket evidence is `7616 passed, 451 skipped`.

@@ -1439,6 +1439,8 @@ def tmem_mma_indexed_acc_kernel(
     shared_layout_a: ttgl.constexpr,
     shared_layout_b: ttgl.constexpr,
     use_acc: ttgl.constexpr,
+    parent_depth: ttgl.constexpr,
+    parent_index: ttgl.constexpr,
 ):
     a_offs = ttgl.arange(0, M)[:, None] * K + ttgl.arange(0, K)[None, :]
     b_offs = ttgl.arange(0, K)[:, None] * N + ttgl.arange(0, N)[None, :]
@@ -1454,8 +1456,8 @@ def tmem_mma_indexed_acc_kernel(
     smem_a.store(a)
     smem_b.store(b)
 
-    acc_parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
-    acc_tmem = acc_parent.index(1)
+    acc_parent = allocate_tensor_memory(ttgl.float32, [parent_depth, M, N], parent_layout)
+    acc_tmem = acc_parent.index(parent_index).reshape((M, N))
     if use_acc:
         acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
         acc_tmem.store(ttgl.convert_layout(c, acc_reg_layout))
@@ -2211,7 +2213,8 @@ def tmem_mma_twocta_indexed_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.con
                                        K: ttgl.constexpr, parent_layout: ttgl.constexpr,
                                        block_layout_a: ttgl.constexpr, block_layout_b: ttgl.constexpr,
                                        block_layout_c: ttgl.constexpr, shared_layout_a: ttgl.constexpr,
-                                       shared_layout_b: ttgl.constexpr, use_acc: ttgl.constexpr):
+                                       shared_layout_b: ttgl.constexpr, use_acc: ttgl.constexpr,
+                                       parent_depth: ttgl.constexpr, parent_index: ttgl.constexpr):
     a_offs_m = ttgl.arange(0, M)[:, None]
     a_offs_k = ttgl.arange(0, K)[None, :]
     b_offs_k = ttgl.arange(0, K)[:, None]
@@ -2229,8 +2232,8 @@ def tmem_mma_twocta_indexed_acc_kernel(a_ptr, b_ptr, c_ptr, out_ptr, M: ttgl.con
     smem_b.store(b)
     fence_async_shared(cluster=True)
 
-    acc_parent = allocate_tensor_memory(ttgl.float32, [2, M, N], parent_layout)
-    acc_tmem = acc_parent.index(1)
+    acc_parent = allocate_tensor_memory(ttgl.float32, [parent_depth, M, N], parent_layout)
+    acc_tmem = acc_parent.index(parent_index).reshape((M, N))
     if use_acc:
         c = ttgl.load(ttgl.set_auto_layout(c_ptr + c_offs_m * N + c_offs_n, block_layout_c))
         acc_reg_layout: ttgl.constexpr = acc_tmem.get_reg_layout()
@@ -7656,6 +7659,9 @@ MMA_INDEXED_ACC_CASES = [
     # Linear parent views keep the whole [2, M, N] physical image live; N=256
     # needs 1024 TMEM columns and is therefore a hardware resource boundary.
     if not (parent_layout_kind == "linear" and n == 256)
+] + [
+    (kind, "linear_unit_parent", 256, k, use_acc)
+    for kind, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64), (False, True))
 ]
 
 MMA_ACC_SUBSLICE_CASES = [
@@ -7702,6 +7708,9 @@ MMA_TWOCTA_INDEXED_ACC_CASES = [
     # Linear parent views keep the whole [2, M, N] two-CTA physical image live;
     # N=256 needs 1024 TMEM columns and is a hardware resource boundary.
     if not (parent_layout_kind == "linear" and block_n == 256)
+] + [
+    (kind, "linear_unit_parent", 256, block_k, use_acc)
+    for kind, block_k, use_acc in product(MMA_PLAIN_KINDS, (32, 64), (False, True))
 ]
 
 MMA_TWOCTA_ACC_SUBSLICE_CASES = [
@@ -8427,17 +8436,27 @@ def test_tmem_runtime_matrix_mma_twocta_indexed_acc_view(kind, parent_layout_kin
     block_layout_c = ttgl.BlockedLayout([1, 2], [ctas_per_cga[1], 32 // ctas_per_cga[1]], [4, 1], [1, 0],
                                         cga_layout=cga_layout_c)
 
-    parent_layout = (
-        TensorMemoryLayout(
+    if parent_layout_kind == "legacy":
+        parent_layout = TensorMemoryLayout(
             block=(128, block_n // ctas_per_cga[1]),
             col_stride=1,
             two_ctas=True,
             cga_layout=cga_layout_c,
         )
-        if parent_layout_kind == "legacy"
-        else _lift_tmem_layout(_make_tmem_linear_layout_mmav5_twocta(block_m, block_n), [2])
-    )
-    layout_token = "tensor_memory_encoding" if parent_layout_kind == "legacy" else "tensor_memory_linear"
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_encoding"
+    elif parent_layout_kind == "linear":
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout_mmav5_twocta(block_m, block_n), [2])
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_linear"
+    else:
+        assert parent_layout_kind == "linear_unit_parent"
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout_mmav5_twocta(block_m, block_n), [1])
+        parent_depth = 1
+        parent_index = 0
+        layout_token = "tensor_memory_linear"
 
     a, b, shared_layout_a, shared_layout_b, expected_kind, atol, rtol = _make_mma_twocta_plain_kind_inputs(
         kind, block_m, block_n, block_k, cga_layout_a, cga_layout_b
@@ -8460,6 +8479,8 @@ def test_tmem_runtime_matrix_mma_twocta_indexed_acc_view(kind, parent_layout_kin
         shared_layout_a,
         shared_layout_b,
         use_acc,
+        parent_depth,
+        parent_index,
         num_warps=4,
         num_ctas=2,
     )
@@ -8739,12 +8760,22 @@ def test_tmem_runtime_matrix_mma_twocta_tma_tf32_b_transposed_descriptor_use_acc
 @pytest.mark.parametrize("kind,parent_layout_kind,n,k,use_acc", MMA_INDEXED_ACC_CASES)
 def test_tmem_runtime_matrix_mma_indexed_acc_view(kind, parent_layout_kind, n, k, use_acc):
     m = 128
-    parent_layout = (
-        TensorMemoryLayout((m, n), col_stride=1)
-        if parent_layout_kind == "legacy"
-        else _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
-    )
-    layout_token = "tensor_memory_encoding" if parent_layout_kind == "legacy" else "tensor_memory_linear"
+    if parent_layout_kind == "legacy":
+        parent_layout = TensorMemoryLayout((m, n), col_stride=1)
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_encoding"
+    elif parent_layout_kind == "linear":
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [2])
+        parent_depth = 2
+        parent_index = 1
+        layout_token = "tensor_memory_linear"
+    else:
+        assert parent_layout_kind == "linear_unit_parent"
+        parent_layout = _lift_tmem_layout(_make_tmem_linear_layout(m, n), [1])
+        parent_depth = 1
+        parent_index = 0
+        layout_token = "tensor_memory_linear"
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
 
@@ -8766,6 +8797,8 @@ def test_tmem_runtime_matrix_mma_indexed_acc_view(kind, parent_layout_kind, n, k
         shared_layout_a,
         shared_layout_b,
         use_acc,
+        parent_depth,
+        parent_index,
         num_warps=4,
     )
 

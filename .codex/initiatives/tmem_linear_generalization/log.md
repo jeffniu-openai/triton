@@ -1,3 +1,12 @@
+## 2026-04-14 14:10 UTC: plain MMAv5 indexed-accumulator unit-parent N=256 coverage
+
+- Parameterized the one-CTA and two-CTA plain MMAv5 indexed-accumulator helper kernels by `parent_depth` and `parent_index`, and reshaped the indexed view back to the active 2D descriptor before accumulator register-layout queries, stores, and MMA.
+- Added `linear_unit_parent` rows for one-CTA and two-CTA accumulator `memdesc_index` coverage at `N=256`, covering every supported plain kind, `K in {32,64}`, and `use_acc in {False,True}`.
+- This closes the resource-safe canonical-linear `N=256` indexed-view gap without reclassifying the existing `[2,M,N]` canonical-linear `N=256` parent rows; those remain a hardware resource boundary because the live parent image needs 1024 TMEM columns.
+- Validation completed: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; exact one-case probe `test_tmem_runtime_matrix_mma_indexed_acc_view[f16-linear_unit_parent-256-32-False]` passed; no-PYTHONPATH unit-parent collect selected `40/8067`; unit-parent selector passed all `40` cases across split-4 (`10` per group; `23.66s`, `22.83s`, `18.24s`, and `17.81s`); adjacent non-scaled indexed-accumulator collect selected `240/8067`; adjacent selector passed all `240` cases across split-4 (`60` per group; `138.15s`, `107.47s`, `118.84s`, and `93.56s`); no-PYTHONPATH full-file collect reported `8067`; no-PYTHONPATH tight MMA collect selected `2015/8067`; `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=612`, `mma=2015`, splitn/misc `=571`, `ld_red=1920`, `ldst=2949`; current bucketed evidence aggregates to `7616 passed, 451 skipped`.
+- Next: commit/push this checkpoint and continue staged ISA saturation in another exact non-parked family.
+
 ## 2026-04-14 10:02 UTC: ld.red descriptor-chain N-width sweep
 
 - Generalized `tmem_ld_red_descriptor_chain_kernel` so descriptor-view reductions take `N` as a constexpr instead of being fixed at `N=128`.

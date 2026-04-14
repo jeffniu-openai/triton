@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 14:10 UTC: plain MMAv5 indexed-accumulator unit-parent N=256 coverage
+
+- Added resource-safe canonical TMEM-linear `N=256` accumulator `memdesc_index` coverage for one-CTA and two-CTA plain MMAv5 by parameterizing the indexed-accumulator helper kernels over parent depth/index.
+- The new positive rows use unit parents (`[1,128,N].index(0)` for one CTA and `[1,256,N].index(0)` for two CTA) and reshape the indexed view back to the active 2D MMA descriptor before `get_reg_layout`, `store`, and `tcgen05_mma`.
+- Coverage spans every supported plain kind, `K in {32,64}`, and `use_acc in {False,True}` for both CTA groups. The older `[2,M,N]` canonical-linear parent rows at `N=256` remain intentionally omitted because they keep a 1024-column live TMEM image and exceed the 512-column hardware limit.
+- Current runtime-matrix collection is `8067` tests: `cp=612`, `mma=2015`, splitn/misc `=571`, `ld_red=1920`, and `ldst=2949`; current bucketed evidence aggregates to `7616 passed, 451 skipped`.
+- Validation completed: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; exact one-case unit-parent probe passed; no-PYTHONPATH unit-parent collect selected `40/8067`; unit-parent selector passed all `40` cases across split-4 (`10` per group); adjacent non-scaled indexed-accumulator collect selected `240/8067`; adjacent selector passed all `240` cases across split-4 (`60` per group); no-PYTHONPATH full-file collect reported `8067`; no-PYTHONPATH tight MMA collect selected `2015/8067`; `git diff --check` passed.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another non-parked TMEM ISA coverage slice. Hard parked frontiers remain true tensor-memory-scales `warpx2`, no-scales two-CTA `warpx2::02_13`, and scaled two-CTA `block_n=64` scale-descriptor construction.
+
 ## 2026-04-14 14:01 UTC: copy warpx2 subslice-view support and zero-basis preservation
 
 - Fixed standalone TMEM view reconstruction for pure 2D column `memdesc_subslice` views over non-surjective TMEM-linear layouts. `inferTMemSubsliceEncoding` now mirrors the ld/st query path: preserve the source row mapping, narrow only the logical/materialized column span, and keep zero row bases as semantic broadcast/repetition axes.
