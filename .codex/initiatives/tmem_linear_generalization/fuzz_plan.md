@@ -378,7 +378,12 @@ Every fuzz case records:
   `warpx2` opcodes. Unsupported scales copy layouts now report this boundary
   from `TMEMCopyOp` verification instead of late LLVM lowering. Treat true
   scales `warpx2` as a descriptor/address-representation or direct-PTX
-  documentation frontier.
+  documentation frontier. The current unprimed direct-PTX high-half source
+  offset sweep covers `sourceOffsetB128=0..136` for
+  `warpx2::{01_23,02_13}` at `dst_delta=4` with zero matches:
+  offsets `0..8` execute with wrong data, and offsets `9..136` fault. Do not
+  promote a scales `warpx2` alias unless a different descriptor/view/staging
+  model covers the whole scale tile without priming from canonical `warpx4`.
 
 #### Shared-layout search strategy
 - Generate shared linear layouts by basis mutation rather than random dense

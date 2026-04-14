@@ -91,6 +91,8 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current scales `warpx2` direct-source-offset checkpoint, 2026-04-14 03:31 UTC: completed the missing `sourceOffsetB128=73..119` high-half scan for tensor-memory-scales `tcgen05.copy` `warpx2::{01_23,02_13}` with `dst_delta=4`, filling the tracked evidence range to every offset `0..136`. The combined tracked result is now `274` unprimed single-message records with zero matches: offsets `0..8` execute but produce wrong data (`18` records), and offsets `9..136` all fault (`256` records). New shards are `probe_cp_scales_warpx2_offsets_73_84_dst4_gpu0.jsonl`, `..._85_96_dst4_gpu1.jsonl`, `..._97_108_dst4_gpu2.jsonl`, and `..._109_119_dst4_gpu3.jsonl`; compact summary is `probe_cp_scales_warpx2_offsets_dst4_current_summary.json`. No production lowering change is justified by this sweep; true scales `warpx2` remains a descriptor/address/view/staging frontier rather than a source-offset alias of the canonical `warpx4` scales copy.
+
 - Current plain-MMAv5 `blockM=64` checkpoint, 2026-04-14 03:24 UTC: `test_tmem_runtime_matrix_mma_plain_kinds_m64` adds one-CTA root `M=64, N=128` MMAv5 coverage for every supported plain operand kind, both legacy M64 sugar and canonical M64 TMEM-linear accumulator layouts, `K in {32, 64}`, and both no-accumulator and `use_acc=True` paths. Exact opcode counts are pinned with `_expected_m64_plain_mma_op_count(kind, k, acc_layout_kind)`, including the legacy M64 sugar's doubled opcode stream relative to the canonical M64 linear layout. Current runtime-matrix collection is `3639` tests: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, and `ldst=1752`; bucketed evidence now aggregates to `3193 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `40/3639`; focused M64 selector passed all `40` cases across four GPUs (`10` each); no-PYTHONPATH tight `mma` collect selected `502/3639`; no-PYTHONPATH full-file collect selected all `3639`; tight `mma` runner passed all `502` cases across four groups (`126`, `126`, `126`, `124`); `git diff --check` passed. Remaining long-term coverage work: continue staged ISA saturation in another bounded family; the old legacy M64 xfail docket remains stale on current head, and this matrix now makes M64 MMAv5 coverage explicit in the runtime matrix.
 
 - Prior `ld/st` exotic N=32 direct/descriptor checkpoint, 2026-04-14 03:20 UTC: `test_tmem_runtime_matrix_ldst_exotic_n32_linear_layout` adds root `128x32` f32 roundtrips for the existing scrambled-column and scrambled-row+column TMEM-linear layout families, covering both direct TMEM access and supported descriptor-chain views across every public `ld/st` variant. The slice pins the minimal `32x32b.x32`, `16x64b.x16`, `16x128b.x8`, and `16x256b.x4` opcode families in PTX/LLIR while keeping the descriptor path on `tensor_memory_linear`. Current runtime-matrix collection is `3599` tests: `cp=322`, `mma=462`, splitn/misc `=252`, `ld_red=811`, and `ldst=1752`; bucketed evidence now aggregates to `3153 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `20/3599`; no-PYTHONPATH `ldst` collect selected `1752/3599`; focused exotic N=32 selector passed all `20` cases across four GPUs (`5` each), with slow cold descriptor splits at about `92s` and `113s`; `git diff --check` passed. Remaining long-term coverage work: continue staged ISA saturation in another bounded family; reserve broad `ldst` runner refresh for shared-lowering changes or a larger accumulated `ld/st` checkpoint.
@@ -1239,10 +1241,14 @@ When resuming the initiative:
 - The direct-PTX scales-copy probe now supports arbitrary single-message opcode,
   source-offset, and TMEM-destination-delta variants with one child process per
   run.
-- New evidence: the canonical `warpx4` high-half message uses source offset 32
-  to copy logical columns `8..15`, but the same source window faults for both
-  `warpx2::01_23` and `warpx2::02_13`; legal `warpx2` offsets `0..8` only copy
-  row-shifted low physical columns and never produce the high logical half.
+- Updated 2026-04-14 evidence: the canonical `warpx4` high-half message uses
+  source offset 32 to copy logical columns `8..15`, but the same source window
+  faults for both `warpx2::01_23` and `warpx2::02_13`. The tracked unprimed
+  single-message scan now covers every `sourceOffsetB128` value `0..136` at
+  `dst_delta=4`, with `274` records and zero matches. Offsets `0..8` execute
+  but copy row-shifted low physical columns / otherwise wrong data; offsets
+  `9..136` fault. Compact result:
+  `experiments/results/probe_cp_scales_warpx2_offsets_dst4_current_summary.json`.
 - Current conclusion: do not implement scales `warpx2` by swapping the canonical
   `warpx4` messages. Support needs a different shared descriptor/view/staging
   model, or this remains a clean unsupported boundary.

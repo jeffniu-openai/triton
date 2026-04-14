@@ -1,0 +1,50 @@
+{
+  "conclusion": "No unprimed single-message warpx2 source-offset variant at destination delta 4 can fill the high half of the TensorMemoryScalesLayout copy. Offsets 0..8 execute but produce wrong data; offsets 9..136 fault.",
+  "date_utc": "2026-04-14",
+  "dst_deltas": [
+    4
+  ],
+  "files": [
+    "probe_cp_scales_warpx2_offsets_0_15_dst4_gpu0.jsonl",
+    "probe_cp_scales_warpx2_offsets_109_119_dst4_gpu3.jsonl",
+    "probe_cp_scales_warpx2_offsets_120_136_dst4_gpu1.jsonl",
+    "probe_cp_scales_warpx2_offsets_16_31_dst4_gpu1.jsonl",
+    "probe_cp_scales_warpx2_offsets_32_47_dst4_gpu2.jsonl",
+    "probe_cp_scales_warpx2_offsets_48_63_dst4_gpu3.jsonl",
+    "probe_cp_scales_warpx2_offsets_64_72_dst4_gpu0.jsonl",
+    "probe_cp_scales_warpx2_offsets_73_84_dst4_gpu0.jsonl",
+    "probe_cp_scales_warpx2_offsets_85_96_dst4_gpu1.jsonl",
+    "probe_cp_scales_warpx2_offsets_97_108_dst4_gpu2.jsonl"
+  ],
+  "input": "random",
+  "matches": [],
+  "missing_offsets_0_136": [],
+  "offset_bucket_status_counts": {
+    "0..8:wrong_data": 18,
+    "120..136:error": 34,
+    "73..119:error": 94,
+    "9..72:error": 128
+  },
+  "opcode_status_counts": {
+    "01_23:error": 128,
+    "01_23:wrong_data": 9,
+    "02_13:error": 128,
+    "02_13:wrong_data": 9
+  },
+  "opcodes": [
+    "01_23",
+    "02_13"
+  ],
+  "prime_canonical": false,
+  "probe": "tensor-memory-scales tcgen05.copy warpx2 direct-source-offset scan",
+  "record_count": 274,
+  "source_offset_b128_range": [
+    0,
+    136
+  ],
+  "status_counts": {
+    "error": 256,
+    "wrong_data": 18
+  },
+  "unique_key_count": 274
+}

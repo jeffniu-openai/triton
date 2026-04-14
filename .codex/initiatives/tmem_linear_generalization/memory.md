@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:31 UTC: scales warpx2 direct-source-offset scan complete
+
+- Completed the missing tensor-memory-scales `tcgen05.copy` `warpx2` high-half source-offset scan for `sourceOffsetB128=73..119`, `dst_delta=4`, and both `warpx2::{01_23,02_13}` opcodes.
+- Combined tracked evidence now covers every source offset `0..136` at `dst_delta=4`: `274` unprimed single-message records, zero matches, `18` wrong-data executions at offsets `0..8`, and `256` faulting records for offsets `9..136`.
+- New result shards: `experiments/results/probe_cp_scales_warpx2_offsets_73_84_dst4_gpu0.jsonl`, `..._85_96_dst4_gpu1.jsonl`, `..._97_108_dst4_gpu2.jsonl`, and `..._109_119_dst4_gpu3.jsonl`; compact result: `experiments/results/probe_cp_scales_warpx2_offsets_dst4_current_summary.json`.
+- Conclusion remains: true scales `warpx2` should not be implemented as a source-offset/opcode alias of canonical `warpx4`; it needs a real descriptor/address/view/staging model or stays a clean unsupported boundary.
+
 ## 2026-04-14 03:24 UTC: plain-MMAv5 blockM=64 runtime-matrix coverage
 
 - `test_tmem_runtime_matrix_mma_plain_kinds_m64` adds one-CTA root `M=64, N=128` MMAv5 coverage for all supported plain operand kinds, `K in {32, 64}`, both no-accumulator and `use_acc=True`, and both legacy M64 sugar and canonical M64 TMEM-linear accumulator layouts.

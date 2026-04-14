@@ -13145,3 +13145,15 @@ Open after this slice:
   - `git diff --check` passed.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1752`; current bucketed evidence aggregates to `3193 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another long-term ISA coverage slice.
+
+## 2026-04-14 03:31 UTC scales warpx2 high-half source-offset completion
+
+- Filled the missing tensor-memory-scales `tcgen05.copy` `warpx2` direct-PTX source-offset evidence gap for `sourceOffsetB128=73..119`, `dst_delta=4`, and both `warpx2::{01_23,02_13}` opcodes.
+- Ran the probe across four GPUs:
+  - GPU 0: `73..84`, `24` records;
+  - GPU 1: `85..96`, `24` records;
+  - GPU 2: `97..108`, `24` records;
+  - GPU 3: `109..119`, `22` records.
+- Combined with existing tracked shards, `sourceOffsetB128=0..136` is now complete for `dst_delta=4`: `274` records, zero matches, `18` wrong-data executions at offsets `0..8`, and `256` faulting records at offsets `9..136`.
+- Wrote compact summary `experiments/results/probe_cp_scales_warpx2_offsets_dst4_current_summary.json`.
+- Conclusion: no source-offset/opcode-swap lowering is justified for true scales `warpx2`; it remains a descriptor/address/view/staging frontier or clean unsupported boundary.
