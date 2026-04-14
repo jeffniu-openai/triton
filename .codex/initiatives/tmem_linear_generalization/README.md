@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 6007-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 6027-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current rank-5 descriptor `ld/st` dtype-parity checkpoint, 2026-04-14 09:02 UTC: the executable `[1,1,2,M,N]` rank-5 descriptor roundtrip now derives its TMEM element type from the input pointer and covers both `f32` and `i32` payloads. This expands the rank-5 positive slice from `20` to `40` cases while preserving the same single-CTA identity/mixed and two-CTA block/MMAv5-like layout coverage across every public `ld/st` variant. Current runtime-matrix collection is `6027` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, and `ldst=2869`; bucketed evidence now aggregates to `5581 passed, 446 skipped`. Validation: `make -j8` no-op success; py-compile passed; `git diff --check` passed; no-PYTHONPATH focused `rank5_small` collect selected `40/6027`; no-PYTHONPATH `ldst` collect selected `2869/6027`; focused `rank5_small` selector passed all `40` cases across split-4 on four GPUs (`10` per group; times `127.35s`, `92.63s`, `127.20s`, and `92.18s`).
 
 - Current rank-5 descriptor `ld/st` positive checkpoint, 2026-04-14 08:57 UTC: added an executable smaller rank-5 descriptor roundtrip matrix in `python/test/gluon/test_tmem_runtime_matrix.py` using a `[1,1,2,M,N]` allocation and lifted `[1,1,2]` TMEM-linear layouts. This preserves the old `[2,2,2,M,N]` rank-5 OOR skip boundary (`Required: 4096`, hardware limit `512`) while adding positive rank-5 `memdesc_index`/`memdesc_subslice`/`memdesc_reshape`/`memdesc_trans` coverage for single-CTA identity and mixed layouts plus two-CTA block and MMAv5-like layouts across every public `ld/st` variant. Current runtime-matrix collection is `6007` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, and `ldst=2849`; bucketed evidence now aggregates to `5561 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused `rank5_small` collect selected `20/6007`; no-PYTHONPATH full-file collect reported `6007`; no-PYTHONPATH `ldst` collect selected `2849/6007`; focused `rank5_small` selector passed all `20` cases across split-4 on four GPUs (`5` per group; times `4.45s`, `4.45s`, `4.66s`, and `4.40s`).
 

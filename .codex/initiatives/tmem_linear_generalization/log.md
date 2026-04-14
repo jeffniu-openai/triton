@@ -13948,3 +13948,20 @@ Open after this slice:
   - focused `rank5_small` selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `4.45s`, `4.45s`, `4.66s`, and `4.40s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2849`; current bucketed evidence aggregates to `5561 passed, 446 skipped`.
 - Next: commit/push this bounded descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family.
+
+## 2026-04-14 09:02 UTC: rank-5 descriptor ld/st dtype parity
+
+- Expanded the executable rank-5 descriptor `ld/st` positive matrix from `f32` only to `f32+i32`:
+  - `tmem_ldst_descriptor_rank5_small_roundtrip_kernel` now allocates the `[1,1,2,M,N]` TMEM parent with `in_ptr.dtype.element_ty`;
+  - the delta `ttgl.full` uses the same element type;
+  - `LDST_DESCRIPTOR_RANK5_SMALL_CASES` now prepends `LDST_32BIT_DTYPES` to the existing layout/variant product.
+- This preserves the same descriptor-view chain and OOR boundary as the 08:57 checkpoint; the older `[2,2,2]` rank-5 tests remain resource-bound skips.
+- Validation completed:
+  - `make -j8` no-op success;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - no-PYTHONPATH focused `rank5_small` collect selected `40/6027`;
+  - no-PYTHONPATH `ldst` collect selected `2869/6027`;
+  - focused `rank5_small` selector passed all `40` cases across split-4 on four GPUs (`10` per group; group times `127.35s`, `92.63s`, `127.20s`, and `92.18s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2869`; current bucketed evidence aggregates to `5581 passed, 446 skipped`.
+- Next: commit/push this bounded dtype-parity checkpoint, then continue the next exact non-parked coverage slice.

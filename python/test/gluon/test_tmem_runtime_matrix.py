@@ -809,8 +809,9 @@ def tmem_ldst_descriptor_rank5_small_roundtrip_kernel(in_ptr, out_ptr, layout: t
                                                       delta: ttgl.constexpr):
     offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
     value = ttgl.load(in_ptr + offs)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
 
-    tmem = allocate_tensor_memory(ttgl.float32, [1, 1, 2, M, N], layout)
+    tmem = allocate_tensor_memory(element_ty, [1, 1, 2, M, N], layout)
     base = tmem.index(0).index(0).index(1)
     base_reg_layout: ttgl.constexpr = base.get_reg_layout(instr_variant=instr_variant)
     base.store(ttgl.convert_layout(value, base_reg_layout))
@@ -822,7 +823,7 @@ def tmem_ldst_descriptor_rank5_small_roundtrip_kernel(in_ptr, out_ptr, layout: t
 
     alias_reg_layout: ttgl.constexpr = alias.get_reg_layout(instr_variant=instr_variant)
     out = alias.load(alias_reg_layout)
-    out = out + ttgl.full([M, N], delta, ttgl.float32, layout=alias_reg_layout)
+    out = out + ttgl.full([M, N], delta, element_ty, layout=alias_reg_layout)
     alias.store(out)
 
     out = base.load(base_reg_layout)
@@ -3199,7 +3200,9 @@ LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES = (
 )
 
 LDST_DESCRIPTOR_RANK5_SMALL_CASES = [
-    (case_name, layout_group, layout_name, m, num_ctas, 64, variant, LDST_SHAPE_MAP[variant][64])
+    (dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, 64, variant,
+     LDST_SHAPE_MAP[variant][64])
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
     for variant in LDST_VARIANTS
 ]
@@ -5708,21 +5711,22 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip(layout_name,
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(
-    "case_name,layout_group,layout_name,m,num_ctas,n,variant,expected_shape",
+    "dtype_name,torch_dtype,case_name,layout_group,layout_name,m,num_ctas,n,variant,expected_shape",
     LDST_DESCRIPTOR_RANK5_SMALL_CASES,
 )
 def test_tmem_runtime_matrix_ldst_descriptor_rank5_small_roundtrip(
-    case_name, layout_group, layout_name, m, num_ctas, n, variant, expected_shape
+    dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, n, variant, expected_shape
 ):
     base_layout = LDST_LAYOUTS[layout_name](n) if layout_group == "single" else LDST_TWOCTA_LAYOUTS[layout_name](n)
     layout = _lift_tmem_layout(base_layout, [1, 1, 2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
+    delta = 23 if dtype_name == "i32" else 23.0
 
     compiled = tmem_ldst_descriptor_rank5_small_roundtrip_kernel[(1, )](
-        inp, out, layout, m, n, variant, 23.0, num_warps=4, num_ctas=num_ctas
+        inp, out, layout, m, n, variant, delta, num_warps=4, num_ctas=num_ctas
     )
-    torch.testing.assert_close(out, inp + 23.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + delta, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"

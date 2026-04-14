@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:02 UTC: rank-5 descriptor ld/st dtype parity
+
+- Updated `tmem_ldst_descriptor_rank5_small_roundtrip_kernel` so the executable rank-5 descriptor roundtrip allocates TMEM with `in_ptr.dtype.element_ty` and forms the delta in that same element type.
+- `LDST_DESCRIPTOR_RANK5_SMALL_CASES` now spans both `f32` and `i32` for the existing single-CTA identity/mixed and two-CTA block/MMAv5-like lifted `[1,1,2]` layouts at `N=64` across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`.
+- The old `[2,2,2,M,N]` rank-5 roundtrip tests remain skipped as resource-bound (`Required: 4096`, hardware limit `512`); this change only expands the executable positive slice from `20` to `40` cases.
+- Current runtime-matrix collection is `6027` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2869`; current bucketed evidence aggregates to `5581 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `rank5_small` collect selected `40/6027`; no-PYTHONPATH `ldst` collect selected `2869/6027`; focused `rank5_small` selector passed all `40` cases across split-4 on four GPUs (`10` per group; group times `127.35s`, `92.63s`, `127.20s`, and `92.18s`).
+- Next: commit/push this bounded dtype-parity checkpoint, then continue staged ISA saturation in the next exact non-parked family.
+
 ## 2026-04-14 08:57 UTC: executable rank-5 descriptor ld/st positives
 
 - Added `tmem_ldst_descriptor_rank5_small_roundtrip_kernel` and `LDST_DESCRIPTOR_RANK5_SMALL_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py`.
