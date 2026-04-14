@@ -4629,6 +4629,9 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
         ("row_reverse", "reverse", "identity"),
         ("row_rotate1", "rotate1", "identity"),
         ("row_even_odd", "even_odd", "identity"),
+        ("rowcol_reverse_rotate1", "reverse", "rotate1"),
+        ("rowcol_reverse_even_odd", "reverse", "even_odd"),
+        ("rowcol_reverse_reverse", "reverse", "reverse"),
         ("rowcol_even_odd_reverse", "even_odd", "reverse"),
         ("rowcol_rotate_reverse", "rotate1", "reverse"),
     )

@@ -14555,3 +14555,11 @@ Open after this slice:
 - Current runtime-matrix collection is `9010` tests: `cp=677`, `mma=2703`, splitn/misc `=571`, `ld_red=2074`, and `ldst=2985`; current bucketed evidence aggregates to `8559 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; non-explicit descriptor-chain N-sweep collect selected `240/9010`; full-file collect reported `9010`; new-layout selector collect selected `120/9010`; new-layout selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `523.79s`, `527.49s`, `540.41s`, and `572.00s`).
 - Next: commit/push this bounded `ld.red` checkpoint, then continue the next non-parked ISA coverage slice. Good candidates are another `ld.red` direct/descriptor frontier if one is still unrepresented, `ld/st` descriptor-view tails, or a scaled-MMAv5 parity slice that avoids the known parked block-N=64 scale-descriptor issue.
+
+## 2026-04-14 17:01 UTC: ld.red descriptor-chain mixed reverse-row N-sweep coverage
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES` with the three `row_reverse` mixed row/column families: `rowcol_reverse_rotate1`, `rowcol_reverse_even_odd`, and `rowcol_reverse_reverse`.
+- The new rows run through the existing generic descriptor-chain reduction helper and cover `N in {32,64,256}`, `min`/`max`, and all legal `abs`/`NaN` modifier modes. This keeps explicit variant coverage unchanged.
+- Current runtime-matrix collection is `9082` tests: `cp=677`, `mma=2703`, splitn/misc `=571`, `ld_red=2146`, and `ldst=2985`; current bucketed evidence aggregates to `8631 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; exact new-layout collect selected `72/9082`; full-file collect reported `9082`; exact selector passed all `72` cases across split-4 on four GPUs (`18` per group; group times `307.03s`, `346.47s`, `329.70s`, and `332.42s`).
+- Next: commit/push this bounded `ld.red` checkpoint, then either finish the remaining mixed descriptor-chain auto layouts (`row_rotate1`/`row_even_odd` with `rotate1`/`even_odd` columns) or move to another non-parked ISA family.

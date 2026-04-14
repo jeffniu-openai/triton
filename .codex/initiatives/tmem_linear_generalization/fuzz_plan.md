@@ -338,8 +338,10 @@ Every fuzz case records:
     the legal modifier matrix. The descriptor-chain N-width `auto` sweep now
     covers identity, tile-permuted, `col_reverse`, `col_rotate1`,
     `col_even_odd`, `row_reverse`, `row_rotate1`, `row_even_odd`,
-    `rowcol_rotate_reverse`, and `rowcol_even_odd_reverse` at
-    `N in {32,64,256}`. Explicit compatible variants remain bounded to
+    `rowcol_reverse_rotate1`, `rowcol_reverse_even_odd`,
+    `rowcol_reverse_reverse`, `rowcol_rotate_reverse`, and
+    `rowcol_even_odd_reverse` at `N in {32,64,256}`. Explicit compatible
+    variants remain bounded to
     identity, tile-permuted, `col_reverse`, `row_reverse`, and
     `rowcol_rotate_reverse` at the same N widths.
   - direct explicit compatible register-layout variants now also cover the
@@ -1200,3 +1202,9 @@ Every fuzz case records:
 - Descriptor-chain `ld.red` auto-selection fuzz generation may now include the additional row/column permutation families `col_rotate1`, `col_even_odd`, `row_rotate1`, `row_even_odd`, and `rowcol_even_odd_reverse` at `N in {32,64,256}`.
 - These rows are positives only for the `auto` reduction-layout path. Do not infer explicit `16x32bx2` or `32x32b_splitn` support for these added layouts until those variants are separately validated.
 - Current full-file collection is `9010` tests and the `ld_red` bucket is `2074` cases. Aggregate bucket evidence is `8559 passed, 451 skipped`.
+
+## 2026-04-14 17:01 UTC: ld.red Descriptor-Chain Mixed Reverse-Row Auto Note
+
+- Descriptor-chain `ld.red` auto-selection fuzz generation may now include `rowcol_reverse_rotate1`, `rowcol_reverse_even_odd`, and `rowcol_reverse_reverse` at `N in {32,64,256}`.
+- These are auto-only positives. Explicit `16x32bx2` and `32x32b_splitn` variants for these layouts remain future work until separately validated.
+- Current full-file collection is `9082` tests and the `ld_red` bucket is `2146` cases. Aggregate bucket evidence is `8631 passed, 451 skipped`.
