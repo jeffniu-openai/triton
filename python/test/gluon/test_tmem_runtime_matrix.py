@@ -1141,8 +1141,8 @@ def tmem_scales_ldst_variant_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.
 
 @gluon.jit
 def tmem_scales_ldst_descriptor_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.constexpr,
-                                            instr_variant: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout())
+                                            instr_variant: ttgl.constexpr, cga_layout: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.int8, [M, N], TensorMemoryScalesLayout(cga_layout=list(cga_layout)))
     root_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
     offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, root_layout))[:, None]
     offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, root_layout))[None, :]
@@ -4214,6 +4214,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         128,
         32,
         4,
+        tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
     ),
@@ -4221,6 +4222,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         128,
         64,
         4,
+        tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops("16x32bx2.x64.b32", "32x32b.x64.b32"),
     ),
@@ -4228,8 +4230,39 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
         256,
         64,
         4,
+        tuple(),
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops("16x32bx2.x128.b32", "32x32b.x128.b32"),
+    ),
+]
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
+    (
+        128,
+        64,
+        4,
+        2,
+        ((1, 0),),
+        "32x32b",
+        "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
+    ),
+    (
+        256,
+        32,
+        4,
+        2,
+        ((1, 0),),
+        "32x32b",
+        "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
+    ),
+    (
+        256,
+        64,
+        4,
+        2,
+        ((1, 0),),
+        "32x32b",
+        "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
     ),
 ]
 
@@ -6444,15 +6477,15 @@ def test_tmem_runtime_matrix_ldst_scales_variant_sweep(M, N, num_warps, instr_va
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("M,N,num_warps,instr_variant,expected_ops", SCALES_LDST_DESCRIPTOR_VIEW_CASES)
+@pytest.mark.parametrize("M,N,num_warps,cga_layout,instr_variant,expected_ops", SCALES_LDST_DESCRIPTOR_VIEW_CASES)
 def test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip(
-    M, N, num_warps, instr_variant, expected_ops
+    M, N, num_warps, cga_layout, instr_variant, expected_ops
 ):
     inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
     out = torch.empty_like(inp)
 
     compiled = tmem_scales_ldst_descriptor_view_kernel[(1, )](
-        inp, out, M, N, instr_variant, num_warps=num_warps
+        inp, out, M, N, instr_variant, cga_layout, num_warps=num_warps
     )
     torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
 
@@ -6463,6 +6496,28 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip(
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_trans" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "M,N,num_warps,num_ctas,cga_layout,instr_variant,expected_text",
+    SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES,
+)
+def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_reports_clean_unsupported(
+    M, N, num_warps, num_ctas, cga_layout, instr_variant, expected_text
+):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_scales_ldst_descriptor_view_kernel[(1, )](
+            inp, out, M, N, instr_variant, cga_layout, num_warps=num_warps, num_ctas=num_ctas
+        )
+
+    text = str(excinfo.value)
+    _assert_clean_unsupported_descriptor_view(text, expected_text)
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

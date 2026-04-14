@@ -749,11 +749,10 @@ getTMemViewAnalysisLayout(ArrayRef<int64_t> shape, Attribute encoding,
       shape.take_back(layoutRank), encoding, error);
   if (!maybeLayout)
     return std::nullopt;
-  // Scales encodings carry CGA layout but no legacy twoCTAs bit. Descriptor
-  // views materialize as canonical TMEM-linear layouts, so default scales views
-  // use the one-CTA linear view planner.
   bool twoCTAs = false;
-  if (!isa<TensorMemoryScalesEncodingAttr>(encoding)) {
+  if (auto scales = dyn_cast<TensorMemoryScalesEncodingAttr>(encoding)) {
+    twoCTAs = product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
+  } else {
     auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
     if (!maybeTwoCTAs) {
       if (error)
@@ -1670,8 +1669,10 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
   }
   if (isa<TensorMemoryScalesEncodingAttr>(encoding)) {
     auto ll = toLinearLayout(memDescTy);
+    auto scales = cast<TensorMemoryScalesEncodingAttr>(encoding);
+    bool twoCTAs = product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
     return TMemLdStQueryLayout{
-        ll, /*twoCTAs=*/false,
+        ll, twoCTAs,
         SmallVector<int32_t>(ll.getNumInDims(), 0)};
   }
 
@@ -3423,6 +3424,92 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   std::string supportError;
   if (getTMemLdStSupportQueryPlan(memDesc, &supportError)) {
     return false;
+  }
+
+  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
+    if (!layout.hasInDim(dim))
+      return false;
+    for (unsigned idx = 0; idx < layout.getInDimSizeLog2(dim); ++idx) {
+      if (llvm::all_of(layout.getBasis(dim, idx),
+                       [](int32_t value) { return value == 0; }))
+        return true;
+    }
+    return false;
+  };
+  auto hasTwoCTATensorMemoryScalesRoot = [&]() {
+    Value cur = memDesc;
+    while (cur) {
+      if (auto curTy = dyn_cast<MemDescType>(cur.getType())) {
+        if (auto scales =
+                dyn_cast<TensorMemoryScalesEncodingAttr>(curTy.getEncoding())) {
+          return product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
+        }
+      }
+      if (auto forwarded = getTMemForwardingSource(cur)) {
+        cur = forwarded;
+        continue;
+      }
+      Operation *def = cur.getDefiningOp();
+      if (!def)
+        break;
+      if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
+        cur = op.getSrc();
+        continue;
+      }
+      break;
+    }
+    return false;
+  };
+  auto linearQuery =
+      dyn_cast<TensorMemoryLinearEncodingAttr>(queryTy.getEncoding());
+  bool isTwoCTAInt8LinearDescriptorView =
+      linearQuery && linearQuery.getTwoCTAs() &&
+      queryTy.getElementTypeBitWidth() == 8;
+  if (hasTwoCTATensorMemoryScalesRoot() || isTwoCTAInt8LinearDescriptorView) {
+    std::string rawQueryError;
+    auto rawQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+        memDesc, /*preserveNonCanonicalView=*/true, &rawQueryError);
+    auto *ctx = queryTy.getContext();
+    auto kRow = StringAttr::get(ctx, "row");
+    auto kCol = StringAttr::get(ctx, "col");
+    auto kBlock = StringAttr::get(ctx, "block");
+    auto typeLayout = toLinearLayout(queryTy);
+    bool hasNonTrivialBlock = typeLayout.hasInDim(kBlock) &&
+                              typeLayout.getInDimSize(kBlock) > 1;
+    if (!hasNonTrivialBlock && succeeded(rawQuery)) {
+      hasNonTrivialBlock = rawQuery->layout.hasInDim(kBlock) &&
+                           rawQuery->layout.getInDimSize(kBlock) > 1;
+    }
+    if (failed(rawQuery) ||
+        (hasNonTrivialBlock && (hasZeroBasisAlong(typeLayout, kRow) ||
+                                hasZeroBasisAlong(typeLayout, kCol)))) {
+      return unsupported(
+          "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
+          "two-CTA 8-bit descriptor views with broadcast/support bases must "
+          "keep the exact physical TMEM projection. Access the canonical "
+          "descriptor or copy/reshape through a directly supported layout "
+          "instead of using a standalone query-type fallback.");
+    }
   }
 
   auto queryPlan = getTMemLdStRowPlanForType(queryTy);

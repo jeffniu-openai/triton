@@ -1099,3 +1099,12 @@ Every fuzz case records:
 - Fuzz assertions should expect root store/load through `tensor_memory_scales_encoding`, intervening `ttg.memdesc_reshape` plus `ttg.memdesc_trans`, and view load/store through `tensor_memory_linear`.
 - Do not generate positive multibuffer scales descriptor views, non-default-CGA/two-CTA scales descriptor views, true scales `warpx2`, or low-shape row-anchor cases from this checkpoint. Keep those as separate frontier work until a real planner/layout proof exists.
 - Current full-file collection is `8227` tests and the `ldst` bucket is `2982` cases. Aggregate bucket evidence is `7776 passed, 451 skipped`.
+
+
+## 2026-04-14 15:32 UTC: Scales CGA Descriptor-View Boundary Note
+
+- Default/no-CGA `TensorMemoryScalesLayout()` descriptor-view `ld/st` positives remain valid for `(M,N) in {(128,32),(128,64),(256,64)}`.
+- Non-default-CGA/two-CTA scales descriptor-view fuzz rows must not be generated as positives by type alone. Current explicit `32x32b` probes at `(128,64)`, `(256,32)`, and `(256,64)` with `cga_layout=((1,0),)` are clean negatives until exact physical/support query lowering exists.
+- Fuzz generators should treat two-CTA int8 descriptor views with support/broadcast bases as exact-query-required. If the generator or frontend cannot prove the physical TMEM projection is preserved, the expected result is `CLEAN_UNSUPPORTED`, not a canonical type-only `PASS`.
+- The reason is correctness, not only verifier policy: before this checkpoint the `256x*` probes compiled through type-only fallback and produced wrong runtime data by losing the descriptor's support/broadcast physical mapping.
+- Current full-file collection is `8230` tests and the `ldst` bucket is `2985` cases. Aggregate bucket evidence is `7779 passed, 451 skipped`.

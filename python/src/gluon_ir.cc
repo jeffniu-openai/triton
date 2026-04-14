@@ -2111,6 +2111,28 @@ void init_gluon_ir(py::module &&m) {
             }
             return false;
           };
+          auto disallowTypeOnlyFallbackForTwoCTAInt8View = [&]() {
+            auto linear = dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(
+                queryMemDescTy.getEncoding());
+            if (!linear || !linear.getTwoCTAs() ||
+                queryMemDescTy.getElementTypeBitWidth() != 8)
+              return false;
+            auto rawQuery = inferRawQueryLayout(queryMemDesc);
+            auto kRow = StringAttr::get(ctx, "row");
+            auto kCol = StringAttr::get(ctx, "col");
+            auto kBlock = StringAttr::get(ctx, "block");
+            auto typeLayout = ttg::toLinearLayout(queryMemDescTy);
+            bool hasNonTrivialBlock =
+                typeLayout.hasInDim(kBlock) &&
+                typeLayout.getInDimSize(kBlock) > 1;
+            if (!hasNonTrivialBlock && rawQuery) {
+              hasNonTrivialBlock = rawQuery->layout.hasInDim(kBlock) &&
+                                   rawQuery->layout.getInDimSize(kBlock) > 1;
+            }
+            return hasNonTrivialBlock &&
+                   (hasZeroBasisAlong(typeLayout, kRow) ||
+                    hasZeroBasisAlong(typeLayout, kCol));
+          };
           std::string supportError;
           auto trySupportLayout =
               [&](const ttng::TMemLdStQueryLayout &supportQuery,
@@ -2290,6 +2312,17 @@ void init_gluon_ir(py::module &&m) {
           if (!supportFallback.is_none()) {
             appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
             return supportFallback;
+          }
+          if (disallowTypeOnlyFallbackForTwoCTAInt8View()) {
+            if (traceToFile)
+              appendTrace(
+                  "findDirectLayoutForMemDesc twoCTA-int8 exact-query-required");
+            if (debug) {
+              debugLog << "[tmem-reg-layout] two-CTA int8 descriptor view "
+                          "requires exact support/raw-query lowering; "
+                          "refusing type-only fallback\n";
+            }
+            return py::none();
           }
           if (!preferQueryTypeLayoutsBeforeRawQuery) {
             py::object layout = tryQueryTypeLayouts();
