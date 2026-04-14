@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4277-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4457-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current `ld/st` broad pure row/column i32 parity checkpoint, 2026-04-14 05:57 UTC: `LDST_ROWCOL_PERMUTED_CASES` now keeps the full f32 row/column cross-product and adds i32 for the broad pure-row and pure-column `128x{64,128,256}` subset, direct plus descriptor-chain, over every public `ld/st` variant. This deliberately decomposes the larger row/column parity problem: pure row/column i32 is now covered, while mixed non-identity row+column i32 remains the next duration-aware slice. Current runtime-matrix collection is `4457` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=2342`; bucketed evidence now aggregates to `4011 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused i32 collect selected `180/4457`; no-PYTHONPATH `ldst` collect selected `2342/4457`; focused pure row/column i32 selector passed all `180` cases across split-8 on four GPUs (group sizes `23`, `23`, `23`, `23`, `23`, `23`, `23`, `19`; slowest `9:27`). A full `ldst` bucket rerun remains deferred because no shared lowering changed.
 
 - Current `ld/st` broad scrambled/exotic i32 parity checkpoint, 2026-04-14 05:42 UTC: `LDST_EXOTIC_CASES` and `LDST_EXOTIC_DESCRIPTOR_CASES` now cover both f32 and i32 for `scrambled_cols` and `scrambled_rows_cols` layouts at `128x{64,128,256}`, direct plus descriptor-chain, over every public `ld/st` variant. This closes the smaller exotic-layout companion to the broad diagonal permutation i32 slice while keeping the exact expected opcode-shape checks. Current runtime-matrix collection is `4277` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=2162`; bucketed evidence now aggregates to `3831 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `120/4277`; no-PYTHONPATH `ldst` collect selected `2162/4277`; focused exotic selector passed all `120` cases across split-8 on four GPUs (`15` per group; slowest `6:18`). A full `ldst` bucket rerun remains deferred because no shared lowering changed.
 

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 05:57 UTC: ld/st broad pure row/column i32 parity
+
+- `LDST_ROWCOL_PERMUTED_CASES` now parameterizes over f32 for the full row/column cross-product and adds i32 for the pure-row and pure-column subset (`row=identity xor col=identity`).
+- Coverage spans direct and descriptor-chain `128x{64,128,256}` layouts over every public `ld/st` variant for pure row and pure column permutations; mixed non-identity row+column i32 remains intentionally deferred as a larger duration-aware slice.
+- The affected tests now seed int32 data, cast to f32/i32, and use dtype-preserving descriptor-chain `inp + 3` expectations while retaining exact opcode-shape assertions.
+- Current runtime-matrix collection is `4457` tests: `cp=322`, `mma=730`, splitn/misc `=252`, `ld_red=811`, and `ldst=2342`; current bucketed evidence aggregates to `4011 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused i32 collect selected `180/4457`; no-PYTHONPATH `ldst` collect selected `2342/4457`; focused pure row/column i32 selector passed all `180` cases across split-8 (`23`, `23`, `23`, `23`, `23`, `23`, `23`, and `19` cases; group times `122.20s`, `127.13s`, `116.86s`, `159.46s`, `567.37s`, `560.65s`, `510.40s`, and `489.88s`). Full `ldst` bucket was not rerun because no shared lowering changed.
+
 ## 2026-04-14 05:42 UTC: ld/st broad scrambled/exotic i32 parity
 
 - `LDST_EXOTIC_CASES` and `LDST_EXOTIC_DESCRIPTOR_CASES` now parameterize over `LDST_32BIT_DTYPES`, adding i32 parity beside the existing f32 broad scrambled/exotic roundtrips.
