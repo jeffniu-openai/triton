@@ -4009,7 +4009,7 @@ LD_RED_DESCRIPTOR_CHAIN_CASES = [
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
     pytest.param("identity", lambda n=n: _make_tmem_linear_layout(128, n), n, expected_shape, id=f"identity_n{n}")
-    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
 ] + [
     pytest.param(
         "tile_permuted",
@@ -4018,7 +4018,7 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
         expected_shape,
         id=f"tile_permuted_n{n}",
     )
-    for n, tile_n, expected_shape in ((64, 16, "32x32b.x64"), (256, 64, "32x32b.x64"))
+    for n, tile_n, expected_shape in ((32, 8, "32x32b.x32"), (64, 16, "32x32b.x64"), (256, 64, "32x32b.x64"))
 ] + [
     pytest.param(
         layout_name,
@@ -4034,7 +4034,7 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
         ("row_reverse", "reverse", "identity"),
         ("rowcol_rotate_reverse", "rotate1", "reverse"),
     )
-    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS = (
@@ -4061,7 +4061,7 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
         id=f"{layout_name}_n{n}_{load_variant}",
     )
     for layout_name in LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS
-    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
     for load_variant in ("32x32b", "16x32bx2", "32x32b_splitn")
 ]
 
@@ -4072,7 +4072,7 @@ def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
     if layout_name == "identity":
         return _make_tmem_linear_layout(128, n)
     if layout_name == "tile_permuted":
-        tile_n = 16 if n == 64 else 64
+        tile_n = {32: 8, 64: 16, 256: 64}[n]
         return _make_tmem_linear_layout_tile_permuted(128, n, tile_n)
     if layout_name == "col_reverse":
         return _make_tmem_linear_layout_permuted(128, n, "identity", "reverse")

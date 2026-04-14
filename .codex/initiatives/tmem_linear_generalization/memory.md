@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 12:50 UTC: ld.red minimal-N descriptor/direct explicit variants
+
+- Added `N=32` to `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES`, covering descriptor-chain reductions through identity, tile-permuted, pure column-reverse, pure row-reverse, and mixed row/column-reverse TMEM-linear views with `auto` register-layout selection.
+- Added the same `N=32` layouts to `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES`, which also feeds `LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES`, so both descriptor-chain and direct source paths now cover `32x32b`, `16x32bx2`, and `32x32b_splitn` at the minimal N width.
+- The new rows pin the minimal `tcgen05.ld.red.sync.aligned.32x32b.x32` opcode family across `min`/`max` and every legal `abs` / `PropagateNan` modifier combination.
+- Current runtime-matrix collection is `7611` tests: `cp=580`, `mma=1743`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2869`; current bucketed evidence aggregates to `7160 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `N=32` descriptor/direct selector collect selected `280/7611`; no-PYTHONPATH full `ld_red` collect selected `1920/7611`; no-PYTHONPATH full-file collect reported `7611`; focused selector passed all `280` cases across split-4 (`70` per group; times `774.99s`, `1402.19s`, `599.46s`, and `547.65s`).
+- The slow group 2 was an imbalance, not a hang: it kept printing progress until completion. Future reruns should keep this exact selector or refresh stored durations rather than falling back to raw full-file split-4.
+- Next: commit/push this `ld.red` checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 12:35 UTC: scaled warpx4 copy-helper use-acc coverage
 
 - Extended `python/test/gluon/tmem_test_utils.py::mma_scaled_tcgen05_copy_kernel` with an `ACC_INIT` constexpr. Existing callers keep the zero-init path, while nonzero init seeds the accumulator TMEM tile and makes the first `tcgen05_mma_scaled` chunk run with `use_acc=True`.
