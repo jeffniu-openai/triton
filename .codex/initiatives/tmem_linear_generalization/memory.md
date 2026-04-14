@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:13 UTC: x1 i32 ld/st descriptor coverage
+
+- Added x1 32-bit integer parity for `ld/st` in `python/test/gluon/test_tmem_runtime_matrix.py`: direct roundtrip, descriptor-chain roundtrip, and clean unsupported explicit variant checks now cover i32 beside the existing f32 x1 surface.
+- The positive cases cover `linear_onecta`, `legacy_onecta`, and `linear_twocta` layouts for `auto` plus `32x32b`, with exact `tcgen05.st/ld.sync.aligned.32x32b.x1.b32` PTX/LLIR checks and TTGIR checks for legacy/linear and two-CTA layout markers.
+- The i32 clean-negative cases cover `16x64b`, `16x128b`, and `16x256b`, preserving the unsupported descriptor-view diagnostic contract without PassManager/assertion noise.
+- Current runtime-matrix collection is `5673` tests: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5227 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `21/5673`; focused x1 i32 selector passed all `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3` cases; group times `7.75s`, `41.66s`, `4.65s`, and `4.64s`).
+- Next: commit/push this bounded `ld/st` descriptor checkpoint, then continue staged TMEM ISA saturation in another exact family. Good candidates are a remaining `ld.red` positive/negative layout gap or another non-resource-bound MMAv5/scaled-MMAv5 descriptor-view gap.
+
 ## 2026-04-14 08:12 UTC: two-CTA plain-MMAv5 indexed accumulator descriptor-view coverage
 
 - Added `tmem_mma_twocta_indexed_acc_kernel` and `test_tmem_runtime_matrix_mma_twocta_indexed_acc_view` to cover two-CTA accumulator views produced by `memdesc_index` from a rank-3 parent.

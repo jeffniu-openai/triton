@@ -227,6 +227,12 @@ Every fuzz case records:
     split-N coverage includes f32 and i32 through explicit `32x32b_splitn`,
     explicit `16x32bx2`, auto-selected `16x32bx2`, and exact equivalence
     checks where applicable.
+- one-column 32-bit families:
+  - current x1 coverage includes f32 and i32 direct plus descriptor-chain
+    roundtrips for canonical single-CTA, legacy single-CTA, and canonical
+    two-CTA one-column layouts through `auto` and `32x32b`; explicit
+    `16x64b`, `16x128b`, and `16x256b` x1 variants are pinned as clean
+    unsupported for both 32-bit payload dtypes.
 - subword families:
   - `dtype in {f16, bf16, i16, i8}`
   - packed, unpacked, and padded one-column cases

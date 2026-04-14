@@ -1,3 +1,16 @@
+## 2026-04-14 08:13 UTC: x1 i32 ld/st descriptor coverage
+
+- Added `test_tmem_runtime_matrix_ldst_x1_i32_roundtrip`, `test_tmem_runtime_matrix_ldst_x1_i32_descriptor_chain_roundtrip`, and `test_tmem_runtime_matrix_ldst_x1_i32_unsupported_variants_report_clean_unsupported`.
+- This is test-only coverage over already-supported x1 32-bit lowering: i32 now mirrors f32 for direct and descriptor-chain one-column roundtrips across canonical single-CTA, legacy single-CTA, and canonical two-CTA layouts with `auto` and explicit `32x32b`.
+- Explicit one-column `16x64b`, `16x128b`, and `16x256b` i32 variants remain clean unsupported and must not surface PassManager/assertion noise.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `21/5673`;
+  - focused x1 i32 selector passed all `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3`; group times `7.75s`, `41.66s`, `4.65s`, and `4.64s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5227 passed, 446 skipped`.
+
 ## 2026-04-14 00:46 UTC
 
 - Refreshed GB200 status after the runner-duration-only commits at

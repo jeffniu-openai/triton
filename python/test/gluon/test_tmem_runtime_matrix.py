@@ -5376,6 +5376,88 @@ def test_tmem_runtime_matrix_ldst_x1_f32_descriptor_chain_roundtrip(layout_kind,
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
+@pytest.mark.parametrize("variant", X1_F32_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_i32_roundtrip(layout_kind, m, num_ctas, layout_factory, variant):
+    n = 1
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    if variant == "auto":
+        compiled = tmem_ldst_auto_kernel[(1, )](inp, out, layout, m, n, num_warps=4, num_ctas=num_ctas)
+    else:
+        compiled = tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4, num_ctas=num_ctas)
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    if layout_kind.startswith("linear"):
+        assert "tensor_memory_linear" in ttgir
+    else:
+        assert "tensor_memory_encoding" in ttgir
+    if num_ctas == 2:
+        assert "twoCTAs = true" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
+@pytest.mark.parametrize("variant", X1_F32_LDST_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_i32_descriptor_chain_roundtrip(
+    layout_kind, m, num_ctas, layout_factory, variant
+):
+    n = 1
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_chain_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=num_ctas
+    )
+    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == [
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.st.sync.aligned.32x32b.x1.b32", 0),
+        ("tcgen05.ld.sync.aligned.32x32b.x1.b32", 0),
+    ]
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
+    if num_ctas == 2:
+        assert "twoCTAs = true" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
+@pytest.mark.parametrize("variant", X1_F32_UNSUPPORTED_VARIANTS)
+def test_tmem_runtime_matrix_ldst_x1_i32_unsupported_variants_report_clean_unsupported(
+    layout_kind, m, num_ctas, layout_factory, variant
+):
+    n = 1
+    layout = layout_factory()
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(CompilationError) as excinfo:
+        tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4, num_ctas=num_ctas)
+
+    msg = str(excinfo.value)
+    _assert_clean_unsupported_descriptor_view(msg, variant)
+    assert "PassManager::run failed" not in msg
+    assert "Assertion" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_kind,m,num_ctas,layout_factory", X1_F32_LDST_CASES)
 @pytest.mark.parametrize("variant", X1_F32_UNSUPPORTED_VARIANTS)
 def test_tmem_runtime_matrix_ldst_x1_f32_unsupported_variants_report_clean_unsupported(
     layout_kind, m, num_ctas, layout_factory, variant

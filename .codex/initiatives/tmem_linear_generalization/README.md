@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5652-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5673-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current x1 i32 `ld/st` descriptor coverage checkpoint, 2026-04-14 08:13 UTC: the one-column 32-bit `ld/st` surface now has f32+i32 parity across direct and descriptor-chain roundtrips for canonical single-CTA, legacy single-CTA, and canonical two-CTA layouts. The positive matrix covers `auto` and explicit `32x32b` variants and pins exact `tcgen05.st/ld.sync.aligned.32x32b.x1.b32` emission; the clean-negative matrix covers explicit `16x64b`, `16x128b`, and `16x256b` one-column variants for i32 with the same unsupported-descriptor diagnostic contract as f32. Current runtime-matrix collection is `5673` tests: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5227 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `21/5673`; focused x1 i32 selector passed all `21` cases across split-4 on four GPUs (`6`, `6`, `6`, and `3` selected; times `7.75s`, `41.66s`, `4.65s`, and `4.64s`).
 
 - Current two-CTA plain-MMAv5 indexed-accumulator descriptor-view checkpoint, 2026-04-14 08:12 UTC: two-CTA accumulator `memdesc_index` coverage now mirrors the one-CTA plain indexed surface for every supported plain operand kind (`f16`, `tf32`, `bf16`, `f8e5m2`, `f8e4m3`), `K in {32,64}`, `use_acc` false/true, legacy parent layouts at `N in {64,128,256}`, and canonical TMEM-linear parent layouts at `N in {64,128}`. The canonical linear `N=256` two-CTA parent view is omitted as the same live-parent resource boundary as one-CTA linear `N=256`: `[2,256,256]` needs 1024 TMEM columns. Current runtime-matrix collection is `5652` tests: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, and `ldst=2772`; bucketed evidence now aggregates to `5206 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; no-PYTHONPATH full-file collect reported `5652`; no-PYTHONPATH tight MMA collect selected `1080/5652`; focused two-CTA indexed-accumulator selector passed all `100` cases across split-4 on four GPUs (`25` per group; times `4.69s`, `4.69s`, `4.69s`, and `4.63s`).
 
