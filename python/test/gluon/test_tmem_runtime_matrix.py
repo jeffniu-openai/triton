@@ -4653,9 +4653,17 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS = (
     "identity",
     "tile_permuted",
     "col_reverse",
+    "col_rotate1",
+    "col_even_odd",
     "row_reverse",
     "rowcol_rotate_reverse",
 )
+
+LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS = {
+    "col_reverse": (0, 128, 64, 192),
+    "col_rotate1": (0, 128, 64, 192),
+    "rowcol_rotate_reverse": (0, 128, 64, 192),
+}
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
     pytest.param(
@@ -4663,9 +4671,9 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
         n,
         expected_shape,
         load_variant,
-        (0, 128, 64, 192)
+        LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS[layout_name]
         if (
-            layout_name in ("col_reverse", "rowcol_rotate_reverse")
+            layout_name in LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS
             and n == 256
             and load_variant != "32x32b"
         )
@@ -4688,6 +4696,10 @@ def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
         return _make_tmem_linear_layout_tile_permuted(128, n, tile_n)
     if layout_name == "col_reverse":
         return _make_tmem_linear_layout_permuted(128, n, "identity", "reverse")
+    if layout_name == "col_rotate1":
+        return _make_tmem_linear_layout_permuted(128, n, "identity", "rotate1")
+    if layout_name == "col_even_odd":
+        return _make_tmem_linear_layout_permuted(128, n, "identity", "even_odd")
     if layout_name == "row_reverse":
         return _make_tmem_linear_layout_permuted(128, n, "reverse", "identity")
     if layout_name == "rowcol_rotate_reverse":

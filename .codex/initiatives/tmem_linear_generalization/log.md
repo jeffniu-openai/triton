@@ -14580,3 +14580,12 @@ Open after this slice:
 - Current runtime-matrix collection is `9258` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2242`, and `ldst=2985`; current bucketed evidence aggregates to `8807 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; affected selector collect selected `160/9258`; full-file collect reported `9258`; affected selector passed all `160` cases across split-4 on four GPUs (`40` per group; group times `24.18s`, `25.25s`, `37.72s`, and `38.45s`).
 - Next: commit/push this scaled-MMAv5 checkpoint, then continue another non-parked ISA family. The still-hard frontiers remain true tensor-memory-scales `warpx2`, no-scales two-CTA `warpx2::02_13`, and any explicit-variant expansions that need a deliberate cost/benefit decision.
+
+## 2026-04-14 17:45 UTC: ld.red explicit pure-column permutation coverage
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS` with `col_rotate1` and `col_even_odd`, and taught `_make_ld_red_descriptor_chain_n_sweep_explicit_layout` to construct those layouts for `N in {32,64,256}`.
+- The shared explicit table drives both descriptor-chain and direct `ld.red` tests, so the new pure-column rows cover `32x32b`, `16x32bx2`, and `32x32b_splitn`, both reductions, and all legal `abs`/`NaN` modifier modes in both paths.
+- A scratch probe showed the `col_rotate1`, `N=256`, split variants emit `[0,128,64,192]`; `col_even_odd` emits canonical `[0,64,128,192]`; `32x32b` remains canonical. The production assertion table records that split-order distinction.
+- Current runtime-matrix collection is `9546` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2530`, and `ldst=2985`; current bucketed evidence aggregates to `9095 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; affected selector collect selected `288/9546`; full-file collect reported `9546`; `ld_red` collect reported `2530`; affected selector passed all `288` cases across split-4 on four GPUs (`72` per group; group times `1493.14s`, `1542.86s`, `629.89s`, and `633.04s`).
+- Next: commit/push this bounded explicit-variant checkpoint, then continue the remaining explicit `ld.red` layouts in small chunks because these rows are compile-heavy. Pure row `row_rotate1`/`row_even_odd` is the next natural slice.

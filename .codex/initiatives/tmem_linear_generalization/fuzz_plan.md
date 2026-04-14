@@ -338,13 +338,15 @@ Every fuzz case records:
     the legal modifier matrix. The descriptor-chain N-width `auto` sweep now
     covers identity, tile-permuted, and the full non-identity
     row/column permutation cross-product from `PERMUTED_LAYOUT_KINDS` at
-    `N in {32,64,256}`. Explicit compatible variants remain bounded to
-    identity, tile-permuted, `col_reverse`, `row_reverse`, and
-    `rowcol_rotate_reverse` at the same N widths.
-  - direct explicit compatible register-layout variants now also cover the
-    identity/tile/pure-row/pure-column/mixed families at `N in {32,64,256}` for
-    `32x32b`, `16x32bx2`, and `32x32b_splitn`, matching the descriptor-chain
-    N-width explicit matrix.
+    `N in {32,64,256}`. Explicit compatible variants now cover identity,
+    tile-permuted, pure column `col_reverse` / `col_rotate1` /
+    `col_even_odd`, `row_reverse`, and `rowcol_rotate_reverse` at the
+    same N widths.
+  - direct explicit compatible register-layout variants now cover the same
+    N-width explicit-compatible layout set as descriptor-chain reductions:
+    identity, tile-permuted, pure column `col_reverse` / `col_rotate1` /
+    `col_even_odd`, `row_reverse`, and `rowcol_rotate_reverse` at
+    `N in {32,64,256}` for `32x32b`, `16x32bx2`, and `32x32b_splitn`.
   - any additional TMEM-linear family that compile-only search proves emits
     legal reduction code
 
@@ -369,7 +371,8 @@ Every fuzz case records:
   `16x32bx2`, and `32x32b_splitn` on the identity layout.
 - Explicit compatible register-layout variants also cover non-identity
   compatible TMEM-linear source families (`tile_permuted`, `col_reverse`,
-  `row_reverse`, and `rowcol_rotate_reverse`) across the same operation and
+  `col_rotate1`, `col_even_odd`, `row_reverse`, and
+  `rowcol_rotate_reverse`) across the same operation and
   modifier matrix, proving they still canonicalize to the `32x32b` reduction
   family rather than discovering a new reduction atom. The direct and
   descriptor-chain N-width explicit matrices pin `N=32` as `32x32b.x32`,
@@ -1214,3 +1217,9 @@ Every fuzz case records:
 - Two-CTA scaled-MMAv5 accumulator-subview fuzz generation may now include `block_n=64`, `parent_n=128` for every current scaled format pair, `blockK in {128,256}`, both slice starts, multicast false/true, and both zero-accumulator plus `use_acc=True` paths.
 - The required scale descriptor construction uses the packed scale format's 128-row minimum: descriptors and scale TMEM use padded 128-row scale tiles, while accumulator/output tensors still use the active 64-column N tile.
 - Current full-file collection is `9258` tests and the MMA bucket is `2783` cases. Aggregate bucket evidence is `8807 passed, 451 skipped`.
+
+## 2026-04-14 17:45 UTC: ld.red Explicit Pure-Column Permutation Note
+
+- Descriptor-chain and direct `ld.red` explicit-variant fuzz generation may now include pure column `col_rotate1` and `col_even_odd` layouts at `N in {32,64,256}` for `32x32b`, `16x32bx2`, and `32x32b_splitn`, crossed with both reductions and all legal modifier modes.
+- At `N=256`, `col_rotate1` split explicit variants use offset order `[0,128,64,192]`; `col_even_odd` keeps canonical `[0,64,128,192]`; `32x32b` keeps canonical order for both layouts.
+- Current full-file collection is `9546` tests and the `ld_red` bucket is `2530` cases. Aggregate bucket evidence is `9095 passed, 451 skipped`.
