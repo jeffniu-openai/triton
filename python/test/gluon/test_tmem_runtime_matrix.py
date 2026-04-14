@@ -7423,14 +7423,16 @@ MMA_PLAIN_KIND_ACC_CASES = [
     for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
 ]
 
-MMA_TWOCTA_TMA_F16_LIKE_DTYPES = {
-    "f16": (torch.float16, ttgl.float16, 1e-1, 8e-2),
-    "bf16": (torch.bfloat16, ttgl.bfloat16, 1e-1, 1e-1),
+MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
+    "f16": (torch.float16, ttgl.float16, "tcgen05.mma.cta_group::2.kind::f16", 1e-1, 8e-2),
+    "bf16": (torch.bfloat16, ttgl.bfloat16, "tcgen05.mma.cta_group::2.kind::f16", 1e-1, 1e-1),
+    "f8e5m2": (torch.float8_e5m2, ttgl.float8e5, "tcgen05.mma.cta_group::2.kind::f8f6f4", 1e-1, 1e-1),
+    "f8e4m3": (torch.float8_e4m3fn, ttgl.float8e4nv, "tcgen05.mma.cta_group::2.kind::f8f6f4", 1e-1, 1e-1),
 }
 
-MMA_TWOCTA_TMA_F16_LIKE_CASES = [
+MMA_TWOCTA_TMA_NON_TF32_CASES = [
     (dtype_name, acc_layout_kind, block_n, use_acc)
-    for dtype_name in MMA_TWOCTA_TMA_F16_LIKE_DTYPES
+    for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES
     for acc_layout_kind, block_n, use_acc in product(("legacy", "linear"), (64, 128, 256), (False, True))
 ]
 
@@ -7926,9 +7928,9 @@ def test_tmem_runtime_matrix_mma_rowcol_permuted_layout_reports_clean_unsupporte
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("dtype_name,acc_layout_kind,block_n,use_acc", MMA_TWOCTA_TMA_F16_LIKE_CASES)
+@pytest.mark.parametrize("dtype_name,acc_layout_kind,block_n,use_acc", MMA_TWOCTA_TMA_NON_TF32_CASES)
 def test_tmem_runtime_matrix_mma_twocta(dtype_name, acc_layout_kind, block_n, use_acc):
-    torch_dtype, gluon_dtype, atol, rtol = MMA_TWOCTA_TMA_F16_LIKE_DTYPES[dtype_name]
+    torch_dtype, gluon_dtype, expected_kind, atol, rtol = MMA_TWOCTA_TMA_NON_TF32_DTYPES[dtype_name]
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     block_m = 128 * ctas_per_cga[0]
@@ -7944,8 +7946,12 @@ def test_tmem_runtime_matrix_mma_twocta(dtype_name, acc_layout_kind, block_n, us
     shared_layout_a = ttgl.NVMMASharedLayout.get_default_for([block_m, block_k], gluon_dtype, cga_layout=cga_layout_a)
     shared_layout_b = ttgl.NVMMASharedLayout.get_default_for([block_k, block_n], gluon_dtype, cga_layout=cga_layout_b)
 
-    a = torch.randn((block_m, block_k), dtype=torch_dtype, device="cuda")
-    b = torch.randn((block_k, block_n), dtype=torch_dtype, device="cuda")
+    if dtype_name in ("f8e5m2", "f8e4m3"):
+        a = torch.randint(20, 40, (block_m, block_k), device="cuda", dtype=torch.uint8).view(torch_dtype)
+        b = torch.randint(20, 40, (block_k, block_n), device="cuda", dtype=torch.uint8).view(torch_dtype)
+    else:
+        a = torch.randn((block_m, block_k), dtype=torch_dtype, device="cuda")
+        b = torch.randn((block_k, block_n), dtype=torch_dtype, device="cuda")
     c = torch.randn((block_m, block_n), dtype=torch.float32, device="cuda")
     out = torch.empty((block_m, block_n), dtype=torch.float32, device="cuda")
 
@@ -8000,7 +8006,7 @@ def test_tmem_runtime_matrix_mma_twocta(dtype_name, acc_layout_kind, block_n, us
     assert ptx_mma_ops == llir_mma_ops
     assert ptx_mma_ops
     assert len(ptx_mma_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[dtype_name]
-    assert all(op == "tcgen05.mma.cta_group::2.kind::f16" for op in ptx_mma_ops)
+    assert all(op == expected_kind for op in ptx_mma_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,
         ["tcgen05.commit.cta_group::2.mbarrier::arrive::one.shared::cluster.multicast::cluster.b64"],

@@ -14248,3 +14248,11 @@ Open after this slice:
 - Current runtime-matrix collection is `7793` tests: `cp=580`, `mma=1885`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7342 passed, 451 skipped`.
 - Validation: BF16 descriptor-fed probe passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `24/7793`; no-PYTHONPATH full-file collect reported `7793`; focused selector passed all `24` cases across split-4 on four GPUs (`6` per group; slowest `10.77s`); `git diff --check` passed.
 - Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:03 UTC: TMA-fed two-CTA non-TF32 descriptor MMAv5 coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_twocta` from f16/bf16 descriptor-fed TMA coverage to `dtype in {f16,bf16,f8e5m2,f8e4m3}` via `MMA_TWOCTA_TMA_NON_TF32_CASES`, preserving `blockN in {64,128,256}`, legacy/canonical accumulator layout, and `use_acc in {False,True}` axes.
+- F8 rows use bounded uint8 payloads viewed as Torch float8 tensors, matching Gluon float8 TMA shared layouts, and exact `tcgen05.mma.cta_group::2.kind::f8f6f4` PTX/LLIR opcode checks.
+- Current runtime-matrix collection is `7817` tests: `cp=580`, `mma=1909`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7366 passed, 451 skipped`.
+- Validation: f8 descriptor-fed probes passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `48/7817`; no-PYTHONPATH full-file collect reported `7817`; focused selector passed all `48` cases across split-4 on four GPUs (`12` per group; slowest `16.81s`); `git diff --check` passed.
+- Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.

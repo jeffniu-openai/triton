@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:03 UTC: TMA-fed two-CTA non-TF32 descriptor MMAv5 coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_twocta` again from f16/bf16 to all currently reachable non-TF32 TMA-fed two-CTA plain dtypes: `f16`, `bf16`, `f8e5m2`, and `f8e4m3`.
+- `MMA_TWOCTA_TMA_NON_TF32_CASES` now spans `dtype in {f16,bf16,f8e5m2,f8e4m3}`, `blockN in {64,128,256}`, both legacy and canonical two-CTA TMEM-linear accumulator layouts, and both no-accumulator plus `use_acc=True` paths.
+- F8 inputs are generated as bounded uint8 payloads viewed as `torch.float8_e5m2` / `torch.float8_e4m3fn`, use matching Gluon `ttgl.float8e5` / `ttgl.float8e4nv` TMA shared layouts, and assert exact `tcgen05.mma.cta_group::2.kind::f8f6f4` PTX/LLIR opcode streams. F16/BF16 rows continue to assert exact `kind::f16` opcodes.
+- Current runtime-matrix collection is `7817` tests: `cp=580`, `mma=1909`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7366 passed, 451 skipped`.
+- Validation completed: one-off f8 descriptor-fed probes for `f8e5m2` and `f8e4m3` passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `48/7817`; no-PYTHONPATH full-file collect reported `7817`; focused non-TF32 selector passed all `48` cases across split-4 (`12` per group; group times `10.42s`, `16.81s`, `16.25s`, and `16.79s`); `git diff --check` passed.
+- TF32 remains covered by its separate TMA-fed path because the default `[K,N]` TMA descriptor is still a clean shared-transpose negative, while the positive route supplies B as `[N,K]` and shared-permutes it into MMAv5.
+- Next: commit/push this descriptor-fed f8 parity checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 13:00 UTC: TMA-fed two-CTA BF16 parity
 
 - Expanded the descriptor-fed two-CTA f16-like MMAv5 runtime-matrix anchor in `python/test/gluon/test_tmem_runtime_matrix.py`. `MMA_TWOCTA_TMA_F16_LIKE_CASES` now spans `dtype in {f16,bf16}`, `blockN in {64,128,256}`, both legacy and canonical two-CTA TMEM-linear accumulator layouts, and both no-accumulator plus `use_acc=True` paths.
