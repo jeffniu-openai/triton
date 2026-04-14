@@ -13077,3 +13077,20 @@ Open after this slice:
   - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `424` cases across four groups (`106` each).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=424`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3095 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another long-term ISA coverage slice.
+
+## 2026-04-14 03:10 UTC plain-MMAv5 tile-permuted accumulator K-depth coverage
+
+- Expanded the tile-permuted accumulator MMAv5 runtime-matrix cases from fixed `K=32` to `K in {32, 64}`.
+- The simple f16 anchor now covers both K depths for the existing `128x128/tile_n=32` and `128x256/tile_n=64` accumulator layouts.
+- The all-plain-kind tile-permuted accumulator matrices now cover every supported plain operand kind at both K depths, for both no-accumulator and `use_acc=True` paths.
+- Added `_expected_tile_permuted_mma_op_count(kind, k)` so exact PTX/LLIR opcode counts scale by `K // 32`; `K=64` therefore proves doubled instruction depth through the tile-permuted accumulator lowering.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `44/3563`;
+  - no-PYTHONPATH tight `mma` collect selected `446/3563`;
+  - no-PYTHONPATH full-file collect selected all `3563`;
+  - focused tile-permuted selector passed `44` cases across four GPUs (`11` each);
+  - `run_tmem_runtime_matrix_sweep.py --categories mma --timeout-per-group 900` passed `446` cases across four groups (`112`, `112`, `112`, `110`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=446`, splitn/misc `=252`, `ld_red=811`, `ldst=1732`; current bucketed evidence aggregates to `3117 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue another long-term ISA coverage slice.

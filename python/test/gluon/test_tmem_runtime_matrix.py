@@ -6156,6 +6156,13 @@ def _expected_plain_mma_op_count(kind, k):
 MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
     kind: count * 4 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
 }
+
+
+def _expected_tile_permuted_mma_op_count(kind, k):
+    assert k % 32 == 0
+    return MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS[kind] * (k // 32)
+
+
 MMA_LHS_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS = {
     kind: count * 8 for kind, count in MMA_PLAIN_KIND_EXPECTED_OP_COUNTS.items()
 }
@@ -6181,14 +6188,16 @@ MMA_TWOCTA_PLAIN_KIND_CASES = [
 ]
 
 MMA_TILE_PERMUTED_CASES = [
-    (128, 32),
-    (256, 64),
+    (n, tile_n, k)
+    for n, tile_n in ((128, 32), (256, 64))
+    for k in (32, 64)
 ]
 
 MMA_TILE_PERMUTED_KIND_CASES = [
-    (kind, n, tile_n)
+    (kind, n, tile_n, k)
     for kind in MMA_PLAIN_KINDS
     for n, tile_n in ((128, 32), (256, 64))
+    for k in (32, 64)
 ]
 
 MMA_LHS_TILE_PERMUTED_N_CASES = [
@@ -6819,9 +6828,9 @@ def test_tmem_runtime_matrix_mma_indexed_acc_view(name, parent_layout, layout_to
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("n,tile_n", MMA_TILE_PERMUTED_CASES)
-def test_tmem_runtime_matrix_mma_acc_tile_permuted(n, tile_n):
-    m, k = 128, 32
+@pytest.mark.parametrize("n,tile_n,k", MMA_TILE_PERMUTED_CASES)
+def test_tmem_runtime_matrix_mma_acc_tile_permuted(n, tile_n, k):
+    m = 128
     layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
     a = torch.randn((m, k), dtype=torch.float16, device="cuda")
     b = torch.randn((k, n), dtype=torch.float16, device="cuda")
@@ -6857,15 +6866,15 @@ def test_tmem_runtime_matrix_mma_acc_tile_permuted(n, tile_n):
     llir_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_ops == llir_ops
     assert ptx_ops
-    assert len(ptx_ops) == MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS["f16"]
+    assert len(ptx_ops) == _expected_tile_permuted_mma_op_count("f16", k)
     assert all(op == "tcgen05.mma.cta_group::1.kind::f16" for op in ptx_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,n,tile_n", MMA_TILE_PERMUTED_KIND_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind, n, tile_n):
-    m, k = 128, 32
+@pytest.mark.parametrize("kind,n,tile_n,k", MMA_TILE_PERMUTED_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind, n, tile_n, k):
+    m = 128
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
@@ -6897,15 +6906,15 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc(kind, n, tile_n):
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
-    assert len(mma_ops) == MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(mma_ops) == _expected_tile_permuted_mma_op_count(kind, k)
     assert all(op == expected_kind for op in mma_ops)
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("kind,n,tile_n", MMA_TILE_PERMUTED_KIND_CASES)
-def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, tile_n):
-    m, k = 128, 32
+@pytest.mark.parametrize("kind,n,tile_n,k", MMA_TILE_PERMUTED_KIND_CASES)
+def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, tile_n, k):
+    m = 128
     block_layout_a = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [0, 1])
     block_layout_b = ttgl.BlockedLayout([1, 8], [1, 32], [4, 1], [1, 0])
     acc_layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
@@ -6935,7 +6944,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_tile_permuted_acc_use_acc(kind, n, 
 
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
-    assert len(mma_ops) == MMA_TILE_PERMUTED_KIND_EXPECTED_OP_COUNTS[kind]
+    assert len(mma_ops) == _expected_tile_permuted_mma_op_count(kind, k)
     assert all(op == expected_kind for op in mma_ops)
     _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
     assert "tensor_memory_linear" in compiled.asm["ttgir"]

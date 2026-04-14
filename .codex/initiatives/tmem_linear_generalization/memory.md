@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 03:10 UTC: plain-MMAv5 tile-permuted accumulator K-depth coverage
+
+- Tile-permuted accumulator MMAv5 runtime-matrix coverage now spans `K in {32, 64}` for the simple f16 anchor and for every supported plain operand kind in both no-accumulator and `use_acc=True` paths.
+- The covered canonical TMEM-linear accumulator layouts remain `128x128/tile_n=32` and `128x256/tile_n=64`; this slice broadens instruction depth without introducing new layout families.
+- Added `_expected_tile_permuted_mma_op_count(kind, k)` so exact PTX/LLIR opcode counts scale by `K // 32`; the `K=64` cases require doubled `tcgen05.mma` counts instead of only checking numeric correctness.
+- Current runtime-matrix collection is `3563` tests: `cp=322`, `mma=446`, splitn/misc `=252`, `ld_red=811`, and `ldst=1732`; current bucketed evidence aggregates to `3117 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; no-PYTHONPATH focused collect selected `44/3563`; no-PYTHONPATH tight `mma` collect selected `446/3563`; no-PYTHONPATH full-file collect selected all `3563`; focused tile-permuted selector passed `44` across four GPUs (`11` each); tight `mma` runner passed `446` across four groups (`112`, `112`, `112`, `110`).
+- Remaining long-term work: continue staged ISA saturation in another bounded family, likely scaled-MMAv5 parity or descriptor-view `ld/st` breadth; copy `warpx2` remains parked until a real descriptor/address/view/staging model exists.
+
 ## 2026-04-14 03:07 UTC: plain-MMAv5 TMEM-LHS subview K-depth coverage
 
 - `tmem_mma_lhs_subslice_kernel` now accepts `K` as a constexpr, and `MMA_LHS_SUBSLICE_NK_CASES` covers `K in {32, 64}` for all supported plain operand kinds, both legacy/canonical accumulator layouts, and `N in {128, 256}`.
