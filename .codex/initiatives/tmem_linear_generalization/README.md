@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5987-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 6007-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current rank-5 descriptor `ld/st` positive checkpoint, 2026-04-14 08:57 UTC: added an executable smaller rank-5 descriptor roundtrip matrix in `python/test/gluon/test_tmem_runtime_matrix.py` using a `[1,1,2,M,N]` allocation and lifted `[1,1,2]` TMEM-linear layouts. This preserves the old `[2,2,2,M,N]` rank-5 OOR skip boundary (`Required: 4096`, hardware limit `512`) while adding positive rank-5 `memdesc_index`/`memdesc_subslice`/`memdesc_reshape`/`memdesc_trans` coverage for single-CTA identity and mixed layouts plus two-CTA block and MMAv5-like layouts across every public `ld/st` variant. Current runtime-matrix collection is `6007` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, and `ldst=2849`; bucketed evidence now aggregates to `5561 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused `rank5_small` collect selected `20/6007`; no-PYTHONPATH full-file collect reported `6007`; no-PYTHONPATH `ldst` collect selected `2849/6007`; focused `rank5_small` selector passed all `20` cases across split-4 on four GPUs (`5` per group; times `4.45s`, `4.45s`, `4.66s`, and `4.40s`).
 
 - Current scaled-MMAv5 narrow tile-permuted accumulator clean-negative checkpoint, 2026-04-14 08:48 UTC: direct block-scaled MMAv5 tile-permuted accumulator clean-negative coverage now separately pins the narrow direct-layout boundary, `128x32/tile_n=8` and `128x64/tile_n=16`, across every current scaled format pair and `K in {128,256}`. These cases report the directly-supported block-scaled tensor-memory-layout diagnostic because narrow tile-permuted accumulators are not directly representable for the current direct block-scaled MMAv5 path. This is distinct from the existing repeated-`N=32` `128x128/tile_n=32` clean negative, which remains the scale-fragment 64-column-alignment boundary. Current runtime-matrix collection is `5987` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, and `ldst=2829`; bucketed evidence now aggregates to `5541 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed after docs; `make -j8` no-op success; no-PYTHONPATH focused `scaled_acc_tile_permuted_narrow` collect selected `20/5987`; no-PYTHONPATH tight MMA collect selected `1358/5987`; no-PYTHONPATH full-file collect reported `5987`; focused `scaled_acc_tile_permuted_narrow` selector passed all `20` cases across split-4 on four GPUs (`5` per group; times `5.82s`, `5.90s`, `5.69s`, and `6.08s`).
 

@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:57 UTC: executable rank-5 descriptor ld/st positives
+
+- Added `tmem_ldst_descriptor_rank5_small_roundtrip_kernel` and `LDST_DESCRIPTOR_RANK5_SMALL_CASES` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new matrix uses a `[1,1,2,M,N]` allocation with lifted `[1,1,2]` layouts, which still exercises rank-5 descriptor indexing, slicing, reshaping, and transposes but stays within the 512-column TMEM limit.
+- Coverage spans single-CTA identity and mixed layouts at `M=128,N=64`, plus two-CTA block and MMAv5-like layouts at `M=256,N=64`, across `auto`, `32x32b`, `16x64b`, `16x128b`, and `16x256b`.
+- The old `[2,2,2,M,N]` rank-5 roundtrip tests remain skipped intentionally: direct probe confirmed `Required: 4096`, hardware limit `512`, so those rows are resource-bound and not executable positives.
+- Current runtime-matrix collection is `6007` tests: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2849`; current bucketed evidence aggregates to `5561 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused `rank5_small` collect selected `20/6007`; no-PYTHONPATH full-file collect reported `6007`; no-PYTHONPATH `ldst` collect selected `2849/6007`; focused `rank5_small` selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `4.45s`, `4.45s`, `4.66s`, and `4.40s`).
+- Next: commit/push this bounded `ld/st` descriptor checkpoint, then keep moving through exact non-parked ISA coverage families.
+
 ## 2026-04-14 08:48 UTC: scaled-MMAv5 narrow tile-permuted accumulator clean negatives
 
 - Added a separate scaled-MMAv5 clean-negative matrix for narrow direct tile-permuted accumulator layouts in `python/test/gluon/test_tmem_runtime_matrix.py`.

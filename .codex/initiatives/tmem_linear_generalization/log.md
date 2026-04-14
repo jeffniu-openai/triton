@@ -13925,3 +13925,26 @@ Open after this slice:
   - four-GPU focused two-CTA indexed-accumulator selector passed all `100` cases across split-4 (`25` per group; group times `4.69s`, `4.69s`, `4.69s`, and `4.63s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1080`, splitn/misc `=499`, `ld_red=920`, `ldst=2772`; current bucketed evidence aggregates to `5206 passed, 446 skipped`.
 - Next: run final hygiene, commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact family.
+
+## 2026-04-14 08:57 UTC: executable rank-5 descriptor ld/st positives
+
+- Added a smaller executable rank-5 descriptor roundtrip family to `python/test/gluon/test_tmem_runtime_matrix.py`:
+  - `tmem_ldst_descriptor_rank5_small_roundtrip_kernel`;
+  - `LDST_DESCRIPTOR_RANK5_SMALL_CASES`;
+  - `test_tmem_runtime_matrix_ldst_descriptor_rank5_small_roundtrip`.
+- The new allocation shape is `[1,1,2,M,N]` with lifted `[1,1,2]` TMEM-linear layouts. This keeps rank 5 and the supported descriptor-view chain but avoids the existing `[2,2,2,M,N]` resource boundary.
+- Probe result kept for context: the old rank-5 kernel at `M=128,N=64` with `[2,2,2]` still fails launch metadata with tensor-memory OOR (`Required: 4096`, hardware limit `512`). The old skip-only rows remain valid and should not be unskipped.
+- Positive coverage spans:
+  - single-CTA identity and mixed layouts at `M=128,N=64`;
+  - two-CTA block and MMAv5-like layouts at `M=256,N=64`;
+  - all public `ld/st` variants (`auto`, `32x32b`, `16x64b`, `16x128b`, `16x256b`).
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused `rank5_small` collect selected `20/6007`;
+  - no-PYTHONPATH full-file collect reported `6007`;
+  - no-PYTHONPATH `ldst` collect selected `2849/6007`;
+  - focused `rank5_small` selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `4.45s`, `4.45s`, `4.66s`, and `4.40s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1358`, splitn/misc `=499`, `ld_red=920`, `ldst=2849`; current bucketed evidence aggregates to `5561 passed, 446 skipped`.
+- Next: commit/push this bounded descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family.

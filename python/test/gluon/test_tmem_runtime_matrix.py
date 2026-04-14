@@ -804,6 +804,32 @@ def tmem_ldst_descriptor_rank5_roundtrip_kernel(in_ptr, out_ptr, layout: ttgl.co
 
 
 @gluon.jit
+def tmem_ldst_descriptor_rank5_small_roundtrip_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                                      N: ttgl.constexpr, instr_variant: ttgl.constexpr,
+                                                      delta: ttgl.constexpr):
+    offs = ttgl.arange(0, M)[:, None] * N + ttgl.arange(0, N)[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(ttgl.float32, [1, 1, 2, M, N], layout)
+    base = tmem.index(0).index(0).index(1)
+    base_reg_layout: ttgl.constexpr = base.get_reg_layout(instr_variant=instr_variant)
+    base.store(ttgl.convert_layout(value, base_reg_layout))
+
+    alias = tmem.slice(0, 1, dim=0).index(0).slice(0, 1, dim=0).index(0).slice(1, 1, dim=0).index(0)
+    alias = alias.reshape((M // 2, 2, N)).permute([1, 0, 2]).reshape((M, N))
+    alias = alias.permute([1, 0]).permute([1, 0])
+    alias = alias.slice(0, M, dim=0).slice(0, N, dim=1)
+
+    alias_reg_layout: ttgl.constexpr = alias.get_reg_layout(instr_variant=instr_variant)
+    out = alias.load(alias_reg_layout)
+    out = out + ttgl.full([M, N], delta, ttgl.float32, layout=alias_reg_layout)
+    alias.store(out)
+
+    out = base.load(base_reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, base_reg_layout))
+
+
+@gluon.jit
 def tmem_ldst_descriptor_higher_rank_index_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
                                                   N: ttgl.constexpr, instr_variant: ttgl.constexpr):
     element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
@@ -3163,6 +3189,19 @@ LDST_DESCRIPTOR_RANK5_CASES = [
 LDST_TWOCTA_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, ), LDST_VARIANTS)
+]
+
+LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES = (
+    ("single_identity", "single", "identity", 128, 1),
+    ("single_mixed", "single", "mixed", 128, 1),
+    ("twocta_block", "twocta", "block_two_ctas", 256, 2),
+    ("twocta_mmav5", "twocta", "mmav5_twocta", 256, 2),
+)
+
+LDST_DESCRIPTOR_RANK5_SMALL_CASES = [
+    (case_name, layout_group, layout_name, m, num_ctas, 64, variant, LDST_SHAPE_MAP[variant][64])
+    for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
+    for variant in LDST_VARIANTS
 ]
 
 CP_NO_SCALES_CASES = [
@@ -5665,6 +5704,42 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_rank5_roundtrip(layout_name,
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_trans" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "case_name,layout_group,layout_name,m,num_ctas,n,variant,expected_shape",
+    LDST_DESCRIPTOR_RANK5_SMALL_CASES,
+)
+def test_tmem_runtime_matrix_ldst_descriptor_rank5_small_roundtrip(
+    case_name, layout_group, layout_name, m, num_ctas, n, variant, expected_shape
+):
+    base_layout = LDST_LAYOUTS[layout_name](n) if layout_group == "single" else LDST_TWOCTA_LAYOUTS[layout_name](n)
+    layout = _lift_tmem_layout(base_layout, [1, 1, 2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_rank5_small_roundtrip_kernel[(1, )](
+        inp, out, layout, m, n, variant, 23.0, num_warps=4, num_ctas=num_ctas
+    )
+    torch.testing.assert_close(out, inp + 23.0, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    expected_message_count = 2 if expected_shape.startswith("32x32b") else 4
+    assert observed_opcodes.count(expected_st) == expected_message_count
+    assert observed_opcodes.count(expected_ld) == expected_message_count
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
+    if num_ctas == 2:
+        assert "twoCTAs = true" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

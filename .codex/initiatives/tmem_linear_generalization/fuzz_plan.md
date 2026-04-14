@@ -265,6 +265,11 @@ Every fuzz case records:
 - current higher-rank descriptor-chain positives cover indexed views,
   multidimensional slices, and dim-0 slice/view chains for single-CTA and
   two-CTA layouts with f32 and i32 payloads across every public `ld/st` variant.
+- current executable rank-5 descriptor-chain positives cover lifted `[1,1,2]`
+  layouts for single-CTA identity/mixed and two-CTA block/MMAv5-like layouts at
+  `N=64` across every public `ld/st` variant. The older `[2,2,2]` rank-5
+  matrices stay skipped as clean hardware-resource boundaries (`Required: 4096`,
+  limit `512`) rather than positive targets.
 - paired `permute` / inverse `permute`
 - reshape chains that preserve element count
 - `_reinterpret` back into an equivalent TMEM-linear layout
