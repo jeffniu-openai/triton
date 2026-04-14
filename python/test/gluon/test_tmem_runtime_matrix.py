@@ -3929,17 +3929,18 @@ LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [
                  id="rowcol_rotate_reverse"),
 ]
 
+LD_RED_DESCRIPTOR_CHAIN_LAYOUT_CASES = [
+    ("identity", lambda: _make_tmem_linear_layout(128, 128)),
+    ("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32)),
+    ("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse")),
+]
+
+LD_RED_DESCRIPTOR_CHAIN_VARIANTS = ("auto", "32x32b", "16x32bx2", "32x32b_splitn")
+
 LD_RED_DESCRIPTOR_CHAIN_CASES = [
-    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "auto", id="identity_auto"),
-    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "32x32b", id="identity_32x32b"),
-    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "16x32bx2",
-                 id="identity_16x32bx2"),
-    pytest.param("identity", lambda: _make_tmem_linear_layout(128, 128), "32x32b_splitn",
-                 id="identity_32x32b_splitn"),
-    pytest.param("tile_permuted", lambda: _make_tmem_linear_layout_tile_permuted(128, 128, 32), "auto",
-                 id="tile_permuted_auto"),
-    pytest.param("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse"),
-                 "auto", id="rowcol_rotate_reverse_auto"),
+    pytest.param(layout_name, layout_factory, load_variant, id=f"{layout_name}_{load_variant}")
+    for layout_name, layout_factory in LD_RED_DESCRIPTOR_CHAIN_LAYOUT_CASES
+    for load_variant in LD_RED_DESCRIPTOR_CHAIN_VARIANTS
 ]
 
 LD_RED_MIXED_CASES = [

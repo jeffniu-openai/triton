@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 09:32 UTC: ld.red descriptor-chain non-identity explicit variants
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_CASES` so descriptor-view reductions cover `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` for every current descriptor-chain layout: identity, tile-permuted, and row/column-permuted.
+- This adds explicit-register-layout requests to the non-identity descriptor-chain `ld.red` views, matching the already-covered direct non-identity explicit-variant surface.
+- Current runtime-matrix collection is `6363` tests: `cp=381`, `mma=1598`, splitn/misc `=499`, `ld_red=1016`, `ldst=2869`; current bucketed evidence aggregates to `5917 passed, 446 skipped`.
+- Validation: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `96/6363`; no-PYTHONPATH `ld_red` collect selected `1016/6363`; no-PYTHONPATH full-file collect reported `6363`; focused descriptor-chain selector passed all `96` cases across split-4 on four GPUs (`24` per group; group times `49.01s`, `159.29s`, `276.27s`, and `458.74s`).
+- Next: commit/push this `ld.red` descriptor-view checkpoint, then continue another exact non-parked coverage slice. The group-4 timing is a cold-compile scheduling concern, not a deadlock: it continued printing progress until completion.
+
 ## 2026-04-14 09:23 UTC: two-CTA plain-MMAv5 accumulator subslice descriptor-view coverage
 
 - Added `tmem_mma_twocta_acc_subslice_kernel`, `MMA_TWOCTA_ACC_SUBSLICE_CASES`, and `test_tmem_runtime_matrix_mma_twocta_acc_subslice_view_plain_kinds` in `python/test/gluon/test_tmem_runtime_matrix.py`.

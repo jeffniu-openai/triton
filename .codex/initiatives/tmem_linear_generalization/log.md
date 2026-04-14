@@ -14032,3 +14032,19 @@ Open after this slice:
   - focused `mma_twocta_acc_subslice_view_plain_kinds` selector passed all `120` cases across split-4 on four GPUs (`30` per group; group times `33.98s`, `36.59s`, `35.12s`, and `36.07s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=1598`, splitn/misc `=499`, `ld_red=968`, `ldst=2869`; current bucketed evidence aggregates to `5869 passed, 446 skipped`.
 - Next: commit/push this bounded two-CTA MMAv5 descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. Hard copy `warpx2` frontiers remain parked unless there is a real descriptor/address/staging hypothesis.
+
+## 2026-04-14 09:32 UTC: ld.red descriptor-chain non-identity explicit variants
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_CASES` from identity-explicit plus non-identity-auto to the full compatible descriptor-chain layout/variant product.
+- The descriptor-chain `ld.red` positive slice now covers identity, tile-permuted, and row/column-permuted source layouts for `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`, across `min`/`max` and all legal `abs` / `PropagateNan` modifier modes.
+- This is test-only coverage over the existing hardware-reduction path through `slice`/`index`/reshape descriptor views; no compiler/lowering source changed.
+- Validation completed:
+  - `make -j8` -> no work to do;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed before docs;
+  - no-PYTHONPATH focused `ld_red_descriptor_chain` collect selected `96/6363`;
+  - no-PYTHONPATH `ld_red` collect selected `1016/6363`;
+  - no-PYTHONPATH full-file collect reported `6363`;
+  - focused `ld_red_descriptor_chain` selector passed all `96` cases across split-4 on four GPUs (`24` per group; group times `49.01s`, `159.29s`, `276.27s`, and `458.74s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1598`, splitn/misc `=499`, `ld_red=1016`, `ldst=2869`; current bucketed evidence aggregates to `5917 passed, 446 skipped`.
+- Next: commit/push this bounded `ld.red` descriptor-view checkpoint, then continue staged ISA saturation in another exact non-parked family. The slowest shard was cold-compile/progress-bound, not a hang.
