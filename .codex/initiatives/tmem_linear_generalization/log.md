@@ -14081,3 +14081,15 @@ Open after this slice:
 - Current runtime-matrix collection is `6452` tests: `cp=381`, `mma=1687`, splitn/misc `=499`, `ld_red=1016`, `ldst=2869`; current bucketed evidence aggregates to `6006 passed, 446 skipped`.
 - Validation: `make -j8` no-op success; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; no-PYTHONPATH focused new-use-acc collect selected `89/6452`; no-PYTHONPATH adjacent old+new LHS collect selected `178/6452`; no-PYTHONPATH tight MMA collect selected `1687/6452`; no-PYTHONPATH full-file collect reported `6452`; focused new-use-acc selector passed all `89` cases across split-4 on four GPUs (`23`, `23`, `23`, and `20` selected; group times `92.71s`, `46.25s`, `36.91s`, and `32.84s`); adjacent old+new LHS selector passed all `178` cases across split-4 (`45`, `45`, `45`, and `43` selected; group times `90.52s`, `59.17s`, `59.93s`, and `37.13s`).
 - Next: commit/push this checkpoint, then move to another non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 10:03 UTC: copy warpx2 conversion lit and non-surjective layout asm round-trip
+
+- Fixed generic `LinearLayout` textual assembly for non-surjective layouts by adding optional `out = [...]` parse/print support in `lib/Dialect/TritonGPU/IR/LinearLayoutAsm.cpp`.
+- Motivation: the supported no-scales copy `warpx2` TMEM-linear layouts have zero row bases. Before this change, printing them to MLIR and reparsing inferred a smaller surjective codomain (`64x4`) instead of preserving the logical memdesc shape (`128x4` or `256x4`), so conversion lit could not represent the known-good layouts.
+- Added conversion lit coverage in `test/Conversion/tritongpu_to_llvm_blackwell.mlir` for the supported no-scales copy paths:
+  - single-CTA `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`;
+  - single-CTA `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b`;
+  - two-CTA `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`.
+- This does not add support for the parked hard copy frontiers. No-scales two-CTA `warpx2::02_13` and true tensor-memory-scales `warpx2` remain descriptor/address/staging problems, not direct-offset or opcode-substitution fixes.
+- Validation: `make -j8`; `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir`; `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py python/test/gluon/test_frontend.py`; `git diff --check`; frontend selector `warpx2_like_rows_parse or non_surjective_reg_layout` passed `3` selected cases in a single process; runtime `-k warpx2` collect selected `21/6500` and split-4 GPU execution passed all selected cases (`6`, `6`, `6`, `3`).
+- Next: commit/push this bounded checkpoint, then continue staged TMEM ISA coverage in another non-parked slice unless a concrete descriptor/address/staging hypothesis appears for the copy `warpx2` frontiers.

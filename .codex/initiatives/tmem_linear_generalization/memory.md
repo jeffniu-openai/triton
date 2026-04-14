@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 10:03 UTC: copy warpx2 conversion lit and non-surjective layout asm round-trip
+
+- Fixed generic `LinearLayout` textual assembly for non-surjective layouts by adding optional `out = [...]` parse/print support in `lib/Dialect/TritonGPU/IR/LinearLayoutAsm.cpp`.
+- Motivation: the supported no-scales copy `warpx2` TMEM-linear layouts have zero row bases. Before this change, printing them to MLIR and reparsing inferred a smaller surjective codomain (`64x4`) instead of preserving the logical memdesc shape (`128x4` or `256x4`), so conversion lit could not represent the known-good layouts.
+- Added conversion lit coverage in `test/Conversion/tritongpu_to_llvm_blackwell.mlir` for the supported no-scales copy paths:
+  - single-CTA `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`;
+  - single-CTA `tcgen05.cp.cta_group::1.warpx2::02_13.64x128b`;
+  - two-CTA `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`.
+- This does not add support for the parked hard copy frontiers. No-scales two-CTA `warpx2::02_13` and true tensor-memory-scales `warpx2` remain descriptor/address/staging problems, not direct-offset or opcode-substitution fixes.
+- Validation: `make -j8`; `lit -v test/Conversion/tritongpu_to_llvm_blackwell.mlir`; `lit -v test/TritonNvidiaGPU/tmem_layouts.mlir test/TritonNvidiaGPU/ops.mlir test/TritonNvidiaGPU/invalid.mlir`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py python/test/gluon/test_frontend.py`; `git diff --check`; frontend selector `warpx2_like_rows_parse or non_surjective_reg_layout` passed `3` selected cases in a single process; runtime `-k warpx2` collect selected `21/6500` and split-4 GPU execution passed all selected cases (`6`, `6`, `6`, `3`).
+- Next: commit/push this bounded checkpoint, then continue staged TMEM ISA coverage in another non-parked slice unless a concrete descriptor/address/staging hypothesis appears for the copy `warpx2` frontiers.
+
 ## 2026-04-14 10:02 UTC: ld.red descriptor-chain N-width sweep
 
 - Generalized `tmem_ld_red_descriptor_chain_kernel` so descriptor-view reductions take `N` as a constexpr instead of being fixed at `N=128`.
