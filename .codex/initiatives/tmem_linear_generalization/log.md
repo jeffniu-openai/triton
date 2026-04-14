@@ -13645,3 +13645,19 @@ Open after this slice:
   - no-PYTHONPATH full `ld_red` bucket selected `880/4949`;
   - four-GPU focused non-f32 selector passed `8` cases across split-4 (`2` per group; group times `4.43s`, `4.23s`, `4.23s`, and `3.96s`).
 - Current runtime-matrix bucket totals: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4503 passed, 446 skipped`.
+
+## 2026-04-14 07:14 UTC: scaled-MMAv5 repeated-N32 clean-negative format/K parity
+
+- Added `SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES` and expanded `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported` from a singleton mxfp8 case to all current scaled format pairs and `K in {128,256}`. The test now uses `tmem_mma_scaled_layout_format_kernel`, format-specific quantized tensors, and the existing clean diagnostic for repeated N=32 block-scaled MMAv5 along N.
+- Expanded `test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported` across `K in {128,256}` for every current scaled format pair. This pins the accumulator-subview variant of the same public-scale-descriptor boundary.
+- Discarded probe: adding `N=256` to the one-CTA accumulator-subview positive matrix (`parentN=512`) collected but all new rows failed before execution with tensor-memory OOR (`Required: 524/536/560`, limit `512`), so the positive matrix remains at `N in {64,128}` until a lower-TMEM parent/staging strategy exists.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `20/4963`;
+  - no-PYTHONPATH tight MMA collect selected `838/4963`;
+  - no-PYTHONPATH full-file collect reported `4963`;
+  - focused repeated-N32 clean-negative selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `4.98s`, `4.97s`, `5.13s`, and `5.46s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=838`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4517 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 clean-negative checkpoint, then continue staged ISA saturation. Nearby remaining work is no longer this repeated-N32 boundary; keep it as clean unsupported unless the scale-descriptor model grows sub-64-column matrix-B scale fragments.

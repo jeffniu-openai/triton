@@ -580,9 +580,10 @@ Every fuzz case records:
   is pinned as `(1 + blockN // 128) * (blockK // 128) * (32 // vec_size)`. The
   obvious two-CTA `block_n=256`,
   `parent_n=512` offset-subview
-  extension exceeds TMEM capacity (`Required: 524`, limit `512`); a
-  `parent_n=384` alternative is not expressible by the current power-of-two
-  MMAv5 two-CTA layout helper.
+  extension exceeds TMEM capacity (`Required: 524`, limit `512`); the one-CTA
+  `blockN=256`, `parentN=512` positive probe also exceeds TMEM capacity
+  (`Required: 524/536/560`, limit `512`). A `parent_n=384` alternative is not
+  expressible by the current power-of-two MMAv5 two-CTA layout helper.
 - TMEM-LHS format coverage currently includes the packed-storage reachable
   subset (`mxfp8/mxfp8`, `mxfp8/mxfp4`, `mxfp4/mxfp4`, and `nvfp4/nvfp4`)
   for both legacy and canonical accumulator layouts. Subview operand-A
@@ -608,10 +609,13 @@ Every fuzz case records:
 
 #### Negative frontier
 - unsupported TMEM-linear accumulator or scale layouts
-- tile-permuted accumulator subviews that would require repeated `N=32`
-  block-scaled MMAv5 instructions; these should keep the clean diagnostic
-  explaining that public tensor-memory scales expose matrix-B scale fragments
-  only at 64-column alignment
+- tile-permuted accumulators or accumulator subviews that would require
+  repeated `N=32` block-scaled MMAv5 instructions. Current clean-negative
+  coverage includes the direct `128x128/tile_n=32` accumulator path and the
+  `N=64` accumulator-subview-from-tile-permuted-parent path for every current
+  scaled format pair at `K in {128,256}`. These should keep the clean
+  diagnostic explaining that public tensor-memory scales expose matrix-B scale
+  fragments only at 64-column alignment.
 - transpose on `mxf4` / `mxf4nvf4`
 - unsupported scale-factor subindices
 

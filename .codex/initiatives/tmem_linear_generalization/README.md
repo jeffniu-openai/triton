@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4949-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4963-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 repeated-N32 clean-negative checkpoint, 2026-04-14 07:14 UTC: the direct `128x128/tile_n=32` repeated-N32 accumulator negative now covers every current scaled format pair and `K in {128,256}`, and the related accumulator-subview tile-permuted clean-negative now covers the same K depths for all format pairs. These remain clean unsupported because public tensor-memory scale descriptors expose matrix-B scale fragments at 64-column alignment. Current runtime-matrix collection is `4963` tests: `cp=381`, `mma=838`, splitn/misc `=252`, `ld_red=880`, and `ldst=2612`; bucketed evidence now aggregates to `4517 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `20/4963`; no-PYTHONPATH tight MMA collect selected `838/4963`; no-PYTHONPATH full-file collect reported `4963`; focused repeated-N32 clean-negative selector passed all `20` cases across split-4 on four GPUs (`5` per group; slowest `5.46s`). Discarded probe: one-CTA accumulator-subview `N=256,parentN=512` positives hit tensor-memory OOR (`Required: 524/536/560`, limit `512`) and remain omitted until a lower-TMEM parent/staging model exists.
 
 - Current `ld.red` non-f32 min/max contract checkpoint, 2026-04-14 07:08 UTC: `tmem_ld_red_non_f32_contract_kernel` now exercises both `load_min` and `load_max`, so the clean non-f32 reduction diagnostics cover `min`/`max` for i32 plain reductions, i32 NaN/abs modifier rejections, and the legacy-unpacked f16 attempt. Current runtime-matrix collection is `4949` tests: `cp=381`, `mma=824`, splitn/misc `=252`, `ld_red=880`, and `ldst=2612`; bucketed evidence now aggregates to `4503 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `8/4949`; no-PYTHONPATH `ld_red` collect selected `880/4949`; focused non-f32 contract selector passed all `8` cases across split-4 on four GPUs (`2` per group; slowest `4.43s`).
 

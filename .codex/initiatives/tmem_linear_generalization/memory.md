@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:14 UTC: scaled-MMAv5 repeated-N32 clean-negative format/K parity
+
+- Added `SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES` and expanded the direct `128x128/tile_n=32` repeated-N32 accumulator clean-negative to every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`) and `K in {128,256}`.
+- `test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported` now also covers `K in {128,256}` for the all-format accumulator-subview tile-permuted clean-negative matrix.
+- These remain clean unsupported because public tensor-memory scale descriptors expose matrix-B scale fragments at 64-column alignment, so repeated N=32 block-scaled MMAv5 along N is not supported.
+- Discarded probe: widening one-CTA accumulator-subview positives to `N=256` (`parentN=512`) hit tensor-memory OOR before execution (`Required: 524/536/560`, limit `512`) across the new rows, so N=256 accumulator subviews remain omitted until a lower-TMEM parent/staging model exists.
+- Current runtime-matrix collection is `4963` tests: `cp=381`, `mma=838`, splitn/misc `=252`, `ld_red=880`, `ldst=2612`; current bucketed evidence aggregates to `4517 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `20/4963`; no-PYTHONPATH tight MMA collect selected `838/4963`; no-PYTHONPATH full-file collect reported `4963`; focused repeated-N32 clean-negative selector passed all `20` cases across four GPUs (`5` per group; group times `4.98s`, `4.97s`, `5.13s`, and `5.46s`).
+
 ## 2026-04-14 07:08 UTC: ld.red non-f32 min/max contract parity
 
 - `tmem_ld_red_non_f32_contract_kernel` now takes `red_op` and calls `load_min` or `load_max`, so `test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported` covers both reduction ops for each non-f32 contract case.

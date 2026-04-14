@@ -3150,6 +3150,12 @@ SCALED_MMA_ACC_TILE_PERMUTED_K_CASES = [
     for k in (128, 256)
 ]
 
+SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES = [
+    (a_format, b_format, k)
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+    for k in (128, 256)
+]
+
 SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = [
     (a_format, b_format, slice_start, block_k, multicast)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
@@ -7629,10 +7635,11 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix(
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
+@pytest.mark.parametrize("k", (128, 256))
 def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported(
-    a_format, b_format, capfd
+    a_format, b_format, k, capfd
 ):
-    m = k = 128
+    m = 128
     n = 64
     vec_size = 16 if a_format == "nvfp4" else 32
     a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
@@ -7998,17 +8005,39 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix(a_for
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported(capfd):
-    m = n = k = 128
+@pytest.mark.parametrize("a_format,b_format,k", SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported(
+    a_format, b_format, k, capfd
+):
+    m = n = 128
     layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
+    vec_size = 16 if a_format == "nvfp4" else 32
+    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
+    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
+
+    torch.manual_seed(0)
+    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
+    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
-    a = torch.randint(20, 40, (m, k), dtype=torch.uint8, device="cuda").view(torch.float8_e5m2)
-    b = torch.randint(20, 40, (k, n), dtype=torch.uint8, device="cuda").view(torch.float8_e5m2)
-    a_scale = torch.randint(64, 130, (m, k // 32), dtype=torch.uint8, device="cuda")
-    b_scale = torch.randint(64, 130, (n, k // 32), dtype=torch.uint8, device="cuda")
 
     with pytest.raises(Exception) as excinfo:
-        tmem_mma_scaled_layout_kernel[(1, )](out, m, n, k, a, b, a_scale, b_scale, layout, num_warps=4)
+        tmem_mma_scaled_layout_format_kernel[(1, )](
+            out,
+            m,
+            n,
+            k,
+            a,
+            b,
+            a_scale,
+            b_scale,
+            layout,
+            vec_size,
+            a_elem_per_byte,
+            b_elem_per_byte,
+            a_tcgen_format,
+            b_tcgen_format,
+            num_warps=4,
+        )
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
