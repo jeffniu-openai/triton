@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5224-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5324-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current higher-rank descriptor `ld/st` i32-parity checkpoint, 2026-04-14 07:41 UTC: the higher-rank descriptor-view positive matrix now covers f32+i32 for indexed views, multidimensional slices, and dim-0 slice/view chains in both single-CTA and two-CTA layouts. The affected kernels now derive the TMEM element type from the input pointer, so the same descriptor-chain lowering is validated for `.b32` integer payloads without changing compiler/lowering source. Current runtime-matrix collection is `5324` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, and `ldst=2712`; bucketed evidence now aggregates to `4878 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `200/5324`; no-PYTHONPATH full-file collect reported `5324`; focused higher-rank descriptor selector passed all `200` cases across split-8 on four GPUs (`25` cases per group; times `384.32s`, `339.11s`, `402.75s`, `430.09s`, `418.65s`, `382.93s`, `131.40s`, and `278.68s`).
 
 - Current M64 row/column split-N `ld/st` i32-parity checkpoint, 2026-04-14 07:24 UTC: the row/column-permuted M64 split-N sweep now covers f32+i32 for `64xN`, `N in {2,4,8,16,32,64,128}`, across explicit `32x32b_splitn` and `16x32bx2`, and the representative auto-selection checks also cover both dtypes. This is test-only coverage over already-supported `ld/st` lowering. Current runtime-matrix collection is `5224` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, and `ldst=2612`; bucketed evidence now aggregates to `4778 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `452/5224`; no-PYTHONPATH full-file collect reported `5224`; focused M64 row/column split-N selector passed all `452` cases across split-8 on four GPUs (`57`, `57`, `57`, `57`, `57`, `57`, `57`, and `53` cases; slowest `14.91s`).
 

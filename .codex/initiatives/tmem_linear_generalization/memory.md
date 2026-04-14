@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 07:41 UTC: higher-rank descriptor ld/st i32 parity
+
+- The higher-rank descriptor-view positive `ld/st` matrix now covers f32+i32 for indexed views, multidimensional slices, and dim-0 slice/view chains in both single-CTA and two-CTA layouts.
+- The affected kernels derive the TMEM element type from the input pointer instead of hard-coding `ttgl.float32`, so the same descriptor-chain lowering is validated for `.b32` integer payloads without compiler/lowering source changes.
+- Current runtime-matrix collection is `5324` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, `ldst=2712`; current bucketed evidence aggregates to `4878 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `200/5324`; no-PYTHONPATH full-file collect reported `5324`; focused higher-rank descriptor selector passed all `200` cases across split-8 on four GPUs (`25` each; group times `384.32s`, `339.11s`, `402.75s`, `430.09s`, `418.65s`, `382.93s`, `131.40s`, and `278.68s`).
+- Next: continue staged TMEM ISA saturation in another bounded family. Good candidates are remaining subword/scales `ld/st` layout gaps, `ld.red` modifier/layout coverage, or a concrete MMAv5/scaled-MMAv5 parity gap; keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging model.
+
 ## 2026-04-14 07:24 UTC: M64 row/column split-N ld/st i32 parity
 
 - Parameterized `M64_ROWCOL_PERMUTED_CASES` and `M64_ROWCOL_PERMUTED_AUTO_CASES` over f32+i32.

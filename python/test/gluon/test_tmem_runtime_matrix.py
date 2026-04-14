@@ -790,7 +790,8 @@ def tmem_ldst_descriptor_rank5_roundtrip_kernel(in_ptr, out_ptr, layout: ttgl.co
 @gluon.jit
 def tmem_ldst_descriptor_higher_rank_index_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
                                                   N: ttgl.constexpr, instr_variant: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [2, M, N], layout)
     full_view = tmem.index(1)
     full_reg_layout: ttgl.constexpr = full_view.get_reg_layout(instr_variant=instr_variant)
     in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, full_reg_layout))
@@ -806,9 +807,9 @@ def tmem_ldst_descriptor_higher_rank_index_kernel(in_ptr, out_ptr, layout: ttgl.
     part_layout: ttgl.constexpr = part0.get_reg_layout(instr_variant=instr_variant)
 
     part0_value = part0.load(part_layout)
-    part0.store(part0_value + ttgl.full([M, N // 2], 5.0, ttgl.float32, layout=part_layout))
+    part0.store(part0_value + ttgl.full([M, N // 2], 5, element_ty, layout=part_layout))
     part1_value = part1.load(part_layout)
-    part1.store(part1_value + ttgl.full([M, N // 2], 5.0, ttgl.float32, layout=part_layout))
+    part1.store(part1_value + ttgl.full([M, N // 2], 5, element_ty, layout=part_layout))
 
     out = full_view.load(full_reg_layout)
     ttgl.store(out_ptr + in_offs, out)
@@ -817,7 +818,8 @@ def tmem_ldst_descriptor_higher_rank_index_kernel(in_ptr, out_ptr, layout: ttgl.
 @gluon.jit
 def tmem_ldst_descriptor_multidim_slice_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
                                                N: ttgl.constexpr, instr_variant: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [2, M, N], layout)
     full_view = tmem.index(1)
     full_reg_layout: ttgl.constexpr = full_view.get_reg_layout(instr_variant=instr_variant)
     in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, full_reg_layout))
@@ -834,9 +836,9 @@ def tmem_ldst_descriptor_multidim_slice_kernel(in_ptr, out_ptr, layout: ttgl.con
     part1_layout: ttgl.constexpr = part1.get_reg_layout(instr_variant=instr_variant)
 
     part0_value = part0.load(part0_layout)
-    part0.store(part0_value + ttgl.full([M, N // 2], 9.0, ttgl.float32, layout=part0_layout))
+    part0.store(part0_value + ttgl.full([M, N // 2], 9, element_ty, layout=part0_layout))
     part1_value = part1.load(part1_layout)
-    part1.store(part1_value + ttgl.full([M, N // 2], 9.0, ttgl.float32, layout=part1_layout))
+    part1.store(part1_value + ttgl.full([M, N // 2], 9, element_ty, layout=part1_layout))
 
     out = full_view.load(full_reg_layout)
     ttgl.store(out_ptr + in_offs, out)
@@ -871,7 +873,8 @@ def tmem_ldst_descriptor_multidim_slice_positive_kernel(in_ptr, out_ptr, layout:
 def tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
                                                                 M: ttgl.constexpr, N: ttgl.constexpr,
                                                                 instr_variant: ttgl.constexpr):
-    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    element_ty: ttgl.constexpr = in_ptr.dtype.element_ty
+    tmem = allocate_tensor_memory(element_ty, [2, M, N], layout)
     full_view = tmem.index(1)
     full_reg_layout: ttgl.constexpr = full_view.get_reg_layout(instr_variant=instr_variant)
     in_offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, full_reg_layout))
@@ -883,7 +886,7 @@ def tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel(in_ptr, out_ptr,
     view = full_view.reshape((2, M, N // 2)).slice(1, 1, dim=0).index(0)
     part_layout: ttgl.constexpr = view.get_reg_layout(instr_variant=instr_variant)
     part_value = view.load(part_layout)
-    view.store(part_value + ttgl.full([M, N // 2], 7.0, ttgl.float32, layout=part_layout))
+    view.store(part_value + ttgl.full([M, N // 2], 7, element_ty, layout=part_layout))
 
     out = full_view.load(full_reg_layout)
     ttgl.store(out_ptr + in_offs, out)
@@ -2862,22 +2865,28 @@ LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
 ]
 
 LDST_HIGHER_RANK_INDEX_CASES = [
-    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n],
+     LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_HIGHER_RANK_SLICE_CASES = [
-    (layout_name, n, variant)
+    (dtype_name, torch_dtype, layout_name, n, variant)
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
-    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n],
+     LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
-    (layout_name, n, variant)
+    (dtype_name, torch_dtype, layout_name, n, variant)
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
 ]
 
@@ -2894,7 +2903,9 @@ LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
 ]
 
 LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
-    ("identity", n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    (dtype_name, torch_dtype, "identity", n, variant, LDST_SHAPE_MAP[variant][n],
+     LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for n, variant in product((64, 128), LDST_VARIANTS)
 ]
 
@@ -2906,7 +2917,9 @@ LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
 ]
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
-    ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n], LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    (dtype_name, torch_dtype, "block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n],
+     LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
+    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
     for n, variant in product((64, 128), LDST_VARIANTS)
 ]
 
@@ -4323,16 +4336,20 @@ def test_tmem_runtime_matrix_ldst_descriptor_roundtrip_rowcol_permuted_sweeps(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape,expected_half_shape", LDST_HIGHER_RANK_INDEX_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index(layout_name, n, variant, expected_shape,
-                                                               expected_half_shape):
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
+    LDST_HIGHER_RANK_INDEX_CASES,
+)
+def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index(
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape, expected_half_shape
+):
     m = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-    torch.testing.assert_close(out, inp + 5.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + 5, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     observed_opcodes = [op for op, _ in ops]
@@ -4354,17 +4371,17 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index(layout_name, n, v
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant", LDST_HIGHER_RANK_SLICE_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(layout_name, n, variant):
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant", LDST_HIGHER_RANK_SLICE_CASES)
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(dtype_name, torch_dtype, layout_name, n, variant):
     m = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
         inp, out, layout, m, n, variant, num_warps=4
     )
-    torch.testing.assert_close(out, inp + 9.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + 9, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     assert ops
@@ -4413,18 +4430,22 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_report_tmem_oor(lay
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape,expected_half_shape", LDST_TWOCTA_HIGHER_RANK_INDEX_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(layout_name, n, variant, expected_shape,
-                                                                      expected_half_shape):
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
+    LDST_TWOCTA_HIGHER_RANK_INDEX_CASES,
+)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape, expected_half_shape
+):
     m = 256
     layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
         inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
     )
-    torch.testing.assert_close(out, inp + 5.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + 5, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     observed_opcodes = [op for op, _ in ops]
@@ -4447,17 +4468,17 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(layout_nam
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_SLICE_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(layout_name, n, variant):
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_SLICE_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(dtype_name, torch_dtype, layout_name, n, variant):
     m = 256
     layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
         inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
     )
-    torch.testing.assert_close(out, inp + 9.0, atol=0, rtol=0)
+    torch.testing.assert_close(out, inp + 9, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
     assert ops
@@ -4511,21 +4532,23 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_report_tmem_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape,expected_half_shape",
-                         LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES)
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
+    LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES,
+)
 def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout(
-    layout_name, n, variant, expected_shape, expected_half_shape
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape, expected_half_shape
 ):
     m = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
         inp, out, layout, m, n, variant, num_warps=4
     )
     ref = inp.clone()
-    ref[:, : n // 2] += 7.0
+    ref[:, : n // 2] += 7
     torch.testing.assert_close(out, ref, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)
@@ -4704,21 +4727,23 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant,expected_shape,expected_half_shape",
-                         LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES)
+@pytest.mark.parametrize(
+    "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
+    LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES,
+)
 def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_positive_lifted_layout(
-    layout_name, n, variant, expected_shape, expected_half_shape
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape, expected_half_shape
 ):
     m = 256
     layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
     out = torch.empty_like(inp)
 
     compiled = tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
         inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
     )
     ref = inp.clone()
-    ref[:, : n // 2] += 7.0
+    ref[:, : n // 2] += 7
     torch.testing.assert_close(out, ref, atol=0, rtol=0)
 
     ops, _ = _assert_ldst_ptx_llir_match(compiled)

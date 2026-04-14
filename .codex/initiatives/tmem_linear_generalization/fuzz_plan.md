@@ -246,6 +246,9 @@ Every fuzz case records:
   - reshape to rank 3 or 4
   - slice each dimension independently
   - permute back to a legal final view
+- current higher-rank descriptor-chain positives cover indexed views,
+  multidimensional slices, and dim-0 slice/view chains for single-CTA and
+  two-CTA layouts with f32 and i32 payloads across every public `ld/st` variant.
 - paired `permute` / inverse `permute`
 - reshape chains that preserve element count
 - `_reinterpret` back into an equivalent TMEM-linear layout
