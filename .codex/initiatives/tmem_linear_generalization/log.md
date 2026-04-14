@@ -14256,3 +14256,11 @@ Open after this slice:
 - Current runtime-matrix collection is `7817` tests: `cp=580`, `mma=1909`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7366 passed, 451 skipped`.
 - Validation: f8 descriptor-fed probes passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `48/7817`; no-PYTHONPATH full-file collect reported `7817`; focused selector passed all `48` cases across split-4 on four GPUs (`12` per group; slowest `16.81s`); `git diff --check` passed.
 - Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.
+
+## 2026-04-14 13:05 UTC: TMA-fed two-CTA non-TF32 K-width coverage
+
+- Added `blockK in {32,64}` to `MMA_TWOCTA_TMA_NON_TF32_CASES`, preserving the existing dtype, `blockN`, accumulator-layout, and `use_acc` axes.
+- Switched the opcode-count assertion to `_expected_plain_mma_op_count(dtype_name, block_k)` so the expected exact opcode stream scales with K for f16/bf16 and f8 families.
+- Current runtime-matrix collection is `7865` tests: `cp=580`, `mma=1957`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7414 passed, 451 skipped`.
+- Validation: K64 descriptor-fed probes passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `96/7865`; no-PYTHONPATH full-file collect reported `7865`; focused selector passed all `96` cases across split-4 on four GPUs (`24` per group; slowest `16.89s`); `git diff --check` passed.
+- Next: commit/push this checkpoint, then continue another exact non-parked TMEM ISA coverage slice.

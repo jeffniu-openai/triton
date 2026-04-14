@@ -7431,9 +7431,11 @@ MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
 }
 
 MMA_TWOCTA_TMA_NON_TF32_CASES = [
-    (dtype_name, acc_layout_kind, block_n, use_acc)
+    (dtype_name, acc_layout_kind, block_n, block_k, use_acc)
     for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES
-    for acc_layout_kind, block_n, use_acc in product(("legacy", "linear"), (64, 128, 256), (False, True))
+    for acc_layout_kind, block_n, block_k, use_acc in product(
+        ("legacy", "linear"), (64, 128, 256), (32, 64), (False, True)
+    )
 ]
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [
@@ -7928,13 +7930,12 @@ def test_tmem_runtime_matrix_mma_rowcol_permuted_layout_reports_clean_unsupporte
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("dtype_name,acc_layout_kind,block_n,use_acc", MMA_TWOCTA_TMA_NON_TF32_CASES)
-def test_tmem_runtime_matrix_mma_twocta(dtype_name, acc_layout_kind, block_n, use_acc):
+@pytest.mark.parametrize("dtype_name,acc_layout_kind,block_n,block_k,use_acc", MMA_TWOCTA_TMA_NON_TF32_CASES)
+def test_tmem_runtime_matrix_mma_twocta(dtype_name, acc_layout_kind, block_n, block_k, use_acc):
     torch_dtype, gluon_dtype, expected_kind, atol, rtol = MMA_TWOCTA_TMA_NON_TF32_DTYPES[dtype_name]
     ctas_per_cga = [2, 1]
     ctas_per_cga_b = [ctas_per_cga[0] // 2, 2 * ctas_per_cga[1]]
     block_m = 128 * ctas_per_cga[0]
-    block_k = 32
 
     cta_split_a = [ctas_per_cga[0], 1]
     cta_split_b = [1, ctas_per_cga_b[1]]
@@ -8005,7 +8006,7 @@ def test_tmem_runtime_matrix_mma_twocta(dtype_name, acc_layout_kind, block_n, us
     llir_mma_ops = _extract_tcgen05_mma_opcodes(compiled.asm["llir"])
     assert ptx_mma_ops == llir_mma_ops
     assert ptx_mma_ops
-    assert len(ptx_mma_ops) == MMA_PLAIN_KIND_EXPECTED_OP_COUNTS[dtype_name]
+    assert len(ptx_mma_ops) == _expected_plain_mma_op_count(dtype_name, block_k)
     assert all(op == expected_kind for op in ptx_mma_ops)
     _assert_exact_commit_ptx_llir_match(
         compiled,

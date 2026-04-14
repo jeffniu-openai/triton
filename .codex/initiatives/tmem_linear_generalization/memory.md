@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 13:05 UTC: TMA-fed two-CTA non-TF32 K-width coverage
+
+- Expanded `MMA_TWOCTA_TMA_NON_TF32_CASES` with `blockK in {32,64}`. The descriptor-fed two-CTA TMA anchor now matches the direct two-CTA plain-kind K-width surface for all non-TF32 TMA dtypes.
+- The full positive matrix is now `dtype in {f16,bf16,f8e5m2,f8e4m3}`, `blockN in {64,128,256}`, `blockK in {32,64}`, legacy/canonical two-CTA TMEM-linear accumulator layouts, and both no-accumulator plus `use_acc=True` paths.
+- Opcode-count assertions now use `_expected_plain_mma_op_count(dtype_name, block_k)`, so K64 doubles the expected MMAv5 message count relative to K32 for each dtype family while preserving exact opcode-family checks.
+- Current runtime-matrix collection is `7865` tests: `cp=580`, `mma=1957`, splitn/misc `=499`, `ld_red=1920`, and `ldst=2909`; current bucketed evidence aggregates to `7414 passed, 451 skipped`.
+- Validation completed: one-off K64 descriptor-fed probes for `f16` and `f8e4m3` passed; `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `96/7865`; no-PYTHONPATH full-file collect reported `7865`; focused non-TF32 selector passed all `96` cases across split-4 (`24` per group; group times `16.84s`, `16.78s`, `16.78s`, and `16.89s`); `git diff --check` passed.
+- TF32 remains covered by the separate B-transposed TMA descriptor route and its clean-negative default descriptor test.
+- Next: commit/push this K-width checkpoint, then move to the next non-parked exact coverage slice.
+
 ## 2026-04-14 13:03 UTC: TMA-fed two-CTA non-TF32 descriptor MMAv5 coverage
 
 - Expanded `test_tmem_runtime_matrix_mma_twocta` again from f16/bf16 to all currently reachable non-TF32 TMA-fed two-CTA plain dtypes: `f16`, `bf16`, `f8e5m2`, and `f8e4m3`.
