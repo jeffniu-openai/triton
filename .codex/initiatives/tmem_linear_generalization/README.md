@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5324-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5384-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current subword descriptor-chain `ld/st` checkpoint, 2026-04-14 07:47 UTC: broad subword descriptor-chain coverage now includes `f16`, `bf16`, `i16`, and `i8` identity TMEM-linear layouts at `N in {64,128,256}` across every public `ld/st` variant. This complements the existing direct subword matrix and the x1 subword/two-CTA descriptor special cases by proving the generic supported descriptor chain (`subslice`, `index`, `reshape`, `trans`, bitcast) for non-32-bit payloads. Current runtime-matrix collection is `5384` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, and `ldst=2772`; bucketed evidence now aggregates to `4938 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `60/5384`; no-PYTHONPATH full-file collect reported `5384`; focused subword descriptor-chain selector passed all `60` cases across split-4 on four GPUs (`15` per group; times `151.24s`, `153.02s`, `150.40s`, and `152.90s`).
 
 - Current higher-rank descriptor `ld/st` i32-parity checkpoint, 2026-04-14 07:41 UTC: the higher-rank descriptor-view positive matrix now covers f32+i32 for indexed views, multidimensional slices, and dim-0 slice/view chains in both single-CTA and two-CTA layouts. The affected kernels now derive the TMEM element type from the input pointer, so the same descriptor-chain lowering is validated for `.b32` integer payloads without changing compiler/lowering source. Current runtime-matrix collection is `5324` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, and `ldst=2712`; bucketed evidence now aggregates to `4878 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `200/5324`; no-PYTHONPATH full-file collect reported `5324`; focused higher-rank descriptor selector passed all `200` cases across split-8 on four GPUs (`25` cases per group; times `384.32s`, `339.11s`, `402.75s`, `430.09s`, `418.65s`, `382.93s`, `131.40s`, and `278.68s`).
 

@@ -13695,3 +13695,12 @@ Open after this slice:
 - Current runtime-matrix collection is `5324` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, `ldst=2712`; current bucketed evidence aggregates to `4878 passed, 446 skipped`.
 - Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `200/5324`; no-PYTHONPATH full-file collect reported `5324`; focused higher-rank descriptor selector passed all `200` cases across split-8 on four GPUs (`25` each; group times `384.32s`, `339.11s`, `402.75s`, `430.09s`, `418.65s`, `382.93s`, `131.40s`, and `278.68s`).
 - Next: continue staged TMEM ISA saturation in another bounded family. Good candidates are remaining subword/scales `ld/st` layout gaps, `ld.red` modifier/layout coverage, or a concrete MMAv5/scaled-MMAv5 parity gap; keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging model.
+
+## 2026-04-14 07:47 UTC: subword descriptor-chain ld/st coverage
+
+- Added broad subword descriptor-chain coverage for `f16`, `bf16`, `i16`, and `i8` identity TMEM-linear layouts at `N in {64,128,256}` across every public `ld/st` variant.
+- This complements the existing direct subword matrix and the x1 subword/two-CTA descriptor special cases by proving the generic supported descriptor chain (`subslice`, `index`, `reshape`, `trans`, bitcast) for non-32-bit payloads.
+- The test uses low integer seed values before casting so i8/i16 references can add the descriptor-chain delta without overflow while still checking the same store/load opcode families.
+- Current runtime-matrix collection is `5384` tests: `cp=381`, `mma=852`, splitn/misc `=499`, `ld_red=880`, `ldst=2772`; current bucketed evidence aggregates to `4938 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `60/5384`; no-PYTHONPATH full-file collect reported `5384`; focused subword descriptor-chain selector passed all `60` cases across split-4 on four GPUs (`15` each; group times `151.24s`, `153.02s`, `150.40s`, and `152.90s`).
+- Next: continue staged TMEM ISA saturation in another bounded family. Remaining candidates include scales `ld/st` descriptor/view gaps if a supported API path exists, `ld.red` layout/modifier coverage, or a concrete MMAv5/scaled-MMAv5 parity gap.

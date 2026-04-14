@@ -232,6 +232,9 @@ Every fuzz case records:
   - packed, unpacked, and padded one-column cases
   - current direct coverage now includes `f16`, `bf16`, `i16`, and `i8` for
     identity `128x{64,128,256}` across all public variants
+  - current descriptor-chain coverage now includes `f16`, `bf16`, `i16`, and
+    `i8` for identity `128x{64,128,256}` across all public variants through
+    the generic supported memdesc view chain
   - current x1 coverage includes `f16`, `bf16`, and `i16` packed/unpacked
     cases plus packed and padded `i8` x1 cases for `auto` and `32x32b`; direct
     and descriptor-chain two-CTA x1 subword coverage now includes `f16`,

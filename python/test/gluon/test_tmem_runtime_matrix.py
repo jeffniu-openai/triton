@@ -3246,6 +3246,8 @@ SUBWORD_LDST_CASES = [
     )
 ]
 
+SUBWORD_LDST_DESCRIPTOR_CASES = SUBWORD_LDST_CASES
+
 X1_SUBWORD_LDST_16BIT_DTYPES = (
     ("f16", torch.float16),
     ("bf16", torch.bfloat16),
@@ -5041,6 +5043,35 @@ def test_tmem_runtime_matrix_ldst_subword_pack_unpack(
     assert all(op in (expected_st, expected_ld) for op in observed_opcodes)
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant,expected_shape", SUBWORD_LDST_DESCRIPTOR_CASES)
+def test_tmem_runtime_matrix_ldst_subword_descriptor_chain_roundtrip(
+    dtype_name, torch_dtype, layout_name, n, variant, expected_shape
+):
+    m = 128
+    layout = LDST_LAYOUTS[layout_name](n)
+    base = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n) % 64
+    inp = base.to(torch_dtype)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_descriptor_chain_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
+    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    expected_st = f"tcgen05.st.sync.aligned.{expected_shape}"
+    expected_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
+    observed_opcodes = [op for op, _ in ops]
+    assert expected_st in observed_opcodes
+    assert expected_ld in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
