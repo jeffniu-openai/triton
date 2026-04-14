@@ -601,6 +601,10 @@ Every fuzz case records:
   `blockK=128` for every format pair, `blockN in {64,128,256}`, and both
   accumulator layout families, checking `matmul + acc_init` rather than only
   the zero-initialized path.
+  Descriptor-view accumulator-subview coverage now also includes explicit
+  nonzero accumulator-add checks at `blockK=128` for every format pair,
+  `blockN in {64,128}`, and `slice_start in {0,N}`, checking the sliced
+  `ttg.memdesc_subslice` accumulator path with `matmul + acc_init`.
 - accumulator subview starts that preserve the same supported physical family,
   currently including one-CTA root-aligned and offset direct subviews at
   `blockN in {64,128}`, `blockK in {128,256}`, and every current scaled format

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 08:23 UTC: scaled-MMAv5 accumulator-subview nonzero-accumulator coverage
+
+- Added `ACC_INIT` to `tmem_mma_scaled_acc_subslice_format_kernel` and kept the existing accumulator-subview and tile-permuted clean-negative callers on explicit `0.0` initialization.
+- Added `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_use_acc`, covering every current scaled format pair, `N in {64,128}`, `K=128`, and `slice_start in {0,N}` with `acc_init=1.0`.
+- The new test validates nonzero accumulator-add semantics (`a_ref @ b_ref.T + acc_init`) through the supported `ttg.memdesc_subslice` accumulator view path and pins exact scaled-MMAv5 plus commit opcode counts. This closes the nearby descriptor-view gap after the direct-root nonzero-accumulator slice.
+- Current runtime-matrix collection is `5747` tests: `cp=381`, `mma=1154`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5301 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `20/5747`; no-PYTHONPATH tight MMA collect selected `1154/5747`; no-PYTHONPATH adjacent changed-callsite collect selected `70/5747`; focused subview use-acc selector passed all `20` cases across split-4 on four GPUs (`5` per group; group times `9.90s`, `9.09s`, `9.72s`, and `8.97s`); adjacent scaled accumulator-subview selector passed all `70` cases across split-4 (`18`, `18`, `18`, and `16` cases; group times `22.26s`, `25.62s`, `19.00s`, and `6.71s`).
+- Next: commit/push this bounded scaled-MMAv5 descriptor-view checkpoint, then move to another exact TMEM ISA slice. Since the easy copy `warpx2` parity work is done, keep true scales `warpx2` and no-scales two-CTA `warpx2::02_13` parked until there is a real descriptor/address/staging hypothesis.
+
 ## 2026-04-14 08:19 UTC: scaled-MMAv5 root nonzero-accumulator coverage
 
 - Added `ACC_INIT` to `tmem_mma_scaled_layout_format_kernel` and kept the existing root-format callers on explicit `0.0` initialization.

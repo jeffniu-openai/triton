@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 5727-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 5747-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 accumulator-subview nonzero-accumulator checkpoint, 2026-04-14 08:23 UTC: descriptor-view scaled-MMAv5 accumulator-subview coverage now explicitly validates `use_acc=True` semantics with a nonzero initialized sliced accumulator (`acc_init=1.0`) for every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, `nvfp4/nvfp4`), `N in {64,128}`, `K=128`, and `slice_start in {0,N}`. Existing zero-accumulator accumulator-subview and tile-permuted clean-negative callers now pass `ACC_INIT=0.0`, while the new matrix checks `a_ref @ b_ref.T + acc_init` and still pins exact scaled-MMAv5 and commit opcode counts. Current runtime-matrix collection is `5747` tests: `cp=381`, `mma=1154`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5301 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `20/5747`; no-PYTHONPATH tight MMA collect selected `1154/5747`; no-PYTHONPATH adjacent changed-callsite collect selected `70/5747`; focused subview use-acc selector passed all `20` cases across split-4 on four GPUs (`5` per group; times `9.90s`, `9.09s`, `9.72s`, and `8.97s`); adjacent scaled accumulator-subview selectors passed all `70` cases across split-4 (`18`, `18`, `18`, and `16` selected; times `22.26s`, `25.62s`, `19.00s`, and `6.71s`).
 
 - Current scaled-MMAv5 root nonzero-accumulator checkpoint, 2026-04-14 08:19 UTC: direct root scaled-MMAv5 coverage now explicitly validates `use_acc=True` semantics with a nonzero initialized accumulator (`acc_init=1.0`) for every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, `nvfp4/nvfp4`), `N in {64,128,256}`, `K=128`, and both legacy plus canonical TMEM-linear accumulator layouts. Existing zero-accumulator root-format callers now pass `ACC_INIT=0.0`, while the new matrix checks `a_ref @ b_ref.T + acc_init` and still pins exact scaled-MMAv5 and commit opcode counts. Current runtime-matrix collection is `5727` tests: `cp=381`, `mma=1134`, splitn/misc `=499`, `ld_red=920`, and `ldst=2793`; bucketed evidence now aggregates to `5281 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused collect selected `30/5727`; no-PYTHONPATH tight MMA collect selected `1134/5727`; no-PYTHONPATH adjacent changed-callsite collect selected `80/5727`; focused use-acc selector passed all `30` cases across split-4 on four GPUs (`8`, `8`, `8`, and `6` selected; times `15.75s`, `14.97s`, `15.54s`, and `11.66s`); adjacent scaled root/tile selectors passed all `80` cases across split-4 (`20` per group; times `34.83s`, `35.73s`, `35.99s`, and `32.12s`).
 

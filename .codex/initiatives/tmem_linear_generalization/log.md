@@ -115,6 +115,23 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-14 08:23 UTC: scaled-MMAv5 accumulator-subview nonzero-accumulator coverage
+
+- Added nonzero accumulator-add coverage for descriptor-view scaled-MMAv5 accumulator subviews in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- `tmem_mma_scaled_acc_subslice_format_kernel` now takes `ACC_INIT`, so existing accumulator-subview and tile-permuted clean-negative callers use `0.0` explicitly while the new use-acc matrix initializes the sliced accumulator view to `1.0`.
+- `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_use_acc` covers all current scaled format pairs, `N in {64,128}`, `K=128`, and `slice_start in {0,N}`, and checks `a_ref @ b_ref.T + acc_init` plus exact scaled-MMAv5/commit opcode counts.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py` -> passed;
+  - `git diff --check` -> passed after docs;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `20/5747`;
+  - no-PYTHONPATH tight MMA collect selected `1154/5747`;
+  - no-PYTHONPATH adjacent changed-callsite collect selected `70/5747`;
+  - focused subview use-acc selector passed all `20` cases across split-4 on four GPUs (`5`, `5`, `5`, `5`; `9.90s`, `9.09s`, `9.72s`, `8.97s`);
+  - adjacent scaled accumulator-subview selector passed all `70` cases across split-4 on four GPUs (`18`, `18`, `18`, `16`; `22.26s`, `25.62s`, `19.00s`, `6.71s`).
+- Current runtime-matrix bucket totals: `cp=381`, `mma=1154`, splitn/misc `=499`, `ld_red=920`, `ldst=2793`; current bucketed evidence aggregates to `5301 passed, 446 skipped`.
+- Next: commit/push this checkpoint and continue staged ISA saturation in another exact family; do not re-open parked `warpx2` hard frontiers without a descriptor/address/staging hypothesis.
+
 ## 2026-03-24
 - Created initiative workspace.
 - Captured baseline decisions from planning:
