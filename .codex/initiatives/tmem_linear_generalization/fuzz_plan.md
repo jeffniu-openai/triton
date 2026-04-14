@@ -417,6 +417,13 @@ Every fuzz case records:
   payloads, and the existing `N`/swizzle shapes, so future dense two-CTA
   additions should target genuinely new shapes/layouts rather than re-proving
   those base families.
+- Dense `cta_group::2` no-scales descriptor-view coverage now also includes a
+  canonical TMEM-linear `[M,2*N] -> slice(N,N,dim=1)` column-subview matrix for
+  `M=256`, `N in {128,256}`, f32+i32 payloads, and swizzle widths
+  `{32,64,128}`. The exact `128x256b` opcode counts and multicast commit path
+  are pinned through generic `ttg.memdesc_subslice`, so future dense copy view
+  work should target a genuinely different descriptor chain such as indexing or
+  higher-rank composition.
 - Legacy single-CTA no-scales root and swizzle matrices now also cover both
   f32 and i32 payloads through `CP_NO_SCALES_128X128_DTYPES`, so follow-up
   single-CTA no-scales work should target new layout/view/atom surfaces rather

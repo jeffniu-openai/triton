@@ -1,3 +1,13 @@
+## 2026-04-14 14:44 UTC: two-CTA no-scales copy subview coverage
+
+- Added a dense two-CTA no-scales copy descriptor-view positive matrix in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- New helper: `tmem_copy_no_scales_twocta_linear_subslice_view_kernel`. It allocates a canonical TMEM-linear two-CTA parent `[M, 2*N]`, slices the second column half, stores input through two-CTA NVMMASharedLayout plus cluster fence, copies into the view with `tcgen05_copy`, commits via multicast mbarrier, then loads from the same view.
+- New table/test: `CP_TWOCTA_LINEAR_SUBSLICE_VIEW_CASES` and `test_tmem_runtime_matrix_cp_no_scales_twocta_linear_subslice_view`. Coverage is `f32`/`i32`, `M=256`, `N in {128,256}`, swizzle `{32,64,128}`, exact `tcgen05.cp.cta_group::2.128x256b` opcode counts, `tensor_memory_linear`, surviving `ttg.memdesc_subslice`, and no legacy `ttng.tmem_subslice`.
+- This is the reachable dense-copy companion to the earlier single-CTA subview and warp2x single-CTA subview work. It deliberately avoids the parked no-scales two-CTA `warpx2::02_13` and true-scales `warpx2` frontiers.
+- Current runtime-matrix collection is `8203` tests: `cp=624`, `mma=2075`, splitn/misc `=571`, `ld_red=1954`, and `ldst=2979`; current bucketed evidence aggregates to `7752 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; no-PYTHONPATH focused collect selected `12/8203`; no-PYTHONPATH CP collect selected `624/8203`; no-PYTHONPATH full-file collect reported `8203`; focused split-4 selector passed all `12` cases (`3` per group); full CP split-4 selector passed/skipped `614 passed, 10 skipped` (`146 passed/10 skipped`, `156`, `156`, `156`; slowest `216.93s`); `git diff --check` passed.
+- Next: commit/push this checkpoint, then continue another non-parked TMEM ISA coverage slice.
+
 ## 2026-04-14 14:10 UTC: plain MMAv5 indexed-accumulator unit-parent N=256 coverage
 
 - Parameterized the one-CTA and two-CTA plain MMAv5 indexed-accumulator helper kernels by `parent_depth` and `parent_index`, and reshaped the indexed view back to the active 2D descriptor before accumulator register-layout queries, stores, and MMA.
