@@ -844,3 +844,16 @@ Every fuzz case records:
   The former mixed-basis runtime-view positive is a clean supported-bitcast
   negative because the requested identity `128x64` result layout is not
   physical-mapping equivalent to the selected mixed source descriptor view.
+
+## 2026-04-14 ld.red Descriptor-Chain Saturation Note
+
+- The runtime matrix now covers descriptor-chain `ld.red` explicit variants for
+  identity and `rowcol_rotate_reverse` layouts at `N in {64,256}` over
+  `32x32b`, `16x32bx2`, and `32x32b_splitn`, crossed with both reduction ops
+  and all legal modifier modes.
+- Current full-file collection is `6698` tests; the `ld_red` bucket is `1256`
+  cases. Aggregate bucket evidence is `6252 passed, 446 skipped`.
+- The `rowcol_rotate_reverse`, `N=256`, explicit split variants use legal offset
+  order `[0, 128, 64, 192]` rather than the canonical `[0, 64, 128, 192]`.
+  Future fuzz assertions should check semantic coverage and exact emitted order
+  together, not assume one global offset order across all layouts.

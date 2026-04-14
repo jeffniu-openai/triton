@@ -1394,6 +1394,13 @@ When resuming the initiative:
 - Current validation: `make -j8` no-op success; py-compile and `git diff --check` passed; focused CP slice passed all `17` selected cases across four GPUs; full `cp` runner bucket passed `313` and skipped `5` across four GPUs.
 
 
+## Latest: 2026-04-14 ld.red descriptor-chain N-width explicit variants
+
+- Runtime-matrix collection is now `6698` tests with bucket totals `cp=381`, `mma=1693`, splitn/misc `=499`, `ld_red=1256`, and `ldst=2869`; current bucketed evidence aggregates to `6252 passed, 446 skipped`.
+- Latest coverage slice adds descriptor-chain `ld.red` explicit variants for identity and `rowcol_rotate_reverse` layouts at `N in {64,256}` over `32x32b`, `16x32bx2`, and `32x32b_splitn`, crossed with `min`/`max` and all legal modifier modes.
+- Validation for the latest slice: py-compile, `make -j8`, `git diff --check`, focused collect `96/6698`, `ld_red` collect `1256/6698`, full-file collect `6698`, and four-GPU split execution of the focused selector passed all `96` cases.
+- The mixed layout at `N=256` uses a legal explicit split offset order `[0, 128, 64, 192]` for `16x32bx2` and `32x32b_splitn`; this is recorded in the test assertion instead of assuming canonical offset order for every layout.
+
 ## Document Roles
 
 - `memory.md`

@@ -14113,3 +14113,13 @@ Open after this slice:
 - Current runtime-matrix collection is `6602` tests: `cp=381`, `mma=1693`, splitn/misc `=499`, `ld_red=1160`, and `ldst=2869`; current bucketed evidence aggregates to `6156 passed, 446 skipped`.
 - Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; `git diff --check`; no-PYTHONPATH focused collect selected `6/6602`; no-PYTHONPATH tight MMA collect selected `1693/6602`; split-4 focused execution passed the three non-empty groups (`2` cases each; group 4 empty because the selector has only six cases); aggregate exact selector run passed all `6` cases in one process.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another staged non-parked TMEM ISA slice.
+
+## 2026-04-14 10:43 UTC: ld.red descriptor-chain N-width explicit variants
+
+- Added `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES` and `test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep_explicit_variants` in `python/test/gluon/test_tmem_runtime_matrix.py`.
+- The new slice covers identity and `rowcol_rotate_reverse` descriptor-chain source layouts at `N in {64,256}`, crossed with explicit reduction variants `32x32b`, `16x32bx2`, and `32x32b_splitn`, both `min`/`max`, and all legal `abs` / `PropagateNan` modifier modes.
+- This is test-only coverage over the existing descriptor-chain reduction lowering. Runtime output and reduction results passed for every new case. The mixed layout at `N=256` emits the legal split order `[0, 128, 64, 192]` for `16x32bx2` and `32x32b_splitn`, so the opcode-order assertion now accepts an explicit expected offset sequence for those parameter IDs.
+- Current runtime-matrix collection is `6698` tests: `cp=381`, `mma=1693`, splitn/misc `=499`, `ld_red=1256`, and `ldst=2869`; current bucketed evidence aggregates to `6252 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8`; `git diff --check`; no-PYTHONPATH focused collect selected `96/6698`; no-PYTHONPATH `ld_red` collect selected `1256/6698`; no-PYTHONPATH full-file collect reported `6698`; focused selector passed all `96` cases across split-4 on four GPUs (`24` per group; warm-cache group times `4.60s`, `4.88s`, `4.48s`, and `4.70s`).
+- Warpx2 hard-frontier recheck before this slice did not produce a new viable descriptor/address/staging model: direct seed offset `32` reaches only a duplicated source pair and destination deltas `4/8/12` do not produce the missing high source-column bit. Keep no-scales two-CTA `warpx2::02_13` and true tensor-memory-scales `warpx2` parked until a real model appears.
+- Next: commit/push this bounded `ld.red` checkpoint, then continue staged non-parked ISA coverage.

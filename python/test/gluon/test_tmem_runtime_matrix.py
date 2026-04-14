@@ -3861,7 +3861,15 @@ LD_RED_EXPECTED_OP_COUNT = {32: 1, 64: 1, 128: 1, 256: 4}
 LD_RED_EXPECTED_OFFSETS = {32: [0], 64: [0], 128: [0], 256: [0, 64, 128, 192]}
 
 
-def _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan):
+def _assert_ld_red_opcode_pairs(
+    compiled,
+    N,
+    expected_shape,
+    red_op,
+    use_abs,
+    propagate_nan,
+    expected_offsets=None,
+):
     ptx = compiled.asm["ptx"]
     llir = compiled.asm["llir"]
     ptx_red_pairs = [
@@ -3876,7 +3884,9 @@ def _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, pr
     ]
     assert ptx_red_pairs == llir_red_pairs
     assert len(ptx_red_pairs) == LD_RED_EXPECTED_OP_COUNT[N]
-    assert [offset for _, offset in ptx_red_pairs] == LD_RED_EXPECTED_OFFSETS[N]
+    if expected_offsets is None:
+        expected_offsets = LD_RED_EXPECTED_OFFSETS[N]
+    assert [offset for _, offset in ptx_red_pairs] == list(expected_offsets)
     assert ptx.count("tcgen05.wait::st.sync.aligned;") == 1
     assert ptx.count("tcgen05.wait::ld.sync.aligned;") == 1
     assert llir.count("tail call void @llvm.nvvm.tcgen05.wait.st()") == 1
@@ -4018,6 +4028,35 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
     )
     for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
+
+LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
+    pytest.param(
+        layout_name,
+        n,
+        expected_shape,
+        load_variant,
+        (0, 128, 64, 192)
+        if (
+            layout_name == "rowcol_rotate_reverse"
+            and n == 256
+            and load_variant != "32x32b"
+        )
+        else None,
+        id=f"{layout_name}_n{n}_{load_variant}",
+    )
+    for layout_name in ("identity", "rowcol_rotate_reverse")
+    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+    for load_variant in ("32x32b", "16x32bx2", "32x32b_splitn")
+]
+
+
+def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
+    if layout_name == "identity":
+        return _make_tmem_linear_layout(128, n)
+    if layout_name == "rowcol_rotate_reverse":
+        return _make_tmem_linear_layout_permuted(128, n, "rotate1", "reverse")
+    raise AssertionError(f"unexpected ld.red descriptor-chain layout {layout_name}")
+
 
 LD_RED_MIXED_CASES = [
     (128, 64, 4),
@@ -6025,7 +6064,16 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain(
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
     compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
-        inp, out, red, layout, N, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+        inp,
+        out,
+        red,
+        layout,
+        N,
+        load_variant,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=4,
     )
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
@@ -6057,6 +6105,60 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep(
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
     _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize(
+    "layout_name,N,expected_shape,load_variant,expected_offsets",
+    LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES,
+)
+def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep_explicit_variants(
+    layout_name,
+    N,
+    expected_shape,
+    load_variant,
+    expected_offsets,
+    use_abs,
+    propagate_nan,
+    red_op,
+):
+    M = 128
+    layout = _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
+        inp,
+        out,
+        red,
+        layout,
+        N,
+        load_variant,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=4,
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        expected_shape,
+        red_op,
+        use_abs,
+        propagate_nan,
+        expected_offsets=expected_offsets,
+    )
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir

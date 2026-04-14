@@ -6,17 +6,17 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `6602` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
+Full collection with `PYTHONPATH` unset reports `6698` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
 | `cp` | `-k cp` | 381 | split 4, one process per GPU |
 | `mma` | `-k test_tmem_runtime_matrix_mma` | 1693 | split 4, one process per GPU |
 | `splitn` / misc | exact function nodeids | 499 | split 4, one process per GPU |
-| `ld_red` | `-k ld_red` | 1160 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
+| `ld_red` | `-k ld_red` | 1256 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
 | `ldst` | `-k ldst` | 2869 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `6602` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `6698` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
 
 ## Canonical Command
 
@@ -90,11 +90,12 @@ Heavy buckets need finer scheduling:
 - After the 2026-04-14 `ld.red` descriptor-view and explicit-variant expansions, the focused `ld_red_descriptor_chain` selector passed `48` cases across split-4 on four GPUs (`12` per group) in `44.84s`, `48.10s`, `58.35s`, and `190.20s`. The full `ld_red` bucket now collects `968` cases; this is f32 hardware-reduction coverage through `slice`/`index`/reshape descriptor views over identity, tile-permuted, and row/column-permuted source layouts, with identity also covering every compatible explicit reduction register-layout request.
 - After the 2026-04-14 `ld.red` descriptor-chain non-identity explicit-variant expansion, the focused `ld_red_descriptor_chain` selector passed `96` cases across split-4 on four GPUs (`24` per group) in `49.01s`, `159.29s`, `276.27s`, and `458.74s`. The full `ld_red` bucket now collects `1016` cases; this extends descriptor-view reductions so tile-permuted and row/column-permuted views also cover every compatible explicit reduction register-layout request.
 - After the 2026-04-14 `ld.red` descriptor-chain N-width and pure row/column layout expansions, the descriptor-chain selector collects `240/6596`, the full `ld_red` selector collects `1160/6596`, and the full file collects `6596`. The latest focused pure row/column descriptor-chain selector passed `96` cases across split-4 on four GPUs (`24` per group) in `446.98s`, `450.46s`, `446.67s`, and `487.70s`. The current bucket total is `ld_red=1160`, and the aggregate evidence is `6150 passed, 446 skipped`.
+- After the 2026-04-14 descriptor-chain N-width explicit-variant expansion, the focused selector selected `96/6698`, the full `ld_red` selector selected `1256/6698`, and the full file collected `6698`. The focused selector passed all `96` cases across split-4 on four GPUs (`24` per group) in warm-cache times `4.60s`, `4.88s`, `4.48s`, and `4.70s`. The current bucket total is `ld_red=1256`, and the aggregate evidence is `6252 passed, 446 skipped`.
 - After the 2026-04-14 plain-MMAv5 accumulator-subslice descriptor-view expansion, the focused `mma_acc_subslice_view_plain_kinds` selector passed `120` cases across split-4 on four GPUs (`30` per group) in `27.11s`, `28.64s`, `26.84s`, and `27.04s`. The full tight MMA bucket now collects `1478` cases; this is positive accumulator `ttg.memdesc_subslice` coverage over a linear `[128, 2*N]` parent for every supported plain operand kind, `N in {64,128,256}`, `K in {32,64}`, both slice starts, and both accumulator modes.
 - After the 2026-04-14 two-CTA plain-MMAv5 accumulator-subslice descriptor-view expansion, the focused `mma_twocta_acc_subslice_view_plain_kinds` selector passed `120` cases across split-4 on four GPUs (`30` per group) in `33.98s`, `36.59s`, `35.12s`, and `36.07s`. The full tight MMA bucket now collects `1598` cases; this is positive `cta_group::2` accumulator `ttg.memdesc_subslice` coverage over a linear two-CTA `[256, 2*N]` parent for every supported plain operand kind, `N in {64,128,256}`, `K in {32,64}`, both slice starts, and both accumulator modes.
 - After the 2026-04-14 TMA-fed two-CTA TF32 use-acc expansion, the focused selector selected `6/6602`, the tight MMA selector selected `1693/6602`, and the aggregate exact selector passed all six new cases. Split-4 execution passed the three non-empty groups (`2` cases each; group 4 empty). The current aggregate evidence is `6156 passed, 446 skipped`.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `6156 passed, 446 skipped` across all `6602` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
+Aggregating the current per-bucket evidence gives full matrix coverage: `6252 passed, 446 skipped` across all `6698` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
 
 Representative compile evidence:
 
