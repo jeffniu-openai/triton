@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:39 UTC: plain-MMAv5 two-CTA root/use-acc N=64 coverage
+
+- `MMA_TWOCTA_PLAIN_KIND_CASES` now spans `blockN in {64, 128, 256}` instead of only `blockN in {128, 256}`.
+- The standard two-CTA plain-MMAv5 root/use-acc matrix now covers the small-N two-CTA surface for every supported plain operand kind, `blockK in {32,64}`, both no-accumulator and `use_acc=True`, and both legacy/canonical two-CTA TMEM-linear accumulator layouts.
+- This is positive coverage: N64 two-CTA root and accumulator-add cases execute correctly and keep exact cta_group::2 opcode/commit checks.
+- Current runtime-matrix collection is `3979` tests: `cp=322`, `mma=692`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3533 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `120/3979`; no-PYTHONPATH tight `mma` collect selected `692/3979`; focused two-CTA plain/use-acc selector passed `120` cases across four GPUs (`30` each); tight MMA runner passed `692` across four groups (`173` each).
+
 ## 2026-04-14 04:35 UTC: plain-MMAv5 one-CTA root/use-acc N=64 coverage
 
 - `MMA_PLAIN_KIND_ACC_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

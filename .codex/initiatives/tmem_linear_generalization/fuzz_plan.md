@@ -466,7 +466,7 @@ Every fuzz case records:
 - current one-CTA root plain-kind matrix covers `blockN in {64, 128, 256}` and
   `blockK in {32, 64}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
-- current two-CTA plain-kind matrix covers `blockN in {128, 256}` and
+- current two-CTA plain-kind matrix covers `blockN in {64, 128, 256}` and
   `blockK in {32, 64}` for legacy and canonical TMEM-linear accumulator layouts,
   with exact opcode counts scaling by `blockK // 32`.
 - `use_acc in {false, true}`; current 1-CTA and 2-CTA `use_acc=true`

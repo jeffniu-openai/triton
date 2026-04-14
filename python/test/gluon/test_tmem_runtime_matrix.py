@@ -6312,7 +6312,7 @@ MMA_TWOCTA_CASES = [
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind, block_n, block_k)
-    for kind, acc_layout_kind, block_n, block_k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (128, 256), (32, 64))
+    for kind, acc_layout_kind, block_n, block_k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64))
 ]
 
 MMA_M64_PLAIN_KIND_CASES = [

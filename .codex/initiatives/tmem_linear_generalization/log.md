@@ -13307,3 +13307,19 @@ Open after this slice:
   - tight MMA runner passed all `652` cases across groups `163`, `163`, `163`, and `163` with runner wall times about `46.2s`, `16.7s`, `26.7s`, and `21.0s`.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=652`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3493 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact family.
+
+## 2026-04-14 04:39 UTC: plain-MMAv5 two-CTA root/use-acc N=64 coverage
+
+- Expanded `MMA_TWOCTA_PLAIN_KIND_CASES` from `blockN in {128, 256}` to `blockN in {64, 128, 256}`.
+- The two-CTA root/use-acc matrix now covers every supported plain operand kind, both legacy/canonical two-CTA accumulator layouts, `blockK in {32,64}`, and both no-accumulator and `use_acc=True` at all three N widths.
+- This closes the positive two-CTA plain-MMAv5 N64 parity gap and proves the small-N cta_group::2 path keeps exact opcode and multicast commit checks.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `120/3979`;
+  - no-PYTHONPATH tight `mma` collect selected `692/3979`;
+  - focused two-CTA plain/use-acc selector passed all `120` cases across four GPUs (`30` per group; group times about `26.53s`, `24.66s`, `58.99s`, and `54.80s`);
+  - tight MMA runner passed all `692` cases across groups `173`, `173`, `173`, and `173` with runner wall times about `8.0s`, `32.5s`, `39.2s`, and `26.0s`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=692`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3533 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation in another exact family.
