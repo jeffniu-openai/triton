@@ -6,17 +6,17 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `3156` tests after the 2026-04-14 CP coverage expansion. The coverage-preserving bucket split is:
+Full collection with `PYTHONPATH` unset reports `3284` tests after the 2026-04-14 CP and `ld.red` coverage expansions. The coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
 | `cp` | `-k cp` | 318 | split 4, one process per GPU |
 | `mma` | `-k test_tmem_runtime_matrix_mma` | 301 | split 4, one process per GPU |
 | `splitn` / misc | exact function nodeids | 252 | split 4, one process per GPU |
-| `ld_red` | `-k ld_red` | 643 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
+| `ld_red` | `-k ld_red` | 771 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
 | `ldst` | `-k ldst` | 1642 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `3156` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `3284` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
 
 ## Canonical Command
 
@@ -68,7 +68,7 @@ Small buckets are not the timeout source:
 Heavy buckets need finer scheduling:
 
 - Serial split-4 `ld_red` was green but too slow and imbalanced: groups took about `13:37`, `22:21`, `25:15`, and `20:37`.
-- Runner `ld_red` split-16 with `-n 4` passed the full bucket: `643 passed` across 16 groups, with pytest shard times from `13.58s` to `95.91s`.
+- Runner `ld_red` split-16 with `-n 4` passed the full bucket before the N=32 expansion: `643 passed` across 16 groups, with pytest shard times from `13.58s` to `95.91s`. After the 2026-04-14 N=32 non-identity expansion, the same runner passed `771` cases across 16 groups, with pytest shard times from `27.66s` to `110.05s`.
 - `ld/st` is the largest bucket. Initial runner `ldst` split-16 with the stored duration cache, least-duration splitting, and `-n 4` passed the full bucket: `1201 passed, 441 skipped` across 16 groups, with pytest shard times from `271.68s` to `350.27s`.
 - Follow-up speedup on 2026-04-13: the five lifted descriptor roundtrip matrices were proven to be skip-only on current Blackwell hardware (`440` cases that compiled until `OutOfResources` and then called `pytest.skip`). Marking those matrices as known pre-execution skips preserves instruction/op coverage because they produced no op coverage before. After this change, the exact skip-only functions skip `440` cases in `2.40s`, and the full `ldst` bucket still reports `1201 passed, 441 skipped` with shard times reduced to `194.71s` to `273.96s`.
 - Duration-cache refresh on 2026-04-13: after those `440` cases became pre-execution skips, their stored `ldst_pytest_durations_20260413.json` entries were set to `0.001s` so least-duration splitting no longer treats them as cold OOR compiles. The full `ldst` runner still reports `1201 passed, 441 skipped`; group times on the validation run were `208.7s` to `263.8s`.
@@ -77,7 +77,7 @@ Heavy buckets need finer scheduling:
 - 2026-04-14 selected-shard rerun result: runner `--categories ldst --groups 5 8` preserved canonical GPU/cache mapping and passed group 5 in `11.3s` wall (`77 passed, 27 skipped in 9.57s`) and group 8 in `11.1s` wall (`74 passed, 28 skipped in 9.39s`). This is the preferred exact-rerun path after a shard failure/timeout and is not a reduced full-matrix replacement.
 - `pytest-xdist -n 8` was tested on warm `ldst` shards and was slower than the retained `-n 4` default; keep default xdist unchanged unless a full-bucket timing proves a real win.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `2710 passed, 446 skipped` across all `3156` collected cases. This is a bucketed full sweep, not a reduced selector.
+Aggregating the current per-bucket evidence gives full matrix coverage: `2838 passed, 446 skipped` across all `3284` collected cases. This is a bucketed full sweep, not a reduced selector.
 
 Representative compile evidence:
 

@@ -1,12 +1,20 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 01:18 UTC: ld.red N=32 non-identity coverage slice
+
+- `tcgen05.ld.red` coverage now includes the missing `N=32` compatible non-identity layouts: tile-permuted (`tile_n=8`), pure column permutations, pure row permutations, and row+column permutation cross-product.
+- The slice adds `128` positive runtime cases across `red_op in {min,max}` and all legal `abs` / `PropagateNan` modifier pairs. All cases pin the `tcgen05.ld.red.sync.aligned.32x32b.x32` PTX/LLIR family and the existing wait/offset invariants.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `make -j8` no-op success; collect-only with `PYTHONPATH` unset reports `3284` total runtime-matrix tests and `771` `ld_red` tests; focused new `N=32` slice passed `128` selected cases across four GPUs; full `ld_red` runner bucket passed `771` cases across 16 split groups; `git diff --check` passed.
+- Current runtime-matrix bucket totals: `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2838 passed, 446 skipped`.
+- Remaining long-term coverage work is still broader fuzzing/clean negatives beyond this positive slice, no-scales/scales copy `warpx2`, and broader MMAv5/scaled-MMAv5 saturation.
+
 ## 2026-04-14 01:03 UTC: selected-shard speed helper and first CP 128x128b ISA coverage slice
 
 - Runtime-matrix runner speed helper: `run_tmem_runtime_matrix_sweep.py` supports `--groups` for exact pytest-split shard reruns and preserves canonical group-to-GPU mapping so selected reruns reuse stable per-GPU caches. It also supports `--xdist-override BUCKET=N` for local experiments only; defaults are unchanged.
 - Measured result: selected warm `ldst` groups 5 and 8 passed through the runner in about `11s` wall each (`77 passed, 27 skipped in 9.57s`; `74 passed, 28 skipped in 9.39s`). This is the intended fast exact-rerun path after a shard failure/timeout and is 10x+ faster than the previous full-cold `ldst` group range of `208.7s..263.8s`, without reducing matrix coverage.
 - `pytest-xdist -n 8` was tested on warm `ldst` shards and was slower than the retained `-n 4` default; keep current xdist settings unless a full-bucket timing proves a win.
 - ISA coverage progress: `tcgen05.cp.128x128b` no-scales coverage includes both f32 and i32 for legacy/linear single-CTA, linear indexed-view, and two-CTA codegen/runtime paths, with exact PTX/LLIR opcode checks retained.
-- Current runtime-matrix collect is `3156` tests: `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=643`, `ldst=1642`. Current bucketed evidence aggregates to `2710 passed, 446 skipped`.
+- Before the later `ld.red` N=32 expansion, runtime-matrix collect was `3156` tests: `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=643`, `ldst=1642`; bucketed evidence aggregated to `2710 passed, 446 skipped`.
 - Validation for this slice: `make -j8` success; py-compile for the test and runner passed; `git diff --check` passed; focused CP slice passed `17` selected cases across four GPUs; full `cp` runner bucket passed `313`, skipped `5`.
 - Next long-term work remains: continue the recorded TMEM ISA coverage frontiers (`ld.red`, no-scales copy `warpx2`/two-CTA descriptor-address synthesis, scales `warpx2` descriptor/staging investigation, broader MMAv5/scaled-MMAv5 reachable-family saturation, then staged broad validation).
 

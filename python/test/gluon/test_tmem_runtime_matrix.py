@@ -3336,6 +3336,7 @@ LD_RED_MODIFIER_CASES = [
 ]
 
 LD_RED_TILE_PERMUTED_CASES = [
+    (32, 8, 4, "32x32b.x32"),
     (64, 16, 4, "32x32b.x64"),
     (128, 32, 4, "32x32b.x128"),
     (256, 32, 4, "32x32b.x64"),
@@ -3349,6 +3350,7 @@ LD_RED_ROWCOL_PERMUTED_CASES = [
 ]
 
 LD_RED_COL_PERMUTED_SHAPES = [
+    (32, "32x32b.x32"),
     (64, "32x32b.x64"),
     (128, "32x32b.x128"),
     (256, "32x32b.x64"),
@@ -3371,7 +3373,7 @@ LD_RED_PURE_ROW_PERMUTED_N_SWEEP_CASES = [
     (row_perm_kind, n, expected_shape)
     for row_perm_kind in PERMUTED_LAYOUT_KINDS
     if row_perm_kind != "identity"
-    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
 
 LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES = [
@@ -3380,7 +3382,7 @@ LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES = [
     if row_perm_kind != "identity"
     for col_perm_kind in PERMUTED_LAYOUT_KINDS
     if col_perm_kind != "identity"
-    for n, expected_shape in ((64, "32x32b.x64"), (256, "32x32b.x64"))
+    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
 
 LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [

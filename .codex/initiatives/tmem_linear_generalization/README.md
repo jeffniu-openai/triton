@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 3156-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 3284-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -91,7 +91,9 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
-- Current speed/coverage checkpoint, 2026-04-14 01:03 UTC: the runtime-matrix runner now supports exact selected-shard reruns with `--groups` while preserving canonical group-to-GPU cache mapping, plus experimental per-bucket `--xdist-override`. Selected warm `ldst` groups 5 and 8 pass in about `11s` wall each, a 10x+ exact-rerun path versus the prior full-cold `ldst` group range of `208.7s..263.8s`, without reducing selected nodeids. Full collection is now `3156` tests after the first post-speed ISA coverage slice: `tcgen05.cp.128x128b` covers f32 and i32 across legacy/linear single-CTA, linear indexed-view, and two-CTA paths. Validation: py-compile and `git diff --check` passed; `make -j8` no-op success; focused CP slice passed `17` cases across four GPUs; full `cp` runner bucket passed `313`, skipped `5`.
+- Current `ld.red` coverage checkpoint, 2026-04-14 01:18 UTC: non-identity compatible reduction-source layouts now include the missing `N=32` shape for tile-permuted, pure column-permuted, pure row-permuted, and row+column-permuted families. This adds `128` positive runtime cases that all pin the `tcgen05.ld.red.sync.aligned.32x32b.x32` opcode family across min/max and all `abs`/NaN modifier combinations. Current runtime-matrix collection is `3284` tests: `cp=318`, `mma=301`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; bucketed evidence now aggregates to `2838 passed, 446 skipped`. Validation: py-compile passed; `make -j8` no-op success; focused new `N=32` slice passed `128` cases across four GPUs; full `ld_red` runner bucket passed `771` cases across 16 split groups; `git diff --check` passed.
+
+- Prior speed/coverage checkpoint, 2026-04-14 01:03 UTC: the runtime-matrix runner now supports exact selected-shard reruns with `--groups` while preserving canonical group-to-GPU cache mapping, plus experimental per-bucket `--xdist-override`. Selected warm `ldst` groups 5 and 8 pass in about `11s` wall each, a 10x+ exact-rerun path versus the prior full-cold `ldst` group range of `208.7s..263.8s`, without reducing selected nodeids. At that point full collection was `3156` tests after the first post-speed ISA coverage slice: `tcgen05.cp.128x128b` covers f32 and i32 across legacy/linear single-CTA, linear indexed-view, and two-CTA paths. Validation: py-compile and `git diff --check` passed; `make -j8` no-op success; focused CP slice passed `17` cases across four GPUs; full `cp` runner bucket passed `313`, skipped `5`.
 
 - Latest GB200 status checkpoint, 2026-04-14 00:46 UTC: current branch `codex/tmem`
   is clean and synced at `cfef1b94f`. Fresh current-HEAD checks after the

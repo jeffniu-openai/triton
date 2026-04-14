@@ -12863,3 +12863,22 @@ Open after this slice:
   - full `cp` runner bucket: `313 passed, 5 skipped`;
   - `git diff --check` passed.
 - Next: commit/push this checkpoint, then continue the long-term TMEM ISA coverage frontiers (`ld.red`, no-scales/scales copy `warpx2`, broader MMAv5/scaled-MMAv5 saturation, and staged broad validation).
+
+
+## 2026-04-14 ld.red N=32 non-identity coverage
+
+- Expanded positive `tcgen05.ld.red` runtime-matrix coverage to include `N=32` for compatible non-identity source layouts:
+  - tile-permuted with `tile_n=8`;
+  - pure column permutations;
+  - pure row permutations;
+  - row+column permutation cross-product.
+- This adds `128` cases across min/max and the four legal modifier combinations, all expecting exact `tcgen05.ld.red.sync.aligned.32x32b.x32` PTX/LLIR opcodes plus the existing offset/wait invariants.
+- Discovery: the first tile-permuted probe used `tile_n=16`, which failed in the test helper before codegen because this helper swaps two adjacent column bits and existing valid tile-permuted shapes use `N = 4 * tile_n`; changing the `N=32` case to `tile_n=8` made the tile slice valid and green.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8` -> no work to do;
+  - collect-only with `PYTHONPATH` unset: `3284` total tests, `771` `ld_red` tests;
+  - focused new `N=32` selector: `128 passed` across four GPUs;
+  - full `ld_red` runner: `771 passed` across 16 split groups, with pytest shard times from `27.66s` to `110.05s`;
+  - `git diff --check` passed.
+- This closes the obvious `N=32` compatible non-identity gap in the current fuzz plan. Remaining long-term work is broader layout fuzzing/clean diagnostics, copy `warpx2`, and broader MMAv5/scaled-MMAv5 coverage.
