@@ -34,7 +34,7 @@ When resuming the initiative:
 - use `ldst_validation_recipe_20260413.md` for the current duration-cache
   and bucketed recipe for broad `ld/st` runtime-matrix validation.
 - use `tmem_runtime_matrix_validation_recipe_20260413.md` and
-  `run_tmem_runtime_matrix_sweep.py` for the full 4777-case runtime-matrix
+  `run_tmem_runtime_matrix_sweep.py` for the full 4797-case runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
 
@@ -90,6 +90,8 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current scaled-MMAv5 accumulator-subview K-depth parity checkpoint, 2026-04-14 06:42 UTC: `SCALED_MMA_ACC_SUBSLICE_N_CASES` now covers `K in {128, 256}` for every current scaled format pair, `N in {64, 128}`, and both root-aligned plus offset accumulator subviews. The exact PTX/LLIR opcode-count assertion now scales by `K // 128`, matching the existing root and TMEM-LHS scaled-MMAv5 K-depth contract. Current runtime-matrix collection is `4797` tests: `cp=322`, `mma=784`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4351 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH focused scaled accumulator-subview collect selected `40` cases; no-PYTHONPATH tight MMA collect selected `784/4797`; no-PYTHONPATH full-file collect reported `4797`; focused scaled accumulator-subview function passed all `40` cases across split-4 on four GPUs (`10` per group; slowest `17.98s`); tight MMA selector passed all `784` cases across split-4 on four GPUs (`196` per group; slowest `23.12s`).
 
 - Current plain-MMAv5 full-shape TMEM-LHS `N=64` parity checkpoint, 2026-04-14 06:40 UTC: `MMA_LHS_TILE_PERMUTED_NK_CASES` now covers `N in {64, 128, 256}` for every supported plain operand kind and `K in {128,256}` through the full-shape tile-permuted TMEM-LHS path. The existing `tf32,N=256,K=256` omission remains because that direct shared-B helper exceeds shared memory; N64 is a positive target and passed numerically with exact PTX/LLIR opcode-count checks. Current runtime-matrix collection is `4777` tests: `cp=322`, `mma=764`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; bucketed evidence now aggregates to `4331 passed, 446 skipped`. Validation: py-compile passed; `git diff --check` passed; `make -j8` no-op success; no-PYTHONPATH full LHS tile-permuted collect selected `29` cases; no-PYTHONPATH tight MMA collect selected `764/4777`; no-PYTHONPATH full-file collect reported `4777`; focused LHS tile-permuted function passed all `29` cases across split-4 on four GPUs (`8`, `8`, `8`, `5`; slowest `14.25s`); tight MMA selector passed all `764` cases across split-4 on four GPUs (`191` each; slowest `22.81s`).
 

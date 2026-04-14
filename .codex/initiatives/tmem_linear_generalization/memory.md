@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 06:42 UTC: scaled-MMAv5 accumulator-subview K-depth parity
+
+- `SCALED_MMA_ACC_SUBSLICE_N_CASES` now spans `K in {128, 256}` instead of only `K=128`.
+- `test_tmem_runtime_matrix_mma_scaled_acc_subslice_view_format_matrix` therefore covers every current scaled format pair (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`, `mxfp4/mxfp8`, and `nvfp4/nvfp4`) at `N in {64,128}`, root-aligned and offset accumulator subviews (`slice_start in {0,N}`), and both K depths.
+- Exact scaled-MMAv5 opcode-count checks now multiply `_expected_scaled_mma_acc_subslice_count(a_format, b_format)` by `K // 128`, matching the direct root and TMEM-LHS scaled-MMAv5 K-depth contract.
+- Current runtime-matrix collection is `4797` tests: `cp=322`, `mma=784`, splitn/misc `=252`, `ld_red=827`, and `ldst=2612`; current bucketed evidence aggregates to `4351 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `40` cases; no-PYTHONPATH tight MMA collect selected `784/4797`; no-PYTHONPATH full-file collect reported `4797`; focused scaled accumulator-subview function passed all `40` cases across four GPUs (`10` per group; group times `13.44s`, `15.50s`, `14.92s`, and `17.98s`); tight MMA selector passed all `784` cases across four GPUs (`196` per group; group times `6.10s`, `23.12s`, `5.60s`, and `21.00s`).
+
 ## 2026-04-14 06:40 UTC: plain-MMAv5 full-shape TMEM-LHS N=64 parity
 
 - `MMA_LHS_TILE_PERMUTED_NK_CASES` now spans `N in {64, 128, 256}` instead of only `N in {128, 256}`.

@@ -13521,3 +13521,20 @@ Open after this slice:
   - tight MMA selector passed all `764` cases across split-4 on four GPUs (`191` per group; `5.58s`, `12.93s`, `22.81s`, and `15.78s`).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=764`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4331 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA coverage. Scaled accumulator K-depth/subview parity or another non-parked copy/ld.red descriptor frontier are good next targets. True scales `warpx2` and no-scales two-CTA `warpx2::02_13` remain parked until there is a real descriptor/address/staging hypothesis.
+
+## 2026-04-14 06:42 UTC: scaled-MMAv5 accumulator-subview K-depth parity
+
+- Expanded `SCALED_MMA_ACC_SUBSLICE_N_CASES` from fixed `K=128` to `K in {128, 256}`.
+- The scaled accumulator-subview format matrix now covers every current scaled format pair, `N in {64,128}`, `slice_start in {0,N}`, and both K depths through the supported `ttg.memdesc_subslice` accumulator view path.
+- Exact opcode-count checks now scale by `K // 128`, matching the direct root and TMEM-LHS scaled-MMAv5 K-depth contract.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused scaled accumulator-subview collect selected `40` cases;
+  - no-PYTHONPATH tight MMA collect selected `784/4797`;
+  - no-PYTHONPATH full-file collect reported `4797` tests;
+  - focused scaled accumulator-subview function passed `40` cases across split-4 on four GPUs (`10` per group; `13.44s`, `15.50s`, `14.92s`, and `17.98s`);
+  - tight MMA selector passed all `784` cases across split-4 on four GPUs (`196` per group; `6.10s`, `23.12s`, `5.60s`, and `21.00s`).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=784`, splitn/misc `=252`, `ld_red=827`, `ldst=2612`; current bucketed evidence aggregates to `4351 passed, 446 skipped`.
+- Next: commit/push this bounded scaled-MMAv5 checkpoint, then continue staged ISA saturation in another exact family. Remaining long-term frontiers include broader `ld.red` fuzzing, non-parked copy surfaces, and eventually the parked true scales `warpx2` / no-scales two-CTA `warpx2::02_13` descriptor-address problems once there is a concrete hypothesis.

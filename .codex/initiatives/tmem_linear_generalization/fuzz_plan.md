@@ -560,10 +560,12 @@ Every fuzz case records:
   for both legacy and canonical TMEM-linear accumulator layouts, with exact
   scaled-MMAv5 opcode counts pinned as `base_count * (blockK // 128)`.
 - accumulator subview starts that preserve the same supported physical family,
-  currently including one-CTA root-aligned `slice_start=0` and offset
-  `slice_start=64` direct subviews plus two-CTA cga-aware `block_n=128`,
-  `parent_n=256`, `slice_start in {0,128}` direct subviews across the proven
-  format pairs. The obvious two-CTA `block_n=256`, `parent_n=512` offset-subview
+  currently including one-CTA root-aligned and offset direct subviews at
+  `blockN in {64,128}`, `blockK in {128,256}`, and every current scaled format
+  pair, plus two-CTA cga-aware `block_n=128`, `parent_n=256`,
+  `slice_start in {0,128}` direct subviews across the proven format pairs. Exact
+  opcode counts scale by `blockK // 128`. The obvious two-CTA `block_n=256`,
+  `parent_n=512` offset-subview
   extension exceeds TMEM capacity (`Required: 524`, limit `512`); a
   `parent_n=384` alternative is not expressible by the current power-of-two
   MMAv5 two-CTA layout helper.
