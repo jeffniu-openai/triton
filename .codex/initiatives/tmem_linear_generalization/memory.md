@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 04:24 UTC: plain-MMAv5 full-shape tile-permuted TMEM-LHS K-depth coverage
+
+- `tmem_mma_lhs_kernel` now takes `K` as a constexpr instead of hard-coding `K=256`.
+- `test_tmem_runtime_matrix_mma_lhs_tile_permuted` now spans `K in {128, 256}` for the legal full-shape tile-permuted TMEM-LHS plain-MMAv5 surface: `K=128` uses `tile_n=32`, while the existing `K=256` cases keep `tile_n=64`.
+- Coverage remains every supported plain operand kind at `N=128` plus the non-OOR `N=256` shapes, including `tf32,K=128`; only `tf32,N=256,K=256` stays omitted for this helper because the direct shared-B tile exceeds shared memory at that shape.
+- `_expected_lhs_tile_permuted_mma_op_count(kind, k)` now pins exact instruction counts as the plain-kind root count times `K // 32`, so the new cases prove the half-depth instruction surface instead of only checking numeric output.
+- Current runtime-matrix collection is `3839` tests: `cp=322`, `mma=552`, splitn/misc `=252`, `ld_red=811`, and `ldst=1902`; current bucketed evidence aggregates to `3393 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `19/3839`; no-PYTHONPATH tight `mma` collect selected `552/3839`; focused selector passed `19` across four GPUs (`5`, `5`, `5`, `4`); tight MMA runner passed `552` across four groups (`138`, `138`, `138`, `138`).
+- Discarded probe: do not add `N=128,tile_n=64` as a positive scaled-accumulator tile-permuted case. With exactly two 64-column tiles there is no second tile-selector bit for `_make_tmem_linear_layout_tile_permuted` to swap, so it is not a nontrivial linear tile permutation under the current helper. The meaningful `N=128` nontrivial tile-permuted boundary is the existing `tile_n=32` scaled-accumulator clean negative for repeated `N=32` scale-fragment alignment.
+
 ## 2026-04-14 04:16 UTC: plain-MMAv5 blockM=64 N=256 coverage
 
 - `test_tmem_runtime_matrix_mma_plain_kinds_m64` now spans `N in {128, 256}` for one-CTA root `M=64` MMAv5.

@@ -13225,6 +13225,7 @@ Open after this slice:
   - `git diff --check` passed.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=502`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3343 passed, 446 skipped`.
 - Next: commit/push this bounded `ld/st` dtype-coverage checkpoint, then continue staged ISA saturation in another gap; broad 32-bit dtype parity for the main one-CTA/two-CTA root surfaces is now explicit.
+
 ## 2026-04-14 04:16 UTC: plain-MMAv5 blockM=64 N=256 coverage
 
 - Expanded `MMA_M64_PLAIN_KIND_CASES` from fixed `N=128` to `N in {128, 256}`.
@@ -13241,3 +13242,20 @@ Open after this slice:
   - `git diff --check` passed.
 - Current runtime-matrix bucket totals: `cp=322`, `mma=542`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3383 passed, 446 skipped`.
 - Next: commit/push this bounded MMAv5 checkpoint, then continue another staged ISA coverage gap.
+
+## 2026-04-14 04:24 UTC: plain-MMAv5 full-shape tile-permuted TMEM-LHS K-depth coverage
+
+- Generalized `tmem_mma_lhs_kernel` so the full-shape TMEM-LHS helper accepts `K` as a constexpr.
+- Expanded `MMA_LHS_TILE_PERMUTED_NK_CASES` to include `K=128` alongside the existing `K=256` surface. The layout uses `tile_n=K // 4`, giving the already-covered `128x256/tile_n=64` cases and the new `128x128/tile_n=32` cases.
+- Replaced the fixed expected-count table with `_expected_lhs_tile_permuted_mma_op_count(kind, k)`, equal to the plain-kind root opcode count times `K // 32`.
+- A provisional scaled-accumulator `N=128,tile_n=64` expansion was dropped before commit: there is no second tile-selector bit to swap at exactly two 64-column tiles, so it is not a meaningful nontrivial linear tile permutation under this helper.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH focused collect selected `19/3839`;
+  - no-PYTHONPATH tight `mma` collect selected `552/3839`;
+  - focused selector passed all `19` cases across four GPUs (`5`, `5`, `5`, `4`);
+  - tight MMA runner passed all `552` cases across groups `138`, `138`, `138`, and `138`.
+- Current runtime-matrix bucket totals: `cp=322`, `mma=552`, splitn/misc `=252`, `ld_red=811`, `ldst=1902`; current bucketed evidence aggregates to `3393 passed, 446 skipped`.
+- Next: commit/push this bounded MMAv5 checkpoint, then continue staged ISA saturation outside the parked copy `warpx2` descriptor/address frontiers.
