@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+## 2026-04-14 02:42 UTC: scaled-MMAv5 TMEM-LHS tile-permuted N=256 coverage
+
+- `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_matrix` now spans `N in {128, 256}` at `K=256` for the reachable full-shape tile-permuted TMEM-LHS format pairs and both legacy/canonical accumulator layouts.
+- A provisional `K=128` expansion found fp4-storage tile-permuted LHS layouts are cleanly rejected as not MMAv5-compatible; the positive matrix is therefore intentionally the legal `K=256` surface rather than a partial-format K matrix.
+- Current runtime-matrix collection is `3311` tests: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, and `ldst=1642`; current bucketed evidence aggregates to `2865 passed, 446 skipped`.
+- Validation: `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `git diff --check`; `make -j8`; no-PYTHONPATH focused collect selected `16/3311`; focused selector passed `16` cases across four GPUs; tight `mma` runner passed `324` cases across four groups (`81`, `81`, `81`, `81`).
+- Remaining long-term work: keep mining bounded MMAv5/scaled-MMAv5 parity gaps, then continue `ld/st` fuzz/layout breadth and descriptor/address/staging research for the copy `warpx2` frontiers.
+
 ## 2026-04-14 02:24 UTC: scaled-MMAv5 accumulator tile-permuted K=256 coverage
 
 - `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_matrix` now spans every current scaled format pair at `K in {128, 256}` for the existing `M=128, N=256, tile_n=64` accumulator tile-permuted layout.

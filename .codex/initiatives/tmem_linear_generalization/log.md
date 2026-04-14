@@ -12957,3 +12957,18 @@ Open after this slice:
   - tight `mma` runner: `316 passed` across four groups (`79` each).
 - Current runtime-matrix bucket totals: `cp=322`, `mma=316`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2857 passed, 446 skipped`.
 - Next: commit/push this bounded scaled-MMAv5 saturation checkpoint, then continue mining broader MMAv5/scaled-MMAv5 gaps or move into the `ld/st` fuzz/layout breadth workstream.
+
+## 2026-04-14 02:42 UTC: scaled-MMAv5 TMEM-LHS tile-permuted N=256 coverage
+
+- Expanded `test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_matrix` from `N=128, K=256` to `N in {128, 256}, K=256` across every reachable full-shape tile-permuted LHS format pair and both accumulator layout spellings.
+- The test keeps exact scaled-MMAv5 PTX/LLIR opcode matching, exact commit matching, `tensor_memory_linear` assertions, and the dequantized reference check; the opcode count remains `(K // 128) * base_count`.
+- Provisional wider probe result: adding `K=128` for every format exposed clean verifier rejections for fp4-storage tile-permuted LHS layouts (`mxfp4/mxfp4` and `nvfp4/nvfp4`) because the storage-width-64 tile-permuted layout is not MMAv5-compatible. The committed positive matrix therefore records the legal `K=256` surface instead of a partial-format `K=128` matrix.
+- Validation:
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `make -j8` -> no work to do;
+  - no-PYTHONPATH collect for the focused selector: `16/3311` selected;
+  - focused selector across four GPUs: `16 passed` (`4` per split group);
+  - tight `mma` runner: `324 passed` across four groups (`81` each).
+- Current runtime-matrix bucket totals: `cp=322`, `mma=324`, splitn/misc `=252`, `ld_red=771`, `ldst=1642`; current bucketed evidence aggregates to `2865 passed, 446 skipped`.
+- Next: commit/push this scaled-MMAv5 saturation checkpoint, then continue with another bounded MMAv5/scaled-MMAv5 gap or move into the `ld/st` fuzz/layout breadth workstream.
