@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current Phase 1/2 bridge slice, 2026-04-15 06:51 UTC: introduced
+  `TMemCopySupportResult` and `TMemCopySupportFailureLayer` for structured
+  copy support outcomes. Direct destination support and shared-layout/runtime
+  support now return structured results, legacy bool APIs remain as wrappers,
+  and `ttng.tmem_copy` verification consumes the result objects while
+  preserving existing diagnostics. The direct destination support path at the
+  copy verifier now evaluates the `TMemPhysicalQuery` layout instead of
+  delegating back through the memdesc type. Validation passed: `make -j8`,
+  direct invalid/conversion lit RUN lines via local `triton-opt` and
+  `FileCheck`, and `git diff --check`. Next concrete step: add a structured
+  copy-plan support helper that combines physical-query, shared-layout, and
+  descriptor-synthesis checks for one plan, then use it to produce layer-aware
+  diagnostics without changing accepted cases.
+
 - Current Phase 1 slice, 2026-04-15 06:48 UTC: wired the
   physical-query comparison helpers into `ttng.tmem_copy` verification as a
   `TRITON_DEBUG_TMEM_QUERY`-gated consumer. Copy verification still uses the

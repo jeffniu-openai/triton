@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 
 namespace mlir::triton::nvidia_gpu {
 
@@ -95,6 +96,24 @@ enum class TMemCopyFamily {
   Warpx2_01_23_64x128b,
   Warpx2_02_13_64x128b,
   Warpx4_32x128b,
+};
+
+enum class TMemCopySupportFailureLayer {
+  None,
+  PhysicalQuery,
+  IsaAtom,
+  DescriptorSynthesis,
+  CtaOwnership,
+  SharedLayout,
+  ResourceBoundary,
+};
+
+struct TMemCopySupportResult {
+  bool supported;
+  TMemCopySupportFailureLayer failureLayer;
+  std::string message;
+
+  explicit operator bool() const { return supported; }
 };
 
 struct TMemCopyMessagePlan {
@@ -276,6 +295,16 @@ TMemCopyFamily getTMemCopyFamily(const TMemCopyAtom &atom);
 
 StringRef stringifyTMemCopyFamily(TMemCopyFamily family);
 
+StringRef
+stringifyTMemCopySupportFailureLayer(TMemCopySupportFailureLayer layer);
+
+TMemCopySupportResult getDirectTMemCopyLayoutSupport(gpu::MemDescType memTy,
+                                                     TMemCopyFamily family);
+
+TMemCopySupportResult
+getDirectTMemCopyLayoutSupport(const TMemPhysicalQuery &query,
+                               TMemCopyFamily family);
+
 bool isDirectTMemCopyLayoutSupported(gpu::MemDescType memTy,
                                      TMemCopyFamily family,
                                      std::string *error = nullptr);
@@ -283,6 +312,10 @@ bool isDirectTMemCopyLayoutSupported(gpu::MemDescType memTy,
 bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
                                      TMemCopyFamily family,
                                      std::string *error = nullptr);
+
+TMemCopySupportResult
+getTMemCopySharedLayoutRuntimeSupport(gpu::MemDescType srcTy,
+                                      TMemCopyFamily family);
 
 bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
                                             TMemCopyFamily family,

@@ -14740,3 +14740,28 @@ Open after this slice:
 - Next: begin replacing copy's type-delegated destination layout support with
   a structured physical-query support result that separates physical-query,
   ISA-atom, descriptor-synthesis, CTA-ownership, and shared-layout failures.
+
+## 2026-04-15 06:51 UTC: structured copy support result scaffold
+
+- Added `TMemCopySupportResult` and `TMemCopySupportFailureLayer` with named
+  layers for physical-query, ISA-atom, descriptor-synthesis, CTA-ownership,
+  shared-layout, and resource-boundary failures.
+- Added structured support APIs:
+  `getDirectTMemCopyLayoutSupport(...)` and
+  `getTMemCopySharedLayoutRuntimeSupport(...)`.
+- Kept `isDirectTMemCopyLayoutSupported(...)` and
+  `isTMemCopySharedLayoutRuntimeSupported(...)` as bool/string compatibility
+  wrappers over the structured results.
+- Routed `TTNG::TMemCopyOp::verify` through the structured results. Existing
+  emitted diagnostics and support decisions are preserved, but the copy
+  verifier now consumes `TMemPhysicalQuery.layout` directly for destination
+  direct-layout support.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: introduce a per-plan copy support helper that returns a single
+  structured result for destination physical-query, shared-layout/runtime, and
+  shared-descriptor synthesis, so diagnostics can identify the failing planner
+  layer before behavior-changing copy support expansion.

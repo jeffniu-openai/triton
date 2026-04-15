@@ -1664,35 +1664,34 @@ LogicalResult TMEMCopyOp::verify() {
       return failure();
     }
     auto isNoScalesPlanSupported = [&](const TMemCopyPlan &plan) {
-      std::string layoutSupportError;
-      if (!isDirectTMemCopyLayoutSupported(*maybeDstQuery, plan.family,
-                                           &layoutSupportError))
+      auto layoutSupport =
+          getDirectTMemCopyLayoutSupport(*maybeDstQuery, plan.family);
+      if (!layoutSupport)
         return false;
-      if (!isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family,
-                                                 &layoutSupportError))
+      auto sharedLayoutSupport =
+          getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
+      if (!sharedLayoutSupport)
         return false;
       return canSynthesizeTMemCopySharedDescriptorPlan(srcTy, shmemLl, cvt,
                                                        plan, bitwidth);
     };
     if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
-      std::string layoutSupportError;
-      (void)isDirectTMemCopyLayoutSupported(*maybeDstQuery,
-                                            copyPlans.front().family,
-                                            &layoutSupportError);
-      std::string sharedLayoutSupportError;
-      (void)isTMemCopySharedLayoutRuntimeSupported(
-          srcTy, copyPlans.front().family, &sharedLayoutSupportError);
+      auto layoutSupport =
+          getDirectTMemCopyLayoutSupport(*maybeDstQuery,
+                                         copyPlans.front().family);
+      auto sharedLayoutSupport = getTMemCopySharedLayoutRuntimeSupport(
+          srcTy, copyPlans.front().family);
       auto diag =
           emitOpError("The source shared layout maps to tcgen05.copy.")
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for it.";
-      if (!layoutSupportError.empty()) {
-        diag.attachNote() << layoutSupportError;
+      if (!layoutSupport.message.empty()) {
+        diag.attachNote() << layoutSupport.message;
       }
-      if (!sharedLayoutSupportError.empty()) {
-        diag.attachNote() << sharedLayoutSupportError;
+      if (!sharedLayoutSupport.message.empty()) {
+        diag.attachNote() << sharedLayoutSupport.message;
       }
       if (copyPlans.front().family == TMemCopyFamily::Warpx2_02_13_64x128b &&
           srcTy.getRank() == 2 && srcTy.getShape()[0] == 256) {

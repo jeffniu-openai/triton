@@ -7262,17 +7262,46 @@ StringRef stringifyTMemCopyFamily(TMemCopyFamily family) {
   llvm_unreachable("unknown tcgen05.copy family");
 }
 
-bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
-                                            TMemCopyFamily family,
-                                            std::string *error) {
+StringRef
+stringifyTMemCopySupportFailureLayer(TMemCopySupportFailureLayer layer) {
+  switch (layer) {
+  case TMemCopySupportFailureLayer::None:
+    return "none";
+  case TMemCopySupportFailureLayer::PhysicalQuery:
+    return "physical query";
+  case TMemCopySupportFailureLayer::IsaAtom:
+    return "ISA atom";
+  case TMemCopySupportFailureLayer::DescriptorSynthesis:
+    return "descriptor synthesis";
+  case TMemCopySupportFailureLayer::CtaOwnership:
+    return "CTA ownership";
+  case TMemCopySupportFailureLayer::SharedLayout:
+    return "shared layout";
+  case TMemCopySupportFailureLayer::ResourceBoundary:
+    return "resource boundary";
+  }
+  llvm_unreachable("unknown tcgen05.copy support failure layer");
+}
+
+static TMemCopySupportResult getSupportedTMemCopyResult() {
+  return {true, TMemCopySupportFailureLayer::None, ""};
+}
+
+static TMemCopySupportResult
+getUnsupportedTMemCopyResult(TMemCopySupportFailureLayer layer, Twine message) {
+  return {false, layer, message.str()};
+}
+
+TMemCopySupportResult
+getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
+                                      TMemCopyFamily family) {
   if (family != TMemCopyFamily::Warpx2_01_23_64x128b &&
       family != TMemCopyFamily::Warpx2_02_13_64x128b)
-    return true;
+    return getSupportedTMemCopyResult();
 
   auto setError = [&](Twine msg) {
-    if (error)
-      *error = msg.str();
-    return false;
+    return getUnsupportedTMemCopyResult(TMemCopySupportFailureLayer::SharedLayout,
+                                        msg);
   };
 
   if (srcTy.getRank() != 2 || srcTy.getShape()[1] != 4 ||
@@ -7327,7 +7356,7 @@ bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
       return setError("single-CTA warpx2 tcgen05.copy does not support a "
                       "non-zero shared block basis.");
     }
-    return true;
+    return getSupportedTMemCopyResult();
   }
 
   if (blockBases.size() != 1 ||
@@ -7335,33 +7364,34 @@ bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
     return setError("two-CTA warpx2 tcgen05.copy requires the canonical "
                     "shared block basis [[128, 0]].");
   }
-  return true;
+  return getSupportedTMemCopyResult();
 }
 
-bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
-                                     std::string *error) {
+bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
+                                            TMemCopyFamily family,
+                                            std::string *error) {
+  auto result = getTMemCopySharedLayoutRuntimeSupport(srcTy, family);
+  if (!result && error)
+    *error = result.message;
+  return result.supported;
+}
+
+static TMemCopySupportResult
+getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
+                                        MLIRContext *ctx,
+                                        TMemCopyFamily family) {
   if (family != TMemCopyFamily::Dense128x128b &&
       family != TMemCopyFamily::Dense128x256b)
-    return true;
+    return getSupportedTMemCopyResult();
 
-  std::string layoutError;
-  auto maybeLayout = getTMemViewAnalysisLinearLayout(memTy.getShape(),
-                                                     memTy.getEncoding(),
-                                                     &layoutError);
-  if (!maybeLayout) {
-    if (error)
-      *error = layoutError;
-    return false;
-  }
-  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
-  auto *ctx = memTy.getContext();
+  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(layout);
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getNumOutDims() != 2) {
-    if (error)
-      *error = "direct tcgen05.copy currently requires a rank-2 TMEM view "
-               "with explicit row/col bases.";
-    return false;
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy currently requires a rank-2 TMEM view "
+        "with explicit row/col bases.");
   }
 
   auto isStrictlyIncreasing = [](ArrayRef<int32_t> values) {
@@ -7377,19 +7407,18 @@ bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
   SmallVector<int32_t> rowBasisValues;
   for (ArrayRef<int32_t> basis : ll.getBases().lookup(kRow)) {
     if (basis[0] == 0 || basis[1] != 0) {
-      if (error)
-        *error =
-            "direct tcgen05.copy does not support TMEM row bases that mix row "
-            "and column contributions.";
-      return false;
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy does not support TMEM row bases that mix row "
+          "and column contributions.");
     }
     rowBasisValues.push_back(std::abs(basis[0]));
   }
   if (!isStrictlyIncreasing(rowBasisValues)) {
-    if (error)
-      *error = "direct tcgen05.copy requires TMEM row bases to stay in "
-               "ascending physical row order.";
-    return false;
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy requires TMEM row bases to stay in "
+        "ascending physical row order.");
   }
 
   SmallVector<int32_t> pureColBases;
@@ -7398,10 +7427,10 @@ bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
     bool touchesRow = basis[0] != 0;
     bool touchesCol = basis[1] != 0;
     if (touchesRow && touchesCol) {
-      if (error)
-        *error = "direct tcgen05.copy does not support TMEM column bases that "
-                 "mix row and column contributions.";
-      return false;
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy does not support TMEM column bases that "
+          "mix row and column contributions.");
     }
     if (touchesCol) {
       pureColBases.push_back(std::abs(basis[1]));
@@ -7410,24 +7439,60 @@ bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
     }
   }
   if (!isStrictlyIncreasing(pureColBases)) {
-    if (error)
-      *error = "direct tcgen05.copy requires TMEM column bases to remain in "
-               "ascending physical column order.";
-    return false;
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy requires TMEM column bases to remain in "
+        "ascending physical column order.");
   }
   if (!isStrictlyIncreasing(pureRowBases)) {
-    if (error)
-      *error = "direct tcgen05.copy requires TMEM row-repetition bases stored "
-               "in the column address space to remain in ascending row order.";
-    return false;
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy requires TMEM row-repetition bases stored "
+        "in the column address space to remain in ascending row order.");
   }
-  return true;
+  return getSupportedTMemCopyResult();
+}
+
+TMemCopySupportResult getDirectTMemCopyLayoutSupport(MemDescType memTy,
+                                                     TMemCopyFamily family) {
+  if (family != TMemCopyFamily::Dense128x128b &&
+      family != TMemCopyFamily::Dense128x256b)
+    return getSupportedTMemCopyResult();
+
+  std::string layoutError;
+  auto maybeLayout = getTMemViewAnalysisLinearLayout(memTy.getShape(),
+                                                     memTy.getEncoding(),
+                                                     &layoutError);
+  if (!maybeLayout) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery, layoutError);
+  }
+  return getDirectTMemCopyLayoutSupportForLayout(*maybeLayout,
+                                                memTy.getContext(), family);
+}
+
+TMemCopySupportResult
+getDirectTMemCopyLayoutSupport(const TMemPhysicalQuery &query,
+                               TMemCopyFamily family) {
+  return getDirectTMemCopyLayoutSupportForLayout(
+      query.layout, query.memTy.getContext(), family);
+}
+
+bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
+                                     std::string *error) {
+  auto result = getDirectTMemCopyLayoutSupport(memTy, family);
+  if (!result && error)
+    *error = result.message;
+  return result.supported;
 }
 
 bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
                                      TMemCopyFamily family,
                                      std::string *error) {
-  return isDirectTMemCopyLayoutSupported(query.memTy, family, error);
+  auto result = getDirectTMemCopyLayoutSupport(query, family);
+  if (!result && error)
+    *error = result.message;
+  return result.supported;
 }
 
 std::optional<uint64_t>

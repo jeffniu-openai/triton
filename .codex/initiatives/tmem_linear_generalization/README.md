@@ -95,6 +95,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy support-result checkpoint, 2026-04-15 06:51 UTC:
+  copy support checks now have `TMemCopySupportResult` plus
+  `TMemCopySupportFailureLayer` so destination physical-query failures and
+  shared-layout/runtime failures can be represented as structured planner
+  results instead of bool/string side channels. `ttng.tmem_copy` verification
+  consumes these results while preserving existing diagnostics and behavior.
+  Direct destination support now evaluates the `TMemPhysicalQuery` layout at
+  the verifier call site. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`.
+
 - Current copy query debug-consumer checkpoint, 2026-04-15 06:48 UTC:
   `ttng.tmem_copy` verification now computes the exact destination physical
   query under `TRITON_DEBUG_TMEM_QUERY` and reports exact-vs-standalone

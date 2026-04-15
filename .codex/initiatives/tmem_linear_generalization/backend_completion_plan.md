@@ -95,6 +95,13 @@ Progress:
   exact-vs-standalone destination-query reporting. Normal verifier behavior
   and diagnostics remain unchanged, but copy debugging can now show the first
   differing physical-query field plus the standalone and exact layouts/origins.
+- 2026-04-15 06:51 UTC: introduced `TMemCopySupportResult` and
+  `TMemCopySupportFailureLayer`, added structured direct-destination and
+  shared-layout support APIs, kept the legacy bool wrappers as compatibility
+  shims, and routed `ttng.tmem_copy` verification through the structured
+  results. Direct destination support now consumes the `TMemPhysicalQuery`
+  layout instead of re-deriving support from the memdesc type at the copy
+  verifier call site.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:
