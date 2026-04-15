@@ -14589,3 +14589,13 @@ Open after this slice:
 - Current runtime-matrix collection is `9546` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2530`, and `ldst=2985`; current bucketed evidence aggregates to `9095 passed, 451 skipped`.
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; affected selector collect selected `288/9546`; full-file collect reported `9546`; `ld_red` collect reported `2530`; affected selector passed all `288` cases across split-4 on four GPUs (`72` per group; group times `1493.14s`, `1542.86s`, `629.89s`, and `633.04s`).
 - Next: commit/push this bounded explicit-variant checkpoint, then continue the remaining explicit `ld.red` layouts in small chunks because these rows are compile-heavy. Pure row `row_rotate1`/`row_even_odd` is the next natural slice.
+
+## 2026-04-15 05:08 UTC: ld.red explicit pure-row permutation coverage
+
+- Expanded `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS` with `row_rotate1` and `row_even_odd`, and taught `_make_ld_red_descriptor_chain_n_sweep_explicit_layout` to construct those layouts for `N in {32,64,256}`.
+- The shared explicit table drives both descriptor-chain and direct `ld.red` tests, so the new pure-row rows cover `32x32b`, `16x32bx2`, and `32x32b_splitn`, both reductions, and all legal `abs`/`NaN` modifier modes in both paths.
+- Unlike `col_rotate1`, the pure-row layouts did not need a special `N=256` split offset order. `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS` remains limited to `col_reverse`, `col_rotate1`, and `rowcol_rotate_reverse`; the passing runtime assertions prove canonical split offsets for the new pure-row rows.
+- Current runtime-matrix collection is `9834` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2818`, and `ldst=2985`; current bucketed evidence aggregates to `9383 passed, 451 skipped`.
+- Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; affected selector collect selected `288/9834`; full-file collect reported `9834`; `ld_red` collect reported `2818`; affected selector passed all `288` cases across split-4 on four GPUs (`72` per group; group times `1563.72s`, `1601.45s`, `638.80s`, and `641.65s`); `git diff --check` passed.
+- Tooling note: an initial no-PYTHONPATH collect imported a stale installed Triton and failed on `TensorMemoryLinearLayout`; the actual validation used `PYTHONPATH=./python` to bind pytest to this checkout.
+- Next: commit/push this bounded explicit-row checkpoint, then decide whether the next compile-heavy `ld.red` explicit slice should cover mixed layouts or whether to move to another non-parked ISA family.

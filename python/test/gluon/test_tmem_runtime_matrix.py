@@ -4656,6 +4656,8 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS = (
     "col_rotate1",
     "col_even_odd",
     "row_reverse",
+    "row_rotate1",
+    "row_even_odd",
     "rowcol_rotate_reverse",
 )
 
@@ -4702,6 +4704,10 @@ def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
         return _make_tmem_linear_layout_permuted(128, n, "identity", "even_odd")
     if layout_name == "row_reverse":
         return _make_tmem_linear_layout_permuted(128, n, "reverse", "identity")
+    if layout_name == "row_rotate1":
+        return _make_tmem_linear_layout_permuted(128, n, "rotate1", "identity")
+    if layout_name == "row_even_odd":
+        return _make_tmem_linear_layout_permuted(128, n, "even_odd", "identity")
     if layout_name == "rowcol_rotate_reverse":
         return _make_tmem_linear_layout_permuted(128, n, "rotate1", "reverse")
     raise AssertionError(f"unexpected ld.red descriptor-chain layout {layout_name}")
