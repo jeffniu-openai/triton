@@ -15942,3 +15942,35 @@ Open after this slice:
   - this closes the direct refresh-layout load/store path as a clean negative;
     the next support-bearing copy gaps remain scales descriptor-view row
     interleaving and two-CTA `warpx2::02_13`.
+
+## 2026-04-15 13:30 UTC: `ld.red` identity M256 support
+
+- Promoted ordinary identity `TensorMemoryLinearLayout` sources with
+  `M=256` and `N in {32,64,128}` from clean unsupported to positive
+  `tcgen05.ld.red` coverage.
+- Root cause:
+  - `isReductionFriendlyTmemSourceLayout(...)` required the direct source
+    layout to have a 128-row base tile, so only the artificial
+    `legacy_equivalent_256` spelling could represent the high row selector as
+    a column carry basis.
+  - Runtime probes showed the ordinary pure-row identity layout lowers through
+    the existing raw-query path, keeps N entirely in registers, and emits
+    correct `tcgen05.ld.red.sync.aligned.32x32b.x{32,64,128}` packets with
+    8 warps.
+- Implementation:
+  - allow reduction-friendly sources with a 256-row pure row basis in addition
+    to the existing 128-row base tile;
+  - add identity `M=256,N={32,64,128}` rows to `LD_RED_LINEAR_CASES`;
+  - reclassify identity `256x256` as a shared-memory resource boundary instead
+    of an ISA/layout clean unsupported case.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-focused pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ld_red_identity_linear_layout or ld_red_identity_256_linear_layout_reports_resource_boundary"`
+    (`88 passed`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Remaining boundary:
+  - identity `256x256` reaches resource analysis and fails with shared-memory
+    OOR; keep it as a resource boundary unless the test kernel is reworked to
+    reduce shared-memory pressure.

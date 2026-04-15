@@ -2753,7 +2753,10 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
 
   auto rowBits = layout.getInDimSizeLog2(kRow);
   auto blockM = int64_t{1} << rowBits;
-  if (blockM != 128)
+  // 256-row identity layouts are still directly reducible: the row packet
+  // anchors remain materializable, and the extra row selector is represented
+  // by the physical TMEM layout rather than by a column carry basis.
+  if (blockM != 128 && blockM != 256)
     return false;
 
   SmallVector<int32_t> pureRowBases;

@@ -407,6 +407,14 @@ Tasks:
   special-case layout fixes with algebraic derivation.
 - Keep non-f32 `ld.red` and subword boundary diagnostics precise.
 
+Progress:
+- 2026-04-15 13:30 UTC: promoted ordinary identity `M=256` `ld.red`
+  sources for `N in {32,64,128}`. The reduction-friendly source predicate no
+  longer requires the high row selector to be encoded as a column carry basis;
+  direct raw-query lowering can use the pure 256-row identity layout and still
+  satisfy the reduction register-layout contract with 8 warps. The old
+  identity `256x256` clean negative is now a shared-memory resource boundary.
+
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate
   handwritten interpretations of descriptor chains.

@@ -4643,6 +4643,9 @@ LD_RED_LINEAR_CASES = [
     ("identity", 128, 64, 4, "32x32b.x64"),
     ("identity", 128, 128, 4, "32x32b.x128"),
     ("identity", 128, 256, 4, "32x32b.x64"),
+    ("identity", 256, 32, 8, "32x32b.x32"),
+    ("identity", 256, 64, 8, "32x32b.x64"),
+    ("identity", 256, 128, 8, "32x32b.x128"),
     ("legacy_equivalent_256", 256, 32, 8, "32x32b.x32"),
     ("legacy_equivalent_256", 256, 64, 8, "32x32b.x64"),
     ("legacy_equivalent_256", 256, 128, 8, "32x32b.x128"),
@@ -4929,10 +4932,7 @@ LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
     ],
 ]
 
-LD_RED_UNSUPPORTED_SOURCE_CASES = [
-    ("identity_256x32", 256, 32, 8),
-    ("identity_256x64", 256, 64, 8),
-    ("identity_256x128", 256, 128, 8),
+LD_RED_RESOURCE_BOUNDARY_CASES = [
     ("identity_256x256", 256, 256, 8),
 ]
 
@@ -7583,12 +7583,12 @@ def test_tmem_runtime_matrix_ld_red_additional_unsupported_layouts_report_clean_
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
-@pytest.mark.parametrize("name,M,N,num_warps", LD_RED_UNSUPPORTED_SOURCE_CASES)
-def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_unsupported(
+@pytest.mark.parametrize("name,M,N,num_warps", LD_RED_RESOURCE_BOUNDARY_CASES)
+def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_resource_boundary(
     red_op, use_abs, propagate_nan, name, M, N, num_warps, capfd
 ):
     layout = _make_tmem_linear_layout(M, N)
-    with pytest.raises(Exception) as err:
+    with pytest.raises(triton.runtime.errors.OutOfResources) as err:
         _run_tmem_reduction_case(
             layout,
             M,
@@ -7600,9 +7600,7 @@ def test_tmem_runtime_matrix_ld_red_identity_256_linear_layout_reports_clean_uns
         )
     captured = capfd.readouterr()
     text = str(err.value) + captured.err + captured.out
-    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
-    assert "tmem.load(...)+tt.reduce(...)" in text
-    assert "tt.reduce" in text
+    assert "out of resource: shared memory" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

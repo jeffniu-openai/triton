@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current `ld.red` identity-256 checkpoint, 2026-04-15 13:30 UTC:
+  ordinary identity `TensorMemoryLinearLayout` sources with `M=256` and
+  `N in {32,64,128}` are now positive hardware-reduction coverage. The old
+  reduction-friendly predicate rejected these layouts because it required a
+  128-row base tile, even though direct probes showed the raw-query lowering
+  can materialize the row anchors and emit correct `tcgen05.ld.red` packets
+  with 8 warps. `legacy_equivalent_256` remains positive, and
+  identity `256x256` is now tracked as a shared-memory resource boundary
+  instead of a clean ISA/layout negative. Validation passed: `make -j8`,
+  `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`,
+  focused `ld_red_identity_linear_layout` plus resource-boundary sweep
+  (`88 passed`), invalid verifier, and `git diff --check`.
+
 - Current refresh direct-load/store contract, 2026-04-15 13:07 UTC:
   direct `get_reg_layout()` / `tmem.load` / `tmem.store` on the 4x256b
   refresh-shaped `TensorMemoryLinearLayout` now reports a specific clean

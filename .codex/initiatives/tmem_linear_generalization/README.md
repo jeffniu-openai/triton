@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 13:30 UTC: `tcgen05.ld.red` now accepts ordinary identity
+  `TensorMemoryLinearLayout` sources with `M=256` and `N in {32,64,128}`.
+  The previous reduction-friendly source predicate only admitted a 128-row
+  base tile or the legacy-equivalent 256-row spelling that encoded the high row
+  selector as a column carry basis. Runtime probes showed the identity layout
+  lowers through the same direct raw-query path and passes the reduction oracle
+  with 8 warps, so the predicate now treats both 128-row and 256-row pure row
+  bases as reducible. The `256x256` identity case is reclassified as a shared
+  memory resource boundary rather than an ISA/layout unsupported case.
 - 2026-04-15 13:07 UTC: direct `tmem.load`/`tmem.store` for the 4x256b
   refresh-shaped active layout is now recorded as a proof-level clean
   unsupported contract at the frontend descriptor boundary. Probes showed the
