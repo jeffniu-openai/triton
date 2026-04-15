@@ -244,6 +244,7 @@ struct TMemCopyScheduledInstruction {
   unsigned messageIndex;
   TMemCopyScheduledTile tile;
   TMemCopySourceFootprint source;
+  TMemCopyDestinationFootprint destination;
 };
 
 struct TMemCopyExecutablePlan {

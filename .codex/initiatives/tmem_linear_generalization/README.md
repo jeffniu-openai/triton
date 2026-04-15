@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:43 UTC: scheduled copy instructions now also carry the
+  message-adjusted `TMemCopyDestinationFootprint`. The instruction scheduler
+  applies `tmemRowDelta` and `tmemDwordDelta` once, records the final physical
+  row/column and encoded destination offset, and LLVM lowering consumes
+  `instruction.destination.offset` directly. This keeps the emitted schedule
+  behavior-preserving while making the instruction object the single source of
+  truth for both source and destination footprints. Validation: `make -j8`,
+  py-compile of `test_tmem_runtime_matrix.py`, `git diff --check`, and 11
+  targeted copy rows covering direct-seed `warpx2`, two-CTA `warpx2`, `4x256b`
+  dword-delta messages, scales `warpx4`, and the scales descriptor-view clean
+  negative.
 - 2026-04-15 23:40 UTC: scheduled copy instructions now carry a
   `TMemCopySourceFootprint` paired with the existing scheduled tile. The
   planner computes source row/column and instruction source footprint rows /

@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current copy instruction-destination-footprint checkpoint, 2026-04-15
+  23:43 UTC: `TMemCopyScheduledInstruction` now also carries the
+  message-adjusted `TMemCopyDestinationFootprint`. `getTMemCopyInstructionSchedule(...)`
+  applies `tmemRowDelta` and `tmemDwordDelta` while building the emitted
+  instruction stream, checks that the dword delta aligns to destination element
+  columns, and records the final physical row/column plus encoded TMEM offset.
+  LLVM lowering now consumes `instruction.destination.offset` directly. This
+  preserves current behavior but means every scheduled instruction owns both
+  the exact source footprint it reads and the exact destination footprint it
+  writes. Validation passed: `make -j8`, py-compile, `git diff --check`, and
+  11 targeted copy rows covering direct-seed `warpx2`, two-CTA `warpx2`,
+  `4x256b` dword-delta messages, scales `warpx4`, and the scales
+  descriptor-view clean negative.
+
 - Current copy source-footprint checkpoint, 2026-04-15 23:40 UTC:
   `TMemCopyScheduledInstruction` now carries a `TMemCopySourceFootprint`
   alongside the scheduled tile. The source footprint records the exact source

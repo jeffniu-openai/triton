@@ -344,6 +344,11 @@ Progress:
   will read, including direct-seed descriptor source offsets. Current schedules
   are unchanged, but source/destination footprint legality can now be checked
   in the planner instead of being reconstructed in lowering.
+- 2026-04-15 23:43 UTC: added the message-adjusted destination footprint to
+  scheduled copy instructions. `tmemRowDelta` and `tmemDwordDelta` are now
+  applied during instruction scheduling, with lowering consuming
+  `instruction.destination.offset` directly. Each emitted copy instruction now
+  owns both final source and final destination footprints.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

@@ -1,3 +1,18 @@
+## 2026-04-15 23:43 UTC: copy instruction-destination footprint
+
+- Added the message-adjusted destination footprint to each scheduled copy
+  instruction.
+- `getTMemCopyInstructionSchedule(...)` now applies `tmemRowDelta` and
+  `tmemDwordDelta`, checks element-column alignment for dword deltas, and
+  records the final destination physical row/column and encoded offset.
+- Lowering now uses `instruction.destination.offset` directly rather than
+  reapplying message destination deltas.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-dst-footprint PYTHONPATH=./python pytest -s --tb=short -q` with targeted direct-seed `warpx2`, two-CTA `warpx2`, `4x256b` refresh, scales `warpx4`, and scales descriptor-view clean-negative nodeids (`11 passed in 15.29s`).
+
 ## 2026-04-15 23:40 UTC: copy source-footprint carrier
 
 - Added `TMemCopySourceFootprint` and attached it to each scheduled copy

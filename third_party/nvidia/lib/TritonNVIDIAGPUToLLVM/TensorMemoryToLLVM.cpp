@@ -1657,12 +1657,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       desc = message.loader->smemLoad(instruction.source.row,
                                       instruction.source.col, rewriter, loc);
     }
-    assert(messagePlan.tmemRowDelta >= 0 &&
-           "tcgen05.copy destination row delta must be non-negative");
     uint32_t messageDestinationOffset =
-        destinationBaseOffset + tile.destination.offset +
-        (static_cast<uint32_t>(messagePlan.tmemRowDelta) << 16) +
-        messagePlan.tmemDwordDelta;
+        destinationBaseOffset + instruction.destination.offset;
     auto tmemAddr = b.add(b.ptrtoint(i32_ty, baseDst),
                           b.i32_val(messageDestinationOffset));
     createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, messagePlan.atom,

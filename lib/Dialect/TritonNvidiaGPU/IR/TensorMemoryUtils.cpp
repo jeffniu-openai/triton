@@ -8217,6 +8217,61 @@ getTMemCopySourceFootprint(const TMemCopyScheduledMessage &message,
       /*columns=*/plan.instrShape[1]};
 }
 
+static std::optional<TMemCopyDestinationFootprint>
+getTMemCopyInstructionDestinationFootprint(
+    const TMemCopyScheduledMessage &message, const TMemCopyScheduledTile &tile,
+    std::string *error) {
+  const TMemCopyMessagePlan &plan = message.plan;
+  if (plan.tmemRowDelta < 0 || plan.tmemDwordDelta < 0) {
+    if (error)
+      *error = "tcgen05.copy destination footprint has a negative "
+               "destination delta.";
+    return std::nullopt;
+  }
+  if (plan.instrShape.size() < 2 || plan.instrShape[0] == 0 ||
+      plan.instrShape[1] == 0 || plan.atom.bCol <= 0 ||
+      plan.atom.bCol % static_cast<int>(plan.instrShape[1]) != 0) {
+    if (error)
+      *error = "tcgen05.copy destination footprint requires a valid "
+               "instruction shape and copy atom width.";
+    return std::nullopt;
+  }
+
+  int32_t elementBitWidth = plan.atom.bCol / plan.instrShape[1];
+  int64_t dwordDeltaBits = static_cast<int64_t>(plan.tmemDwordDelta) * 32;
+  if (elementBitWidth <= 0 || dwordDeltaBits % elementBitWidth != 0) {
+    if (error)
+      *error = "tcgen05.copy destination dword delta does not align to an "
+               "element column.";
+    return std::nullopt;
+  }
+
+  int64_t physicalRow =
+      static_cast<int64_t>(tile.destination.physicalRow) + plan.tmemRowDelta;
+  int64_t physicalCol = static_cast<int64_t>(tile.destination.physicalCol) +
+                        dwordDeltaBits / elementBitWidth;
+  int64_t offset = static_cast<int64_t>(tile.destination.offset) +
+                   (static_cast<int64_t>(plan.tmemRowDelta) << 16) +
+                   plan.tmemDwordDelta;
+  if (physicalRow > std::numeric_limits<int32_t>::max() ||
+      physicalCol > std::numeric_limits<int32_t>::max() ||
+      offset > std::numeric_limits<uint32_t>::max()) {
+    if (error)
+      *error = "tcgen05.copy destination footprint exceeds the supported "
+               "coordinate range.";
+    return std::nullopt;
+  }
+
+  return TMemCopyDestinationFootprint{
+      /*logicalRow=*/tile.destination.logicalRow,
+      /*logicalCol=*/tile.destination.logicalCol,
+      /*physicalRow=*/static_cast<int32_t>(physicalRow),
+      /*physicalCol=*/static_cast<int32_t>(physicalCol),
+      /*rows=*/tile.destination.rows,
+      /*columns=*/tile.destination.columns,
+      /*offset=*/static_cast<uint32_t>(offset)};
+}
+
 std::optional<llvm::SmallVector<TMemCopyScheduledInstruction>>
 getTMemCopyInstructionSchedule(ArrayRef<TMemCopyScheduledMessage> messages,
                                ArrayRef<TMemCopyScheduledTile> tiles,
@@ -8236,10 +8291,16 @@ getTMemCopyInstructionSchedule(ArrayRef<TMemCopyScheduledMessage> messages,
                                                error);
       if (!source)
         return std::nullopt;
+      auto destination =
+          getTMemCopyInstructionDestinationFootprint(messages[messageIdx],
+                                                     tile, error);
+      if (!destination)
+        return std::nullopt;
       instructions.push_back(TMemCopyScheduledInstruction{
           /*messageIndex=*/messageIdx,
           /*tile=*/tile,
-          /*source=*/ *source});
+          /*source=*/ *source,
+          /*destination=*/ *destination});
     }
   }
   return instructions;
