@@ -15020,3 +15020,31 @@ Open after this slice:
   - `git diff --check`.
 - Next: commit and push this descriptor-selection checkpoint, then inspect the
   remaining scales/no-scales failures with the planner evidence in hand.
+
+## 2026-04-15 07:36 UTC: all-plan copy failure evidence
+
+- Extended `TMemCopyPlanSelection` with an ordered `failures` list.
+- Verification and lowering now attach every non-empty failed-plan support
+  message when plan selection fails.
+- Updated invalid diagnostics to assert the extra failed fallback schedules for
+  dense `128x128b` and two-CTA `warpx2::02_13`.
+- Support-promotion probes:
+  - broadened descriptor variants to multicast `warpx4` as a temporary probe;
+    scales warpx2-like layouts still failed descriptor synthesis, with 188
+    tried candidates instead of 1, so the probe was reverted;
+  - temporarily enabled the single-CTA `warpx2::02_13` direct seed for the
+    canonical two-CTA shared layout; it compiled and emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` but produced zero output
+    for root/index/slice-index probes, so the probe was reverted.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`8 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+    (`2 passed`);
+  - `git diff --check`.
+- Next: commit and push this evidence checkpoint, then work on deriving a true
+  destination/source address schedule for two-CTA `02_13` or move to the next
+  Phase 2/3 support gap with this negative evidence preserved.

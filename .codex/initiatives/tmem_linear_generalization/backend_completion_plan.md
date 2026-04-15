@@ -160,6 +160,26 @@ Tasks:
   fitting it into the atomized schedule model.
 - Move scales copy planning through the same projection/schedule path.
 
+Progress:
+- 2026-04-15 07:08 UTC: added `tcgen05.cp.4x256b` as a normal copy family
+  with descriptor synthesis and conversion coverage.
+- 2026-04-15 07:12 UTC: added a copy-specific physical-query projection
+  comparator so exact descriptor-view queries can be used when active copy
+  layout facts match even if origin/allocation metadata differs.
+- 2026-04-15 07:15 UTC: introduced `TMemCopyPlanSelection` and routed
+  no-scales verification/lowering through one plan selector.
+- 2026-04-15 07:25 UTC: added explicit copy plan support modes so scales and
+  no-scales use one selector while preserving their distinct legality
+  contracts.
+- 2026-04-15 07:28 UTC: factored descriptor-layout/MN-orientation selection
+  into `selectTMemCopyDescriptorLayout(...)` and consumed it from both support
+  checking and lowering.
+- 2026-04-15 07:36 UTC: plan selection now preserves all failed support
+  results. Negative probes showed that simply broadening descriptor
+  permutations does not fix scales warpx2-like layouts, and copying the
+  single-CTA `02_13` direct-seed path to cta-group::2 emits the opcode but
+  produces zeroed output.
+
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a
   hard-coded recognizer branch.

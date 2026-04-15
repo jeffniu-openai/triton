@@ -7556,6 +7556,7 @@ TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
       selection.plan = plan;
       return selection;
     }
+    selection.failures.push_back(support);
     if (!selection.firstFailure)
       selection.firstFailure = std::move(support);
   }

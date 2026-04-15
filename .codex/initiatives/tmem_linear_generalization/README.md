@@ -95,6 +95,19 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current all-plan failure evidence checkpoint, 2026-04-15 07:36 UTC:
+  `TMemCopyPlanSelection` now retains all structured failed plan-support
+  results, and verifier/lowering diagnostics attach each non-empty failure
+  note. Dense fallback and two-CTA `warpx2::02_13` clean-negatives now report
+  both attempted descriptor schedules. Two support-promotion probes were
+  intentionally not kept: applying warpx2 descriptor variants to scales
+  `warpx4` only expanded the failed search to 188 candidates, and reusing the
+  single-CTA `02_13` direct seed for cta-group::2 compiled but produced zeroed
+  output. Validation passed: `make -j8`, direct invalid/conversion RUN lines
+  via local `triton-opt` and `python/triton/FileCheck`, focused
+  `cp_scales and clean` pytest slice (`8 passed`), two representative
+  no-scales copy rows (`2 passed`), and `git diff --check`.
+
 - Current descriptor-layout selection checkpoint, 2026-04-15 07:28 UTC:
   descriptor synthesis now exposes `selectTMemCopyDescriptorLayout(...)`,
   returning the exact shared descriptor layout and MN orientation selected for

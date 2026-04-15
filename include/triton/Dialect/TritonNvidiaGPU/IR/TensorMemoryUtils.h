@@ -143,6 +143,7 @@ struct TMemCopyPlan {
 struct TMemCopyPlanSelection {
   std::optional<TMemCopyPlan> plan;
   std::optional<TMemCopySupportResult> firstFailure;
+  llvm::SmallVector<TMemCopySupportResult> failures;
 
   explicit operator bool() const { return plan.has_value(); }
 };

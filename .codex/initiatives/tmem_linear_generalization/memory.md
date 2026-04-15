@@ -8630,3 +8630,36 @@ rejection, not rescue
 - Boundary: intended behavior-preserving abstraction cleanup. The remaining
   gap is that actual loader construction still lives in lowering because it
   depends on the shared-memory base value and rewriter.
+
+## Latest: 2026-04-15 07:36 UTC all-plan copy failure evidence
+
+- `TMemCopyPlanSelection` now stores all failed `TMemCopySupportResult`
+  records in addition to the first failure.
+- `ttng.tmem_copy` verification and `tcgen05.copy` lowering now attach every
+  non-empty failed-plan message when plan selection fails, falling back to the
+  first failure only if the aggregate list is empty.
+- Updated `test/TritonNvidiaGPU/invalid.mlir` so clean negatives assert both
+  attempted fallback descriptor schedules:
+  - the dense `128x128b` mismatch now reports failed 32x4 and 64x4 descriptor
+    schedules;
+  - two-CTA `warpx2::02_13` now reports failed 64x4 and 32x4/64-instruction
+    schedules.
+- Probe results kept as durable evidence, not committed as support:
+  - applying the current warpx2 descriptor-variant search to scales-classified
+    `warpx4` did not produce a representable descriptor; it only expanded the
+    scales candidate failure from 1 to 188 layouts;
+  - enabling the single-CTA `warpx2::02_13` direct seed for cta-group::2
+    emitted `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` but produced
+    zeroed output for root and descriptor-view probes, so the two-CTA gap is a
+    real address/descriptor schedule issue rather than a missing guard lift.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+  (`8 passed`);
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+  (`2 passed`);
+  `git diff --check`.
+- Boundary: diagnostics/planner evidence improved; no support set changed.
+  Next work should target the true missing schedule derivation rather than
+  broadening descriptor candidate permutations or copying the single-CTA seed.

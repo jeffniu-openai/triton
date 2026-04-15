@@ -1610,6 +1610,20 @@ LogicalResult TMEMCopyOp::verify() {
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
+  auto attachPlanFailureNotes = [](auto &diag,
+                                   const TMemCopyPlanSelection &selection) {
+    bool attached = false;
+    for (const TMemCopySupportResult &failure : selection.failures) {
+      if (failure.message.empty())
+        continue;
+      diag.attachNote() << failure.message;
+      attached = true;
+    }
+    if (!attached && selection.firstFailure &&
+        !selection.firstFailure->message.empty()) {
+      diag.attachNote() << selection.firstFailure->message;
+    }
+  };
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
     if (copyPlans.empty()) {
       auto diag = emitOpError(
@@ -1632,9 +1646,7 @@ LogicalResult TMEMCopyOp::verify() {
                   << family
                   << ", but Triton could not synthesize a compatible "
                      "shared-memory descriptor plan for tensor memory scales.";
-      if (planSelection.firstFailure &&
-          !planSelection.firstFailure->message.empty())
-        diag.attachNote() << planSelection.firstFailure->message;
+      attachPlanFailureNotes(diag, planSelection);
       diag.attachNote()
           << "Use a shared layout that lowers to tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "
@@ -1681,10 +1693,7 @@ LogicalResult TMEMCopyOp::verify() {
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for it.";
-      if (planSelection.firstFailure &&
-          !planSelection.firstFailure->message.empty()) {
-        diag.attachNote() << planSelection.firstFailure->message;
-      }
+      attachPlanFailureNotes(diag, planSelection);
       if (copyPlans.front().family == TMemCopyFamily::Warpx2_02_13_64x128b &&
           srcTy.getRank() == 2 && srcTy.getShape()[0] == 256) {
         diag.attachNote()
