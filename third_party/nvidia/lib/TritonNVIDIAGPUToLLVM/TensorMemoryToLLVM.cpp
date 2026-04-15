@@ -1443,7 +1443,8 @@ static void createCommit(ConversionPatternRewriter &rewriter, Location loc,
 
 static void createTcgen05Cp(ConversionPatternRewriter &rewriter, Location loc,
                             Value tmem_address, Value src_desc, Value pred,
-                            TMemCopyAtom atom, bool twoCTAs) {
+                            TMemCopyAtom atom,
+                            TMemCopySourceFormat sourceFormat, bool twoCTAs) {
   PTXBuilder ptxBuilder;
   auto dst = ptxBuilder.newAddrOperand(tmem_address, "r");
   auto src = ptxBuilder.newOperand(src_desc, "l");
@@ -1455,9 +1456,13 @@ static void createTcgen05Cp(ConversionPatternRewriter &rewriter, Location loc,
   } else if (atom.multicast == 3) {
     warp = ".warpx4";
   }
+  std::string formatSuffix;
+  if (sourceFormat != TMemCopySourceFormat::None)
+    formatSuffix = ("." + stringifyTMemCopySourceFormat(sourceFormat)).str();
   std::string opcode =
       "tcgen05.cp.cta_group::" + std::to_string(twoCTAs ? 2 : 1) + warp + "." +
-      std::to_string(atom.nRow) + "x" + std::to_string(atom.bCol) + "b";
+      std::to_string(atom.nRow) + "x" + std::to_string(atom.bCol) + "b" +
+      formatSuffix;
   auto &op = *ptxBuilder.create(opcode);
   op({dst, src}).predicate(pred);
   ptxBuilder.launch(rewriter, loc, void_ty(rewriter.getContext()));
@@ -1627,12 +1632,16 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
             messagePlan.smemRow, col + messagePlan.smemColOffset, rewriter,
             loc);
       }
-      auto tmemAddr = b.add(
-          b.ptrtoint(i32_ty, baseDst),
-          b.i32_val(destinationBaseOffset + messagePlan.tmemDwordDelta +
-                    col * bitwidth / 32));
+      assert(messagePlan.tmemRowDelta >= 0 &&
+             "tcgen05.copy destination row delta must be non-negative");
+      uint32_t messageDestinationOffset =
+          destinationBaseOffset +
+          (static_cast<uint32_t>(messagePlan.tmemRowDelta) << 16) +
+          messagePlan.tmemDwordDelta + col * bitwidth / 32;
+      auto tmemAddr = b.add(b.ptrtoint(i32_ty, baseDst),
+                            b.i32_val(messageDestinationOffset));
       createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, messagePlan.atom,
-                      twoCTAs);
+                      messagePlan.sourceFormat, twoCTAs);
     }
   }
   return success();

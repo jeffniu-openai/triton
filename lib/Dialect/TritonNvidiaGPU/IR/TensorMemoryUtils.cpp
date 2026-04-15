@@ -7361,6 +7361,18 @@ stringifyTMemCopySupportFailureLayer(TMemCopySupportFailureLayer layer) {
   llvm_unreachable("unknown tcgen05.copy support failure layer");
 }
 
+StringRef stringifyTMemCopySourceFormat(TMemCopySourceFormat sourceFormat) {
+  switch (sourceFormat) {
+  case TMemCopySourceFormat::None:
+    return "";
+  case TMemCopySourceFormat::B8x16B6x16P32:
+    return "b8x16.b6x16_p32";
+  case TMemCopySourceFormat::B8x16B4x16P64:
+    return "b8x16.b4x16_p64";
+  }
+  llvm_unreachable("unknown tcgen05.copy source format");
+}
+
 static TMemCopySupportResult getSupportedTMemCopyResult() {
   return {true, TMemCopySupportFailureLayer::None, ""};
 }

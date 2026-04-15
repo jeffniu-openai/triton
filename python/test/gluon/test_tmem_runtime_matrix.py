@@ -458,7 +458,8 @@ def _extract_tcgen05_opcode_offset_immediates(asm: str, opcodes=("ld", "st")):
 
 def _extract_tcgen05_cp_opcodes(asm: str):
     pattern = re.compile(
-        r"(tcgen05\.cp(?:\.cta_group::\d+)?(?:\.warpx[24](?:::[^\s.;]+)*)?\.\d+x\d+b)"
+        r"(tcgen05\.cp(?:\.cta_group::\d+)?(?:\.warpx[24](?:::[^\s.;]+)*)?"
+        r"\.\d+x\d+b(?:\.b8x16\.(?:b6x16_p32|b4x16_p64))?)"
     )
     return pattern.findall(asm)
 

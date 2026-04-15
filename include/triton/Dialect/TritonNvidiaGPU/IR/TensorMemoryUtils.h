@@ -122,6 +122,12 @@ enum class TMemCopyPlanSupportKind {
   TensorMemoryScales,
 };
 
+enum class TMemCopySourceFormat {
+  None,
+  B8x16B6x16P32,
+  B8x16B4x16P64,
+};
+
 struct TMemCopyMessagePlan {
   TMemCopyAtom atom;
   unsigned descriptorRows;
@@ -130,7 +136,9 @@ struct TMemCopyMessagePlan {
   llvm::SmallVector<unsigned> instrShape;
   int smemRow = 0;
   int smemColOffset = 0;
+  int tmemRowDelta = 0;
   int tmemDwordDelta = 0;
+  TMemCopySourceFormat sourceFormat = TMemCopySourceFormat::None;
   bool useDirectSeedDescriptor = false;
   int directSourceOffsetB128 = 0;
 };
@@ -344,6 +352,8 @@ StringRef stringifyTMemCopyFamily(TMemCopyFamily family);
 
 StringRef
 stringifyTMemCopySupportFailureLayer(TMemCopySupportFailureLayer layer);
+
+StringRef stringifyTMemCopySourceFormat(TMemCopySourceFormat sourceFormat);
 
 TMemCopySupportResult getDirectTMemCopyLayoutSupport(gpu::MemDescType memTy,
                                                      TMemCopyFamily family);

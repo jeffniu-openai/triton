@@ -15237,3 +15237,32 @@ Open after this slice:
   descriptor-view row permutation into TMEM destination row offsets and/or
   multiple representable source descriptors, rather than reassigning source
   descriptor bases and thereby losing logical semantics.
+
+## 2026-04-15 09:08 UTC: copy executable schedule emission hooks
+
+- Added neutral executable-schedule fields for the next copy planner work:
+  `TMemCopyMessagePlan::tmemRowDelta` and
+  `TMemCopyMessagePlan::sourceFormat`.
+- `tcgen05.cp` lowering now consumes scheduled row deltas by encoding them in
+  the high TMEM-address row bits and can append the ISA source-format suffixes
+  `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` when a future selected schedule
+  proves they are required.
+- No planner currently selects non-default row deltas or source formats, so
+  this checkpoint is intended to preserve the existing support surface while
+  removing one lowering-layer blocker for multi-message scales and two-CTA
+  copy schedules.
+- Runtime-matrix opcode extraction now recognizes the source-format suffixes
+  so future positive rows can assert the full emitted `tcgen05.cp` opcode.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported'`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive[f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+    (`2 passed`);
+  - `git diff --check`.
+- Next: derive the actual schedule that populates these fields from exact
+  `LinearLayout` arithmetic. Do not set either field from family-specific
+  guesses without a runtime oracle.

@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 09:08 UTC: copy executable schedules can now carry TMEM
+  destination row deltas and optional `tcgen05.cp` source-format suffixes
+  through lowering. Defaults preserve existing support; the next task is to
+  derive those schedule dimensions from exact `LinearLayout` facts for scales
+  descriptor views and two-CTA `warpx2::02_13`.
 - 2026-04-15 09:05 UTC: exact scales descriptor-view copy failures now attach
   a schedule-level note when the exact descriptor view changes the physical
   layout relative to the root scales layout. The diagnostic states that

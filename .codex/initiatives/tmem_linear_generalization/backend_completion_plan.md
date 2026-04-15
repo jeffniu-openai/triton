@@ -191,6 +191,11 @@ Progress:
   explicit schedule-level diagnostic explaining that the physical row
   permutation cannot be realized by source descriptor selection alone and needs
   a destination-row / source-message schedule.
+- 2026-04-15 09:08 UTC: copy executable schedules now have lowering-level
+  fields for TMEM destination row deltas and the two currently probed
+  source-format suffixes (`.b8x16.b6x16_p32`, `.b8x16.b4x16_p64`). Current
+  planners leave both at defaults; this is scaffolding for the exact
+  row/message schedule derivation, not a support promotion.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

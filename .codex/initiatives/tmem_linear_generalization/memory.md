@@ -8773,3 +8773,23 @@ rejection, not rescue
 - Boundary: behavior-preserving cleanup. Next work remains Phase 3 scales
   physical-query modelling and Phase 2 two-CTA `warpx2::02_13` schedule
   derivation.
+
+## Latest: 2026-04-15 09:08 UTC copy executable schedule emission hooks
+
+- Added neutral `TMemCopyMessagePlan` fields for scheduled TMEM row deltas and
+  optional `tcgen05.cp` source-format suffixes.
+- `tcgen05.copy` LLVM lowering now consumes those fields when emitting the
+  TMEM destination address and opcode. Defaults preserve existing behavior;
+  no current planner path sets non-default values.
+- Runtime-matrix opcode extraction now includes `.b8x16.b6x16_p32` and
+  `.b8x16.b4x16_p64` suffixes so future source-format positives can be
+  asserted directly.
+- Validation completed: `make -j8`; invalid verifier; Blackwell conversion
+  FileCheck; py-compile for `python/test/gluon/test_tmem_runtime_matrix.py`;
+  focused scales descriptor-view clean negative (`1 passed`); representative
+  no-scales `warpx2::02_13` positive plus two-CTA clean negative (`2 passed`);
+  `git diff --check`.
+- Boundary: this is an executable schedule hook, not a support promotion. The
+  next implementation step is to derive row/message/source-format schedules
+  from exact `LinearLayout` arithmetic for the remaining scales descriptor-view
+  and two-CTA copy gaps.
