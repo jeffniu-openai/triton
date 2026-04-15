@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 17:12 UTC: the remaining plain MMAv5 `N=32` coverage debt in
+  M64 and TMEM-LHS matrices is now saturated for the supported families. M64
+  linear accumulator roots and M64 accumulator subslice views include `N=32`;
+  TMEM-LHS tile-permuted and LHS subslice rows include output `N=32`. The
+  M64 legacy root keeps its 64-column accumulator tile contract.
 - 2026-04-15 16:58 UTC: the plain MMAv5 `N=32` accumulator promotion now
   reaches the adjacent single-CTA and TensorDescriptor-fed two-CTA matrices.
   Positive coverage includes single-CTA root accumulator, indexed accumulator

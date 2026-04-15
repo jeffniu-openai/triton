@@ -9302,11 +9302,14 @@ MMA_M64_PLAIN_KIND_CASES = [
     for kind, acc_layout_kind, n, k, use_acc in product(
         MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
     )
+] + [
+    (kind, "linear", 32, k, use_acc)
+    for kind, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128), (False, True))
 ]
 
 MMA_M64_ACC_SUBSLICE_CASES = [
     (kind, n, k, slice_start, use_acc)
-    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128), (False, True))
+    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128), (False, True))
     for slice_start in (0, n)
 ]
 
@@ -9325,14 +9328,14 @@ MMA_TILE_PERMUTED_KIND_CASES = [
 
 MMA_LHS_TILE_PERMUTED_NK_CASES = [
     (kind, n, k, k // 4)
-    for kind, n, k in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128, 256))
+    for kind, n, k in product(MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128, 256))
     # The direct shared-B helper's tf32 128x256x256 tile exceeds shared memory.
     if not (kind == "tf32" and n == 256 and k == 256)
 ]
 
 MMA_LHS_SUBSLICE_NK_CASES = [
     (kind, acc_layout_kind, n, k)
-    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128))
+    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
 ]
 
 

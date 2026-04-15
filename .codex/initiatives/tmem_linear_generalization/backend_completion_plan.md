@@ -503,6 +503,10 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 17:12 UTC: saturated the remaining supported plain-MMAv5 `N=32`
+  M64 and TMEM-LHS matrices. M64 linear/root and subslice rows plus LHS
+  tile/subslice rows are positive at `N=32`; the M64 legacy root remains on
+  its 64-column accumulator-tile contract.
 - 2026-04-15 16:58 UTC: extended the `N=32` plain-MMAv5 accumulator coverage
   through adjacent single-CTA root/index/subslice matrices and
   TensorDescriptor-fed two-CTA matrices. Direct i8 unsupported diagnostics now

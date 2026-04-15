@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Current plain MMAv5 M64/LHS `N=32` checkpoint, 2026-04-15 17:12 UTC:
+  M64 linear accumulator roots, M64 accumulator subslice views, TMEM-LHS
+  tile-permuted rows, and TMEM-LHS subslice rows now include `N=32` where the
+  helper contracts can represent that shape. The affected four-GPU selector
+  passed all `848` selected rows. M64 legacy root coverage intentionally still
+  starts at `N=64` because that helper uses a fixed 64-column legacy
+  accumulator tile, not a 32-column logical root.
+
 - Current adjacent plain MMAv5 `N=32` matrix promotion, 2026-04-15 16:58 UTC:
   the single-CTA root accumulator, indexed accumulator view, accumulator
   subslice view, and TensorDescriptor-fed two-CTA matrices now include `N=32`

@@ -16549,3 +16549,26 @@ Open after this slice:
   - these rows were stale matrix floors over the now-general plain
     accumulator family and descriptor-view handling; no new lowering branch was
     needed.
+
+## 2026-04-15 17:12 UTC: plain MMAv5 M64/LHS N32 matrix promotion
+
+- Promoted the remaining supported plain-MMAv5 `N=32` rows in the M64 and LHS
+  matrices:
+  - added M64 linear accumulator root rows at `N=32`;
+  - added M64 accumulator subslice rows at `N=32`;
+  - added output `N=32` to TMEM-LHS tile-permuted rows;
+  - added output `N=32` to TMEM-LHS subslice rows.
+- Preserved the M64 legacy root floor at `N=64` because the helper uses a
+  fixed 64-column legacy accumulator tile; this is a test/API contract, not a
+  linear-layout backend negative.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split execution of the affected M64 root/subslice and
+    TMEM-LHS tile/subslice test functions passed all `848` selected tests
+    (`212` per shard).
+- Current conclusion:
+  - this closes the remaining supported plain-MMAv5 `N=32` matrix floors found
+    in the M64/LHS tables. The next meaningful frontiers are scaled-MMA scale
+    descriptor semantics and copy row/packet scheduling, not more plain
+    accumulator family floors.
