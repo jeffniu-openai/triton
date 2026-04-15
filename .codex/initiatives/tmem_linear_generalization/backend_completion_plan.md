@@ -299,6 +299,12 @@ Progress:
   still saw lane-expanded logical columns. Phase 2 therefore needs a
   lane-aware physical query and copy schedule for packed sub-dword lanes,
   not just a looser column-contiguity check.
+- 2026-04-15 22:45 UTC: carried those two schedule requirements into the
+  structured failure object. `TMemCopyInstructionColumnProjectionFailure` now
+  records `packedLaneBits` for packed-lane failures and `descriptorRowDelta`
+  for descriptor-row-stride selections, so the next scheduler implementation
+  can consume the required lane or row-delta fact without reparsing diagnostic
+  text.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

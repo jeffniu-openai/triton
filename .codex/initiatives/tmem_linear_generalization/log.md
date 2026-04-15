@@ -17743,3 +17743,30 @@ Open after this slice:
     PYTHONPATH=./python pytest -s --tb=short -q
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
     (`4 passed in 3.47s`).
+
+## 2026-04-15 22:45 UTC: copy failure schedule fields
+
+- Extended `TMemCopyInstructionColumnProjectionFailure` with:
+  - `descriptorRowDelta`, the offending offset expressed in descriptor-row
+    strides when the failure is a descriptor-row-stride selection;
+  - `packedLaneBits`, the number of low sub-dword lane bits for packed-lane
+    failures.
+- Updated packed-lane diagnostics to state that the missing support requires a
+  lane-aware physical query separating physical dword columns from packed
+  sub-dword lanes, matching the 22:42 probe.
+- `TRITON_DEBUG_TMEM_QUERY=1` now prints:
+  - `descriptorRowDelta=32` for the scales shared-subslice copy failure;
+  - `packedLaneBits=1` for the legacy f16 packed copy failure.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-failure-fields
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_legacy_subword_dtypes_report_clean_error or
+    cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout'`
+    (`7 passed, 10981 deselected in 3.75s`);
+  - query-debug probes for the descriptor-row and packed-lane fields;
+  - `git diff --check`.

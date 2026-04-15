@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:45 UTC: the structured copy instruction-column failure now
+  preserves the schedule dimensions identified by the latest probes:
+  `packedLaneBits` for sub-dword packed-lane state and `descriptorRowDelta` for
+  column-selected descriptor-row strides. Normal diagnostics and clean-negative
+  behavior are unchanged, but query debug now reports e.g.
+  `descriptorRowDelta=32` for scales shared-subslice copy and
+  `packedLaneBits=1` for legacy f16 packed copy. Validation: `make -j8`,
+  py-compile, focused packed/scales copy pytest selector (`7` rows), debug
+  probes for both fields, and `git diff --check`.
 - 2026-04-15 22:42 UTC: legacy no-scales subword `tcgen05.copy` was
   re-probed as a packed-lane support candidate. A temporary planner change let
   sub-32-bit lane bits with zero offset pass the instruction-column proof, but

@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current copy failure-field checkpoint, 2026-04-15 22:45 UTC: the structured
+  instruction-column failure object now carries the two missing schedule
+  dimensions exposed by the recent probes. Packed-lane failures record
+  `packedLaneBits`, and descriptor-row-stride failures record
+  `descriptorRowDelta`. This is behavior-preserving but important for the next
+  real scheduler work: debug output now says
+  `descriptor-row-stride-selection ... descriptorRowDelta=32` for scales
+  shared-subslice copy and `packed-lane-state ... packedLaneBits=1` for legacy
+  f16 packed copy. Validation passed: `make -j8`, py-compile of the runtime
+  matrix, focused packed/scales copy pytest selector (`7` rows), both debug
+  probes, and `git diff --check`.
+
 - Current packed-lane copy reprobe checkpoint, 2026-04-15 22:42 UTC: legacy
   no-scales subword copy remains a real lane-model gap. A temporary
   instruction-column relaxation accepted sub-32-bit lane bits whose source

@@ -9087,11 +9087,17 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
     os << "Within one " << failure.instructionColumns
        << "-column tcgen05.copy instruction, source column bit 0 maps to no "
           "shared offset. This projection carries sub-32-bit packed lane "
-          "state outside the LinearLayout offset dimension. Current copy "
-          "scheduling cannot synthesize packed-lane tcgen05.copy descriptors "
-          "from that projection; use an unpacked TensorMemoryLinearLayout for "
-          "dense subword copies, or a tmem.store/tmem.load path until packed "
-          "lane copy semantics are modeled explicitly.";
+          "state outside the LinearLayout offset dimension";
+    if (failure.packedLaneBits > 0)
+      os << " (" << failure.packedLaneBits << " lane bit"
+         << (failure.packedLaneBits == 1 ? "" : "s") << ")";
+    os << ". Current copy scheduling cannot synthesize packed-lane tcgen05.copy "
+          "descriptors or tile extents from that projection; the planner needs "
+          "a lane-aware physical query that separates physical dword columns "
+          "from packed sub-dword lanes. Use an unpacked "
+          "TensorMemoryLinearLayout for dense subword copies, or a "
+          "tmem.store/tmem.load path until packed lane copy semantics are "
+          "modeled explicitly.";
     return os.str();
   }
 
@@ -9107,7 +9113,11 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
   if (failure.descriptorRowStride && failure.actualOffset > 0 &&
       failure.actualOffset % *failure.descriptorRowStride == 0 &&
       failure.actualOffset != failure.expectedOffset) {
-    os << " (" << (failure.actualOffset / *failure.descriptorRowStride)
+    int32_t descriptorRowDelta =
+        failure.descriptorRowDelta
+            ? *failure.descriptorRowDelta
+            : failure.actualOffset / *failure.descriptorRowStride;
+    os << " (" << descriptorRowDelta
        << " descriptor-row stride"
        << (failure.actualOffset == *failure.descriptorRowStride ? "" : "s")
        << "), which would require this column bit to select a different "
@@ -9162,6 +9172,8 @@ getTMemCopyInstructionColumnProjectionPlan(
     failureInfo.logicalColBit = 0;
     failureInfo.actualOffset = 0;
     failureInfo.expectedOffset = 1;
+    if (bitwidth > 0 && bitwidth < 32 && 32 % bitwidth == 0)
+      failureInfo.packedLaneBits = llvm::Log2_32(32 / bitwidth);
     if (failure)
       *failure = failureInfo;
     if (error)
@@ -9213,6 +9225,7 @@ getTMemCopyInstructionColumnProjectionPlan(
                actualOffset != expectedOffset) {
       failureInfo.kind = TMemCopyInstructionColumnProjectionFailureKind::
           DescriptorRowStrideSelection;
+      failureInfo.descriptorRowDelta = actualOffset / *descriptorRowStride;
     } else {
       failureInfo.kind =
           TMemCopyInstructionColumnProjectionFailureKind::NonContiguousOffset;
@@ -9331,7 +9344,14 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
                      << " actual="
                      << instructionProjectionFailure.actualOffset
                      << " expected="
-                     << instructionProjectionFailure.expectedOffset << "\n";
+                     << instructionProjectionFailure.expectedOffset;
+        if (instructionProjectionFailure.descriptorRowDelta)
+          llvm::errs() << " descriptorRowDelta="
+                       << *instructionProjectionFailure.descriptorRowDelta;
+        if (instructionProjectionFailure.packedLaneBits > 0)
+          llvm::errs() << " packedLaneBits="
+                       << instructionProjectionFailure.packedLaneBits;
+        llvm::errs() << "\n";
       }
       std::string reason;
       llvm::raw_string_ostream os(reason);
