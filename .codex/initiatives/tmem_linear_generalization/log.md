@@ -14626,3 +14626,26 @@ Open after this slice:
 - Tooling note: bare `lit` and `python3 -m lit` are unavailable in this shell,
   so focused lit RUN lines were executed directly with local `triton-opt` and
   `python/triton/FileCheck`.
+
+## 2026-04-15 06:34 UTC: first shared physical-query API
+
+- Added `TMemPhysicalQuery` in `TensorMemoryUtils.h` as the first common
+  physical-query carrier for standalone TMEM views. It currently records the
+  standalone memdesc type, physical `LinearLayout`, `twoCTAs`, origin, and
+  whether the query is for tensor-memory scales.
+- Added `inferStandaloneTMemPhysicalQuery(...)` overloads. The implementation
+  deliberately wraps the existing `inferStandaloneTMemViewTypeImpl(...)` path
+  and initializes origin to zero so this checkpoint preserves current support
+  decisions while creating a durable API seam for exact physical-query work.
+- Updated `TTNG::TMemCopyOp::verify` to consume the destination
+  `TMemPhysicalQuery` instead of separately inferring a standalone memdesc type
+  and calling `toLinearLayout`.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`
+    with local build tooling on `PATH`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: extend the physical-query object with explicit active shape,
+  allocation shape, and element bitwidth, then begin separating exact
+  descriptor-view origin from standalone type fallback.

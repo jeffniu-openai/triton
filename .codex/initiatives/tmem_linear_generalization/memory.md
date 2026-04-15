@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current Phase 1 slice, 2026-04-15 06:34 UTC: introduced
+  `TMemPhysicalQuery` and `inferStandaloneTMemPhysicalQuery(...)` as the first
+  shared physical-query API. The query currently wraps the existing standalone
+  view-type inference to preserve behavior and carries the standalone memdesc
+  type, physical `LinearLayout`, `twoCTAs`, zero origin, and `isScales`.
+  `ttng.tmem_copy` now uses this query as its destination physical facts
+  instead of independently inferring a standalone type and reconstructing the
+  layout. This is a scaffolding checkpoint for exact physical-query work, not a
+  support expansion. Validation passed: `make -j8`, direct invalid/conversion
+  lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`. Next concrete step: make the query object carry
+  allocation shape / active shape / element bitwidth explicitly, then start
+  separating exact descriptor-view origin from standalone type fallback.
+
 - Current backend-completion directive, 2026-04-15 06:15 UTC: use the expanded
   runtime matrix as the correctness anchor for making the TMEM backend
   linear-layout complete over the Blackwell TMEM ISA surface. Preserve this

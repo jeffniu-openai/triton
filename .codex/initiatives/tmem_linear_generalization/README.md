@@ -95,6 +95,18 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current physical-query API checkpoint, 2026-04-15 06:34 UTC:
+  `TMemPhysicalQuery` now exists as the first shared carrier for standalone
+  physical TMEM view facts: standalone memdesc type, physical `LinearLayout`,
+  `twoCTAs`, zero origin for the current standalone path, and scales-vs-linear
+  classification. `inferStandaloneTMemPhysicalQuery(...)` wraps the existing
+  standalone view-type inference and `ttng.tmem_copy` now consumes that query
+  instead of separately asking for a standalone type and then reconstructing
+  `toLinearLayout`. This is intentionally behavior-preserving; it creates the
+  Phase 1 API seam for exact physical queries before changing support
+  decisions. Validation passed: `make -j8`, direct invalid/conversion lit RUN
+  lines via local `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current backend-completion planning checkpoint, 2026-04-15 06:15 UTC: the
   expanded runtime matrix is now the correctness anchor for backend work rather
   than the end goal. Preserve the conclusion that the remaining hard gaps

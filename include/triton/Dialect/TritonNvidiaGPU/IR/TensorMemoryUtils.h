@@ -31,6 +31,14 @@ struct TMemLdStQueryLayout {
   llvm::SmallVector<int32_t> origin;
 };
 
+struct TMemPhysicalQuery {
+  gpu::MemDescType memTy;
+  LinearLayout layout;
+  bool twoCTAs;
+  llvm::SmallVector<int32_t> origin;
+  bool isScales;
+};
+
 struct TMemLdStSupportQueryPlan {
   TMemLdStQueryLayout query;
   std::optional<TMemLdStRowPlan> rowPlan;
@@ -132,6 +140,13 @@ bool isUnsupportedDirectTMemLdStDescriptorView(
 
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemViewType(Value memDesc, std::string *error = nullptr);
+
+FailureOr<TMemPhysicalQuery>
+inferStandaloneTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);
+
+FailureOr<TMemPhysicalQuery>
+inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
+                                 std::string *error);
 
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,

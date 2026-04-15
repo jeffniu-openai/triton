@@ -72,6 +72,13 @@ Artifact targets:
 - Compiler-only tests for query extraction from linear, scales, and descriptor
   view chains.
 
+Progress:
+- 2026-04-15 06:34 UTC: added the first `TMemPhysicalQuery` carrier plus
+  `inferStandaloneTMemPhysicalQuery(...)`, and routed `ttng.tmem_copy`
+  destination analysis through it. This preserves existing standalone
+  view-type behavior while creating the API seam for exact physical-query
+  expansion.
+
 Tasks:
 - Introduce a first-class physical view/query object carrying:
   - physical `LinearLayout`;

@@ -4336,6 +4336,46 @@ FailureOr<MemDescType> inferStandaloneTMemViewType(Value memDesc,
       memDesc, /*preserveNonCanonicalView=*/false, error);
 }
 
+FailureOr<TMemPhysicalQuery>
+inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
+                                 std::string *error) {
+  auto maybeTy = inferStandaloneTMemViewTypeImpl(
+      memDesc, preserveNonCanonicalView, error);
+  if (failed(maybeTy))
+    return failure();
+  auto encoding = maybeTy->getEncoding();
+  if (!isTensorMemoryEncoding(encoding)) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+
+  bool isScales = isa<TensorMemoryScalesEncodingAttr>(encoding);
+  bool twoCTAs = false;
+  if (auto scales = dyn_cast<TensorMemoryScalesEncodingAttr>(encoding)) {
+    twoCTAs = product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
+  } else {
+    auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
+    if (!maybeTwoCTAs) {
+      if (error)
+        *error = "expected tensor memory layout encoding";
+      return failure();
+    }
+    twoCTAs = *maybeTwoCTAs;
+  }
+
+  auto layout = toLinearLayout(*maybeTy);
+  return TMemPhysicalQuery{
+      *maybeTy, layout, twoCTAs,
+      SmallVector<int32_t>(layout.getNumInDims(), 0), isScales};
+}
+
+FailureOr<TMemPhysicalQuery>
+inferStandaloneTMemPhysicalQuery(Value memDesc, std::string *error) {
+  return inferStandaloneTMemPhysicalQuery(
+      memDesc, /*preserveNonCanonicalView=*/false, error);
+}
+
 FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
                                             ArrayRef<int64_t> dstShape,
                                             Type dstElementType,

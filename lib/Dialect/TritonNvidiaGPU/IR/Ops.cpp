@@ -1551,14 +1551,15 @@ LogicalResult TMEMCopyOp::verify() {
   }
   auto shmemLl = toLinearLayout(srcTy);
   std::string tmemError;
-  auto maybeStandaloneDstTy = inferStandaloneTMemViewType(getDst(), &tmemError);
-  if (failed(maybeStandaloneDstTy)) {
+  auto maybeDstQuery = inferStandaloneTMemPhysicalQuery(getDst(), &tmemError);
+  if (failed(maybeDstQuery)) {
     return emitOpError(tmemError.empty()
                            ? "unsupported tensor memory descriptor view for "
                              "tcgen05.copy"
                            : tmemError);
   }
-  auto tmemLl = toLinearLayout(*maybeStandaloneDstTy);
+  auto maybeStandaloneDstTy = maybeDstQuery->memTy;
+  auto tmemLl = maybeDstQuery->layout;
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
   auto cvt = tmemLl.invertAndCompose(shmemLl);
@@ -1635,7 +1636,7 @@ LogicalResult TMEMCopyOp::verify() {
     }
     auto isNoScalesPlanSupported = [&](const TMemCopyPlan &plan) {
       std::string layoutSupportError;
-      if (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family,
+      if (!isDirectTMemCopyLayoutSupported(maybeStandaloneDstTy, plan.family,
                                            &layoutSupportError))
         return false;
       if (!isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family,
@@ -1647,7 +1648,7 @@ LogicalResult TMEMCopyOp::verify() {
     if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
       std::string layoutSupportError;
-      (void)isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy,
+      (void)isDirectTMemCopyLayoutSupported(maybeStandaloneDstTy,
                                             copyPlans.front().family,
                                             &layoutSupportError);
       std::string sharedLayoutSupportError;
