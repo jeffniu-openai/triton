@@ -14997,3 +14997,26 @@ Open after this slice:
 - Next: commit and push this selector-mode checkpoint, then extend the planner
   result from "selected copy plan" to "selected executable schedule" so the
   scales/no-scales lowerers do not duplicate descriptor-loader construction.
+
+## 2026-04-15 07:28 UTC: shared copy descriptor-layout selection
+
+- Added `TMemCopyDescriptorLayoutSelection` and
+  `selectTMemCopyDescriptorLayout(...)`.
+- The new helper returns the exact `LinearLayout` and MN orientation selected
+  for one copy message descriptor.
+- Descriptor-plan support now calls this helper instead of duplicating the
+  descriptor-layout/orientation search.
+- LLVM lowering now calls the same helper before building
+  `DotOpMmaSmemLoader`, reducing the chance that support and lowering silently
+  choose different descriptor candidates.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`8 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+    (`2 passed`);
+  - `git diff --check`.
+- Next: commit and push this descriptor-selection checkpoint, then inspect the
+  remaining scales/no-scales failures with the planner evidence in hand.

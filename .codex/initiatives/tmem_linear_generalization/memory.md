@@ -8605,3 +8605,28 @@ rejection, not rescue
 - Boundary: intended behavior-preserving abstraction cleanup. This creates a
   single selector seam for the next support work but does not yet promote
   scales `warpx2` or no-scales two-CTA `warpx2::02_13`.
+
+## Latest: 2026-04-15 07:28 UTC shared copy descriptor-layout selection
+
+- Added `TMemCopyDescriptorLayoutSelection` and
+  `selectTMemCopyDescriptorLayout(...)`.
+- The helper performs the shared descriptor-layout and MN-orientation search
+  for one `TMemCopyMessagePlan`, using the same MMAv5 descriptor
+  representability predicate and `Dense4x256b` transposed-descriptor exception
+  as the support checker.
+- `getTMemCopySharedDescriptorPlanSupport(...)` now calls the selector instead
+  of open-coding the descriptor-layout/orientation loop.
+- `tcgen05.copy` lowering now consumes the selected descriptor layout and MN
+  orientation directly before building `DotOpMmaSmemLoader`, so lowering and
+  support agree on which layout candidate was intended.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+  (`8 passed`);
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+  (`2 passed`);
+  `git diff --check`.
+- Boundary: intended behavior-preserving abstraction cleanup. The remaining
+  gap is that actual loader construction still lives in lowering because it
+  depends on the shared-memory base value and rewriter.

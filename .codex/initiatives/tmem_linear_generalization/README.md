@@ -95,6 +95,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current descriptor-layout selection checkpoint, 2026-04-15 07:28 UTC:
+  descriptor synthesis now exposes `selectTMemCopyDescriptorLayout(...)`,
+  returning the exact shared descriptor layout and MN orientation selected for
+  each copy message. The support checker and LLVM lowering consume the same
+  selection helper, reducing drift between "verifier says representable" and
+  "lowering builds a loader". Validation passed: `make -j8`, direct
+  invalid/conversion RUN lines via local `triton-opt` and
+  `python/triton/FileCheck`, focused `cp_scales and clean` pytest slice
+  (`8 passed`), two representative no-scales copy rows (`2 passed`), and
+  `git diff --check`.
+
 - Current unified copy-plan selector checkpoint, 2026-04-15 07:25 UTC:
   copy-plan support now has an explicit `TMemCopyPlanSupportKind` for
   no-scales tensor memory versus tensor-memory scales. Verification and

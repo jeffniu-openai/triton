@@ -147,6 +147,11 @@ struct TMemCopyPlanSelection {
   explicit operator bool() const { return plan.has_value(); }
 };
 
+struct TMemCopyDescriptorLayoutSelection {
+  LinearLayout layout;
+  unsigned mnDim;
+};
+
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
 
 Value getTMemForwardingSource(Value memDesc);
@@ -368,6 +373,13 @@ llvm::SmallVector<LinearLayout>
 getTMemCopyDescriptorLayouts(gpu::MemDescType srcTy, const LinearLayout &shmemLl,
                              const LinearLayout &cvt,
                              const TMemCopyMessagePlan &message);
+
+std::optional<TMemCopyDescriptorLayoutSelection>
+selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
+                               const LinearLayout &shmemLl,
+                               const LinearLayout &cvt,
+                               const TMemCopyMessagePlan &message,
+                               TMemCopyFamily family, int bitwidth);
 
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,

@@ -1537,30 +1537,23 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
           continue;
         }
       }
-      bool foundDescriptorLayout = false;
-      for (const auto &srcDescLayout :
-           getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message)) {
-        for (unsigned mnDim : {0u, 1u}) {
-          auto loader = DotOpMmaSmemLoader::build(
-              loc, rewriter, srcDescLayout, bitwidth, smemBase,
-              message.descriptorShape, mnDim, 5);
-          if (failed(loader))
-            continue;
-          if (loader->getDescriptor().transposed &&
-              plan.family != TMemCopyFamily::Dense4x256b)
-            continue;
-          PlannedCopyMessage plannedMessage{message, *loader, std::nullopt};
-          candidateMessages.push_back(std::move(plannedMessage));
-          foundDescriptorLayout = true;
-          break;
-        }
-        if (foundDescriptorLayout)
-          break;
-      }
-      if (!foundDescriptorLayout) {
+      auto descriptorLayout = selectTMemCopyDescriptorLayout(
+          srcTy, shmemLl, cvt, message, plan.family, bitwidth);
+      if (!descriptorLayout) {
         validPlan = false;
         break;
       }
+      auto loader = DotOpMmaSmemLoader::build(
+          loc, rewriter, descriptorLayout->layout, bitwidth, smemBase,
+          message.descriptorShape, descriptorLayout->mnDim, 5);
+      if (failed(loader) ||
+          (loader->getDescriptor().transposed &&
+           plan.family != TMemCopyFamily::Dense4x256b)) {
+        validPlan = false;
+        break;
+      }
+      PlannedCopyMessage plannedMessage{message, *loader, std::nullopt};
+      candidateMessages.push_back(std::move(plannedMessage));
     }
     if (!validPlan)
       continue;

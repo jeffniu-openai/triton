@@ -7991,6 +7991,35 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
   return false;
 }
 
+static std::optional<TMemCopyDescriptorLayoutSelection>
+selectTMemCopyDescriptorLayout(ArrayRef<LinearLayout> srcDescLayouts,
+                               ArrayRef<unsigned> descriptorShape,
+                               TMemCopyFamily family, int bitwidth) {
+  bool allowTransposed = family == TMemCopyFamily::Dense4x256b;
+  static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
+  for (const LinearLayout &srcDescLayout : srcDescLayouts) {
+    for (unsigned mnDim : kDescriptorOrientations) {
+      if (canRepresentAsMMASmemDescriptor(srcDescLayout, descriptorShape,
+                                          bitwidth, mnDim, 5,
+                                          allowTransposed)) {
+        return TMemCopyDescriptorLayoutSelection{srcDescLayout, mnDim};
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<TMemCopyDescriptorLayoutSelection>
+selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
+                               const LinearLayout &shmemLl,
+                               const LinearLayout &cvt,
+                               const TMemCopyMessagePlan &message,
+                               TMemCopyFamily family, int bitwidth) {
+  return selectTMemCopyDescriptorLayout(
+      getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message),
+      message.descriptorShape, family, bitwidth);
+}
+
 TMemCopySupportResult
 getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
                                        const LinearLayout &shmemLl,
@@ -8001,19 +8030,10 @@ getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
     if (message.useDirectSeedDescriptor &&
         getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
       continue;
-    bool allowTransposed = plan.family == TMemCopyFamily::Dense4x256b;
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
-    bool representable = llvm::any_of(srcDescLayouts, [&](const LinearLayout &srcDescLayout) {
-      static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
-      return llvm::any_of(ArrayRef(kDescriptorOrientations),
-                          [&](unsigned mnDim) {
-                            return canRepresentAsMMASmemDescriptor(
-                                srcDescLayout, message.descriptorShape,
-                                bitwidth, mnDim, 5, allowTransposed);
-                          });
-    });
-    if (representable)
+    if (selectTMemCopyDescriptorLayout(srcDescLayouts, message.descriptorShape,
+                                       plan.family, bitwidth))
       continue;
     std::string reason;
     llvm::raw_string_ostream os(reason);
