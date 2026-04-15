@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:33 UTC: copy instruction-column projection failures now have
+  a typed planner model instead of being only inline diagnostic strings.
+  `TMemCopyInstructionColumnProjectionFailure` classifies packed-lane state,
+  non-contiguous offsets, non-offset components, and the important
+  descriptor-row-stride selection case that blocks scales descriptor-view /
+  shared-subslice copy. Query debug now prints the structured failure, e.g.
+  `descriptor-row-stride-selection bit=2 actual=1024 expected=4`, giving the
+  next source-column/message split scheduler a real requirement object to
+  consume. Validation: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, focused copy diagnostic pytest selector
+  (`15` rows), query-debug kind probe, and `git diff --check`.
 - 2026-04-15 22:29 UTC: two quick guard-lift reprobes were recorded and
   removed without source changes. Mixed-precision fp4A TMEM-LHS scaled-MMAv5
   compiles if the verifier guard is bypassed, but representative tile,

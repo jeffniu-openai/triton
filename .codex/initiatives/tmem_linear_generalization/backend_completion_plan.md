@@ -285,6 +285,13 @@ Progress:
   confirms the next support-bearing copy edit must introduce a real
   sub-instruction source-column/message split or destination-column mask rather
   than another descriptor basis enumeration.
+- 2026-04-15 22:33 UTC: converted instruction-column projection misses from
+  inline string construction into `TMemCopyInstructionColumnProjectionFailure`.
+  The planner now classifies descriptor-row-stride selection separately from
+  packed-lane state, non-contiguous offsets, and non-offset components. This
+  preserves current behavior while making the scales descriptor-view /
+  shared-subslice split requirement a typed scheduler input instead of a
+  diagnostic-only fact.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

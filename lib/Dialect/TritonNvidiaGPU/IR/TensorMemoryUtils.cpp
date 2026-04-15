@@ -9061,10 +9061,73 @@ selectTMemCopyDescriptorLayout(ArrayRef<LinearLayout> srcDescLayouts,
   return std::nullopt;
 }
 
+static StringRef stringifyTMemCopyInstructionColumnProjectionFailureKind(
+    TMemCopyInstructionColumnProjectionFailureKind kind) {
+  switch (kind) {
+  case TMemCopyInstructionColumnProjectionFailureKind::None:
+    return "none";
+  case TMemCopyInstructionColumnProjectionFailureKind::PackedLaneState:
+    return "packed-lane-state";
+  case TMemCopyInstructionColumnProjectionFailureKind::NonContiguousOffset:
+    return "non-contiguous-offset";
+  case TMemCopyInstructionColumnProjectionFailureKind::DescriptorRowStrideSelection:
+    return "descriptor-row-stride-selection";
+  case TMemCopyInstructionColumnProjectionFailureKind::NonOffsetComponent:
+    return "non-offset-component";
+  }
+  llvm_unreachable("unknown tcgen05.copy instruction-column failure kind");
+}
+
+static std::string formatTMemCopyInstructionColumnProjectionFailure(
+    const TMemCopyInstructionColumnProjectionFailure &failure) {
+  std::string note;
+  llvm::raw_string_ostream os(note);
+  if (failure.kind ==
+      TMemCopyInstructionColumnProjectionFailureKind::PackedLaneState) {
+    os << "Within one " << failure.instructionColumns
+       << "-column tcgen05.copy instruction, source column bit 0 maps to no "
+          "shared offset. This projection carries sub-32-bit packed lane "
+          "state outside the LinearLayout offset dimension. Current copy "
+          "scheduling cannot synthesize packed-lane tcgen05.copy descriptors "
+          "from that projection; use an unpacked TensorMemoryLinearLayout for "
+          "dense subword copies, or a tmem.store/tmem.load path until packed "
+          "lane copy semantics are modeled explicitly.";
+    return os.str();
+  }
+
+  os << "Within one " << failure.instructionColumns
+     << "-column tcgen05.copy instruction, source column bit "
+     << failure.logicalColBit << " maps to ";
+  if (failure.actualOffset == 0)
+    os << "no shared offset";
+  else
+    os << "shared offset " << failure.actualOffset;
+  if (failure.hasNonOffsetContribution)
+    os << " plus a non-offset component";
+  if (failure.descriptorRowStride && failure.actualOffset > 0 &&
+      failure.actualOffset % *failure.descriptorRowStride == 0 &&
+      failure.actualOffset != failure.expectedOffset) {
+    os << " (" << (failure.actualOffset / *failure.descriptorRowStride)
+       << " descriptor-row stride"
+       << (failure.actualOffset == *failure.descriptorRowStride ? "" : "s")
+       << "), which would require this column bit to select a different "
+          "descriptor row within the same instruction footprint";
+  }
+  os << " instead of contiguous shared offset " << failure.expectedOffset
+     << ". Current copy scheduling cannot split sub-instruction source "
+        "columns or mask destination columns inside one tcgen05.copy atom, "
+        "so this projection needs a different copy atom, source format, or "
+        "masked multi-message schedule before it can be supported.";
+  return os.str();
+}
+
 std::optional<TMemCopyInstructionColumnProjection>
-getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
-                                           const TMemCopyMessagePlan &message,
-                                           int bitwidth, std::string *error) {
+getTMemCopyInstructionColumnProjectionPlan(
+    const LinearLayout &cvt, const TMemCopyMessagePlan &message, int bitwidth,
+    std::string *error,
+    TMemCopyInstructionColumnProjectionFailure *failure) {
+  if (failure)
+    *failure = TMemCopyInstructionColumnProjectionFailure{};
   TMemCopyInstructionColumnProjection projection;
   const LinearLayout &descriptorCvt =
       message.descriptorCvt ? *message.descriptorCvt : cvt;
@@ -9092,18 +9155,17 @@ getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
   int32_t unitOffset = descriptorCvt.getBasis(kCol, 0, kOffset);
   projection.unitSourceOffset = unitOffset;
   if (unitOffset == 0 && bitwidth < 32) {
-    std::string note;
-    llvm::raw_string_ostream os(note);
-    os << "Within one " << instrCols
-       << "-column tcgen05.copy instruction, source column bit 0 maps to no "
-          "shared offset. This projection carries sub-32-bit packed lane "
-          "state outside the LinearLayout offset dimension. Current copy "
-          "scheduling cannot synthesize packed-lane tcgen05.copy descriptors "
-          "from that projection; use an unpacked TensorMemoryLinearLayout for "
-          "dense subword copies, or a tmem.store/tmem.load path until packed "
-          "lane copy semantics are modeled explicitly.";
+    TMemCopyInstructionColumnProjectionFailure failureInfo;
+    failureInfo.kind =
+        TMemCopyInstructionColumnProjectionFailureKind::PackedLaneState;
+    failureInfo.instructionColumns = instrCols;
+    failureInfo.logicalColBit = 0;
+    failureInfo.actualOffset = 0;
+    failureInfo.expectedOffset = 1;
+    if (failure)
+      *failure = failureInfo;
     if (error)
-      *error = os.str();
+      *error = formatTMemCopyInstructionColumnProjectionFailure(failureInfo);
     return std::nullopt;
   }
   if (unitOffset <= 0)
@@ -9136,33 +9198,29 @@ getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
       continue;
     }
 
-    std::string note;
-    llvm::raw_string_ostream os(note);
-    os << "Within one " << instrCols
-       << "-column tcgen05.copy instruction, source column bit " << bit
-       << " maps to ";
-    if (actualOffset == 0)
-      os << "no shared offset";
-    else
-      os << "shared offset " << actualOffset;
-    if (nonOffsetContribution)
-      os << " plus a non-offset component";
-    if (descriptorRowStride && actualOffset > 0 &&
-        actualOffset % *descriptorRowStride == 0 &&
-        actualOffset != expectedOffset) {
-      os << " (" << (actualOffset / *descriptorRowStride)
-         << " descriptor-row stride"
-         << (actualOffset == *descriptorRowStride ? "" : "s")
-         << "), which would require this column bit to select a different "
-            "descriptor row within the same instruction footprint";
+    TMemCopyInstructionColumnProjectionFailure failureInfo;
+    failureInfo.instructionColumns = instrCols;
+    failureInfo.logicalColBit = bit;
+    failureInfo.actualOffset = actualOffset;
+    failureInfo.expectedOffset = expectedOffset;
+    failureInfo.descriptorRowStride = descriptorRowStride;
+    failureInfo.hasNonOffsetContribution = nonOffsetContribution;
+    if (nonOffsetContribution) {
+      failureInfo.kind =
+          TMemCopyInstructionColumnProjectionFailureKind::NonOffsetComponent;
+    } else if (descriptorRowStride && actualOffset > 0 &&
+               actualOffset % *descriptorRowStride == 0 &&
+               actualOffset != expectedOffset) {
+      failureInfo.kind = TMemCopyInstructionColumnProjectionFailureKind::
+          DescriptorRowStrideSelection;
+    } else {
+      failureInfo.kind =
+          TMemCopyInstructionColumnProjectionFailureKind::NonContiguousOffset;
     }
-    os << " instead of contiguous shared offset " << expectedOffset
-       << ". Current copy scheduling cannot split sub-instruction source "
-          "columns or mask destination columns inside one tcgen05.copy atom, "
-          "so this projection needs a different copy atom, source format, or "
-          "masked multi-message schedule before it can be supported.";
+    if (failure)
+      *failure = failureInfo;
     if (error)
-      *error = os.str();
+      *error = formatTMemCopyInstructionColumnProjectionFailure(failureInfo);
     return std::nullopt;
   }
   return projection;
@@ -9257,9 +9315,24 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
       }
     }
     std::string instructionProjectionError;
+    TMemCopyInstructionColumnProjectionFailure instructionProjectionFailure;
     auto instructionProjection = getTMemCopyInstructionColumnProjectionPlan(
-        cvt, message, bitwidth, &instructionProjectionError);
+        cvt, message, bitwidth, &instructionProjectionError,
+        &instructionProjectionFailure);
     if (!instructionProjection) {
+      if (debugTMemQuery &&
+          instructionProjectionFailure.kind !=
+              TMemCopyInstructionColumnProjectionFailureKind::None) {
+        llvm::errs() << "[tmem-copy] instruction-column failure kind="
+                     << stringifyTMemCopyInstructionColumnProjectionFailureKind(
+                            instructionProjectionFailure.kind)
+                     << " bit="
+                     << instructionProjectionFailure.logicalColBit
+                     << " actual="
+                     << instructionProjectionFailure.actualOffset
+                     << " expected="
+                     << instructionProjectionFailure.expectedOffset << "\n";
+      }
       std::string reason;
       llvm::raw_string_ostream os(reason);
       os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)

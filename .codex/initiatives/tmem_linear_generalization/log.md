@@ -17676,3 +17676,37 @@ Open after this slice:
     TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-subslice-debug2
     TRITON_DEBUG_TMEM_QUERY=1`;
   - `make -j8` after removing the temporary guard lift.
+
+## 2026-04-15 22:33 UTC: copy instruction-column failure model
+
+- Added `TMemCopyInstructionColumnProjectionFailureKind` and
+  `TMemCopyInstructionColumnProjectionFailure` to the TMEM copy planner.
+- Refactored `getTMemCopyInstructionColumnProjectionPlan(...)` so unsupported
+  instruction-column projections are classified structurally before being
+  formatted into the existing diagnostic text.
+- The model distinguishes:
+  - packed-lane state for sub-32-bit dense copies;
+  - non-contiguous source offsets;
+  - source-column bases with non-offset components;
+  - descriptor-row-stride selection, the key scales descriptor-view /
+    shared-subslice boundary.
+- With `TRITON_DEBUG_TMEM_QUERY=1`, the scales shared-subslice repro now prints
+  `instruction-column failure kind=descriptor-row-stride-selection bit=2
+  actual=1024 expected=4`.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-projection-model
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout or
+    cp_no_scales_linear_subword_dtypes or
+    cp_no_scales_legacy_subword_dtypes_report_clean_error'`
+    (`15 passed, 10973 deselected in 11.55s`);
+  - query-debug kind probe under
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-projection-debug-kind
+    TRITON_DEBUG_TMEM_QUERY=1`;
+  - `git diff --check`.

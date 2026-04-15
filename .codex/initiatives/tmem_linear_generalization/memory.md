@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current copy instruction-column failure model checkpoint, 2026-04-15
+  22:33 UTC: the copy planner now returns a structured
+  `TMemCopyInstructionColumnProjectionFailure` when a message cannot prove its
+  per-instruction source-column projection. The model classifies packed-lane
+  state, non-contiguous offsets, non-offset components, and
+  descriptor-row-stride selection. Existing diagnostics are preserved via a
+  formatter, but `TRITON_DEBUG_TMEM_QUERY=1` now also prints the typed
+  classification; the scales shared-subslice repro emits
+  `descriptor-row-stride-selection bit=2 actual=1024 expected=4`. This is not
+  a support promotion, but it replaces a string-only atomization boundary with
+  a planner-level requirement that future source-column/message split logic can
+  consume. Validation passed: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, focused copy diagnostic pytest selector
+  (`15` rows), query-debug kind probe, and `git diff --check`.
+
 - Current mixed-fp4A / scales-subslice reprobe checkpoint, 2026-04-15
   22:29 UTC: two tempting guard lifts are still not support paths. Temporarily
   bypassing the mixed-precision fp4 LHS TMEM verifier guard made representative

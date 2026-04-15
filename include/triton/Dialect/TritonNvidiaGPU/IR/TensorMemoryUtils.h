@@ -181,6 +181,25 @@ struct TMemCopyInstructionColumnProjectionStep {
   int32_t sourceOffset;
 };
 
+enum class TMemCopyInstructionColumnProjectionFailureKind {
+  None,
+  PackedLaneState,
+  NonContiguousOffset,
+  DescriptorRowStrideSelection,
+  NonOffsetComponent,
+};
+
+struct TMemCopyInstructionColumnProjectionFailure {
+  TMemCopyInstructionColumnProjectionFailureKind kind =
+      TMemCopyInstructionColumnProjectionFailureKind::None;
+  unsigned instructionColumns = 0;
+  unsigned logicalColBit = 0;
+  int32_t actualOffset = 0;
+  int32_t expectedOffset = 0;
+  std::optional<int32_t> descriptorRowStride;
+  bool hasNonOffsetContribution = false;
+};
+
 struct TMemCopyInstructionColumnProjection {
   unsigned instructionColumns = 0;
   int32_t unitSourceOffset = 0;
@@ -464,7 +483,9 @@ std::optional<TMemCopyInstructionColumnProjection>
 getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
                                            const TMemCopyMessagePlan &message,
                                            int bitwidth,
-                                           std::string *error = nullptr);
+                                           std::string *error = nullptr,
+                                           TMemCopyInstructionColumnProjectionFailure
+                                               *failure = nullptr);
 
 TMemCopySupportResult
 getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,
