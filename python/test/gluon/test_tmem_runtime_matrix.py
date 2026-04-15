@@ -4758,6 +4758,12 @@ LD_RED_PURE_ROW_PERMUTED_N_SWEEP_CASES = [
     for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
 ]
 
+LD_RED_EXPANDED_ROW_PERMUTED_CASES = [
+    ("reverse", 32, "32x32b.x32"),
+    ("rotate1", 64, "32x32b.x64"),
+    ("even_odd", 128, "32x32b.x128"),
+]
+
 LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES = [
     (row_perm_kind, col_perm_kind, n, expected_shape)
     for row_perm_kind in PERMUTED_LAYOUT_KINDS
@@ -4918,6 +4924,24 @@ LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
         )
         for n in (32, 64, 128, 256)
     ],
+    pytest.param(
+        "m256_col_reverse_256x64",
+        lambda: _make_tmem_linear_layout_permuted(256, 64, "identity", "reverse"),
+        256,
+        64,
+        8,
+        "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+        id="m256_col_reverse_256x64",
+    ),
+    pytest.param(
+        "m256_rowcol_even_odd_256x128",
+        lambda: _make_tmem_linear_layout_permuted(256, 128, "even_odd", "even_odd"),
+        256,
+        128,
+        8,
+        "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+        id="m256_rowcol_even_odd_256x128",
+    ),
     *[
         pytest.param(
             f"block_128x{n}",
@@ -7488,6 +7512,31 @@ def test_tmem_runtime_matrix_ld_red_pure_row_permuted_n_sweep(
 ):
     M = 128
     num_warps = 4
+    layout = _make_tmem_linear_layout_permuted(M, N, row_perm_kind, "identity")
+    compiled = _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=num_warps,
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+
+    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("row_perm_kind,N,expected_shape", LD_RED_EXPANDED_ROW_PERMUTED_CASES)
+def test_tmem_runtime_matrix_ld_red_expanded_row_permuted_linear_layout(
+    red_op, use_abs, propagate_nan, row_perm_kind, N, expected_shape
+):
+    M = 256
+    num_warps = 8
     layout = _make_tmem_linear_layout_permuted(M, N, row_perm_kind, "identity")
     compiled = _run_tmem_reduction_case(
         layout,

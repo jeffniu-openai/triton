@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Current `ld.red` expanded-row permutation checkpoint, 2026-04-15 13:43 UTC:
+  256-row `TensorMemoryLinearLayout` reductions now support row-basis
+  permutations when the column packet order remains canonical. The immediate
+  bug was that the previous identity-256 promotion let row-permuted layouts
+  through the `ld.red` predicate, but `getTmemAllocSizes(...)` still reported
+  256 physical rows because MMAv5-family allocation sizing only matched the
+  low row basis order used by the canonical family spelling. The allocator now
+  has a physical-layout helper for separable power-of-two expanded-row linear
+  images: it proves pure row bases as an unordered set, proves canonical pure
+  column bases in packet order, then allocates 128 physical rows and folds the
+  extra row selector into columns. Runtime coverage pins representative
+  `reverse`, `rotate1`, and `even_odd` row permutations at
+  `M=256,N={32,64,128}` with 8 warps. A boundary probe found that
+  `M=256` column permutations currently miscopy after allocation succeeds, so
+  the reduction-friendly source predicate now keeps expanded-row column
+  permutations as clean unsupported rows instead of promoting wrong code.
+  Validation passed: `make -j8`, `python3 -m py_compile
+  python/test/gluon/test_tmem_runtime_matrix.py`, focused expanded-row
+  positive plus column-boundary clean-negative pytest slice (`40 passed`),
+  invalid verifier, and `git diff --check`.
+
 - Current `ld.red` identity-256 checkpoint, 2026-04-15 13:30 UTC:
   ordinary identity `TensorMemoryLinearLayout` sources with `M=256` and
   `N in {32,64,128}` are now positive hardware-reduction coverage. The old

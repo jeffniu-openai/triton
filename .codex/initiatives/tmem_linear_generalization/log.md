@@ -15974,3 +15974,43 @@ Open after this slice:
   - identity `256x256` reaches resource analysis and fails with shared-memory
     OOR; keep it as a resource boundary unless the test kernel is reworked to
     reduce shared-memory pressure.
+
+## 2026-04-15 13:43 UTC: `ld.red` expanded-row row-basis permutations
+
+- Fixed the next `ld.red` expanded-row generality gap exposed immediately after
+  promoting ordinary identity `M=256` layouts.
+- Probe result:
+  - `M=256` row-permuted layouts (`reverse`, `rotate1`, `even_odd`) reached
+    the reduction-friendly predicate but crashed in
+    `TritonTensorMemoryAllocationPass` because allocation sizing still
+    reported 256 physical TMEM rows;
+  - after folding separable expanded-row layouts to a 128-row physical image,
+    representative row-permuted reductions passed the runtime oracle and
+    emitted the expected `tcgen05.ld.red.sync.aligned.32x32b.x*` packets;
+  - `M=256` column permutations are a separate schedule gap: a direct probe
+    of `col_reverse` miscopied after allocation succeeded, and `tile_n=32`
+    produced an N-sharded reduction layout, so expanded-row column
+    permutations are kept clean unsupported for now.
+- Implementation:
+  - added allocation sizing for separable power-of-two expanded-row
+    `TensorMemoryLinearLayout` images with canonical column packet order;
+  - the helper treats row basis order algebraically as an unordered physical
+    basis set and folds selectors above row 127 into the column allocation;
+  - tightened the `ld.red` source predicate so `M=256` layouts require
+    canonical column packet order, while existing `M=128` column-permuted
+    positives remain valid.
+- Tests:
+  - added representative `M=256` row-permuted `ld.red` runtime rows for
+    `reverse`, `rotate1`, and `even_odd`;
+  - added clean-negative rows for `M=256` column and row+column permutations
+    that would otherwise risk allocator or wrong-code behavior.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-expanded-row pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ld_red_expanded_row_permuted_linear_layout or m256_col_reverse_256x64 or m256_rowcol_even_odd_256x128"`
+    (`40 passed`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`.
+- Remaining boundary:
+  - expanded-row column permutations need a real direct `ld/st` packet
+    schedule proof before they can be promoted for `ld.red`; do not treat the
+    allocation fold as sufficient support evidence.

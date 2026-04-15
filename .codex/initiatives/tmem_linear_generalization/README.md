@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 13:43 UTC: `tcgen05.ld.red` now covers 256-row
+  `TensorMemoryLinearLayout` sources with row basis permutations and canonical
+  column packet order. The allocator now recognizes separable expanded-row
+  linear images as a 128-row physical TMEM allocation with the extra row
+  selector folded into columns, independent of row-basis order. This fixes the
+  allocator assertion exposed by `M=256` row-permuted reductions and keeps
+  `reverse`, `rotate1`, and `even_odd` row-basis permutations positive for
+  `N in {32,64,128}` representatives. A probe also showed `M=256` column
+  permutations miscopy under the current direct load/store packet schedule, so
+  the `ld.red` source predicate now rejects expanded-row column permutations
+  cleanly until that distinct schedule gap is solved.
 - 2026-04-15 13:30 UTC: `tcgen05.ld.red` now accepts ordinary identity
   `TensorMemoryLinearLayout` sources with `M=256` and `N in {32,64,128}`.
   The previous reduction-friendly source predicate only admitted a 128-row

@@ -1188,6 +1188,79 @@ static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
   return linearized;
 }
 
+static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
+                                      StringAttr inDim, unsigned outDimIdx,
+                                      int64_t extent,
+                                      bool requireAscendingOrder = false) {
+  if (!layout.hasInDim(inDim) || extent < 1 || !llvm::isPowerOf2_64(extent) ||
+      layout.getInDimSize(inDim) != extent)
+    return false;
+
+  SmallVector<int32_t> bases;
+  bases.reserve(layout.getInDimSizeLog2(inDim));
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(inDim); ++idx) {
+    auto basis = layout.getBasis(inDim, idx);
+    if (basis.size() != static_cast<size_t>(layout.getNumOutDims()) ||
+        basis[outDimIdx] <= 0)
+      return false;
+    for (auto [coordIdx, coord] : llvm::enumerate(basis)) {
+      if (coordIdx == outDimIdx)
+        continue;
+      if (coord != 0)
+        return false;
+    }
+    bases.push_back(basis[outDimIdx]);
+  }
+
+  if (!requireAscendingOrder)
+    llvm::sort(bases);
+  SmallVector<int32_t> expected;
+  for (int64_t bit = 1; bit < extent; bit <<= 1)
+    expected.push_back(static_cast<int32_t>(bit));
+  return llvm::equal(bases, expected);
+}
+
+static std::optional<TMemAllocation>
+getExpandedSeparableLinearTMemAllocSizes(const LinearLayout &layout,
+                                         unsigned preferredColStride) {
+  if (preferredColStride != 1 || layout.getNumOutDims() != 2)
+    return std::nullopt;
+
+  auto *ctx = (*layout.getOutDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto dims = standardOutDimNames(ctx, 2);
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (!llvm::is_contained(outDims, dims[0]) ||
+      !llvm::is_contained(outDims, dims[1]))
+    return std::nullopt;
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
+    return std::nullopt;
+
+  int64_t logicalRows = layout.getInDimSize(kRow);
+  if (logicalRows <= 128 || logicalRows % 128 != 0 ||
+      !llvm::isPowerOf2_64(logicalRows))
+    return std::nullopt;
+
+  int64_t logicalCols = layout.getInDimSize(kCol);
+  if (logicalCols < 1 || !llvm::isPowerOf2_64(logicalCols))
+    return std::nullopt;
+
+  unsigned rowOutIdx = layout.getOutDimIndex(dims[0]);
+  unsigned colOutIdx = layout.getOutDimIndex(dims[1]);
+  if (!hasPurePowerOfTwoBasisSet(layout, kRow, rowOutIdx, logicalRows) ||
+      !hasPurePowerOfTwoBasisSet(layout, kCol, colOutIdx, logicalCols,
+                                 /*requireAscendingOrder=*/true))
+    return std::nullopt;
+
+  // TMEM has 128 physical rows. A separable linear layout with more logical
+  // row bits is still a compact physical image: selectors above row 127 choose
+  // another column tile, independent of the order of the row basis bits.
+  return TMemAllocation{/*numRows=*/128,
+                        /*numCols=*/static_cast<int>(logicalCols *
+                                                     (logicalRows / 128))};
+}
+
 TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   auto *ctx = memDescType.getContext();
   auto S = [&](StringRef str) { return StringAttr::get(ctx, str); };
@@ -1210,6 +1283,13 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   unsigned preferredColStride = 32 / bitwidth;
   int nRow = ll.getInDimSize(kRow);
   int nCol = ll.getInDimSize(kCol) / preferredColStride;
+  if (!isLegacyLike) {
+    if (auto compactAlloc =
+            getExpandedSeparableLinearTMemAllocSizes(ll, preferredColStride)) {
+      nRow = compactAlloc->numRows;
+      nCol = compactAlloc->numCols;
+    }
+  }
   // Some exact linear layouts are logically taller than the 128-row TMEM
   // allocation image but are still an MMAv5 family tile with the high row
   // selector carried in columns. Allocate the proven physical family image.
@@ -2775,7 +2855,7 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
     return false;
 
   SmallVector<int32_t> pureRowCarryBases;
-  SmallVector<int32_t> pureColBases;
+  SmallVector<int32_t> pureColBasesInOrder;
   for (unsigned idx = 0; idx < layout.getInDimSizeLog2(kCol); ++idx) {
     auto basis = layout.getBasis(kCol, idx);
     if (basis.size() != 2)
@@ -2785,13 +2865,15 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
       continue;
     }
     if (basis[0] == 0 && basis[1] != 0) {
-      pureColBases.push_back(basis[1]);
+      pureColBasesInOrder.push_back(basis[1]);
       continue;
     }
     return false;
   }
 
   llvm::sort(pureRowCarryBases);
+  SmallVector<int32_t> pureColBases(pureColBasesInOrder.begin(),
+                                    pureColBasesInOrder.end());
   llvm::sort(pureColBases);
 
   SmallVector<int32_t> expectedPureRowCarryBases;
@@ -2810,6 +2892,9 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
     return false;
   for (int64_t col = 1; col < n; col <<= 1)
     expectedPureColBases.push_back(static_cast<int32_t>(col));
+  if (blockM == 256 &&
+      !llvm::equal(pureColBasesInOrder, expectedPureColBases))
+    return false;
   return llvm::equal(pureColBases, expectedPureColBases);
 }
 

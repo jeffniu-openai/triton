@@ -414,6 +414,14 @@ Progress:
   direct raw-query lowering can use the pure 256-row identity layout and still
   satisfy the reduction register-layout contract with 8 warps. The old
   identity `256x256` clean negative is now a shared-memory resource boundary.
+- 2026-04-15 13:43 UTC: promoted the row-basis-permuted subset of
+  expanded-row `M=256` `ld.red` sources. Allocation sizing now derives the
+  compact 128-row physical TMEM image from separable power-of-two linear
+  layout facts instead of depending on the canonical MMAv5 row-basis order.
+  Runtime coverage pins representative `reverse`, `rotate1`, and `even_odd`
+  row permutations. Expanded-row column permutations remain clean unsupported
+  because probes showed current direct `ld/st` packet scheduling can miscopy
+  them after allocation succeeds.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate
