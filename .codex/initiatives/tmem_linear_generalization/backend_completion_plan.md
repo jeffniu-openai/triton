@@ -427,9 +427,17 @@ Progress:
   detects pure 256-row linear images whose column bases are not in canonical
   packet order and rejects direct `tcgen05.ld/st`/source initialization before
   allocation or lowering can assert or expose wrong-code behavior. This is a
-  clean negative, not a support promotion: the remaining support work is to
-  derive the explicit packet-offset schedule that would make these layouts
-  realizable.
+  superseded clean negative: the 14:26 folded-query support checkpoint below
+  replaces it with positive direct `ld/st` coverage.
+- 2026-04-15 14:26 UTC: promoted the expanded-row column-permuted direct
+  `ld/st` subset using exact folded query arithmetic. The new helper derives
+  a physical 128-row query from the original separable linear layout: low row
+  bases remain in the TMEM row coordinate, the original column bases remain in
+  their exact user order, and the high row selector is carried as the next
+  TMEM column bit. This removes the temporary frontend/op-verifier guards and
+  avoids both wrong raw row-128 schedules and canonical fallback queries that
+  would erase column order. `ld.red` still has an independent source-layout
+  boundary for expanded-row column permutations.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

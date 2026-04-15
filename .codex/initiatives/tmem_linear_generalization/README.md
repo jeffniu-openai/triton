@@ -44,7 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
-- 2026-04-15 13:59 UTC: expanded-row `TensorMemoryLinearLayout` values with
+- 2026-04-15 14:26 UTC: expanded-row f32
+  `TensorMemoryLinearLayout` direct `tcgen05.ld/st` now supports separable
+  256-row layouts with non-canonical column basis order. The temporary
+  clean-negative boundary has been replaced by an exact folded physical query:
+  low row bases remain in the 128-row TMEM row coordinate, original column
+  bases keep their user order in TMEM columns, and the high row selector is
+  appended as the next TMEM column bit. Direct load/store no longer reaches a
+  raw row-128 schedule or a canonicalized fallback that would hide column
+  order. Runtime coverage promotes representative column-permuted direct
+  roundtrips, and the nearby expanded-row `ld.red` column-permuted rows now
+  fail at the reduction source contract after their source stores succeed.
+- Superseded by the 14:26 support checkpoint. 2026-04-15 13:59 UTC:
+  expanded-row `TensorMemoryLinearLayout` values with
   non-canonical column packet order now have a shared clean direct `ld/st`
   boundary. A common classifier recognizes the pure expanded-row physical
   image and detects column packet-order permutations. Gluon `load`/`store`,

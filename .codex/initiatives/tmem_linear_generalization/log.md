@@ -16049,3 +16049,55 @@ Open after this slice:
     proving an explicit direct packet-offset schedule for expanded-row column
     permutations, then replacing the diagnostic with positive runtime
     coverage.
+
+## 2026-04-15 14:26 UTC: direct `ld/st` expanded-row folded-query support
+
+- Replaced the 13:59 clean-negative boundary with positive direct
+  `tcgen05.ld/st` support for separable f32 256-row
+  `TensorMemoryLinearLayout` values whose column basis order is non-canonical.
+- Root cause:
+  - the first support attempt could pass store/load roundtrips by rejecting a
+    raw row-128 schedule and then falling through to a canonical MMAv5-family
+    query type;
+  - that was not a layout-complete proof because the canonical fallback
+    folded the high row selector into columns but discarded the original
+    column basis order;
+  - the correct abstraction is an exact folded physical query: low row bases
+    stay in the 128-row TMEM row coordinate, original column bases keep their
+    order in TMEM columns, and the high row selector is appended as the next
+    TMEM column bit.
+- Implementation:
+  - added an expanded-row folded-query helper in direct `ld/st` query
+    inference and full-shape query selection;
+  - removed the temporary raw-layout override that could address TMEM row
+    128 before falling back;
+  - kept the row-address legality guard as a generic safety check and made it
+    understand standard `dim0`/`dim1` output names as well as physical
+    `row`/`col` names;
+  - removed the temporary direct `ld/st` frontend/op-verifier clean-negative
+    guards and deleted the now-stale exported classifier for column-permuted
+    expanded-row layouts;
+  - loosened expanded-row allocation sizing to accept column basis order
+    permutations, matching the folded-query support.
+- Evidence:
+  - debug run for `identity/reverse,N=64` printed the folded query layout with
+    `col=1 -> logical col 32`, `col=2 -> logical col 16`, ...,
+    `col=32 -> logical col 1`, then `col=64 -> logical row 128`;
+  - trace shows raw query lowering succeeds with `warp=4 -> (0,64)` instead
+    of any row-128 packet schedule;
+  - runtime-matrix coverage promotes direct roundtrip rows for
+    `identity/reverse,N=64` and `even_odd/even_odd,N=128`.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-expanded-folded-query-final pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ldst_expanded_rowcol_permuted_linear_layout or ld_red_expanded_row_permuted_linear_layout or m256_col_reverse_256x64 or m256_rowcol_even_odd_256x128"`
+    (`42 passed, 9874 deselected`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Remaining boundary:
+  - expanded-row column-permuted layouts are now store/load-positive, but
+    `ld.red` still rejects them at the reduction-source contract. The next
+    reduction slice should decide whether the folded direct query is enough
+    to derive a reduction source layout or whether `ld.red` has an independent
+    ISA/atomization limit.

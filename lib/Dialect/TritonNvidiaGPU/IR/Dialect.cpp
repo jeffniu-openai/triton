@@ -1236,50 +1236,6 @@ static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
   return llvm::equal(*order, expected);
 }
 
-bool isExpandedRowColumnPermutedTMemLinearLayout(MemDescType memDescType,
-                                                 const LinearLayout &layout) {
-  if (memDescType.getElementTypeBitWidth() != 32 || memDescType.getRank() != 2 ||
-      memDescType.getShape() != memDescType.getAllocShape() ||
-      !isa<TensorMemoryLinearEncodingAttr>(memDescType.getEncoding()) ||
-      layout.getNumOutDims() != 2)
-    return false;
-
-  auto *ctx = memDescType.getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
-  auto dims = standardOutDimNames(ctx, 2);
-  auto outDims = llvm::to_vector(layout.getOutDimNames());
-  if (!llvm::is_contained(outDims, dims[0]) ||
-      !llvm::is_contained(outDims, dims[1]))
-    return false;
-
-  int64_t logicalRows = memDescType.getShape()[0];
-  int64_t logicalCols = memDescType.getShape()[1];
-  if (logicalRows <= 128)
-    return false;
-
-  auto rowOrder = getPurePowerOfTwoBasisOrder(
-      layout, kRow, layout.getOutDimIndex(dims[0]), logicalRows);
-  auto colOrder = getPurePowerOfTwoBasisOrder(
-      layout, kCol, layout.getOutDimIndex(dims[1]), logicalCols);
-  if (!rowOrder || !colOrder)
-    return false;
-
-  SmallVector<int32_t> expectedCols;
-  for (int64_t col = 1; col < logicalCols; col <<= 1)
-    expectedCols.push_back(static_cast<int32_t>(col));
-  return !llvm::equal(*colOrder, expectedCols);
-}
-
-bool isExpandedRowColumnPermutedTMemLinearLayout(MemDescType memDescType) {
-  if (memDescType.getRank() != 2 ||
-      !isa<TensorMemoryLinearEncodingAttr>(memDescType.getEncoding()))
-    return false;
-  return isExpandedRowColumnPermutedTMemLinearLayout(
-      memDescType,
-      toLinearLayout(memDescType.getShape(), memDescType.getEncoding()));
-}
-
 static std::optional<TMemAllocation>
 getExpandedSeparableLinearTMemAllocSizes(const LinearLayout &layout,
                                          unsigned preferredColStride) {
@@ -1309,8 +1265,7 @@ getExpandedSeparableLinearTMemAllocSizes(const LinearLayout &layout,
   unsigned rowOutIdx = layout.getOutDimIndex(dims[0]);
   unsigned colOutIdx = layout.getOutDimIndex(dims[1]);
   if (!hasPurePowerOfTwoBasisSet(layout, kRow, rowOutIdx, logicalRows) ||
-      !hasPurePowerOfTwoBasisSet(layout, kCol, colOutIdx, logicalCols,
-                                 /*requireAscendingOrder=*/true))
+      !hasPurePowerOfTwoBasisSet(layout, kCol, colOutIdx, logicalCols))
     return std::nullopt;
 
   // TMEM has 128 physical rows. A separable linear layout with more logical
@@ -2706,6 +2661,66 @@ static bool isTMemCompatibleCandidate(Operation *op, RankedTensorType tensorType
       computeTMemLdStEncodingInfo(candidateType, memType, maxnreg));
 }
 
+static std::optional<LinearLayout>
+getExpandedRowDirectI32x32bLayout(MemDescType memType,
+                                  const LinearLayout &memLayout,
+                                  unsigned numWarps) {
+  if (numWarps < 8 || memType.getElementTypeBitWidth() != 32 ||
+      memType.getRank() != 2 || memType.getShape() != memType.getAllocShape() ||
+      !isa<TensorMemoryLinearEncodingAttr>(memType.getEncoding()) ||
+      memLayout.getNumOutDims() != 2)
+    return std::nullopt;
+
+  auto *ctx = memType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kReg = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  auto dims = standardOutDimNames(ctx, 2);
+  auto outDims = llvm::to_vector(memLayout.getOutDimNames());
+  if (!llvm::is_contained(outDims, dims[0]) ||
+      !llvm::is_contained(outDims, dims[1]) || !memLayout.hasInDim(kRow) ||
+      !memLayout.hasInDim(kCol))
+    return std::nullopt;
+
+  int64_t logicalRows = memLayout.getInDimSize(kRow);
+  int64_t logicalCols = memLayout.getInDimSize(kCol);
+  if (logicalRows != 256 || logicalCols < 1 ||
+      !llvm::isPowerOf2_64(logicalCols))
+    return std::nullopt;
+
+  if (!getPurePowerOfTwoBasisOrder(memLayout, kRow,
+                                   memLayout.getOutDimIndex(dims[0]),
+                                   logicalRows) ||
+      !getPurePowerOfTwoBasisOrder(memLayout, kCol,
+                                   memLayout.getOutDimIndex(dims[1]),
+                                   logicalCols))
+    return std::nullopt;
+
+  LinearLayout::BasesT bases;
+  for (int64_t col = 1; col < logicalCols; col <<= 1)
+    bases[kReg].push_back({0, static_cast<int32_t>(col)});
+  bases[kLane] = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {16, 0}};
+  bases[kWarp] = {{32, 0}, {64, 0}, {128, 0}};
+  LinearLayout physicalTile(
+      std::move(bases),
+      {{kRow, static_cast<int32_t>(logicalRows)},
+       {kCol, static_cast<int32_t>(logicalCols)}},
+      /*requireSurjective=*/false);
+  if (!canComposeLinearLayouts(physicalTile, memLayout))
+    return std::nullopt;
+  auto ret = physicalTile.compose(memLayout);
+  SmallVector<StringAttr> canonicalInDims = {kReg, kLane, kWarp};
+  ret = ret.transposeIns(canonicalInDims);
+  auto withoutBroadcast = ret;
+  for (auto inDim : ret.getInDimNames())
+    withoutBroadcast = withoutBroadcast.removeZeroBasesAlongDim(inDim);
+  if (!withoutBroadcast.isInvertible())
+    return std::nullopt;
+  return ret;
+}
+
 DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
                                                      unsigned numWarps) {
   auto *ctx = memType.getContext();
@@ -3116,6 +3131,13 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
       }
     }
   }
+  if (!isScales && memType.getElementTypeBitWidth() == 32 &&
+      memType.getRank() == 2 && memType.getShape() == memType.getAllocShape()) {
+    auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+    if (auto expanded =
+            getExpandedRowDirectI32x32bLayout(memType, raw, numWarps))
+      tryPushUniqueLayout(*expanded);
+  }
 
   auto isCompatible = [&](const LinearLayout &layout) {
     auto candidateEncoding = tryGetLinearEncodingAttr(memType.getContext(), layout);
@@ -3237,6 +3259,19 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   }();
   if (memLL.getNumOutDims() == 0)
     return layouts;
+  if (!isScales && memType.getElementTypeBitWidth() == 32 &&
+      memType.getRank() == 2 && memType.getShape() == memType.getAllocShape()) {
+    auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+    if (auto expanded =
+            getExpandedRowDirectI32x32bLayout(memType, raw, numWarps)) {
+      if (isTMemCompatibleCandidate(op, tensorType, memType, *expanded)) {
+        auto attr = LinearEncodingAttr::get(tensorType.getContext(),
+                                            std::move(*expanded));
+        if (!llvm::is_contained(layouts, attr))
+          layouts.push_back(attr);
+      }
+    }
+  }
   int bitwidth = memType.getElementTypeBitWidth();
   bool prefer16x256 =
       triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");

@@ -1317,13 +1317,6 @@ LogicalResult TMEMStoreOp::verify() {
   if (!getDst().getType().getMutableMemory()) {
     return emitOpError("Cannot store into an immutable alloc");
   }
-  if (isExpandedRowColumnPermutedTMemLinearLayout(getDst().getType())) {
-    return emitOpError(
-        "direct TMEM store is unsupported for expanded-row "
-        "TensorMemoryLinearLayout values with non-canonical column packet "
-        "order; tcgen05.st needs an explicit packet-offset schedule for these "
-        "layouts");
-  }
   if (failed(
           verifyTMEMOperand(*this, getSrc().getType(), getDst().getType(), getDst(),
                             "source")))
@@ -1364,13 +1357,6 @@ LogicalResult TMEMLoadOp::verify() {
     return emitOpError("redOp is set but 'red' result is not present");
   if (hasRed && !redOp)
     return emitOpError("'red' result is present but redOp is not set");
-  if (!redOp && isExpandedRowColumnPermutedTMemLinearLayout(getSrc().getType())) {
-    return emitOpError(
-        "direct TMEM load is unsupported for expanded-row "
-        "TensorMemoryLinearLayout values with non-canonical column packet "
-        "order; tcgen05.ld needs an explicit packet-offset schedule for these "
-        "layouts");
-  }
 
   // abs and NaN require redOp
   if (useAbs && !redOp)
@@ -1494,13 +1480,6 @@ LogicalResult TMEMLoadOp::verify() {
 LogicalResult TMEMAllocOp::verify() {
   if (!isTensorMemoryEncoding(getType().getEncoding()))
     return emitOpError("should use tensor memory encoding");
-  if (getSrc() && isExpandedRowColumnPermutedTMemLinearLayout(getType())) {
-    return emitOpError(
-        "source initialization is unsupported for expanded-row "
-        "TensorMemoryLinearLayout values with non-canonical column packet "
-        "order; direct tcgen05.st needs an explicit packet-offset schedule for "
-        "these layouts");
-  }
   if (getSrc() &&
       failed(
           verifyTMEMOperand(*this, getSrc().getType(), getType(), getResult(),

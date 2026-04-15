@@ -1,6 +1,24 @@
 # TMEM Linear Generalization
 
-- Current direct `ld/st` expanded-row column-permutation boundary,
+- Current direct `ld/st` expanded-row folded-query support,
+  2026-04-15 14:26 UTC: expanded-row f32
+  `TensorMemoryLinearLayout` direct load/store now supports separable 256-row
+  layouts with non-canonical column basis order. The important fix was not the
+  earlier allocation fold alone; direct lowering now constructs an exact
+  folded query layout where low row bases stay in the 128-row TMEM row
+  coordinate, original column bases remain in their exact user order, and the
+  high row selector becomes the next TMEM column bit. Debug validation for
+  `identity/reverse, N=64` showed the query layout as
+  `col=1 -> logical col 32 ... col=32 -> logical col 1, col=64 -> logical row
+  128`, and the lowering trace shows the raw query path using the folded
+  column selector instead of addressing row 128. The temporary frontend,
+  verifier, and lowering clean-negative guards from the previous checkpoint are
+  gone; the stale exported classifier was removed too. Validation passed:
+  `make -j8`, focused debug/probe rows, focused expanded-row direct `ld/st`
+  plus neighboring `ld.red` slice (`42 passed`), invalid verifier, Blackwell
+  conversion FileCheck, py-compile, and `git diff --check`.
+
+- Superseded direct `ld/st` expanded-row column-permutation boundary,
   2026-04-15 13:59 UTC: expanded-row `TensorMemoryLinearLayout` values with
   non-canonical column packet order now fail through a shared clean diagnostic
   for direct `tcgen05.ld/st` instead of falling through to allocator assertions

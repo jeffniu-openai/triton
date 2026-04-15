@@ -1799,6 +1799,110 @@ static bool hasFullShapeTMemTile(MemDescType memTy) {
              memTy.getAllocShape().take_back(rank);
 }
 
+static std::optional<SmallVector<std::vector<int32_t>>>
+getPurePowerOfTwoLinearBases(const LinearLayout &layout, StringAttr inDim,
+                             unsigned outDimIdx, int64_t extent) {
+  if (!layout.hasInDim(inDim) || extent < 1 || !llvm::isPowerOf2_64(extent) ||
+      layout.getInDimSize(inDim) != extent)
+    return std::nullopt;
+
+  SmallVector<std::vector<int32_t>> bases;
+  bases.reserve(layout.getInDimSizeLog2(inDim));
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(inDim); ++idx) {
+    auto basis = layout.getBasis(inDim, idx);
+    if (basis.size() != static_cast<size_t>(layout.getNumOutDims()) ||
+        basis[outDimIdx] <= 0)
+      return std::nullopt;
+    for (auto [coordIdx, coord] : llvm::enumerate(basis)) {
+      if (coordIdx == outDimIdx)
+        continue;
+      if (coord != 0)
+        return std::nullopt;
+    }
+    bases.push_back(std::vector<int32_t>(basis.begin(), basis.end()));
+  }
+
+  SmallVector<int32_t> sortedValues;
+  sortedValues.reserve(bases.size());
+  for (ArrayRef<int32_t> basis : bases)
+    sortedValues.push_back(basis[outDimIdx]);
+  llvm::sort(sortedValues);
+
+  SmallVector<int32_t> expected;
+  for (int64_t bit = 1; bit < extent; bit <<= 1)
+    expected.push_back(static_cast<int32_t>(bit));
+  if (!llvm::equal(sortedValues, expected))
+    return std::nullopt;
+  return bases;
+}
+
+static std::optional<TMemLdStQueryLayout>
+getExpandedRowFoldedTMemQueryLayout(MemDescType memTy) {
+  if (!hasFullShapeTMemTile(memTy) || memTy.getElementTypeBitWidth() != 32 ||
+      memTy.getRank() != 2 ||
+      !isa<TensorMemoryLinearEncodingAttr>(memTy.getEncoding()))
+    return std::nullopt;
+
+  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding());
+  if (!maybeTwoCTAs)
+    return std::nullopt;
+
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto dims = standardOutDimNames(ctx, 2);
+  LinearLayout rawLayout =
+      toLinearLayout(memTy.getShape(), memTy.getEncoding());
+  if (rawLayout.getNumOutDims() != 2 || !rawLayout.hasInDim(kRow) ||
+      !rawLayout.hasInDim(kCol))
+    return std::nullopt;
+  if (!llvm::equal(rawLayout.getOutDimNames(), dims))
+    return std::nullopt;
+
+  int64_t logicalRows = rawLayout.getInDimSize(kRow);
+  int64_t logicalCols = rawLayout.getInDimSize(kCol);
+  if (logicalRows != 256 || logicalCols < 1 ||
+      !llvm::isPowerOf2_64(logicalCols))
+    return std::nullopt;
+
+  unsigned rowOutIdx = rawLayout.getOutDimIndex(dims[0]);
+  unsigned colOutIdx = rawLayout.getOutDimIndex(dims[1]);
+  auto rowBases =
+      getPurePowerOfTwoLinearBases(rawLayout, kRow, rowOutIdx, logicalRows);
+  auto colBases =
+      getPurePowerOfTwoLinearBases(rawLayout, kCol, colOutIdx, logicalCols);
+  if (!rowBases || !colBases)
+    return std::nullopt;
+
+  LinearLayout::BasesT bases;
+  bases[kRow] = {};
+  bases[kCol] = {};
+  for (const std::vector<int32_t> &basis : *rowBases) {
+    if (basis[rowOutIdx] < 128)
+      bases[kRow].push_back(basis);
+  }
+  for (const std::vector<int32_t> &basis : *colBases)
+    bases[kCol].push_back(basis);
+  for (const std::vector<int32_t> &basis : *rowBases) {
+    if (basis[rowOutIdx] >= 128)
+      bases[kCol].push_back(basis);
+  }
+
+  if (bases[kRow].size() != 7 || bases[kCol].size() != colBases->size() + 1)
+    return std::nullopt;
+
+  std::string layoutError;
+  auto maybeFolded = LinearLayout::tryCreate(
+      std::move(bases), llvm::to_vector(rawLayout.getOutDims()),
+      /*requireSurjective=*/true, &layoutError);
+  if (!maybeFolded)
+    return std::nullopt;
+
+  return TMemLdStQueryLayout{
+      *maybeFolded, *maybeTwoCTAs,
+      SmallVector<int32_t>(maybeFolded->getNumInDims(), 0)};
+}
+
 static std::optional<TMemLdStRowPlan>
 getFullShapeM64TMemRowPlan(MemDescType memTy) {
   if (!hasFullShapeTMemTile(memTy) || memTy.getRank() < 2 ||
@@ -1847,6 +1951,9 @@ getFullShapeMMAv5FamilyQueryLayout(MemDescType memTy) {
                                       memTy.getMutableMemory(), allocShape);
     return makeQuery(toLinearLayout(widenedTy), *maybeTwoCTAs);
   }
+
+  if (auto foldedQuery = getExpandedRowFoldedTMemQueryLayout(memTy))
+    return foldedQuery;
 
   if (auto info = getMMAv5AccumulatorLayoutInfo(memTy))
     return makeQuery(info->familyLayout, info->twoCTAs);
@@ -5891,17 +5998,6 @@ computeTMemLdStEncodingInfoImpl(
       bitwidth == 16 && !hasZeroRowBasis && !hasZeroColBasis &&
       memLayout.hasInDim(kCol) && logicalRows == activePhysicalRows &&
       logicalCols == memLayout.getInDimSize(kCol) * 2;
-  if (isExpandedRowColumnPermutedTMemLinearLayout(memTy, memLayout)) {
-    if (emitError) {
-      emitError()
-          << "Failed to lower TMEM load/store: expanded-row "
-             "TensorMemoryLinearLayout values require canonical column packet "
-             "order for direct tcgen05.ld/st. Column-permuted expanded-row "
-             "layouts need an explicit packet-offset schedule before they can "
-             "be lowered safely.";
-    }
-    return failure();
-  }
   // Zero row/col bases are part of the descriptor layout contract: they
   // describe broadcast/support bits in the logical view, not disposable
   // physical storage. Direct planning must keep those bases so loads, stores,
@@ -7005,6 +7101,54 @@ computeTMemLdStEncodingInfoImpl(
   info->warpRow0 = warpBasis0.empty() ? 0 : warpBasis0.front();
   info->warpRow1 = warpBasis1.empty() ? 0 : warpBasis1.front();
   info->baseOffset = rowPlan->baseOffset;
+
+  auto packedOffsetAddressesInvalidTMemRow = [](uint32_t packedOffset) {
+    return (packedOffset >> 16) >= 128;
+  };
+  auto layoutAddressesInvalidTMemRow = [&](const LinearLayout &layout) {
+    std::optional<StringAttr> physicalRowDim;
+    if (layout.hasOutDim(kRow)) {
+      physicalRowDim = kRow;
+    } else if (layout.getNumOutDims() == 2) {
+      physicalRowDim = *layout.getOutDimNames().begin();
+    }
+    if (!physicalRowDim)
+      return false;
+    for (auto inDim : layout.getInDimNames()) {
+      if (!layout.hasInDim(inDim))
+        continue;
+      for (unsigned idx = 0; idx < layout.getInDimSizeLog2(inDim); ++idx) {
+        if (layout.getBasis(inDim, idx, *physicalRowDim) >= 128)
+          return true;
+      }
+    }
+    return false;
+  };
+  bool hasInvalidDirectRowAddress =
+      packedOffsetAddressesInvalidTMemRow(info->baseOffset) ||
+      packedOffsetAddressesInvalidTMemRow(info->warpBaseOffset0) ||
+      packedOffsetAddressesInvalidTMemRow(info->warpBaseOffset1) ||
+      (info->secondHalfOffset &&
+       packedOffsetAddressesInvalidTMemRow(*info->secondHalfOffset)) ||
+      layoutAddressesInvalidTMemRow(info->reps);
+  if (!hasInvalidDirectRowAddress) {
+    for (int32_t packetOffset : info->packetOffsets) {
+      if (packedOffsetAddressesInvalidTMemRow(
+              static_cast<uint32_t>(packetOffset))) {
+        hasInvalidDirectRowAddress = true;
+        break;
+      }
+    }
+  }
+  if (hasInvalidDirectRowAddress) {
+    if (emitError) {
+      emitError() << "Failed to lower TMEM load/store: selected packet "
+                     "schedule addresses TMEM row >= 128. Expanded logical "
+                     "row selectors must be represented through a folded "
+                     "physical query or packet column offsets.";
+    }
+    return failure();
+  }
 
   auto halvePackedTMemRowOffset = [](uint32_t packedOffset) {
     uint32_t row = packedOffset >> 16;
