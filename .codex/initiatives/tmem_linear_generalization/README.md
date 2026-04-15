@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 12:25 UTC: scales descriptor-view copy was re-probed with
+  temporary multi-message and descriptor-skip machinery. A second
+  `warpx4.32x128b` message with `smemRow=64` does not change the parent-order
+  row mapping; adding `tmemRowDelta=1` faults with a misaligned address, and
+  `tmemRowDelta=64` still leaves the same wrong output. Temporarily skipping
+  representable descriptor matches found only two representable descriptor
+  selections: the first produces the known parent/root row order, and the
+  second duplicates row groups. Skips beyond that return to the clean-negative
+  diagnostic. All probe code was reverted; this row still needs a real
+  row-interleaving schedule, not a broader descriptor search.
 - 2026-04-15 12:10 UTC: dense no-scales linear copies now support the
   MMAv5-backed `M=256` row-group cases whose exact physical query is a
   `128x{64,128,256}` family image. Copy planning now accepts exact physical

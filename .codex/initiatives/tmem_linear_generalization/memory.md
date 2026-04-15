@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view schedule probe, 2026-04-15 12:25 UTC:
+  temporary probes ruled out the obvious current-message-field schedules for
+  the 128x32 `TensorMemoryScalesLayout` descriptor view. Adding a second
+  `warpx4.32x128b` message with `smemRow=64` produces the same parent/root
+  row-order output as the single-message descriptor exchange; setting
+  `tmemRowDelta=1` faults with a misaligned address, while
+  `tmemRowDelta=64` still leaves the same wrong output. A temporary
+  `TRITON_TMEM_COPY_DESCRIPTOR_MATCH_SKIP` selector over the expanded
+  descriptor-candidate set found only two representable descriptor selections:
+  skip 0 is the known parent-order mapping, and skip 1 duplicates row groups
+  rather than preserving logical row order; skip >= 2 cleanly returns to the
+  descriptor-synthesis diagnostic. All source probes were reverted. Treat this
+  as evidence that the current schedule fields lack the even/odd row partition
+  needed by this view, not as a candidate support path.
+
 - Current dense exact-query row-group support, 2026-04-15 12:10 UTC:
   single-CTA dense no-scales `TensorMemoryLinearLayout` copies with
   `M=256` and `N in {32,64,128}` are now positive runtime coverage. The key

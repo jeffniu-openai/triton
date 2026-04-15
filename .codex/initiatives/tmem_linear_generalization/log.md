@@ -15774,3 +15774,35 @@ Open after this slice:
   - 4-GPU `cp_no_scales` sweep: group 1 `77 passed, 10 skipped`, group 2
     `87 passed`, group 3 `87 passed`, group 4 `85 passed`;
   - `git diff --check`.
+
+## 2026-04-15 12:25 UTC: scales descriptor-view schedule probe
+
+- Re-probed the 128x32 scales descriptor-view clean-negative with temporary
+  source changes only; all probe code was reverted before this checkpoint.
+- Multi-message probes:
+  - `smemRow=64` as a second `warpx4.32x128b` message emitted 16 copy
+    instructions but left the same row-coded output as the single-message
+    descriptor exchange: logical row `r` read source row
+    `(r % 64) * 2 + r / 64`.
+  - `tmemRowDelta=1` on the second message compiled but faulted with a CUDA
+    misaligned-address error.
+  - `tmemRowDelta=64` also emitted 16 copy instructions and still produced the
+    same parent-order output.
+  - A source-row-only `smemRow=64` single-message plan emitted 8 copy
+    instructions and again produced the same parent-order output, showing the
+    current `smemRow` field is not an independent row-interleaving axis for
+    this family.
+- Descriptor-candidate probes:
+  - a temporary descriptor-match skip environment knob over the expanded
+    descriptor-candidate set found only two representable selections;
+  - skip 0 was the known parent/root row-order mapping;
+  - skip 1 duplicated row groups (`[-64, -62, -60, -58, -64, -62, ...]`);
+  - skip >= 2 returned to the clean descriptor-synthesis diagnostic.
+- Interpretation: this is still a real row-interleaving schedule gap. Broader
+  descriptor search and the existing message fields can make the opcode emit,
+  but they do not preserve logical view row order.
+- Validation after reverting probe code:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-clean-after-probe PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported'`
+    (`1 passed`);
+  - `git diff --check`.

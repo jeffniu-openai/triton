@@ -308,6 +308,13 @@ Progress:
   and the allocator can reserve the proven 128-row physical image. This
   promotes nine runtime rows and leaves `256x16` as the remaining clean atom
   classification negative.
+- 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
+  with temporary source-only experiments. Existing message fields do not
+  provide the needed even/odd row partition: `smemRow=64` is not an independent
+  row pass, `tmemRowDelta=1` faults, `tmemRowDelta=64` preserves the same wrong
+  output, and the only two representable descriptor selections are both wrong.
+  Keep the row as a clean schedule gap until the planner has a new row
+  partition abstraction or ISA evidence for one.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a
