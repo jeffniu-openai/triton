@@ -95,6 +95,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy descriptor-failure diagnostics checkpoint, 2026-04-15 07:18 UTC:
+  descriptor-synthesis support now returns a structured message identifying
+  the failing copy family, message index, number of candidate descriptor
+  layouts tried, descriptor shape, and instruction shape. The no-scales copy
+  verifier/lowering selector surfaces that first failure in diagnostics, so
+  hard gaps such as two-CTA `warpx2::02_13` now report planner evidence before
+  the higher-level clean-unsupported notes. Validation passed: `make -j8`,
+  direct invalid/conversion lit RUN lines via local `triton-opt` and
+  `FileCheck`, one targeted runtime clean-negative `warpx2::02_13` root row,
+  and `git diff --check`.
+
 - Current copy plan selection checkpoint, 2026-04-15 07:15 UTC:
   no-scales `ttng.tmem_copy` verification and lowering now share
   `selectTMemCopyPlan(...)`, which returns the first supported plan plus the

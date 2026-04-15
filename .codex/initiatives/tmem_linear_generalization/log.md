@@ -14925,3 +14925,28 @@ Open after this slice:
   descriptor synthesis evidence explicitly, so the two-CTA `warpx2::02_13` and
   scales failures can be explained by planner facts rather than by late generic
   descriptor failure text.
+
+## 2026-04-15 07:18 UTC: copy descriptor-synthesis failure notes
+
+- Added a structured descriptor-synthesis support helper for copy plans.
+- `getTMemCopyPlanSupport(...)` now returns the descriptor-synthesis failure
+  message directly instead of collapsing it to an empty
+  `DescriptorSynthesis` result.
+- The failure message records:
+  - the `tcgen05.copy` family;
+  - the failing message index;
+  - the number of candidate descriptor layouts tried;
+  - the descriptor shape; and
+  - the instruction shape.
+- Updated `test/TritonNvidiaGPU/invalid.mlir` for the two no-scales clean
+  negatives that now gain planner-evidence notes: the 128x128b descriptor
+  mismatch and the two-CTA `warpx2::02_13` hard frontier.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`;
+  - `git diff --check`.
+- Next: commit and push this diagnostics checkpoint. The remaining support work
+  should use this evidence to decide whether the failure is a true missing
+  descriptor-schedule synthesis path or an ISA/resource clean negative.

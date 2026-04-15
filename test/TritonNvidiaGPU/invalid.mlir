@@ -325,7 +325,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
   tt.func public @tmem_copy_no_scales_warpx2_candidate(
       %src: !ttg.memdesc<128x4xi32, #shared_cp_warpx2_candidate, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<128x4xi32, #tmem_linear_cp_128x4, #ttng.tensor_memory, mutable>) {
-    // expected-error @+3 {{The source shared layout maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-error @+4 {{The source shared layout maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-note @+3 {{tcgen05.copy.128x128b descriptor message 0 has no representable MMAv5 shared-memory descriptor; tried 2 candidate layout(s) for descriptor shape [32, 4] and instruction shape [32, 4].}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.128x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<128x4xi32, #shared_cp_warpx2_candidate, #ttg.shared_memory, mutable>, !ttg.memdesc<128x4xi32, #tmem_linear_cp_128x4, #ttng.tensor_memory, mutable>
@@ -341,7 +342,8 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttng.two-ctas" = true, "ttg.num-wa
   tt.func public @tmem_copy_no_scales_warpx2_02_13_twocta_clean_unsupported(
       %src: !ttg.memdesc<256x4xi32, #shared_cp_warpx2_02_13_twocta, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<256x4xi32, #tmem_cp_warpx2_02_13_twocta, #ttng.tensor_memory, mutable>) {
-    // expected-error @+4 {{The source shared layout maps to tcgen05.copy.warpx2::02_13.64x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-error @+5 {{The source shared layout maps to tcgen05.copy.warpx2::02_13.64x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-note @+4 {{tcgen05.copy.warpx2::02_13.64x128b descriptor message 0 has no representable MMAv5 shared-memory descriptor; tried 95 candidate layout(s) for descriptor shape [64, 4] and instruction shape [64, 4].}}
     // expected-note @+3 {{The two-CTA warpx2::02_13 path remains unsupported until Triton can synthesize a cta_group::2 descriptor/address schedule that preserves the high source-column bit; decomposing this tensor-memory view into cta_group::1 copies is not valid because two-CTA TMEM allocation uses cta_group::2 granularity.}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.warpx2::02_13.64x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}

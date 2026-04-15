@@ -7513,6 +7513,13 @@ bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
   return result.supported;
 }
 
+static TMemCopySupportResult
+getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
+                                       const LinearLayout &shmemLl,
+                                       const LinearLayout &cvt,
+                                       const TMemCopyPlan &plan,
+                                       int bitwidth);
+
 TMemCopySupportResult
 getTMemCopyPlanSupport(MemDescType srcTy, const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
@@ -7526,12 +7533,8 @@ getTMemCopyPlanSupport(MemDescType srcTy, const TMemPhysicalQuery &dstQuery,
   if (!sharedLayoutSupport)
     return sharedLayoutSupport;
 
-  if (!canSynthesizeTMemCopySharedDescriptorPlan(srcTy, shmemLl, cvt, plan,
-                                                 bitwidth)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis, "");
-  }
-  return getSupportedTMemCopyResult();
+  return getTMemCopySharedDescriptorPlanSupport(srcTy, shmemLl, cvt, plan,
+                                                bitwidth);
 }
 
 TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
@@ -7983,19 +7986,20 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
   return false;
 }
 
-bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
-                                               const LinearLayout &shmemLl,
-                                               const LinearLayout &cvt,
-                                               const TMemCopyPlan &plan,
-                                               int bitwidth) {
-  return llvm::all_of(plan.messages, [&](const auto &message) {
+static TMemCopySupportResult
+getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
+                                       const LinearLayout &shmemLl,
+                                       const LinearLayout &cvt,
+                                       const TMemCopyPlan &plan,
+                                       int bitwidth) {
+  for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     if (message.useDirectSeedDescriptor &&
         getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
-      return true;
+      continue;
     bool allowTransposed = plan.family == TMemCopyFamily::Dense4x256b;
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
-    return llvm::any_of(srcDescLayouts, [&](const LinearLayout &srcDescLayout) {
+    bool representable = llvm::any_of(srcDescLayouts, [&](const LinearLayout &srcDescLayout) {
       static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
       return llvm::any_of(ArrayRef(kDescriptorOrientations),
                           [&](unsigned mnDim) {
@@ -8004,7 +8008,31 @@ bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
                                 bitwidth, mnDim, 5, allowTransposed);
                           });
     });
-  });
+    if (representable)
+      continue;
+    std::string reason;
+    llvm::raw_string_ostream os(reason);
+    os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)
+       << " descriptor message " << messageIdx
+       << " has no representable MMAv5 shared-memory descriptor; tried "
+       << srcDescLayouts.size() << " candidate layout(s) for descriptor shape ["
+       << message.descriptorShape[0] << ", " << message.descriptorShape[1]
+       << "] and instruction shape [" << message.instrShape[0] << ", "
+       << message.instrShape[1] << "].";
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::DescriptorSynthesis, os.str());
+  }
+  return getSupportedTMemCopyResult();
+}
+
+bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
+                                               const LinearLayout &shmemLl,
+                                               const LinearLayout &cvt,
+                                               const TMemCopyPlan &plan,
+                                               int bitwidth) {
+  return getTMemCopySharedDescriptorPlanSupport(srcTy, shmemLl, cvt, plan,
+                                                bitwidth)
+      .supported;
 }
 
 } // namespace mlir::triton::nvidia_gpu

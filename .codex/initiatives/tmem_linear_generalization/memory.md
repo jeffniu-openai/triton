@@ -8536,3 +8536,21 @@ rejection, not rescue
 - Next: extend the selector/result toward a true copy planner object that can
   carry selected query facts, descriptor-message schedules, and descriptor
   synthesis failure evidence instead of only returning a supported plan.
+
+## Latest: 2026-04-15 07:18 UTC copy descriptor-synthesis diagnostics
+
+- Added a structured descriptor-synthesis support path for copy plans.
+- When a candidate message cannot be represented as an MMAv5 shared descriptor,
+  the failure message now records the copy family, message index, number of
+  candidate descriptor layouts tried, descriptor shape, and instruction shape.
+- `getTMemCopyPlanSupport(...)` now returns that descriptor-synthesis failure
+  directly instead of replacing it with an empty message.
+- Updated `test/TritonNvidiaGPU/invalid.mlir` so the no-scales
+  `128x128b` descriptor mismatch and two-CTA `warpx2::02_13` hard frontier
+  assert the new planner-evidence note.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`;
+  `git diff --check`.
+- Boundary: diagnostics improved; no copy support set changed.
