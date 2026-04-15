@@ -4930,6 +4930,12 @@ LD_RED_M64_EXPLICIT_VARIANT_CASES = [
     for load_variant in ("auto", "16x32bx2", "32x32b_splitn")
 ]
 
+LD_RED_M64_ROWCOL_PERMUTED_DEFAULT_CASES = [
+    pytest.param("reverse", "identity", 32, "16x32bx2.x8", (0, 16), id="row_reverse_n32"),
+    pytest.param("rotate1", "even_odd", 128, "16x32bx2.x32", (0, 64), id="row_rotate_col_even_odd_n128"),
+    pytest.param("identity", "reverse", 32, "16x32bx2.x8", (0, 16), id="col_reverse_n32"),
+]
+
 
 def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
     if layout_name == "identity":
@@ -7249,6 +7255,38 @@ def test_tmem_runtime_matrix_ld_red_m64_splitn_linear_layout(
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("row_perm_kind,col_perm_kind,N,expected_shape,expected_offsets",
+                         LD_RED_M64_ROWCOL_PERMUTED_DEFAULT_CASES)
+def test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_default_layout(
+    red_op, row_perm_kind, col_perm_kind, N, expected_shape, expected_offsets
+):
+    M = 64
+    layout = _make_tmem_linear_layout_m64_permuted(N, row_perm_kind, col_perm_kind)
+    compiled = _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        red_op,
+        False,
+        tl.PropagateNan.NONE,
+        num_warps=4,
+        expected_red_opcode_prefix="tcgen05.ld.red.sync.aligned.16x32bx2.x",
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        expected_shape,
+        red_op,
+        False,
+        tl.PropagateNan.NONE,
+        expected_offsets=expected_offsets,
+    )
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("N,load_variant,expected_shape,expected_offsets", LD_RED_M64_EXPLICIT_VARIANT_CASES)
 def test_tmem_runtime_matrix_ld_red_m64_explicit_splitn_variants(
     red_op, N, load_variant, expected_shape, expected_offsets
@@ -7273,6 +7311,26 @@ def test_tmem_runtime_matrix_ld_red_m64_explicit_splitn_variants(
         tl.PropagateNan.NONE,
         expected_offsets=expected_offsets,
     )
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+def test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_reports_clean_unsupported(capfd):
+    M = 64
+    N = 32
+    layout = _make_tmem_linear_layout_m64_permuted(N, "reverse", "identity")
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    with pytest.raises(Exception) as err:
+        tmem_ld_red_m64_explicit_layout_kernel[(1, )](
+            inp, out, red, layout, N, "32x32b", "min", False, tl.PropagateNan.NONE, num_warps=4
+        )
+    captured = capfd.readouterr()
+    text = str(err.value) + captured.err + captured.out
+    assert "tcgen05.ld.red requires at least an .x2 message shape" in text
+    assert "PTXAS error" not in text
+    assert "PassManager::run failed" not in text
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

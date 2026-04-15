@@ -17448,3 +17448,59 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py`
     (`160 passed, 10786 deselected in 261.44s`);
   - `git diff --check`.
+
+## 2026-04-15 21:23 UTC: M64 row-permuted ld.red default support
+
+- Followed up the M64 split-N support by probing noncanonical row/column
+  layouts.
+- Finding:
+  - explicit `auto`, `16x32bx2`, and `32x32b_splitn` layouts already produce
+    correct row-permuted M64 hardware reductions;
+  - the default `load_min/load_max` path still requested
+    `instr_variant="32x32b"`, which can scalarize row-permuted M64 layouts
+    into illegal `tcgen05.ld.red.32x32b.x1` packets;
+  - column-only permutations with canonical row anchors remain on the existing
+    compact default path.
+- Implementation:
+  - default reduction layout selection now uses the handle-aware M64 split-N
+    layout for simple M64 split-N layouts whose row bases are not in the
+    canonical row order;
+  - `TMEMLoadOp::verify()` rejects reduction plans whose selected message
+    shape has fewer than two repeats, matching the PTX `.ld.red` `.x2`
+    minimum;
+  - LLVM lowering has the same guard as a backstop for hand-authored or stale
+    IR;
+  - runtime-matrix coverage now includes row-reverse, row+column-permuted, and
+    column-reverse M64 default reductions plus an explicit row-permuted
+    `32x32b` clean diagnostic test.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-m64-red-row-default3
+    PYTHONPATH=./python pytest -s --tb=short -q -k
+    'ld_red_m64_rowcol_permuted_default_layout or
+    ld_red_m64_row_permuted_explicit_32x32b_reports_clean_unsupported'
+    python/test/gluon/test_tmem_runtime_matrix.py`
+    (`7 passed, 10946 deselected in 5.36s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-m64-tests3
+    PYTHONPATH=./python pytest -s --tb=short -q -k 'ld_red_m64'
+    python/test/gluon/test_tmem_runtime_matrix.py`
+    (`71 passed, 10882 deselected in 25.27s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-neighbors2
+    PYTHONPATH=./python pytest -s --tb=short -q -k
+    'ld_red_identity_linear_layout or
+    ld_red_explicit_compatible_layout_variants or
+    ld_red_explicit_n_sharded_layout_reports_clean_unsupported or
+    ld_red_additional_unsupported_layouts_report_clean_unsupported'
+    python/test/gluon/test_tmem_runtime_matrix.py`
+    (`160 passed, 10793 deselected in 259.70s`);
+  - direct invalid verifier RUN with
+    `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `git diff --check`.

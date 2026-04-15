@@ -645,6 +645,16 @@ Progress:
   `N in {32,64,128,256}` is positive for default reductions and explicit
   `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`; broader N sharding
   remains a software-reduction boundary.
+- 2026-04-15 21:23 UTC: closed the adjacent M64 row-permutation default
+  reduction gap. Probes showed row-permuted M64 layouts are hardware
+  reducible through the existing split-N `16x32bx2` schedule; only the default
+  frontend request for a `32x32b` register layout scalarized into illegal
+  `.ld.red.x1` packets. Default reduction layout selection now chooses the
+  handle-aware split-N layout for noncanonical M64 row layouts, and verifier
+  plus lowering reject any selected reduction message shape below the PTX
+  `.x2` minimum. This is still a Phase 4 cleanup target: the next step is to
+  make reduction layout selection a backend message-planner decision instead
+  of relying on frontend variant spelling.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

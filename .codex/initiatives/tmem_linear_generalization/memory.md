@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current M64 row-permuted `ld.red` default-layout checkpoint, 2026-04-15
+  21:23 UTC: the row-permuted M64 failure after the lane-16 support commit was
+  a default layout-selection/ISA-legality gap, not an unsupported hardware
+  reduction shape. Explicit `auto`, `16x32bx2`, and `32x32b_splitn` layouts for
+  row-permuted M64 reduce correctly through `tcgen05.ld.red.16x32bx2`; the
+  only broken path was the frontend default asking for `instr_variant="32x32b"`
+  and the backend scalarizing it into illegal `.ld.red.32x32b.x1` packets.
+  Default `load_min/load_max` now selects the handle-aware split-N layout for
+  noncanonical M64 row layouts while preserving the existing canonical-row
+  compact `32x32b`-requested path. Verifier and LLVM lowering now both reject
+  any selected reduction plan with fewer than two repeats, producing a clean
+  `.ld.red` `.x2` minimum diagnostic instead of a PTXAS error. New runtime
+  coverage pins row-reverse, row+column-permuted, and column-reverse default
+  reductions plus the explicit row-permuted `32x32b` clean diagnostic.
+
 - Current M64 split-N `ld.red` support checkpoint, 2026-04-15 21:09 UTC:
   M64 `tcgen05.ld.red` is no longer a clean negative for the canonical
   split-N family. The source predicate now admits normalized pure `64xN`

@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 21:23 UTC: M64 noncanonical-row `ld.red` default reduction
+  layout selection now uses the existing split-N `16x32bx2` path instead of
+  asking for a scalarizing `32x32b` layout. Row-permuted M64 linear layouts
+  were not ISA-impossible: explicit `auto`, `16x32bx2`, and
+  `32x32b_splitn` already produced correct hardware reductions. The frontend
+  default now selects that path for noncanonical M64 row layouts while
+  preserving the compact canonical-row path. `TMEMLoadOp::verify()` and LLVM
+  lowering also reject any selected `tcgen05.ld.red` plan whose message count
+  would be `.x1`, with a diagnostic pointing to reduction-compatible layouts
+  or explicit software reduction. Validation: `make -j8`, `py_compile`,
+  direct invalid verifier RUN, new M64 row/col-permuted focused rows passed
+  `7` tests, broad `ld_red_m64` passed `71` rows, neighboring `ld.red`
+  positives/negatives passed `160` rows, and `git diff --check`.
 - 2026-04-15 21:09 UTC: M64 split-N `tcgen05.ld.red` is now positive for
   the `16x32bx2` lane-split family. The reduction layout predicate now
   distinguishes layouts whose N dimension is entirely in registers from the

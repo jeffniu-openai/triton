@@ -1452,6 +1452,20 @@ LogicalResult TMEMLoadOp::verify() {
     if (encodingInfoOr->unpacked)
       return emitOpError(
           "tmem_load reduction requires packed format (unpacked=false)");
+    unsigned elementsPerThread = getElementsPerThread(encodingInfoOr->atom);
+    unsigned reductionRepeats =
+        encodingInfoOr->numRegsPerMessage / elementsPerThread;
+    if (reductionRepeats < 2) {
+      InFlightDiagnostic diag = emitOpError(
+          "tmem_load reduction selected a scalar tcgen05.ld.red message, "
+          "but tcgen05.ld.red requires at least an .x2 message shape.");
+      diag.attachNote()
+          << "The selected direct layout would lower to .x1 packets. Use a "
+             "reduction-compatible TMEM register layout such as "
+             "instr_variant=\"auto\" or instr_variant=\"16x32bx2\", or use "
+             "tmem.load(...)+tt.reduce(...) explicitly for software reduction.";
+      return diag;
+    }
 
     // Verify that the N dimension is directly reducible: either entirely in
     // registers, or split only across lane bit 4 where lowering combines the

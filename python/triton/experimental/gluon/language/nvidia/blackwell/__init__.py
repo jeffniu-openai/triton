@@ -124,6 +124,13 @@ def _is_simple_m64_splitn_tmem_layout(layout, n):
     return sorted(col_values) == [1 << bit for bit in range(n.bit_length() - 1)]
 
 
+def _has_canonical_m64_splitn_rows(layout):
+    if not isinstance(layout, TensorMemoryLinearLayout):
+        return False
+    rows = [list(basis) for basis in layout.rows]
+    return rows == [[1, 0], [2, 0], [4, 0], [8, 0], [0, 0], [16, 0], [32, 0]]
+
+
 def _is_4x256b_refresh_tmem_layout(layout, element_bitwidth, shape):
     if not isinstance(layout, TensorMemoryLinearLayout):
         return False
@@ -651,15 +658,28 @@ class tensor_memory_descriptor(base_value):
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
-            try:
-                layout = self.get_reg_layout(
-                    num_warps=num_warps,
-                    instr_variant="32x32b",
-                    _semantic=_semantic,
-                    _generator=_generator,
-                )
-            except Exception as e:
-                raise ValueError(str(e)) from e
+            shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(self.shape)]
+            raw_layout = _unwrap_if_constexpr(self.layout)
+            if (
+                num_warps == 4
+                and len(shape) == 2
+                and shape[0] == 64
+                and self.dtype.primitive_bitwidth == 32
+                and not isinstance(raw_layout, TensorMemoryScalesLayout)
+                and _is_simple_m64_splitn_tmem_layout(raw_layout, shape[1])
+                and not _has_canonical_m64_splitn_rows(raw_layout)
+            ):
+                layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
+            if layout is None:
+                try:
+                    layout = self.get_reg_layout(
+                        num_warps=num_warps,
+                        instr_variant="32x32b",
+                        _semantic=_semantic,
+                        _generator=_generator,
+                    )
+                except Exception as e:
+                    raise ValueError(str(e)) from e
         layout = _unwrap_if_constexpr(layout)
 
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)

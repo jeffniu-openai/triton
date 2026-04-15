@@ -744,6 +744,17 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
   if (isStore) {
     inVals = info.perm.apply(inVals);
   }
+  if (redOp) {
+    unsigned elementsPerThread = getElementsPerThread(info.atom);
+    unsigned reductionRepeats = info.numRegsPerMessage / elementsPerThread;
+    if (reductionRepeats < 2) {
+      emitError(loc)
+          << "failed to lower TMEM reduction: tcgen05.ld.red requires at "
+             "least an .x2 message shape, but the selected direct layout "
+             "scalarizes to .x1 packets";
+      return failure();
+    }
+  }
   auto [outVals, redvalVals] =
       lowerTMemLdSt(loc, rewriter, info.reps, inVals, info.atom, llvmElemTy,
                     tmemBase, pred, info.numRegsPerMessage, info.unpacked,
