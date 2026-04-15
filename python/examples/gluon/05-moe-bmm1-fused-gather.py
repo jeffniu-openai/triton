@@ -252,8 +252,8 @@ class PartitionArgs:
     REDUCTION_N: gl.constexpr
     FLEXPOINT_SATURATE_INF: gl.constexpr
 
-    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr
-    EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr
+    SWIGLU_SUBTILE_FACTOR: gl.constexpr
+    EPILOGUE_BUFFER_DEPTH: gl.constexpr
 
     @gluon.jit
     def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
@@ -448,7 +448,7 @@ def _store_out_subtile(
     mbarrier.wait(empty_bar, store_phase)
     p.store_bufs.index(store_idx).store(payload)
     mbarrier.arrive(ready_bar)
-    return advance(store_idx, store_phase, p.EPILOGUE_STORE_HELPER_DEPTH)
+    return advance(store_idx, store_phase, p.EPILOGUE_BUFFER_DEPTH)
 
 
 @gluon.jit
@@ -459,8 +459,8 @@ def epilogue_overlapped_store(
     store_idx,
     store_phase,
 ):
-    gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    acc_packed_subtiles = split_m_subtiles(acc_packed, p.EPILOGUE_ROW_SUBTILE_FACTOR)
+    gl.static_assert(p.SWIGLU_SUBTILE_FACTOR > 1, "store helper requires row fragments")
+    acc_packed_subtiles = split_m_subtiles(acc_packed, p.SWIGLU_SUBTILE_FACTOR)
 
     # Software pipelined and overlapped SwiGLU with transfer to store partition.
     prepared_gelu, prepared_linear = _swiglu_step1(
@@ -468,7 +468,7 @@ def epilogue_overlapped_store(
         p.SWIGLU_LIMIT,
     )
     ready_out_packed = acc_packed_subtiles[0]
-    for frag_idx in gl.static_range(1, p.EPILOGUE_ROW_SUBTILE_FACTOR):
+    for frag_idx in gl.static_range(1, p.SWIGLU_SUBTILE_FACTOR):
         cur_gelu, cur_linear = _swiglu_step1(
             acc_packed_subtiles[frag_idx],
             p.SWIGLU_LIMIT,
@@ -513,7 +513,7 @@ def epilogue_overlapped_store(
 
 
 @gluon.jit
-def load_bias(
+def apply_bias_and_scale(
     p: PartitionArgs,
     idx,
     phase,
@@ -547,15 +547,15 @@ def load_bias(
 
 @gluon.jit
 def epilogue_store_partition(p: PartitionArgs):
-    gl.static_assert(p.EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    frag_rows: gl.constexpr = p.BLOCK_M // p.EPILOGUE_ROW_SUBTILE_FACTOR
+    gl.static_assert(p.SWIGLU_SUBTILE_FACTOR > 1, "store helper requires row fragments")
+    frag_rows: gl.constexpr = p.BLOCK_M // p.SWIGLU_SUBTILE_FACTOR
     store_layout: gl.constexpr = gl.BlockedLayout(
         [frag_rows // gl.num_warps(), 2],
         [1, 32],
         [gl.num_warps(), 1],
         [1, 0],
     )
-    gl.static_assert(p.EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
+    gl.static_assert(p.EPILOGUE_BUFFER_DEPTH >= 2, "store helper depth must be at least 2")
 
     store_idx = 0
     store_phase = 0
@@ -564,7 +564,7 @@ def epilogue_store_partition(p: PartitionArgs):
         off_m = pid_m * p.BLOCK_M
         shape_m = gl.load(p.x_slice_sizes + slice_idx)
         out_off_n = (pid_n * p.BLOCK_N) // p.REDUCTION_N
-        for frag_idx in gl.static_range(p.EPILOGUE_ROW_SUBTILE_FACTOR):
+        for frag_idx in gl.static_range(p.SWIGLU_SUBTILE_FACTOR):
             frag_off_m = off_m + frag_idx * frag_rows
             ready_bar = p.store_ready_bars.index(store_idx)
             empty_bar = p.store_empty_bars.index(store_idx)
@@ -579,7 +579,7 @@ def epilogue_store_partition(p: PartitionArgs):
                 shape_m,
                 slice_offset,
             )
-            store_idx, store_phase = advance(store_idx, store_phase, p.EPILOGUE_STORE_HELPER_DEPTH)
+            store_idx, store_phase = advance(store_idx, store_phase, p.EPILOGUE_BUFFER_DEPTH)
 
 
 @gluon.jit
@@ -606,7 +606,7 @@ def epilogue_partition(p: PartitionArgs):
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
-        idx, phase, acc_packed = load_bias(
+        idx, phase, acc_packed = apply_bias_and_scale(
             p,
             idx,
             phase,
@@ -665,6 +665,7 @@ def ws_matmul_kernel(
     NUM_SMS: gl.constexpr,
     X_NUM_BUFS: gl.constexpr,
     W_NUM_BUFS: gl.constexpr,
+    ACC_NUM_BUFS: gl.constexpr,
     LOAD_ACTIVATION_WARPS: gl.constexpr,
     LOAD_WEIGHT_WARPS: gl.constexpr,
     MMA_WARPS: gl.constexpr,
@@ -673,8 +674,8 @@ def ws_matmul_kernel(
     LOAD_WEIGHT_REGS: gl.constexpr,
     MMA_REGS: gl.constexpr,
     STORE_HELPER_REGS: gl.constexpr,
-    EPILOGUE_ROW_SUBTILE_FACTOR: gl.constexpr,
-    EPILOGUE_STORE_HELPER_DEPTH: gl.constexpr,
+    SWIGLU_SUBTILE_FACTOR: gl.constexpr,
+    EPILOGUE_BUFFER_DEPTH: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -690,7 +691,8 @@ def ws_matmul_kernel(
 
     scale_k: gl.constexpr = BLOCK_K // MXFP_BLOCK_SIZE
     scale_layout: gl.constexpr = blackwell.TensorMemoryScalesLayout()
-    acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([128, BLOCK_M], col_stride=1)
+    MMA_BLOCK_COL: gl.constexpr = min(128, BLOCK_N)
+    acc_layout: gl.constexpr = blackwell.TensorMemoryLayout([MMA_BLOCK_COL, BLOCK_M], col_stride=1)
 
     x_num_bufs: gl.constexpr = X_NUM_BUFS
     x_bufs = gl.allocate_shared_memory(
@@ -716,20 +718,20 @@ def ws_matmul_kernel(
     x_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_M, scale_k], scale_layout)
     w_scale_tmem = blackwell.allocate_tensor_memory(gl.uint8, [BLOCK_N, scale_k], scale_layout)
 
-    acc_num_bufs: gl.constexpr = 1
+    acc_num_bufs: gl.constexpr = ACC_NUM_BUFS
     acc_tmem = blackwell.allocate_tensor_memory(gl.float32, [acc_num_bufs, BLOCK_N, BLOCK_M], acc_layout)
     acc_empty_bars, acc_ready_bars = alloc_empty_ready_barriers(acc_num_bufs)
 
-    gl.static_assert(EPILOGUE_ROW_SUBTILE_FACTOR > 1, "store helper requires row fragments")
-    gl.static_assert(EPILOGUE_STORE_HELPER_DEPTH >= 2, "store helper depth must be at least 2")
-    frag_rows: gl.constexpr = BLOCK_M // EPILOGUE_ROW_SUBTILE_FACTOR
+    gl.static_assert(SWIGLU_SUBTILE_FACTOR > 1, "store helper requires row fragments")
+    gl.static_assert(EPILOGUE_BUFFER_DEPTH >= 2, "store helper depth must be at least 2")
+    frag_rows: gl.constexpr = BLOCK_M // SWIGLU_SUBTILE_FACTOR
     out_packed_n: gl.constexpr = BLOCK_N // REDUCTION_N // 2
     store_bufs = gl.allocate_shared_memory(
         gl.int16,
-        [EPILOGUE_STORE_HELPER_DEPTH, frag_rows, out_packed_n],
+        [EPILOGUE_BUFFER_DEPTH, frag_rows, out_packed_n],
         gl.SwizzledSharedLayout(1, 1, 1, [1, 0]),
     )
-    store_empty_bars, store_ready_bars = alloc_empty_ready_barriers(EPILOGUE_STORE_HELPER_DEPTH)
+    store_empty_bars, store_ready_bars = alloc_empty_ready_barriers(EPILOGUE_BUFFER_DEPTH)
 
     x_scale_tmem.store(gl.full((BLOCK_M, scale_k), 127, dtype=gl.uint8, layout=x_scale_tmem.get_reg_layout()))
 
@@ -794,8 +796,8 @@ def ws_matmul_kernel(
         REDUCTION_N=REDUCTION_N,
         FLEXPOINT_SATURATE_INF=FLEXPOINT_SATURATE_INF,
         #
-        EPILOGUE_ROW_SUBTILE_FACTOR=EPILOGUE_ROW_SUBTILE_FACTOR,
-        EPILOGUE_STORE_HELPER_DEPTH=EPILOGUE_STORE_HELPER_DEPTH,
+        SWIGLU_SUBTILE_FACTOR=SWIGLU_SUBTILE_FACTOR,
+        EPILOGUE_BUFFER_DEPTH=EPILOGUE_BUFFER_DEPTH,
     )
 
     gl.warp_specialize(
@@ -816,8 +818,8 @@ def ws_matmul_kernel(
     invalidate_barrier_ring(w_ready_bars, w_num_bufs)
     invalidate_barrier_ring(acc_empty_bars, acc_num_bufs)
     invalidate_barrier_ring(acc_ready_bars, acc_num_bufs)
-    invalidate_barrier_ring(store_empty_bars, EPILOGUE_STORE_HELPER_DEPTH)
-    invalidate_barrier_ring(store_ready_bars, EPILOGUE_STORE_HELPER_DEPTH)
+    invalidate_barrier_ring(store_empty_bars, EPILOGUE_BUFFER_DEPTH)
+    invalidate_barrier_ring(store_ready_bars, EPILOGUE_BUFFER_DEPTH)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -879,12 +881,13 @@ class KernelConfig:
     BLOCK_K: int = 128
     X_NUM_BUFS: int = 5
     W_NUM_BUFS: int = 4
+    ACC_NUM_BUFS: int = 1
     LOAD_ACTIVATION_WARPS: int = 4
     LOAD_WEIGHT_WARPS: int = 1
     MMA_WARPS: int = 1
     STORE_HELPER_WARPS: int = 2
-    EPILOGUE_ROW_SUBTILE_FACTOR: int = 8
-    EPILOGUE_STORE_HELPER_DEPTH: int = 2
+    SWIGLU_SUBTILE_FACTOR: int = 8
+    EPILOGUE_BUFFER_DEPTH: int = 2
     LOAD_ACTIVATION_REGS: int = 112
     LOAD_WEIGHT_REGS: int = 48
     MMA_REGS: int = 24
@@ -901,11 +904,11 @@ def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> Kerne
     slice_size = estimated_slice_size(ragged_metadata, m)
     config = KernelConfig()
     if slice_size <= 8:
-        return replace(config, BLOCK_M=16, EPILOGUE_ROW_SUBTILE_FACTOR=2)
+        return replace(config, BLOCK_M=16, SWIGLU_SUBTILE_FACTOR=2)
     if slice_size <= 16:
-        return replace(config, BLOCK_M=32, EPILOGUE_ROW_SUBTILE_FACTOR=4)
+        return replace(config, BLOCK_M=32, SWIGLU_SUBTILE_FACTOR=4)
     if slice_size <= 58:
-        return replace(config, BLOCK_M=64, EPILOGUE_ROW_SUBTILE_FACTOR=4)
+        return replace(config, BLOCK_M=64, SWIGLU_SUBTILE_FACTOR=4)
     return config
 
 
@@ -1003,6 +1006,7 @@ def matmul(
         NUM_SMS=launch_grid,
         X_NUM_BUFS=config.X_NUM_BUFS,
         W_NUM_BUFS=config.W_NUM_BUFS,
+        ACC_NUM_BUFS=config.ACC_NUM_BUFS,
         LOAD_ACTIVATION_WARPS=config.LOAD_ACTIVATION_WARPS,
         LOAD_WEIGHT_WARPS=config.LOAD_WEIGHT_WARPS,
         MMA_WARPS=config.MMA_WARPS,
@@ -1011,8 +1015,8 @@ def matmul(
         LOAD_WEIGHT_REGS=config.LOAD_WEIGHT_REGS,
         MMA_REGS=config.MMA_REGS,
         STORE_HELPER_REGS=config.STORE_HELPER_REGS,
-        EPILOGUE_ROW_SUBTILE_FACTOR=config.EPILOGUE_ROW_SUBTILE_FACTOR,
-        EPILOGUE_STORE_HELPER_DEPTH=config.EPILOGUE_STORE_HELPER_DEPTH,
+        SWIGLU_SUBTILE_FACTOR=config.SWIGLU_SUBTILE_FACTOR,
+        EPILOGUE_BUFFER_DEPTH=config.EPILOGUE_BUFFER_DEPTH,
         SCALE_SIZE_OUTER=scale_size_outer,
         SCALE_SIZE_INNER=scale_size_inner,
         MXFP_BLOCK_SIZE=mxfp_block_size,
