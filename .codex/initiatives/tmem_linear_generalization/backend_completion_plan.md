@@ -256,6 +256,16 @@ Progress:
   queries to be safely composable with the shared-memory layout before
   planning. This is another example of replacing an accidental layout-family
   assumption with explicit linear-layout algebra and clean diagnostics.
+- 2026-04-15 11:21 UTC: dense no-scales copy support now reaches canonical
+  subword element types (`f16`, `bf16`, `i16`, `i8`) by removing the
+  verifier-level 32-bit source guard and making the runtime kernels advertise
+  the actual source element bitwidth in `NVMMASharedLayout`. This was a
+  backend generality bug rather than an ISA limitation for dense
+  `128x256b`. `warpx2` subword copies remain clean unsupported with a
+  descriptor-plan diagnostic because the current `warpx2` schedule still
+  requires 32-bit shared elements. Copy plan construction can now build a plan
+  from an explicitly supplied dense atom, while dense-only fallbacks stay
+  isolated from multicast/scales families.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

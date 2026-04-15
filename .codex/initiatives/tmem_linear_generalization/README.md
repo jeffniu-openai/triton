@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:21 UTC: dense no-scales `tcgen05.cp.128x256b`
+  now supports subword element types for canonical linear TMEM copies when the
+  source shared-memory descriptor uses the real element bitwidth. The old
+  verifier-level `Source element type should be 32-bit` rejection was removed
+  so support is decided by the shared copy planner. The test kernels now build
+  `NVMMASharedLayout` with the input dtype bitwidth, promoting `f16`, `bf16`,
+  `i16`, and `i8` linear dense copy rows from clean negative to positive
+  runtime coverage. `warpx2` subword copies remain clean unsupported with a
+  planner diagnostic that the current `warpx2` descriptor schedule requires
+  32-bit shared elements. Dense atom enumeration is now explicit enough to add
+  narrower dense atoms without leaking the dense-only 64x2 descriptor fallback
+  into multicast/scales families.
 - 2026-04-15 11:10 UTC: `tcgen05.cp.4x256b` diagnostics now reflect the
   ISA-grounded probe result instead of the earlier coarse "single destination
   row" summary. CUTLASS models this instruction as a TMEM refresh primitive,

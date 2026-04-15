@@ -1282,7 +1282,11 @@ def tmem_copy_no_scales_kernel(in_ptr, out_ptr, M: ttgl.constexpr, N: ttgl.const
     offs = offs_m[:, None] * N + offs_n[None, :]
     value = ttgl.load(in_ptr + offs)
 
-    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=swizzle, element_bitwidth=32, rank=2)
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+    )
     smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
     smem.store(value)
     fence_async_shared()
@@ -1345,7 +1349,11 @@ def tmem_copy_no_scales_linear_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
     offs = offs_m[:, None] * N + offs_n[None, :]
     value = ttgl.load(in_ptr + offs)
 
-    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(swizzle_byte_width=swizzle, element_bitwidth=32, rank=2)
+    smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
+    )
     smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
     smem.store(value)
     fence_async_shared(cluster=layout.two_ctas)
@@ -4062,8 +4070,22 @@ CP_NO_SCALES_SUBWORD_DTYPES = (
     ("i8", torch.int8),
 )
 
-CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES = [
-    (dtype_name, torch_dtype, 128, n, 32)
+CP_NO_SCALES_SUBWORD_BITWIDTHS = {
+    "f16": 16,
+    "bf16": 16,
+    "i16": 16,
+    "i8": 8,
+}
+
+CP_LINEAR_NO_SCALES_SUBWORD_CASES = [
+    (
+        dtype_name,
+        torch_dtype,
+        128,
+        n,
+        32,
+        n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
+    )
     for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
     for n in (128, 256)
 ]
@@ -8420,7 +8442,9 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_err
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "Source element type should be 32-bit." in text
+    assert "could not synthesize a compatible shared-memory descriptor plan" in text
+    assert "warpx2 tcgen05.copy currently requires 32-bit shared elements" in text
+    assert "cleanly unsupported" in text
     assert "error encountered during parsing" in str(excinfo.value)
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
@@ -8586,22 +8610,18 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen(layout_kind, d
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle", CP_LINEAR_NO_SCALES_SUBWORD_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes_report_clean_error(dtype_name, torch_dtype, M, N,
-                                                                                    swizzle, capfd):
+@pytest.mark.parametrize("dtype_name,torch_dtype,M,N,swizzle,expected_count", CP_LINEAR_NO_SCALES_SUBWORD_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes(
+    dtype_name, torch_dtype, M, N, swizzle, expected_count
+):
     inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
     out = torch.empty_like(inp)
     layout = _make_tmem_linear_layout(M, N)
 
-    with pytest.raises(RuntimeError) as excinfo:
-        tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, M, N, swizzle, num_warps=4)
+    compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, M, N, swizzle, num_warps=4)
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "Source element type should be 32-bit." in text
-    assert "error encountered during parsing" in str(excinfo.value)
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

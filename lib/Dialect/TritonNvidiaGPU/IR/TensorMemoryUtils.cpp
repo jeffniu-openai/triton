@@ -7871,24 +7871,30 @@ llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
   auto *ctx = cvt.getInDimNames().begin()->getContext();
   auto kBlock = StringAttr::get(ctx, "block");
 
-  auto makePlan = [&](ArrayRef<std::tuple<unsigned, unsigned, unsigned, int>>
-                          messageSpecs) {
+  auto makePlanForAtom = [&](const TMemCopyAtom &planAtom,
+                             ArrayRef<std::tuple<unsigned, unsigned, unsigned,
+                                                 int>>
+                                 messageSpecs) {
     TMemCopyPlan plan;
-    plan.family = getTMemCopyFamily(*atom);
+    plan.family = getTMemCopyFamily(planAtom);
     for (auto [descriptorRows, sourceWarpGroups, instrRows, smemRow] :
          messageSpecs) {
       TMemCopyMessagePlan message;
-      message.atom = *atom;
+      message.atom = planAtom;
       message.descriptorRows = descriptorRows;
       message.sourceWarpGroups = sourceWarpGroups;
-      message.descriptorShape = {descriptorRows,
-                                 static_cast<unsigned>(atom->bCol / bitwidth)};
+      message.descriptorShape = {
+          descriptorRows, static_cast<unsigned>(planAtom.bCol / bitwidth)};
       message.instrShape = {instrRows,
-                            static_cast<unsigned>(atom->bCol / bitwidth)};
+                            static_cast<unsigned>(planAtom.bCol / bitwidth)};
       message.smemRow = smemRow;
       plan.messages.push_back(std::move(message));
     }
     return plan;
+  };
+  auto makePlan = [&](ArrayRef<std::tuple<unsigned, unsigned, unsigned, int>>
+                          messageSpecs) {
+    return makePlanForAtom(*atom, messageSpecs);
   };
 
   llvm::SmallVector<TMemCopyPlan, 4> plans;
@@ -7941,13 +7947,22 @@ llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
     return plans;
   }
 
-  plans.push_back(makePlan({std::tuple{32u, 4u, 32u, 0}}));
-  // Dense families sometimes admit a 64x2 descriptor factorization in addition
-  // to the canonical 32x4 split. Keep the canonical plan first and only fall
-  // back to the 64x2 variant when descriptor synthesis rejects the canonical
-  // one.
-  if (atom->multicast == 0 && atom->nRow == 128)
-    plans.push_back(makePlan({std::tuple{64u, 2u, 64u, 0}}));
+  auto appendDensePlan = [&](const TMemCopyAtom &planAtom) {
+    plans.push_back(makePlanForAtom(planAtom, {std::tuple{32u, 4u, 32u, 0}}));
+    // Dense families sometimes admit a 64x2 descriptor factorization in
+    // addition to the canonical 32x4 split. Keep the canonical plan first and
+    // only fall back to the 64x2 variant when descriptor synthesis rejects the
+    // canonical one.
+    if (planAtom.multicast == 0 && planAtom.nRow == 128)
+      plans.push_back(
+          makePlanForAtom(planAtom, {std::tuple{64u, 2u, 64u, 0}}));
+  };
+
+  appendDensePlan(*atom);
+  // A narrower dense copy atom can avoid shared-descriptor swizzle boundaries
+  // that a wider atom would cross inside one instruction.
+  if (atom->multicast == 0 && atom->nRow == 128 && atom->bCol > 128)
+    appendDensePlan(TMemCopyAtom{128, 128, 0});
   return plans;
 }
 

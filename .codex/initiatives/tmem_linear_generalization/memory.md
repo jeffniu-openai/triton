@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current dense subword copy checkpoint, 2026-04-15 11:21 UTC:
+  canonical dense no-scales `ttng.tmem_copy` no longer rejects subword
+  element types in the op verifier. The previous failure was not an ISA
+  limitation of dense copy; the runtime test kernels were advertising a
+  32-bit `NVMMASharedLayout` even for 16-bit and 8-bit source elements, so the
+  backend stopped before the descriptor planner could prove the real layout.
+  The shared layout now carries `in_ptr.dtype.element_ty.primitive_bitwidth`,
+  and `f16`, `bf16`, `i16`, and `i8` canonical linear dense rows are positive
+  runtime coverage with exact `tcgen05.cp.cta_group::1.128x256b` opcode counts.
+  `warpx2` subword rows remain clean unsupported at the planner layer with the
+  note that the current `warpx2` descriptor schedule requires 32-bit shared
+  elements. Dense copy plan construction can now make plans for an explicitly
+  supplied atom, which is the right abstraction for future atomized schedules;
+  keep the 64x2 descriptor fallback dense-only so it does not perturb multicast
+  or scales copy families.
+
 - Current 4x256b ISA-semantics checkpoint, 2026-04-15 11:10 UTC:
   the clean unsupported diagnostic now names the actual refresh semantics
   exposed by official PTX/CUTLASS evidence and direct runtime probes. A

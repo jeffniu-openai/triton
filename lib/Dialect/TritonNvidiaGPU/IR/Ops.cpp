@@ -1670,10 +1670,6 @@ LogicalResult TMEMCopyOp::verify() {
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() == 0) {
       return emitOpError("Source layout should be swizzled.");
     }
-    // When we lift this, we should make sure we handle unpacked cleanly
-    if (srcTy.getElementType().getIntOrFloatBitWidth() != 32) {
-      return emitOpError("Source element type should be 32-bit.");
-    }
     if (copyPlans.empty()) {
       auto diag = emitOpError(
           "The source shared layout does not match any recognized "

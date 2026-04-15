@@ -1,3 +1,31 @@
+## 2026-04-15 11:21 UTC: dense no-scales subword copy promotion
+
+- Removed the verifier-level dense no-scales copy rejection for non-32-bit
+  source element types so `ttng.tmem_copy` support is decided by the shared
+  copy planner instead of a type guard.
+- Updated the dense no-scales runtime test kernels to build
+  `NVMMASharedLayout` with the actual source element bitwidth. Canonical
+  linear dense `f16`, `bf16`, `i16`, and `i8` copies are now positive runtime
+  coverage with exact `tcgen05.cp.cta_group::1.128x256b` opcode counts.
+- Kept `warpx2` subword copies as clean planner-level negatives. Their tests
+  now assert the structured descriptor-plan diagnostic:
+  `warpx2 tcgen05.copy currently requires 32-bit shared elements`.
+- Refactored dense copy plan construction so the planner can build a plan for
+  an explicitly supplied atom, while keeping the 64x2 descriptor fallback
+  restricted to non-multicast dense atoms. An invalid-lit rerun caught and
+  fixed an intermediate overreach where that fallback leaked into the warpx4
+  scales family.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-subword-test PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes'`
+    (`8 passed`);
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-warpx2-subword PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_error'`
+    (`14 passed`);
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+
 ## 2026-04-15 11:10 UTC: 4x256b refresh-semantics diagnostic
 
 - Replaced the coarse `4x256b` clean-negative note with an ISA-grounded
