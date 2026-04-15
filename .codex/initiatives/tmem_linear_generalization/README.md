@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 19:08 UTC: copy instruction-column projection is now an
+  executable-plan carrier, `TMemCopyInstructionColumnProjection`, populated
+  during shared copy-plan realization beside the source-row carrier. A bounded
+  temporary bypass probe for the scales descriptor-view copy confirmed that the
+  next failure is still structural: MMAShared descriptor synthesis has no
+  representable 32x16 descriptor for the projection where a low instruction
+  column bit maps to shared offset 256. Validation after removing the probe:
+  `make -j8`, direct invalid verifier RUN, focused scales copy selector passed
+  all `12` selected rows, and `git diff --check` passed.
 - 2026-04-15 19:02 UTC: copy source-row projection is now an executable-plan
   carrier, `TMemCopySourceRowProjection`, populated during shared copy-plan
   realization. Lowering no longer reruns the support predicate after selecting

@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Current instruction-column projection plan checkpoint, 2026-04-15 19:08 UTC:
+  copy instruction-column projection is now represented by
+  `TMemCopyInstructionColumnProjection` and stored on each
+  `TMemCopyScheduledMessage`. The plan records the instruction column width,
+  unit source offset, and per-bit contiguous source offsets for currently
+  supported copy atoms; unsupported sub-instruction projections keep the same
+  diagnostics. A temporary preflight-bypass probe on
+  `cp_scales_tmem_descriptor_view` confirmed that the scales descriptor-view
+  boundary is not just the preflight: descriptor synthesis still finds no
+  representable 32x16 MMAShared descriptor when logical source column bit 2
+  maps to shared offset 256. The probe hook was removed. Validation after
+  `make -j8`: direct invalid verifier RUN, focused scales copy selector
+  `cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+  cp_scales_layout_probe or cp_scales_unsupported_layout_reports_clean_error
+  or cp_scales_shared_subslice_layout_reports_clean_unsupported or
+  cp_scales_warpx4 and not scaled_mma` passed `12` selected rows, and
+  `git diff --check` passed.
+
 - Current source-row projection plan checkpoint, 2026-04-15 19:02 UTC:
   copy source-row projection is now represented by
   `TMemCopySourceRowProjection` and stored on each `TMemCopyScheduledMessage`

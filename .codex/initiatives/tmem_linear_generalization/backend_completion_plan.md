@@ -251,6 +251,13 @@ Progress:
   the 8-row source stride and affine row-bit steps on each scheduled copy
   message during plan realization, and lowering no longer repeats the support
   check after the plan is selected.
+- 2026-04-15 19:08 UTC: promoted the instruction-column projection proof into
+  a second executable-plan carrier. `TMemCopyInstructionColumnProjection`
+  records the instruction width, unit source offset, and supported contiguous
+  low column-bit steps on each scheduled message. A temporary bypass probe
+  confirmed the scales descriptor-view copy still fails descriptor synthesis
+  after that preflight is removed, so support needs real source-column/message
+  splitting rather than broader descriptor enumeration.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

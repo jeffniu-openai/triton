@@ -8910,31 +8910,35 @@ selectTMemCopyDescriptorLayout(ArrayRef<LinearLayout> srcDescLayouts,
   return std::nullopt;
 }
 
-static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
-    const LinearLayout &cvt, const TMemCopyMessagePlan &message,
-    int bitwidth) {
+std::optional<TMemCopyInstructionColumnProjection>
+getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
+                                           const TMemCopyMessagePlan &message,
+                                           int bitwidth, std::string *error) {
+  TMemCopyInstructionColumnProjection projection;
   const LinearLayout &descriptorCvt =
       message.descriptorCvt ? *message.descriptorCvt : cvt;
   auto inDims = descriptorCvt.getInDimNames();
   if (inDims.empty() || message.instrShape.size() < 2)
-    return std::nullopt;
+    return projection;
 
   auto *ctx = inDims.begin()->getContext();
   auto kCol = StringAttr::get(ctx, "col");
   auto kOffset = StringAttr::get(ctx, "offset");
   if (!descriptorCvt.hasInDim(kCol) || !descriptorCvt.hasOutDim(kOffset))
-    return std::nullopt;
+    return projection;
 
   unsigned instrCols = message.instrShape[1];
+  projection.instructionColumns = instrCols;
   if (!llvm::isPowerOf2_32(instrCols) || instrCols <= 1)
-    return std::nullopt;
+    return projection;
   unsigned instrColBits = llvm::Log2_32(instrCols);
 
   auto colBases = descriptorCvt.getBases().lookup(kCol);
   if (colBases.size() < instrColBits || colBases.empty())
-    return std::nullopt;
+    return projection;
 
   int32_t unitOffset = descriptorCvt.getBasis(kCol, 0, kOffset);
+  projection.unitSourceOffset = unitOffset;
   if (unitOffset == 0 && bitwidth < 32) {
     std::string note;
     llvm::raw_string_ostream os(note);
@@ -8946,10 +8950,12 @@ static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
           "from that projection; use an unpacked TensorMemoryLinearLayout for "
           "dense subword copies, or a tmem.store/tmem.load path until packed "
           "lane copy semantics are modeled explicitly.";
-    return os.str();
+    if (error)
+      *error = os.str();
+    return std::nullopt;
   }
   if (unitOffset <= 0)
-    return std::nullopt;
+    return projection;
   unsigned offsetDimIndex = descriptorCvt.getOutDimIndex(kOffset);
 
   auto hasNonOffsetContribution = [&](ArrayRef<int32_t> basis) {
@@ -8965,8 +8971,11 @@ static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
     int32_t actualOffset = basis[offsetDimIndex];
     int32_t expectedOffset = unitOffset << bit;
     bool nonOffsetContribution = hasNonOffsetContribution(basis);
-    if (actualOffset == expectedOffset && !nonOffsetContribution)
+    if (actualOffset == expectedOffset && !nonOffsetContribution) {
+      projection.steps.push_back(
+          TMemCopyInstructionColumnProjectionStep{bit, actualOffset});
       continue;
+    }
 
     std::string note;
     llvm::raw_string_ostream os(note);
@@ -8983,25 +8992,21 @@ static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
        << ". Current copy scheduling cannot split sub-instruction source "
           "columns, so this projection needs a different copy atom or a "
           "multi-message schedule before it can be supported.";
-    return os.str();
+    if (error)
+      *error = os.str();
+    return std::nullopt;
   }
-  return std::nullopt;
+  return projection;
 }
 
-static TMemCopySupportResult getTMemCopyInstructionProjectionSupport(
+static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
     const LinearLayout &cvt, const TMemCopyMessagePlan &message,
-    TMemCopyFamily family, unsigned messageIdx, int bitwidth) {
-  auto note = getTMemCopyInstructionColumnProjectionNote(cvt, message, bitwidth);
-  if (!note)
-    return getSupportedTMemCopyResult();
-
-  std::string reason;
-  llvm::raw_string_ostream os(reason);
-  os << "tcgen05.copy." << stringifyTMemCopyFamily(family)
-     << " descriptor message " << messageIdx
-     << " has an unsupported instruction-column projection. " << *note;
-  return getUnsupportedTMemCopyResult(
-      TMemCopySupportFailureLayer::DescriptorSynthesis, os.str());
+    int bitwidth) {
+  std::string error;
+  if (!getTMemCopyInstructionColumnProjectionPlan(cvt, message, bitwidth,
+                                                  &error))
+    return error;
+  return std::nullopt;
 }
 
 std::optional<TMemCopyDescriptorLayoutSelection>
@@ -9078,11 +9083,22 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         continue;
       }
     }
-    auto instructionProjectionSupport =
-        getTMemCopyInstructionProjectionSupport(cvt, message, plan.family,
-                                                messageIdx, bitwidth);
-    if (!instructionProjectionSupport)
-      return {std::nullopt, instructionProjectionSupport};
+    std::string instructionProjectionError;
+    auto instructionProjection = getTMemCopyInstructionColumnProjectionPlan(
+        cvt, message, bitwidth, &instructionProjectionError);
+    if (!instructionProjection) {
+      std::string reason;
+      llvm::raw_string_ostream os(reason);
+      os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)
+         << " descriptor message " << messageIdx
+         << " has an unsupported instruction-column projection. "
+         << instructionProjectionError;
+      return {std::nullopt,
+              getUnsupportedTMemCopyResult(
+                  TMemCopySupportFailureLayer::DescriptorSynthesis, os.str())};
+    }
+    scheduledMessage.instructionColumnProjection =
+        std::move(*instructionProjection);
 
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);

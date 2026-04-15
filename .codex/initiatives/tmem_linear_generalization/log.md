@@ -17027,3 +17027,39 @@ Open after this slice:
     cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
     cp_no_scales_warpx2_01_23_candidate_positive`: `21 passed`;
   - `git diff --check`.
+
+## 2026-04-15 19:08 UTC: copy instruction-column projection plan carrier
+
+- Promoted the instruction-column projection proof into an explicit plan
+  carrier.
+- Temporary probe:
+  - added and removed a local bypass for the instruction-column preflight;
+  - reran `cp_scales_tmem_descriptor_view` with
+    `TRITON_DEBUG_TMEM_QUERY=1`;
+  - result: bypassing the preflight did not produce a candidate schedule.
+    Descriptor synthesis still reported no representable 32x16 MMAShared
+    descriptor for the projection where logical source column bit 2 maps to
+    shared offset 256.
+- Implementation:
+  - added `TMemCopyInstructionColumnProjectionStep` and
+    `TMemCopyInstructionColumnProjection`;
+  - added `getTMemCopyInstructionColumnProjectionPlan(...)`;
+  - preserved the existing unsupported diagnostic by retaining
+    `getTMemCopyInstructionColumnProjectionNote(...)` as a wrapper;
+  - populated the projection plan on each `TMemCopyScheduledMessage` during
+    shared descriptor-plan realization.
+- Semantics:
+  - intended behavior-preserving;
+  - current plans record instruction width, unit source offset, and the
+    contiguous low column-bit steps for supported atoms;
+  - the scales descriptor-view boundary remains a real missing
+    source-column/message split schedule.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused scales copy selector
+    `cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_layout_probe or cp_scales_unsupported_layout_reports_clean_error
+    or cp_scales_shared_subslice_layout_reports_clean_unsupported or
+    cp_scales_warpx4 and not scaled_mma`: `12 passed`;
+  - `git diff --check`.

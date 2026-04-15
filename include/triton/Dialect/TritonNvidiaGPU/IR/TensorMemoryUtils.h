@@ -175,9 +175,21 @@ struct TMemCopySourceRowProjection {
   llvm::SmallVector<TMemCopySourceRowProjectionStep, 2> steps;
 };
 
+struct TMemCopyInstructionColumnProjectionStep {
+  unsigned logicalColBit;
+  int32_t sourceOffset;
+};
+
+struct TMemCopyInstructionColumnProjection {
+  unsigned instructionColumns = 0;
+  int32_t unitSourceOffset = 0;
+  llvm::SmallVector<TMemCopyInstructionColumnProjectionStep, 4> steps;
+};
+
 struct TMemCopyScheduledMessage {
   TMemCopyMessagePlan plan;
   TMemCopySourceRowProjection sourceRowProjection;
+  TMemCopyInstructionColumnProjection instructionColumnProjection;
   std::optional<TMemCopyDescriptorLayoutSelection> descriptorLayout;
   std::optional<uint64_t> directSeedDescriptorImm;
 };
@@ -429,6 +441,12 @@ std::optional<TMemCopySourceRowProjection>
 getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
                                    const TMemCopyMessagePlan &message,
                                    std::string *error = nullptr);
+
+std::optional<TMemCopyInstructionColumnProjection>
+getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
+                                           const TMemCopyMessagePlan &message,
+                                           int bitwidth,
+                                           std::string *error = nullptr);
 
 TMemCopySupportResult
 getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,
