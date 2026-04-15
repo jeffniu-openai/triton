@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 18:28 UTC: repeated-`N=32` scaled-MMAv5 got one more targeted
+  scale-B probe based on the PTX `scale_vec::1X` B-scale sub-column layout.
+  The XOR-derived schedule needs odd B-scale TMEM word columns for some
+  N/K fragments and faults with a misaligned address. Probe hooks were removed
+  and `make -j8` rebuilt clean source. Treat this as a scales storage/fragment
+  contract issue, not an address-remap bug in current lowering.
 - 2026-04-15 18:20 UTC: scaled-MMAv5 lowering now factors scale address and
   SFA/SFB sub-column selection through a behavior-preserving
   `MMAv5ScaleFactorFragment` helper. This does not relax the repeated-N32

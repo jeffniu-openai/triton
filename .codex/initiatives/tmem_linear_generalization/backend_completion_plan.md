@@ -551,6 +551,14 @@ Progress:
   keeps all current semantics and diagnostics intact while replacing inline
   arithmetic with the abstraction point needed for repeated-N32 B-scale
   fragment modeling.
+- 2026-04-15 18:28 UTC: probed the scale-B `scale_vec::1X` XOR schedule
+  implied by the PTX B-scale sub-column figure. The derived schedule reaches
+  odd B-scale TMEM word columns for some repeated-N32 N/K fragments, and the
+  hardware rejects those addresses as misaligned. This makes the remaining
+  support task larger than B-scale address arithmetic: either the B-scale
+  storage contract must provide an aligned fragment view for repeated N32, or
+  the clean negative remains a true layout/ISA boundary for the current public
+  scales layout.
 - 2026-04-15 17:12 UTC: saturated the remaining supported plain-MMAv5 `N=32`
   M64 and TMEM-LHS matrices. M64 linear/root and subslice rows plus LHS
   tile/subslice rows are positive at `N=32`; the M64 legacy root remains on

@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current repeated-N32 B-scale XOR/alignment probe, 2026-04-15 18:28 UTC:
+  the PTX scale-B `scale_vec::1X` figure implies that the logical 32-column
+  N fragment selected by a B-scale word column and SFB-ID follows an XOR-like
+  relation. A temporary probe implemented the corresponding
+  `wordCol = nTile xor SFB_ID` schedule for `mxfp8/mxfp8,
+  M=N=128, K=128, tile_n=32`. It reached execution but faulted with a
+  misaligned TMEM scale-B address as soon as an odd scale word column was
+  required. All probe hooks were removed and `make -j8` rebuilt the clean
+  source. This sharpens the boundary: the current public scales storage uses
+  SFB-ID to select K scale subcolumns, while repeated N32 would also need that
+  same selector/address low bit to choose the N32 subfragment. Supporting it
+  requires a different B-scale fragment/storage contract, not just a lowering
+  remap.
+
 - Current scaled-MMAv5 scale-fragment helper checkpoint, 2026-04-15 18:20 UTC:
   scaled-MMAv5 lowering now has a behavior-preserving
   `MMAv5ScaleFactorFragment` helper that computes each scale operand's TMEM

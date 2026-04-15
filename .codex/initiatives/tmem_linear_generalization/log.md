@@ -16810,3 +16810,36 @@ Open after this slice:
   - the lowering now has the right abstraction seam for the next support slice,
     but support still requires a richer B-scale N/K fragment model rather than
     changing scalar address or SFB-ID formulas.
+
+## 2026-04-15 18:28 UTC: repeated-N32 scale-B XOR/alignment probe
+
+- Added temporary probe hooks, then removed them before this checkpoint:
+  - bypassed `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)`;
+  - in scaled-MMAv5 lowering, used the PTX scale-B `scale_vec::1X`
+    sub-column relation to try `wordCol = nTile xor SFB_ID` for B scales when
+    `mmaSizeN == 32`.
+- Representative case:
+  - `mxfp8/mxfp8`, `M=N=128`, `K=128`, accumulator layout
+    `_make_tmem_linear_layout_tile_permuted(128, 128, 32)`;
+  - fresh cache and process per attempt.
+- Result:
+  - the first attempt hit the verifier guard, so the same temporary bypass was
+    added at the shared diagnostic helper;
+  - using the recognized env helper for the temporary probe asserted because
+    the probe variable is intentionally not registered as a real compiler env;
+  - after switching the temporary verifier bypass to raw `std::getenv`, the
+    probe reached execution;
+  - with `CUDA_LAUNCH_BLOCKING=1`, the kernel failed at launch with a
+    `misaligned address`, matching the odd scale-B word columns required by
+    the XOR schedule.
+- Cleanup/validation:
+  - removed all temporary probe hooks from `Dialect.cpp` and `MMAv5.cpp`;
+  - `rg` found no live `TRITON_TMEM_PROBE_ALLOW_SCALED_N32_REPEAT` or
+    `TRITON_TMEM_PROBE_B_SCALE_1X_XOR` references under source/test paths;
+  - `make -j8` rebuilt the clean source tree.
+- Current conclusion:
+  - repeated-N32 scaled-MMAv5 cannot be unlocked by scalar B-scale address or
+    SFB-ID remaps under the current public `TensorMemoryScalesLayout`.
+    The SFB-ID/low-address degrees of freedom needed for the logical N32
+    subfragment collide with the current use of SFB-ID for K scale subcolumns
+    and with the hardware scale-address alignment requirement.
