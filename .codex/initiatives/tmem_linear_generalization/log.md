@@ -16291,3 +16291,33 @@ Open after this slice:
   - exact two failing nodeids (`2 passed`);
   - split-1 clean-negative rerun (`113 passed, 1 skipped, 9808 deselected`);
   - `git diff --check`.
+
+## 2026-04-15 15:47 UTC: two-CTA `warpx2::02_13` direct-seed sweep
+
+- Added temporary local probe hooks only, then removed them before this
+  checkpoint:
+  - allowed `getDirectTMemCopySeedDescriptorImm(...)` to accept the canonical
+    256x4 two-CTA shared layout when `TRITON_TMEM_WARPX2_0213_TWOCTA_DIRECT=1`;
+  - allowed the `02_13` plan builder to create a direct-seed message under
+    `cta_group::2` with environment-controlled `directSourceOffsetB128` and
+    `tmemDwordDelta`.
+- Probe grid:
+  - `directSourceOffsetB128 in {0,1,2,4,8,16,24,32,40,48,56,64}`;
+  - `tmemDwordDelta in {0,4,8,12,16,20,24,28,32}`;
+  - each pair used a fresh Python process and cache directory so the
+    env-controlled probe state could not reuse a stale JIT artifact.
+- Result:
+  - no pair matched the expected two-CTA `02_13` logical output;
+  - `delta=0` emitted the cta-group::2 opcode but duplicated low source-column
+    pairs, with the duplicated pair shifted by the source B128 base;
+  - nonzero aligned dword deltas produced zero output for the representative
+    source bases, matching the older single-point probe.
+- Cleanup/validation:
+  - removed all temporary probe hooks;
+  - `git diff -- lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` is
+    empty;
+  - `make -j8` rebuilt the clean source state after probe removal.
+- Current conclusion:
+  - two-CTA `warpx2::02_13` remains a real cta-group::2 descriptor/address
+    schedule gap. Do not promote it by retuning the single-CTA direct seed.
+    A support path must preserve the high source-column bit explicitly.

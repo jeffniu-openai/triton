@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 15:47 UTC: a bounded temporary direct-seed sweep for two-CTA
+  no-scales `tcgen05.copy.warpx2::02_13` found no correct schedule. Re-enabling
+  the single-CTA direct seed under `cta_group::2` and sweeping representative
+  B128 source bases plus aligned destination dword deltas either duplicated the
+  low source-column pair (`delta=0`) or read zeros (`delta>0`). All probe code
+  was removed and the tree rebuilt. This reinforces that support needs a real
+  cta-group::2 descriptor/address schedule, not a seed-parameter tweak.
 - 2026-04-15 15:31 UTC: no-scales dense linear `tcgen05.copy` coverage was
   corrected for the `M=256,N=16` frontier. A fresh probe showed the current
   exact-query path already folds the high row selector into TMEM columns,

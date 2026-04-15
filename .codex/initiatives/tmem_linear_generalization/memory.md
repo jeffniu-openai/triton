@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current two-CTA `warpx2::02_13` copy probe, 2026-04-15 15:47 UTC:
+  a bounded temporary direct-seed sweep did not find a legal cta-group::2
+  schedule. The probe allowed the single-CTA seed path for the 256x4 two-CTA
+  shared layout and swept representative `directSourceOffsetB128` values
+  `0,1,2,4,8,16,24,32,40,48,56,64` with destination dword deltas
+  `0,4,8,12,16,20,24,28,32`. `delta=0` emitted
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` but duplicated low
+  source-column pairs shifted by the source base; nonzero aligned deltas read
+  zeros. All probe code was removed and `make -j8` rebuilt the clean tree.
+  Keep this as a descriptor/address-schedule gap, not a direct-seed tuning
+  problem.
+
 - Current no-scales dense copy coverage correction, 2026-04-15 15:31 UTC:
   `M=256,N=16` `TensorMemoryLinearLayout` copies are not a remaining backend
   gap. A fresh `TRITON_DEBUG_TMEM_QUERY=1` probe showed the exact destination

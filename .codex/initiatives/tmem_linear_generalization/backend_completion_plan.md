@@ -274,6 +274,11 @@ Progress:
   cta-group::2. The next support attempt must derive a real cta-group::2
   descriptor/address schedule preserving the high source-column bit rather
   than reusing the single-CTA schedule.
+- 2026-04-15 15:47 UTC: a bounded follow-up direct-seed sweep reinforced the
+  11:30 boundary. Representative B128 source bases and aligned destination
+  dword deltas produced either shifted duplicate low-column pairs (`delta=0`)
+  or zeros (`delta>0`). All probe code was removed. Keep this frontier parked
+  on deriving a real descriptor/address schedule, not seed-parameter tuning.
 - 2026-04-15 11:39 UTC: scales descriptor-view copy now has a sharper
   row-order proof. A temporary descriptor-basis exchange can make the
   `warpx4.32x128b` shared descriptor representable, but runtime output follows
