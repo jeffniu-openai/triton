@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current Phase 3 probe, 2026-04-15 08:54 UTC: do not promote the failing
+  scale-backed reshape/transpose/reshape `tcgen05.copy.warpx4.32x128b` row by
+  merely repacking descriptor bases in offset-major order. That candidate
+  selects a valid MMAv5 shared descriptor with row bases
+  `[16, 32, 64, 128, 256]` and col bases
+  `[1, 2, 4, 8, 512, 1024, 2048]`, but runtime shows it copies into the
+  tensor-memory scales parent/root physical order: output row `R` reads source
+  row `(R % 64) * 2 + R / 64`. Adding `.b8x16.b6x16_p32` or
+  `.b8x16.b4x16_p64` to the emitted `warpx4.32x128b` opcode compiled but did
+  not fix the logical permutation. The real remaining abstraction gap is a
+  schedule that preserves the destination descriptor-view row permutation while
+  using only ISA-representable source descriptors / TMEM row offsets.
+
 - Current Phase 3 slice, 2026-04-15 08:42 UTC: scales copy now uses exact
   descriptor-view physical queries when the exact and standalone queries agree
   on shape, element bitwidth, CTA ownership, and scales-root semantics. Added

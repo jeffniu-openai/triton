@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 08:54 UTC: exact scales descriptor-view copy probe showed that
+  offset-major repacking of the failing `warpx4.32x128b` descriptor is not a
+  correct support promotion. It synthesizes a valid MMAv5 shared descriptor,
+  but runtime output is the parent/root physical row order:
+  output row `R` reads source row `(R % 64) * 2 + R / 64`. The `.b8x16`
+  source-format variants (`b6x16_p32`, `b4x16_p64`) compiled but preserved the
+  same wrong logical permutation. Next implementation should model the missing
+  logical-view-to-physical-destination schedule, not just make the source
+  descriptor representable.
 - 2026-04-15 08:35 UTC: scales-root semantics now survive descriptor-view
   chains in the shared physical-query model. Copy verification/lowering uses
   `TMemPhysicalQuery::isScales`, not just the surface destination encoding, so

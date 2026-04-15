@@ -15158,3 +15158,37 @@ Open after this slice:
 - Next: derive the actual descriptor-layout transform for the exact permuted
   scales view. Do not reapply the broad warpx4 descriptor-variant probe as the
   durable solution.
+
+## 2026-04-15 08:54 UTC: exact scales descriptor-view copy schedule probe
+
+- Rebuilt after adding temporary debug tracing around the `warpx4.32x128b`
+  descriptor-synthesis failure for
+  `tmem_copy_scales_tmem_descriptor_view_kernel`.
+- The exact failing `cvt` layout was:
+  - row bases: `[8, 16, 32, 64, 128, 0, 0]`;
+  - col bases: `[1, 2, 256, 4, 512, 1024, 2048]`.
+  The canonical passing scales descriptor uses the offset-major descriptor
+  partition with row bases `[16, 32, 64, 128, 256]` and low col bases
+  `[1, 2, 4, 8]`.
+- Probe 1 added a bounded offset-major descriptor repartition candidate. It
+  synthesized a valid MMAv5 shared descriptor and emitted
+  `tcgen05.cp.cta_group::1.warpx4.32x128b`, but runtime output was wrong: with
+  row-coded input, output row `R` read source row `(R % 64) * 2 + R / 64`.
+  This means the candidate realizes a parent/root physical-order copy, not the
+  logical copy into the descriptor view. The probe was reverted.
+- Probe 2 added `warpx4` `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` source
+  format suffixes to the same offset-major descriptor lowering. Both variants
+  compiled and executed, but neither corrected the logical row permutation. The
+  probe was reverted.
+- Validation/evidence commands run:
+  - `make -j8` after each temporary C++ edit;
+  - direct Python repro for
+    `tmem_copy_scales_tmem_descriptor_view_kernel` with
+    `TRITON_DEBUG_TMEM_QUERY=1`;
+  - row-coded, col-coded, and block-coded input probes on GPU 0.
+- Current conclusion: descriptor representability alone is not a sufficient
+  support proof for exact scales descriptor views. The next durable
+  implementation needs a copy schedule that carries the logical
+  descriptor-view row permutation into TMEM destination row offsets and/or
+  multiple representable source descriptors, rather than reassigning source
+  descriptor bases and thereby losing logical semantics.
