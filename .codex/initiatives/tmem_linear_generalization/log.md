@@ -14851,3 +14851,30 @@ Open after this slice:
     source-column bit.
 - Next: add a copy-planning data path for destination query origin and use it
   in lowering/support diagnostics before changing accepted rows.
+
+## 2026-04-15 07:08 UTC: `tcgen05.cp.4x256b` ISA coverage
+
+- Added the dense 4x256b copy family to the copy atom/planner stack:
+  classification recognizes 4-row layouts with at least 256 source-column bits,
+  `stringifyTMemCopyFamily(...)` reports `4x256b`, and plan generation creates
+  one 4-row, 256-bit descriptor message.
+- Aligned shared-descriptor support with lowering by adding an explicit
+  `allowTransposed` argument to `canRepresentAsMMASmemDescriptor(...)`.
+  `Dense4x256b` is the only copy family that opts in because its 4x8 `f32`
+  descriptor is naturally represented by the transposed MMAv5 shared
+  descriptor. Existing families keep the previous non-transposed lowering
+  constraint.
+- Updated lowering to accept that descriptor orientation for `Dense4x256b` and
+  to skip the legacy 128-row stride assertions for the 4-row atom.
+- Added a Blackwell conversion test that checks
+  `tcgen05.cp.cta_group::1.4x256b` and updated the invalid diagnostic's
+  recognized family note.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: commit and push this checkpoint, then return to the actual backend
+  generality frontier: origin-aware copy query/lowering and the remaining
+  linear-layout schedule gaps, especially no-scales two-CTA `warpx2::02_13`
+  and scales copy unification.

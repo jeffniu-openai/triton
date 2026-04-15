@@ -8471,3 +8471,28 @@ rejection, not rescue
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; `slice_index_view` collect selected `16/8524`; `warpx2` collect selected `83/8524`; `cp_no_scales` collect selected `310/8524`; four-GPU `slice_index_view` selector passed all `16`; four-GPU `warpx2` selector passed all `83`; four-GPU `cp_no_scales` selector passed/skipped `300 passed, 10 skipped`; lit `test/TritonNvidiaGPU/invalid.mlir`, `test/TritonNvidiaGPU/ops.mlir`, and `test/Conversion/tritongpu_to_llvm_blackwell.mlir` passed; `git diff --check` passed.
 - Boundaries unchanged: true tensor-memory-scales `warpx2` remains parked by direct-PTX/source-offset evidence, and no-scales two-CTA `warpx2::02_13` remains a descriptor/address schedule frontier rather than a view-algebra gap.
 - Tooling note: `apply_patch` still failed with `No such file or directory`; this checkpoint used exact scripted replacements for source and docs edits.
+
+## Latest: 2026-04-15 07:08 UTC `tcgen05.cp.4x256b` ISA coverage
+
+- Added `TMemCopyFamily::Dense4x256b` and taught copy atom classification to
+  recognize dense 4-row copy layouts with at least 256 source-column bits.
+- Added a single-message 4x256b copy plan with a 4-row, 256-bit shared
+  descriptor tile. For `f32`, this is the 4x8 descriptor shape and emits one
+  `tcgen05.cp.cta_group::1.4x256b` per 8 logical columns.
+- The MMAv5 shared-descriptor representability helper now takes an explicit
+  `allowTransposed` flag. Copy-plan support passes this flag only for
+  `Dense4x256b`, matching the lowering path where the 4x8 descriptor's natural
+  representation is transposed. Existing copy families remain on the previous
+  non-transposed descriptor path.
+- Added a Blackwell conversion lit case for `4x8xf32` shared-linear to
+  tensor-memory-linear copy and updated the invalid diagnostic's recognized
+  family list.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `git diff --check`.
+- Boundary: this is missing ISA-family coverage, not a solution for the
+  two-CTA `warpx2::02_13` schedule gap or the broader exact-query/origin path.
+  Continue the backend completion plan with origin-aware copy planning and
+  broader linear-layout support, rather than treating 4x256b support as the
+  main backend generality fix.

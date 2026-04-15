@@ -976,11 +976,26 @@ tt.func public @tc_gen5_commit_twocta_with_descs(
 
 #shared = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32}>
 #shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
+#shared_4x256b = #ttg.shared_linear<{offset = [[1, 0], [2, 0], [0, 1], [0, 2], [0, 4]]}, alignment = 16>
 #tmem_linear = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_linear_4x256b = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0]], col = [[0, 1], [0, 2], [0, 4]]}>
 #tmem_linear_2x128x128 = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [0, 2, 0], [0, 4, 0], [0, 8, 0], [0, 16, 0], [0, 32, 0], [0, 64, 0]], col = [[0, 0, 1], [0, 0, 2], [0, 0, 4], [0, 0, 8], [0, 0, 16], [0, 0, 32], [0, 0, 64], [1, 0, 0]]}>
 #tmem_linear_256_copy = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64], [0, 128]]}>
 
 module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @tmem_copy_linear_4x256b
+  // CHECK: tcgen05.cp.cta_group::1.4x256b
+  // CHECK-NOT: tcgen05.cp.cta_group::1.128x256b
+  // CHECK: tcgen05.commit.cta_group::1.mbarrier::arrive::one.shared::cluster.b64
+  // CHECK: llvm.return
+  tt.func public @tmem_copy_linear_4x256b(
+      %src: !ttg.memdesc<4x8xf32, #shared_4x256b, #ttg.shared_memory>,
+      %dst: !ttg.memdesc<4x8xf32, #tmem_linear_4x256b, #ttng.tensor_memory, mutable>,
+      %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory>) {
+    ttng.tmem_copy %src, %dst, %barrier : !ttg.memdesc<4x8xf32, #shared_4x256b, #ttg.shared_memory>, !ttg.memdesc<4x8xf32, #tmem_linear_4x256b, #ttng.tensor_memory, mutable>, !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory>
+    tt.return
+  }
+
   // CHECK-LABEL: @tmem_copy_linear_128x256b
   // CHECK: [[TMEM_BASE_256B:%.*]] = llvm.ptrtoint %arg1 : !llvm.ptr<3> to i32
   // CHECK: [[OFFS0_256B:%.*]] = llvm.add [[TMEM_BASE_256B]], %{{.*}} : i32

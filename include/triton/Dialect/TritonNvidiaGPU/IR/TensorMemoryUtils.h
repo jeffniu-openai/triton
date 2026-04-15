@@ -91,6 +91,7 @@ struct TMemCopyAtom {
 };
 
 enum class TMemCopyFamily {
+  Dense4x256b,
   Dense128x128b,
   Dense128x256b,
   Warpx2_01_23_64x128b,
@@ -345,7 +346,7 @@ getTMemCopyDescriptorLayouts(gpu::MemDescType srcTy, const LinearLayout &shmemLl
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,
                                      int bitwidth, unsigned MNdim,
-                                     int mmaVersion);
+                                     int mmaVersion, bool allowTransposed);
 
 bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
                                                const LinearLayout &shmemLl,

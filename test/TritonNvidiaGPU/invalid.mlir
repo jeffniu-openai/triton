@@ -358,7 +358,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
   tt.func @tmem_copy_linear_blockm64_not_supported(%src: !ttg.memdesc<64x128xf32, #shared_f32, #ttg.shared_memory>,
                                                    %dst: !ttg.memdesc<64x128xf32, #tmem_linear_m64, #ttng.tensor_memory, mutable>) {
     // expected-error @+3 {{The source shared layout does not match any recognized tcgen05.copy family for non-scales tensor memory copies.}}
-    // expected-note @+2 {{Recognized tcgen05.copy families are 128x128b, 128x256b, warpx2::01_23.64x128b, warpx2::02_13.64x128b, and warpx4.32x128b.}}
+    // expected-note @+2 {{Recognized tcgen05.copy families are 4x256b, 128x128b, 128x256b, warpx2::01_23.64x128b, warpx2::02_13.64x128b, and warpx4.32x128b.}}
     // expected-note @+1 {{Use the canonical shared layout for your intended family, or reshape / permute the shared tile until it lowers to one of those families.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<64x128xf32, #shared_f32, #ttg.shared_memory>, !ttg.memdesc<64x128xf32, #tmem_linear_m64, #ttng.tensor_memory, mutable>
     tt.return

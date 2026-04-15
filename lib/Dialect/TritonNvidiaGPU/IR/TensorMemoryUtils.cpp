@@ -7209,6 +7209,12 @@ std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
   auto kOffset = S("offset");
   if (!cvt.hasInDim(kRow) || !cvt.hasInDim(kCol) || !cvt.hasOutDim(kOffset))
     return std::nullopt;
+  int totalBits = cvt.getInDimSize(kCol) * bitwidth;
+  if (cvt.getInDimSize(kRow) == 4) {
+    if (totalBits >= 256)
+      return TMemCopyAtom{4, 256, 0};
+    return std::nullopt;
+  }
   if (cvt.getInDimSize(kRow) != 128)
     return std::nullopt;
 
@@ -7217,7 +7223,6 @@ std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
     return cvt.getBasis(kRow, llvm::Log2_32(32) + i, kOffset) == 0;
   };
   auto multicast = multicastBit(0) | multicastBit(1) << 1;
-  int totalBits = cvt.getInDimSize(kCol) * bitwidth;
   if (multicast == 0) {
     if (totalBits == 128)
       return TMemCopyAtom{128, 128, 0};
@@ -7241,6 +7246,8 @@ TMemCopyFamily getTMemCopyFamily(const TMemCopyAtom &atom) {
     return TMemCopyFamily::Warpx2_02_13_64x128b;
   if (atom.multicast == 3)
     return TMemCopyFamily::Warpx4_32x128b;
+  if (atom.nRow == 4 && atom.bCol == 256)
+    return TMemCopyFamily::Dense4x256b;
   if (atom.bCol == 128)
     return TMemCopyFamily::Dense128x128b;
   return TMemCopyFamily::Dense128x256b;
@@ -7248,6 +7255,8 @@ TMemCopyFamily getTMemCopyFamily(const TMemCopyAtom &atom) {
 
 StringRef stringifyTMemCopyFamily(TMemCopyFamily family) {
   switch (family) {
+  case TMemCopyFamily::Dense4x256b:
+    return "4x256b";
   case TMemCopyFamily::Dense128x128b:
     return "128x128b";
   case TMemCopyFamily::Dense128x256b:
@@ -7380,7 +7389,8 @@ static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
                                         TMemCopyFamily family) {
-  if (family != TMemCopyFamily::Dense128x128b &&
+  if (family != TMemCopyFamily::Dense4x256b &&
+      family != TMemCopyFamily::Dense128x128b &&
       family != TMemCopyFamily::Dense128x256b)
     return getSupportedTMemCopyResult();
 
@@ -7455,7 +7465,8 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
 
 TMemCopySupportResult getDirectTMemCopyLayoutSupport(MemDescType memTy,
                                                      TMemCopyFamily family) {
-  if (family != TMemCopyFamily::Dense128x128b &&
+  if (family != TMemCopyFamily::Dense4x256b &&
+      family != TMemCopyFamily::Dense128x128b &&
       family != TMemCopyFamily::Dense128x256b)
     return getSupportedTMemCopyResult();
 
@@ -7635,6 +7646,11 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
     appendWarpx2Plan(/*descriptorRows=*/32u, /*sourceWarpGroups=*/4u,
                      /*directSeed=*/false, /*tmemDwordDelta=*/0,
                      /*directSourceOffsetB128=*/0);
+    return plans;
+  }
+
+  if (atom->multicast == 0 && atom->nRow == 4) {
+    plans.push_back(makePlan({std::tuple{4u, 1u, 4u, 0}}));
     return plans;
   }
 
@@ -7856,7 +7872,7 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,
                                      int bitwidth, unsigned MNdim,
-                                     int mmaVersion) {
+                                     int mmaVersion, bool allowTransposed) {
   if (ll.getNumOutDims() != 2)
     return false;
   auto dims = to_vector(ll.getInDimNames());
@@ -7876,6 +7892,8 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                       : SmallVector<bool>({false}))) {
     for (auto transposed : {false, true}) {
       for (int swizzling : {0, 32, 64, 128}) {
+        if (transposed && !allowTransposed)
+          continue;
         auto shmemEnc = triton::gpu::NVMMASharedEncodingAttr::get(
             ctx, swizzling, transposed, std::max(8, bitwidth), fp4Padded,
             CGALayout);
@@ -7947,6 +7965,7 @@ bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
     if (message.useDirectSeedDescriptor &&
         getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
       return true;
+    bool allowTransposed = plan.family == TMemCopyFamily::Dense4x256b;
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
     return llvm::any_of(srcDescLayouts, [&](const LinearLayout &srcDescLayout) {
@@ -7955,7 +7974,7 @@ bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
                           [&](unsigned mnDim) {
                             return canRepresentAsMMASmemDescriptor(
                                 srcDescLayout, message.descriptorShape,
-                                bitwidth, mnDim, 5);
+                                bitwidth, mnDim, 5, allowTransposed);
                           });
     });
   });

@@ -160,7 +160,8 @@ static LinearLayout getTMemCopyAddressLayout(MemDescType memDescType,
         triton::gpu::toLinearLayout(memDescType));
   }();
 
-  if (family != TMemCopyFamily::Dense128x128b &&
+  if (family != TMemCopyFamily::Dense4x256b &&
+      family != TMemCopyFamily::Dense128x128b &&
       family != TMemCopyFamily::Dense128x256b)
     return ll;
 
@@ -1539,7 +1540,10 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
           auto loader = DotOpMmaSmemLoader::build(
               loc, rewriter, srcDescLayout, bitwidth, smemBase,
               message.descriptorShape, mnDim, 5);
-          if (failed(loader) || loader->getDescriptor().transposed)
+          if (failed(loader))
+            continue;
+          if (loader->getDescriptor().transposed &&
+              plan.family != TMemCopyFamily::Dense4x256b)
             continue;
           PlannedCopyMessage plannedMessage{message, *loader, std::nullopt};
           candidateMessages.push_back(std::move(plannedMessage));
@@ -1595,9 +1599,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       llvm::any_of(plannedMessages, [](const PlannedCopyMessage &message) {
         return message.directSeedDescriptorImm.has_value();
       });
-  auto strideRow = cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
   const auto &copyAtom = plannedMessages.front().plan.atom;
-  if (!usesDirectSeedDescriptor) {
+  if (!usesDirectSeedDescriptor && copyAtom.nRow != 4) {
+    auto strideRow = cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
     if ((copyAtom.multicast & 1) == 0) {
       assert(cvt.getBasis(kRow, llvm::Log2_32(32), kOffset) ==
              strideRow * (32 / 8));

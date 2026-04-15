@@ -95,6 +95,16 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current `tcgen05.cp.4x256b` ISA coverage checkpoint, 2026-04-15 07:08 UTC:
+  no-scales `ttng.tmem_copy` now recognizes the dense 4-row, 256-bit copy
+  atom, plans it as a single 4x8 shared descriptor for 32-bit elements, and
+  lowers it to `tcgen05.cp.cta_group::1.4x256b`. Shared-descriptor support and
+  lowering now agree on descriptor orientation: the 4x256b family may use the
+  natural transposed 4x8 MMAv5 shared descriptor, while existing copy families
+  retain the prior non-transposed descriptor path. Validation passed:
+  `make -j8`, direct invalid/conversion lit RUN lines via local `triton-opt`
+  and `FileCheck`, and `git diff --check`.
+
 - Current guarded exact-query copy checkpoint, 2026-04-15 06:57 UTC:
   copy verification and no-scales lowering now compute the exact destination
   physical query and use it only when it is equal to the standalone projection.

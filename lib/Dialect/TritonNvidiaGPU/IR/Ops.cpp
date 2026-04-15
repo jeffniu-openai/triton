@@ -1659,8 +1659,9 @@ LogicalResult TMEMCopyOp::verify() {
           "The source shared layout does not match any recognized "
           "tcgen05.copy family for non-scales tensor memory copies.");
       diag.attachNote()
-          << "Recognized tcgen05.copy families are 128x128b, 128x256b, "
-             "warpx2::01_23.64x128b, warpx2::02_13.64x128b, and "
+          << "Recognized tcgen05.copy families are 4x256b, 128x128b, "
+             "128x256b, warpx2::01_23.64x128b, "
+             "warpx2::02_13.64x128b, and "
              "warpx4.32x128b.";
       diag.attachNote()
           << "Use the canonical shared layout for your intended family, or "
