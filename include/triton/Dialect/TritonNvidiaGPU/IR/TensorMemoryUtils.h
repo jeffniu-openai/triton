@@ -233,9 +233,17 @@ struct TMemCopyScheduledTile {
   int32_t sourceCol;
 };
 
+struct TMemCopySourceFootprint {
+  int32_t row;
+  int32_t col;
+  unsigned rows;
+  unsigned columns;
+};
+
 struct TMemCopyScheduledInstruction {
   unsigned messageIndex;
   TMemCopyScheduledTile tile;
+  TMemCopySourceFootprint source;
 };
 
 struct TMemCopyExecutablePlan {

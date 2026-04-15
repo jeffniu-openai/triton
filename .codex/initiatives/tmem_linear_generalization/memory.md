@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current copy source-footprint checkpoint, 2026-04-15 23:40 UTC:
+  `TMemCopyScheduledInstruction` now carries a `TMemCopySourceFootprint`
+  alongside the scheduled tile. The source footprint records the exact source
+  row/column after message-level `smemRow`/`smemColOffset` are applied plus
+  the instruction source footprint rows/columns. LLVM lowering now consumes
+  `instruction.source` for both MMAShared descriptor loads and direct-seed
+  descriptor source-column offsets. Current schedules are unchanged, but the
+  emitted instruction stream now has planner-owned source and destination
+  footprints in one object, which is the right place to add overlap,
+  overwrite, and source-layout schedule proofs. Validation passed: `make -j8`,
+  py-compile, `git diff --check`, and focused copy selector (`366 passed,
+  10622 deselected in 610.87s`).
+
 - Current `warpx2` dense-shared preflight probe, 2026-04-15 23:27 UTC:
   temporarily removed the canonical `128x4` shared-linear offset-basis check
   for `warpx2` copy to test whether dense shared source order was an easy

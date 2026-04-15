@@ -1645,7 +1645,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     if (message.schedule.directSeedDescriptorImm) {
       uint64_t sourceOffsetB128 =
           messagePlan.directSourceOffsetB128 +
-          ((tile.sourceCol + messagePlan.smemColOffset) * bitwidth) / 128;
+          (instruction.source.col * bitwidth) / 128;
       uint64_t descImm = *message.schedule.directSeedDescriptorImm;
       descImm &= ~(((1ULL << 14) - 1) | (0x7ULL << 49));
       descImm |= sourceOffsetB128;
@@ -1654,9 +1654,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       Value baseb128 = b.zext(i64_ty, b.and_(baseSrcb128, b.i32_val(0x3FFF)));
       desc = b.add(b.int_val(64, descImm), baseb128);
     } else {
-      desc = message.loader->smemLoad(
-          messagePlan.smemRow + tile.sourceRow,
-          tile.sourceCol + messagePlan.smemColOffset, rewriter, loc);
+      desc = message.loader->smemLoad(instruction.source.row,
+                                      instruction.source.col, rewriter, loc);
     }
     assert(messagePlan.tmemRowDelta >= 0 &&
            "tcgen05.copy destination row delta must be non-negative");

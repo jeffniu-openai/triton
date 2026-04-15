@@ -1,3 +1,20 @@
+## 2026-04-15 23:40 UTC: copy source-footprint carrier
+
+- Added `TMemCopySourceFootprint` and attached it to each scheduled copy
+  instruction.
+- `getTMemCopyInstructionSchedule(...)` now computes the instruction source
+  row/column after message-level `smemRow` and `smemColOffset` are applied,
+  and records the source footprint size from the message instruction shape.
+- Lowering now uses `instruction.source.row/col` for MMAShared descriptor
+  loads and direct-seed descriptor source offsets. The emitted schedule is
+  otherwise unchanged.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-source-footprint PYTHONPATH=./python pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_warpx2_02_13_candidate_positive or cp_no_scales_warpx2_01_23_twocta_positive or cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported or cp_no_scales_linear_tile_permuted or cp_no_scales_4x256b_refresh_layout_codegen or cp_scales_warpx4 or cp_scales_tmem_descriptor_view_reports_clean_unsupported'`
+    (`366 passed, 10622 deselected in 610.87s`).
+
 ## 2026-04-15 23:27 UTC: warpx2 dense-shared preflight probe
 
 - Temporarily removed the strict canonical `128x4` shared-linear offset-basis

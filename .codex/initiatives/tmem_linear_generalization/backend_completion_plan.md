@@ -338,6 +338,12 @@ Progress:
   but runtime was wrong (`maxdiff=127` for both single-CTA and two-CTA, `f32`
   and `i32`); `warpx2::02_13` still failed deeper. Keep the preflight until
   the planner has an explicit source shared-layout schedule/projection proof.
+- 2026-04-15 23:40 UTC: added `TMemCopySourceFootprint` to scheduled copy
+  instructions. The planner-owned emitted instruction stream now pairs each
+  destination tile/footprint with the source row/column footprint that lowering
+  will read, including direct-seed descriptor source offsets. Current schedules
+  are unchanged, but source/destination footprint legality can now be checked
+  in the planner instead of being reconstructed in lowering.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

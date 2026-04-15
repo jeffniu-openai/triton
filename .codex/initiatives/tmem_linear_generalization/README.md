@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:40 UTC: scheduled copy instructions now carry a
+  `TMemCopySourceFootprint` paired with the existing scheduled tile. The
+  planner computes source row/column and instruction source footprint rows /
+  columns once, and LLVM lowering consumes those coordinates for both
+  MMAShared descriptor loads and direct-seed descriptor source offsets. This
+  is behavior-preserving scaffolding for source/destination footprint
+  comparison and non-uniform split schedules. Validation: `make -j8`,
+  py-compile of `test_tmem_runtime_matrix.py`, `git diff --check`, and a
+  focused copy selector covering direct-seed `warpx2::02_13`, two-CTA
+  `warpx2::01_23`, dense tile permutations, `4x256b` refresh copy, scales
+  `warpx4`, and the scales descriptor-view clean negative (`366 passed,
+  10622 deselected in 610.87s`).
 - 2026-04-15 23:27 UTC: probed whether the `warpx2` dense-shared clean
   negatives were only blocked by an overstrict shared-layout preflight. A
   temporary relaxation let `warpx2::01_23` dense shared layouts compile and

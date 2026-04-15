@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <limits>
 #include <tuple>
 
 using namespace mlir;
@@ -8185,6 +8186,37 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
   return tiles;
 }
 
+static std::optional<TMemCopySourceFootprint>
+getTMemCopySourceFootprint(const TMemCopyScheduledMessage &message,
+                           const TMemCopyScheduledTile &tile,
+                           std::string *error) {
+  const TMemCopyMessagePlan &plan = message.plan;
+  int64_t sourceRow = static_cast<int64_t>(plan.smemRow) + tile.sourceRow;
+  int64_t sourceCol =
+      static_cast<int64_t>(plan.smemColOffset) + tile.sourceCol;
+  if (sourceRow < 0 || sourceCol < 0 ||
+      sourceRow > std::numeric_limits<int32_t>::max() ||
+      sourceCol > std::numeric_limits<int32_t>::max()) {
+    if (error)
+      *error = "tcgen05.copy source footprint has an invalid source "
+               "coordinate.";
+    return std::nullopt;
+  }
+  if (plan.instrShape.size() < 2 || plan.instrShape[0] == 0 ||
+      plan.instrShape[1] == 0) {
+    if (error)
+      *error =
+          "tcgen05.copy source footprint requires a non-empty instruction "
+          "shape.";
+    return std::nullopt;
+  }
+  return TMemCopySourceFootprint{
+      /*row=*/static_cast<int32_t>(sourceRow),
+      /*col=*/static_cast<int32_t>(sourceCol),
+      /*rows=*/plan.instrShape[0],
+      /*columns=*/plan.instrShape[1]};
+}
+
 std::optional<llvm::SmallVector<TMemCopyScheduledInstruction>>
 getTMemCopyInstructionSchedule(ArrayRef<TMemCopyScheduledMessage> messages,
                                ArrayRef<TMemCopyScheduledTile> tiles,
@@ -8200,8 +8232,14 @@ getTMemCopyInstructionSchedule(ArrayRef<TMemCopyScheduledMessage> messages,
   for (const TMemCopyScheduledTile &tile : tiles) {
     for (unsigned messageIdx = 0, e = messages.size(); messageIdx < e;
          ++messageIdx) {
+      auto source = getTMemCopySourceFootprint(messages[messageIdx], tile,
+                                               error);
+      if (!source)
+        return std::nullopt;
       instructions.push_back(TMemCopyScheduledInstruction{
-          /*messageIndex=*/messageIdx, tile});
+          /*messageIndex=*/messageIdx,
+          /*tile=*/tile,
+          /*source=*/ *source});
     }
   }
   return instructions;
