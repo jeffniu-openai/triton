@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:42 UTC: legacy no-scales subword `tcgen05.copy` was
+  re-probed as a packed-lane support candidate. A temporary planner change let
+  sub-32-bit lane bits with zero offset pass the instruction-column proof, but
+  the next layer still could not synthesize an MMAv5 shared descriptor for the
+  packed TMEM projection, and the existing tile scheduler would still count
+  the lane-expanded logical column dimension. The probe was removed, source was
+  rebuilt, and the existing clean-negative rows passed again. Conclusion:
+  legacy packed subword copy needs a first-class lane-aware TMEM/shared
+  physical query plus a scheduler whose column extent is physical dwords and
+  lane bits, not just a relaxed instruction-column predicate.
 - 2026-04-15 22:33 UTC: copy instruction-column projection failures now have
   a typed planner model instead of being only inline diagnostic strings.
   `TMemCopyInstructionColumnProjectionFailure` classifies packed-lane state,

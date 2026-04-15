@@ -292,6 +292,13 @@ Progress:
   preserves current behavior while making the scales descriptor-view /
   shared-subslice split requirement a typed scheduler input instead of a
   diagnostic-only fact.
+- 2026-04-15 22:42 UTC: re-probed legacy no-scales subword copy as a packed
+  lane support path. Relaxing only the instruction-column predicate let
+  zero-offset low lane bits pass, but descriptor synthesis still had no MMAv5
+  shared-memory descriptor for the packed TMEM projection and tile planning
+  still saw lane-expanded logical columns. Phase 2 therefore needs a
+  lane-aware physical query and copy schedule for packed sub-dword lanes,
+  not just a looser column-contiguity check.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

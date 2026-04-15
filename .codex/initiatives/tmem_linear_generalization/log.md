@@ -17710,3 +17710,36 @@ Open after this slice:
     TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-projection-debug-kind
     TRITON_DEBUG_TMEM_QUERY=1`;
   - `git diff --check`.
+
+## 2026-04-15 22:42 UTC: packed-lane copy support probe
+
+- No source changes remain from this probe.
+- Target: legacy no-scales subword `tcgen05.copy` rows
+  (`f16`, `bf16`, `i16`, `i8`) that currently fail because source column bit 0
+  maps to no shared offset.
+- Temporary source change:
+  - accepted sub-32-bit packed lane bits in
+    `getTMemCopyInstructionColumnProjectionPlan(...)` when the low lane bits
+    had zero offset and no non-offset component;
+  - recorded the packed lane bits on the projection carrier while probing.
+- Result:
+  - the temporary change moved the rows past instruction-column projection;
+  - all four rows then failed descriptor synthesis with no representable MMAv5
+    shared-memory descriptor for the packed TMEM projection;
+  - the projected conversion still exposes an extra zero-basis logical column
+    bit, so the current destination tile scheduler would count lane-expanded
+    logical columns rather than physical dword columns plus packed lanes.
+- Interpretation:
+  - this is not an instruction-column predicate bug alone;
+  - legacy packed subword copy needs a lane-aware physical-query/schedule model
+    that carries sub-dword lane state through descriptor synthesis and tile
+    planning;
+  - do not promote these rows by simply allowing zero-offset low column bits.
+- Cleanup and validation:
+  - removed the temporary source edits;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-packed-lane-restored
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
+    (`4 passed in 3.47s`).

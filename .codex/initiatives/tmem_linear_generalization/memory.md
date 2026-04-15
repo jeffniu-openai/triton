@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current packed-lane copy reprobe checkpoint, 2026-04-15 22:42 UTC: legacy
+  no-scales subword copy remains a real lane-model gap. A temporary
+  instruction-column relaxation accepted sub-32-bit lane bits whose source
+  offset is zero, which moved `f16`/`bf16`/`i16`/`i8` legacy copies past the
+  current packed-lane rejection. The next planner layer still failed to
+  synthesize an MMAv5 shared descriptor for the packed TMEM projection, and
+  the destination tile scheduler would still see the lane-expanded logical
+  column dimension rather than physical dword columns plus lane bits. The probe
+  was removed; `make -j8` rebuilt source-consistent binaries; the existing
+  legacy subword clean-negative pytest row passed (`4` rows). Do not promote
+  legacy packed subword copy by only relaxing
+  `getTMemCopyInstructionColumnProjectionPlan(...)`; the missing abstraction
+  is a lane-aware physical query/schedule that carries packed lane state
+  explicitly through descriptor synthesis and tile planning.
+
 - Current copy instruction-column failure model checkpoint, 2026-04-15
   22:33 UTC: the copy planner now returns a structured
   `TMemCopyInstructionColumnProjectionFailure` when a message cannot prove its
