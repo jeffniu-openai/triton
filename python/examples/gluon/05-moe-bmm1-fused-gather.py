@@ -879,37 +879,55 @@ class KernelConfig:
     BLOCK_M: int = 128
     BLOCK_N: int = 256
     BLOCK_K: int = 128
+
     X_NUM_BUFS: int = 5
     W_NUM_BUFS: int = 4
     ACC_NUM_BUFS: int = 1
+
+    NUM_WARPS: int = 8
     LOAD_ACTIVATION_WARPS: int = 4
     LOAD_WEIGHT_WARPS: int = 1
     MMA_WARPS: int = 1
     STORE_HELPER_WARPS: int = 2
+
     SWIGLU_SUBTILE_FACTOR: int = 8
     EPILOGUE_BUFFER_DEPTH: int = 2
+
     LOAD_ACTIVATION_REGS: int = 112
     LOAD_WEIGHT_REGS: int = 48
-    MMA_REGS: int = 24
-    STORE_HELPER_REGS: int = 16
+    MMA_REGS: int = 48
+    STORE_HELPER_REGS: int = 48
+
+    MXFP_BLOCK_SIZE: int = 32
+    SCALE_SIZE_OUTER: int = 128
+    SCALE_SIZE_INNER: int = 4
 
 
-def estimated_slice_size(ragged_metadata: RaggedTensorMetadata, m: int) -> int:
-    if ragged_metadata.expected_slice_size is not None:
-        return ragged_metadata.expected_slice_size
-    return max(1, m // ragged_metadata.n_slices)
+def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int, reduction_n: int) -> KernelConfig:
+    p = KernelConfig()
 
-
-def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int) -> KernelConfig:
-    slice_size = estimated_slice_size(ragged_metadata, m)
-    config = KernelConfig()
+    slice_size = ragged_metadata.expected_slice_size
+    assert slice_size is not None
     if slice_size <= 8:
-        return replace(config, BLOCK_M=16, SWIGLU_SUBTILE_FACTOR=2)
-    if slice_size <= 16:
-        return replace(config, BLOCK_M=32, SWIGLU_SUBTILE_FACTOR=4)
-    if slice_size <= 58:
-        return replace(config, BLOCK_M=64, SWIGLU_SUBTILE_FACTOR=4)
-    return config
+        p = replace(p, BLOCK_M=16, SWIGLU_SUBTILE_FACTOR=2)
+    elif slice_size <= 16:
+        p = replace(p, BLOCK_M=32, SWIGLU_SUBTILE_FACTOR=4)
+    elif slice_size <= 58:
+        p = replace(p, BLOCK_M=64, SWIGLU_SUBTILE_FACTOR=4)
+
+    x_smem = p.BLOCK_M * p.BLOCK_K
+    w_smem = p.BLOCK_N * p.BLOCK_K
+    w_mx_smem = w_smem // p.MXFP_BLOCK_SIZE
+    c_tile_smem = (p.BLOCK_M // p.SWIGLU_SUBTILE_FACTOR) * (p.BLOCK_N // reduction_n)
+
+    smem = 228 * 1024
+    smem -= p.X_NUM_BUFS * x_smem
+    smem -= p.EPILOGUE_BUFFER_DEPTH * c_tile_smem
+
+    w_num_bufs = smem // (w_smem + w_mx_smem)
+    p = replace(p, W_NUM_BUFS=w_num_bufs)
+
+    return p
 
 
 def matmul(
@@ -941,32 +959,28 @@ def matmul(
     _, _, n = b.shape
     m = gather_indx.shape[0]
 
-    config = select_kernel_config(a_ragged_metadata, m)
+    p = select_kernel_config(a_ragged_metadata, m, reduction_n)
+    x_block_idx = p.BLOCK_M.bit_length() - 5
 
-    mxfp_block_size = 32
-    scale_size_outer = 128
-    scale_size_inner = 4
-    x_block_idx = config.BLOCK_M.bit_length() - 5
-
-    expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, config.BLOCK_M)
-    grid_n = triton.cdiv(n, config.BLOCK_N)
+    expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
+    grid_n = triton.cdiv(n, p.BLOCK_N)
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
     launch_grid = max(1, min(sms, expected_grid_m * grid_n))
     grid = (launch_grid,)
 
-    x_desc = make_operand_descriptor(a, (1, config.BLOCK_K))
-    w_desc = make_operand_descriptor(b, (1, config.BLOCK_N, config.BLOCK_K // 2), transposed=True)
+    x_desc = make_operand_descriptor(a, (1, p.BLOCK_K))
+    w_desc = make_operand_descriptor(b, (1, p.BLOCK_N, p.BLOCK_K // 2), transposed=True)
     scale_desc = make_operand_descriptor(
         b_mx_scales,
         (
             1,
-            config.BLOCK_N // scale_size_outer,
-            config.BLOCK_K // mxfp_block_size // scale_size_inner,
+            p.BLOCK_N // p.SCALE_SIZE_OUTER,
+            p.BLOCK_K // p.MXFP_BLOCK_SIZE // p.SCALE_SIZE_INNER,
             2,
             256,
         ),
     )
-    out_desc = make_operand_descriptor(c, (config.BLOCK_M, config.BLOCK_N // reduction_n))
+    out_desc = make_operand_descriptor(c, (p.BLOCK_M, p.BLOCK_N // reduction_n))
 
     ws_matmul_kernel[grid](
         x_desc=x_desc,
@@ -1000,26 +1014,26 @@ def matmul(
         #
         FLEXPOINT_SATURATE_INF=precision_config.flexpoint_saturate_inf,
         #
-        BLOCK_M=config.BLOCK_M,
-        BLOCK_N=config.BLOCK_N,
-        BLOCK_K=config.BLOCK_K,
+        BLOCK_M=p.BLOCK_M,
+        BLOCK_N=p.BLOCK_N,
+        BLOCK_K=p.BLOCK_K,
         NUM_SMS=launch_grid,
-        X_NUM_BUFS=config.X_NUM_BUFS,
-        W_NUM_BUFS=config.W_NUM_BUFS,
-        ACC_NUM_BUFS=config.ACC_NUM_BUFS,
-        LOAD_ACTIVATION_WARPS=config.LOAD_ACTIVATION_WARPS,
-        LOAD_WEIGHT_WARPS=config.LOAD_WEIGHT_WARPS,
-        MMA_WARPS=config.MMA_WARPS,
-        STORE_HELPER_WARPS=config.STORE_HELPER_WARPS,
-        LOAD_ACTIVATION_REGS=config.LOAD_ACTIVATION_REGS,
-        LOAD_WEIGHT_REGS=config.LOAD_WEIGHT_REGS,
-        MMA_REGS=config.MMA_REGS,
-        STORE_HELPER_REGS=config.STORE_HELPER_REGS,
-        SWIGLU_SUBTILE_FACTOR=config.SWIGLU_SUBTILE_FACTOR,
-        EPILOGUE_BUFFER_DEPTH=config.EPILOGUE_BUFFER_DEPTH,
-        SCALE_SIZE_OUTER=scale_size_outer,
-        SCALE_SIZE_INNER=scale_size_inner,
-        MXFP_BLOCK_SIZE=mxfp_block_size,
+        X_NUM_BUFS=p.X_NUM_BUFS,
+        W_NUM_BUFS=p.W_NUM_BUFS,
+        ACC_NUM_BUFS=p.ACC_NUM_BUFS,
+        LOAD_ACTIVATION_WARPS=p.LOAD_ACTIVATION_WARPS,
+        LOAD_WEIGHT_WARPS=p.LOAD_WEIGHT_WARPS,
+        MMA_WARPS=p.MMA_WARPS,
+        STORE_HELPER_WARPS=p.STORE_HELPER_WARPS,
+        LOAD_ACTIVATION_REGS=p.LOAD_ACTIVATION_REGS,
+        LOAD_WEIGHT_REGS=p.LOAD_WEIGHT_REGS,
+        MMA_REGS=p.MMA_REGS,
+        STORE_HELPER_REGS=p.STORE_HELPER_REGS,
+        SWIGLU_SUBTILE_FACTOR=p.SWIGLU_SUBTILE_FACTOR,
+        EPILOGUE_BUFFER_DEPTH=p.EPILOGUE_BUFFER_DEPTH,
+        SCALE_SIZE_OUTER=p.SCALE_SIZE_OUTER,
+        SCALE_SIZE_INNER=p.SCALE_SIZE_INNER,
+        MXFP_BLOCK_SIZE=p.MXFP_BLOCK_SIZE,
         #
         num_warps=8,
     )
