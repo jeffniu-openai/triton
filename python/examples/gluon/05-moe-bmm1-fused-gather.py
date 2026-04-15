@@ -36,6 +36,7 @@ from triton_kernels.tensor import (
 )
 from triton_kernels.tensor_details.dtype import UINT8
 from triton_kernels.tensor_details.layout import (
+    BlackwellMX4ValueShuffledLayout,
     make_default_matmul_mxfp4_w_layout,
     make_default_matmul_mxfp4_w_scale_layout,
 )
@@ -246,6 +247,7 @@ class PartitionArgs:
     SCALE_SIZE_INNER: gl.constexpr
     MXFP_BLOCK_SIZE: gl.constexpr
     PACKED_BLOCK_K: gl.constexpr
+    W_VALUE_SHUFFLED: gl.constexpr
 
     SWIGLU_ALPHA: gl.constexpr
     SWIGLU_LIMIT: gl.constexpr
@@ -329,7 +331,10 @@ def load_weights(p: PartitionArgs):
 
             mbarrier.wait(w_empty_bar, phase)
             mbarrier.expect(w_ready_bar, bytes_per_stage)
-            tma.async_copy_global_to_shared(p.w_desc, [slice_idx, off_n, off_k_w], w_ready_bar, w_buf)
+            if p.W_VALUE_SHUFFLED:
+                tma.async_copy_global_to_shared(p.w_desc, [slice_idx, ki, pid_n, 0, 0], w_ready_bar, w_buf)
+            else:
+                tma.async_copy_global_to_shared(p.w_desc, [slice_idx, off_n, off_k_w], w_ready_bar, w_buf)
             tma.async_copy_global_to_shared(p.scale_desc, [0, scale_idx, off_k_scale, 0, 0], w_ready_bar, scale_buf)
 
             idx, phase = advance(idx, phase, p.w_num_bufs)
@@ -369,7 +374,7 @@ def mma_partition(p: PartitionArgs):
             mbarrier.wait(x_ready_bar, x_phase)
 
             blackwell.tcgen05_mma_scaled(
-                w_buf.reshape((w_buf.shape[1], w_buf.shape[2])),
+                w_buf.reshape((p.BLOCK_N, p.PACKED_BLOCK_K)),
                 x_buf.permute((1, 0)),
                 acc_buf,
                 p.w_scale_tmem,
@@ -679,8 +684,9 @@ def ws_matmul_kernel(
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
+    W_VALUE_SHUFFLED: gl.constexpr,
 ):
-    packed_block_k: gl.constexpr = w_desc.block_type.shape[2]
+    packed_block_k: gl.constexpr = BLOCK_K // 2
 
     grid_m = gl.load(x_block_offs + NUM_SLICES)
     grid_n: gl.constexpr = triton.cdiv(N, BLOCK_N)
@@ -790,6 +796,7 @@ def ws_matmul_kernel(
         SCALE_SIZE_INNER=SCALE_SIZE_INNER,
         MXFP_BLOCK_SIZE=MXFP_BLOCK_SIZE,
         PACKED_BLOCK_K=packed_block_k,
+        W_VALUE_SHUFFLED=W_VALUE_SHUFFLED,
         #
         SWIGLU_ALPHA=SWIGLU_ALPHA,
         SWIGLU_LIMIT=SWIGLU_LIMIT,
@@ -830,7 +837,7 @@ def ws_matmul_kernel(
 def get_operand_layout(t: Tensor, block_shape: list[int]):
     rank = len(block_shape)
     if t.dtype == FP4:
-        assert rank == 3
+        assert rank in (3, 5)
         return gl.NVMMASharedLayout(
             swizzle_byte_width=128,
             element_bitwidth=8,
@@ -859,6 +866,10 @@ def get_operand_layout(t: Tensor, block_shape: list[int]):
     )
 
 
+def has_shuffled_mx4_value_layout(t: torch.Tensor | Tensor) -> bool:
+    return isinstance(t, Tensor) and isinstance(t.storage.layout, BlackwellMX4ValueShuffledLayout)
+
+
 def make_operand_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ...], transposed: bool = False):
     from triton.experimental.gluon.nvidia.hopper import TensorDescriptor
 
@@ -866,7 +877,11 @@ def make_operand_descriptor(t: torch.Tensor | Tensor, block_shape: tuple[int, ..
     shape = list(ptr.shape)
     strides = list(ptr.stride())
 
-    if transposed:
+    if has_shuffled_mx4_value_layout(t):
+        assert not transposed
+        block_shape = t.storage.layout.swizzle_block_shape(list(block_shape))
+        block_shape[strides.index(1)] //= 2
+    elif transposed:
         shape[-1], shape[-2] = shape[-2], shape[-1]
         strides[-1], strides[-2] = strides[-2], strides[-1]
 
@@ -1010,6 +1025,10 @@ def matmul(
     m = gather_indx.shape[0]
 
     p = p or select_kernel_config(a_ragged_metadata.expected_slice_size)
+    w_value_shuffled = has_shuffled_mx4_value_layout(b)
+    if w_value_shuffled:
+        assert b.storage.layout.block_k == p.BLOCK_K
+        assert b.storage.layout.block_n == p.BLOCK_N
     x_block_idx = p.BLOCK_M.bit_length() - 5
 
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
@@ -1020,8 +1039,11 @@ def matmul(
     grid = (launch_grid,)
 
     x_desc = make_operand_descriptor(a, (1, p.BLOCK_K))
-    # Divide by 2 along the contiguous dim due to fp4_padded=True.
-    w_desc = make_operand_descriptor(b, (1, p.BLOCK_N, p.BLOCK_K // 2), transposed=True)
+    if w_value_shuffled:
+        w_desc = make_operand_descriptor(b, (1, p.BLOCK_K, p.BLOCK_N))
+    else:
+        # Divide by 2 along the contiguous dim due to fp4_padded=True.
+        w_desc = make_operand_descriptor(b, (1, p.BLOCK_N, p.BLOCK_K // 2), transposed=True)
     scale_desc = make_operand_descriptor(
         b_mx_scales,
         (
@@ -1086,6 +1108,7 @@ def matmul(
         SCALE_SIZE_OUTER=p.SCALE_SIZE_OUTER,
         SCALE_SIZE_INNER=p.SCALE_SIZE_INNER,
         MXFP_BLOCK_SIZE=p.MXFP_BLOCK_SIZE,
+        W_VALUE_SHUFFLED=w_value_shuffled,
         #
         num_warps=8,
         maxnreg=p.MAXNREG,
@@ -1140,10 +1163,15 @@ def alloc_randn(shape: tuple[int, ...], dtype: torch.dtype, device: str) -> torc
     return torch.randn(shape, device=device, dtype=dtype)
 
 
-def alloc_randn_fp4(shape: tuple[int, ...], device: str) -> tuple[Tensor, Tensor]:
+def alloc_randn_fp4(shape: tuple[int, ...], device: str, block_k: int, block_n: int) -> tuple[Tensor, Tensor]:
     data = alloc_randn(shape, torch.bfloat16, device)
     data, scale = downcast_to_mxfp(data, FP4, axis=1)  # type: ignore[arg-type]
-    data_layout = make_default_matmul_mxfp4_w_layout(mx_axis=1)
+    data_layout = make_default_matmul_mxfp4_w_layout(
+        mx_axis=1,
+        allow_blackwell_value_shuffle=True,
+        block_k=block_k,
+        block_n=block_n,
+    )
     scale_layout = make_default_matmul_mxfp4_w_scale_layout(mx_axis=1, num_warps=8)
     data = convert_layout(wrap_torch_tensor(data, dtype=FP4), data_layout)
     scale = convert_layout(wrap_torch_tensor(scale), scale_layout)
@@ -1163,15 +1191,16 @@ def init_routing_data(c: MLPConfig, batch_size: int, local_rank: int, device: st
     gather_indx = torch.div(combine_indx, c.experts_per_token, rounding_mode="trunc")
     return ragged_metadata, gather_indx
 
-def prepare_case(c: MLPConfig, batch_size: int, device: str, seed: int = 0) -> PreparedCase:
+def prepare_case(c: MLPConfig, batch_size: int, device: str, seed: int = 0, kernel_config=None) -> PreparedCase:
     torch.manual_seed(seed)
 
     local_rank = int(torch.randint(0, c.num_expert_shards, size=()).item())
     k, n = c.hidden_size, c.intermediate_size
     n_expts_local = c.num_experts // c.num_expert_shards
     ragged_metadata, gather_indx = init_routing_data(c, batch_size, local_rank, device)
+    p = kernel_config or select_kernel_config(ragged_metadata.expected_slice_size)
     x = alloc_randn((batch_size, k), dtype=torch.float8_e4m3fn, device=device)
-    w, w_scale = alloc_randn_fp4((n_expts_local, k, n), device=device)
+    w, w_scale = alloc_randn_fp4((n_expts_local, k, n), device=device, block_k=p.BLOCK_K, block_n=p.BLOCK_N)
     bias = alloc_randn((n_expts_local, n), dtype=torch.float32, device=device)
 
     swiglu_alpha = float(torch.rand((), device=device).item()) / 5 + 1.0
@@ -1391,7 +1420,13 @@ def autotune():
             test_p = replace(p, X_NUM_BUFS=20, W_NUM_BUFS=20)
 
             err = None
-            prepared = prepare_case(GPT_OSS_120B_CONFIG, bs, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+            prepared = prepare_case(
+                GPT_OSS_120B_CONFIG,
+                bs,
+                device=f"cuda:{torch.cuda.current_device()}",
+                seed=0,
+                kernel_config=p,
+            )
             precision_config = make_precision_config(prepared)
             out = make_output_buffer(prepared)
             try:
