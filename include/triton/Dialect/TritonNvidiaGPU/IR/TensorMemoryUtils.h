@@ -440,6 +440,10 @@ bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
                                      TMemCopyFamily family,
                                      std::string *error = nullptr);
 
+bool isTMemCopy4x256RefreshLayout(gpu::MemDescType memTy);
+
+StringRef getTMemCopy4x256RefreshLdStUnsupportedMessage();
+
 TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(gpu::MemDescType srcTy,
                                       TMemCopyFamily family);

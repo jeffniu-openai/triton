@@ -1139,6 +1139,12 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       diag.attachNote() << unsupportedDescriptorViewError;
     return diag;
   }
+  if (isTMemCopy4x256RefreshLayout(memdesc)) {
+    InFlightDiagnostic diag =
+        op->emitOpError(regName) << " has no supported register layout";
+    diag.attachNote() << getTMemCopy4x256RefreshLdStUnsupportedMessage();
+    return diag;
+  }
   auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
     if (!layout.hasInDim(dim))
       return false;

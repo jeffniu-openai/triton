@@ -17341,3 +17341,33 @@ Open after this slice:
     'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported'`
     (`15 passed in 5.15s`);
   - `git diff --check`.
+
+## 2026-04-15 20:44 UTC: 4x256b refresh direct-ld/st backend diagnostic
+
+- Added C++ recognition for the refresh-shaped
+  `tcgen05.copy.4x256b` tensor-memory layout in direct TMEM operand
+  verification.
+- Implementation:
+  - exposed `isTMemCopy4x256RefreshLayout(gpu::MemDescType)` in
+    `TensorMemoryUtils`;
+  - added a shared direct `ld/st` unsupported message matching the Python
+    frontend guard's row-anchor explanation;
+  - `verifyTMEMOperand(...)` now returns that clean diagnostic before generic
+    register-layout enumeration;
+  - added a direct `ttng.tmem_load` invalid-MLIR regression for the refresh
+    view.
+- Semantics:
+  - no support promotion;
+  - the refresh copy path remains positive, while refresh-shaped direct
+    `ld/st` remains clean unsupported until a register layout can realize the
+    required row anchors as warp bases.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - exact pytest nodeids
+    `test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen`,
+    `test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen`,
+    and
+    `test_tmem_runtime_matrix_ldst_4x256b_refresh_layout_reports_clean_unsupported`:
+    `3 passed in 3.48s`;
+  - `git diff --check`.

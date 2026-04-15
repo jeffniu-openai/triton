@@ -7908,6 +7908,30 @@ static bool isTMemCopy4x256RefreshLayout(const LinearLayout &layout,
          basisEquals(layout.getBasis(kCol, 2), {0, 4});
 }
 
+bool isTMemCopy4x256RefreshLayout(gpu::MemDescType memTy) {
+  if (memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32)
+    return false;
+
+  std::string layoutError;
+  auto maybeLayout = getTMemViewAnalysisLinearLayout(
+      memTy.getShape(), memTy.getEncoding(), &layoutError);
+  if (!maybeLayout)
+    return false;
+
+  return isTMemCopy4x256RefreshLayout(*maybeLayout, memTy.getContext(),
+                                      memTy.getElementTypeBitWidth());
+}
+
+StringRef getTMemCopy4x256RefreshLdStUnsupportedMessage() {
+  return "direct TMEM load/store is unsupported for the "
+         "tcgen05.copy.4x256b refresh-shaped tensor memory layout. "
+         "tcgen05.ld/st packets require TMEM row anchors to be materializable "
+         "as warp bases, but this refresh view stores logical row bits in "
+         "TMEM columns and low logical column bits in TMEM rows 32/64. Use "
+         "tcgen05_copy from shared memory for this refresh image, or access a "
+         "directly supported 128-row physical layout.";
+}
+
 static std::optional<LinearLayout>
 getTMemCopy4x256RefreshDescriptorCvt(const LinearLayout &cvt, int bitwidth) {
   if (bitwidth != 32)

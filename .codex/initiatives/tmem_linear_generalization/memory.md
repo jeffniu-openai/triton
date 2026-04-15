@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current 4x256b direct-ld/st backend diagnostic checkpoint, 2026-04-15
+  20:44 UTC: direct C++ verification now recognizes the
+  `tcgen05.copy.4x256b` refresh-shaped tensor-memory layout and fails it
+  through a clean row-anchor diagnostic instead of generic register-layout
+  enumeration. `isTMemCopy4x256RefreshLayout(gpu::MemDescType)` exposes the
+  existing refresh-layout recognizer for verifier use, and
+  `getTMemCopy4x256RefreshLdStUnsupportedMessage()` keeps the backend message
+  aligned with the Python guard. This does not promote refresh-shaped direct
+  `ld/st`; it pins the current ISA boundary in C++ so bypassed frontend paths
+  still explain that `tcgen05.ld/st` needs row anchors materializable as warp
+  bases. Validation after `make -j8`: direct invalid verifier RUN, exact
+  `4x256b` copy-positive and refresh direct-ld/st clean-negative pytest
+  nodeids passed, and `git diff --check` passed.
+
 - Current scales descriptor-view copy split probe, 2026-04-15 19:42 UTC:
   a temporary local probe broadened the existing descriptor repartition search
   to `warpx4` and bypassed the instruction-column preflight for

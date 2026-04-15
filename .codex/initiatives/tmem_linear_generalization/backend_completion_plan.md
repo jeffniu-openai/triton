@@ -258,6 +258,11 @@ Progress:
   confirmed the scales descriptor-view copy still fails descriptor synthesis
   after that preflight is removed, so support needs real source-column/message
   splitting rather than broader descriptor enumeration.
+- 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
+  clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
+  does not promote direct `ld/st` support; it prevents bypassed frontend paths
+  from falling through to generic register-layout enumeration and records the
+  row-anchor schedule requirement in C++.
 - 2026-04-15 19:23 UTC: moved destination tile planning into
   `TMemCopyExecutablePlan`. Plan realization now computes and stores
   destination tiles after descriptor/message scheduling, while lowering only

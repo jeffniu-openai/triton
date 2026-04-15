@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 20:44 UTC: the C++ TMEM operand verifier now recognizes the
+  `tcgen05.copy.4x256b` refresh-shaped tensor-memory layout as the same
+  direct `ld/st` row-anchor boundary guarded in Python. Direct MLIR
+  `ttng.tmem_load` on that view now reports a clean unsupported diagnostic
+  explaining that `tcgen05.ld/st` row anchors must be materializable as warp
+  bases; it no longer falls through to generic register-layout enumeration if
+  the frontend guard is bypassed. Validation: `make -j8`, direct invalid
+  verifier RUN, exact `4x256b` copy-positive and refresh direct-ld/st
+  clean-negative pytest nodeids passed, and `git diff --check` passed.
 - 2026-04-15 19:42 UTC: scales descriptor-view copy was re-probed with a
   temporary `warpx4` descriptor-variant expansion plus instruction-column
   preflight bypass. The exact view still had logical source column bit 2
