@@ -16273,3 +16273,21 @@ Open after this slice:
   - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cp-256x16-positive pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "cp_no_scales_linear"`
     (`102 passed, 9820 deselected`);
   - `git diff --check`.
+
+## 2026-04-15 15:34 UTC: clean-negative diagnostic sweep refresh
+
+- Ran a 4-GPU staleness sweep over clean-negative/error runtime-matrix tests:
+  `pytest -s --tb=short --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py -k "reports_clean_unsupported or clean_unsupported or reports_clean_error"`.
+- Results:
+  - groups 2, 3, and 4 passed cleanly;
+  - group 1 found two stale multidimensional descriptor-slice assertions.
+- Updated the stale assertions so the tests accept the current earlier
+  `memdesc_reshape` type-inference rejection when it reports
+  `invalid tensor memory rank/layout combination`, while still requiring the
+  frontend error text and rejecting `PassManager::run failed` or assertions.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - exact two failing nodeids (`2 passed`);
+  - split-1 clean-negative rerun (`113 passed, 1 skipped, 9808 deselected`);
+  - `git diff --check`.
