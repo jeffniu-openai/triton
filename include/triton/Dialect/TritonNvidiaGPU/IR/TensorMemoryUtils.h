@@ -151,6 +151,13 @@ FailureOr<TMemPhysicalQuery>
 inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
                                  std::string *error);
 
+FailureOr<TMemPhysicalQuery>
+inferExactTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);
+
+FailureOr<TMemPhysicalQuery>
+inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
+                            std::string *error);
+
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,
                      Type dstElementType, std::string *error = nullptr);

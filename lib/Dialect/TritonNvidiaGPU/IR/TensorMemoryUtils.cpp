@@ -4381,6 +4381,44 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, std::string *error) {
       memDesc, /*preserveNonCanonicalView=*/false, error);
 }
 
+FailureOr<TMemPhysicalQuery>
+inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
+                            std::string *error) {
+  auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (!memDescTy || memDescTy.getMemorySpace() !=
+                        TensorMemorySpaceAttr::get(memDesc.getContext())) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+  auto encoding = memDescTy.getEncoding();
+  if (!isTensorMemoryEncoding(encoding)) {
+    if (error)
+      *error = "expected a tensor memory descriptor";
+    return failure();
+  }
+
+  auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
+      memDesc, preserveNonCanonicalView, error);
+  if (failed(maybeQuery))
+    return failure();
+  return TMemPhysicalQuery{
+      memDescTy,
+      llvm::to_vector(memDescTy.getShape()),
+      llvm::to_vector(memDescTy.getAllocShape()),
+      static_cast<unsigned>(memDescTy.getElementTypeBitWidth()),
+      maybeQuery->layout,
+      maybeQuery->twoCTAs,
+      maybeQuery->origin,
+      isa<TensorMemoryScalesEncodingAttr>(encoding)};
+}
+
+FailureOr<TMemPhysicalQuery>
+inferExactTMemPhysicalQuery(Value memDesc, std::string *error) {
+  return inferExactTMemPhysicalQuery(
+      memDesc, /*preserveNonCanonicalView=*/true, error);
+}
+
 FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
                                             ArrayRef<int64_t> dstShape,
                                             Type dstElementType,

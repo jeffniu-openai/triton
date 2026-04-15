@@ -95,6 +95,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current exact physical-query API checkpoint, 2026-04-15 06:39 UTC:
+  `inferExactTMemPhysicalQuery(...)` now exists beside the standalone physical
+  query. The exact path validates the descriptor, reuses the existing
+  descriptor-view `inferStandaloneTMemLdStQueryLayout(...)` algebra, and returns
+  a `TMemPhysicalQuery` carrying non-zero origins when the view chain has them.
+  Copy verification intentionally remains on the standalone query path for this
+  checkpoint; the new exact API is the next seam for replacing type-only
+  descriptor-view fallback with explicit physical-query decisions. Validation
+  passed: `make -j8`, direct invalid/conversion lit RUN lines via local
+  `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current physical-query shape-facts checkpoint, 2026-04-15 06:37 UTC:
   `TMemPhysicalQuery` now carries explicit active shape, allocation shape, and
   element bitwidth in addition to the standalone memdesc type, physical layout,

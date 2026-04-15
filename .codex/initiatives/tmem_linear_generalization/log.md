@@ -14666,3 +14666,21 @@ Open after this slice:
   - `git diff --check`.
 - Next: add an exact descriptor-view physical-query path that can carry
   non-zero origins separately from the standalone type fallback.
+
+## 2026-04-15 06:39 UTC: exact physical-query API
+
+- Added `inferExactTMemPhysicalQuery(...)` overloads.
+- The exact path validates that the input is a tensor-memory descriptor, then
+  uses the existing `inferStandaloneTMemLdStQueryLayout(...)` descriptor-view
+  algebra to populate `TMemPhysicalQuery.layout`, `twoCTAs`, and `origin`.
+- Copy verification remains on `inferStandaloneTMemPhysicalQuery(...)` for this
+  checkpoint. This avoids changing support behavior while making the exact
+  physical facts available for the next diagnostic/planner slice.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: compare exact and standalone physical queries in the copy verifier for
+  diagnostic-only classification, then use that comparison to identify where
+  type-only fallback is masking physical projection boundaries.

@@ -81,6 +81,9 @@ Progress:
 - 2026-04-15 06:37 UTC: enriched `TMemPhysicalQuery` with active shape,
   allocation shape, and element bitwidth so future planner layers can consume
   resource and atom-legality facts directly from the query object.
+- 2026-04-15 06:39 UTC: added `inferExactTMemPhysicalQuery(...)`, which builds
+  `TMemPhysicalQuery` from the existing descriptor-view query algebra and can
+  carry exact origin/layout facts separately from standalone type fallback.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

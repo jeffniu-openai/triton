@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current Phase 1 slice, 2026-04-15 06:39 UTC: added
+  `inferExactTMemPhysicalQuery(...)` as the exact counterpart to
+  `inferStandaloneTMemPhysicalQuery(...)`. The exact path builds a
+  `TMemPhysicalQuery` from the existing descriptor-view
+  `inferStandaloneTMemLdStQueryLayout(...)` algebra so the query can carry
+  non-zero origins and exact descriptor-view layouts. Copy remains on the
+  standalone query path for now; next step is to use the exact path for
+  diagnostics/comparison before changing support behavior. Validation passed:
+  `make -j8`, direct invalid/conversion lit RUN lines via local `triton-opt`
+  and `FileCheck`, and `git diff --check`.
+
 - Current Phase 1 slice, 2026-04-15 06:37 UTC: enriched
   `TMemPhysicalQuery` with explicit active shape, allocation shape, and element
   bitwidth. This remains behavior-preserving scaffolding, but it gives the
