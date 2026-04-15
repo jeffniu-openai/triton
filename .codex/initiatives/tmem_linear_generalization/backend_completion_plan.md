@@ -292,6 +292,14 @@ Progress:
   utility that maps scheduled messages and tiles into emitted copy
   instructions. This is still behavior-preserving, but it narrows the next
   support-bearing edit to planner data rather than lowering control flow.
+- 2026-04-15 20:11 UTC: bounded probes clarified the next Phase 2 frontier.
+  Re-running the scales descriptor-view copy with query debug confirmed the
+  exact physical view still maps logical column bit 2 to shared offset `256`
+  inside a 16-column `warpx4` instruction. Temporarily bypassing the Python
+  4x256b refresh ld/st guard reached the C++ register-layout generator, which
+  rejected every candidate with `compInput cannot compose`; remove no guard or
+  test expectation until a real row-anchor/register-layout representation is
+  derived.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

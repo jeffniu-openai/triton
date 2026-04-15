@@ -2342,6 +2342,13 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:11 UTC: bounded frontier probes left no source changes but
+  sharpened next-step selection. The scales descriptor-view copy still needs a
+  sub-instruction source split or smaller valid atom than the current 16-column
+  `warpx4` message. Temporarily bypassing the 4x256b refresh ld/st frontend
+  guard let the C++ layout generator answer directly; all candidates rejected
+  with `compInput cannot compose`, so that path remains a row-anchor/register
+  layout contract gap.
 - 2026-04-15 20:07 UTC: instruction schedule construction is now factored
   behind `getTMemCopyInstructionSchedule(...)`. The helper still emits the
   current Cartesian tile/message stream, but future split schedules can now be

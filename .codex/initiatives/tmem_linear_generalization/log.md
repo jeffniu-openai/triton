@@ -17205,3 +17205,24 @@ Open after this slice:
     cp_scales_tmem_descriptor_view_reports_clean_unsupported or
     cp_scales_warpx4`: `360 passed, 10554 deselected in 587.82s`;
   - `git diff --check`.
+
+## 2026-04-15 20:11 UTC: copy frontier reprobe
+
+- Re-ran the scales descriptor-view copy directly with
+  `TRITON_DEBUG_TMEM_QUERY=1`.
+- Finding:
+  - exact destination query is selected;
+  - source-to-destination conversion still maps logical column bit 2 to shared
+    offset `256` inside one 16-column `warpx4` copy instruction;
+  - this remains below the current atom granularity rather than a descriptor
+    enumeration problem.
+- Re-probed 4x256b refresh direct ld/st:
+  - temporarily bypassed the Python unsupported guard with a local env hook;
+  - ran `tmem_4x256b_refresh_get_reg_layout_unsupported_kernel` directly;
+  - the C++ layout generator rejected all candidates with
+    `compInput cannot compose`;
+  - final error was `TMEM layout 'auto' unsupported for descriptor view`.
+- Cleanup:
+  - removed the temporary Python env hook;
+  - verified `git status --short` and the Python file diff were clean after
+    cleanup.

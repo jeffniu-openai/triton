@@ -9814,3 +9814,33 @@ rejection, not rescue
     scales descriptor-view copy needing a real sub-instruction source split,
     while 4x256b refresh ld/st remains a separate row-anchor/load-store
     contract gap.
+
+## Latest: 2026-04-15 20:11 UTC copy frontier reprobe
+
+- No source changes remain from this probe.
+- Scales descriptor-view copy:
+  - direct `TRITON_DEBUG_TMEM_QUERY=1` invocation confirmed exact-query
+    selection;
+  - selected source-to-destination conversion still has row bases
+    `[8,16,32,64,128,0,0]` and column bases
+    `[1,2,256,4,512,1024,2048]`;
+  - logical source column bit 2 therefore remains a shared offset `256`
+    inside one 16-column `warpx4` instruction.
+- 4x256b refresh ld/st:
+  - temporarily bypassed the Python frontend unsupported guard behind a local
+    env hook;
+  - `get_reg_layout()` reached the C++ layout generator;
+  - every candidate rejected with `compInput cannot compose`, and the final
+    error was `TMEM layout 'auto' unsupported for descriptor view`;
+  - probe hook was removed and the worktree returned clean.
+- Interpretation:
+  - scales descriptor-view copy still needs an ISA-grounded sub-instruction
+    split, smaller valid atom, or row-partition schedule that does not
+    over-copy columns;
+  - 4x256b refresh ld/st remains a true row-anchor/register-layout contract
+    gap, not just an over-eager Python guard.
+- Next:
+  - keep copy source-format and row-partition work as the main Phase 2 search
+    space;
+  - do not promote 4x256b refresh direct ld/st without deriving a register
+    layout whose image composes with the refresh physical view.
