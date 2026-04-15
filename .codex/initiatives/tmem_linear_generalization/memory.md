@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 dense-copy support slice, 2026-04-15 09:31 UTC: direct
+  no-scales dense `tcgen05.copy.128x256b` no longer requires globally
+  ascending TMEM column bases. The support predicate now proves the exact
+  linear-layout facts the current schedule needs: row bases stay pure and
+  ascending, each logical instruction-width column tile maps to an aligned
+  contiguous physical TMEM column tile, and any non-canonical column ordering
+  stays in the low 128-byte descriptor macro-tile while higher
+  macro-selector bases remain canonical/ascending. This promotes
+  tile-permuted column layouts with `tile_n=8` and `tile_n=16` to positive
+  runtime coverage, while `tile_n=32` and bit-scrambled permutations remain
+  clean unsupported. Validation passed: `make -j8`, invalid verifier,
+  Blackwell conversion FileCheck, py-compile, `git diff --check`, focused
+  tile-permuted positive row (`2 passed`), exotic clean-negatives (`4
+  passed`), row/col permuted clean-negatives (`15 passed`), and canonical
+  no-scales linear copy (`6 passed`).
+
 - Current Phase 3 diagnostic slice, 2026-04-15 09:05 UTC: scales
   descriptor-view copy failures now attach a shared exact-view schedule note
   when the exact scales query changes physical layout relative to the root

@@ -15266,3 +15266,45 @@ Open after this slice:
 - Next: derive the actual schedule that populates these fields from exact
   `LinearLayout` arithmetic. Do not set either field from family-specific
   guesses without a runtime oracle.
+
+## 2026-04-15 09:31 UTC: dense copy low-macro column tile support
+
+- Promoted the no-scales dense direct-copy support predicate from "all pure
+  TMEM column bases must be globally ascending" to a narrower ISA/schedule
+  proof:
+  - row bases must still be pure and ascending;
+  - row-repetition bases in the column address space must remain ascending;
+  - every logical instruction-width column tile must start at a physical
+    column aligned to the copy instruction width and remain contiguous in
+    physical TMEM column order;
+  - non-canonical pure column ordering may only affect the low 128-byte
+    descriptor macro-tile bits; higher column macro-selector bases must remain
+    outside that permutation and in ascending physical order.
+- Added positive runtime coverage for
+  `test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted` with
+  `tile_n=8` and `tile_n=16`. These rows emit sixteen
+  `tcgen05.cp.cta_group::1.128x256b` instructions and produce exact output.
+- Added `tile_permuted_32` to the exotic clean-negative copy bucket. A
+  temporary runtime probe with the macro-selector guard disabled showed why it
+  must remain negative for the current schedule: the output row reordered the
+  32-column macro groups as `[0..31, 64..95, 32..63, ...]`, so descriptor
+  representability alone would silently miscompile it.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted'`
+    (`2 passed`);
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupported'`
+    (`4 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported'`
+    (`15 passed`);
+  - `CUDA_VISIBLE_DEVICES=3 TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear'`
+    (`6 passed`);
+  - `git diff --check`.
+- Next: continue schedule derivation for the remaining copy gaps. The dense
+  low-macro tile support confirms that support should be promoted only when
+  exact layout arithmetic predicts the emitted schedule's semantics; the
+  scales descriptor-view and two-CTA `warpx2::02_13` cases still need
+  row/message or address-schedule work before promotion.

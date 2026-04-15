@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 09:31 UTC: dense no-scales direct copy now admits the
+  tile-permuted TMEM column layouts that the current descriptor schedule can
+  prove, instead of rejecting all non-ascending column basis order. The support
+  check is still proof-based: instruction-width logical column tiles must be
+  aligned and contiguous in physical TMEM columns, and higher column
+  macro-selector bits may not be reordered. Runtime coverage now has positives
+  for `tile_n=8` and `tile_n=16`; `tile_n=32` and bit-scrambled column
+  permutations remain clean unsupported.
 - 2026-04-15 09:08 UTC: copy executable schedules can now carry TMEM
   destination row deltas and optional `tcgen05.cp` source-format suffixes
   through lowering. Defaults preserve existing support; the next task is to

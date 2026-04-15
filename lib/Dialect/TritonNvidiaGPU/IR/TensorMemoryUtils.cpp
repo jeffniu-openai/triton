@@ -7469,7 +7469,8 @@ bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
 static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
-                                        TMemCopyFamily family) {
+                                        TMemCopyFamily family,
+                                        unsigned bitwidth) {
   if (family != TMemCopyFamily::Dense4x256b &&
       family != TMemCopyFamily::Dense128x128b &&
       family != TMemCopyFamily::Dense128x256b)
@@ -7529,17 +7530,88 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
       pureRowBases.push_back(std::abs(basis[0]));
     }
   }
-  if (!isStrictlyIncreasing(pureColBases)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
-        "direct tcgen05.copy requires TMEM column bases to remain in "
-        "ascending physical column order.");
-  }
   if (!isStrictlyIncreasing(pureRowBases)) {
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery,
         "direct tcgen05.copy requires TMEM row-repetition bases stored "
         "in the column address space to remain in ascending row order.");
+  }
+
+  unsigned descriptorMacroCols = 1024 / bitwidth;
+  bool sawColumnMacroSelector = false;
+  int32_t previousColumnMacroSelector = 0;
+  for (int32_t basis : pureColBases) {
+    if (basis > static_cast<int32_t>(descriptorMacroCols)) {
+      if (sawColumnMacroSelector && basis <= previousColumnMacroSelector) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::PhysicalQuery,
+            "direct tcgen05.copy requires TMEM column macro-selector bases to "
+            "remain in ascending physical column order.");
+      }
+      sawColumnMacroSelector = true;
+      previousColumnMacroSelector = basis;
+      continue;
+    }
+    if (sawColumnMacroSelector) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy currently requires non-canonical TMEM column "
+          "ordering to stay within the low 128-byte descriptor macro-tile.");
+    }
+  }
+
+  auto getDenseCopyColumnStride = [&]() -> unsigned {
+    switch (family) {
+    case TMemCopyFamily::Dense4x256b:
+    case TMemCopyFamily::Dense128x256b:
+      return 256 / bitwidth;
+    case TMemCopyFamily::Dense128x128b:
+      return 128 / bitwidth;
+    case TMemCopyFamily::Warpx2_01_23_64x128b:
+    case TMemCopyFamily::Warpx2_02_13_64x128b:
+    case TMemCopyFamily::Warpx4_32x128b:
+      llvm_unreachable("non-dense copy family");
+    }
+    llvm_unreachable("unknown copy family");
+  };
+  auto outDims = llvm::to_vector(ll.getOutDimNames());
+  auto llInv = ll.pseudoinvert();
+  auto getPhysicalColumnCoord = [&](int32_t logicalCol)
+      -> std::optional<std::pair<int32_t, int32_t>> {
+    auto rowCol = llInv.apply({{outDims[0], 0}, {outDims[1], logicalCol}});
+    int32_t row = 0;
+    int32_t col = 0;
+    for (auto [dim, value] : rowCol) {
+      if (dim == kRow)
+        row = value;
+      else if (dim == kCol)
+        col = value;
+    }
+    if (row < 0 || col < 0)
+      return std::nullopt;
+    return std::pair<int32_t, int32_t>{row, col};
+  };
+  unsigned colStride = getDenseCopyColumnStride();
+  int32_t colSize = ll.getOutDimSize(outDims[1]);
+  for (int32_t logicalCol = 0; logicalCol < colSize;
+       logicalCol += colStride) {
+    auto tileOrigin = getPhysicalColumnCoord(logicalCol);
+    if (!tileOrigin || tileOrigin->second % static_cast<int32_t>(colStride)) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy requires each logical column tile to start at a "
+          "physical column aligned to the copy instruction width.");
+    }
+    for (unsigned i = 1; i < colStride && logicalCol + i < colSize; ++i) {
+      auto tileCoord = getPhysicalColumnCoord(logicalCol + i);
+      if (!tileCoord || tileCoord->first != tileOrigin->first ||
+          tileCoord->second != tileOrigin->second + static_cast<int32_t>(i)) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::PhysicalQuery,
+            "direct tcgen05.copy requires each logical column tile to remain "
+            "contiguous in physical TMEM column order.");
+      }
+    }
   }
   return getSupportedTMemCopyResult();
 }
@@ -7559,15 +7631,16 @@ TMemCopySupportResult getDirectTMemCopyLayoutSupport(MemDescType memTy,
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery, layoutError);
   }
-  return getDirectTMemCopyLayoutSupportForLayout(*maybeLayout,
-                                                memTy.getContext(), family);
+  return getDirectTMemCopyLayoutSupportForLayout(
+      *maybeLayout, memTy.getContext(), family,
+      memTy.getElementTypeBitWidth());
 }
 
 TMemCopySupportResult
 getDirectTMemCopyLayoutSupport(const TMemPhysicalQuery &query,
                                TMemCopyFamily family) {
   return getDirectTMemCopyLayoutSupportForLayout(
-      query.layout, query.memTy.getContext(), family);
+      query.layout, query.memTy.getContext(), family, query.elementBitWidth);
 }
 
 bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,

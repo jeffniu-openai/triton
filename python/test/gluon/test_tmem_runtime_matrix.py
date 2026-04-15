@@ -5093,7 +5093,10 @@ CP_LINEAR_EXOTIC_UNSUPPORTED_CASES = [
     ("mixed", _make_tmem_linear_layout_mixed(128, 128)),
     ("scrambled_cols", _make_tmem_linear_layout_permuted(128, 128, "identity", "even_odd")),
     ("scrambled_rows_cols", _make_tmem_linear_layout_permuted(128, 128, "even_odd", "even_odd")),
+    ("tile_permuted_32", _make_tmem_linear_layout_tile_permuted(128, 128, 32)),
 ]
+
+CP_LINEAR_TILE_PERMUTED_CASES = (8, 16)
 
 CP_LINEAR_PERMUTED_UNSUPPORTED_CASES = [
     (row_perm_kind, col_perm_kind)
@@ -8551,6 +8554,20 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupporte
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("tile_n", CP_LINEAR_TILE_PERMUTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(tile_n):
+    m = n = 128
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
+
+    compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
+
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * 16)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("row_perm_kind,col_perm_kind", CP_LINEAR_PERMUTED_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported(
     row_perm_kind, col_perm_kind, capfd
@@ -8572,6 +8589,9 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
     assert (
         "ascending physical row order" in text
         or "ascending physical column order" in text
+        or "aligned to the copy instruction width" in text
+        or "contiguous in physical TMEM column order" in text
+        or "128-byte descriptor macro-tile" in text
     )
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

@@ -196,6 +196,15 @@ Progress:
   source-format suffixes (`.b8x16.b6x16_p32`, `.b8x16.b4x16_p64`). Current
   planners leave both at defaults; this is scaffolding for the exact
   row/message schedule derivation, not a support promotion.
+- 2026-04-15 09:31 UTC: direct dense no-scales copy support now reasons about
+  the destination `LinearLayout` at instruction-tile granularity instead of
+  requiring globally canonical column basis order. The planner admits
+  low-descriptor-macro column tile permutations (`tile_n=8`, `tile_n=16`) when
+  every logical instruction-width tile maps to aligned contiguous physical
+  columns, and rejects higher macro-selector reorders such as `tile_n=32` with
+  a clean physical-query diagnostic. This is a bounded support promotion inside
+  the shared layout predicate; it does not change the pending scales
+  row/message schedule work.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a
