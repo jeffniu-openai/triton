@@ -503,6 +503,10 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 16:23 UTC: re-probed scaled narrow tile-permuted accumulator rows
+  with a temporary `blockN=8/16` scaled planner lift. The rows compile but are
+  numerically wrong across sampled scaled format pairs, confirming they remain
+  scale-fragment/addressing gaps and not stale family-floor negatives.
 - 2026-04-15 16:18 UTC: promoted plain MMAv5 narrow tile-permuted accumulator
   rows. The plain accumulator planner now admits 8- and 16-column N families,
   moving `(N,tile_n)=(32,8)` and `(64,16)` into the positive tile-permuted

@@ -16440,3 +16440,27 @@ Open after this slice:
   - the plain narrow tile-permuted accumulator rows were stale planner
     negatives. The remaining scaled narrow rows are distinct scale-fragment
     constraints, not implied by this plain-MMAv5 promotion.
+
+## 2026-04-15 16:23 UTC: scaled-MMAv5 narrow accumulator guard-lift probe
+
+- Added a temporary local planner lift only, then removed it before this
+  checkpoint:
+  - `planMMAv5ScaledAccumulatorFamily(...)` temporarily considered
+    `blockN=8` and `blockN=16`.
+- Probe coverage:
+  - accumulator layouts `N=32/tile_n=8` and `N=64/tile_n=16`;
+  - all current scaled format pairs;
+  - representative `K=128`.
+- Result:
+  - all sampled cases compiled and emitted scaled-MMAv5 opcodes;
+  - every sampled case produced large numerical mismatch against the
+    dequantized reference, with representative max diffs in the hundreds;
+  - this matches the repeated-`N=32` probe: the missing piece is scale-B
+    fragment/addressing, not the plain accumulator family floor.
+- Cleanup/validation:
+  - removed the temporary scaled-planner lift;
+  - `make -j8` rebuilt the clean source state after removal;
+  - `git status --short --branch` is clean at `5d84e3c7c`.
+- Current conclusion:
+  - keep scaled narrow tile-permuted accumulator rows clean unsupported until
+    scaled lowering has an explicit sub-64-column scale-fragment schedule.

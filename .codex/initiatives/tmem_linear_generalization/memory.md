@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current scaled-MMAv5 narrow accumulator probe, 2026-04-15 16:23 UTC:
+  the plain narrow accumulator promotion does not carry over to scaled MMAv5.
+  A temporary local lift added `blockN=8` and `blockN=16` to the scaled
+  accumulator planner and was then removed. Representative
+  `N=32/tile_n=8` and `N=64/tile_n=16` cases over every current scaled format
+  pair compiled and emitted scaled-MMAv5 opcodes, but all sampled cases
+  produced large numerical mismatches (`~5e2`-`9e2` max diff) against the
+  dequantized reference. Keep `SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES`
+  clean unsupported until the scale-B fragment/addressing model can handle
+  sub-64-column repeated-N schedules.
+
 - Current plain MMAv5 narrow tile-permuted accumulator checkpoint,
   2026-04-15 16:18 UTC: plain `tcgen05.mma` accumulator layouts now support
   the previous narrow tile-permuted clean negatives. The plain accumulator
