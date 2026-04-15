@@ -1045,24 +1045,23 @@ def matmul(
 # Benchmark and Testing Helpers
 # ===-----------------------------------------------------------------------===#
 
-GPT_OSS_120B_NUM_EXPERTS = 128
-GPT_OSS_120B_EXPERTS_PER_TOKEN = 4
-GPT_OSS_120B_NUM_EXPERT_SHARDS = 8
-GPT_OSS_120B_LOCAL_RANK = 0
-GPT_OSS_120B_HIDDEN_SIZE = 2880
-GPT_OSS_120B_INTERMEDIATE_SIZE = 2880
-GPT_OSS_120B_MM1_SHAPE = (GPT_OSS_120B_HIDDEN_SIZE, 2 * GPT_OSS_120B_INTERMEDIATE_SIZE)
-GPT_OSS_120B_BATCH_PER_EXPERT = tuple(
-    chain.from_iterable(range(2 ** (2 + k), 2 ** (3 + k), min(2**k, 32)) for k in range(8))
-)
-GPT_OSS_120B_BATCH_SIZES = tuple(
-    batch_per_expert * GPT_OSS_120B_NUM_EXPERTS // GPT_OSS_120B_EXPERTS_PER_TOKEN
-    for batch_per_expert in GPT_OSS_120B_BATCH_PER_EXPERT
-)
 
-OUTPUT_MAXTOL = 0.126
-OUTPUT_RMSTOL = 1e-4
-SCALE_TOL = 1e-10
+@dataclass(frozen=True, slots=True)
+class MLPConfig:
+    name: str
+    num_experts: int
+    experts_per_token: int
+    num_expert_shards: int
+    hidden_size: int
+    intermediate_size: int
+
+def get_batch_sizes(c: MLPConfig) -> tuple[int, ...]:
+    batch_per_expert = tuple(
+        chain.from_iterable(range(2 ** (2 + k), 2 ** (3 + k), min(2**k, 32)) for k in range(8))
+    )
+    return tuple(
+        batch_per_expert * c.num_experts // c.experts_per_token for batch_per_expert in batch_per_expert)
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -1098,28 +1097,26 @@ def alloc_randn_fp4(shape: tuple[int, ...], device: str) -> tuple[Tensor, Tensor
     return data, scale
 
 
-def init_routing_data(batch_size: int, local_rank: int, device: str) -> tuple[RaggedTensorMetadata, torch.Tensor]:
-    expt_dist = make_expt_dict_uniform(GPT_OSS_120B_NUM_EXPERT_SHARDS, GPT_OSS_120B_NUM_EXPERTS)
-    logits = torch.randn((batch_size, GPT_OSS_120B_NUM_EXPERTS), dtype=torch.float16, device=device)
-    sparse_logits = topk(logits, GPT_OSS_120B_EXPERTS_PER_TOKEN, apply_softmax=True)
+def init_routing_data(c: MLPConfig, batch_size: int, local_rank: int, device: str) -> tuple[RaggedTensorMetadata, torch.Tensor]:
+    expt_dist = make_expt_dict_uniform(c.num_expert_shards, c.num_experts)
+    logits = torch.randn((batch_size, c.num_experts), dtype=torch.float16, device=device)
+    sparse_logits = topk(logits, c.experts_per_token, apply_softmax=True)
     expt_hist = sparse_logits.mask_metadata.col_sum
-
     local_expts = expt_dist[local_rank]
     local_expts_hist = expt_hist[local_expts]
-    ragged_metadata = make_ragged_tensor_metadata(local_expts_hist, batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN)
-    ragged_metadata.expected_slice_size = batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN // GPT_OSS_120B_NUM_EXPERTS
+    ragged_metadata = make_ragged_tensor_metadata(local_expts_hist, batch_size * c.experts_per_token)
+    ragged_metadata.expected_slice_size = batch_size * c.experts_per_token // c.num_experts
     combine_indx = sparse_logits.mask_metadata.col_sorted_indx
-    gather_indx = torch.div(combine_indx, GPT_OSS_120B_EXPERTS_PER_TOKEN, rounding_mode="trunc")
+    gather_indx = torch.div(combine_indx, c.experts_per_token, rounding_mode="trunc")
     return ragged_metadata, gather_indx
 
-
-def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
+def prepare_case(c: MLPConfig, batch_size: int, device: str, seed: int = 0) -> PreparedCase:
     torch.manual_seed(seed)
 
-    local_rank = GPT_OSS_120B_LOCAL_RANK
-    k, n = GPT_OSS_120B_MM1_SHAPE
-    n_expts_local = GPT_OSS_120B_NUM_EXPERTS // GPT_OSS_120B_NUM_EXPERT_SHARDS
-    ragged_metadata, gather_indx = init_routing_data(batch_size, local_rank, device)
+    local_rank = int(torch.randint(0, c.num_expert_shards, size=()).item())
+    k, n = c.hidden_size, c.intermediate_size
+    n_expts_local = c.num_experts // c.num_expert_shards
+    ragged_metadata, gather_indx = init_routing_data(c, batch_size, local_rank, device)
     x = alloc_randn((batch_size, k), dtype=torch.float8_e4m3fn, device=device)
     w, w_scale = alloc_randn_fp4((n_expts_local, k, n), device=device)
     bias = alloc_randn((n_expts_local, n), dtype=torch.float32, device=device)
@@ -1145,7 +1142,7 @@ def prepare_case(batch_size: int, device: str, seed: int = 0) -> PreparedCase:
         fused_activation=fused_activation,
         x_scale=x_scale,
         y_scale=y_scale,
-        out_shape=(batch_size * GPT_OSS_120B_EXPERTS_PER_TOKEN, n // fused_activation.specs.reduction_n),
+        out_shape=(batch_size * c.experts_per_token, n // fused_activation.specs.reduction_n),
         out_dtype=torch.float8_e4m3fn,
     )
 
@@ -1193,22 +1190,33 @@ def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, P
 # ===-----------------------------------------------------------------------===#
 
 
+GPT_OSS_120B_CONFIG = MLPConfig(
+    name="gpt-oss-120b",
+    num_experts=128,
+    experts_per_token=4,
+    num_expert_shards=8,
+    hidden_size=2880,
+    intermediate_size=2 * 2880,
+)
+
+
 def is_blackwell():
     return triton.runtime.driver.active.get_current_target().backend == "cuda" and torch.cuda.get_device_capability()[0] == 10
 
 
-@pytest.mark.parametrize("batch_size", [128, 1536, 2048])
+@pytest.mark.parametrize("c", [GPT_OSS_120B_CONFIG])
+@pytest.mark.parametrize("batch_size", get_batch_sizes(GPT_OSS_120B_CONFIG))
 @pytest.mark.skipif(not is_blackwell(), reason="Gluon MoE BMM1 fused-gather is only supported on Blackwell GPUs")
-def test_op(batch_size):
-    prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+def test_op(c:MLPConfig, batch_size: tuple[int,...]):
+    prepared = prepare_case(c, batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
     ref_y, ref_precision = run_provider(prepared, "reference")
     cand_y, cand_precision = run_provider(prepared, "example")
-    description = f"gpt-oss-120b-mm1-bs{prepared.batch_size}:example"
+    description = f"{c.name}-mm1-bs{prepared.batch_size}"
     assert_close(
         ref_y.to(torch.float32),
         cand_y.to(torch.float32),
-        maxtol=OUTPUT_MAXTOL,
-        rmstol=OUTPUT_RMSTOL,
+        maxtol=0.125,
+        rmstol=None,
         description=f"{description}:out",
         verbose=False,
     )
@@ -1219,8 +1227,8 @@ def test_op(batch_size):
         assert_close(
             ref_scale.to(torch.float32),
             cand_scale.to(torch.float32),
-            maxtol=SCALE_TOL,
-            rmstol=SCALE_TOL,
+            maxtol=1e-10,
+            rmstol=1e-10,
             description=f"{description}:out_scale",
             verbose=False,
         )
@@ -1234,7 +1242,7 @@ providers = ["example", "reference"]
 bench_configs = [
     triton.testing.Benchmark(
         x_names=["batch_size"],
-        x_vals=GPT_OSS_120B_BATCH_SIZES,
+        x_vals=get_batch_sizes(GPT_OSS_120B_CONFIG),
         line_arg="provider",
         line_vals=providers,
         line_names=providers,
@@ -1242,9 +1250,9 @@ bench_configs = [
         ylabel="TFLOPS",
         plot_name=(
             "GPT-OSS-120B MoE MM1 "
-            f"E={GPT_OSS_120B_NUM_EXPERTS} "
-            f"EP={GPT_OSS_120B_NUM_EXPERT_SHARDS} "
-            f"B={GPT_OSS_120B_MM1_SHAPE[0]}x{GPT_OSS_120B_MM1_SHAPE[1]}"
+            f"E={GPT_OSS_120B_CONFIG.num_experts} "
+            f"EP={GPT_OSS_120B_CONFIG.experts_per_token} "
+            f"B={GPT_OSS_120B_CONFIG.hidden_size}x{GPT_OSS_120B_CONFIG.intermediate_size}"
         ),
         args={},
     )
@@ -1253,7 +1261,7 @@ bench_configs = [
 
 @triton.testing.perf_report(bench_configs)
 def bench(batch_size, provider):
-    prepared = prepare_case(batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+    prepared = prepare_case(GPT_OSS_120B_CONFIG, batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
     precision_config = make_precision_config(prepared)
     kernel = matmul if provider == "example" else reference_matmul
     out = make_output_buffer(prepared)
