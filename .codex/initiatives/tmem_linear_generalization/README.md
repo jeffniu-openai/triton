@@ -53,6 +53,11 @@ When resuming the initiative:
   The immediate remaining scales-copy gap is atomizing the exact permuted
   descriptor-view projection; the current row is pinned as a clean
   tensor-memory-scales copy-family miss.
+- 2026-04-15 08:42 UTC: copy planning now consumes the exact scales
+  descriptor-view query when the semantic facts match. The same row now reaches
+  `warpx4.32x128b` classification and is pinned at descriptor synthesis, so the
+  next work is deriving a representable MMAv5 shared-memory descriptor for the
+  exact permuted projection.
 
 ## Current Project Invariant
 

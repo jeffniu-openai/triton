@@ -1565,7 +1565,8 @@ LogicalResult TMEMCopyOp::verify() {
       inferExactTMemPhysicalQuery(getDst(), &exactTmemError);
   const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
   if (succeeded(maybeExactDstQuery) &&
-      haveSameTMemCopyPhysicalProjection(*maybeDstQuery, *maybeExactDstQuery)) {
+      shouldUseExactTMemCopyPhysicalQuery(*maybeDstQuery,
+                                          *maybeExactDstQuery)) {
     supportDstQuery = &*maybeExactDstQuery;
   }
   auto tmemLl = supportDstQuery->layout;

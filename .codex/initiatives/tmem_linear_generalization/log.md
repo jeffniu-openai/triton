@@ -15122,3 +15122,39 @@ Open after this slice:
 - Next: teach the atomized copy planner to classify the exact permuted scales
   descriptor-view projection, then re-evaluate whether it should become
   positive or receive a more precise atom-legality diagnostic.
+
+## 2026-04-15 08:42 UTC: exact scales copy query selection
+
+- Added `shouldUseExactTMemCopyPhysicalQuery(...)`.
+- Copy verification and lowering now use the exact physical query for scales
+  descriptor views even when the exact layout differs from the standalone
+  canonical layout, provided shape, element bitwidth, CTA ownership, and
+  scales-root semantics agree.
+- The scale-backed reshape/transpose/reshape copy row now maps to
+  `tcgen05.copy.warpx4.32x128b`; the remaining failure is descriptor synthesis
+  for the exact permuted projection.
+- A local probe extended the current row/column descriptor-variant search to
+  all broadcast copy families. It increased the failed warpx4 descriptor search
+  from one candidate to 254 and still did not find a representable descriptor,
+  so the probe was reverted before commit.
+- The runtime test now asserts the sharper descriptor-synthesis diagnostic:
+  `maps to tcgen05.copy.warpx4.32x128b` plus the missing MMAv5 shared-memory
+  descriptor note, and still rejects the old non-scales source-bitwidth
+  diagnostic.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_tmem_descriptor_view'`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_tmem_descriptor_view or ldst_scales_descriptor_view'`
+    (`7 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`9 passed`);
+  - `CUDA_VISIBLE_DEVICES=2 TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_warpx4 and direct_copy or cp_scales_warpx4 and not via'`
+    (`2 passed`).
+- Next: derive the actual descriptor-layout transform for the exact permuted
+  scales view. Do not reapply the broad warpx4 descriptor-variant probe as the
+  durable solution.

@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current Phase 3 slice, 2026-04-15 08:42 UTC: scales copy now uses exact
+  descriptor-view physical queries when the exact and standalone queries agree
+  on shape, element bitwidth, CTA ownership, and scales-root semantics. Added
+  `shouldUseExactTMemCopyPhysicalQuery(...)` and routed verifier/lowering
+  through it. The scale-backed reshape/transpose/reshape copy row now maps to
+  `tcgen05.copy.warpx4.32x128b` and fails at descriptor synthesis with a
+  precise "no representable MMAv5 shared-memory descriptor" note, instead of
+  stopping at copy-family classification. A probe extending the current
+  warpx2 descriptor-variant search to warpx4 still did not synthesize a
+  descriptor and was reverted. Validation passed: `make -j8`, invalid verifier,
+  Blackwell conversion FileCheck, py-compile, `git diff --check`,
+  `cp_scales_tmem_descriptor_view` (`1 passed`), combined descriptor-view
+  selector (`7 passed`), `cp_scales and clean` (`9 passed`), and direct scales
+  warpx4 smoke (`2 passed`). Next concrete step: derive a descriptor layout
+  transformation for exact permuted scales views rather than broadening the
+  existing row/column permutation search.
+
 - Current Phase 3 slice, 2026-04-15 08:35 UTC: scales descriptor-view copy now
   preserves scales-root semantics through the shared physical-query model.
   Added `getTMemScalesRootEncoding(...)`, allowed scales descriptor-view

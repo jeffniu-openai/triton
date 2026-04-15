@@ -221,6 +221,9 @@ bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
 bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
                                         const TMemPhysicalQuery &rhs);
 
+bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
+                                         const TMemPhysicalQuery &exact);
+
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference);
 

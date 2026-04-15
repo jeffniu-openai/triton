@@ -7542,8 +7542,9 @@ def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupp
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "does not match any supported tcgen05.copy family for tensor memory scales" in text
-    assert "Recognized scales copy families" in text
+    assert "maps to tcgen05.copy.warpx4.32x128b" in text
+    assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
+    assert "descriptor message 0 has no representable MMAv5 shared-memory descriptor" in text
     assert "Source element type should be 32-bit" not in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

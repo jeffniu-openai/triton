@@ -4461,6 +4461,17 @@ bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
          lhs.isScales == rhs.isScales;
 }
 
+bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
+                                         const TMemPhysicalQuery &exact) {
+  if (haveSameTMemCopyPhysicalProjection(standalone, exact))
+    return true;
+
+  return standalone.isScales && exact.isScales &&
+         standalone.shape == exact.shape &&
+         standalone.elementBitWidth == exact.elementBitWidth &&
+         standalone.twoCTAs == exact.twoCTAs;
+}
+
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference) {
   switch (difference) {

@@ -216,6 +216,12 @@ Progress:
   non-scales 32-bit-source diagnostic. Exact query origins are now available to
   copy lowering through `getTMemPhysicalQueryOriginBaseOffset(...)`; the next
   planner gap is atomizing the exact permuted scales descriptor-view projection.
+- 2026-04-15 08:42 UTC: scales descriptor-view copies now use the exact
+  physical query for planning when shape/bitwidth/CTA/scales facts match the
+  standalone query. The first scale-backed permuted copy row now reaches
+  `warpx4.32x128b` classification and fails at descriptor synthesis, proving
+  the remaining gap is descriptor-layout derivation rather than family
+  recognition or scales classification.
 
 Exit criteria:
 - Scales descriptor-view decisions no longer depend on type-only
