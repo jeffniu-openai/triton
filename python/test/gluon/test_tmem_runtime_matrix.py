@@ -49,6 +49,14 @@ def _make_tmem_linear_layout(m, n):
     )
 
 
+def _make_tmem_copy_4x256b_refresh_layout():
+    return TensorMemoryLinearLayout(
+        rows=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1], [0, 2]],
+        cols=[[1, 0], [2, 0], [0, 4]],
+        shape=[4, 8],
+    )
+
+
 def _permute_pow2_bases_by_kind(bits, kind):
     if kind == "identity":
         return list(bits)
@@ -1402,6 +1410,35 @@ def tmem_copy_no_scales_4x256b_view_kernel(in_ptr, out_ptr, parent_layout: ttgl.
     out_offs = out_m[:, None] * N + out_n[None, :]
     output = parent.load(reg_layout)
     ttgl.store(out_ptr + out_offs, output)
+
+
+@gluon.jit
+def tmem_copy_no_scales_4x256b_refresh_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
+    M: ttgl.constexpr = 4
+    N: ttgl.constexpr = 8
+
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+    in_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+    in_n = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+    offs = in_m[:, None] * N + in_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=layout)
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[1, 0], [2, 0], [0, 1], [0, 2], [0, 4]],
+        alignment=16,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared()
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+
+    ttgl.store(out_ptr + offs, value)
 
 
 @gluon.jit
@@ -7751,15 +7788,35 @@ def test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported(capfd
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "maps to tcgen05.copy.4x256b" in text
-    assert "cannot yet expose it as a correct logical ttng.tmem_copy lowering" in text
-    assert "TMEM refresh primitive" in text
-    assert "lanes separated by 32" in text
-    assert "four source rows packed into destination dwords" in text
-    assert "two-message physical refresh schedule" in text
+    assert "cannot expose it as an ordinary contiguous four-row ttng.tmem_copy lowering" in text
     assert "refresh-shaped destination view" in text
+    assert "logical row bits are stored in TMEM columns" in text
+    assert "low logical column bits are stored in TMEM rows 32/64" in text
+    assert "high logical column bit is stored at destination dword +4" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen():
+    m = 4
+    n = 8
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_copy_4x256b_refresh_layout()
+
+    compiled = tmem_copy_no_scales_4x256b_refresh_kernel[(1, )](
+        inp,
+        out,
+        layout,
+        num_warps=4,
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_op = "tcgen05.cp.cta_group::1.4x256b"
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_op, expected_op])
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

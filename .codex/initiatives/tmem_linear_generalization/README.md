@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 12:52 UTC: `tcgen05.cp.4x256b` now has first-class support for
+  the refresh-shaped active `TensorMemoryLinearLayout` image proved in the
+  earlier probes. Copy physical-query selection is shared between verifier and
+  lowering, exact linear root queries can be selected when no standalone
+  canonical spelling exists and the shared source composes with the exact
+  image, and the 4x256 planner now emits the two-message refresh schedule with
+  per-message descriptor projections. Ordinary contiguous four-row
+  `ttng.tmem_copy` remains clean unsupported with a physical-query diagnostic
+  because it is not the image the ISA writes. Current boundary: the positive
+  row pins copy codegen/opcode emission; direct load/store of the refresh
+  layout still needs a real contract before this becomes a full tmem
+  round-trip data oracle.
 - 2026-04-15 12:35 UTC: `tcgen05.cp.4x256b` now has a stronger physical
   refresh-schedule proof. A temporary re-enable showed one message maps source
   columns 0..3 to physical rows 0/32/64/96 with source rows packed across

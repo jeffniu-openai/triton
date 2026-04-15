@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Current `4x256b` refresh support, 2026-04-15 12:52 UTC:
+  the active refresh-shaped `TensorMemoryLinearLayout`
+  (`row` low five bits zero, row bits 5/6 to TMEM columns 1/2, column bits
+  0/1 to TMEM rows 1/2, column bit 2 to TMEM column 4, `shape=[4,8]`) now
+  lowers through `ttng.tmem_copy` to two
+  `tcgen05.cp.cta_group::1.4x256b` messages. The implementation keeps
+  ordinary contiguous four-row layouts negative and only accepts the physical
+  refresh image that direct probes proved. Verifier and lowering now use one
+  `selectTMemCopyPhysicalQuery(...)` path so exact physical query selection
+  does not drift, and the planner carries a per-message descriptor projection
+  for the refresh atom. Allocation sizing/verifier paths now allow expanded
+  linear TMEM root images, matching the exact-query model. Validation passed:
+  `make -j8`, invalid verifier, Blackwell conversion FileCheck, py-compile,
+  focused refresh positive runtime/codegen row, focused ordinary 4x8 clean
+  negative row, and `git diff --check`. Remaining boundary: direct
+  load/store of the refresh-shaped TMEM layout is still unsupported, so this
+  checkpoint proves copy opcode scheduling/codegen rather than a full
+  tmem-load round-trip.
+
 - Current `4x256b` refresh proof, 2026-04-15 12:35 UTC:
   temporary source probes validated the physical two-message refresh schedule
   for an 8-column tile. With the old guard disabled, one

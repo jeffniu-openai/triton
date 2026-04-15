@@ -769,9 +769,11 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttg.num-warps" = 8 : i32, "ttng.tw
 // -----
 
 #shared = #ttg.shared_linear<{offset = [[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]]}, alignment = 16>
+#shared_4x256b = #ttg.shared_linear<{offset = [[1, 0], [2, 0], [0, 1], [0, 2], [0, 4]]}, alignment = 16>
 #shared1 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>
 #tmem_linear_128x4 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2]]}>
 #tmem_linear_2x128x4 = #ttng.tensor_memory_linear<{row = [[0, 1, 0], [0, 2, 0], [0, 4, 0], [0, 8, 0], [0, 16, 0], [0, 32, 0], [0, 64, 0]], col = [[0, 0, 1], [0, 0, 2], [1, 0, 0]]}>
+#tmem_linear_4x256b_refresh = #ttng.tensor_memory_linear<{row = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1], [0, 2]], col = [[1, 0], [2, 0], [0, 4]], out = [4, 8]}>
 #tmem_legacy_128x4 = #ttng.tensor_memory_encoding<blockM = 128, blockN = 4, colStride = 1>
 
 module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
@@ -829,6 +831,19 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.targ
       %barrier: !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory>) {
     %view = ttg.memdesc_index %dst[%idx] : !ttg.memdesc<2x128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable>
     ttng.tmem_copy %src, %view, %barrier : !ttg.memdesc<128x4xi32, #shared, #ttg.shared_memory>, !ttg.memdesc<128x4xi32, #tmem_legacy_128x4, #ttng.tensor_memory, mutable>, !ttg.memdesc<1xi64, #shared1, #ttg.shared_memory>
+    tt.return
+  }
+
+  // CHECK-LABEL: @tmem_copy_linear_4x256b_refresh
+  // CHECK: tcgen05.cp.cta_group::1.4x256b
+  // CHECK: tcgen05.cp.cta_group::1.4x256b
+  // CHECK-NOT: tcgen05.cp.cta_group::1.128x128b
+  // CHECK-NOT: tcgen05.cp.cta_group::1.128x256b
+  // CHECK: llvm.return
+  tt.func public @tmem_copy_linear_4x256b_refresh(
+      %src: !ttg.memdesc<4x8xi32, #shared_4x256b, #ttg.shared_memory>,
+      %dst: !ttg.memdesc<4x8xi32, #tmem_linear_4x256b_refresh, #ttng.tensor_memory, mutable>) {
+    ttng.tmem_copy %src, %dst : !ttg.memdesc<4x8xi32, #shared_4x256b, #ttg.shared_memory>, !ttg.memdesc<4x8xi32, #tmem_linear_4x256b_refresh, #ttng.tensor_memory, mutable>
     tt.return
   }
 }

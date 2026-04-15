@@ -991,11 +991,12 @@ LogicalResult verifyMemoryOpTypes(Operation *op, ShapedType srcTy,
 }
 
 LogicalResult verifyAllocOp(Operation *op, Value src, MemDescType dstTy) {
-  bool allowExpandedTMemScalesAlloc =
-      isa<triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(
+  bool allowExpandedTMemAlloc =
+      isa<triton::nvidia_gpu::TensorMemoryLinearEncodingAttr,
+          triton::nvidia_gpu::TensorMemoryScalesEncodingAttr>(
           dstTy.getEncoding());
   if (dstTy.getShape() != dstTy.getAllocShape() &&
-      !allowExpandedTMemScalesAlloc)
+      !allowExpandedTMemAlloc)
     return op->emitOpError("result shape and its alloc shape must match");
 
   if (!src) {

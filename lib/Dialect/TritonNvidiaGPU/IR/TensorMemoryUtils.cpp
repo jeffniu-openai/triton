@@ -4478,6 +4478,92 @@ bool canInvertAndComposeLayouts(const LinearLayout &inner,
   return canInvertAndComposeSafely(inner, outer);
 }
 
+FailureOr<TMemCopyPhysicalQuerySelection>
+selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
+                            std::string *error) {
+  bool debug = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
+  TMemCopyPhysicalQuerySelection selection;
+
+  auto maybeStandalone =
+      inferStandaloneTMemPhysicalQuery(memDesc, &selection.standaloneError);
+  if (succeeded(maybeStandalone))
+    selection.standalone = *maybeStandalone;
+
+  auto maybeExact = inferExactTMemPhysicalQuery(memDesc, &selection.exactError);
+  if (succeeded(maybeExact))
+    selection.exact = *maybeExact;
+
+  auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
+    return canInvertAndComposeLayouts(query.layout, shmemLl);
+  };
+  if (debug) {
+    if (selection.standalone) {
+      llvm::errs() << "[tmem-copy] candidate standalone query canCompose="
+                   << canUseCopyQuery(*selection.standalone) << "\n"
+                   << selection.standalone->layout.toString() << "\n";
+    } else {
+      llvm::errs() << "[tmem-copy] candidate standalone query failed: "
+                   << selection.standaloneError << "\n";
+    }
+    if (selection.exact) {
+      llvm::errs() << "[tmem-copy] candidate exact query canCompose="
+                   << canUseCopyQuery(*selection.exact) << "\n"
+                   << selection.exact->layout.toString() << "\n";
+    } else {
+      llvm::errs() << "[tmem-copy] candidate exact query failed: "
+                   << selection.exactError << "\n";
+    }
+  }
+  auto choose = [&](const TMemPhysicalQuery &query, bool usedExact)
+      -> FailureOr<TMemCopyPhysicalQuerySelection> {
+    if (!canUseCopyQuery(query)) {
+      if (error)
+        *error = "unsupported tensor memory descriptor view for "
+                 "tcgen05.copy: the source shared-memory layout image is not "
+                 "contained in the selected tensor-memory descriptor view "
+                 "image";
+      return failure();
+    }
+    selection.query = query;
+    selection.usedExact = usedExact;
+    return selection;
+  };
+
+  if (selection.standalone && selection.exact &&
+      shouldUseExactTMemCopyPhysicalQuery(*selection.standalone,
+                                          *selection.exact) &&
+      canUseCopyQuery(*selection.exact)) {
+    return choose(*selection.exact, /*usedExact=*/true);
+  }
+
+  if (selection.standalone && canUseCopyQuery(*selection.standalone))
+    return choose(*selection.standalone, /*usedExact=*/false);
+
+  // Non-canonical linear TMEM roots and some descriptor views do not have a
+  // standalone canonical spelling, but exact query algebra can still describe
+  // the active physical image precisely. Use it only when there is no
+  // standalone projection to disagree with.
+  if (!selection.standalone && selection.exact)
+    return choose(*selection.exact, /*usedExact=*/true);
+
+  if ((selection.standalone || selection.exact) && error) {
+    *error = "unsupported tensor memory descriptor view for tcgen05.copy: the "
+             "source shared-memory layout image is not contained in the "
+             "selected tensor-memory descriptor view image";
+    return failure();
+  }
+
+  if (error) {
+    if (!selection.standaloneError.empty())
+      *error = selection.standaloneError;
+    else if (!selection.exactError.empty())
+      *error = selection.exactError;
+    else
+      *error = "unsupported tensor memory descriptor view for tcgen05.copy";
+  }
+  return failure();
+}
+
 std::optional<std::string>
 getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
                                  const TMemPhysicalQuery &exact) {
@@ -7275,6 +7361,9 @@ getTMemLdStPhysicalSupportPlan(MemDescType memTy, unsigned numWarps,
   return std::nullopt;
 }
 
+static std::optional<LinearLayout>
+getTMemCopy4x256RefreshDescriptorCvt(const LinearLayout &cvt, int bitwidth);
+
 std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
                                             int bitwidth) {
   auto inDims = cvt.getInDimNames();
@@ -7288,6 +7377,8 @@ std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
   if (!cvt.hasInDim(kRow) || !cvt.hasInDim(kCol) || !cvt.hasOutDim(kOffset))
     return std::nullopt;
   int totalBits = cvt.getInDimSize(kCol) * bitwidth;
+  if (getTMemCopy4x256RefreshDescriptorCvt(cvt, bitwidth))
+    return TMemCopyAtom{4, 256, 0};
   if (cvt.getInDimSize(kRow) == 4) {
     if (totalBits >= 256)
       return TMemCopyAtom{4, 256, 0};
@@ -7481,6 +7572,104 @@ static bool isDenseTMemCopyFamily(TMemCopyFamily family) {
          family == TMemCopyFamily::Dense128x256b;
 }
 
+static bool isAllZeroBasis(ArrayRef<int32_t> basis) {
+  return llvm::all_of(basis, [](int32_t value) { return value == 0; });
+}
+
+static bool basisEquals(ArrayRef<int32_t> basis,
+                        std::initializer_list<int32_t> expected) {
+  return llvm::equal(basis, ArrayRef<int32_t>(expected));
+}
+
+static bool isPureOffsetBasis(const LinearLayout &layout, StringAttr dim,
+                              unsigned bit, StringAttr offsetDim,
+                              int32_t expectedOffset) {
+  if (!layout.hasInDim(dim) || !layout.hasOutDim(offsetDim) ||
+      bit >= layout.getInDimSizeLog2(dim))
+    return false;
+  ArrayRef<int32_t> basis = layout.getBasis(dim, bit);
+  unsigned offsetIdx = layout.getOutDimIndex(offsetDim);
+  for (auto [idx, value] : llvm::enumerate(basis)) {
+    int32_t expected = idx == offsetIdx ? expectedOffset : 0;
+    if (value != expected)
+      return false;
+  }
+  return true;
+}
+
+static bool isTMemCopy4x256RefreshLayout(const LinearLayout &layout,
+                                         MLIRContext *ctx, int bitwidth) {
+  if (bitwidth != 32)
+    return false;
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
+      layout.getNumOutDims() != 2 || layout.getInDimSize(kRow) != 128 ||
+      layout.getInDimSize(kCol) != 8)
+    return false;
+  auto outDims = llvm::to_vector(layout.getOutDims());
+  if (outDims[0].second != 4 || outDims[1].second != 8)
+    return false;
+  for (unsigned bit = 0; bit < 5; ++bit) {
+    if (!isAllZeroBasis(layout.getBasis(kRow, bit)))
+      return false;
+  }
+  return basisEquals(layout.getBasis(kRow, 5), {0, 1}) &&
+         basisEquals(layout.getBasis(kRow, 6), {0, 2}) &&
+         basisEquals(layout.getBasis(kCol, 0), {1, 0}) &&
+         basisEquals(layout.getBasis(kCol, 1), {2, 0}) &&
+         basisEquals(layout.getBasis(kCol, 2), {0, 4});
+}
+
+static std::optional<LinearLayout>
+getTMemCopy4x256RefreshDescriptorCvt(const LinearLayout &cvt, int bitwidth) {
+  if (bitwidth != 32)
+    return std::nullopt;
+  auto inDims = cvt.getInDimNames();
+  if (inDims.empty())
+    return std::nullopt;
+  auto *ctx = inDims.begin()->getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto kOffset = StringAttr::get(ctx, "offset");
+  if (!cvt.hasInDim(kRow) || !cvt.hasInDim(kCol) ||
+      !cvt.hasOutDim(kOffset) || cvt.getInDimSize(kRow) != 128 ||
+      cvt.getInDimSize(kCol) != 8)
+    return std::nullopt;
+  for (unsigned bit = 0; bit < 5; ++bit) {
+    if (!isAllZeroBasis(cvt.getBasis(kRow, bit)))
+      return std::nullopt;
+  }
+  if (!isPureOffsetBasis(cvt, kRow, 5, kOffset, 4) ||
+      !isPureOffsetBasis(cvt, kRow, 6, kOffset, 8) ||
+      !isPureOffsetBasis(cvt, kCol, 0, kOffset, 1) ||
+      !isPureOffsetBasis(cvt, kCol, 1, kOffset, 2) ||
+      !isPureOffsetBasis(cvt, kCol, 2, kOffset, 16))
+    return std::nullopt;
+
+  LinearLayout::BasesT bases;
+  bases[kRow] = {
+      std::vector<int32_t>(cvt.getBasis(kCol, 0).begin(),
+                           cvt.getBasis(kCol, 0).end()),
+      std::vector<int32_t>(cvt.getBasis(kCol, 1).begin(),
+                           cvt.getBasis(kCol, 1).end())};
+  bases[kCol] = {
+      std::vector<int32_t>(cvt.getBasis(kRow, 5).begin(),
+                           cvt.getBasis(kRow, 5).end()),
+      std::vector<int32_t>(cvt.getBasis(kRow, 6).begin(),
+                           cvt.getBasis(kRow, 6).end()),
+      std::vector<int32_t>(cvt.getBasis(kCol, 2).begin(),
+                           cvt.getBasis(kCol, 2).end())};
+  if (cvt.hasInDim(kBlock)) {
+    auto blockBases = cvt.getBases().lookup(kBlock);
+    bases[kBlock] =
+        std::vector<std::vector<int32_t>>(blockBases.begin(), blockBases.end());
+  }
+  return LinearLayout(std::move(bases), llvm::to_vector(cvt.getOutDims()),
+                      /*requireSurjective=*/false);
+}
+
 static unsigned getDenseTMemCopyColumnStride(TMemCopyFamily family,
                                              unsigned bitwidth) {
   switch (family) {
@@ -7561,6 +7750,10 @@ static bool needsDenseTMemCopyPhysicalColumnTileOffsets(const LinearLayout &ll,
 std::optional<uint32_t>
 getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
                                  TMemCopyFamily family, int32_t logicalCol) {
+  if (family == TMemCopyFamily::Dense4x256b &&
+      isTMemCopy4x256RefreshLayout(query.layout, query.memTy.getContext(),
+                                   query.elementBitWidth))
+    return 0u;
   if (!isDenseTMemCopyFamily(family))
     return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
 
@@ -7587,6 +7780,19 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         unsigned bitwidth) {
   if (!isDenseTMemCopyFamily(family))
     return getSupportedTMemCopyResult();
+
+  if (family == TMemCopyFamily::Dense4x256b) {
+    if (isTMemCopy4x256RefreshLayout(layout, ctx, bitwidth))
+      return getSupportedTMemCopyResult();
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "tcgen05.copy.4x256b is recognized by the ISA, but Triton "
+        "cannot expose it as an ordinary contiguous four-row "
+        "ttng.tmem_copy lowering. The instruction is only supported for the "
+        "refresh-shaped destination view where logical row bits are stored in "
+        "TMEM columns, low logical column bits are stored in TMEM rows 32/64, "
+        "and the high logical column bit is stored at destination dword +4.");
+  }
 
   auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(layout);
   auto kRow = StringAttr::get(ctx, "row");
@@ -7943,7 +8149,18 @@ llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
   }
 
   if (atom->multicast == 0 && atom->nRow == 4) {
-    plans.push_back(makePlan({std::tuple{4u, 1u, 4u, 0}}));
+    auto plan = makePlan({std::tuple{4u, 1u, 4u, 0}});
+    if (auto descriptorCvt =
+            getTMemCopy4x256RefreshDescriptorCvt(cvt, bitwidth)) {
+      assert(plan.family == TMemCopyFamily::Dense4x256b);
+      auto descriptorProjection = *descriptorCvt;
+      plan.messages.front().descriptorCvt = descriptorProjection;
+      TMemCopyMessagePlan highColumns = plan.messages.front();
+      highColumns.smemColOffset = 4;
+      highColumns.tmemDwordDelta = 4;
+      plan.messages.push_back(std::move(highColumns));
+    }
+    plans.push_back(std::move(plan));
     return plans;
   }
 
@@ -8392,7 +8609,10 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
   TMemCopyExecutablePlan executablePlan;
   executablePlan.family = plan.family;
   bool debugTMemQuery = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
-  if (plan.family == TMemCopyFamily::Dense4x256b) {
+  if (plan.family == TMemCopyFamily::Dense4x256b &&
+      llvm::any_of(plan.messages, [](const TMemCopyMessagePlan &message) {
+        return !message.descriptorCvt.has_value();
+      })) {
     return {std::nullopt,
             getUnsupportedTMemCopyResult(
                 TMemCopySupportFailureLayer::DescriptorSynthesis,

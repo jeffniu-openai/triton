@@ -1553,56 +1553,55 @@ LogicalResult TMEMCopyOp::verify() {
   }
   auto shmemLl = toLinearLayout(srcTy);
   std::string tmemError;
-  auto maybeDstQuery = inferStandaloneTMemPhysicalQuery(getDst(), &tmemError);
-  if (failed(maybeDstQuery)) {
+  auto maybeQuerySelection =
+      selectTMemCopyPhysicalQuery(getDst(), shmemLl, &tmemError);
+  if (failed(maybeQuerySelection)) {
     return emitOpError(tmemError.empty()
                            ? "unsupported tensor memory descriptor view for "
                              "tcgen05.copy"
                            : tmemError);
   }
-  std::string exactTmemError;
-  auto maybeExactDstQuery =
-      inferExactTMemPhysicalQuery(getDst(), &exactTmemError);
-  const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
-  auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
-    return canInvertAndComposeLayouts(query.layout, shmemLl);
-  };
-  if (succeeded(maybeExactDstQuery) &&
-      shouldUseExactTMemCopyPhysicalQuery(*maybeDstQuery,
-                                          *maybeExactDstQuery) &&
-      canUseCopyQuery(*maybeExactDstQuery)) {
-    supportDstQuery = &*maybeExactDstQuery;
-  }
-  if (!canUseCopyQuery(*supportDstQuery)) {
-    return emitOpError("unsupported tensor memory descriptor view for "
-                       "tcgen05.copy: the source shared-memory layout image is "
-                       "not contained in the selected tensor-memory descriptor "
-                       "view image");
-  }
-  auto tmemLl = supportDstQuery->layout;
+  auto &querySelection = *maybeQuerySelection;
+  assert(querySelection.query &&
+         "successful tcgen05.copy query selection must carry a query");
+  const TMemPhysicalQuery &supportDstQuery = *querySelection.query;
+  auto tmemLl = supportDstQuery.layout;
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
-    if (failed(maybeExactDstQuery)) {
+    if (!querySelection.standalone) {
+      llvm::errs() << "[tmem-copy] standalone destination query failed: "
+                   << querySelection.standaloneError << "\n";
+    }
+    if (!querySelection.exact) {
       llvm::errs() << "[tmem-copy] exact destination query failed: "
-                   << exactTmemError << "\n";
-    } else if (auto difference = getFirstTMemPhysicalQueryDifference(
-                   *maybeDstQuery, *maybeExactDstQuery)) {
-      auto printOrigin = [](StringRef label, ArrayRef<int32_t> origin) {
-        llvm::errs() << label;
-        for (int32_t value : origin)
-          llvm::errs() << " " << value;
-        llvm::errs() << "\n";
-      };
+                   << querySelection.exactError << "\n";
+    } else if (querySelection.standalone) {
+      if (auto difference = getFirstTMemPhysicalQueryDifference(
+              *querySelection.standalone, *querySelection.exact)) {
+        auto printOrigin = [](StringRef label, ArrayRef<int32_t> origin) {
+          llvm::errs() << label;
+          for (int32_t value : origin)
+            llvm::errs() << " " << value;
+          llvm::errs() << "\n";
+        };
 
-      llvm::errs() << "[tmem-copy] destination standalone/exact query "
-                      "divergence: "
-                   << stringifyTMemPhysicalQueryDifference(*difference)
-                   << "\n";
-      llvm::errs() << "[tmem-copy] standalone layout:\n"
-                   << maybeDstQuery->layout.toString() << "\n";
-      printOrigin("[tmem-copy] standalone origin:", maybeDstQuery->origin);
-      llvm::errs() << "[tmem-copy] exact layout:\n"
-                   << maybeExactDstQuery->layout.toString() << "\n";
-      printOrigin("[tmem-copy] exact origin:", maybeExactDstQuery->origin);
+        llvm::errs() << "[tmem-copy] destination standalone/exact query "
+                        "divergence: "
+                     << stringifyTMemPhysicalQueryDifference(*difference)
+                     << "\n";
+        llvm::errs() << "[tmem-copy] standalone layout:\n"
+                     << querySelection.standalone->layout.toString() << "\n";
+        printOrigin("[tmem-copy] standalone origin:",
+                    querySelection.standalone->origin);
+        llvm::errs() << "[tmem-copy] exact layout:\n"
+                     << querySelection.exact->layout.toString() << "\n";
+        printOrigin("[tmem-copy] exact origin:",
+                    querySelection.exact->origin);
+      }
+    }
+    if (querySelection.usedExact) {
+      llvm::errs() << "[tmem-copy] using exact destination query\n";
+    } else {
+      llvm::errs() << "[tmem-copy] using standalone destination query\n";
     }
   }
 
@@ -1626,7 +1625,7 @@ LogicalResult TMEMCopyOp::verify() {
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
-  if (supportDstQuery->isScales) {
+  if (supportDstQuery.isScales) {
     if (copyPlans.empty()) {
       auto diag = emitOpError(
           "The source shared layout does not match any supported "
@@ -1640,7 +1639,7 @@ LogicalResult TMEMCopyOp::verify() {
       return emitOpError("The source should not be swizzled for now");
     }
     auto planSelection = selectTMemCopyPlan(
-        srcTy, *supportDstQuery, shmemLl, cvt, copyPlans, bitwidth,
+        srcTy, supportDstQuery, shmemLl, cvt, copyPlans, bitwidth,
         TMemCopyPlanSupportKind::TensorMemoryScales);
     if (!planSelection) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
@@ -1649,9 +1648,9 @@ LogicalResult TMEMCopyOp::verify() {
                   << ", but Triton could not synthesize a compatible "
                      "shared-memory descriptor plan for tensor memory scales.";
       attachTMemCopyPlanFailureNotes(diag, planSelection);
-      if (succeeded(maybeExactDstQuery)) {
+      if (querySelection.standalone && querySelection.exact) {
         if (auto note = getTMemCopyExactViewScheduleNote(
-                *maybeDstQuery, *maybeExactDstQuery))
+                *querySelection.standalone, *querySelection.exact))
           diag.attachNote() << *note;
       }
       diag.attachNote()
@@ -1696,7 +1695,7 @@ LogicalResult TMEMCopyOp::verify() {
       return failure();
     }
     auto planSelection =
-        selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
+        selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
                            bitwidth, TMemCopyPlanSupportKind::TensorMemory);
     if (!planSelection) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);

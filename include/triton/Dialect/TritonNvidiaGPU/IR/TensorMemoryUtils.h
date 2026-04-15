@@ -43,6 +43,15 @@ struct TMemPhysicalQuery {
   bool isScales;
 };
 
+struct TMemCopyPhysicalQuerySelection {
+  std::optional<TMemPhysicalQuery> query;
+  std::optional<TMemPhysicalQuery> standalone;
+  std::optional<TMemPhysicalQuery> exact;
+  std::string standaloneError;
+  std::string exactError;
+  bool usedExact = false;
+};
+
 enum class TMemPhysicalQueryDifference {
   Shape,
   AllocShape,
@@ -248,6 +257,10 @@ bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
 
 bool canInvertAndComposeLayouts(const LinearLayout &inner,
                                 const LinearLayout &outer);
+
+FailureOr<TMemCopyPhysicalQuerySelection>
+selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
+                            std::string *error = nullptr);
 
 std::optional<std::string>
 getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,

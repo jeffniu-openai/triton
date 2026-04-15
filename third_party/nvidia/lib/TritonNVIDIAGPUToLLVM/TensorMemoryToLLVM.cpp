@@ -1484,32 +1484,19 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   MemDescType dstTy = op.getDst().getType();
   auto shmemLl = toLinearLayout(srcTy);
   std::string tmemError;
-  auto maybeDstQuery = inferStandaloneTMemPhysicalQuery(op.getDst(), &tmemError);
-  if (failed(maybeDstQuery)) {
+  auto maybeQuerySelection =
+      selectTMemCopyPhysicalQuery(op.getDst(), shmemLl, &tmemError);
+  if (failed(maybeQuerySelection)) {
     return op->emitOpError(tmemError.empty()
                                ? "unsupported tensor memory descriptor view "
                                  "for tcgen05.copy lowering"
                                : tmemError);
   }
-  auto maybeExactDstQuery = inferExactTMemPhysicalQuery(op.getDst());
-  const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
-  auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
-    return canInvertAndComposeLayouts(query.layout, shmemLl);
-  };
-  if (succeeded(maybeExactDstQuery) &&
-      shouldUseExactTMemCopyPhysicalQuery(*maybeDstQuery,
-                                          *maybeExactDstQuery) &&
-      canUseCopyQuery(*maybeExactDstQuery)) {
-    supportDstQuery = &*maybeExactDstQuery;
-  }
-  if (!canUseCopyQuery(*supportDstQuery)) {
-    return op->emitOpError(
-        "unsupported tensor memory descriptor view for tcgen05.copy lowering: "
-        "the source shared-memory layout image is not contained in the "
-        "selected tensor-memory descriptor view image");
-  }
-  auto tmemLl = supportDstQuery->layout;
-  bool isScales = supportDstQuery->isScales;
+  assert(maybeQuerySelection->query &&
+         "successful tcgen05.copy query selection must carry a query");
+  const TMemPhysicalQuery &supportDstQuery = *maybeQuerySelection->query;
+  auto tmemLl = supportDstQuery.layout;
+  bool isScales = supportDstQuery.isScales;
 
   // This subtlely handles subviews
   auto cvt = tmemLl.invertAndCompose(shmemLl);
@@ -1535,7 +1522,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto supportKind = isScales ? TMemCopyPlanSupportKind::TensorMemoryScales
                               : TMemCopyPlanSupportKind::TensorMemory;
   auto planSelection =
-      selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
+      selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
                          bitwidth, supportKind);
   if (planSelection) {
     plannedMessages.reserve(planSelection.plan->messages.size());
@@ -1569,9 +1556,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for tensor memory scales.";
       attachTMemCopyPlanFailureNotes(diag, planSelection);
-      if (succeeded(maybeExactDstQuery)) {
-        if (auto note = getTMemCopyExactViewScheduleNote(*maybeDstQuery,
-                                                         *maybeExactDstQuery))
+      if (maybeQuerySelection->standalone && maybeQuerySelection->exact) {
+        if (auto note = getTMemCopyExactViewScheduleNote(
+                *maybeQuerySelection->standalone, *maybeQuerySelection->exact))
           diag.attachNote() << *note;
       }
       diag.attachNote()
@@ -1593,7 +1580,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
 
   bool twoCTAs = getModuleTwoCTAs(op);
   uint32_t destinationBaseOffset =
-      getTMemPhysicalQueryOriginBaseOffset(*supportDstQuery);
+      getTMemPhysicalQueryOriginBaseOffset(supportDstQuery);
   uint32_t alreadyAdjustedBase =
       getAlreadyAdjustedTMemSubviewBaseOffset(op.getDst());
   if (alreadyAdjustedBase != 0)
@@ -1622,7 +1609,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   const unsigned colStride = plannedMessages.front().schedule.plan.instrShape[1];
   for (int col = 0; col < cvt.getInDimSize(kCol); col += colStride) {
     auto destinationTileOffset = getTMemCopyDestinationTileOffset(
-        *supportDstQuery, planSelection.plan->family, col);
+        supportDstQuery, planSelection.plan->family, col);
     if (!destinationTileOffset) {
       return op->emitOpError(
           "failed to compute physical tcgen05.copy destination tile offset "

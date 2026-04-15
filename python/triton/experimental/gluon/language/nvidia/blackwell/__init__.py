@@ -832,7 +832,7 @@ def allocate_tensor_memory(element_ty, shape, layout, value=None, _semantic=None
 
     builder = _semantic.builder
     alloc_shape = shape
-    if isinstance(layout, TensorMemoryScalesLayout):
+    if isinstance(layout, (TensorMemoryLinearLayout, TensorMemoryScalesLayout)):
         alloc_shape = builder.get_tmem_alloc_shape(shape, layout._to_ir(builder))
     ty = tensor_memory_descriptor_type(element_ty, shape, layout, alloc_shape)
     handle = builder.create_tmem_alloc(ty.to_ir(builder), value)

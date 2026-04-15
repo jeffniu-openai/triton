@@ -321,6 +321,15 @@ Progress:
   refresh-shaped destination view and its load/store contract; the current
   public API/view inference rejects the needed 4x8 slice over a 128x8 physical
   parent as an unsupported `memdesc_subslice` view.
+- 2026-04-15 12:52 UTC: `4x256b` copy support is now positive for the exact
+  refresh-shaped active `TensorMemoryLinearLayout`. The planner recognizes the
+  proved physical image, uses a per-message descriptor projection, and emits
+  two `tcgen05.cp.cta_group::1.4x256b` messages. Verifier and lowering share
+  physical-query selection, so noncanonical exact linear roots no longer need
+  a standalone canonical fallback to reach copy planning. Ordinary contiguous
+  four-row copies stay negative because they are not the refresh image the ISA
+  realizes. Remaining `4x256b` work is the load/store/register-layout contract
+  for the refresh layout, not the copy opcode schedule.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

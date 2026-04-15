@@ -15834,3 +15834,44 @@ Open after this slice:
 - Source diagnostic was updated to say Triton cannot yet expose 4x256b as a
   correct logical `ttng.tmem_copy` lowering, while recording the known
   two-message physical refresh schedule.
+
+## 2026-04-15 12:52 UTC: 4x256b refresh-shaped copy support
+
+- Promoted the proved refresh-shaped `tcgen05.cp.4x256b` image from diagnostic
+  evidence to first-class copy codegen support.
+- Implementation:
+  - added shared `selectTMemCopyPhysicalQuery(...)` and routed both verifier
+    and LLVM lowering through it, so standalone/exact query selection and
+    composability checks no longer drift;
+  - allowed expanded allocation shapes for `TensorMemoryLinearLayout` roots in
+    the frontend builder and allocation verifier, matching the exact physical
+    query model needed by noncanonical linear roots;
+  - taught the copy atom planner to recognize the refresh-shaped 4x8 active
+    layout and synthesize a two-message `Dense4x256b` plan with a
+    per-message descriptor projection, `smemColOffset=4` for the high columns,
+    and `tmemDwordDelta=4` for the second destination image;
+  - kept ordinary contiguous four-row `ttng.tmem_copy` clean unsupported with
+    a physical-query note explaining that only the refresh-shaped image is
+    currently legal.
+- Tests:
+  - added a Blackwell runtime-matrix codegen row for the refresh-shaped
+    active layout, asserting exactly two
+    `tcgen05.cp.cta_group::1.4x256b` messages;
+  - updated the ordinary 4x8 clean-negative row and invalid verifier
+    expectations to the new physical-query diagnostic;
+  - added a compiler-only Blackwell conversion FileCheck for the refresh
+    layout.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-refresh-positive PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen'`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-4x256-clean-negative PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported'`
+    (`1 passed`);
+  - `git diff --check`.
+- Remaining boundary:
+  - direct `tmem.load`/`tmem.store` for the refresh-shaped active layout still
+    lacks a supported register-layout contract, so the positive row is a copy
+    codegen/opcode proof rather than a full data round-trip through TMEM.
