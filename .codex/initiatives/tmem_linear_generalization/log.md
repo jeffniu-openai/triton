@@ -17126,3 +17126,28 @@ Open after this slice:
     cp_scales_tmem_descriptor_view_reports_clean_unsupported or
     cp_scales_warpx4`: `375 passed`;
   - `git diff --check`.
+
+## 2026-04-15 19:42 UTC: scales descriptor-view copy descriptor-variant probe
+
+- Re-probed the scales descriptor-view copy boundary after adding the
+  source-coordinate tile carrier.
+- Temporary probe:
+  - added and removed an env-gated instruction-column preflight bypass;
+  - added and removed an env-gated `warpx4` descriptor-variant expansion using
+    the existing repartition machinery;
+  - ran `tmem_copy_scales_tmem_descriptor_view_kernel` directly with
+    `TRITON_DEBUG_TMEM_QUERY=1`.
+- Result:
+  - exact source-to-destination conversion still maps source column bit 2 to
+    shared offset `256` within one 16-column `warpx4` instruction;
+  - broadening the descriptor search produced `254` candidate layouts;
+  - none were representable as a `32x16` MMAShared descriptor;
+  - the root/standalone-query shortcut had already been ruled out at the
+    previous checkpoint.
+- Interpretation:
+  - scales descriptor-view copy is not blocked by bounded descriptor
+    enumeration;
+  - the next support path needs an ISA-grounded source-column/message split or
+    row-partition schedule capable of splitting sub-instruction columns.
+- Validation after removing probe hooks:
+  - `make -j8`.

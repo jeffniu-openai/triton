@@ -272,6 +272,13 @@ Progress:
   selected plan's source coordinate instead of recomputing it from the
   destination tile loop. This is the behavior-preserving carrier needed before
   planner-generated source-column/message splits can be expressed cleanly.
+- 2026-04-15 19:42 UTC: a temporary scales descriptor-view copy probe ruled
+  out descriptor-enumeration as the next support path. Enabling the existing
+  descriptor repartition search for `warpx4` and bypassing the
+  instruction-column preflight produced `254` candidate `32x16` descriptor
+  layouts for the exact view, but none were MMAShared-representable. The
+  remaining gap needs an ISA-grounded split schedule for sub-instruction
+  source columns or row partitions, not another descriptor basis shuffle.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view copy split probe, 2026-04-15 19:42 UTC:
+  a temporary local probe broadened the existing descriptor repartition search
+  to `warpx4` and bypassed the instruction-column preflight for
+  `tmem_copy_scales_tmem_descriptor_view_kernel`. Even with `254`
+  descriptor candidates, MMAShared descriptor synthesis still found no
+  representable `32x16` descriptor for the exact view where logical source
+  column bit 2 maps to shared offset `256`. The probe hooks were removed and
+  `make -j8` rebuilt the clean tree. This rules out descriptor-enumeration as
+  the next support path: the remaining scales descriptor-view copy gap needs
+  an ISA-grounded source-column/message or row-partition schedule that can
+  split sub-instruction columns, not another row/column basis shuffle.
+
 - Current scheduled copy tile checkpoint, 2026-04-15 19:36 UTC:
   copy tile scheduling now records source and destination coordinates in one
   selected-plan carrier. `TMemCopyScheduledTile` replaces the destination-only

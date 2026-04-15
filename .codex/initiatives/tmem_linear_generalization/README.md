@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 19:42 UTC: scales descriptor-view copy was re-probed with a
+  temporary `warpx4` descriptor-variant expansion plus instruction-column
+  preflight bypass. The exact view still had logical source column bit 2
+  mapping to shared offset `256`, and descriptor synthesis found no
+  representable `32x16` MMAShared descriptor across `254` candidates. Probe
+  hooks were removed and `make -j8` rebuilt clean source. The next support
+  path is an ISA-grounded source-column/message or row-partition split, not
+  broader descriptor enumeration.
 - 2026-04-15 19:36 UTC: copy tile scheduling now carries both the logical
   destination column and the shared-memory source column. The old
   `TMemCopyDestinationTile` carrier was replaced by `TMemCopyScheduledTile`
