@@ -4444,6 +4444,13 @@ bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
   return !getFirstTMemPhysicalQueryDifference(lhs, rhs).has_value();
 }
 
+bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
+                                        const TMemPhysicalQuery &rhs) {
+  return lhs.shape == rhs.shape && lhs.elementBitWidth == rhs.elementBitWidth &&
+         lhs.layout == rhs.layout && lhs.twoCTAs == rhs.twoCTAs &&
+         lhs.isScales == rhs.isScales;
+}
+
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference) {
   switch (difference) {

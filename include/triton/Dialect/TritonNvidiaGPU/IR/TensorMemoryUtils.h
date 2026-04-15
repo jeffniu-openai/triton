@@ -194,6 +194,11 @@ getFirstTMemPhysicalQueryDifference(const TMemPhysicalQuery &lhs,
 
 bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
                                          const TMemPhysicalQuery &rhs);
+// Copy planning consumes the active physical layout and CTA/scales facts. View
+// origins and backing allocation shapes are represented by the lowered TMEM
+// descriptor base, so they are intentionally not part of this comparator.
+bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
+                                        const TMemPhysicalQuery &rhs);
 
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference);

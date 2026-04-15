@@ -14878,3 +14878,27 @@ Open after this slice:
   generality frontier: origin-aware copy query/lowering and the remaining
   linear-layout schedule gaps, especially no-scales two-CTA `warpx2::02_13`
   and scales copy unification.
+
+## 2026-04-15 07:12 UTC: copy exact-query projection comparator
+
+- Added `haveSameTMemCopyPhysicalProjection(...)` as the copy-specific exact
+  query selection predicate.
+- The new predicate keeps the copy-relevant requirements strict: active shape,
+  element bitwidth, physical layout, CTA ownership, and scales classification
+  must match between standalone and exact queries.
+- It deliberately ignores origin and allocation-shape differences because those
+  are represented by the lowered TMEM descriptor base for copy descriptor views.
+  This lets origin-divergent descriptor views use the exact query carrier when
+  their active copy projection is otherwise identical.
+- `TTNG::TMemCopyOp::verify` and no-scales `tcgen05.copy` lowering now use the
+  copy-specific predicate instead of full query equality.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python TRITON_DEBUG_TMEM_QUERY=1 pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_slice_index_view_reports_clean_unsupported[1-f32-torch_dtype0]'`;
+  - `git diff --check`.
+- Next: commit and push this behavior-preserving projection checkpoint, then
+  continue Phase 2 by moving copy schedule selection toward a first-class
+  planner result that can carry query origin/base facts and descriptor schedule
+  failure layers explicitly.

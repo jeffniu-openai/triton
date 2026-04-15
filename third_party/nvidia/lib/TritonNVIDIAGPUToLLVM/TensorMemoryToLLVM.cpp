@@ -1487,7 +1487,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto maybeExactDstQuery = inferExactTMemPhysicalQuery(op.getDst());
   const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
   if (succeeded(maybeExactDstQuery) &&
-      haveSameTMemPhysicalQueryProjection(*maybeDstQuery, *maybeExactDstQuery)) {
+      haveSameTMemCopyPhysicalProjection(*maybeDstQuery, *maybeExactDstQuery)) {
     supportDstQuery = &*maybeExactDstQuery;
   }
   auto tmemLl = supportDstQuery->layout;

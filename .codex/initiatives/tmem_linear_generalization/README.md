@@ -95,6 +95,19 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy exact-query projection checkpoint, 2026-04-15 07:12 UTC:
+  copy verification and lowering now use a copy-specific physical-query
+  comparator when deciding whether an exact descriptor-view query may replace
+  the standalone query. The comparator requires active shape, element width,
+  physical layout, CTA ownership, and scales classification to match, but
+  intentionally ignores origin and allocation-shape differences because copy
+  lowering carries those through the descriptor base. This preserves existing
+  support decisions while allowing origin-divergent descriptor views to flow
+  through the exact query carrier when their copy-relevant projection matches.
+  Validation passed: `make -j8`, direct invalid/conversion lit RUN lines via
+  local `triton-opt` and `FileCheck`, one targeted runtime clean-negative
+  `warpx2::02_13` slice-index row, and `git diff --check`.
+
 - Current `tcgen05.cp.4x256b` ISA coverage checkpoint, 2026-04-15 07:08 UTC:
   no-scales `ttng.tmem_copy` now recognizes the dense 4-row, 256-bit copy
   atom, plans it as a single 4x8 shared descriptor for 32-bit elements, and

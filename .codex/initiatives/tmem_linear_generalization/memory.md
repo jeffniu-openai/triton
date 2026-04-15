@@ -8496,3 +8496,24 @@ rejection, not rescue
   Continue the backend completion plan with origin-aware copy planning and
   broader linear-layout support, rather than treating 4x256b support as the
   main backend generality fix.
+
+## Latest: 2026-04-15 07:12 UTC copy exact-query projection
+
+- Added `haveSameTMemCopyPhysicalProjection(...)`, a copy-specific comparator
+  for choosing exact descriptor-view physical queries. It requires active shape,
+  element bitwidth, physical layout, CTA ownership, and scales classification to
+  match, but ignores origin and allocation-shape differences.
+- Rationale: copy lowering receives a TMEM descriptor base that view
+  conversions have already advanced, so origin/backing-allocation differences
+  are not part of descriptor-plan support when the active physical layout is the
+  same.
+- `ttng.tmem_copy` verification and no-scales lowering now use this comparator
+  instead of requiring full query equality before selecting the exact query.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python TRITON_DEBUG_TMEM_QUERY=1 pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_slice_index_view_reports_clean_unsupported[1-f32-torch_dtype0]'`;
+  `git diff --check`.
+- Boundary: this is a projection/abstraction cleanup, not a support promotion.
+  The two-CTA `warpx2::02_13` root schedule remains blocked on a true
+  cta_group::2 descriptor/address schedule.
