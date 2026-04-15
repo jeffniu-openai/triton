@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 15:24 UTC: M64 split-N `tcgen05.ld.red` was probed and kept as a
+  clean reduction-schedule boundary. Temporary local changes could make the
+  active 64-row image emit `ld.red.16x32bx2`, but runtime rows still aliased:
+  rows 16-31 duplicated rows 0-15 and rows 32-63 were zero. The known-good
+  M64 split-N `ld/st` schedule uses two `16x32bx2.x8.b32` messages with an N
+  bit in lanes, while `ld.red` currently requires N entirely in registers.
+  Future support needs a real cross-lane/thread partial-reduction design, not
+  a row-plan or guard-lift tweak.
 - 2026-04-15 15:04 UTC: the two-CTA scales descriptor-view direct
   `tcgen05.ld/st` family now covers the full current CGA bucket:
   `128x64`, `256x32`, and `256x64`. The exact recognizer now accepts both

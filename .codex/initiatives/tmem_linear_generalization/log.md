@@ -16209,3 +16209,40 @@ Open after this slice:
     Continue scanning Phase 4 for other direct `ld/st`/`ld.red` gaps, then
     return to copy/scaled-MMA frontiers if no support-bearing direct rows
     remain.
+
+## 2026-04-15 15:24 UTC: M64 split-N `ld.red` remains a clean negative
+
+- Re-probed the `m64_64x{32,64,128}` reduction gap with temporary local
+  changes only. All probe code was removed before this checkpoint; the source
+  tree is clean relative to pushed `8da49756c`.
+- What was tried:
+  - allowed reduction source analysis to treat the active 64-row image after
+    removing the zero row basis as reduction-friendly;
+  - added a candidate 4-warp reduction layout with all N bits in registers;
+  - allowed `compute_tmem_reduce_reg_layout_from_memdesc(...)` to accept
+    `I16x32bx2` for M64 queries;
+  - briefly let `ld.red` keep the projected 64-row query row plan instead of
+    promoting root M64 allocs back to the 128-row direct-load backing plan.
+- Probe result:
+  - the candidate compiled to
+    `tcgen05.ld.red.sync.aligned.16x32bx2.x32.min.f32`;
+  - with the 128-row backing plan, the immediate was `32 << 16` and rows
+    16-31 duplicated rows 0-15 while rows 32-63 were zero;
+  - with the projected 64-row query plan, the immediate became zero, but the
+    same aliasing remained because the row-zero basis makes logical row
+    16 alias logical row 0 in the direct reduction message.
+- Comparison against the known-good ordinary split-N `ld/st` schedule:
+  - `tcgen05.ld/st.16x32bx2.x8.b32` uses two messages with offsets `0` and
+    `16` and immediate `8` for the `64x32` split-N layout;
+  - that schedule puts an N selector in the lane dimension, so it is not a
+    valid `ld.red` register layout under the current reduction contract, which
+    requires all N elements in registers and M unsharded;
+  - making it a reduction would need a real cross-lane/thread partial-reduce
+    design, not just row-plan arithmetic.
+- Current conclusion:
+  - M64 split-N `ld.red` should stay clean unsupported for now. The gap is not
+    the same as the direct `ld/st` split-N support; it is an independent
+    reduction-schedule problem involving row aliasing and N sharding.
+  - Do not reintroduce the probed row-plan override or `I16x32bx2` acceptance
+    unless the implementation also adds a correct reduction combine strategy
+    for the split-N lane dimension.

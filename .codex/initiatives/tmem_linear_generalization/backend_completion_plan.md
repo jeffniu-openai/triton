@@ -460,6 +460,11 @@ Progress:
   `[64,0]`. The planner constructs the register layout from those raw facts
   and validates it, promoting `256x32` and `256x64` beside the earlier
   `128x64` row.
+- 2026-04-15 15:24 UTC: M64 split-N `ld.red` was probed and kept clean
+  unsupported. The ordinary split-N `ld/st` schedule needs a lane-carried N
+  selector and multiple messages; a direct `ld.red.16x32bx2` row-plan lift
+  aliases rows and leaves half the tile uncovered. Treat future support here
+  as a cross-lane/thread partial-reduction design, not a row-plan guard lift.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

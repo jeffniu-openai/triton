@@ -9319,3 +9319,20 @@ rejection, not rescue
   - focused `cp_scales and clean` runtime slice (`9 passed`);
   - invalid verifier RUN;
   - `git diff --check`.
+
+## Latest: 2026-04-15 15:24 UTC M64 split-N `ld.red` probe boundary
+
+- The current M64 split-N `ld.red` clean-negative is not just a stale row-plan
+  predicate. Temporary probes that made the active 64-row image
+  reduction-friendly emitted `tcgen05.ld.red.16x32bx2`, but runtime output
+  still duplicated rows 0-15 into rows 16-31 and left rows 32-63 zero.
+- Forcing the projected 64-row query row plan changed the half offset but did
+  not fix correctness. The row-zero basis makes logical row 16 alias logical
+  row 0 for the direct reduction message.
+- The known-good M64 split-N `ld/st` schedule uses two
+  `16x32bx2.x8.b32` messages and carries an N selector in the lane dimension.
+  `ld.red` currently requires all N elements in registers and M unsharded, so
+  promoting this family requires a real cross-lane/thread partial-reduction
+  design rather than a guard lift or row-plan override.
+- Probe code was removed before this checkpoint; keep this as a clean negative
+  unless that reduction-combine design is added.
