@@ -4419,6 +4419,52 @@ inferExactTMemPhysicalQuery(Value memDesc, std::string *error) {
       memDesc, /*preserveNonCanonicalView=*/true, error);
 }
 
+std::optional<TMemPhysicalQueryDifference>
+getFirstTMemPhysicalQueryDifference(const TMemPhysicalQuery &lhs,
+                                    const TMemPhysicalQuery &rhs) {
+  if (lhs.shape != rhs.shape)
+    return TMemPhysicalQueryDifference::Shape;
+  if (lhs.allocShape != rhs.allocShape)
+    return TMemPhysicalQueryDifference::AllocShape;
+  if (lhs.elementBitWidth != rhs.elementBitWidth)
+    return TMemPhysicalQueryDifference::ElementBitWidth;
+  if (lhs.layout != rhs.layout)
+    return TMemPhysicalQueryDifference::Layout;
+  if (lhs.twoCTAs != rhs.twoCTAs)
+    return TMemPhysicalQueryDifference::TwoCTAs;
+  if (lhs.origin != rhs.origin)
+    return TMemPhysicalQueryDifference::Origin;
+  if (lhs.isScales != rhs.isScales)
+    return TMemPhysicalQueryDifference::Scales;
+  return std::nullopt;
+}
+
+bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
+                                         const TMemPhysicalQuery &rhs) {
+  return !getFirstTMemPhysicalQueryDifference(lhs, rhs).has_value();
+}
+
+StringRef stringifyTMemPhysicalQueryDifference(
+    TMemPhysicalQueryDifference difference) {
+  switch (difference) {
+  case TMemPhysicalQueryDifference::Shape:
+    return "active shape";
+  case TMemPhysicalQueryDifference::AllocShape:
+    return "allocation shape";
+  case TMemPhysicalQueryDifference::ElementBitWidth:
+    return "element bitwidth";
+  case TMemPhysicalQueryDifference::Layout:
+    return "physical layout";
+  case TMemPhysicalQueryDifference::TwoCTAs:
+    return "CTA ownership";
+  case TMemPhysicalQueryDifference::Origin:
+    return "physical origin";
+  case TMemPhysicalQueryDifference::Scales:
+    return "scales classification";
+  }
+  llvm_unreachable("unknown TMEM physical query difference");
+}
+
 FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
                                             ArrayRef<int64_t> dstShape,
                                             Type dstElementType,

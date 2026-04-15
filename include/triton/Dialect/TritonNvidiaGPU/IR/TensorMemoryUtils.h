@@ -42,6 +42,16 @@ struct TMemPhysicalQuery {
   bool isScales;
 };
 
+enum class TMemPhysicalQueryDifference {
+  Shape,
+  AllocShape,
+  ElementBitWidth,
+  Layout,
+  TwoCTAs,
+  Origin,
+  Scales,
+};
+
 struct TMemLdStSupportQueryPlan {
   TMemLdStQueryLayout query;
   std::optional<TMemLdStRowPlan> rowPlan;
@@ -157,6 +167,16 @@ inferExactTMemPhysicalQuery(Value memDesc, std::string *error = nullptr);
 FailureOr<TMemPhysicalQuery>
 inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
                             std::string *error);
+
+std::optional<TMemPhysicalQueryDifference>
+getFirstTMemPhysicalQueryDifference(const TMemPhysicalQuery &lhs,
+                                    const TMemPhysicalQuery &rhs);
+
+bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
+                                         const TMemPhysicalQuery &rhs);
+
+StringRef stringifyTMemPhysicalQueryDifference(
+    TMemPhysicalQueryDifference difference);
 
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,

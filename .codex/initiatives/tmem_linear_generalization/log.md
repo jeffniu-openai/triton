@@ -14701,3 +14701,21 @@ Open after this slice:
   - `git diff --check`.
 - Next: introduce exact-vs-standalone query comparison helpers and keep their
   initial use diagnostic-only.
+
+## 2026-04-15 06:44 UTC: physical-query comparison vocabulary
+
+- Added `TMemPhysicalQueryDifference` and helpers:
+  `getFirstTMemPhysicalQueryDifference(...)`,
+  `haveSameTMemPhysicalQueryProjection(...)`, and
+  `stringifyTMemPhysicalQueryDifference(...)`.
+- The comparison covers active shape, allocation shape, element bitwidth,
+  physical layout, CTA ownership, origin, and scales classification.
+- This is side-effect-free scaffolding; no diagnostics or support decisions
+  consume the helpers yet.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: add a debug-only or deliberately tested diagnostic consumer in copy
+  planning to expose exact-vs-standalone divergence.

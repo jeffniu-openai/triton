@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current Phase 1 slice, 2026-04-15 06:44 UTC: added physical-query comparison
+  primitives: `TMemPhysicalQueryDifference`,
+  `getFirstTMemPhysicalQueryDifference(...)`,
+  `haveSameTMemPhysicalQueryProjection(...)`, and
+  `stringifyTMemPhysicalQueryDifference(...)`. These give copy/scales
+  diagnostics a shared vocabulary for exact-vs-standalone divergence without
+  changing behavior yet. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`. Next concrete step: wire comparison into `ttng.tmem_copy`
+  as debug/diagnostic classification while keeping emitted diagnostics stable
+  unless tests are updated deliberately.
+
 - Current Phase 1 slice, 2026-04-15 06:42 UTC: added a
   `TMemPhysicalQuery` overload for `isDirectTMemCopyLayoutSupported(...)` and
   routed `ttng.tmem_copy` verification through it. The overload delegates to

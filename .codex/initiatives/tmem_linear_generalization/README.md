@@ -95,6 +95,15 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current physical-query comparison checkpoint, 2026-04-15 06:44 UTC:
+  `TMemPhysicalQueryDifference`, `getFirstTMemPhysicalQueryDifference(...)`,
+  `haveSameTMemPhysicalQueryProjection(...)`, and
+  `stringifyTMemPhysicalQueryDifference(...)` now provide a shared vocabulary
+  for comparing exact and standalone physical queries. This is side-effect-free
+  scaffolding; no verifier diagnostics or support decisions consume it yet.
+  Validation passed: `make -j8`, direct invalid/conversion lit RUN lines via
+  local `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current copy-query routing checkpoint, 2026-04-15 06:42 UTC:
   direct TMEM copy layout support now has a `TMemPhysicalQuery` overload, and
   `ttng.tmem_copy` verification calls that overload for destination layout

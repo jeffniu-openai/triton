@@ -87,6 +87,9 @@ Progress:
 - 2026-04-15 06:42 UTC: routed direct copy destination layout support through a
   `TMemPhysicalQuery` overload while delegating to the existing memdesc-type
   implementation to preserve behavior.
+- 2026-04-15 06:44 UTC: added side-effect-free physical-query comparison
+  helpers covering shape, allocation shape, element bitwidth, physical layout,
+  CTA ownership, origin, and scales classification.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:
