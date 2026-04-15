@@ -16177,3 +16177,35 @@ Open after this slice:
   - `256x32` and `256x64` two-CTA scales descriptor views still need their
     exact raw-query/register-layout derivation. Do not generalize the
     `128x64` layout by shape alone; probe and validate each physical family.
+
+## 2026-04-15 15:04 UTC: complete current two-CTA scales descriptor-view CGA bucket
+
+- Promoted the remaining `256x32` and `256x64` two-CTA scales descriptor-view
+  rows after tracing their raw query form and validating the derived layout.
+- Probe result:
+  - the raw `256` descriptor-view query strips the zero row-tail bases, unlike
+    the `128x64` query, and reports row anchors `0,0`;
+  - the active row bases are `[128,1,2,4,8]`, row carries `16,32` move through
+    the column basis stream, and the CTA block basis is `[64,0]`;
+  - after accepting that exact raw-query form, the same algebraic layout
+    pattern validated through `computeTMemLdStEncodingInfo(...)` and runtime
+    passed for both `256x32` and `256x64`.
+- Implementation:
+  - generalized the two-CTA scales descriptor-view recognizer over the exact
+    raw family instead of matching only `128x64`;
+  - the planner now builds register bases from active row selector, row-carry
+    column bases, real column bases, and CTA block basis;
+  - the guard is back to raw-query proof only, with no type-layout allowance;
+  - moved the remaining two CGA clean-negative rows into positive runtime
+    coverage, leaving the clean-negative table empty for this kernel.
+- Validation:
+  - `make -j8`;
+  - direct debug/runtime probe for `256x32` and `256x64` with exact opcode
+    capture;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-cga-all-positive2 pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ldst_scales_descriptor_view_cga"`
+    (`3 passed, 1 skipped, 9913 deselected`).
+- Remaining boundary:
+  - this closes the current scales descriptor-view direct `ld/st` CGA bucket.
+    Continue scanning Phase 4 for other direct `ld/st`/`ld.red` gaps, then
+    return to copy/scaled-MMA frontiers if no support-bearing direct rows
+    remain.

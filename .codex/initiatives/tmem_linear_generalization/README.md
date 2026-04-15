@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 15:04 UTC: the two-CTA scales descriptor-view direct
+  `tcgen05.ld/st` family now covers the full current CGA bucket:
+  `128x64`, `256x32`, and `256x64`. The exact recognizer now accepts both
+  raw-query forms: the `128x64` view keeps the zero row-tail bases and uses
+  row anchors `16,32`, while the `256` views strip the zero row-tail bases,
+  use row anchors `0,0`, carry row bits `16,32` in the column stream, and use
+  `block=[[64,0]]`. The planner derives the register layout from those exact
+  row/column/block facts rather than by enumerating shapes, and validates the
+  candidate against the raw descriptor-view query before returning it. Runtime
+  coverage promotes all three CGA rows; the old clean-negative table is now
+  empty for this kernel.
 - 2026-04-15 14:58 UTC: two-CTA scales descriptor-view direct
   `tcgen05.ld/st` now covers the proved `128x64` CGA view. The backend has an
   exact raw-query recognizer for the view produced by the scales

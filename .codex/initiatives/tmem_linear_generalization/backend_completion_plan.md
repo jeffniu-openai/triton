@@ -453,6 +453,13 @@ Progress:
   type-only fallback ban intact while letting the exact supported family
   through. The `256x32` and `256x64` scales CGA views remain clean unsupported
   pending separate exact-query/layout proofs.
+- 2026-04-15 15:04 UTC: completed the current two-CTA scales descriptor-view
+  direct `ld/st` CGA bucket. The exact recognizer now accepts the raw `256`
+  view form where zero row-tail bases are stripped, row anchors are `0,0`,
+  row-carry bits `16,32` are in the column stream, and block ownership is
+  `[64,0]`. The planner constructs the register layout from those raw facts
+  and validates it, promoting `256x32` and `256x64` beside the earlier
+  `128x64` row.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

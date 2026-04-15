@@ -4618,9 +4618,6 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = [
         "32x32b",
         _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
     ),
-]
-
-SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
     (
         256,
         32,
@@ -4628,7 +4625,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
         2,
         ((1, 0),),
         "32x32b",
-        "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
+        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
     ),
     (
         256,
@@ -4637,9 +4634,11 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
         2,
         ((1, 0),),
         "32x32b",
-        "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
+        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x64.b32", "32x32b.x64.b32"),
     ),
 ]
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = []
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),

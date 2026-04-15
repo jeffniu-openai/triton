@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current two-CTA scales descriptor-view full CGA bucket,
+  2026-04-15 15:04 UTC: the exact scales descriptor-view `ld/st` recognizer
+  now covers the full current CGA matrix bucket:
+  `M,N in {(128,64),(256,32),(256,64)}` with
+  `num_ctas=2,cga=[[1,0]]`. The support is algebraic over the observed raw
+  query family: active row bases are `[M/2,1,2,4,8]`, an optional zero row
+  tail is accepted for the `128x64` form, row-carry bases `16..M/4` are in
+  the column stream, remaining column bases start at `4`, and the CTA block
+  basis is `[M/4,0]`. The planner returns a matching 4-warp `I32x32b`
+  register layout and requires `computeTMemLdStEncodingInfo(...)` to validate
+  it against the raw query before use. Runtime evidence: `256x32` emits
+  `16x32bx2.x32` root ops plus `32x32b.x32` view ops; `256x64` emits the
+  corresponding `.x64` pair. Validation passed: `make -j8` and focused CGA
+  pytest (`3 passed, 1 skipped` because the clean-negative table is empty).
+
 - Current two-CTA scales descriptor-view `ld/st` checkpoint,
   2026-04-15 14:58 UTC: direct `tcgen05.ld/st` now supports the proved
   `M=128,N=64,num_ctas=2,cga=[[1,0]]` descriptor view produced by

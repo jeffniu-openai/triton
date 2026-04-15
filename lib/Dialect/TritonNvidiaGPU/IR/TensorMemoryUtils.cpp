@@ -4455,7 +4455,7 @@ getTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
 
 static bool hasExactBasisSequence(
     const LinearLayout &layout, StringAttr dim,
-    std::initializer_list<std::array<int32_t, 2>> expected) {
+    ArrayRef<std::array<int32_t, 2>> expected) {
   if (!layout.hasInDim(dim) ||
       layout.getInDimSizeLog2(dim) != expected.size()) {
     return false;
@@ -4473,7 +4473,8 @@ static bool hasExactBasisSequence(
 bool isTwoCTAScalesDescriptorViewTMemLdStQuery(MemDescType memTy,
                                                const LinearLayout &queryLayout) {
   if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 8 ||
-      memTy.getShape()[0] != 128 || memTy.getShape()[1] != 64) {
+      !llvm::is_contained(ArrayRef<int64_t>{128, 256}, memTy.getShape()[0]) ||
+      !llvm::is_contained(ArrayRef<int64_t>{32, 64}, memTy.getShape()[1])) {
     return false;
   }
   auto linear =
@@ -4482,8 +4483,8 @@ bool isTwoCTAScalesDescriptorViewTMemLdStQuery(MemDescType memTy,
     return false;
 
   auto outDimSizes = llvm::to_vector(queryLayout.getOutDimSizes());
-  if (outDimSizes.size() != 2 || outDimSizes[0] != 128 ||
-      outDimSizes[1] != 64) {
+  if (outDimSizes.size() != 2 || outDimSizes[0] != memTy.getShape()[0] ||
+      outDimSizes[1] != memTy.getShape()[1]) {
     return false;
   }
 
@@ -4491,13 +4492,25 @@ bool isTwoCTAScalesDescriptorViewTMemLdStQuery(MemDescType memTy,
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
   auto kBlock = StringAttr::get(ctx, "block");
-  return hasExactBasisSequence(queryLayout, kRow,
-                               {{64, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0},
-                                {0, 0}, {0, 0}}) &&
-         hasExactBasisSequence(queryLayout, kCol,
-                               {{0, 1}, {0, 2}, {16, 0}, {0, 4}, {0, 8},
-                                {0, 16}, {0, 32}}) &&
-         hasExactBasisSequence(queryLayout, kBlock, {{32, 0}});
+  int32_t rows = static_cast<int32_t>(memTy.getShape()[0]);
+  int32_t cols = static_cast<int32_t>(memTy.getShape()[1]);
+  SmallVector<std::array<int32_t, 2>> activeRows = {
+      {rows / 2, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0}};
+  SmallVector<std::array<int32_t, 2>> rowsWithZeroTail = activeRows;
+  rowsWithZeroTail.push_back({0, 0});
+  rowsWithZeroTail.push_back({0, 0});
+  SmallVector<std::array<int32_t, 2>> expectedCols = {{0, 1}, {0, 2}};
+  SmallVector<std::array<int32_t, 2>> expectedBlock = {{rows / 4, 0}};
+  for (int32_t rowCarry = 16; rowCarry < rows / 4; rowCarry <<= 1)
+    expectedCols.push_back({rowCarry, 0});
+  for (int32_t col = 4; col < cols; col <<= 1)
+    expectedCols.push_back({0, col});
+
+  bool rowsMatch = hasExactBasisSequence(queryLayout, kRow, activeRows) ||
+                   hasExactBasisSequence(queryLayout, kRow, rowsWithZeroTail);
+  return rowsMatch &&
+         hasExactBasisSequence(queryLayout, kCol, expectedCols) &&
+         hasExactBasisSequence(queryLayout, kBlock, expectedBlock);
 }
 
 std::optional<LinearLayout>
@@ -4516,14 +4529,19 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
   auto kWarp = StringAttr::get(ctx, "warp");
   auto kBlock = StringAttr::get(ctx, "block");
   auto dims = standardOutDimNames(ctx, 2);
+  int32_t rows = static_cast<int32_t>(memTy.getShape()[0]);
+  int32_t cols = static_cast<int32_t>(memTy.getShape()[1]);
 
   LinearLayout::BasesT bases;
-  bases[kRegister] = {{0, 1}, {0, 2}, {16, 0}, {0, 4},
-                      {0, 8}, {0, 16}, {0, 32}};
-  bases[kLane] = {{64, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0}};
+  bases[kRegister] = {{0, 1}, {0, 2}};
+  for (int32_t rowCarry = 16; rowCarry < rows / 4; rowCarry <<= 1)
+    bases[kRegister].push_back({rowCarry, 0});
+  for (int32_t col = 4; col < cols; col <<= 1)
+    bases[kRegister].push_back({0, col});
+  bases[kLane] = {{rows / 2, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0}};
   bases[kWarp] = {{0, 0}, {0, 0}};
-  bases[kBlock] = {{32, 0}};
-  return LinearLayout(std::move(bases), {{dims[0], 128}, {dims[1], 64}},
+  bases[kBlock] = {{rows / 4, 0}};
+  return LinearLayout(std::move(bases), {{dims[0], rows}, {dims[1], cols}},
                       /*requireSurjective=*/false);
 }
 
