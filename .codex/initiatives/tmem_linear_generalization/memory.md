@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Current dense copy row-projection helper checkpoint, 2026-04-15 18:35 UTC:
+  dense direct-copy row-order and row-repetition proof is now factored into
+  `getDenseTMemCopyRowProjectionSupport(...)`. This is behavior-preserving,
+  but it gives the future source-row projection scheduler a single insertion
+  point instead of leaving row-order legality embedded in
+  `getDirectTMemCopyLayoutSupportForLayout(...)`. Validation after `make -j8`:
+  four-GPU split row/column permutation clean-negative selector passed all
+  `15` selected rows, the positive dense tile-permuted row
+  `[128-32-16]` passed, and `git diff --check` passed.
+
 - Current dense row-permutation descriptor/lowering probe,
   2026-04-15 18:32 UTC: a temporary guard lift for the
   `reverse/identity` dense copy row showed the current descriptor search can

@@ -16872,3 +16872,27 @@ Open after this slice:
     source-row projection/atomization model that proves how each physical row
     group maps to source rows before lowering, or the current clean negative
     remains the correct ISA atom boundary.
+
+## 2026-04-15 18:35 UTC: dense copy row-projection helper refactor
+
+- Factored dense direct-copy row projection support into
+  `getDenseTMemCopyRowProjectionSupport(...)`.
+- Implementation:
+  - moved the strict ascending row-basis proof out of
+    `getDirectTMemCopyLayoutSupportForLayout(...)`;
+  - moved the row-repetition bases stored in TMEM column address space into the
+    same helper;
+  - kept the existing diagnostics and support results unchanged.
+- Purpose:
+  - this is a behavior-preserving planner-layer cleanup. Future row-permuted
+    copy work can replace one helper with a real source-row schedule proof
+    without mixing row legality into column tile offset validation.
+- Validation:
+  - `make -j8`;
+  - four-GPU split selector
+    `test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`:
+    groups passed `4`, `4`, `4`, and `3` selected rows, `15` total;
+  - positive dense tile-permuted row
+    `test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted[128-32-16]`
+    passed;
+  - `git diff --check`.

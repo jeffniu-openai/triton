@@ -7833,6 +7833,16 @@ static bool basisEquals(ArrayRef<int32_t> basis,
   return llvm::equal(basis, ArrayRef<int32_t>(expected));
 }
 
+static bool isStrictlyIncreasing(ArrayRef<int32_t> values) {
+  if (values.size() < 2)
+    return true;
+  for (auto [lhs, rhs] : llvm::zip(values, values.drop_front())) {
+    if (rhs <= lhs)
+      return false;
+  }
+  return true;
+}
+
 static bool isPureOffsetBasis(const LinearLayout &layout, StringAttr dim,
                               unsigned bit, StringAttr offsetDim,
                               int32_t expectedOffset) {
@@ -8034,6 +8044,54 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
 }
 
 static TMemCopySupportResult
+getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+
+  SmallVector<int32_t> rowBasisValues;
+  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kRow)) {
+    if (basis[0] == 0 || basis[1] != 0) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy does not support TMEM row bases that mix row "
+          "and column contributions.");
+    }
+    rowBasisValues.push_back(std::abs(basis[0]));
+  }
+  if (!isStrictlyIncreasing(rowBasisValues)) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy requires TMEM row bases to stay in "
+        "ascending physical row order until the planner can derive an "
+        "explicit source-row projection schedule for row-permuted "
+        "destinations.");
+  }
+
+  SmallVector<int32_t> rowRepetitionBasisValues;
+  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
+    bool touchesRow = basis[0] != 0;
+    bool touchesCol = basis[1] != 0;
+    if (touchesRow && touchesCol) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy does not support TMEM column bases that "
+          "mix row and column contributions.");
+    }
+    if (touchesRow && !touchesCol)
+      rowRepetitionBasisValues.push_back(std::abs(basis[0]));
+  }
+  if (!isStrictlyIncreasing(rowRepetitionBasisValues)) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy requires TMEM row-repetition bases stored "
+        "in the column address space to remain in ascending row order until "
+        "the planner can derive an explicit source-row projection schedule "
+        "for row-permuted destinations.");
+  }
+  return getSupportedTMemCopyResult();
+}
+
+static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
                                         TMemCopyFamily family,
@@ -8064,57 +8122,9 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
         "with explicit row/col bases.");
   }
 
-  auto isStrictlyIncreasing = [](ArrayRef<int32_t> values) {
-    if (values.size() < 2)
-      return true;
-    for (auto [lhs, rhs] : llvm::zip(values, values.drop_front())) {
-      if (rhs <= lhs)
-        return false;
-    }
-    return true;
-  };
-
-  SmallVector<int32_t> rowBasisValues;
-  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kRow)) {
-    if (basis[0] == 0 || basis[1] != 0) {
-      return getUnsupportedTMemCopyResult(
-          TMemCopySupportFailureLayer::PhysicalQuery,
-          "direct tcgen05.copy does not support TMEM row bases that mix row "
-          "and column contributions.");
-    }
-    rowBasisValues.push_back(std::abs(basis[0]));
-  }
-  if (!isStrictlyIncreasing(rowBasisValues)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
-        "direct tcgen05.copy requires TMEM row bases to stay in "
-        "ascending physical row order until the planner can derive an "
-        "explicit source-row projection schedule for row-permuted "
-        "destinations.");
-  }
-
-  SmallVector<int32_t> pureRowBases;
-  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
-    bool touchesRow = basis[0] != 0;
-    bool touchesCol = basis[1] != 0;
-    if (touchesRow && touchesCol) {
-      return getUnsupportedTMemCopyResult(
-          TMemCopySupportFailureLayer::PhysicalQuery,
-          "direct tcgen05.copy does not support TMEM column bases that "
-          "mix row and column contributions.");
-    }
-    if (touchesRow && !touchesCol) {
-      pureRowBases.push_back(std::abs(basis[0]));
-    }
-  }
-  if (!isStrictlyIncreasing(pureRowBases)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
-        "direct tcgen05.copy requires TMEM row-repetition bases stored "
-        "in the column address space to remain in ascending row order until "
-        "the planner can derive an explicit source-row projection schedule "
-        "for row-permuted destinations.");
-  }
+  auto rowProjectionSupport = getDenseTMemCopyRowProjectionSupport(ll, ctx);
+  if (!rowProjectionSupport)
+    return rowProjectionSupport;
 
   auto outDims = llvm::to_vector(ll.getOutDimNames());
   unsigned colStride = getDenseTMemCopyColumnStride(family, bitwidth);

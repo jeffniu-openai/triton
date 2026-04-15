@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 18:35 UTC: dense direct-copy row projection proof is now a named
+  helper, `getDenseTMemCopyRowProjectionSupport(...)`. The refactor preserves
+  current behavior and diagnostics while creating one planner insertion point
+  for future row/source projection schedules. Validation: `make -j8`,
+  row/column permutation clean negatives split across four GPUs passed all
+  `15` selected rows, positive dense tile-permuted `[128-32-16]` passed, and
+  `git diff --check` passed.
 - 2026-04-15 18:32 UTC: dense row-permuted copy was re-probed with only the
   row-order physical-query guard lifted. Descriptor search can pick a nominal
   shared descriptor for `reverse/identity`, but lowering then hits the dense

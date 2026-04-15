@@ -255,6 +255,11 @@ Progress:
   missing layer; the copy planner needs an explicit source-row schedule that
   can materialize non-affine physical row order, or it must keep the clean
   negative as an ISA atom boundary.
+- 2026-04-15 18:35 UTC: factored the dense direct-copy row projection proof
+  into `getDenseTMemCopyRowProjectionSupport(...)`. This keeps behavior
+  unchanged while separating row/source projection legality from column tile
+  offset legality, giving the future scheduler a clean place to replace the
+  strict ascending-row proof with a real source-row schedule.
 - 2026-04-15 10:57 UTC: fixed a descriptor-view base-offset lowering hole
   exposed by no-scales `warpx2` indexed and slice-index views. Zero trailing
   logical coordinates no longer force `getTMemViewOffsetImpl` to pseudoinvert
