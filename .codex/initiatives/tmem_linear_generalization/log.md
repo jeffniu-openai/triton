@@ -15633,3 +15633,27 @@ Open after this slice:
   - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-warpx2-diag PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_warpx2_02_13_twocta and clean_unsupported'`
     (`14 passed`);
   - `git diff --check`.
+
+## 2026-04-15 11:39 UTC: scales descriptor-view row-order probe
+
+- Probed the scales descriptor-view clean-negative with temporary planner code
+  that exchanged the offending low source-column basis with a row basis and
+  sorted descriptor bases. All probe code was reverted after measurement.
+- The exchanged descriptor became representable and the kernel emitted eight
+  `tcgen05.cp.cta_group::1.warpx4.32x128b` messages for the 128x32 view.
+- Row-coded and column-coded inputs showed the wrong mapping exactly:
+  output logical row `r` read source row `(r % 64) * 2 + r / 64`, while
+  columns remained contiguous. This is the parent/root physical row order
+  induced by the descriptor view.
+- Interpretation: broader descriptor search can create a compiling wrong-code
+  schedule. Correct support requires an explicit row-interleaving
+  destination/source schedule that copies source rows 0..63 to physical even
+  rows and 64..127 to physical odd rows, or a final proof that the ISA cannot
+  express that interleaving.
+- Validation/probe commands:
+  - `make -j8` after each temporary probe edit;
+  - direct `TRITON_DEBUG_TMEM_QUERY=1` invocation of
+    `tmem_copy_scales_tmem_descriptor_view_kernel`;
+  - row-coded/column-coded direct runtime invocation of the same kernel;
+  - `git status --short` after reverting probe code returned clean before
+    recording this note.

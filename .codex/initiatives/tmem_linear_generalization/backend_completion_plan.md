@@ -274,6 +274,13 @@ Progress:
   cta-group::2. The next support attempt must derive a real cta-group::2
   descriptor/address schedule preserving the high source-column bit rather
   than reusing the single-CTA schedule.
+- 2026-04-15 11:39 UTC: scales descriptor-view copy now has a sharper
+  row-order proof. A temporary descriptor-basis exchange can make the
+  `warpx4.32x128b` shared descriptor representable, but runtime output follows
+  parent/root row order (`row r -> source row (r % 64) * 2 + r / 64`) instead
+  of the logical descriptor-view order. This confirms the remaining gap is a
+  row-interleaving destination/source schedule layered after descriptor
+  projection, not simply expanding descriptor candidates.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

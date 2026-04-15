@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:39 UTC: scales descriptor-view copy was probed with a
+  temporary descriptor-basis exchange that makes the shared descriptor
+  representable by restoring contiguous low source-column bits. Runtime then
+  emitted eight `tcgen05.cp.cta_group::1.warpx4.32x128b` messages for the
+  128x32 view, but output row `r` read source row
+  `(r % 64) * 2 + r / 64`: the parent/root physical row order, not the logical
+  descriptor-view row. The probe code was reverted. This confirms the clean
+  negative is preventing a real wrong-code path, and support needs an explicit
+  row-interleaving destination/source schedule after descriptor projection.
 - 2026-04-15 11:30 UTC: two-CTA no-scales `warpx2::02_13`
   diagnostics now preserve the direct probe result in the actual verifier
   message. Reusing the single-CTA direct seed under `cta_group::2` can emit

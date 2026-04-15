@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view row-order probe, 2026-04-15 11:39 UTC:
+  a temporary warpx4 descriptor-basis exchange restored contiguous low
+  source-column bits and made the scales descriptor-view shared descriptor
+  representable. That emitted eight `tcgen05.cp.cta_group::1.warpx4.32x128b`
+  messages for the 128x32 row, but row-coded runtime output showed logical
+  row `r` reading source row `(r % 64) * 2 + r / 64`. In other words, the
+  representable descriptor copies the parent/root physical row order, not the
+  logical descriptor-view row order. The probe code was removed. This confirms
+  descriptor representability alone is not a support proof; a real promotion
+  needs a row-interleaving destination/source schedule that writes source rows
+  0..63 to physical even rows and source rows 64..127 to physical odd rows, or
+  a proof that `tcgen05.copy` cannot express that schedule.
+
 - Current two-CTA `warpx2::02_13` diagnostic checkpoint, 2026-04-15 11:30 UTC:
   the verifier clean-negative now records the concrete failed direct-seed
   probe. A cta-group::2 direct-seed variant can emit
