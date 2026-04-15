@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current refresh direct-load/store contract, 2026-04-15 13:07 UTC:
+  direct `get_reg_layout()` / `tmem.load` / `tmem.store` on the 4x256b
+  refresh-shaped `TensorMemoryLinearLayout` now reports a specific clean
+  unsupported diagnostic. A debug probe showed handle-aware register-layout
+  search reaching candidates where physical rows 32/64 are lane bases and the
+  warp bases are broadcast; `tcgen05.ld/st` needs materializable TMEM row warp
+  anchors, which the refresh image cannot provide because logical row bits live
+  in TMEM columns and low logical column bits live in TMEM rows 32/64. This
+  keeps the copy support intact while preventing the old generic
+  `TMEM layout 'auto' unsupported` failure. Validation passed: `make -j8`,
+  py-compile for the frontend and runtime matrix files, focused refresh
+  direct-ldst clean-negative row (`1 passed`), focused single/two-CTA refresh
+  copy positives (`2 passed`), and `git diff --check`.
+
 - Current two-CTA `4x256b` refresh checkpoint, 2026-04-15 13:03 UTC:
   the proved refresh-shaped copy image now lowers for `cta_group::2` as well
   as `cta_group::1`. The accepted two-CTA layout is the single-CTA refresh

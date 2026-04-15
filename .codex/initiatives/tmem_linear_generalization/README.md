@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 13:07 UTC: direct `tmem.load`/`tmem.store` for the 4x256b
+  refresh-shaped active layout is now recorded as a proof-level clean
+  unsupported contract at the frontend descriptor boundary. Probes showed the
+  register-layout planner can only form candidates where the required physical
+  row anchors are lane bits or broadcasts; `tcgen05.ld/st` packets require
+  those anchors to be materializable as TMEM row warp bases, while the refresh
+  view stores logical row bits in TMEM columns and low logical column bits in
+  TMEM rows 32/64. Copy support remains positive for the proved refresh
+  images, but direct load/store now fails early with an actionable diagnostic
+  instead of the generic unsupported-layout message.
 - 2026-04-15 13:03 UTC: `tcgen05.cp.4x256b` refresh support now covers the
   two-CTA `cta_group::2` image as well as the single-CTA image. The refresh
   recognizer treats an implicit size-1 block dimension as single-CTA but

@@ -339,6 +339,13 @@ Progress:
   contiguous two-CTA 4x256 remains a clean negative. Remaining `4x256b` work is
   still the direct load/store/register-layout contract for refresh-shaped
   active layouts.
+- 2026-04-15 13:07 UTC: the direct load/store/register-layout contract for
+  refresh-shaped 4x256 active layouts is now a clean negative with a specific
+  reason. The planner cannot make the required physical row anchors into
+  `tcgen05.ld/st` warp bases because the refresh view stores logical row bits
+  in TMEM columns and low logical column bits in rows 32/64. Copy remains
+  positive for the proved refresh images; direct `get_reg_layout`, `load`,
+  reduction load, and `store` now fail early with that explanation.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

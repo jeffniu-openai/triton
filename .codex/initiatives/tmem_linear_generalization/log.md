@@ -15908,3 +15908,37 @@ Open after this slice:
     layout selection, so the 4x256 family is now copy-codegen complete for the
     proved single-CTA and two-CTA refresh images but not a full TMEM
     round-trip oracle.
+
+## 2026-04-15 13:07 UTC: refresh-shaped direct load/store clean diagnostic
+
+- Re-probed direct `tmem.get_reg_layout()` / load/store for the 4x256b refresh
+  layout with `TRITON_DEBUG_TMEM_REG_LAYOUT=1` and
+  `TRITON_TRACE_TMEM_REG_LAYOUT_FILE=1`.
+- Probe result:
+  - the raw/support register-layout search can only form candidates where
+    physical rows 32/64 are lane bases and the warp bases are broadcast;
+  - `tcgen05.ld/st` direct packets require the row anchors to be materialized
+    as TMEM row warp bases;
+  - the refresh-shaped view intentionally stores logical row bits in TMEM
+    columns and low logical column bits in TMEM rows 32/64, so this view does
+    not have a valid direct-load/store register-layout contract even though
+    the copy refresh schedule is valid.
+- Implementation:
+  - added a frontend predicate for the single-CTA and two-CTA refresh-shaped
+    `TensorMemoryLinearLayout` images;
+  - made `get_reg_layout`, `load`, reduction load, and `store` report a
+    targeted clean unsupported error for this layout family before falling
+    into the generic register-layout search failure;
+  - added a runtime-matrix clean-negative row pinning the diagnostic.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_4x256b_refresh_layout_reports_clean_unsupported`
+    (`1 passed`);
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen`
+    (`2 passed`);
+  - `git diff --check`.
+- Remaining boundary:
+  - this closes the direct refresh-layout load/store path as a clean negative;
+    the next support-bearing copy gaps remain scales descriptor-view row
+    interleaving and two-CTA `warpx2::02_13`.
