@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 15:53 UTC: dense no-scales row/column permutation copy guards
+  were re-probed with a temporary environment-gated guard lift. Forcing row
+  basis permutations past the physical-query guard reached lowering asserts in
+  the multicast row-stride checks, while forcing column basis permutations
+  either faulted with a misaligned address (`identity/reverse`) or compiled to
+  wrong output (`identity/rotate1`, `identity/even_odd`). All probe code was
+  removed and the tree rebuilt. Keep these rows as real row/packet schedule
+  gaps, not stale clean negatives.
 - 2026-04-15 15:47 UTC: a bounded temporary direct-seed sweep for two-CTA
   no-scales `tcgen05.copy.warpx2::02_13` found no correct schedule. Re-enabling
   the single-CTA direct seed under `cta_group::2` and sweeping representative

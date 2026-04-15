@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current dense no-scales copy permutation probe, 2026-04-15 15:53 UTC:
+  row/column basis permutations remain real schedule gaps. A temporary
+  `TRITON_TMEM_COPY_PROBE_IGNORE_DENSE_LAYOUT_GUARDS=1` hook bypassed only the
+  dense physical-query guard. Row-only permutations (`reverse`, `rotate1`,
+  `even_odd`) reached lowering assertions in the existing dense row-stride
+  assumptions instead of a valid schedule. Column-only permutations either
+  faulted (`identity/reverse`) or produced wrong output with the current
+  16-message `128x256b` schedule (`identity/rotate1`,
+  `identity/even_odd`). The temporary hook was removed and `make -j8` rebuilt
+  the clean tree. Do not promote these rows by guard lifting; support needs an
+  explicit row/packet destination schedule.
+
 - Current two-CTA `warpx2::02_13` copy probe, 2026-04-15 15:47 UTC:
   a bounded temporary direct-seed sweep did not find a legal cta-group::2
   schedule. The probe allowed the single-CTA seed path for the 256x4 two-CTA

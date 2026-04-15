@@ -320,6 +320,12 @@ Progress:
   oracles pass with four messages. The stale unsupported-shape test was removed
   and the two valid swizzles were promoted to positive coverage; swizzle 128 is
   rejected by shared-memory layout preconditions for a 16-column f32 tile.
+- 2026-04-15 15:53 UTC: dense no-scales row/column permutations were re-probed
+  under a temporary guard lift and remain real schedule gaps. Row-basis
+  permutations violate the current lowering row-stride assumptions when forced
+  through; column-basis permutations either misalign or produce wrong data with
+  the existing per-tile address schedule. Keep these clean negatives parked on
+  a future row/packet scheduler rather than treating them as stale guards.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent

@@ -16321,3 +16321,26 @@ Open after this slice:
   - two-CTA `warpx2::02_13` remains a real cta-group::2 descriptor/address
     schedule gap. Do not promote it by retuning the single-CTA direct seed.
     A support path must preserve the high source-column bit explicitly.
+
+## 2026-04-15 15:53 UTC: dense copy permutation guard-lift probe
+
+- Added a temporary local environment-gated bypass for dense no-scales
+  `tcgen05.copy` row/column order guards, then removed it before this
+  checkpoint.
+- Probe cases and results:
+  - row-only `reverse`, `rotate1`, and `even_odd` reached lowering assertions
+    in the dense row-stride checks when forced through;
+  - column-only `identity/reverse` faulted with a misaligned address;
+  - column-only `identity/rotate1` and `identity/even_odd` compiled with the
+    existing 16-message `128x256b` schedule but produced wrong output;
+  - mixed permutations hit the same row-stride assertions as the row-only
+    cases.
+- Cleanup/validation:
+  - removed the temporary probe hook;
+  - `git diff -- lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp` is
+    empty;
+  - `make -j8` rebuilt the clean source state after probe removal.
+- Current conclusion:
+  - dense row/column basis permutations should stay clean unsupported until
+    the copy planner has an explicit row/packet destination schedule. Guard
+    lifting is not a support path.
