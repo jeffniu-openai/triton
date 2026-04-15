@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 18:08 UTC: the dense row-permutation clean negative now reports
+  the actual missing layer: an explicit source-row projection schedule for
+  row-permuted destinations. Focused four-GPU split validation over the
+  row/column permutation clean-negative matrix passed all `15` selected cases.
+  This is a diagnostic/contract checkpoint, not a support promotion.
 - 2026-04-15 17:59 UTC: the 4x256b refresh direct `tcgen05.ld/st` negative
   was re-probed by temporarily bypassing the Python API guard. The backend
   still found no legal register layout: the raw refresh query uses the

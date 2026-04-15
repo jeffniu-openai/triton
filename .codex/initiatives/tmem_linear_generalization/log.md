@@ -16724,3 +16724,22 @@ Open after this slice:
   - `make -j8` before the probe;
   - restored the probe hook and verified the source tree returned to a clean
     diff before updating docs.
+
+## 2026-04-15 18:08 UTC: dense row-projection diagnostic checkpoint
+
+- Refined the dense no-scales copy row-order clean negative to report the
+  missing planner layer explicitly: row-permuted destinations need a
+  source-row projection schedule before they can be copied correctly.
+- Updated the row/column permutation clean-negative test so rows with a
+  non-identity row permutation assert the `source-row projection schedule`
+  diagnostic substring. Column-only permutation rows keep their packet and
+  alignment diagnostics.
+- This deliberately does not promote support. It codifies the current
+  boundary after the 17:36 and 17:55 probes showed that relaxing the row-order
+  guard selects descriptors that preserve physical row-basis order.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split focused selector for
+    `test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`:
+    groups passed `4`, `4`, `4`, and `3` selected rows, `15` total.

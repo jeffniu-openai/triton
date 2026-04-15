@@ -8088,7 +8088,9 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery,
         "direct tcgen05.copy requires TMEM row bases to stay in "
-        "ascending physical row order.");
+        "ascending physical row order until the planner can derive an "
+        "explicit source-row projection schedule for row-permuted "
+        "destinations.");
   }
 
   SmallVector<int32_t> pureRowBases;
@@ -8109,7 +8111,9 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery,
         "direct tcgen05.copy requires TMEM row-repetition bases stored "
-        "in the column address space to remain in ascending row order.");
+        "in the column address space to remain in ascending row order until "
+        "the planner can derive an explicit source-row projection schedule "
+        "for row-permuted destinations.");
   }
 
   auto outDims = llvm::to_vector(ll.getOutDimNames());

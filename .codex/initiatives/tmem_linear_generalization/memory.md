@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Current dense copy row-projection diagnostic checkpoint, 2026-04-15 18:08 UTC:
+  the row-permuted dense `tcgen05.copy` clean negative now names the missing
+  abstraction as an explicit `source-row projection schedule` for row-permuted
+  destinations. The existing guard remains in place because probes showed
+  guard-lifted row permutations copy in physical row-basis order. The focused
+  four-GPU split test for
+  `test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`
+  passed `15` selected cases after `make -j8` and `py_compile`.
+
 - Current 4x256b refresh direct-ld/st repro, 2026-04-15 17:59 UTC:
   the explicit frontend clean negative is not hiding a working backend path.
   A temporary probe bypassed `_raise_unsupported_4x256b_refresh_tmem_ldst(...)`

@@ -335,6 +335,11 @@ Progress:
   Column-only permutations still fail at packet-contiguity. The real Phase 2
   task is now explicit: derive a row/source projection schedule or row-group
   atomization that proves logical row order, rather than relaxing dense guards.
+- 2026-04-15 18:08 UTC: the dense row-permutation diagnostic now names that
+  Phase 2 task directly. Non-identity row permutations assert the
+  `source-row projection schedule` diagnostic in focused runtime-matrix
+  coverage. This is a contract/diagnostic checkpoint; support remains blocked
+  on a real row/source projection or row-group atomization plan.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent
