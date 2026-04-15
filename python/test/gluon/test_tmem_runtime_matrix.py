@@ -4058,6 +4058,8 @@ CP_LINEAR_NO_SCALES_CASES = [
     (128, 256, 32, 32),
     (128, 256, 64, 32),
     (128, 256, 128, 32),
+    (256, 16, 32, 4),
+    (256, 16, 64, 4),
     (256, 32, 32, 8),
     (256, 32, 64, 8),
     (256, 32, 128, 8),
@@ -8985,30 +8987,6 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
         or "contiguous in physical TMEM column order" in text
         or "128-byte descriptor macro-tile" in text
     )
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean_error(capfd):
-    m, n, swizzle = 256, 16, 32
-    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
-    out = torch.empty_like(inp)
-    layout = _make_tmem_linear_layout(m, n)
-
-    with pytest.raises(Exception) as excinfo:
-        tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, swizzle, num_warps=4)
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert (
-        "does not match any recognized tcgen05.copy family for non-scales tensor memory copies" in text
-        or "could not synthesize a compatible shared-memory descriptor plan for it" in text
-        or "supported TMEM register layout" in text
-    )
-    if "does not match any recognized tcgen05.copy family" in text:
-        assert "256 logical source rows" in text
-        assert "multi-message row-group schedule" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

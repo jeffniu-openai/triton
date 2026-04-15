@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 15:31 UTC: no-scales dense linear `tcgen05.copy` coverage was
+  corrected for the `M=256,N=16` frontier. A fresh probe showed the current
+  exact-query path already folds the high row selector into TMEM columns,
+  selects `tcgen05.cp.128x256b`, and passes the runtime oracle for swizzle 32
+  and 64 with four copy messages. The stale clean-negative row was removed and
+  the two valid swizzles were promoted to positive coverage. Swizzle 128 is a
+  shared-memory layout precondition failure for a 16-column f32 tile, not a
+  TMEM copy backend gap.
 - 2026-04-15 15:24 UTC: M64 split-N `tcgen05.ld.red` was probed and kept as a
   clean reduction-schedule boundary. Temporary local changes could make the
   active 64-row image emit `ld.red.16x32bx2`, but runtime rows still aliased:

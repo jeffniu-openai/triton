@@ -308,6 +308,13 @@ Progress:
   and the allocator can reserve the proven 128-row physical image. This
   promotes nine runtime rows and leaves `256x16` as the remaining clean atom
   classification negative.
+- 2026-04-15 15:31 UTC: supersedes the final sentence of the 12:10 checkpoint
+  for coverage purposes. A fresh probe showed `256x16` already lowers through
+  the same exact-query discipline: row bit 128 is folded into the column stream,
+  the conversion selects `tcgen05.cp.128x256b`, and swizzle 32/64 runtime
+  oracles pass with four messages. The stale unsupported-shape test was removed
+  and the two valid swizzles were promoted to positive coverage; swizzle 128 is
+  rejected by shared-memory layout preconditions for a 16-column f32 tile.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent

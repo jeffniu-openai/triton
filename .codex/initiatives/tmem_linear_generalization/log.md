@@ -16246,3 +16246,30 @@ Open after this slice:
   - Do not reintroduce the probed row-plan override or `I16x32bx2` acceptance
     unless the implementation also adds a correct reduction combine strategy
     for the split-N lane dimension.
+
+## 2026-04-15 15:31 UTC: promote no-scales dense `256x16` copy coverage
+
+- Revisited the no-scales dense linear copy frontier after the M64 reduction
+  probe. The current backend already accepts `M=256,N=16` when the exact
+  destination query is selected:
+  - standalone layout still spells eight row bases, but the exact query folds
+    row bit 128 into the column stream as `col=16 -> (128,0)`;
+  - `tmemLl.invertAndCompose(shmemLl)` classifies as
+    `tcgen05.copy.128x256b`;
+  - descriptor synthesis selects a representable `32x8` message shape and the
+    runtime emits four `tcgen05.cp.cta_group::1.128x256b` messages for
+    swizzle 32 and swizzle 64.
+- Updated coverage:
+  - added `(256,16,32,4)` and `(256,16,64,4)` to
+    `CP_LINEAR_NO_SCALES_CASES`;
+  - removed the stale `cp_no_scales_linear_unsupported_shape` clean-negative
+    test, which now fails with `DID NOT RAISE`;
+  - did not add swizzle 128 because the shared-memory descriptor rejects a
+    16-column f32 tile before the TMEM copy planner runs.
+- Validation:
+  - `make -j8`;
+  - direct probe for swizzle 32, 64, and 128;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cp-256x16-positive pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "cp_no_scales_linear"`
+    (`102 passed, 9820 deselected`);
+  - `git diff --check`.

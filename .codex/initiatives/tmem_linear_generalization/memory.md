@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current no-scales dense copy coverage correction, 2026-04-15 15:31 UTC:
+  `M=256,N=16` `TensorMemoryLinearLayout` copies are not a remaining backend
+  gap. A fresh `TRITON_DEBUG_TMEM_QUERY=1` probe showed the exact destination
+  query for this shape folds logical row bit 128 into the TMEM column stream as
+  `col=16 -> (128,0)`, the source-to-destination conversion classifies as
+  `tcgen05.cp.128x256b`, and runtime output is correct. The positive matrix now
+  includes swizzle 32 and swizzle 64, each expecting four copy messages. The
+  old unsupported-shape test was removed; swizzle 128 fails earlier because an
+  NVMMASharedLayout with 128-byte swizzle requires at least 32 f32 columns, so
+  it is not evidence of a TMEM copy planner limit.
+
 - Current two-CTA scales descriptor-view full CGA bucket,
   2026-04-15 15:04 UTC: the exact scales descriptor-view `ld/st` recognizer
   now covers the full current CGA matrix bucket:
