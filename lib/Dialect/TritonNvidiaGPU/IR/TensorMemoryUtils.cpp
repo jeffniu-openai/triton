@@ -7513,7 +7513,7 @@ bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
   return result.supported;
 }
 
-static TMemCopySupportResult
+TMemCopySupportResult
 getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
                                        const LinearLayout &shmemLl,
                                        const LinearLayout &cvt,
@@ -7986,7 +7986,7 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
   return false;
 }
 
-static TMemCopySupportResult
+TMemCopySupportResult
 getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
                                        const LinearLayout &shmemLl,
                                        const LinearLayout &cvt,

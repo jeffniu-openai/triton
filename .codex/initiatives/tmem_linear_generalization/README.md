@@ -95,6 +95,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current scales descriptor-failure diagnostics checkpoint, 2026-04-15
+  07:22 UTC: the copy descriptor-synthesis support helper is now public to the
+  verifier, and tensor-memory-scales copy clean-negatives surface the same
+  per-plan MMAv5 descriptor evidence as no-scales copy. The representative
+  scales `warpx4.32x128b` clean-negative now reports that message 0 tried one
+  32x16 descriptor/instruction candidate with no representable MMAv5 shared
+  descriptor before the existing user guidance notes. Validation passed:
+  `make -j8`, direct invalid/conversion RUN lines via local `triton-opt` and
+  `python/triton/FileCheck`, focused `cp_scales and clean` pytest slice
+  (`8 passed`), and `git diff --check`.
+
 - Current copy descriptor-failure diagnostics checkpoint, 2026-04-15 07:18 UTC:
   descriptor-synthesis support now returns a structured message identifying
   the failing copy family, message index, number of candidate descriptor

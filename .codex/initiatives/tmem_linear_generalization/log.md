@@ -14950,3 +14950,25 @@ Open after this slice:
 - Next: commit and push this diagnostics checkpoint. The remaining support work
   should use this evidence to decide whether the failure is a true missing
   descriptor-schedule synthesis path or an ISA/resource clean negative.
+
+## 2026-04-15 07:22 UTC: scales descriptor-synthesis failure notes
+
+- Promoted `getTMemCopySharedDescriptorPlanSupport(...)` from an internal
+  helper to the public TMEM utility surface.
+- The scales copy verifier now uses the shared descriptor-support helper to
+  preserve the first descriptor-synthesis failure across candidate plans.
+- The representative scales clean-negative now gets the same concrete
+  planner-evidence note as no-scales copy failures: the `warpx4.32x128b`
+  descriptor message has no representable MMAv5 shared descriptor after trying
+  the one 32x16 candidate shape.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`8 passed`);
+  - `git diff --check`.
+- Next: commit and push this diagnostics checkpoint, then continue from
+  diagnostics into the real support frontier: build a unified copy planner
+  result that carries query projection, descriptor-message synthesis, and
+  source/destination schedule facts for scales and no-scales paths alike.

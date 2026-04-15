@@ -309,7 +309,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
   tt.func @tmem_copy_scales_descriptor_family_clean_unsupported(
       %src: !ttg.memdesc<64x16xi8, #shared_scales_warpx2_candidate, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<64x16xi8, #tmem_scales, #ttng.tensor_memory, mutable>) {
-    // expected-error @+3 {{'ttng.tmem_copy' op The source shared layout maps to tcgen05.copy.warpx4.32x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for tensor memory scales.}}
+    // expected-error @+4 {{'ttng.tmem_copy' op The source shared layout maps to tcgen05.copy.warpx4.32x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for tensor memory scales.}}
+    // expected-note @+3 {{tcgen05.copy.warpx4.32x128b descriptor message 0 has no representable MMAv5 shared-memory descriptor; tried 1 candidate layout(s) for descriptor shape [32, 16] and instruction shape [32, 16].}}
     // expected-note @+2 {{Use a shared layout that lowers to tcgen05.copy.warpx4.32x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<64x16xi8, #shared_scales_warpx2_candidate, #ttg.shared_memory, mutable>, !ttg.memdesc<64x16xi8, #tmem_scales, #ttng.tensor_memory, mutable>

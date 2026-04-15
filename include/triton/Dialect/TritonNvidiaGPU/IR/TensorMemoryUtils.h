@@ -367,6 +367,13 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      int bitwidth, unsigned MNdim,
                                      int mmaVersion, bool allowTransposed);
 
+TMemCopySupportResult
+getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
+                                       const LinearLayout &shmemLl,
+                                       const LinearLayout &cvt,
+                                       const TMemCopyPlan &plan,
+                                       int bitwidth);
+
 bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
                                                const LinearLayout &shmemLl,
                                                const LinearLayout &cvt,

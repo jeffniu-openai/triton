@@ -1610,9 +1610,9 @@ LogicalResult TMEMCopyOp::verify() {
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
-  auto canBuildSharedDescriptorPlan = [&](const TMemCopyPlan &plan) {
-    return canSynthesizeTMemCopySharedDescriptorPlan(srcTy, shmemLl, cvt, plan,
-                                                     bitwidth);
+  auto getSharedDescriptorPlanSupport = [&](const TMemCopyPlan &plan) {
+    return getTMemCopySharedDescriptorPlanSupport(srcTy, shmemLl, cvt, plan,
+                                                  bitwidth);
   };
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
     if (copyPlans.empty()) {
@@ -1627,12 +1627,25 @@ LogicalResult TMEMCopyOp::verify() {
     if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() != 0) {
       return emitOpError("The source should not be swizzled for now");
     }
-    if (!llvm::any_of(copyPlans, canBuildSharedDescriptorPlan)) {
+    std::optional<TMemCopySupportResult> firstDescriptorFailure;
+    bool foundDescriptorPlan = false;
+    for (const TMemCopyPlan &plan : copyPlans) {
+      auto support = getSharedDescriptorPlanSupport(plan);
+      if (support) {
+        foundDescriptorPlan = true;
+        break;
+      }
+      if (!firstDescriptorFailure)
+        firstDescriptorFailure = std::move(support);
+    }
+    if (!foundDescriptorPlan) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
       auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
                   << family
                   << ", but Triton could not synthesize a compatible "
                      "shared-memory descriptor plan for tensor memory scales.";
+      if (firstDescriptorFailure && !firstDescriptorFailure->message.empty())
+        diag.attachNote() << firstDescriptorFailure->message;
       diag.attachNote()
           << "Use a shared layout that lowers to tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "

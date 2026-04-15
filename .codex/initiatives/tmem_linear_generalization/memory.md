@@ -8554,3 +8554,28 @@ rejection, not rescue
   `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`;
   `git diff --check`.
 - Boundary: diagnostics improved; no copy support set changed.
+
+## Latest: 2026-04-15 07:22 UTC scales copy descriptor-synthesis diagnostics
+
+- Exposed `getTMemCopySharedDescriptorPlanSupport(...)` through the TMEM
+  utility header so verifiers can inspect descriptor-synthesis support directly
+  without going through the no-scales runtime-precondition helper.
+- Tensor-memory-scales `ttng.tmem_copy` verification now walks candidate copy
+  plans through that shared descriptor-support helper. When no plan can build a
+  compatible MMAv5 shared-memory descriptor, it attaches the first structured
+  descriptor-synthesis failure before the existing high-level clean-unsupported
+  notes.
+- Updated the representative scales clean-negative in
+  `test/TritonNvidiaGPU/invalid.mlir` to assert the new evidence note:
+  `warpx4.32x128b` message 0 tried one 32x16 descriptor/instruction candidate
+  and found no representable MMAv5 shared descriptor.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+  (`8 passed`);
+  `git diff --check`.
+- Boundary: diagnostics improved; no scales or no-scales copy support set
+  changed. The next backend slice remains to use these planner facts to decide
+  whether missing scales/two-CTA schedules need new descriptor-layout search
+  dimensions or are true ISA/resource negatives.
