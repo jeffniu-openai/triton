@@ -179,6 +179,9 @@ Progress:
   permutations does not fix scales warpx2-like layouts, and copying the
   single-CTA `02_13` direct-seed path to cta-group::2 emits the opcode but
   produces zeroed output.
+- 2026-04-15 07:39 UTC: added conversion coverage for
+  `tcgen05.cp.cta_group::2.4x256b`, confirming the 4x256b copy-family support
+  reaches both cta-group ISA variants.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

@@ -1036,6 +1036,25 @@ module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 1 : i32, ttg.targ
 
 // -----
 
+#shared_4x256b_twocta = #ttg.shared_linear<{offset = [[1, 0], [2, 0], [0, 1], [0, 2], [0, 4]], block = [[4, 0]]}, alignment = 16>
+#tmem_linear_4x256b_twocta = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0]], col = [[0, 1], [0, 2], [0, 4]], block = [[4, 0]], out = [8, 8]}, twoCTAs = true>
+
+module attributes {"ttg.num-warps" = 4 : i32, "ttg.num-ctas" = 2 : i32, "ttng.two-ctas" = true, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @tmem_copy_linear_4x256b_twocta
+  // CHECK: nvg.cluster_id
+  // CHECK: tcgen05.cp.cta_group::2.4x256b
+  // CHECK-NOT: tcgen05.cp.cta_group::1
+  // CHECK: llvm.return
+  tt.func public @tmem_copy_linear_4x256b_twocta(
+      %src: !ttg.memdesc<8x8xf32, #shared_4x256b_twocta, #ttg.shared_memory>,
+      %dst: !ttg.memdesc<8x8xf32, #tmem_linear_4x256b_twocta, #ttng.tensor_memory, mutable>) {
+    ttng.tmem_copy %src, %dst : !ttg.memdesc<8x8xf32, #shared_4x256b_twocta, #ttg.shared_memory>, !ttg.memdesc<8x8xf32, #tmem_linear_4x256b_twocta, #ttng.tensor_memory, mutable>
+    tt.return
+  }
+}
+
+// -----
+
 
 #shared_warpx2 = #ttg.shared_linear<{offset = [[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]]}, alignment = 16>
 #shared_warpx2_barrier = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0]}>

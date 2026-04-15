@@ -15048,3 +15048,18 @@ Open after this slice:
 - Next: commit and push this evidence checkpoint, then work on deriving a true
   destination/source address schedule for two-CTA `02_13` or move to the next
   Phase 2/3 support gap with this negative evidence preserved.
+
+## 2026-04-15 07:39 UTC: 4x256b cta-group::2 conversion coverage
+
+- Added conversion coverage for `tcgen05.cp.cta_group::2.4x256b`.
+- The new test uses a two-CTA `8x8xf32` shared/tensor-memory-linear copy with
+  block basis `[[4, 0]]`.
+- No backend code change was required; this verifies that the dense 4-row atom
+  added earlier naturally lowers to the cta-group::2 ISA variant when the
+  module and layouts are two-CTA.
+- Validation completed:
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Next: commit and push this coverage checkpoint, then continue with the
+  unresolved schedule gaps.

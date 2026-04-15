@@ -8663,3 +8663,19 @@ rejection, not rescue
 - Boundary: diagnostics/planner evidence improved; no support set changed.
   Next work should target the true missing schedule derivation rather than
   broadening descriptor candidate permutations or copying the single-CTA seed.
+
+## Latest: 2026-04-15 07:39 UTC 4x256b cta-group::2 conversion coverage
+
+- Added a Blackwell conversion test for
+  `tcgen05.cp.cta_group::2.4x256b`.
+- The test uses a two-CTA shared-linear source with block basis `[[4, 0]]` and
+  a matching two-CTA tensor-memory-linear destination with active shape
+  `8x8xf32`.
+- This did not require backend code changes: the dense 4-row copy atom already
+  supports cta-group::2 once the layout carries the two-CTA block basis.
+- Validation completed: direct Blackwell conversion RUN with local
+  `triton-opt` and `python/triton/FileCheck`; direct invalid RUN;
+  `git diff --check`. The preceding code checkpoint already ran `make -j8`.
+- Boundary: this covers the remaining cta-group variant for the already-added
+  4x256b family. It does not change the harder `warpx2::02_13` two-CTA
+  schedule gap.

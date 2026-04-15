@@ -95,6 +95,14 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current 4x256b cta-group::2 coverage checkpoint, 2026-04-15 07:39 UTC:
+  local implementation already handled `tcgen05.cp.cta_group::2.4x256b` through
+  the dense 4-row copy atom, and conversion coverage now exercises that ISA
+  variant with a two-CTA shared/tmem linear layout. Validation passed:
+  `make -j8` from the preceding code checkpoint, direct Blackwell conversion
+  RUN via local `triton-opt` and `python/triton/FileCheck`, direct invalid RUN,
+  and `git diff --check`.
+
 - Current all-plan failure evidence checkpoint, 2026-04-15 07:36 UTC:
   `TMemCopyPlanSelection` now retains all structured failed plan-support
   results, and verifier/lowering diagnostics attach each non-empty failure
