@@ -4273,13 +4273,6 @@ SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = [
     for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
     for n in (64, 128, 256)
     for k in (128, 256)
-    if k == 256 or a_format == "mxfp8"
-]
-
-SCALED_MMA_LHS_TILE_PERMUTED_FP4_STORAGE_K128_UNSUPPORTED_CASES = [
-    (a_format, b_format, n, acc_layout_kind)
-    for a_format, b_format in (("mxfp4", "mxfp4"), ("nvfp4", "nvfp4"))
-    for n, acc_layout_kind in product((64, 128, 256), ("legacy", "linear"))
 ]
 
 SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES = [
@@ -11598,61 +11591,6 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_format_use_acc(
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_subslice" not in ttgir
     assert "tensor_memory_linear" in ttgir
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize(
-    "a_format,b_format,n,acc_layout_kind",
-    SCALED_MMA_LHS_TILE_PERMUTED_FP4_STORAGE_K128_UNSUPPORTED_CASES,
-)
-def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_fp4_storage_k128_reports_clean_unsupported(
-    a_format, b_format, n, acc_layout_kind, capfd
-):
-    m = 128
-    k = 128
-    vec_size = 16 if a_format == "nvfp4" else 32
-    a_elem_per_byte, a_tcgen_format = _scaled_mma_operand_params(a_format)
-    b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
-    lhs_storage_k = k // a_elem_per_byte
-    lhs_layout = _make_tmem_linear_layout_tile_permuted(m, lhs_storage_k, lhs_storage_k // 4)
-    acc_layout = (
-        TensorMemoryLayout((m, n), col_stride=1)
-        if acc_layout_kind == "legacy"
-        else _make_tmem_linear_layout(m, n)
-    )
-
-    torch.manual_seed(0)
-    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
-    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
-    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
-
-    with pytest.raises(Exception) as excinfo:
-        tmem_mma_scaled_lhs_tile_permuted_format_kernel[(1, )](
-            out,
-            m,
-            n,
-            k,
-            a,
-            b,
-            a_scale,
-            b_scale,
-            lhs_layout,
-            acc_layout,
-            vec_size,
-            a_elem_per_byte,
-            b_elem_per_byte,
-            a_tcgen_format,
-            b_tcgen_format,
-            0.0,
-            num_warps=4,
-        )
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "LHS operand must have a MMAv5-compatible tensor memory layout" in text
-    assert "Use a directly supported #ttng.tensor_memory_linear layout" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

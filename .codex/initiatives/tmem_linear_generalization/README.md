@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 16:09 UTC: scaled-MMAv5 full-shape TMEM-LHS tile-permuted fp4
+  storage `K=128` is now positive. The LHS MMAv5 family planner now includes
+  16-column storage families because packed fp4/nvfp4 operands plan over byte
+  storage columns, not logical K columns. The stale clean-negative table was
+  removed and the existing scaled-LHS tile-permuted positive/use-acc matrices
+  now cover `mxfp4/mxfp4` and `nvfp4/nvfp4` at `K=128`.
 - 2026-04-15 15:58 UTC: scaled-MMAv5 repeated-`N=32` accumulator layouts were
   re-probed with a temporary verifier/lowering guard lift. Every representative
   scaled format pair compiled, but the runtime oracle failed with large output

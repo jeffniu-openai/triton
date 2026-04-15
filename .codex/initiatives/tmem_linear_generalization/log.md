@@ -16373,3 +16373,35 @@ Open after this slice:
     addressing gap. The public tensor-memory scales layout currently exposes
     matrix-B scale fragments at 64-column alignment, so support needs a new
     scale-fragment/addressing schedule rather than a guard lift.
+
+## 2026-04-15 16:09 UTC: scaled-MMAv5 TMEM-LHS fp4 storage K128 promotion
+
+- Implemented the support path proved by the bounded probe: the MMAv5 LHS
+  family planner now includes `blockN=16` candidates.
+- Rationale:
+  - LHS TMEM operands are planned in physical storage columns;
+  - scaled fp4/nvfp4 operands pack two logical K values per byte, so logical
+    `K=128` has a 64-column storage image;
+  - the previous `tile_n=16` clean-negative is a valid tile-preserving storage
+    family once the planner reasons in storage columns instead of requiring
+    the old 32-column minimum.
+- Test matrix update:
+  - removed the stale
+    `SCALED_MMA_LHS_TILE_PERMUTED_FP4_STORAGE_K128_UNSUPPORTED_CASES` table and
+    clean-negative test;
+  - widened `SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES` so `mxfp4/mxfp4` and
+    `nvfp4/nvfp4` cover `K=128` in the normal positive and use-acc matrices.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split selector
+    `-k "mma_scaled_lhs_tile_permuted_format"` passed all `96` selected cases
+    (`24` per group);
+  - mixed-fp4A LHS clean-negative selector passed (`6 passed`);
+  - adjacent plain LHS tile-permuted selector passed (`58 passed`);
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Current conclusion:
+  - this was a real backend incompleteness in the LHS family planner, not an
+    ISA-impossible case. The important distinction is storage-column planning
+    for packed fp4 LHS operands.

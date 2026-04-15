@@ -503,6 +503,11 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 16:09 UTC: promoted full-shape tile-permuted scaled-MMAv5 TMEM-LHS
+  fp4/nvfp4 `K=128` storage rows. The LHS planner now admits 16-column physical
+  storage families, which is correct for packed fp4 operands because LHS TMEM
+  planning is in byte storage columns. The stale clean-negative table was
+  removed and the positive/use-acc matrices now cover these rows.
 - 2026-04-15 15:58 UTC: repeated `N=32` direct block-scaled MMAv5 was re-probed
   with a temporary verifier/lowering guard lift. The accumulator physical
   layout can be forced to compile, but representative scaled format pairs all

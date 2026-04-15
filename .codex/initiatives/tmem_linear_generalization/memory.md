@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current scaled-MMAv5 TMEM-LHS fp4 storage `K=128` checkpoint,
+  2026-04-15 16:09 UTC: the full-shape tile-permuted TMEM-LHS scaled-MMAv5
+  matrix now covers the previous fp4/nvfp4 `K=128` storage boundary.
+  `planMMAv5LhsFamily(...)` now considers 16-column physical storage families;
+  this is specific to LHS planning in storage coordinates, where packed fp4
+  operands have a 64-column byte image for logical `K=128`. Runtime probes and
+  the affected selector showed the new rows emit the expected scaled-MMAv5
+  opcode streams and match the dequantized reference. Removed the stale
+  `SCALED_MMA_LHS_TILE_PERMUTED_FP4_STORAGE_K128_UNSUPPORTED_CASES`
+  clean-negative table/test; the positive and use-acc matrices now carry those
+  cases. Validation: `make -j8`; py-compile; affected scaled-LHS
+  tile-permuted selector split across four GPUs (`96 passed`); mixed-fp4A
+  clean negatives (`6 passed`); adjacent plain LHS tile-permuted selector
+  (`58 passed`); invalid verifier; `git diff --check`.
+
 - Current scaled-MMAv5 repeated-N32 probe, 2026-04-15 15:58 UTC:
   repeated `N=32` direct block-scaled MMAv5 accumulator layouts remain a real
   scale-fragment/addressing boundary. A temporary
