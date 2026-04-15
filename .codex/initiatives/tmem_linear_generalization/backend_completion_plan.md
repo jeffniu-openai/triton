@@ -229,6 +229,12 @@ Progress:
   keeps verifier and lowering aligned and avoids treating bounded descriptor
   enumeration as a possible realization for a schedule already disproven by
   direct-seed probes.
+- 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
+  into a preflight support layer. The planner now rejects sub-instruction
+  source-column permutations before descriptor enumeration, so an expanded
+  MMAShared descriptor search cannot accidentally turn a copy atom into a
+  false support claim when the per-instruction source columns are not
+  contiguous.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

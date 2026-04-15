@@ -16928,3 +16928,27 @@ Open after this slice:
     `-k 'cp_no_scales_warpx2_02_13_twocta'`: `14 passed`;
   - positive two-CTA `warpx2::01_23` candidate selector: `2 passed`;
   - `git diff --check`.
+
+## 2026-04-15 18:43 UTC: copy instruction-column projection preflight
+
+- Elevated the existing copy instruction-column projection note into an
+  explicit support check before shared descriptor enumeration.
+- Purpose:
+  - a copy atom has fixed per-instruction source-column semantics;
+  - descriptor representability is necessary but not sufficient if a source
+    column bit inside one instruction maps to a non-contiguous shared offset;
+  - future descriptor-search broadening should not accidentally convert these
+    cases into false positives.
+- Implementation:
+  - added `getTMemCopyInstructionProjectionSupport(...)`;
+  - `getTMemCopySharedDescriptorPlanRealization(...)` now runs that preflight
+    for non-direct messages before generating descriptor candidates;
+  - updated the scales descriptor-view clean-negative expectation from
+    descriptor-enumeration failure to instruction-column projection failure.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused scales clean selector covering layout probes, unsupported layout,
+    shared subslice, and TMEM descriptor view: `10 passed`;
+  - positive scales `warpx4` selector: `2 passed`;
+  - `git diff --check`.

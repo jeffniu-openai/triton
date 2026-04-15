@@ -9628,3 +9628,20 @@ rejection, not rescue
 - Validation for the checkpoint: `make -j8`, direct invalid verifier RUN,
   focused `cp_no_scales_warpx2_02_13_twocta` selector (`14 passed`), positive
   two-CTA `warpx2::01_23` selector (`2 passed`), and `git diff --check`.
+
+## Latest: 2026-04-15 18:43 UTC copy instruction-column preflight
+
+- The copy planner now rejects unsupported per-instruction source-column
+  projections before descriptor enumeration.
+- This preserves the key separation:
+  - descriptor synthesis proves a shared-memory descriptor can describe the
+    message's source projection;
+  - instruction-column projection proves the copy atom can consume the
+    sub-instruction source columns contiguously;
+  - both are required for support.
+- The current scales descriptor-view clean negative is therefore an
+  instruction-column projection boundary first: source column bit 2 maps to
+  shared offset 256 inside a 16-column copy atom, where the atom requires
+  contiguous offset 4. Supporting that row needs a multi-message/source-column
+  split schedule or another valid copy atom, not just broader descriptor
+  enumeration.

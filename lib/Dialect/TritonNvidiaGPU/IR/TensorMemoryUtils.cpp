@@ -8882,6 +8882,22 @@ static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
   return std::nullopt;
 }
 
+static TMemCopySupportResult getTMemCopyInstructionProjectionSupport(
+    const LinearLayout &cvt, const TMemCopyMessagePlan &message,
+    TMemCopyFamily family, unsigned messageIdx, int bitwidth) {
+  auto note = getTMemCopyInstructionColumnProjectionNote(cvt, message, bitwidth);
+  if (!note)
+    return getSupportedTMemCopyResult();
+
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "tcgen05.copy." << stringifyTMemCopyFamily(family)
+     << " descriptor message " << messageIdx
+     << " has an unsupported instruction-column projection. " << *note;
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::DescriptorSynthesis, os.str());
+}
+
 std::optional<TMemCopyDescriptorLayoutSelection>
 selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
                                const LinearLayout &shmemLl,
@@ -8946,6 +8962,12 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         continue;
       }
     }
+    auto instructionProjectionSupport =
+        getTMemCopyInstructionProjectionSupport(cvt, message, plan.family,
+                                                messageIdx, bitwidth);
+    if (!instructionProjectionSupport)
+      return {std::nullopt, instructionProjectionSupport};
+
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
     if (debugTMemQuery) {

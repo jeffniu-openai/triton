@@ -2298,6 +2298,10 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 18:43 UTC: copy instruction-column projection is now a planner
+  preflight before descriptor enumeration. This keeps descriptor search from
+  masking sub-instruction source-column permutations that the selected copy
+  atom cannot consume.
 - 2026-04-15 18:39 UTC: two-CTA no-scales
   `tcgen05.copy.warpx2::02_13.64x128b` is now rejected by the shared copy
   planner as a known cta-group::2 descriptor/address schedule gap, rather than
