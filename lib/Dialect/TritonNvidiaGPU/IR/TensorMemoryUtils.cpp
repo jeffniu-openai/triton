@@ -8310,7 +8310,12 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                       "tile plan from the selected tensor-memory layout"
                     : destinationTileError)};
   }
-  executablePlan->tiles = std::move(*scheduledTiles);
+  for (const TMemCopyScheduledTile &tile : *scheduledTiles) {
+    for (unsigned messageIdx = 0, e = executablePlan->messages.size();
+         messageIdx < e; ++messageIdx)
+      executablePlan->instructions.push_back(TMemCopyScheduledInstruction{
+          /*messageIndex=*/messageIdx, tile});
+  }
   return {std::move(*executablePlan), descriptorSupport};
 }
 

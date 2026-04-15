@@ -17151,3 +17151,32 @@ Open after this slice:
     row-partition schedule capable of splitting sub-instruction columns.
 - Validation after removing probe hooks:
   - `make -j8`.
+
+## 2026-04-15 19:55 UTC: explicit copy instruction schedule carrier
+
+- Moved the emitted copy instruction stream into the selected executable plan.
+- Implementation:
+  - added `TMemCopyScheduledInstruction`, pairing `messageIndex` with
+    `TMemCopyScheduledTile`;
+  - replaced `TMemCopyExecutablePlan::tiles` with
+    `TMemCopyExecutablePlan::instructions`;
+  - `getTMemCopyPlanRealization(...)` now builds the current tile-major /
+    message-minor Cartesian instruction stream after descriptor/message and
+    scheduled-tile planning succeed;
+  - `copySharedToTmem(...)` consumes the selected instruction stream directly
+    and asserts that each scheduled message index is valid.
+- Semantics:
+  - intended behavior-preserving;
+  - the current instruction stream is exactly the previous lowering loop order;
+  - future split schedules can now skip, reorder, duplicate, or specialize
+    tile/message pairs in the planner without another lowering rewrite.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused copy selector
+    `cp_no_scales_linear_tile_permuted or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_4x256b_refresh_layout_codegen or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4`: `375 passed, 10539 deselected in 594.22s`;
+  - `git diff --check`.

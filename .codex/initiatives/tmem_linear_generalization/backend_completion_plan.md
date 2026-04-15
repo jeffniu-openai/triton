@@ -279,6 +279,13 @@ Progress:
   layouts for the exact view, but none were MMAShared-representable. The
   remaining gap needs an ISA-grounded split schedule for sub-instruction
   source columns or row partitions, not another descriptor basis shuffle.
+- 2026-04-15 19:55 UTC: copy executable plans now materialize the actual
+  emitted instruction stream as `TMemCopyScheduledInstruction` entries pairing
+  a selected message index with a scheduled tile. The current schedule is the
+  same tile-major/message-minor Cartesian product as before, so behavior is
+  preserved, but lowering no longer owns that product. This gives future
+  source-column/message split schedules one planner-owned representation
+  instead of another lowering-local nested loop.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

@@ -9752,3 +9752,35 @@ rejection, not rescue
 - The current helper is still a proof, not a full row schedule. The next step
   should promote it into an explicit row projection plan object so row/source
   mapping can become schedule data rather than only a predicate.
+
+## Latest: 2026-04-15 19:55 UTC explicit copy instruction schedule
+
+- Copy executable plans now carry the emitted instruction stream explicitly.
+  `TMemCopyScheduledInstruction` pairs a selected message index with a
+  scheduled source/destination tile.
+- `getTMemCopyPlanRealization(...)` materializes the same tile-major /
+  message-minor Cartesian product that lowering used to emit inline.
+- `copySharedToTmem(...)` now consumes `planSelection.plan->instructions` and
+  only realizes the selected descriptor/address operands for each instruction.
+- Semantics: behavior-preserving. The checkpoint is about moving schedule
+  ownership into the planner so future non-Cartesian source-column/message
+  splits do not require another lowering-local loop rewrite.
+- Validation completed:
+  - `make -j8`;
+  - direct invalid verifier RUN with `triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-instruction-schedule
+    PYTHONPATH=./python pytest -s --tb=short -k
+    'cp_no_scales_linear_tile_permuted or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_4x256b_refresh_layout_codegen or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4' python/test/gluon/test_tmem_runtime_matrix.py`
+    (`375 passed, 10539 deselected in 594.22s`);
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - continue by factoring instruction-schedule construction into its own
+    planner helper, then use that seam for the next bounded support-bearing
+    copy schedule or switch to the next recorded Phase 2 frontier.

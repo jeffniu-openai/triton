@@ -200,10 +200,15 @@ struct TMemCopyScheduledTile {
   uint32_t destinationOffset;
 };
 
+struct TMemCopyScheduledInstruction {
+  unsigned messageIndex;
+  TMemCopyScheduledTile tile;
+};
+
 struct TMemCopyExecutablePlan {
   TMemCopyFamily family;
   llvm::SmallVector<TMemCopyScheduledMessage, 2> messages;
-  llvm::SmallVector<TMemCopyScheduledTile> tiles;
+  llvm::SmallVector<TMemCopyScheduledInstruction> instructions;
 };
 
 struct TMemCopyPlanSelection {

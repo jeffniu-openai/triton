@@ -2342,6 +2342,11 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 19:55 UTC: copy executable plans now carry an explicit
+  `TMemCopyScheduledInstruction { messageIndex, tile }` stream. Lowering
+  consumes that selected stream instead of nesting tiles and messages itself;
+  behavior is preserved, but future non-Cartesian source/message split
+  schedules now have one planner-owned insertion point.
 - 2026-04-15 18:59 UTC: copy source-row projection checks now live in the
   shared planner and lowering uses the same helper, replacing lowering-only
   row projection assertions with clean diagnostics.
