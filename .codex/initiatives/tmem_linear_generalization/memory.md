@@ -8910,3 +8910,16 @@ rejection, not rescue
   - `git diff --check`;
   - direct `TRITON_DEBUG_TMEM_QUERY=1` invocation of the scales
     descriptor-view copy row.
+
+## Latest: 2026-04-15 10:06 UTC actionable scales copy diagnostic
+
+- The exact tensor-memory-scales descriptor-view schedule note now points to
+  `TRITON_DEBUG_TMEM_QUERY=1`, which prints the selected copy conversion and
+  descriptor candidates.
+- Semantics: diagnostics-only. The scales descriptor-view row remains clean
+  unsupported.
+- Validation completed:
+  - `make -j8`;
+  - focused `cp_scales and clean` runtime slice (`9 passed`);
+  - invalid verifier RUN;
+  - `git diff --check`.

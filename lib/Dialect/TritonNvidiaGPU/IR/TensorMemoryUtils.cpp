@@ -4486,7 +4486,8 @@ getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
       "scheduling cannot realize that logical view by selecting a "
       "representable source descriptor alone; it needs a destination-row / "
       "source-message schedule that preserves the descriptor-view row "
-      "permutation.");
+      "permutation. Set TRITON_DEBUG_TMEM_QUERY=1 to print the selected copy "
+      "conversion and descriptor candidates.");
 }
 
 StringRef stringifyTMemPhysicalQueryDifference(

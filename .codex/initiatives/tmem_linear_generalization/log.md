@@ -15404,3 +15404,15 @@ Open after this slice:
   - Blackwell conversion FileCheck RUN;
   - `git diff --check`;
   - direct debug invocation of the scales descriptor-view copy row.
+
+## 2026-04-15 10:06 UTC: actionable scales copy diagnostic
+
+- Updated the exact scales descriptor-view clean-negative schedule note to
+  mention `TRITON_DEBUG_TMEM_QUERY=1`.
+- This diagnostic now tells developers how to print the selected copy
+  conversion and descriptor candidates before attempting a support promotion.
+- Validation:
+  - `make -j8`;
+  - focused `cp_scales and clean` runtime slice (`9 passed`);
+  - invalid verifier RUN;
+  - `git diff --check`.

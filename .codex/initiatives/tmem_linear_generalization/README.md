@@ -44,6 +44,10 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:06 UTC: exact scales descriptor-view copy diagnostics now
+  tell developers to set `TRITON_DEBUG_TMEM_QUERY=1` to print the selected
+  copy conversion and descriptor candidates. This keeps the clean negative
+  actionable while the schedule remains unsupported.
 - 2026-04-15 10:05 UTC: the shared copy planner now also traces
   per-message descriptor synthesis candidates under `TRITON_DEBUG_TMEM_QUERY=1`.
   The scales descriptor-view row shows one candidate with row bases
