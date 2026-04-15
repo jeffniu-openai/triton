@@ -1634,6 +1634,11 @@ LogicalResult TMEMCopyOp::verify() {
                   << ", but Triton could not synthesize a compatible "
                      "shared-memory descriptor plan for tensor memory scales.";
       attachTMemCopyPlanFailureNotes(diag, planSelection);
+      if (succeeded(maybeExactDstQuery)) {
+        if (auto note = getTMemCopyExactViewScheduleNote(
+                *maybeDstQuery, *maybeExactDstQuery))
+          diag.attachNote() << *note;
+      }
       diag.attachNote()
           << "Use a shared layout that lowers to tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "

@@ -235,6 +235,10 @@ bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
 bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
                                          const TMemPhysicalQuery &exact);
 
+std::optional<std::string>
+getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
+                                 const TMemPhysicalQuery &exact);
+
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference);
 

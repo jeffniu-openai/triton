@@ -14973,6 +14973,28 @@ Open after this slice:
   result that carries query projection, descriptor-message synthesis, and
   source/destination schedule facts for scales and no-scales paths alike.
 
+## 2026-04-15 09:05 UTC: scales exact-view schedule diagnostic
+
+- Added `getTMemCopyExactViewScheduleNote(...)`.
+- `ttng.tmem_copy` verification and late LLVM lowering now attach this note
+  when an exact tensor-memory-scales descriptor view changes the physical TMEM
+  layout relative to the root scales layout and plan selection fails.
+- The note records that descriptor selection alone cannot realize the logical
+  row permutation; a future positive needs an explicit destination-row /
+  source-message schedule.
+- Updated the focused `cp_scales_tmem_descriptor_view` runtime matrix
+  clean-negative to assert the new schedule-level wording.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported'`
+    (`1 passed`).
+- Next: commit and push this diagnostic checkpoint, then continue from the
+  executable schedule abstraction toward a real destination-row/source-format
+  implementation or a tighter ISA-impossible proof.
+
 ## 2026-04-15 09:02 UTC: realized copy schedule selection
 
 - Added `TMemCopyScheduledMessage` and `TMemCopyExecutablePlan`.

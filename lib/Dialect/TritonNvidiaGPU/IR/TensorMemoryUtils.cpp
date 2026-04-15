@@ -4472,6 +4472,22 @@ bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
          standalone.twoCTAs == exact.twoCTAs;
 }
 
+std::optional<std::string>
+getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
+                                 const TMemPhysicalQuery &exact) {
+  if (!standalone.isScales || !exact.isScales)
+    return std::nullopt;
+  if (standalone.layout == exact.layout)
+    return std::nullopt;
+  return std::string(
+      "The exact tensor-memory-scales descriptor view changes the physical "
+      "TMEM layout relative to the root scales layout. Current tcgen05.copy "
+      "scheduling cannot realize that logical view by selecting a "
+      "representable source descriptor alone; it needs a destination-row / "
+      "source-message schedule that preserves the descriptor-view row "
+      "permutation.");
+}
+
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference) {
   switch (difference) {

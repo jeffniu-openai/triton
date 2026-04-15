@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current Phase 3 diagnostic slice, 2026-04-15 09:05 UTC: scales
+  descriptor-view copy failures now attach a shared exact-view schedule note
+  when the exact scales query changes physical layout relative to the root
+  scales layout. The note records the real missing abstraction: selecting a
+  representable source descriptor is insufficient; the backend needs a
+  destination-row / source-message schedule that preserves the descriptor-view
+  row permutation. Validation passed: `make -j8`, invalid verifier, Blackwell
+  conversion FileCheck, py-compile for `test_tmem_runtime_matrix.py`, and the
+  exact `cp_scales_tmem_descriptor_view` clean-negative runtime row (`1
+  passed`).
+
 - Current Phase 2/3 layering slice, 2026-04-15 09:02 UTC: copy plan selection
   now returns a realized executable schedule instead of only an abstract copy
   plan. `TMemCopyExecutablePlan` carries each selected message together with

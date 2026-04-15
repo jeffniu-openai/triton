@@ -187,6 +187,10 @@ Progress:
   direct-seed descriptor immediates. Lowering consumes that schedule directly,
   reducing support/lowering drift before adding row-offset/source-format
   schedule dimensions.
+- 2026-04-15 09:05 UTC: scales exact descriptor-view failures now carry an
+  explicit schedule-level diagnostic explaining that the physical row
+  permutation cannot be realized by source descriptor selection alone and needs
+  a destination-row / source-message schedule.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

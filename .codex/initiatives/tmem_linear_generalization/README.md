@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 09:05 UTC: exact scales descriptor-view copy failures now attach
+  a schedule-level note when the exact descriptor view changes the physical
+  layout relative to the root scales layout. The diagnostic states that
+  descriptor selection alone cannot realize the logical row permutation and
+  that support requires a destination-row / source-message schedule.
 - 2026-04-15 09:02 UTC: copy plan selection now returns a realized executable
   schedule. `TMemCopyPlanSelection` carries the selected family plus per-message
   descriptor-layout selection or direct-seed descriptor immediate, and LLVM
