@@ -15490,3 +15490,28 @@ Open after this slice:
   - neighboring no-scales single-CTA `02_13` positive plus two-CTA clean
     negative (`2 passed`);
   - `git diff --check`.
+
+## 2026-04-15 10:38 UTC: dense copy macro-tile destination schedule
+
+- Promoted dense no-scales copy support for TMEM-linear layouts that permute
+  whole 128-byte destination column macro-tiles.
+- Added `getTMemCopyDestinationTileOffset(...)`, which lets LLVM lowering ask
+  the shared copy planner for the destination tile offset corresponding to a
+  logical source-column tile.
+- Kept the historical address path for low descriptor-macro permutations; an
+  initial unconditional physical-column remap regressed the existing
+  `tile_n=8` and `tile_n=16` positives, proving those permutations are already
+  represented by the TMEM layout/address path. The committed implementation
+  switches to physical per-tile offsets only when the column basis order crosses
+  the descriptor macro-selector boundary.
+- Removed `tile_permuted_32` from the dense-copy exotic clean-negative list and
+  added `tile_n=32` to the positive tile-permuted runtime matrix.
+- Validation:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - exact `tile_n=32` runtime row (`1 passed`);
+  - focused tile-permuted plus exotic dense-copy runtime rows (`6 passed`);
+  - neighboring row/column permuted clean-negative rows (`15 passed`);
+  - `git diff --check`.

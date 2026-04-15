@@ -421,6 +421,10 @@ selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
                                const TMemCopyMessagePlan &message,
                                TMemCopyFamily family, int bitwidth);
 
+std::optional<uint32_t>
+getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
+                                 TMemCopyFamily family, int32_t logicalCol);
+
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,
                                      int bitwidth, unsigned MNdim,

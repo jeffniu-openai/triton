@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:38 UTC: dense no-scales `tcgen05.copy.128x256b`
+  now separates source-column iteration from destination TMEM tile addressing
+  when the destination `LinearLayout` permutes whole 128-byte column
+  macro-tiles. The direct-copy support proof still requires every logical
+  instruction-width tile to map to one aligned, contiguous, unique physical
+  TMEM tile, but higher column macro-selector bases no longer need to stay
+  globally ascending. Lowering uses exact layout algebra to compute per-tile
+  destination offsets only for macro-crossing permutations; low descriptor
+  macro permutations keep the existing address path. Runtime coverage promotes
+  `tile_n=32` from clean negative to positive beside `tile_n=8` and
+  `tile_n=16`; bit-scrambled and mixed layouts remain clean unsupported.
 - 2026-04-15 10:29 UTC: the earlier positive `tcgen05.cp.4x256b`
   conversion-only coverage has been retracted into a clean unsupported
   contract. Runtime probing showed the naïve four-row descriptor schedule
@@ -104,10 +115,10 @@ When resuming the initiative:
   tile-permuted TMEM column layouts that the current descriptor schedule can
   prove, instead of rejecting all non-ascending column basis order. The support
   check is still proof-based: instruction-width logical column tiles must be
-  aligned and contiguous in physical TMEM columns, and higher column
-  macro-selector bits may not be reordered. Runtime coverage now has positives
-  for `tile_n=8` and `tile_n=16`; `tile_n=32` and bit-scrambled column
-  permutations remain clean unsupported.
+  aligned and contiguous in physical TMEM columns. Superseded by the
+  2026-04-15 10:38 checkpoint for higher column macro-selector permutations:
+  `tile_n=32` is now positive, while bit-scrambled column permutations remain
+  clean unsupported.
 - 2026-04-15 09:08 UTC: copy executable schedules can now carry TMEM
   destination row deltas and optional `tcgen05.cp` source-format suffixes
   through lowering. Defaults preserve existing support; the next task is to

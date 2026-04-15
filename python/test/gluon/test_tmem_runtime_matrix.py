@@ -5129,10 +5129,9 @@ CP_LINEAR_EXOTIC_UNSUPPORTED_CASES = [
     ("mixed", _make_tmem_linear_layout_mixed(128, 128)),
     ("scrambled_cols", _make_tmem_linear_layout_permuted(128, 128, "identity", "even_odd")),
     ("scrambled_rows_cols", _make_tmem_linear_layout_permuted(128, 128, "even_odd", "even_odd")),
-    ("tile_permuted_32", _make_tmem_linear_layout_tile_permuted(128, 128, 32)),
 ]
 
-CP_LINEAR_TILE_PERMUTED_CASES = (8, 16)
+CP_LINEAR_TILE_PERMUTED_CASES = (8, 16, 32)
 
 CP_LINEAR_PERMUTED_UNSUPPORTED_CASES = [
     (row_perm_kind, col_perm_kind)

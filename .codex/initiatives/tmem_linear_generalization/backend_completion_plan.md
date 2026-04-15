@@ -204,10 +204,8 @@ Progress:
   requiring globally canonical column basis order. The planner admits
   low-descriptor-macro column tile permutations (`tile_n=8`, `tile_n=16`) when
   every logical instruction-width tile maps to aligned contiguous physical
-  columns, and rejects higher macro-selector reorders such as `tile_n=32` with
-  a clean physical-query diagnostic. This is a bounded support promotion inside
-  the shared layout predicate; it does not change the pending scales
-  row/message schedule work.
+  columns. Superseded by the 2026-04-15 10:38 scheduler slice for higher
+  macro-selector reorders.
 - 2026-04-15 09:59 UTC: copy message plans can now carry an optional
   descriptor projection separate from the full copy conversion. Existing
   schedules leave it unset, but this creates the planner slot needed for
@@ -229,6 +227,15 @@ Progress:
   emitted `tcgen05.cp.cta_group::1.4x256b` but placed source row values into
   one destination row at runtime, so conversion-only coverage was removed and
   replaced with verifier plus runtime clean-negative coverage.
+- 2026-04-15 10:38 UTC: dense no-scales copy scheduling now has an exact
+  destination-tile offset helper. The direct-copy support proof no longer
+  rejects whole 128-byte column macro-tile permutations by global basis order;
+  instead it proves each logical instruction-width tile maps to one aligned,
+  contiguous, unique physical TMEM tile, and lowering uses a per-tile
+  destination offset only for macro-crossing permutations. This promotes
+  `tile_n=32` dense linear copy to positive runtime coverage while preserving
+  the existing `tile_n=8/16` positives and clean negatives for mixed or
+  bit-scrambled layouts.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

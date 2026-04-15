@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 dense-copy scheduler slice, 2026-04-15 10:38 UTC:
+  dense no-scales `tcgen05.copy.128x256b` can now realize TMEM-linear
+  destination layouts that permute whole 128-byte column macro-tiles. The
+  support predicate remains proof-based at instruction-tile granularity:
+  every logical copy tile must map to one aligned, contiguous, unique physical
+  TMEM destination tile. Lowering now asks the shared planner helper for a
+  destination tile offset per logical source-column tile, but only switches to
+  physical tile offsets when a column permutation crosses the descriptor
+  macro-tile selector boundary; the existing low descriptor-macro address path
+  remains intact for `tile_n=8` and `tile_n=16`. Runtime coverage promotes
+  `tile_n=32` from clean negative to positive. Validation passed: `make -j8`,
+  invalid verifier, Blackwell conversion FileCheck, py-compile, focused
+  `tile_permuted` plus exotic neighbor runtime rows (`6 passed`), row/column
+  permuted clean-negatives (`15 passed`), and `git diff --check`. Next: carry
+  the same exact tile-schedule model into the remaining copy families instead
+  of using family-specific rescue paths.
+
 - Current Phase 2 4x256b safety slice, 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b`
   remains recognized as an ISA family, but Triton now rejects it during copy
   plan realization until there is a validated descriptor/address schedule.

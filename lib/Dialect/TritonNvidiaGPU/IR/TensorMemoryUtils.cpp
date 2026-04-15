@@ -7468,14 +7468,113 @@ bool isTMemCopySharedLayoutRuntimeSupported(MemDescType srcTy,
   return result.supported;
 }
 
+static bool isDenseTMemCopyFamily(TMemCopyFamily family) {
+  return family == TMemCopyFamily::Dense4x256b ||
+         family == TMemCopyFamily::Dense128x128b ||
+         family == TMemCopyFamily::Dense128x256b;
+}
+
+static unsigned getDenseTMemCopyColumnStride(TMemCopyFamily family,
+                                             unsigned bitwidth) {
+  switch (family) {
+  case TMemCopyFamily::Dense4x256b:
+  case TMemCopyFamily::Dense128x256b:
+    return 256 / bitwidth;
+  case TMemCopyFamily::Dense128x128b:
+    return 128 / bitwidth;
+  case TMemCopyFamily::Warpx2_01_23_64x128b:
+  case TMemCopyFamily::Warpx2_02_13_64x128b:
+  case TMemCopyFamily::Warpx4_32x128b:
+    llvm_unreachable("non-dense copy family");
+  }
+  llvm_unreachable("unknown copy family");
+}
+
+static std::optional<std::pair<int32_t, int32_t>>
+getDenseTMemCopyDestinationTileCoord(const LinearLayout &layout,
+                                     MLIRContext *ctx, int32_t logicalCol) {
+  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(layout);
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getNumOutDims() != 2)
+    return std::nullopt;
+
+  auto outDims = llvm::to_vector(ll.getOutDimNames());
+  auto rowCol =
+      ll.pseudoinvert().apply({{outDims[0], 0}, {outDims[1], logicalCol}});
+  int32_t row = 0;
+  int32_t col = 0;
+  for (auto [dim, value] : rowCol) {
+    if (dim == kRow) {
+      row = value;
+      continue;
+    }
+    if (dim == kCol) {
+      col = value;
+      continue;
+    }
+    if (value != 0)
+      return std::nullopt;
+  }
+  if (row < 0 || col < 0)
+    return std::nullopt;
+  return std::pair<int32_t, int32_t>{row, col};
+}
+
+static bool needsDenseTMemCopyPhysicalColumnTileOffsets(const LinearLayout &ll,
+                                                        MLIRContext *ctx,
+                                                        unsigned bitwidth) {
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!ll.hasInDim(kCol))
+    return false;
+
+  unsigned descriptorMacroCols = 1024 / bitwidth;
+  bool sawColumnMacroSelector = false;
+  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
+    bool touchesRow = basis[0] != 0;
+    bool touchesCol = basis[1] != 0;
+    if (!touchesCol || touchesRow)
+      continue;
+
+    int32_t colBasis = std::abs(basis[1]);
+    if (colBasis > static_cast<int32_t>(descriptorMacroCols)) {
+      sawColumnMacroSelector = true;
+      continue;
+    }
+    if (sawColumnMacroSelector)
+      return true;
+  }
+  return false;
+}
+
+std::optional<uint32_t>
+getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
+                                 TMemCopyFamily family, int32_t logicalCol) {
+  if (!isDenseTMemCopyFamily(family))
+    return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
+
+  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
+  // Low descriptor-macro column permutations are carried by the TMEM layout
+  // already; only permutations that cross 128-byte macro-tile selectors need a
+  // different physical destination address per copy tile.
+  if (!needsDenseTMemCopyPhysicalColumnTileOffsets(
+          ll, query.memTy.getContext(), query.elementBitWidth))
+    return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
+
+  auto coord = getDenseTMemCopyDestinationTileCoord(
+      ll, query.memTy.getContext(), logicalCol);
+  if (!coord)
+    return std::nullopt;
+  return (static_cast<uint32_t>(coord->first) << 16) |
+         (static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
+}
+
 static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
                                         TMemCopyFamily family,
                                         unsigned bitwidth) {
-  if (family != TMemCopyFamily::Dense4x256b &&
-      family != TMemCopyFamily::Dense128x128b &&
-      family != TMemCopyFamily::Dense128x256b)
+  if (!isDenseTMemCopyFamily(family))
     return getSupportedTMemCopyResult();
 
   auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(layout);
@@ -7515,7 +7614,6 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
         "ascending physical row order.");
   }
 
-  SmallVector<int32_t> pureColBases;
   SmallVector<int32_t> pureRowBases;
   for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
     bool touchesRow = basis[0] != 0;
@@ -7526,9 +7624,7 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
           "direct tcgen05.copy does not support TMEM column bases that "
           "mix row and column contributions.");
     }
-    if (touchesCol) {
-      pureColBases.push_back(std::abs(basis[1]));
-    } else if (touchesRow) {
+    if (touchesRow && !touchesCol) {
       pureRowBases.push_back(std::abs(basis[0]));
     }
   }
@@ -7539,73 +7635,33 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
         "in the column address space to remain in ascending row order.");
   }
 
-  unsigned descriptorMacroCols = 1024 / bitwidth;
-  bool sawColumnMacroSelector = false;
-  int32_t previousColumnMacroSelector = 0;
-  for (int32_t basis : pureColBases) {
-    if (basis > static_cast<int32_t>(descriptorMacroCols)) {
-      if (sawColumnMacroSelector && basis <= previousColumnMacroSelector) {
-        return getUnsupportedTMemCopyResult(
-            TMemCopySupportFailureLayer::PhysicalQuery,
-            "direct tcgen05.copy requires TMEM column macro-selector bases to "
-            "remain in ascending physical column order.");
-      }
-      sawColumnMacroSelector = true;
-      previousColumnMacroSelector = basis;
-      continue;
-    }
-    if (sawColumnMacroSelector) {
-      return getUnsupportedTMemCopyResult(
-          TMemCopySupportFailureLayer::PhysicalQuery,
-          "direct tcgen05.copy currently requires non-canonical TMEM column "
-          "ordering to stay within the low 128-byte descriptor macro-tile.");
-    }
-  }
-
-  auto getDenseCopyColumnStride = [&]() -> unsigned {
-    switch (family) {
-    case TMemCopyFamily::Dense4x256b:
-    case TMemCopyFamily::Dense128x256b:
-      return 256 / bitwidth;
-    case TMemCopyFamily::Dense128x128b:
-      return 128 / bitwidth;
-    case TMemCopyFamily::Warpx2_01_23_64x128b:
-    case TMemCopyFamily::Warpx2_02_13_64x128b:
-    case TMemCopyFamily::Warpx4_32x128b:
-      llvm_unreachable("non-dense copy family");
-    }
-    llvm_unreachable("unknown copy family");
-  };
   auto outDims = llvm::to_vector(ll.getOutDimNames());
-  auto llInv = ll.pseudoinvert();
-  auto getPhysicalColumnCoord = [&](int32_t logicalCol)
-      -> std::optional<std::pair<int32_t, int32_t>> {
-    auto rowCol = llInv.apply({{outDims[0], 0}, {outDims[1], logicalCol}});
-    int32_t row = 0;
-    int32_t col = 0;
-    for (auto [dim, value] : rowCol) {
-      if (dim == kRow)
-        row = value;
-      else if (dim == kCol)
-        col = value;
-    }
-    if (row < 0 || col < 0)
-      return std::nullopt;
-    return std::pair<int32_t, int32_t>{row, col};
-  };
-  unsigned colStride = getDenseCopyColumnStride();
+  unsigned colStride = getDenseTMemCopyColumnStride(family, bitwidth);
   int32_t colSize = ll.getOutDimSize(outDims[1]);
+  SmallVector<uint32_t> visitedTileOffsets;
   for (int32_t logicalCol = 0; logicalCol < colSize;
        logicalCol += colStride) {
-    auto tileOrigin = getPhysicalColumnCoord(logicalCol);
+    auto tileOrigin =
+        getDenseTMemCopyDestinationTileCoord(ll, ctx, logicalCol);
     if (!tileOrigin || tileOrigin->second % static_cast<int32_t>(colStride)) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,
           "direct tcgen05.copy requires each logical column tile to start at a "
           "physical column aligned to the copy instruction width.");
     }
+    uint32_t tileOffset =
+        (static_cast<uint32_t>(tileOrigin->first) << 16) |
+        (static_cast<uint32_t>(tileOrigin->second) * bitwidth / 32);
+    if (llvm::is_contained(visitedTileOffsets, tileOffset)) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          "direct tcgen05.copy requires every logical column tile to map to a "
+          "unique physical TMEM destination tile.");
+    }
+    visitedTileOffsets.push_back(tileOffset);
     for (unsigned i = 1; i < colStride && logicalCol + i < colSize; ++i) {
-      auto tileCoord = getPhysicalColumnCoord(logicalCol + i);
+      auto tileCoord =
+          getDenseTMemCopyDestinationTileCoord(ll, ctx, logicalCol + i);
       if (!tileCoord || tileCoord->first != tileOrigin->first ||
           tileCoord->second != tileOrigin->second + static_cast<int32_t>(i)) {
         return getUnsupportedTMemCopyResult(
