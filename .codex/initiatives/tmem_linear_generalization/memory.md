@@ -9645,3 +9645,17 @@ rejection, not rescue
   contiguous offset 4. Supporting that row needs a multi-message/source-column
   split schedule or another valid copy atom, not just broader descriptor
   enumeration.
+
+## Latest: 2026-04-15 18:55 UTC copy destination tile plan
+
+- Copy lowering now consumes a shared destination tile plan instead of
+  recomputing offsets inline.
+- This is a behavior-preserving scheduler-carrier checkpoint. It does not
+  promote new layouts, but it moves destination addressing into the same
+  planner utility layer as executable message selection.
+- Keep using this direction for the next slices:
+  - destination tile offsets are now explicit;
+  - instruction-column projection is explicit;
+  - the next missing carrier is source-row / destination-row message mapping,
+    which should replace proof-only row-order predicates before attempting
+    scales descriptor-view row-permutation support.

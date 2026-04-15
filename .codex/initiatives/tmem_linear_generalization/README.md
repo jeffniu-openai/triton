@@ -2298,6 +2298,9 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 18:55 UTC: copy lowering now consumes
+  `getTMemCopyDestinationTilePlan(...)`, making destination tile offsets an
+  explicit planner artifact for future non-uniform schedules.
 - 2026-04-15 18:43 UTC: copy instruction-column projection is now a planner
   preflight before descriptor enumeration. This keeps descriptor search from
   masking sub-instruction source-column permutations that the selected copy

@@ -176,6 +176,11 @@ struct TMemCopyExecutablePlan {
   llvm::SmallVector<TMemCopyScheduledMessage, 2> messages;
 };
 
+struct TMemCopyDestinationTile {
+  int32_t logicalCol;
+  uint32_t offset;
+};
+
 struct TMemCopyPlanSelection {
   std::optional<TMemCopyExecutablePlan> plan;
   std::optional<TMemCopySupportResult> firstFailure;
@@ -449,6 +454,12 @@ selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
 std::optional<uint32_t>
 getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
                                  TMemCopyFamily family, int32_t logicalCol);
+
+std::optional<llvm::SmallVector<TMemCopyDestinationTile>>
+getTMemCopyDestinationTilePlan(const TMemPhysicalQuery &query,
+                               TMemCopyFamily family, unsigned colStride,
+                               int32_t logicalCols,
+                               std::string *error = nullptr);
 
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,

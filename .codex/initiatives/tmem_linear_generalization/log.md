@@ -16952,3 +16952,26 @@ Open after this slice:
     shared subslice, and TMEM descriptor view: `10 passed`;
   - positive scales `warpx4` selector: `2 passed`;
   - `git diff --check`.
+
+## 2026-04-15 18:55 UTC: copy destination tile-plan carrier
+
+- Added an explicit destination tile-plan carrier for `tcgen05.copy`.
+- Implementation:
+  - introduced `TMemCopyDestinationTile { logicalCol, offset }`;
+  - added `getTMemCopyDestinationTilePlan(...)`, which turns a selected
+    physical query, copy family, column stride, and logical column extent into
+    the destination offsets lowering should emit;
+  - rewired `copySharedToTmem(...)` lowering to iterate that plan instead of
+    recomputing one destination offset per loop iteration.
+- Semantics:
+  - intended behavior-preserving;
+  - this keeps the destination-address side of copy scheduling in a planner
+    utility, matching the existing executable-message plan and setting up
+    future non-uniform row/source-message schedules.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - wide focused copy selector covering dense linear/tile-permuted rows,
+    row/column clean negatives, 4x256b refresh, and scales `warpx4`:
+    `408 passed`;
+  - `git diff --check`.

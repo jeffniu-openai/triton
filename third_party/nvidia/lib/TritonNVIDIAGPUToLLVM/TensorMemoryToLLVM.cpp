@@ -1607,14 +1607,20 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   }
 
   const unsigned colStride = plannedMessages.front().schedule.plan.instrShape[1];
-  for (int col = 0; col < cvt.getInDimSize(kCol); col += colStride) {
-    auto destinationTileOffset = getTMemCopyDestinationTileOffset(
-        supportDstQuery, planSelection.plan->family, col);
-    if (!destinationTileOffset) {
-      return op->emitOpError(
-          "failed to compute physical tcgen05.copy destination tile offset "
-          "from the selected tensor-memory layout");
-    }
+  std::string destinationTileError;
+  auto destinationTiles = getTMemCopyDestinationTilePlan(
+      supportDstQuery, planSelection.plan->family, colStride,
+      cvt.getInDimSize(kCol), &destinationTileError);
+  if (!destinationTiles) {
+    return op->emitOpError(
+        destinationTileError.empty()
+            ? "failed to compute physical tcgen05.copy destination tile plan "
+              "from the selected tensor-memory layout"
+            : destinationTileError);
+  }
+
+  for (const TMemCopyDestinationTile &destinationTile : *destinationTiles) {
+    int col = destinationTile.logicalCol;
     for (const auto &message : plannedMessages) {
       Value desc;
       const auto &messagePlan = message.schedule.plan;
@@ -1639,7 +1645,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       assert(messagePlan.tmemRowDelta >= 0 &&
              "tcgen05.copy destination row delta must be non-negative");
       uint32_t messageDestinationOffset =
-          destinationBaseOffset + *destinationTileOffset +
+          destinationBaseOffset + destinationTile.offset +
           (static_cast<uint32_t>(messagePlan.tmemRowDelta) << 16) +
           messagePlan.tmemDwordDelta;
       auto tmemAddr = b.add(b.ptrtoint(i32_ty, baseDst),

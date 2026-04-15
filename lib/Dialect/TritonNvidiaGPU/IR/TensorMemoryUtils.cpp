@@ -8043,6 +8043,32 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
          (static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
 }
 
+std::optional<llvm::SmallVector<TMemCopyDestinationTile>>
+getTMemCopyDestinationTilePlan(const TMemPhysicalQuery &query,
+                               TMemCopyFamily family, unsigned colStride,
+                               int32_t logicalCols, std::string *error) {
+  if (colStride == 0 || logicalCols < 0) {
+    if (error)
+      *error = "invalid tcgen05.copy destination tile stride";
+    return std::nullopt;
+  }
+
+  llvm::SmallVector<TMemCopyDestinationTile> tiles;
+  for (int32_t logicalCol = 0; logicalCol < logicalCols;
+       logicalCol += static_cast<int32_t>(colStride)) {
+    auto offset = getTMemCopyDestinationTileOffset(query, family, logicalCol);
+    if (!offset) {
+      if (error) {
+        *error = "failed to compute physical tcgen05.copy destination tile "
+                 "offset from the selected tensor-memory layout";
+      }
+      return std::nullopt;
+    }
+    tiles.push_back(TMemCopyDestinationTile{logicalCol, *offset});
+  }
+  return tiles;
+}
+
 static TMemCopySupportResult
 getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   auto kRow = StringAttr::get(ctx, "row");

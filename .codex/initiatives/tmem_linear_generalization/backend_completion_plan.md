@@ -235,6 +235,12 @@ Progress:
   MMAShared descriptor search cannot accidentally turn a copy atom into a
   false support claim when the per-instruction source columns are not
   contiguous.
+- 2026-04-15 18:55 UTC: introduced `TMemCopyDestinationTile` and
+  `getTMemCopyDestinationTilePlan(...)`. Lowering now consumes an explicit
+  destination tile plan from the shared planner utility instead of recomputing
+  destination offsets inline. Current behavior is preserved, but this creates
+  the carrier needed for future non-uniform destination/source message
+  schedules.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate
