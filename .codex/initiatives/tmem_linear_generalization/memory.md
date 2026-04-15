@@ -10029,3 +10029,59 @@ rejection, not rescue
     'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported'`
     (`15 passed in 5.15s`);
   - `git diff --check`.
+
+## Latest: 2026-04-15 21:45 UTC canonical single-CTA block-row fold
+
+- Promoted the canonical single-CTA block-row
+  `TensorMemoryLinearLayout` family for TMEM `ld/st` and `ld.red`.
+- Root cause:
+  - `_make_tmem_linear_layout_block(128, N, two_ctas=False)` encodes the low
+    row basis in `block_bases=[[1,0]]` and the remaining row bases in
+    `rows=[[2,0],[4,0],...]`;
+  - for single-CTA layouts this `block` dimension is not a real CTA ownership
+    split. It is exactly equivalent to prepending the block basis to the row
+    bases;
+  - the frontend IR construction and backend analysis were treating the same
+    algebraic image as a two-CTA-like block form, causing stale clean negatives
+    and, before the final frontend fold, IR verifier rejection.
+- Implementation:
+  - added `foldCanonicalSingleCTABlockRowsForAnalysis(...)` in the NVIDIA GPU
+    dialect and applied it before TMEM view analysis, row-anchor planning,
+    physical support planning, `computeTMemLdStEncodingInfo(...)`, and
+    `ld.red` source-layout friendliness checks;
+  - added the matching Python `_to_ir` canonicalization for the exact
+    `two_ctas=False`, 2D, pure-row-basis form so IR verification receives the
+    equivalent row-only layout instead of a spurious block dimension;
+  - kept the fold conservative: noncanonical block bases, missing row bases,
+    and true `two_ctas=True` block layouts are left unchanged.
+- Tests:
+  - moved `block_single_cta` from the `ld/st` unsupported bucket into the
+    positive exotic-layout matrix;
+  - removed now-empty unsupported parametrizations rather than leaving
+    synthetic pytest `NOTSET` skips;
+  - added positive M128 `ld.red` coverage for single-CTA block-row layouts at
+    `N in {64,128,256}`.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=./python pytest --collect-only -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'block_single_cta or ld_red_single_cta_block_linear_layout'`
+    (`74/10988 tests collected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-block-row-pytest
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'block_single_cta or ld_red_single_cta_block_linear_layout'`
+    (`74 passed, 10914 deselected in 238.74s`);
+  - direct invalid verifier RUN with
+    `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - return to the hard copy/scales frontier or continue Phase 4 by replacing
+    more frontend spelling decisions with backend message-planner decisions.

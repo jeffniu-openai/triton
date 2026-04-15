@@ -597,14 +597,6 @@ def _assert_clean_cta_per_cga_mismatch(text: str, layout_ctas: int, required_cta
     assert f"Layout has {layout_ctas} CTAs per CGA, but the context requires {required_ctas} CTAs per CGA." in text
 
 
-def _assert_clean_cta_per_cga_mismatch_or_descriptor_unsupported(text: str, layout_ctas: int, required_ctas: int):
-    if "Result has an invalid layout:" in text:
-        _assert_clean_cta_per_cga_mismatch(text, layout_ctas, required_ctas)
-        return
-    assert "TMEM layout" in text
-    assert "unsupported for descriptor view" in text
-
-
 def _assert_clean_tmem_oor(text: str, required: int, hardware_limit: int):
     assert "out of resource: tensor memory" in text
     assert f"Required: {required}" in text
@@ -3743,6 +3735,7 @@ LDST_LAYOUTS = {
 }
 
 LDST_EXOTIC_LAYOUTS = {
+    "block_single_cta": lambda n: _make_tmem_linear_layout_block(128, n, two_ctas=False),
     "scrambled_cols": lambda n: _make_tmem_linear_layout_scrambled(128, n, scramble_rows=False, scramble_cols=True),
     "scrambled_rows_cols": lambda n: _make_tmem_linear_layout_scrambled(128, n, scramble_rows=True,
                                                                          scramble_cols=True),
@@ -3758,10 +3751,6 @@ MULTIDIM_SLICE_POSITIVE_LAYOUTS = {
 
 MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS = {
     "scrambled_cols": LDST_EXOTIC_LAYOUTS["scrambled_cols"],
-}
-
-LDST_EXOTIC_UNSUPPORTED_LAYOUTS = {
-    "block_single_cta": lambda n: _make_tmem_linear_layout_block(128, n, two_ctas=False),
 }
 
 LDST_TWOCTA_LAYOUTS = {
@@ -3882,11 +3871,6 @@ LDST_EXOTIC_DESCRIPTOR_CASES = [
     for (dtype_name, torch_dtype), layout_name, n, variant in product(
         LDST_32BIT_DTYPES, ("scrambled_cols", "scrambled_rows_cols"), (64, 128, 256), LDST_VARIANTS
     )
-]
-
-LDST_EXOTIC_UNSUPPORTED_CASES = [
-    (layout_name, n, variant)
-    for layout_name, n, variant in product(LDST_EXOTIC_UNSUPPORTED_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
 ]
 
 LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
@@ -4966,19 +4950,8 @@ LD_RED_MIXED_CASES = [
     (128, 256, 4),
 ]
 
-LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
-    *[
-        pytest.param(
-            f"block_128x{n}",
-            lambda n=n: _make_tmem_linear_layout_block(128, n),
-            128,
-            n,
-            4,
-            "TMEM layout '32x32b' unsupported for descriptor view",
-            id=f"block_128x{n}",
-        )
-        for n in (64, 128, 256)
-    ],
+LD_RED_SINGLE_CTA_BLOCK_LAYOUT_CASES = [
+    (128, n, 4) for n in (64, 128, 256)
 ]
 
 LD_RED_RESOURCE_BOUNDARY_CASES = [
@@ -5602,24 +5575,6 @@ def test_tmem_runtime_matrix_ldst_exotic_linear_layouts(
     assert expected_st in observed_opcodes
     assert expected_ld in observed_opcodes
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant", LDST_EXOTIC_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported(layout_name, n, variant, capfd):
-    m = 128
-    layout = LDST_EXOTIC_UNSUPPORTED_LAYOUTS[layout_name](n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(Exception) as excinfo:
-        tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    _assert_clean_cta_per_cga_mismatch_or_descriptor_unsupported(text, layout_ctas=2, required_ctas=1)
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -7823,27 +7778,22 @@ def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupporte
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
-@pytest.mark.parametrize(
-    "layout_name,layout_factory,M,N,num_warps,expected_diag", LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES
-)
-def test_tmem_runtime_matrix_ld_red_additional_unsupported_layouts_report_clean_unsupported(
-    red_op, use_abs, propagate_nan, layout_name, layout_factory, M, N, num_warps, expected_diag, capfd
+@pytest.mark.parametrize("M,N,num_warps", LD_RED_SINGLE_CTA_BLOCK_LAYOUT_CASES)
+def test_tmem_runtime_matrix_ld_red_single_cta_block_linear_layout(
+    red_op, use_abs, propagate_nan, M, N, num_warps
 ):
-    with pytest.raises(Exception) as err:
-        _run_tmem_reduction_case(
-            layout_factory(),
-            M,
-            N,
-            red_op,
-            use_abs,
-            propagate_nan,
-            num_warps=num_warps,
-        )
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert expected_diag in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    layout = _make_tmem_linear_layout_block(M, N)
+    compiled = _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=num_warps,
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

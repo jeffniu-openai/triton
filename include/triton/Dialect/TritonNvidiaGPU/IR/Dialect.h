@@ -187,6 +187,9 @@ bool tensorMemoryLinearLayoutMatchesShape(const LinearLayout &layout,
 
 LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout);
 
+LinearLayout foldCanonicalSingleCTABlockRowsForAnalysis(LinearLayout layout,
+                                                        bool twoCTAs);
+
 LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
                                                   Attribute layout);
 

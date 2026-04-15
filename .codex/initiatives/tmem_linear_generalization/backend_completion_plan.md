@@ -655,6 +655,17 @@ Progress:
   `.x2` minimum. This is still a Phase 4 cleanup target: the next step is to
   make reduction layout selection a backend message-planner decision instead
   of relying on frontend variant spelling.
+- 2026-04-15 21:45 UTC: promoted canonical single-CTA block-row layouts for
+  `ld/st` and `ld.red`. The `block` input dimension in these layouts was only
+  carrying the low row basis (`[1,0]`) before the ordinary `row` bases
+  (`[2,0]`, `[4,0]`, ...), so for `two_ctas=False` it is algebraically the
+  same TMEM image as pure row bases. The frontend now folds exactly this
+  canonical form before IR construction, and the backend applies the same
+  conservative fold before view analysis, row-anchor planning, physical support
+  checks, and reduction friendliness. The former `block_single_cta` clean
+  negatives are now positive direct/descriptor `ld/st` rows plus M128
+  `ld.red` rows for `N in {64,128,256}`; true two-CTA block layouts remain
+  untouched.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

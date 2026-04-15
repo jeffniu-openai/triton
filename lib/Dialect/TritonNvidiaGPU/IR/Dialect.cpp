@@ -551,6 +551,59 @@ LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout) {
   return layout.transposeOuts(standardOutDimNames(ctx, layout.getNumOutDims()));
 }
 
+LinearLayout foldCanonicalSingleCTABlockRowsForAnalysis(LinearLayout layout,
+                                                        bool twoCTAs) {
+  if (twoCTAs || layout.getNumInDims() == 0 || layout.getNumOutDims() != 2)
+    return layout;
+
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto kRow = StringAttr::get(ctx, "row");
+  if (!layout.hasInDim(kBlock) || !layout.hasInDim(kRow) ||
+      layout.getInDimSize(kBlock) == 1)
+    return layout;
+
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  auto rowOutDim = outDims.front();
+  unsigned rowOutIdx = layout.getOutDimIndex(rowOutDim);
+  if (layout.getInDimSize(kBlock) * layout.getInDimSize(kRow) !=
+      layout.getOutDimSize(rowOutDim))
+    return layout;
+
+  auto isPureExpectedRowBasis = [&](ArrayRef<int32_t> basis,
+                                    int32_t expected) {
+    if (basis.size() != static_cast<size_t>(layout.getNumOutDims()))
+      return false;
+    for (auto [idx, value] : llvm::enumerate(basis)) {
+      int32_t expectedValue = idx == rowOutIdx ? expected : 0;
+      if (value != expectedValue)
+        return false;
+    }
+    return true;
+  };
+
+  LinearLayout::BasesT bases = layout.getBases();
+  auto blockBases = bases.lookup(kBlock);
+  auto rowBases = bases.lookup(kRow);
+  SmallVector<std::vector<int32_t>> foldedRowBases;
+  foldedRowBases.reserve(blockBases.size() + rowBases.size());
+  for (ArrayRef<int32_t> basis : blockBases)
+    foldedRowBases.emplace_back(basis.begin(), basis.end());
+  for (ArrayRef<int32_t> basis : rowBases)
+    foldedRowBases.emplace_back(basis.begin(), basis.end());
+
+  for (auto [idx, basis] : llvm::enumerate(foldedRowBases)) {
+    if (!isPureExpectedRowBasis(basis, 1 << idx))
+      return layout;
+  }
+
+  bases[kRow] = std::vector<std::vector<int32_t>>(foldedRowBases.begin(),
+                                                  foldedRowBases.end());
+  bases.erase(kBlock);
+  return LinearLayout(std::move(bases), llvm::to_vector(layout.getOutDims()),
+                      layout.isSurjective());
+}
+
 static LinearLayout
 normalizeTensorMemoryLinearLayoutForMMAv5Family(LinearLayout layout) {
   if (layout.getNumInDims() == 0)
@@ -2480,13 +2533,17 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   auto ll = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
       return toLinearLayout(memType);
+    bool twoCTAs = getTensorMemoryTwoCTAs(memType.getEncoding()).value_or(false);
     if (!rowPlanOverride && memType.getShape() == memType.getAllocShape()) {
-      auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+      auto raw = foldCanonicalSingleCTABlockRowsForAnalysis(
+          toLinearLayout(memType.getShape(), memType.getEncoding()), twoCTAs);
       std::string rawError;
       if (auto maybeLayout = getTMemViewAnalysisLinearLayout(
               memType.getShape(), memType.getEncoding(), &rawError)) {
         auto normalized =
-            normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout);
+            foldCanonicalSingleCTABlockRowsForAnalysis(
+                normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout),
+                twoCTAs);
         if (matchesCanonicalContiguousM64LinearView(normalized))
           return normalized;
       }
@@ -2509,7 +2566,8 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                                  memType.getEncoding(), &error);
     if (!maybe)
       return LinearLayout();
-    return normalizeTensorMemoryLinearLayoutForAnalysis(*maybe);
+    return foldCanonicalSingleCTABlockRowsForAnalysis(
+        normalizeTensorMemoryLinearLayoutForAnalysis(*maybe), twoCTAs);
   }();
   if (ll.getNumOutDims() == 0)
     return std::nullopt;
@@ -3004,6 +3062,9 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
 
   auto layout = normalizeTensorMemoryLinearLayoutForAnalysis(
       maybeCanonical->getLinearLayout());
+  bool twoCTAs = getTensorMemoryTwoCTAs(memType.getEncoding()).value_or(false);
+  layout =
+      foldCanonicalSingleCTABlockRowsForAnalysis(std::move(layout), twoCTAs);
   if (layout.getNumOutDims() != 2)
     return false;
 

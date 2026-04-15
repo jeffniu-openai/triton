@@ -2408,6 +2408,9 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
                                       &error);
   if (!maybeLayout)
     return std::nullopt;
+  *maybeLayout = foldCanonicalSingleCTABlockRowsForAnalysis(
+      std::move(*maybeLayout),
+      getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false));
 
   auto *ctx = memTy.getContext();
   auto kRow = StringAttr::get(ctx, "row");
@@ -3713,21 +3716,27 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
     if (auto maybeQuery = inferStandaloneTMemLdStQueryLayoutImpl(
             memDesc, /*preserveNonCanonicalView=*/true, &queryError);
         succeeded(maybeQuery)) {
-      return squeezeTrivialBlock(maybeQuery->layout);
+      return foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(maybeQuery->layout),
+          getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false));
     }
 
     std::string analysisError;
     if (auto maybeAnalysisLayout = getTMemViewAnalysisLinearLayout(
             memTy.getShape(), memTy.getEncoding(), &analysisError)) {
-      return squeezeTrivialBlock(
-          normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysisLayout));
+      return foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+              *maybeAnalysisLayout)),
+          getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false));
     }
 
     std::string canonicalError;
     if (auto maybeCanonical =
             getCanonicalTMemLinearEncoding(memTy, &canonicalError)) {
-      return squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
-          maybeCanonical->getLinearLayout()));
+      return foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+              maybeCanonical->getLinearLayout())),
+          getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false));
     }
     return std::nullopt;
   }();
@@ -6030,8 +6039,12 @@ computeTMemLdStEncodingInfoImpl(
       layout = layout.squeezeOuts(kBlock);
     return layout;
   };
-  LinearLayout originalMemLayout = squeezeTrivialBlock(toLinearLayout(memTy));
-  memLayout = squeezeTrivialBlock(std::move(memLayout));
+  bool twoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false);
+  LinearLayout originalMemLayout =
+      foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(toLinearLayout(memTy)), twoCTAs);
+  memLayout = foldCanonicalSingleCTABlockRowsForAnalysis(
+      squeezeTrivialBlock(std::move(memLayout)), twoCTAs);
   if (memLayout.getNumOutDims() == 0)
     return failure();
   auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
@@ -7327,6 +7340,7 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
       layout = layout.squeezeOuts(kBlock);
     return layout;
   };
+  bool twoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false);
   LinearLayout memLayout = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
       return squeezeTrivialBlock(toLinearLayout(memTy));
@@ -7341,23 +7355,29 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
     if (isTensorMemoryEncoding(memTy.getEncoding()) &&
         !isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()) &&
         memTy.getShape() == memTy.getAllocShape()) {
-      return squeezeTrivialBlock(
-          toLinearLayout(memTy.getShape(), memTy.getEncoding()));
+      return foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(
+              toLinearLayout(memTy.getShape(), memTy.getEncoding())),
+          twoCTAs);
     }
 
     std::string analysisError;
     auto maybeAnalysisLayout = getTMemViewAnalysisLinearLayout(
         memTy.getShape(), memTy.getEncoding(), &analysisError);
     if (maybeAnalysisLayout) {
-      return squeezeTrivialBlock(
-          normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysisLayout));
+      return foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+              *maybeAnalysisLayout)),
+          twoCTAs);
     }
 
     std::string canonicalError;
     auto maybeCanonical = getCanonicalTMemLinearEncoding(memTy, &canonicalError);
     if (maybeCanonical) {
-      return squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
-          maybeCanonical->getLinearLayout()));
+      return foldCanonicalSingleCTABlockRowsForAnalysis(
+          squeezeTrivialBlock(normalizeTensorMemoryLinearLayoutForAnalysis(
+              maybeCanonical->getLinearLayout())),
+          twoCTAs);
     }
 
     if (emitError) {
@@ -7546,6 +7566,9 @@ getTMemLdStPhysicalSupportPlan(MemDescType memTy, unsigned numWarps,
   if (!maybeMemLayout || !maybeMemLayout->hasInDim(kRow) ||
       !maybeMemLayout->hasInDim(kCol))
     return std::nullopt;
+  *maybeMemLayout = foldCanonicalSingleCTABlockRowsForAnalysis(
+      std::move(*maybeMemLayout),
+      getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false));
 
   auto supportsDirectAtom = [&](TMemAccessAtom atom) {
     auto maybeLayout = getDistributedLayoutForTmemLdSt(memTy, atom, numWarps);

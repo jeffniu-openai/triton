@@ -160,6 +160,24 @@ def _raise_unsupported_4x256b_refresh_tmem_ldst(op_name):
     )
 
 
+def _fold_canonical_single_cta_block_rows(rows, block_bases, shape, two_ctas):
+    if two_ctas or not block_bases or len(shape) != 2:
+        return rows, block_bases
+    folded_rows = [list(basis) for basis in block_bases] + [list(basis) for basis in rows]
+    if (
+        shape[0] <= 0
+        or shape[0] & (shape[0] - 1)
+        or len(folded_rows) != shape[0].bit_length() - 1
+    ):
+        return rows, block_bases
+    for idx, basis in enumerate(folded_rows):
+        expected = [0] * len(shape)
+        expected[0] = 1 << idx
+        if list(basis) != expected:
+            return rows, block_bases
+    return folded_rows, []
+
+
 def _canonical_m64_splitn_reg_layout(shape, num_warps, layout):
     if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
         return None
@@ -362,10 +380,13 @@ class TensorMemoryLinearLayout:
 
     def _to_ir(self, builder):
         _check_tensor_memory_layout_ctas(builder, self.two_ctas)
+        rows, block_bases = _fold_canonical_single_cta_block_rows(
+            self.rows, self.block_bases, self.shape, self.two_ctas
+        )
         return builder.get_tensor_memory_linear_layout(
-            self.rows,
+            rows,
             self.cols,
-            self.block_bases,
+            block_bases,
             self.shape,
             self.two_ctas,
         )

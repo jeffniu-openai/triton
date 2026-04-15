@@ -17504,3 +17504,46 @@ Open after this slice:
     --split-input-file test/TritonNvidiaGPU/invalid.mlir
     --verify-diagnostics`;
   - `git diff --check`.
+
+## 2026-04-15 21:45 UTC: canonical single-CTA block-row ld/st and ld.red support
+
+- Promoted the canonical single-CTA `block` row-folded
+  `TensorMemoryLinearLayout` family from stale unsupported coverage to positive
+  TMEM `ld/st` and `ld.red` coverage.
+- Finding:
+  - the single-CTA block helper stores the low row bit in `block_bases` and
+    the remaining row bits in `rows`;
+  - for `two_ctas=False`, this is algebraically just the pure row basis
+    sequence, not a CTA ownership split and not an ISA boundary;
+  - the frontend verifier still saw a nontrivial `block` dimension, while
+    backend row-anchor and reduction checks read the unfurled form and rejected
+    otherwise valid anchors.
+- Implementation:
+  - added a conservative C++ fold that recognizes only the exact 2D,
+    `two_ctas=False`, pure row-power concatenation of `block` then `row`
+    bases;
+  - applied that fold across TMEM view analysis, `ld/st` distributed-layout
+    selection, row-plan derivation, physical support planning, descriptor-view
+    row-anchor diagnostics, and reduction-friendly source classification;
+  - added the same exact fold in Python `TensorMemoryLinearLayout._to_ir()` so
+    IR construction emits the canonical row-only representation for this
+    family.
+- Tests:
+  - `block_single_cta` moved into positive exotic `ld/st` rows for direct and
+    descriptor modes across N32/N64/N128/N256 shapes;
+  - new `ld.red` rows cover M128 block-row reductions for
+    `N in {64,128,256}` over min/max, abs, and NaN propagation modifiers;
+  - deleted now-empty clean-negative parametrizations for this family.
+- Validation:
+  - `make -j8`;
+  - py-compile of touched Python files;
+  - collect-only for the block-row selectors (`74/10988 tests collected`);
+  - focused runtime selector
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-block-row-pytest
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'block_single_cta or ld_red_single_cta_block_linear_layout'`
+    (`74 passed, 10914 deselected in 238.74s`);
+  - direct invalid verifier RUN;
+  - `git diff --check`.

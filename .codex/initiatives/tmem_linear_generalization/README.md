@@ -2389,6 +2389,14 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 21:45 UTC: single-CTA canonical block-row
+  `TensorMemoryLinearLayout` forms are now folded into equivalent row bases
+  before TMEM `ld/st` and `ld.red` planning. This promotes the former
+  `block_single_cta` clean negatives to positive direct and descriptor
+  `ld/st` coverage plus M128 `ld.red` reductions for `N in {64,128,256}`.
+  Validation: `make -j8`, py-compile for the touched Python files,
+  `git diff --check`, invalid verifier, collect-only for the new selectors,
+  and the focused block-row runtime selector passed `74` cases.
 - 2026-04-15 20:39 UTC: pure row-order no-scales copy permutation failures now
   report through the `instruction schedule` layer instead of the physical
   query layer. Mixed row/column bases and column-contiguity failures remain
