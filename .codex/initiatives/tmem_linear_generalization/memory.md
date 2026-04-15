@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current plain-MMAv5 tile-order diagnostic checkpoint, 2026-04-15 22:10 UTC:
+  unsupported accumulator linear layouts now include a note explaining that
+  current public `tcgen05.mma` atoms operate on physical instruction tiles and
+  require the canonical row/column basis order within each tile. Arbitrary
+  row or column permutations inside a tile need an unsupported permutation,
+  masked writeback, or tile-splitting schedule before support can be promoted.
+  This is diagnostic-only; the existing clean negatives remain clean and are
+  now anchored to the fixed-ISA tile-order boundary. Validation passed:
+  `make -j8`, direct invalid verifier RUN, py-compile of
+  `test_tmem_runtime_matrix.py`, focused MMA unsupported runtime selector
+  (`17` rows), and `git diff --check`.
+
 - Current dense row-permuted copy diagnostic checkpoint, 2026-04-15 22:07 UTC:
   dense no-scales row-permuted copy failures now name the atomization boundary
   explicitly: current dense `tcgen05.copy` atoms write the full physical row

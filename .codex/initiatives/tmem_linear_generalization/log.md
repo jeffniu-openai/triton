@@ -17588,3 +17588,32 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`
     (`15 passed in 5.60s`);
   - `git diff --check`.
+
+## 2026-04-15 22:10 UTC: MMAv5 tile-order diagnostic
+
+- Refined unsupported plain-MMAv5 tensor-memory operand diagnostics to attach a
+  planner note for non-compatible linear layouts.
+- The note records the current ISA/planner boundary: public `tcgen05.mma`
+  atoms are planned as physical instruction tiles and require the canonical
+  row/column basis order within each tile; arbitrary in-tile permutations need
+  a supported permutation, masked writeback, or equivalent tile-splitting
+  schedule.
+- Runtime clean-negative coverage for exotic and row/column-permuted MMA
+  accumulator layouts now asserts that note, and invalid MLIR pins it for the
+  two direct verifier cases.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN with
+    `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-mma-layout-diag2
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_exotic_layout_reports_clean_unsupported or
+    mma_rowcol_permuted_layout_reports_clean_unsupported'`
+    (`17 passed, 10971 deselected in 5.67s`);
+  - `git diff --check`.

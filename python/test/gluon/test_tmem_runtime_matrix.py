@@ -9843,6 +9843,7 @@ def test_tmem_runtime_matrix_mma_exotic_layout_reports_clean_unsupported(name, l
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "must have a MMAv5-compatible tensor memory layout" in text
+    assert "preserve the canonical row/column basis order" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
@@ -9865,6 +9866,7 @@ def test_tmem_runtime_matrix_mma_rowcol_permuted_layout_reports_clean_unsupporte
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "must have a MMAv5-compatible tensor memory layout" in text
+    assert "preserve the canonical row/column basis order" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

@@ -618,14 +618,22 @@ LogicalResult TCGen5MMAOp::verify() {
   }
   auto retType = getD().getType();
   auto emitUnsupportedTMemLayout = [&](StringRef operand, Attribute layout) {
-    return emitOpError() << operand
-                         << " operand must have a MMAv5-compatible tensor "
-                            "memory layout, but got "
-                         << layout
-                         << ". Use a directly supported "
-                            "#ttng.tensor_memory_linear layout, or "
-                            "reshape/permute the descriptor to a supported "
-                            "MMAv5 tile.";
+    InFlightDiagnostic diag =
+        emitOpError() << operand
+                      << " operand must have a MMAv5-compatible tensor "
+                         "memory layout, but got "
+                      << layout
+                      << ". Use a directly supported "
+                         "#ttng.tensor_memory_linear layout, or "
+                         "reshape/permute the descriptor to a supported "
+                         "MMAv5 tile.";
+    diag.attachNote()
+        << "MMAv5 tensor-memory operands are planned by physical instruction "
+           "tiles. Current public tcgen05.mma atoms require each instruction "
+           "tile to preserve the canonical row/column basis order; arbitrary "
+           "row or column permutations inside a tile need an unsupported "
+           "permutation or masked writeback schedule.";
+    return diag;
   };
   auto lhsTy = getA().getType();
   auto aTmemInfo = isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:10 UTC: plain MMAv5 unsupported linear-layout diagnostics now
+  state the current tile-order ISA boundary: public `tcgen05.mma` atoms plan
+  tensor-memory operands as physical instruction tiles whose row/column basis
+  order must remain canonical inside each tile. Arbitrary in-tile row or
+  column permutations therefore remain clean negatives until the backend has a
+  supported permutation, masked writeback, or equivalent tile-splitting
+  schedule. Validation: `make -j8`, direct invalid verifier RUN, py-compile of
+  `test_tmem_runtime_matrix.py`, focused MMA clean-negative pytest selector
+  (`17` rows), and `git diff --check`.
 - 2026-04-15 22:07 UTC: dense no-scales row-permuted copy diagnostics now
   state the real atomization boundary: current dense `tcgen05.copy` atoms
   write the full physical row footprint in basis order, so row-permuted

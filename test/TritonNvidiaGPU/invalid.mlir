@@ -443,7 +443,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
                                                       %c: !ttg.memdesc<128x128xf32, #tmem_linear_mixed, #ttng.tensor_memory, mutable>,
                                                       %useAcc: i1,
                                                       %pred: i1) {
-    // expected-error @+1 {{return operand must have a MMAv5-compatible tensor memory layout}}
+    // expected-error @+2 {{return operand must have a MMAv5-compatible tensor memory layout}}
+    // expected-note @+1 {{MMAv5 tensor-memory operands are planned by physical instruction tiles. Current public tcgen05.mma atoms require each instruction tile to preserve the canonical row/column basis order; arbitrary row or column permutations inside a tile need an unsupported permutation or masked writeback schedule.}}
     ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
        !ttg.memdesc<128x128xf16, #shared_f16, #ttg.shared_memory>,
        !ttg.memdesc<128x128xf16, #shared_f16_t, #ttg.shared_memory>,
@@ -457,7 +458,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
       %c: !ttg.memdesc<128x128xf32, #tmem_linear_rowcol_permuted, #ttng.tensor_memory, mutable>,
       %useAcc: i1,
       %pred: i1) {
-    // expected-error @+1 {{return operand must have a MMAv5-compatible tensor memory layout}}
+    // expected-error @+2 {{return operand must have a MMAv5-compatible tensor memory layout}}
+    // expected-note @+1 {{MMAv5 tensor-memory operands are planned by physical instruction tiles. Current public tcgen05.mma atoms require each instruction tile to preserve the canonical row/column basis order; arbitrary row or column permutations inside a tile need an unsupported permutation or masked writeback schedule.}}
     ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
        !ttg.memdesc<128x128xf16, #shared_f16, #ttg.shared_memory>,
        !ttg.memdesc<128x128xf16, #shared_f16_t, #ttg.shared_memory>,

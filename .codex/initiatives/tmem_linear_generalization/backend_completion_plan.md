@@ -697,6 +697,13 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 22:10 UTC: unsupported plain-MMAv5 tensor-memory operand
+  diagnostics now carry a physical-tile note explaining that current public
+  `tcgen05.mma` atoms require canonical row/column basis order within each
+  instruction tile. This keeps exotic and row/column-permuted accumulator
+  layouts as clean negatives while identifying the real support frontier as a
+  permutation, masked writeback, or tile-splitting schedule rather than a
+  generic "layout not compatible" bucket.
 - 2026-04-15 17:28 UTC: promoted scaled-MMAv5 two-CTA accumulator subslice
   `block_n=32` rows. Scaled root/view/two-CTA N32 coverage is now positive
   where each operation maps to supported scale fragments.
