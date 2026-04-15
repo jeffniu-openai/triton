@@ -1108,13 +1108,13 @@ class MLPConfig:
     hidden_size: int
     intermediate_size: int
 
+
 def get_batch_sizes(c: MLPConfig) -> tuple[int, ...]:
     batch_per_expert = tuple(
         chain.from_iterable(range(2 ** (2 + k), 2 ** (3 + k), min(2**k, 32)) for k in range(8))
     )
     return tuple(
         batch_per_expert * c.num_experts // c.experts_per_token for batch_per_expert in batch_per_expert)
-
 
 
 @dataclass(frozen=True, slots=True)
@@ -1238,6 +1238,42 @@ def run_provider(prepared: PreparedCase, provider: str) -> tuple[torch.Tensor, P
     return y, precision_config
 
 
+def _storage_nbytes(x: torch.Tensor | Tensor) -> int:
+    if isinstance(x, Tensor):
+        data = x.storage.data
+        return int(data.numel() * data.element_size())
+    return int(x.numel() * x.element_size())
+
+
+def estimate_benchmark_work(c: MLPConfig, prepared: PreparedCase) -> tuple[int, int]:
+    slice_sizes = prepared.ragged_metadata.slice_sizes
+    n_tokens = int(slice_sizes.sum().item())
+    active_slices = int((slice_sizes > 0).sum().item())
+    n_slices = prepared.ragged_metadata.n_slices
+    k, n = c.hidden_size, c.intermediate_size
+    out_n = n // prepared.fused_activation.specs.reduction_n
+    active_slice_bytes = active_slices * sum(
+        _storage_nbytes(t) // n_slices
+        for t in (prepared.w, prepared.w_scale, prepared.bias)
+    )
+
+    flops = 2 * n_tokens * k * n
+    nbytes = (
+        n_tokens * k * prepared.x.element_size()
+        + active_slice_bytes
+        + n_tokens * out_n * torch.empty((), dtype=prepared.out_dtype).element_size()
+    )
+    return flops, nbytes
+
+
+def benchmark_kernel(prepared: PreparedCase, kernel, flops: int, nbytes: int) -> tuple[float, float]:
+    precision_config = make_precision_config(prepared)
+    out = make_output_buffer(prepared)
+    ms = do_bench_cudagraph(lambda: run_kernel(prepared, kernel, precision_config, out))
+    seconds = ms * 1e-3
+    return flops * 1e-12 / seconds, nbytes * 1e-12 / seconds
+
+
 # ===-----------------------------------------------------------------------===#
 # Unit Tests
 # ===-----------------------------------------------------------------------===#
@@ -1291,39 +1327,53 @@ def test_op(c:MLPConfig, batch_size: tuple[int,...]):
 # Benchmarking
 # ===-----------------------------------------------------------------------===#
 
-providers = ["example TFLOPS", "example TBPS", "reference TFLOPS", "reference TBPS"]
-bench_configs = [
-    triton.testing.Benchmark(
-        x_names=["batch_size"],
-        x_vals=get_batch_sizes(GPT_OSS_120B_CONFIG),
-        line_arg="provider",
-        line_vals=providers,
-        line_names=providers,
-        styles=[("red", "-"), ("blue", "-")],
-        ylabel="TFLOPS",
-        plot_name=(
-            "GPT-OSS-120B MoE MM1 "
-            f"E={GPT_OSS_120B_CONFIG.num_experts} "
-            f"EP={GPT_OSS_120B_CONFIG.experts_per_token} "
-            f"B={GPT_OSS_120B_CONFIG.hidden_size}x{GPT_OSS_120B_CONFIG.intermediate_size}"
-        ),
-        args={},
+BENCH_TITLE = (
+    "GPT-OSS-120B MoE MM1 "
+    f"E={GPT_OSS_120B_CONFIG.num_experts} "
+    f"EP={GPT_OSS_120B_CONFIG.experts_per_token} "
+    f"B={GPT_OSS_120B_CONFIG.hidden_size}x{GPT_OSS_120B_CONFIG.intermediate_size}"
+)
+PEAK_TFLOPS = 5_000.0
+PEAK_TBPS = 8.0
+
+
+def _format_perf(result: tuple[float, float]) -> str:
+    tflops, tbps = result
+    return (
+        f"{tflops:8.2f} TFLOPS ({tflops / PEAK_TFLOPS:6.1%})  "
+        f"{tbps:6.2f} TBPS ({tbps / PEAK_TBPS:6.1%})"
     )
-]
 
 
-@triton.testing.perf_report(bench_configs)
-def bench(batch_size, provider):
-    prepared = prepare_case(GPT_OSS_120B_CONFIG, batch_size, device=f"cuda:{torch.cuda.current_device()}", seed=0)
-    precision_config = make_precision_config(prepared)
-    kernel = matmul if provider == "example" else reference_matmul
-    out = make_output_buffer(prepared)
+def bench(c: MLPConfig = GPT_OSS_120B_CONFIG):
+    batch_sizes = get_batch_sizes(c)
+    batch_width = max(len("batch_size"), *(len(str(bs)) for bs in batch_sizes))
+    perf_width = max(
+        len("reference"),
+        len(_format_perf((99999.99, 999.99))),
+    )
 
-    ms = do_bench_cudagraph(lambda: run_kernel(prepared, kernel, precision_config, out))
-    n_tokens = int(prepared.ragged_metadata.slice_sizes.sum().item())
-    k, n = GPT_OSS_120B_CONFIG.hidden_size, GPT_OSS_120B_CONFIG.intermediate_size
-    flops = 2 * n_tokens * k * n
-    return flops * 1e-12 / (ms * 1e-3)
+    print(BENCH_TITLE, flush=True)
+    print(f"Peak: {PEAK_TFLOPS / 1000:g} PFLOPS, {PEAK_TBPS:g} TBPS", flush=True)
+    print(
+        f"{'batch_size':>{batch_width}}  "
+        f"{'example':>{perf_width}}  "
+        f"{'reference':>{perf_width}}",
+        flush=True,
+    )
+    print("-" * (batch_width + 2 + perf_width + 2 + perf_width), flush=True)
+
+    device = f"cuda:{torch.cuda.current_device()}"
+    for batch_size in batch_sizes:
+        print(f"{batch_size:>{batch_width}}  ", end="", flush=True)
+        prepared = prepare_case(c, batch_size, device=device, seed=0)
+        flops, nbytes = estimate_benchmark_work(c, prepared)
+
+        example = benchmark_kernel(prepared, matmul, flops, nbytes)
+        print(f"{_format_perf(example):>{perf_width}}  ", end="", flush=True)
+
+        reference = benchmark_kernel(prepared, reference_matmul, flops, nbytes)
+        print(f"{_format_perf(reference):>{perf_width}}", flush=True)
 
 
 def autotune():
@@ -1387,4 +1437,4 @@ def autotune():
 
 if __name__ == "__main__":
     # autotune()
-    bench.run(save_path=".", print_data=True)
+    bench()
