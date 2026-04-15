@@ -919,7 +919,7 @@ class KernelConfig:
 
 
 
-def _select_occ1_config(slice_size: int) -> KernelConfig:
+def _select_occ2_config(slice_size: int) -> KernelConfig:
     p = KernelConfig(BLOCK_N=128, OCCUPANCY=2, MAXNREG=64, LOAD_ACTIVATION_REGS=48, LOAD_WEIGHT_REGS=32, MMA_REGS=32, STORE_HELPER_REGS=32)
 
     if slice_size <= 14:
@@ -946,7 +946,7 @@ def _select_occ1_config(slice_size: int) -> KernelConfig:
     return p
 
 
-def _select_occ2_config(slice_size: int) -> KernelConfig:
+def _select_occ1_config(slice_size: int) -> KernelConfig:
     p = KernelConfig()
 
     if slice_size < 14:
@@ -984,9 +984,9 @@ def _select_band_n(slice_size: int) -> int:
 
 def select_kernel_config(slice_size: int) -> KernelConfig:
     if slice_size <= 64:
-        p = _select_occ1_config(slice_size)
-    else:
         p = _select_occ2_config(slice_size)
+    else:
+        p = _select_occ1_config(slice_size)
     p = replace(p, BAND_N=_select_band_n(slice_size))
     return p
 
