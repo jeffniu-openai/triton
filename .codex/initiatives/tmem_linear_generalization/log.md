@@ -15385,3 +15385,22 @@ Open after this slice:
   - `git diff --check`;
   - direct `TRITON_DEBUG_TMEM_QUERY=1` invocation of the scales
     descriptor-view copy row.
+
+## 2026-04-15 10:05 UTC: copy descriptor candidate debug trace
+
+- Extended the shared `tcgen05.copy` planner trace under
+  `TRITON_DEBUG_TMEM_QUERY=1` to print per-message descriptor synthesis
+  details and every descriptor candidate layout.
+- The scales descriptor-view row now reports one descriptor candidate with:
+  - descriptor/instruction shape `[32, 16]`;
+  - row bases `[8, 16, 32, 64, 128]`;
+  - column bases `[1, 2, 256, 4, 512, 1024, 2048]`.
+- This confirms that, at current HEAD, no hidden descriptor projection is being
+  lost between verification and lowering: the full exact `cvt` projection is
+  the candidate, and MMAv5 descriptor synthesis rejects it.
+- Validation:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - `git diff --check`;
+  - direct debug invocation of the scales descriptor-view copy row.

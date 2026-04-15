@@ -8,6 +8,7 @@
 #include "triton/Tools/LayoutUtils.h"
 #include "third_party/f2reduce/f2reduce.h"
 #include <algorithm>
+#include <cstdlib>
 #include <tuple>
 
 using namespace mlir;
@@ -8228,6 +8229,7 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
                                            int bitwidth) {
   TMemCopyExecutablePlan executablePlan;
   executablePlan.family = plan.family;
+  bool debugTMemQuery = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;
     scheduledMessage.plan = message;
@@ -8241,6 +8243,22 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
     }
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
+    if (debugTMemQuery) {
+      llvm::errs() << "[tmem-copy] descriptor family="
+                   << stringifyTMemCopyFamily(plan.family)
+                   << " message=" << messageIdx << " descriptorShape=["
+                   << message.descriptorShape[0] << ", "
+                   << message.descriptorShape[1] << "] instrShape=["
+                   << message.instrShape[0] << ", " << message.instrShape[1]
+                   << "] candidates=" << srcDescLayouts.size() << "\n";
+      if (message.descriptorCvt)
+        llvm::errs() << "[tmem-copy] message descriptor projection:\n"
+                     << message.descriptorCvt->toString() << "\n";
+      for (auto [layoutIdx, layout] : llvm::enumerate(srcDescLayouts))
+        llvm::errs() << "[tmem-copy] descriptor candidate " << layoutIdx
+                     << ":\n"
+                     << layout.toString() << "\n";
+    }
     if (auto descriptorLayout =
             selectTMemCopyDescriptorLayout(srcDescLayouts,
                                            message.descriptorShape,

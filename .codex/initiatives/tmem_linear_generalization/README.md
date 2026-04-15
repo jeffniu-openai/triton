@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:05 UTC: the shared copy planner now also traces
+  per-message descriptor synthesis candidates under `TRITON_DEBUG_TMEM_QUERY=1`.
+  The scales descriptor-view row shows one candidate with row bases
+  `[8,16,32,64,128]` and column bases `[1,2,256,4,512,1024,2048]`, confirming
+  the current failure is the exact source descriptor projection and not an
+  invisible verifier/lowering drift.
 - 2026-04-15 10:02 UTC: `TRITON_DEBUG_TMEM_QUERY=1` now prints the
   source-to-destination copy conversion (`cvt`) after exact-query selection.
   For scales descriptor-view copy debugging this exposes the actual row/column

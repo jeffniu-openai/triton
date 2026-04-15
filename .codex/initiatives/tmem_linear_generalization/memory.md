@@ -8887,3 +8887,26 @@ rejection, not rescue
   - direct debug invocation of
     `tmem_copy_scales_tmem_descriptor_view_kernel` with
     `TRITON_DEBUG_TMEM_QUERY=1`.
+
+## Latest: 2026-04-15 10:05 UTC copy descriptor candidate debug trace
+
+- The shared copy planner now prints descriptor synthesis details under
+  `TRITON_DEBUG_TMEM_QUERY=1`: family, message index, descriptor/instruction
+  shapes, candidate count, optional message descriptor projection, and every
+  descriptor candidate layout.
+- The scales descriptor-view row now exposes the exact failed candidate:
+  - descriptor shape `[32, 16]`, instruction shape `[32, 16]`;
+  - row bases `[8, 16, 32, 64, 128]`;
+  - column bases `[1, 2, 256, 4, 512, 1024, 2048]`;
+  - out dims `offset` size `4096`, `block` size `1`.
+- Interpretation: the current failure is the exact source descriptor
+  projection. The selected copy atom and destination exact query are visible,
+  and descriptor synthesis is rejecting the one projection currently generated
+  from the full `cvt`.
+- Validation completed:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - `git diff --check`;
+  - direct `TRITON_DEBUG_TMEM_QUERY=1` invocation of the scales
+    descriptor-view copy row.
