@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current plain MMAv5 TMEM-LHS small-K tile-permuted checkpoint,
+  2026-04-15 16:29 UTC: full-shape tile-permuted TMEM-LHS plain MMAv5 now
+  covers `K=32` and `K=64` in addition to the old `K=128/256` rows. The LHS
+  family planner now admits 8-column storage families, matching the
+  `K=32/tile_n=8` probe that passed across all `MMA_PLAIN_KINDS` and both
+  accumulator modes. `K=64/tile_n=16` already passed under the 16-column LHS
+  planner. `MMA_LHS_TILE_PERMUTED_NK_CASES` now spans
+  `K in {32,64,128,256}` with the existing tf32 `N=256,K=256` resource-boundary
+  exclusion. Validation: `make -j8`; py-compile; direct probes for `K=32` and
+  `K=64`; four-GPU split selector `mma_lhs_tile_permuted` (`118 passed`);
+  invalid verifier; `git diff --check`.
+
 - Current scaled-MMAv5 narrow accumulator probe, 2026-04-15 16:23 UTC:
   the plain narrow accumulator promotion does not carry over to scaled MMAv5.
   A temporary local lift added `blockN=8` and `blockN=16` to the scaled

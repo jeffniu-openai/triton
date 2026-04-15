@@ -16464,3 +16464,32 @@ Open after this slice:
 - Current conclusion:
   - keep scaled narrow tile-permuted accumulator rows clean unsupported until
     scaled lowering has an explicit sub-64-column scale-fragment schedule.
+
+## 2026-04-15 16:29 UTC: plain MMAv5 TMEM-LHS small-K tile-permuted promotion
+
+- Implemented the support path proved by bounded probes: the MMAv5 LHS family
+  planner now includes `blockN=8` storage candidates.
+- Rationale:
+  - full-shape TMEM-LHS planning is over physical storage columns, just like
+    the fp4 storage promotion;
+  - `K=32/tile_n=8` is a valid narrow storage-family permutation for plain
+    TMEM-LHS operands;
+  - `K=64/tile_n=16` was already valid with the previous 16-column LHS planner
+    promotion.
+- Test matrix update:
+  - expanded `MMA_LHS_TILE_PERMUTED_NK_CASES` from `K in {128,256}` to
+    `K in {32,64,128,256}`;
+  - preserved the existing `tf32, N=256, K=256` exclusion because that direct
+    shared-B helper tile exceeds shared memory.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - direct probes for `K=32/tile_n=8` and `K=64/tile_n=16` over all
+    `MMA_PLAIN_KINDS`, with both accumulator modes for `K=32`;
+  - four-GPU split selector `-k "mma_lhs_tile_permuted"` passed all `118`
+    selected cases;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Current conclusion:
+  - the old lack of small-K TMEM-LHS tile-permuted coverage was another LHS
+    family-enumerator floor, not an ISA limit.

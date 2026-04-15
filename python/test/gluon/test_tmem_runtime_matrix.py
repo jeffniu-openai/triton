@@ -9321,7 +9321,7 @@ MMA_TILE_PERMUTED_KIND_CASES = [
 
 MMA_LHS_TILE_PERMUTED_NK_CASES = [
     (kind, n, k, k // 4)
-    for kind, n, k in product(MMA_PLAIN_KINDS, (64, 128, 256), (128, 256))
+    for kind, n, k in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128, 256))
     # The direct shared-B helper's tf32 128x256x256 tile exceeds shared memory.
     if not (kind == "tf32" and n == 256 and k == 256)
 ]

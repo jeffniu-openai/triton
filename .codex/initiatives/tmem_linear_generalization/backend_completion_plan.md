@@ -503,6 +503,11 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 16:29 UTC: promoted plain MMAv5 full-shape TMEM-LHS
+  tile-permuted rows for `K=32` and `K=64`. The LHS planner now admits
+  8-column storage families, and the positive LHS matrix spans
+  `K in {32,64,128,256}` except for the existing tf32 shared-memory resource
+  boundary.
 - 2026-04-15 16:23 UTC: re-probed scaled narrow tile-permuted accumulator rows
   with a temporary `blockN=8/16` scaled planner lift. The rows compile but are
   numerically wrong across sampled scaled format pairs, confirming they remain

@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 16:29 UTC: plain MMAv5 TMEM-LHS tile-permuted coverage now
+  reaches `K=32` and `K=64`. The LHS family planner admits 8-column storage
+  families after probes showed `K=32/tile_n=8` is valid across all plain
+  MMAv5 kinds and both accumulator modes; `K=64/tile_n=16` was already valid
+  after the earlier 16-column LHS planner promotion.
 - 2026-04-15 16:23 UTC: scaled-MMAv5 narrow tile-permuted accumulator layouts
   were re-probed after the plain narrow promotion. Temporarily admitting
   8- and 16-column scaled accumulator families made `N=32/tile_n=8` and

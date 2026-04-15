@@ -847,9 +847,10 @@ planMMAv5LhsFamily(ArrayRef<int64_t> shape, Attribute layout,
                    std::optional<unsigned> preferredColStride = std::nullopt) {
   // TMEM LHS layouts are planned in physical storage columns. Scaled fp4
   // operands pack two logical K values per byte, so a logical K=128 operand
-  // has a 64-column storage image and can expose a valid 16-column
-  // tile-preserving storage family.
-  static constexpr unsigned kLhsBlockNs[] = {16u, 32u, 64u, 128u, 256u};
+  // has a 64-column storage image and can expose valid narrow tile-preserving
+  // storage families.
+  static constexpr unsigned kLhsBlockNs[] = {8u,  16u,  32u,
+                                             64u, 128u, 256u};
   if (auto exact = planMMAv5ExactFamily(shape, layout, kLhsBlockNs,
                                         preferredColStride)) {
     return exact;
@@ -862,7 +863,8 @@ planMMAv5LhsFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
                    gpu::CGAEncodingAttr cga, bool twoCTAs,
                    std::optional<unsigned> preferredColStride = std::nullopt) {
   // See the Attribute overload: LHS planning uses packed storage columns.
-  static constexpr unsigned kLhsBlockNs[] = {16u, 32u, 64u, 128u, 256u};
+  static constexpr unsigned kLhsBlockNs[] = {8u,  16u,  32u,
+                                             64u, 128u, 256u};
   if (auto exact = planMMAv5ExactFamily(shape, canonicalLayout, cga, twoCTAs,
                                         kLhsBlockNs, preferredColStride)) {
     return exact;
