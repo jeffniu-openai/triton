@@ -361,6 +361,12 @@ Progress:
   message now reports a 4-column source/destination footprint, matching the
   low/high half-message schedule at destination dword offsets `0` and `4`, so
   refresh copy participates in the same overlap legality proof.
+- 2026-04-15 23:57 UTC: added the matching source-footprint bounds proof for
+  dense descriptor-loaded copy schedules. The first all-family attempt exposed
+  an important non-dense distinction: scales `warpx4` loader coordinates are
+  descriptor-space coordinates, not plain logical source-tile coordinates, so
+  non-dense families need a descriptor-space source proof rather than a tensor
+  bounds check.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current dense source-footprint bounds checkpoint, 2026-04-15 23:57 UTC:
+  dense copy plan realization now validates that every descriptor-loaded
+  scheduled source footprint stays within the rank-2 shared-memory source
+  shape. This is deliberately limited to dense copy families for now. A first
+  attempt to apply it to all families correctly rejected the `warpx4` scales
+  positive as `[row 0, 32) x [col 16, 32)` outside `[64, 16]`, which exposed
+  that non-dense/multicast `instruction.source` coordinates are descriptor
+  loader coordinates rather than plain logical shared-tile coordinates. The
+  future non-dense proof must reason in descriptor space instead of using
+  simple source tensor bounds. Validation passed: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, `git diff --check`, and 13 targeted rows
+  covering single/two-CTA `4x256b` refresh, ordinary `4x256b` clean-negative,
+  two-CTA `warpx2::01_23`, scales `warpx4`, scales shared-subslice and
+  descriptor-view clean negatives, and legacy packed subword diagnostics.
+
 - Current `4x256b` effective-footprint checkpoint, 2026-04-15 23:51 UTC:
   refresh copy no longer bypasses the generic destination-overlap proof.
   `getTMemCopyEffectiveInstructionColumns(...)` records that the

@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:57 UTC: dense copy schedules now get a source-footprint bounds
+  proof after instruction scheduling. The check rejects descriptor-loaded dense
+  schedules that would read outside the rank-2 shared source tile, while
+  direct-seed and non-dense/multicast families are left to a future
+  descriptor-space proof because their recorded loader coordinates are not
+  always plain logical shared-tile coordinates. This distinction was exposed by
+  a `warpx4` scales positive: its second loader coordinate is descriptor-space,
+  not an out-of-bounds logical source column. Validation: `make -j8`,
+  py-compile of `test_tmem_runtime_matrix.py`, `git diff --check`, and 13
+  targeted rows covering dense `4x256b`, two-CTA `warpx2`, scales `warpx4`,
+  scales subslice/descriptor-view negatives, and legacy packed subword
+  diagnostics.
 - 2026-04-15 23:51 UTC: `4x256b` refresh copy now reports the effective
   half-width instruction footprint used by the proven two-message refresh
   schedule. Source and destination footprints for `4x256b` messages cover the

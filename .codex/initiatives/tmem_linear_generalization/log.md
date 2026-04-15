@@ -1,3 +1,34 @@
+## 2026-04-15 23:57 UTC: dense copy source-footprint bounds proof
+
+- Added `getTMemCopySourceFootprintSupport(...)`.
+- Dense copy plans now validate scheduled descriptor-loaded source footprints
+  against the rank-2 shared-memory source shape after instruction scheduling.
+- Direct-seed descriptors are skipped because their source base is encoded in
+  the descriptor immediate rather than by a descriptor-loader row/column.
+- Non-dense and multicast families are also skipped for now. A first all-family
+  version rejected the positive scales `warpx4` row because the second
+  descriptor-loader coordinate is `[row 0, 32) x [col 16, 32)` for a `[64, 16]`
+  source tile; runtime proves this is a descriptor-space coordinate, not a
+  logical out-of-bounds source column. The next non-dense proof needs
+  descriptor-space bounds, not plain tensor bounds.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-source-bounds
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
+    (`13 passed in 9.62s`).
+
 ## 2026-04-15 23:51 UTC: 4x256b refresh effective footprints
 
 - Removed the family-level `Dense4x256b` bypass from the copy
