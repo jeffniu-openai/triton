@@ -83,9 +83,10 @@ def apply_block_schedule(
     GRID_N: gl.constexpr,
     slice_offsets: gl.tensor,
     block_schedule: gl.tensor,
+    BAND_N: gl.constexpr,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
     pid_mn = block_id % (grid_m * GRID_N)
-    schedule_pid_m, pid_n = banded_row_major(pid_mn, grid_m, GRID_N, BAND_N=20)
+    schedule_pid_m, pid_n = banded_row_major(pid_mn, grid_m, GRID_N, BAND_N=BAND_N)
 
     slice_idx, pid_m = unpack_block_schedule(gl.load(block_schedule + schedule_pid_m))
     slice_offset = gl.load(slice_offsets + slice_idx)
@@ -253,6 +254,7 @@ class PartitionArgs:
 
     SWIGLU_SUBTILE_FACTOR: gl.constexpr
     EPILOGUE_BUFFER_DEPTH: gl.constexpr
+    BAND_N: gl.constexpr
 
     @gluon.jit
     def apply_block_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
@@ -262,6 +264,7 @@ class PartitionArgs:
             GRID_N=self.GRID_N,
             slice_offsets=self.x_slice_offs,
             block_schedule=self.x_block_schedule,
+            BAND_N=self.BAND_N,
         )
 
 
@@ -673,6 +676,7 @@ def ws_matmul_kernel(
     STORE_HELPER_REGS: gl.constexpr,
     SWIGLU_SUBTILE_FACTOR: gl.constexpr,
     EPILOGUE_BUFFER_DEPTH: gl.constexpr,
+    BAND_N: gl.constexpr,
     SCALE_SIZE_OUTER: gl.constexpr,
     SCALE_SIZE_INNER: gl.constexpr,
     MXFP_BLOCK_SIZE: gl.constexpr,
@@ -792,6 +796,7 @@ def ws_matmul_kernel(
         #
         SWIGLU_SUBTILE_FACTOR=SWIGLU_SUBTILE_FACTOR,
         EPILOGUE_BUFFER_DEPTH=EPILOGUE_BUFFER_DEPTH,
+        BAND_N=BAND_N,
     )
 
     gl.warp_specialize(
@@ -887,6 +892,7 @@ class KernelConfig:
 
     SWIGLU_SUBTILE_FACTOR: int = 8
     EPILOGUE_BUFFER_DEPTH: int = 2
+    BAND_N: int = 20
 
     LOAD_ACTIVATION_REGS: int = 112
     LOAD_WEIGHT_REGS: int = 48
@@ -967,11 +973,22 @@ def _select_occ2_config(slice_size: int) -> KernelConfig:
     return p
 
 
+def _select_band_n(slice_size: int) -> int:
+    if slice_size < 32:
+        return 22
+    elif slice_size < 416:
+        return 18
+    else:
+        return 26
+
+
 def select_kernel_config(slice_size: int) -> KernelConfig:
     if slice_size <= 64:
-        return _select_occ1_config(slice_size)
+        p = _select_occ1_config(slice_size)
     else:
-        return _select_occ2_config(slice_size)
+        p = _select_occ2_config(slice_size)
+    p = replace(p, BAND_N=_select_band_n(slice_size))
+    return p
 
 
 def matmul(
@@ -1081,6 +1098,8 @@ def matmul(
         STORE_HELPER_REGS=p.STORE_HELPER_REGS,
         SWIGLU_SUBTILE_FACTOR=p.SWIGLU_SUBTILE_FACTOR,
         EPILOGUE_BUFFER_DEPTH=p.EPILOGUE_BUFFER_DEPTH,
+        BAND_N=p.BAND_N,
+        #
         SCALE_SIZE_OUTER=p.SCALE_SIZE_OUTER,
         SCALE_SIZE_INNER=p.SCALE_SIZE_INNER,
         MXFP_BLOCK_SIZE=p.MXFP_BLOCK_SIZE,
@@ -1331,6 +1350,7 @@ BENCH_TITLE = (
     "GPT-OSS-120B MoE MM1 "
     f"E={GPT_OSS_120B_CONFIG.num_experts} "
     f"EP={GPT_OSS_120B_CONFIG.experts_per_token} "
+    f"ES={GPT_OSS_120B_CONFIG.num_expert_shards} "
     f"B={GPT_OSS_120B_CONFIG.hidden_size}x{GPT_OSS_120B_CONFIG.intermediate_size}"
 )
 PEAK_TFLOPS = 5_000.0
@@ -1376,71 +1396,5 @@ def bench(c: MLPConfig = GPT_OSS_120B_CONFIG):
         print(f"{_format_perf(reference):>{perf_width}}", flush=True)
 
 
-def autotune():
-    for bs in get_batch_sizes(GPT_OSS_120B_CONFIG):
-        print(f"bs: {bs}")
-
-        for block_m in [16, 32, 64, 128]:
-            swiglu_subtile_factor = min(8, block_m // 8)
-            p = KernelConfig(BLOCK_M=block_m, SWIGLU_SUBTILE_FACTOR=swiglu_subtile_factor, BLOCK_N=128)
-
-            x_smem = p.get_x_tile_smem()
-            w_smem = p.get_w_tile_smem() + p.get_w_mx_tile_smem()
-            c_smem = p.get_c_tile_smem(reduction_n=2) * p.EPILOGUE_BUFFER_DEPTH
-
-            test_p = replace(p, X_NUM_BUFS=20, W_NUM_BUFS=20)
-
-            err = None
-            prepared = prepare_case(
-                GPT_OSS_120B_CONFIG,
-                bs,
-                device=f"cuda:{torch.cuda.current_device()}",
-                seed=0,
-                kernel_config=p,
-            )
-            precision_config = make_precision_config(prepared)
-            out = make_output_buffer(prepared)
-            try:
-                matmul(prepared.x, prepared.w, prepared.bias, prepared.ragged_metadata, prepared.gather_indx, precision_config, out, prepared.fused_activation, test_p)
-            except triton.runtime.errors.OutOfResources as e:
-                err = e
-            assert err is not None
-            assert err.name == "shared memory"
-            actual_smem = err.required
-            estimate_smem = 20 * x_smem + 20 * w_smem + c_smem
-            assert estimate_smem < actual_smem
-            overhead_smem = actual_smem - estimate_smem
-            smem = err.limit-1024 - overhead_smem
-
-
-            bufs = []
-            for w_num_bufs in range(3, 10):
-                ws = w_num_bufs * w_smem
-                used = smem - c_smem - ws
-                x_num_bufs = used // x_smem
-                if x_num_bufs < 3:
-                    break
-                bufs.append((x_num_bufs, w_num_bufs))
-            for x_num_bufs, w_num_bufs in bufs:
-                p = replace(p, X_NUM_BUFS=x_num_bufs, W_NUM_BUFS=w_num_bufs)
-
-                def fn():
-                    matmul(prepared.x, prepared.w, prepared.bias, prepared.ragged_metadata, prepared.gather_indx, precision_config, out, prepared.fused_activation, p)
-
-                try:
-                    fn()
-                except triton.runtime.errors.OutOfResources as e:
-                    print(f"OutOfResources: {e}")
-                    continue
-
-
-                ms = do_bench_cudagraph(fn)
-                print(f"block_m: {block_m}, x_num_bufs: {x_num_bufs}, w_num_bufs: {w_num_bufs}, ms: {ms}")
-            print()
-            print()
-
-
-
 if __name__ == "__main__":
-    # autotune()
     bench()
