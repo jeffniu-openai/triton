@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:07 UTC: dense no-scales row-permuted copy diagnostics now
+  state the real atomization boundary: current dense `tcgen05.copy` atoms
+  write the full physical row footprint in basis order, so row-permuted
+  destinations need a destination-row mask, row-partitioned atom, or equivalent
+  smaller copy footprint before support can be promoted. The runtime
+  clean-negative matrix now asserts this wording. Validation: `make -j8`,
+  py-compile of `test_tmem_runtime_matrix.py`, direct invalid verifier RUN,
+  row/column permutation clean-negative pytest sweep (`15` rows), and
+  `git diff --check`.
 - 2026-04-15 22:02 UTC: copy instruction-column projection diagnostics now
   report when an offending sub-instruction source-column bit is actually
   selecting a descriptor-row stride. This preserves the current clean-negative

@@ -8180,8 +8180,10 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
         TMemCopySupportFailureLayer::InstructionSchedule,
         "direct tcgen05.copy requires TMEM row bases to stay in "
         "ascending physical row order until the planner can derive an "
-        "explicit source-row projection schedule for row-permuted "
-        "destinations.");
+        "explicit source-row projection schedule with a destination-row mask, "
+        "row-partitioned atom, or equivalent smaller copy footprint for "
+        "row-permuted destinations. Current dense copy atoms write the full "
+        "physical row footprint in basis order.");
   }
 
   SmallVector<int32_t> rowRepetitionBasisValues;
@@ -8203,7 +8205,9 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
         "direct tcgen05.copy requires TMEM row-repetition bases stored "
         "in the column address space to remain in ascending row order until "
         "the planner can derive an explicit source-row projection schedule "
-        "for row-permuted destinations.");
+        "with a destination-row mask, row-partitioned atom, or equivalent "
+        "smaller copy footprint for row-permuted destinations. Current dense "
+        "copy atoms write the full physical row footprint in basis order.");
   }
   return getSupportedTMemCopyResult();
 }

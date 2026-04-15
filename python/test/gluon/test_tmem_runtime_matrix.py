@@ -9094,6 +9094,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
     )
     if row_perm_kind != "identity":
         assert "source-row projection schedule" in text
+        assert "full physical row footprint" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

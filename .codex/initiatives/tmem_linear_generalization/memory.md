@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current dense row-permuted copy diagnostic checkpoint, 2026-04-15 22:07 UTC:
+  dense no-scales row-permuted copy failures now name the atomization boundary
+  explicitly: current dense `tcgen05.copy` atoms write the full physical row
+  footprint in basis order, so a correct row-permuted lowering needs a
+  destination-row mask, row-partitioned atom, or equivalent smaller copy
+  footprint. This matches the earlier bypass probes that compiled but copied
+  rows in physical basis order. The runtime matrix now asserts the new wording.
+  Validation passed: `make -j8`, py-compile of `test_tmem_runtime_matrix.py`,
+  direct invalid verifier RUN, row/column permutation clean-negative pytest
+  sweep (`15` rows), and `git diff --check`.
+
 - Current copy atomization diagnostic checkpoint, 2026-04-15 22:02 UTC:
   `getTMemCopyInstructionColumnProjectionPlan(...)` now annotates unsupported
   instruction-column projections with descriptor-row-stride information when

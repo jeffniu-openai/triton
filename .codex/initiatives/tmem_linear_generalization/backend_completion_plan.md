@@ -264,6 +264,11 @@ Progress:
   target explicit: a schedule needs to represent column-selected row deltas
   without overwriting unrelated columns, or prove that the public
   `tcgen05.copy` ISA cannot mask/partition that projection.
+- 2026-04-15 22:07 UTC: sharpened the dense row-projection diagnostic in the
+  same direction. Row-permuted dense copies are now described as needing a
+  destination-row mask, row-partitioned atom, or smaller copy footprint because
+  current dense copy atoms write the full physical row footprint in basis
+  order.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

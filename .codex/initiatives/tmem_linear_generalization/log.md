@@ -17568,3 +17568,23 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
     (`1 passed in 3.31s`);
   - `git diff --check`.
+
+## 2026-04-15 22:07 UTC: dense row-permuted copy footprint diagnostic
+
+- Refined dense no-scales row-permuted copy diagnostics to state that current
+  dense `tcgen05.copy` atoms write the full physical row footprint in basis
+  order.
+- The row/column permutation clean-negative test now asserts the new wording
+  for non-identity row permutations, preserving the result of the earlier
+  guard-lift probes that copied rows in physical basis order.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - direct invalid verifier RUN;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-rowperm-diag2
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`
+    (`15 passed in 5.60s`);
+  - `git diff --check`.
