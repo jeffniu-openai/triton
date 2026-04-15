@@ -16572,3 +16572,23 @@ Open after this slice:
     in the M64/LHS tables. The next meaningful frontiers are scaled-MMA scale
     descriptor semantics and copy row/packet scheduling, not more plain
     accumulator family floors.
+
+## 2026-04-15 17:26 UTC: scaled MMAv5 N32 root/view matrix promotion
+
+- Promoted `N=32` into supported scaled-MMAv5 root/view matrices:
+  - root accumulator format and use-acc rows;
+  - indexed accumulator view rows;
+  - accumulator subslice view rows;
+  - TMEM-LHS subslice rows;
+  - TMEM-LHS tile-permuted rows;
+  - matching mixed-fp4A clean unsupported diagnostics.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split execution of the affected scaled root/index/subslice/LHS
+    and mixed-fp4A diagnostic functions passed all `720` selected tests
+    (`180` per shard).
+- Current conclusion:
+  - scaled-MMAv5 single-tile/root/view `N=32` is valid. The remaining scaled
+    `N=32` failures are not generic N32 layout failures; they are specifically
+    repeated/tile-permuted sub-64-column scale-B fragment/addressing gaps.

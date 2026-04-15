@@ -4222,26 +4222,26 @@ CP_SCALES_WARPX4_FORMAT_PAIRS = [
 SCALED_MMA_ROOT_FORMAT_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for (a_format, b_format), n, k, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (32, 64, 128, 256), (128, 256), ("legacy", "linear")
     )
 ]
 
 SCALED_MMA_ROOT_USE_ACC_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for (a_format, b_format), n, k, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (32, 64, 128, 256), (128, 256), ("legacy", "linear")
     )
 ]
 
 SCALED_MMA_INDEXED_ACC_FORMAT_CASES = [
     (a_format, b_format, n, k, parent_layout_kind)
     for (a_format, b_format), n, k, parent_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (64, 128, 256), (128, 256), ("legacy", "linear")
+        CP_SCALES_WARPX4_FORMAT_PAIRS, (32, 64, 128, 256), (128, 256), ("legacy", "linear")
     )
     # The indexed accumulator parent keeps the whole [2, M, N] physical image live;
     # scaled-MMA scale descriptors consume additional TMEM, so linear N=128+ and
     # legacy N=256 exceed the 512-column hardware resource limit before execution.
-    if n == 64 or (parent_layout_kind == "legacy" and n == 128)
+    if n in (32, 64) or (parent_layout_kind == "legacy" and n == 128)
 ] + [
     (a_format, b_format, n, k, "linear_unit_parent")
     for (a_format, b_format), n, k in product(CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256))
@@ -4265,35 +4265,35 @@ SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
 SCALED_MMA_LHS_SUBSLICE_NK_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
-    for n, k in product((64, 128, 256), (128, 256))
+    for n, k in product((32, 64, 128, 256), (128, 256))
 ]
 
 SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = [
     (a_format, b_format, n, k, acc_layout_kind)
     for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
-    for n in (64, 128, 256)
+    for n in (32, 64, 128, 256)
     for k in (128, 256)
 ]
 
 SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES = [
-    (n, acc_layout_kind) for n, acc_layout_kind in product((64, 128, 256), ("legacy", "linear"))
+    (n, acc_layout_kind) for n, acc_layout_kind in product((32, 64, 128, 256), ("legacy", "linear"))
 ]
 
 SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES = [
     (n, k, acc_layout_kind)
-    for n, k, acc_layout_kind in product((64, 128, 256), (128, 256), ("legacy", "linear"))
+    for n, k, acc_layout_kind in product((32, 64, 128, 256), (128, 256), ("legacy", "linear"))
 ]
 
 SCALED_MMA_ACC_SUBSLICE_N_CASES = [
     (n, slice_start, k)
-    for n, k in product((64, 128), (128, 256))
+    for n, k in product((32, 64, 128), (128, 256))
     for slice_start in (0, n)
 ]
 
 SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES = [
     (a_format, b_format, n, slice_start, k)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
-    for n, k in product((64, 128), (128, 256))
+    for n, k in product((32, 64, 128), (128, 256))
     for slice_start in (0, n)
 ]
 

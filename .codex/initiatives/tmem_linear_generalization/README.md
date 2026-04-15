@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 17:26 UTC: scaled MMAv5 `N=32` root/view coverage is now
+  positive for the supported single-CTA families: root accumulators, indexed
+  accumulator views, accumulator subslice views, TMEM-LHS subslice views, and
+  TMEM-LHS tile-permuted rows. This distinguishes valid single-tile `N=32`
+  scaled-MMAv5 layouts from the still-real repeated/tile-permuted `N=32`
+  scale-fragment gap.
 - 2026-04-15 17:12 UTC: the remaining plain MMAv5 `N=32` coverage debt in
   M64 and TMEM-LHS matrices is now saturated for the supported families. M64
   linear accumulator roots and M64 accumulator subslice views include `N=32`;

@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Current scaled MMAv5 `N=32` root/view checkpoint, 2026-04-15 17:26 UTC:
+  scaled-MMAv5 root accumulators, indexed accumulator views, accumulator
+  subslice views, TMEM-LHS subslice views, and TMEM-LHS tile-permuted rows now
+  include `N=32` in the positive matrix where the scale schedule is a single
+  supported tile. The affected four-GPU selector passed all `720` selected
+  rows. The important boundary is now sharper: single-tile/root/view `N=32`
+  scaled MMA is valid, while repeated/tile-permuted `N=32` still remains a
+  scale-B fragment/addressing gap from the earlier guard-lift probes.
+
 - Current plain MMAv5 M64/LHS `N=32` checkpoint, 2026-04-15 17:12 UTC:
   M64 linear accumulator roots, M64 accumulator subslice views, TMEM-LHS
   tile-permuted rows, and TMEM-LHS subslice rows now include `N=32` where the

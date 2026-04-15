@@ -503,6 +503,10 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 17:26 UTC: promoted supported scaled-MMAv5 `N=32`
+  root/index/subslice/LHS matrices. This narrows the remaining scale issue:
+  single-tile/root/view `N=32` is valid, while repeated/tile-permuted `N=32`
+  remains a scale-B fragment/addressing gap.
 - 2026-04-15 17:12 UTC: saturated the remaining supported plain-MMAv5 `N=32`
   M64 and TMEM-LHS matrices. M64 linear/root and subslice rows plus LHS
   tile/subslice rows are positive at `N=32`; the M64 legacy root remains on
