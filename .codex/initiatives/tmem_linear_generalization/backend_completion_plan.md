@@ -269,6 +269,15 @@ Progress:
   destination-row mask, row-partitioned atom, or smaller copy footprint because
   current dense copy atoms write the full physical row footprint in basis
   order.
+- 2026-04-15 22:23 UTC: sharpened the two-CTA no-scales
+  `warpx2::02_13` known schedule gap. The descriptor path cannot represent the
+  exact view because logical row bit 5 is a one-dword source offset rather
+  than an affine 8-row source stride. The direct-seed `cta_group::2` path with
+  source offset `32` proves opcode emission and the low destination columns,
+  but duplicates that low source-column pair into the high destination
+  columns; subaligned destination dword deltas fault and aligned deltas read
+  zeros. Keep this as a real Phase 2 schedule gap until a `cta_group::2`
+  descriptor/address plan preserves the high source-column bit.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

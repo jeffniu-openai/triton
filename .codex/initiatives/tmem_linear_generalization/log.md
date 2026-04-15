@@ -17617,3 +17617,33 @@ Open after this slice:
     mma_rowcol_permuted_layout_reports_clean_unsupported'`
     (`17 passed, 10971 deselected in 5.67s`);
   - `git diff --check`.
+
+## 2026-04-15 22:23 UTC: two-CTA warpx2::02_13 copy schedule diagnostic
+
+- Re-probed the no-scales two-CTA `tcgen05.copy.warpx2::02_13.64x128b`
+  boundary and replaced the older coarse diagnostic with the exact descriptor
+  and direct-seed evidence.
+- Findings:
+  - the descriptor path fails because logical row bit 5 maps to a one-dword
+    source offset rather than an affine 8-row source stride;
+  - direct-seed `cta_group::2` with source offset `32` and destination dword
+    delta `0` emits the opcode and writes the correct low destination columns,
+    but duplicates that low source-column pair into the high destination
+    columns;
+  - non-zero subaligned destination dword deltas fault as misaligned, while
+    aligned deltas that complete the single-CTA schedule read zeros under
+    `cta_group::2`.
+- Updated the known schedule-gap diagnostic and the four runtime
+  clean-negative rows that exercise slice-index, indexed, subslice, and
+  candidate views.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-0213-diag
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2_02_13_twocta'`
+    (`14 passed, 10974 deselected in 7.41s`);
+  - `git diff --check`.

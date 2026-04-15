@@ -8537,12 +8537,16 @@ getKnownTMemCopyScheduleGap(MemDescType srcTy, const LinearLayout &cvt,
       TMemCopySupportFailureLayer::InstructionSchedule,
       "The two-CTA warpx2::02_13 path remains unsupported until Triton can "
       "synthesize a cta_group::2 descriptor/address schedule that preserves "
-      "the high source-column bit; direct-seed cta_group::2 probes emit the "
-      "opcode but duplicate the low source-column pair, while the aligned "
-      "dword deltas that complete the single-CTA schedule read zeros under "
-      "cta_group::2. Decomposing this tensor-memory view into cta_group::1 "
-      "copies is not valid because two-CTA TMEM allocation uses cta_group::2 "
-      "granularity.");
+      "the high source-column bit. The descriptor path fails because logical "
+      "row bit 5 maps to a one-dword source offset rather than an affine "
+      "8-row source stride; the direct-seed cta_group::2 path with source "
+      "offset 32 emits the opcode and writes the correct low destination "
+      "columns, but duplicates that low source-column pair into the high "
+      "destination columns. Non-zero subaligned destination dword deltas fault, "
+      "and aligned deltas that complete the single-CTA schedule read zeros "
+      "under cta_group::2. Decomposing this tensor-memory view into "
+      "cta_group::1 copies is not valid because two-CTA TMEM allocation uses "
+      "cta_group::2 granularity.");
 }
 
 std::optional<TMemCopySourceRowProjection>

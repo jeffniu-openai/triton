@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:23 UTC: two-CTA no-scales
+  `tcgen05.copy.warpx2::02_13.64x128b` diagnostics now record the current
+  descriptor/address schedule proof instead of the older coarse probe
+  summary. The descriptor path fails because logical row bit 5 maps to a
+  one-dword source offset rather than an affine 8-row source stride; the
+  direct-seed `cta_group::2` path with source offset 32 emits the opcode and
+  writes the correct low destination columns, but duplicates that low
+  source-column pair into the high destination columns. Non-zero subaligned
+  destination dword deltas fault, while aligned deltas that would complete the
+  single-CTA schedule read zeros. Validation: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, focused two-CTA `warpx2::02_13` pytest
+  selector (`14` rows), and `git diff --check`.
 - 2026-04-15 22:10 UTC: plain MMAv5 unsupported linear-layout diagnostics now
   state the current tile-order ISA boundary: public `tcgen05.mma` atoms plan
   tensor-memory operands as physical instruction tiles whose row/column basis

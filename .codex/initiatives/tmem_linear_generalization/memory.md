@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Current two-CTA `warpx2::02_13` copy diagnostic checkpoint,
+  2026-04-15 22:23 UTC: the no-scales two-CTA `tcgen05.copy` clean negative
+  now records the sharper schedule evidence. Query debug showed the
+  descriptor path needs logical row bit 5 to contribute a one-dword source
+  offset, not an affine 8-row source stride, so the standard descriptor-row
+  projection cannot represent the exact view. Direct-seed probes with
+  `cta_group::2`, source offset `32`, and destination dword delta `0` emit the
+  opcode and write the correct low destination columns, but duplicate that low
+  source-column pair into the high destination columns. Destination deltas
+  `1..7` fault as misaligned, while aligned deltas `8` and `12` read zeros.
+  The diagnostic and four runtime clean-negative rows now assert those facts.
+  This remains a support-bearing Phase 2 frontier: do not promote this family
+  until a real `cta_group::2` descriptor/address schedule preserves the high
+  source-column bit, and do not decompose the view into `cta_group::1` copies
+  because two-CTA TMEM allocation uses `cta_group::2` granularity. Validation
+  passed: `make -j8`, py-compile of `test_tmem_runtime_matrix.py`, focused
+  `cp_no_scales_warpx2_02_13_twocta` pytest selector (`14` rows), and
+  `git diff --check`.
+
 - Current plain-MMAv5 tile-order diagnostic checkpoint, 2026-04-15 22:10 UTC:
   unsupported accumulator linear layouts now include a note explaining that
   current public `tcgen05.mma` atoms operate on physical instruction tiles and

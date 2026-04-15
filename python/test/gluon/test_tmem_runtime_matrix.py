@@ -8693,9 +8693,11 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_slice_index_view_r
     assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
     assert "could not synthesize a compatible shared-memory descriptor plan" in text
     assert "preserves the high source-column bit" in text
-    assert "direct-seed cta_group::2 probes emit the opcode" in text
-    assert "duplicate the low source-column pair" in text
-    assert "single-CTA schedule read zeros under cta_group::2" in text
+    assert "logical row bit 5 maps to a one-dword source offset" in text
+    assert "source offset 32 emits the opcode and writes the correct low destination columns" in text
+    assert "duplicates that low source-column pair into the high destination columns" in text
+    assert "Non-zero subaligned destination dword deltas fault" in text
+    assert "aligned deltas that complete the single-CTA schedule read zeros under cta_group::2" in text
     assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
@@ -8725,9 +8727,11 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_indexed_view_repor
     assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
     assert "could not synthesize a compatible shared-memory descriptor plan" in text
     assert "preserves the high source-column bit" in text
-    assert "direct-seed cta_group::2 probes emit the opcode" in text
-    assert "duplicate the low source-column pair" in text
-    assert "single-CTA schedule read zeros under cta_group::2" in text
+    assert "logical row bit 5 maps to a one-dword source offset" in text
+    assert "source offset 32 emits the opcode and writes the correct low destination columns" in text
+    assert "duplicates that low source-column pair into the high destination columns" in text
+    assert "Non-zero subaligned destination dword deltas fault" in text
+    assert "aligned deltas that complete the single-CTA schedule read zeros under cta_group::2" in text
     assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
@@ -8757,9 +8761,11 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_subslice_view_repo
     assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
     assert "could not synthesize a compatible shared-memory descriptor plan" in text
     assert "preserves the high source-column bit" in text
-    assert "direct-seed cta_group::2 probes emit the opcode" in text
-    assert "duplicate the low source-column pair" in text
-    assert "single-CTA schedule read zeros under cta_group::2" in text
+    assert "logical row bit 5 maps to a one-dword source offset" in text
+    assert "source offset 32 emits the opcode and writes the correct low destination columns" in text
+    assert "duplicates that low source-column pair into the high destination columns" in text
+    assert "Non-zero subaligned destination dword deltas fault" in text
+    assert "aligned deltas that complete the single-CTA schedule read zeros under cta_group::2" in text
     assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
@@ -8788,9 +8794,11 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_
     assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
     assert "could not synthesize a compatible shared-memory descriptor plan" in text
     assert "preserves the high source-column bit" in text
-    assert "direct-seed cta_group::2 probes emit the opcode" in text
-    assert "duplicate the low source-column pair" in text
-    assert "single-CTA schedule read zeros under cta_group::2" in text
+    assert "logical row bit 5 maps to a one-dword source offset" in text
+    assert "source offset 32 emits the opcode and writes the correct low destination columns" in text
+    assert "duplicates that low source-column pair into the high destination columns" in text
+    assert "Non-zero subaligned destination dword deltas fault" in text
+    assert "aligned deltas that complete the single-CTA schedule read zeros under cta_group::2" in text
     assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
