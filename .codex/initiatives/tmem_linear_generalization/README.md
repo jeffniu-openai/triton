@@ -95,6 +95,14 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current guarded exact-query copy checkpoint, 2026-04-15 06:57 UTC:
+  copy verification and no-scales lowering now compute the exact destination
+  physical query and use it only when it is equal to the standalone projection.
+  Divergent or failed exact queries keep the current standalone behavior, and
+  the existing `TRITON_DEBUG_TMEM_QUERY` divergence reporting remains available.
+  Validation passed: `make -j8`, direct invalid/conversion lit RUN lines via
+  local `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current copy lowering alignment checkpoint, 2026-04-15 06:55 UTC:
   `TensorMemoryToLLVM.cpp` now uses `inferStandaloneTMemPhysicalQuery(...)` and
   `getTMemCopyPlanSupport(...)` for no-scales `tcgen05.copy` lowering, matching

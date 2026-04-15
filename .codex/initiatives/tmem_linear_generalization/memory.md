@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 slice, 2026-04-15 06:57 UTC: added the first guarded
+  exact-query migration for copy. `ttng.tmem_copy` verification and no-scales
+  lowering now compute `inferExactTMemPhysicalQuery(...)` and prefer the exact
+  query only when `haveSameTMemPhysicalQueryProjection(...)` proves it is
+  equal to the standalone projection. Divergent or failed exact queries keep
+  the existing standalone behavior, with `TRITON_DEBUG_TMEM_QUERY` still
+  available to inspect divergence. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`. Next concrete step: investigate exact-vs-standalone
+  divergence on the copy descriptor-view rows and decide which divergence
+  classes should become real exact-query positives versus clean negatives.
+
 - Current Phase 2 slice, 2026-04-15 06:55 UTC: aligned no-scales
   `tcgen05.copy` lowering with verification. `TensorMemoryToLLVM.cpp` now
   derives the destination facts with `inferStandaloneTMemPhysicalQuery(...)`

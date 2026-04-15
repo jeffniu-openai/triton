@@ -112,6 +112,10 @@ Progress:
   in `TensorMemoryToLLVM.cpp`. The lowering path now consumes the same
   physical-query carrier and per-plan support helper as verification for
   no-scales copy plans.
+- 2026-04-15 06:57 UTC: added the first guarded exact-query migration for copy.
+  Verification and lowering now compute the exact destination query and prefer
+  it only when it compares equal to the standalone projection; divergent or
+  failed exact queries preserve the current standalone behavior.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

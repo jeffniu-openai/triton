@@ -1483,7 +1483,13 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
                                  "for tcgen05.copy lowering"
                                : tmemError);
   }
-  auto tmemLl = maybeDstQuery->layout;
+  auto maybeExactDstQuery = inferExactTMemPhysicalQuery(op.getDst());
+  const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
+  if (succeeded(maybeExactDstQuery) &&
+      haveSameTMemPhysicalQueryProjection(*maybeDstQuery, *maybeExactDstQuery)) {
+    supportDstQuery = &*maybeExactDstQuery;
+  }
+  auto tmemLl = supportDstQuery->layout;
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(dstTy.getEncoding());
 
   // This subtlely handles subviews
@@ -1511,7 +1517,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   std::optional<TMemCopyPlan> selectedPlan;
   for (const auto &plan : copyPlans) {
     if (!isScales &&
-        !getTMemCopyPlanSupport(srcTy, *maybeDstQuery, shmemLl, cvt, plan,
+        !getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt, plan,
                                 bitwidth))
       continue;
     SmallVector<PlannedCopyMessage, 2> candidateMessages;
@@ -1573,7 +1579,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       return failure();
     }
     auto planSupport =
-        getTMemCopyPlanSupport(srcTy, *maybeDstQuery, shmemLl, cvt,
+        getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt,
                                copyPlans.front(), bitwidth);
     auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
                                 "from shared memory descriptor ")

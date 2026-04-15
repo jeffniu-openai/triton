@@ -1560,11 +1560,16 @@ LogicalResult TMEMCopyOp::verify() {
                              "tcgen05.copy"
                            : tmemError);
   }
-  auto tmemLl = maybeDstQuery->layout;
+  std::string exactTmemError;
+  auto maybeExactDstQuery =
+      inferExactTMemPhysicalQuery(getDst(), &exactTmemError);
+  const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
+  if (succeeded(maybeExactDstQuery) &&
+      haveSameTMemPhysicalQueryProjection(*maybeDstQuery, *maybeExactDstQuery)) {
+    supportDstQuery = &*maybeExactDstQuery;
+  }
+  auto tmemLl = supportDstQuery->layout;
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
-    std::string exactTmemError;
-    auto maybeExactDstQuery =
-        inferExactTMemPhysicalQuery(getDst(), &exactTmemError);
     if (failed(maybeExactDstQuery)) {
       llvm::errs() << "[tmem-copy] exact destination query failed: "
                    << exactTmemError << "\n";
@@ -1664,14 +1669,14 @@ LogicalResult TMEMCopyOp::verify() {
       return failure();
     }
     auto isNoScalesPlanSupported = [&](const TMemCopyPlan &plan) {
-      return getTMemCopyPlanSupport(srcTy, *maybeDstQuery, shmemLl, cvt, plan,
+      return getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt, plan,
                                     bitwidth)
           .supported;
     };
     if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
       auto planSupport =
-          getTMemCopyPlanSupport(srcTy, *maybeDstQuery, shmemLl, cvt,
+          getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt,
                                  copyPlans.front(), bitwidth);
       auto diag =
           emitOpError("The source shared layout maps to tcgen05.copy.")

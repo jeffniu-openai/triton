@@ -14804,3 +14804,24 @@ Open after this slice:
 - Next: add copy support context for CTA ownership and exact-query divergence,
   then migrate the first behavior-equivalent support decision from standalone
   query to exact query.
+
+## 2026-04-15 06:57 UTC: guarded exact-query copy migration
+
+- `TTNG::TMemCopyOp::verify` now computes both standalone and exact destination
+  physical queries.
+- No-scales `tcgen05.copy` lowering now also computes both queries.
+- Both paths prefer the exact query only when
+  `haveSameTMemPhysicalQueryProjection(...)` proves the exact and standalone
+  projections are equal. Failed or divergent exact queries keep the existing
+  standalone behavior.
+- The existing `TRITON_DEBUG_TMEM_QUERY` copy divergence reporting remains in
+  place and now observes the same exact query used for guarded selection.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: run targeted exact-vs-standalone divergence probes on the copy
+  descriptor-view rows, especially no-scales two-CTA `warpx2::02_13` and
+  scales layout probes, then promote only proven behavior-equivalent or
+  ISA-realizable divergence classes into exact-query planning.
