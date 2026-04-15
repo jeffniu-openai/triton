@@ -208,6 +208,15 @@ Tasks:
 - Remove scales-only fallbacks once the shared query model can prove the same
   facts.
 
+Progress:
+- 2026-04-15 08:35 UTC: added scales-root recovery through descriptor-view
+  chains and routed copy verification/lowering through
+  `TMemPhysicalQuery::isScales`. Scales descriptor-view copies now report a
+  clean tensor-memory-scales copy-family miss instead of falling into the
+  non-scales 32-bit-source diagnostic. Exact query origins are now available to
+  copy lowering through `getTMemPhysicalQueryOriginBaseOffset(...)`; the next
+  planner gap is atomizing the exact permuted scales descriptor-view projection.
+
 Exit criteria:
 - Scales descriptor-view decisions no longer depend on type-only
   canonicalization.

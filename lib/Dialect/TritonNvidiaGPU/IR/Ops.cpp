@@ -1610,7 +1610,7 @@ LogicalResult TMEMCopyOp::verify() {
   if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
     return emitOpError("The source should not be transposed or padded");
   }
-  if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
+  if (supportDstQuery->isScales) {
     if (copyPlans.empty()) {
       auto diag = emitOpError(
           "The source shared layout does not match any supported "

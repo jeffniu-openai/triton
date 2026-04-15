@@ -157,6 +157,9 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy)
 
 Value getTMemForwardingSource(Value memDesc);
 
+std::optional<TensorMemoryScalesEncodingAttr>
+getTMemScalesRootEncoding(Value memDesc);
+
 std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc);
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
@@ -220,6 +223,8 @@ bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
 
 StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference);
+
+uint32_t getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query);
 
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,

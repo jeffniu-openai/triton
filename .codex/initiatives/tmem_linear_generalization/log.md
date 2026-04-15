@@ -15079,3 +15079,46 @@ Open after this slice:
   - `git diff --check`.
 - Next: commit and push this cleanup checkpoint, then continue with scales
   physical-query modelling.
+
+## 2026-04-15 08:35 UTC: scales descriptor-view root semantics for copy
+
+- Added `getTMemScalesRootEncoding(...)` as the shared way to recover a
+  tensor-memory-scales root through descriptor-view chains, forwarding block
+  arguments, reshape, trans, reinterpret, index, and subslice producers.
+- `inferStandaloneTMemLdStQueryLayoutImpl(...)` now keeps the direct scales
+  root fast path only for non-view values. Scales descriptor views flow through
+  the same exact query algebra as linear TMEM views.
+- `inferStandaloneTMemPhysicalQuery(...)` and
+  `inferExactTMemPhysicalQuery(...)` now preserve `isScales` from the root
+  descriptor, even when the surface view type has a linear encoding.
+- `ttng.tmem_copy` verification and LLVM lowering now choose the scales copy
+  contract from `TMemPhysicalQuery::isScales`, so scale-backed descriptor views
+  no longer fall into the non-scales "source element type should be 32-bit"
+  branch.
+- Added `getTMemPhysicalQueryOriginBaseOffset(...)` and applied destination
+  query origins in copy lowering, subtracting offsets already materialized by
+  lowerings that advance the TMEM pointer. The index accounting now checks for
+  a scales root rather than only an immediate scales encoding.
+- Added
+  `test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`.
+  The row uses a scale-backed reshape/transpose/reshape destination view and
+  now reports a clean tensor-memory-scales copy-family miss. This intentionally
+  preserves the real remaining planner gap: the exact permuted scales view is
+  not yet atomized by `getTMemCopyPlans(...)`.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_tmem_descriptor_view'`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_tmem_descriptor_view or ldst_scales_descriptor_view'`
+    (`7 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`9 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_warpx4 and direct_copy or cp_scales_warpx4 and not via'`
+    (`2 passed`).
+- Next: teach the atomized copy planner to classify the exact permuted scales
+  descriptor-view projection, then re-evaluate whether it should become
+  positive or receive a more precise atom-legality diagnostic.

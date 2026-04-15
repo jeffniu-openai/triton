@@ -74,6 +74,51 @@ Value getTMemForwardingSource(Value memDesc) {
   return getUniqueFunctionArgForwardingSource(blockArg);
 }
 
+std::optional<TensorMemoryScalesEncodingAttr>
+getTMemScalesRootEncoding(Value memDesc) {
+  Value cur = memDesc;
+  while (cur) {
+    if (auto curTy = dyn_cast<MemDescType>(cur.getType())) {
+      if (auto scales =
+              dyn_cast<TensorMemoryScalesEncodingAttr>(curTy.getEncoding()))
+        return scales;
+    }
+    if (auto forwarded = getTMemForwardingSource(cur)) {
+      cur = forwarded;
+      continue;
+    }
+    Operation *def = cur.getDefiningOp();
+    if (!def)
+      break;
+    if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
+      cur = op.getSrc();
+      continue;
+    }
+    break;
+  }
+  return std::nullopt;
+}
+
 namespace {
 
 static int getMatrixRankForLayout(std::unique_ptr<uint64_t[]> matrix, int numRows,
@@ -1830,7 +1875,12 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
       *error = "expected a tensor memory descriptor";
     return failure();
   }
-  if (isa<TensorMemoryScalesEncodingAttr>(encoding)) {
+  Operation *defOp = memDesc.getDefiningOp();
+  bool hasViewLikeProducer =
+      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
+                      gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
+                      gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(defOp);
+  if (isa<TensorMemoryScalesEncodingAttr>(encoding) && !hasViewLikeProducer) {
     auto ll = toLinearLayout(memDescTy);
     auto scales = cast<TensorMemoryScalesEncodingAttr>(encoding);
     bool twoCTAs = product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
@@ -1839,7 +1889,6 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
         SmallVector<int32_t>(ll.getNumInDims(), 0)};
   }
 
-  Operation *defOp = memDesc.getDefiningOp();
   bool hasDescriptorViewProducer =
       isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
                       gpu::MemDescReshapeOp>(defOp);
@@ -3641,47 +3690,8 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
     return false;
   };
   auto hasTwoCTATensorMemoryScalesRoot = [&]() {
-    Value cur = memDesc;
-    while (cur) {
-      if (auto curTy = dyn_cast<MemDescType>(cur.getType())) {
-        if (auto scales =
-                dyn_cast<TensorMemoryScalesEncodingAttr>(curTy.getEncoding())) {
-          return product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
-        }
-      }
-      if (auto forwarded = getTMemForwardingSource(cur)) {
-        cur = forwarded;
-        continue;
-      }
-      Operation *def = cur.getDefiningOp();
-      if (!def)
-        break;
-      if (auto op = dyn_cast<gpu::MemDescIndexOp>(def)) {
-        cur = op.getSrc();
-        continue;
-      }
-      if (auto op = dyn_cast<gpu::MemDescSubsliceOp>(def)) {
-        cur = op.getSrc();
-        continue;
-      }
-      if (auto op = dyn_cast<TMEMSubSliceOp>(def)) {
-        cur = op.getSrc();
-        continue;
-      }
-      if (auto op = dyn_cast<gpu::MemDescReshapeOp>(def)) {
-        cur = op.getSrc();
-        continue;
-      }
-      if (auto op = dyn_cast<gpu::MemDescTransOp>(def)) {
-        cur = op.getSrc();
-        continue;
-      }
-      if (auto op = dyn_cast<gpu::MemDescReinterpretOp>(def)) {
-        cur = op.getSrc();
-        continue;
-      }
-      break;
-    }
+    if (auto scales = getTMemScalesRootEncoding(memDesc))
+      return product<unsigned>(scales->getCGALayout().getCTAsPerCGA()) > 1;
     return false;
   };
   auto linearQuery =
@@ -4350,7 +4360,7 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
     return failure();
   }
 
-  bool isScales = isa<TensorMemoryScalesEncodingAttr>(encoding);
+  bool isScales = getTMemScalesRootEncoding(memDesc).has_value();
   bool twoCTAs = false;
   if (auto scales = dyn_cast<TensorMemoryScalesEncodingAttr>(encoding)) {
     twoCTAs = product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
@@ -4410,7 +4420,7 @@ inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
       maybeQuery->layout,
       maybeQuery->twoCTAs,
       maybeQuery->origin,
-      isa<TensorMemoryScalesEncodingAttr>(encoding)};
+      getTMemScalesRootEncoding(memDesc).has_value()};
 }
 
 FailureOr<TMemPhysicalQuery>
@@ -4470,6 +4480,31 @@ StringRef stringifyTMemPhysicalQueryDifference(
     return "scales classification";
   }
   llvm_unreachable("unknown TMEM physical query difference");
+}
+
+uint32_t
+getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query) {
+  auto *ctx = query.layout.getInDimNames().begin()->getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  uint32_t offset = 0;
+  auto inDims = llvm::to_vector(query.layout.getInDimNames());
+  auto accumulate = [&](StringAttr dim, unsigned shift) {
+    auto it = llvm::find(inDims, dim);
+    if (it == inDims.end())
+      return;
+    int32_t value = query.origin[std::distance(inDims.begin(), it)];
+    if (value <= 0)
+      return;
+    if (shift == 16) {
+      offset += static_cast<uint32_t>(value) << shift;
+    } else {
+      offset += static_cast<uint32_t>(value) * query.elementBitWidth / 32;
+    }
+  };
+  accumulate(kRow, 16);
+  accumulate(kCol, 0);
+  return offset;
 }
 
 FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,

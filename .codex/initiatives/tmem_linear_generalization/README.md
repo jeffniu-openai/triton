@@ -42,6 +42,18 @@ When resuming the initiative:
   scales unification, load/store/reduction cleanup, MMA/scaled-MMA unification,
   broad fuzzing, and compatibility deletion.
 
+## Current Backend Checkpoint
+
+- 2026-04-15 08:35 UTC: scales-root semantics now survive descriptor-view
+  chains in the shared physical-query model. Copy verification/lowering uses
+  `TMemPhysicalQuery::isScales`, not just the surface destination encoding, so
+  scale-backed linear descriptor views no longer fall into non-scales copy
+  diagnostics.
+- Copy lowering now has an origin-base-offset hook for exact physical queries.
+  The immediate remaining scales-copy gap is atomizing the exact permuted
+  descriptor-view projection; the current row is pinned as a clean
+  tensor-memory-scales copy-family miss.
+
 ## Current Project Invariant
 
 - `_reinterpret` is not an escape hatch for relying on whichever physical TMEM

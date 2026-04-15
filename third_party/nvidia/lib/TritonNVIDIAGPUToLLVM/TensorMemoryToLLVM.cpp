@@ -96,6 +96,8 @@ static uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
     auto srcTy = dyn_cast<MemDescType>(index.getSrc().getType());
     if (!srcTy)
       return 0;
+    if (getTMemScalesRootEncoding(index.getSrc()))
+      return recurse(index.getSrc());
     APInt indexValue;
     if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)))
       return 0;
@@ -1491,7 +1493,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     supportDstQuery = &*maybeExactDstQuery;
   }
   auto tmemLl = supportDstQuery->layout;
-  bool isScales = isa<TensorMemoryScalesEncodingAttr>(dstTy.getEncoding());
+  bool isScales = supportDstQuery->isScales;
 
   // This subtlely handles subviews
   auto cvt = tmemLl.invertAndCompose(shmemLl);
@@ -1588,6 +1590,15 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   }
 
   bool twoCTAs = getModuleTwoCTAs(op);
+  uint32_t destinationBaseOffset =
+      getTMemPhysicalQueryOriginBaseOffset(*supportDstQuery);
+  uint32_t alreadyAdjustedBase =
+      getAlreadyAdjustedTMemSubviewBaseOffset(op.getDst());
+  if (alreadyAdjustedBase != 0)
+    destinationBaseOffset =
+        destinationBaseOffset > alreadyAdjustedBase
+            ? destinationBaseOffset - alreadyAdjustedBase
+            : 0;
   // Check correct lbo/sbo along the multicast
   bool usesDirectSeedDescriptor =
       llvm::any_of(plannedMessages, [](const PlannedCopyMessage &message) {
@@ -1630,7 +1641,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       }
       auto tmemAddr = b.add(
           b.ptrtoint(i32_ty, baseDst),
-          b.i32_val(message.plan.tmemDwordDelta + col * bitwidth / 32));
+          b.i32_val(destinationBaseOffset + message.plan.tmemDwordDelta +
+                    col * bitwidth / 32));
       createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, message.plan.atom,
                       twoCTAs);
     }

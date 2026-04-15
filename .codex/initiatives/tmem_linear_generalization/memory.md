@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Current Phase 3 slice, 2026-04-15 08:35 UTC: scales descriptor-view copy now
+  preserves scales-root semantics through the shared physical-query model.
+  Added `getTMemScalesRootEncoding(...)`, allowed scales descriptor-view
+  producers to flow through exact `TMemLdStQueryLayout` algebra instead of the
+  root scales early return, and made `ttng.tmem_copy` verification/lowering
+  choose the scales support contract from `TMemPhysicalQuery::isScales` rather
+  than the surface destination type encoding. Copy lowering now also has a
+  shared `getTMemPhysicalQueryOriginBaseOffset(...)` hook and applies exact
+  query origins after subtracting view offsets already materialized by lowering.
+  New runtime coverage pins a scale-backed linear descriptor view as a clean
+  tensor-memory-scales copy-family miss, not the old incorrect "source element
+  type should be 32-bit" non-scales diagnostic. Validation passed: `make -j8`,
+  invalid verifier, Blackwell conversion FileCheck, py-compile,
+  `git diff --check`, `ldst_scales_descriptor_view` (`6 passed`),
+  `cp_scales and clean` (`9 passed`), the combined descriptor-view selector
+  (`7 passed`), and direct scales warpx4 smoke (`2 passed`). Next concrete
+  step: teach the copy atom planner to classify/atomize the exact permuted
+  scales descriptor-view projection instead of stopping at the clean scales
+  family miss.
+
 - Current copy divergence probe, 2026-04-15 06:59 UTC: targeted
   `TRITON_DEBUG_TMEM_QUERY=1` probes on the no-scales two-CTA
   `warpx2::02_13` clean-negative rows showed that root and indexed views do

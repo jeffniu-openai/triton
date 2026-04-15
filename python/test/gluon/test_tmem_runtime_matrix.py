@@ -2320,6 +2320,41 @@ def tmem_copy_scales_shared_subslice_layout_probe_kernel(
 
 
 @gluon.jit
+def tmem_copy_scales_tmem_descriptor_view_kernel(in_ptr, out_ptr):
+    SMEM_H: ttgl.constexpr = 128
+    SMEM_W: ttgl.constexpr = 32
+
+    in_ptrs = in_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
+    out_ptrs = out_ptr + ttgl.arange(0, SMEM_H)[:, None] * SMEM_W + ttgl.arange(0, SMEM_W)[None, :]
+
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
+    value = ttgl.load(ttgl.set_auto_layout(in_ptrs, blocked))
+
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[
+            [0, 1], [0, 2], [32, 0], [64, 0], [1, 0], [2, 0],
+            [4, 0], [8, 0], [16, 0], [0, 4], [0, 8], [0, 16]
+        ]
+    )
+    smem = ttgl.allocate_shared_memory(ttgl.int8, (SMEM_H, SMEM_W), layout=smem_layout)
+    tmem_parent = allocate_tensor_memory(ttgl.int8, (SMEM_H, SMEM_W), layout=TensorMemoryScalesLayout())
+    tmem = tmem_parent.reshape((SMEM_H // 2, 2, SMEM_W)).permute([1, 0, 2]).reshape((SMEM_H, SMEM_W))
+
+    barrier = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(barrier, count=1)
+    smem.store(value)
+    fence_async_shared()
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant="32x32b")
+    output = tmem.load(reg_layout)
+    ttgl.store(ttgl.set_auto_layout(out_ptrs, blocked),
+               ttgl.convert_layout(output, blocked))
+
+
+@gluon.jit
 def tmem_mma_twocta_kernel(a_desc, b_desc, out_ptrs, BLOCK_M: ttgl.constexpr, BLOCK_N: ttgl.constexpr,
                            acc_tmem_layout: ttgl.constexpr, blocked_c: ttgl.constexpr):
     smem_a = ttgl.allocate_shared_memory(a_desc.dtype, a_desc.block_shape, a_desc.layout)
@@ -7492,6 +7527,24 @@ def test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsu
     assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
     assert "Use a shared layout that lowers to tcgen05.copy.warpx4.32x128b" in text
     assert "This is reported as cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported(capfd):
+    smem_h, smem_w = 128, 32
+    inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_scales_tmem_descriptor_view_kernel[(1, )](inp, out, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "does not match any supported tcgen05.copy family for tensor memory scales" in text
+    assert "Recognized scales copy families" in text
+    assert "Source element type should be 32-bit" not in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
