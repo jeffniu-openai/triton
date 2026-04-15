@@ -8072,6 +8072,28 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
   return tiles;
 }
 
+std::optional<llvm::SmallVector<TMemCopyScheduledInstruction>>
+getTMemCopyInstructionSchedule(ArrayRef<TMemCopyScheduledMessage> messages,
+                               ArrayRef<TMemCopyScheduledTile> tiles,
+                               std::string *error) {
+  if (messages.empty()) {
+    if (error)
+      *error = "tcgen05.copy instruction scheduling requires at least one "
+               "selected message.";
+    return std::nullopt;
+  }
+
+  llvm::SmallVector<TMemCopyScheduledInstruction> instructions;
+  for (const TMemCopyScheduledTile &tile : tiles) {
+    for (unsigned messageIdx = 0, e = messages.size(); messageIdx < e;
+         ++messageIdx) {
+      instructions.push_back(TMemCopyScheduledInstruction{
+          /*messageIndex=*/messageIdx, tile});
+    }
+  }
+  return instructions;
+}
+
 static TMemCopySupportResult
 getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   auto kRow = StringAttr::get(ctx, "row");
@@ -8310,12 +8332,18 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                       "tile plan from the selected tensor-memory layout"
                     : destinationTileError)};
   }
-  for (const TMemCopyScheduledTile &tile : *scheduledTiles) {
-    for (unsigned messageIdx = 0, e = executablePlan->messages.size();
-         messageIdx < e; ++messageIdx)
-      executablePlan->instructions.push_back(TMemCopyScheduledInstruction{
-          /*messageIndex=*/messageIdx, tile});
+  std::string instructionScheduleError;
+  auto instructions = getTMemCopyInstructionSchedule(
+      executablePlan->messages, *scheduledTiles, &instructionScheduleError);
+  if (!instructions) {
+    return {std::nullopt,
+            getUnsupportedTMemCopyResult(
+                TMemCopySupportFailureLayer::PhysicalQuery,
+                instructionScheduleError.empty()
+                    ? "failed to build tcgen05.copy instruction schedule"
+                    : instructionScheduleError)};
   }
+  executablePlan->instructions = std::move(*instructions);
   return {std::move(*executablePlan), descriptorSupport};
 }
 

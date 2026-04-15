@@ -9784,3 +9784,33 @@ rejection, not rescue
   - continue by factoring instruction-schedule construction into its own
     planner helper, then use that seam for the next bounded support-bearing
     copy schedule or switch to the next recorded Phase 2 frontier.
+
+## Latest: 2026-04-15 20:07 UTC copy instruction schedule helper
+
+- `getTMemCopyInstructionSchedule(...)` now owns construction of the executable
+  copy instruction stream from scheduled messages and scheduled tiles.
+- The helper currently emits the same tile-major / message-minor Cartesian
+  stream as the previous inline lowering/planner code.
+- It adds a structured diagnostic path for invalid empty message schedules and
+  keeps the planner as the owner of schedule shape.
+- Semantics: behavior-preserving. The point is to make the next
+  source-column/message split edit local to one planner helper.
+- Validation completed:
+  - `make -j8`;
+  - direct invalid verifier RUN with `triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-instruction-helper
+    PYTHONPATH=./python pytest -s --tb=short -k
+    'cp_no_scales_linear_tile_permuted or
+    cp_no_scales_4x256b_refresh_layout_codegen or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4' python/test/gluon/test_tmem_runtime_matrix.py`
+    (`360 passed, 10554 deselected in 587.82s`);
+  - `git diff --check`.
+- Next:
+  - commit and push this helper checkpoint;
+  - choose the next support-bearing frontier. Current evidence still points to
+    scales descriptor-view copy needing a real sub-instruction source split,
+    while 4x256b refresh ld/st remains a separate row-anchor/load-store
+    contract gap.

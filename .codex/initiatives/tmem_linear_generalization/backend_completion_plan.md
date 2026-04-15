@@ -286,6 +286,12 @@ Progress:
   preserved, but lowering no longer owns that product. This gives future
   source-column/message split schedules one planner-owned representation
   instead of another lowering-local nested loop.
+- 2026-04-15 20:07 UTC: factored the current Cartesian instruction-stream
+  construction into `getTMemCopyInstructionSchedule(...)`. The helper has a
+  structured failure path for invalid message schedules and is now the single
+  utility that maps scheduled messages and tiles into emitted copy
+  instructions. This is still behavior-preserving, but it narrows the next
+  support-bearing edit to planner data rather than lowering control flow.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

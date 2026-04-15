@@ -2342,6 +2342,10 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:07 UTC: instruction schedule construction is now factored
+  behind `getTMemCopyInstructionSchedule(...)`. The helper still emits the
+  current Cartesian tile/message stream, but future split schedules can now be
+  implemented in one planner utility instead of touching lowering.
 - 2026-04-15 19:55 UTC: copy executable plans now carry an explicit
   `TMemCopyScheduledInstruction { messageIndex, tile }` stream. Lowering
   consumes that selected stream instead of nesting tiles and messages itself;

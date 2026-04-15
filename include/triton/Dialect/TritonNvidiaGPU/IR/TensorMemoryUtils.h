@@ -506,6 +506,12 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
                              int32_t logicalCols,
                              std::string *error = nullptr);
 
+std::optional<llvm::SmallVector<TMemCopyScheduledInstruction>>
+getTMemCopyInstructionSchedule(
+    llvm::ArrayRef<TMemCopyScheduledMessage> messages,
+    llvm::ArrayRef<TMemCopyScheduledTile> tiles,
+    std::string *error = nullptr);
+
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,
                                      int bitwidth, unsigned MNdim,

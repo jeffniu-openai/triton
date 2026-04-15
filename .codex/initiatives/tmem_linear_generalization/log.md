@@ -17180,3 +17180,28 @@ Open after this slice:
     cp_scales_tmem_descriptor_view_reports_clean_unsupported or
     cp_scales_warpx4`: `375 passed, 10539 deselected in 594.22s`;
   - `git diff --check`.
+
+## 2026-04-15 20:07 UTC: copy instruction schedule helper
+
+- Factored instruction schedule construction into
+  `getTMemCopyInstructionSchedule(...)`.
+- Implementation:
+  - added a public planner utility that maps scheduled messages and scheduled
+    tiles to `TMemCopyScheduledInstruction` entries;
+  - preserved the current tile-major / message-minor Cartesian schedule;
+  - moved empty-message handling into a structured support failure path;
+  - `getTMemCopyPlanRealization(...)` now delegates schedule construction to
+    the helper and stores the returned instruction stream.
+- Semantics:
+  - intended behavior-preserving;
+  - future non-Cartesian source-column/message schedules can now be introduced
+    by changing the helper or its inputs instead of lowering.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused copy selector
+    `cp_no_scales_linear_tile_permuted or
+    cp_no_scales_4x256b_refresh_layout_codegen or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4`: `360 passed, 10554 deselected in 587.82s`;
+  - `git diff --check`.
