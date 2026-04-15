@@ -281,6 +281,13 @@ Progress:
   of the logical descriptor-view order. This confirms the remaining gap is a
   row-interleaving destination/source schedule layered after descriptor
   projection, not simply expanding descriptor candidates.
+- 2026-04-15 11:46 UTC: a sparse four-row view over a `128x8` parent was
+  checked as a possible `4x256b` refresh-shaped layout. The exact copy
+  conversion drops the row dimension and exposes only shared-offset column
+  bases `4` and `8`, so it does not classify as `4x256b`; the canonical
+  four-row parent slice still classifies and is blocked by the refresh
+  diagnostic. This keeps the `4x256b` task scoped to explicit refresh schedule
+  modeling, not descriptor-view reshaping.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

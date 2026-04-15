@@ -1,3 +1,30 @@
+## 2026-04-15 11:46 UTC: 4x256b view-layout non-route
+
+- Probed a sparse four-row descriptor view over a `128x8` linear parent:
+  `parent.reshape((4,32,8)).permute([1,0,2]).slice(group,1,dim=0).index(0)`.
+  The goal was to check whether `4x256b` refresh semantics correspond to a
+  normal copy into rows separated by 32.
+- Result: the exact `ttng.tmem_copy` conversion for every tested group
+  (`0,1,2,3,4,8,16,31`) lost the row dimension and exposed only column bases
+  into shared offsets `4` and `8`. The shared source layout therefore failed
+  family classification before the `4x256b` descriptor-schedule guard.
+- Control check: the existing canonical parent-slice 4x8 repro still maps to
+  `tcgen05.copy.4x256b`; its debug trace shows row bases `1,2`, column bases
+  `4,8,16`, and the expected clean unsupported refresh-primitive diagnostic.
+- Interpretation: sparse descriptor views are not a shortcut to generic
+  `4x256b` support. A future positive still needs an explicit refresh schedule
+  that models source-column selection, lane groups `{0,32,64,96}`, packed
+  destination dwords, and 128-bit-aligned dword deltas.
+- Validation/probe:
+  - direct `/tmp/probe_4x256_layout.py` run with
+    `TRITON_DEBUG_TMEM_QUERY=1` on `CUDA_VISIBLE_DEVICES=0`;
+  - direct debug invocation of
+    `tmem_copy_no_scales_4x256b_view_kernel` with
+    `TRITON_DEBUG_TMEM_QUERY=1`;
+  - exact pytest clean-negative
+    `test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported`
+    (`1 passed`).
+
 ## 2026-04-15 11:21 UTC: dense no-scales subword copy promotion
 
 - Removed the verifier-level dense no-scales copy rejection for non-32-bit

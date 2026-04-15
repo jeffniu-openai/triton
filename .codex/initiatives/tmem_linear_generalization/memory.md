@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current 4x256b view-layout probe, 2026-04-15 11:46 UTC:
+  a temporary `/tmp/probe_4x256_layout.py` kernel selected four rows from a
+  `128x8` linear parent through
+  `reshape((4,32,8)).permute([1,0,2]).slice(group,1,dim=0).index(0)`, trying
+  to expose a view whose physical rows are separated by 32. The exact copy
+  conversion for every probed group had no row dimension and only
+  `col=1 -> offset 4`, `col=2 -> offset 8`, so the shared layout did not match
+  any recognized `tcgen05.copy` family. This is not a hidden `4x256b` support
+  route. The existing canonical parent-slice repro still maps to
+  `tcgen05.copy.4x256b` with row bases `1,2` and column bases `4,8,16`, and it
+  remains clean unsupported by the refresh-primitive diagnostic. Keep looking
+  for an explicit refresh schedule; do not reinterpret sparse four-row views as
+  proof that ordinary copy semantics are reachable.
+
 - Current scales descriptor-view row-order probe, 2026-04-15 11:39 UTC:
   a temporary warpx4 descriptor-basis exchange restored contiguous low
   source-column bits and made the scales descriptor-view shared descriptor

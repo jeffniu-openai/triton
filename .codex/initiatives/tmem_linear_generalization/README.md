@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:46 UTC: a follow-up `4x256b` view-layout probe tried to make
+  the refresh pattern explicit by selecting a four-row view from a
+  `128x8` linear parent with rows grouped through a
+  reshape/permute/slice/index chain. The exact copy conversion
+  for that view loses the source row dimension and has only column bases into
+  shared offsets `4` and `8`, so it does not classify as `tcgen05.copy.4x256b`.
+  The canonical parent slice still classifies as `4x256b` and is cleanly
+  blocked by the refresh-primitive diagnostic. This rules out a simple sparse
+  descriptor-view rescue; a real promotion still needs a planner-level refresh
+  schedule that explicitly models where the four source rows land.
 - 2026-04-15 11:39 UTC: scales descriptor-view copy was probed with a
   temporary descriptor-basis exchange that makes the shared descriptor
   representable by restoring contiguous low source-column bits. Runtime then
