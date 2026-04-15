@@ -8809,3 +8809,31 @@ rejection, not rescue
   next implementation step is to derive row/message/source-format schedules
   from exact `LinearLayout` arithmetic for the remaining scales descriptor-view
   and two-CTA copy gaps.
+
+## Latest: 2026-04-15 09:46 UTC two-CTA `warpx2::02_13` schedule evidence
+
+- Re-probed the no-scales two-CTA `warpx2::02_13` clean-negative with
+  temporary direct-seed and forced-descriptor schedules. All probe code was
+  removed before this checkpoint; the source tree returned to the pushed
+  `db0012cd2` implementation state before recording these findings.
+- Baseline neighbors remain as expected:
+  - single-CTA `02_13` positive passes;
+  - two-CTA `01_23` positive passes;
+  - two-CTA `02_13` remains a clean unsupported diagnostic because no
+    compatible descriptor/message schedule has been proven.
+- Direct-seed probe: reusing the single-CTA direct seed for `cta_group::2`
+  emitted `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but runtime output
+  was zero for source offsets `0`, `16`, `32`, and `64` with the probed TMEM
+  deltas. This rules out a simple guard lift.
+- Descriptor probe: a forced canonical descriptor candidate can make lowering
+  emit the target opcode only by bypassing the current multicast-row
+  assertion. With the source row shifted to the right half (`smemRow=32`), the
+  output duplicates the low source-column pair (`[64, 192, 64, 192, ...]`)
+  rather than the expected `[64, 192, 65, 193, ...]`; nonzero tiny TMEM dword
+  deltas are wrong or misaligned. The missing bit is the high source-column
+  selector that distinguishes `02_13` from the `01_23` descriptor semantics.
+- Current conclusion: the clean negative should stay until a real
+  cta-group::2 source descriptor/address schedule is derived. The next useful
+  implementation work should prefer scales descriptor-view row/message
+  scheduling or an ISA-grounded multi-message `02_13` plan over resurrecting
+  the direct-seed or forced-canonical descriptor probes.

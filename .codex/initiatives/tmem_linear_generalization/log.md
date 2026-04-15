@@ -15308,3 +15308,30 @@ Open after this slice:
   exact layout arithmetic predicts the emitted schedule's semantics; the
   scales descriptor-view and two-CTA `warpx2::02_13` cases still need
   row/message or address-schedule work before promotion.
+
+## 2026-04-15 09:46 UTC: two-CTA `warpx2::02_13` schedule probe checkpoint
+
+- Cleaned up all temporary probe edits after rechecking the two-CTA
+  `warpx2::02_13` frontier. The working source was restored to the pushed
+  `db0012cd2` code state before this docs-only checkpoint.
+- Evidence:
+  - direct-seed cta-group::2 probe emitted
+    `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b` but read zeros for the
+    tested source offsets and TMEM deltas;
+  - forced canonical descriptor probe required bypassing the multicast-row
+    assertion, then duplicated the low source-column pair even when the source
+    row offset selected the right half;
+  - descriptor col bases that would explicitly introduce the high
+    source-column bit were not representable by the MMAv5 descriptor search,
+    and small nonzero destination dword deltas were either wrong-quadrant or
+    misaligned.
+- Interpretation: this is still a genuine source/address schedule gap. The
+  current clean unsupported result is preferable to a silent miscompile until
+  the backend has an ISA-grounded multi-message or alternate-source-descriptor
+  plan.
+- Validation/hygiene:
+  - `git diff -- lib/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.cpp third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+    was empty after cleanup.
+- Next: checkpoint these findings, then resume implementation on the remaining
+  TMEM copy planner work, with scales descriptor-view scheduling the most
+  promising next vertical slice.

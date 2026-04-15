@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 09:46 UTC: no-scales two-CTA `warpx2::02_13` was
+  re-probed with direct-seed and forced-descriptor schedules and remains a
+  real source/address-schedule gap, not a verifier over-restriction. Reusing
+  the single-CTA direct seed for `cta_group::2` emitted the opcode but read
+  zeros; forcing a canonical representable descriptor reached the opcode only
+  after bypassing the multicast-row assertion, and then duplicated the
+  low source-column pair (`[64, 192, 64, 192, ...]` at the right row offset)
+  instead of preserving the high source-column bit. Keep the current clean
+  negative until a multi-message or different source descriptor schedule is
+  derived from ISA evidence.
 - 2026-04-15 09:31 UTC: dense no-scales direct copy now admits the
   tile-permuted TMEM column layouts that the current descriptor schedule can
   prove, instead of rejecting all non-ascending column basis order. The support
