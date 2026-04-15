@@ -14719,3 +14719,24 @@ Open after this slice:
   - `git diff --check`.
 - Next: add a debug-only or deliberately tested diagnostic consumer in copy
   planning to expose exact-vs-standalone divergence.
+
+## 2026-04-15 06:48 UTC: copy verifier debug-consumes exact query comparison
+
+- Wired `TTNG::TMemCopyOp::verify` to compute
+  `inferExactTMemPhysicalQuery(getDst(), ...)` only when
+  `TRITON_DEBUG_TMEM_QUERY` is set.
+- When exact and standalone destination physical queries differ, the verifier
+  now reports the first differing `TMemPhysicalQueryDifference` field plus the
+  standalone/exact layouts and origins to stderr.
+- If the exact query fails under the debug environment, the verifier reports
+  the exact-query error to stderr. Normal verifier behavior and diagnostics are
+  unchanged because this is debug-gated.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `TRITON_DEBUG_TMEM_QUERY=1 triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Next: begin replacing copy's type-delegated destination layout support with
+  a structured physical-query support result that separates physical-query,
+  ISA-atom, descriptor-synthesis, CTA-ownership, and shared-layout failures.

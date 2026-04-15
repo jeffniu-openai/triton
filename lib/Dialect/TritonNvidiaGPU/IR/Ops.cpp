@@ -41,6 +41,8 @@
 #include "triton/Tools/StrUtil.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include <cstdlib>
 
 using namespace mlir::triton::gpu;
 
@@ -1559,6 +1561,34 @@ LogicalResult TMEMCopyOp::verify() {
                            : tmemError);
   }
   auto tmemLl = maybeDstQuery->layout;
+  if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
+    std::string exactTmemError;
+    auto maybeExactDstQuery =
+        inferExactTMemPhysicalQuery(getDst(), &exactTmemError);
+    if (failed(maybeExactDstQuery)) {
+      llvm::errs() << "[tmem-copy] exact destination query failed: "
+                   << exactTmemError << "\n";
+    } else if (auto difference = getFirstTMemPhysicalQueryDifference(
+                   *maybeDstQuery, *maybeExactDstQuery)) {
+      auto printOrigin = [](StringRef label, ArrayRef<int32_t> origin) {
+        llvm::errs() << label;
+        for (int32_t value : origin)
+          llvm::errs() << " " << value;
+        llvm::errs() << "\n";
+      };
+
+      llvm::errs() << "[tmem-copy] destination standalone/exact query "
+                      "divergence: "
+                   << stringifyTMemPhysicalQueryDifference(*difference)
+                   << "\n";
+      llvm::errs() << "[tmem-copy] standalone layout:\n"
+                   << maybeDstQuery->layout.toString() << "\n";
+      printOrigin("[tmem-copy] standalone origin:", maybeDstQuery->origin);
+      llvm::errs() << "[tmem-copy] exact layout:\n"
+                   << maybeExactDstQuery->layout.toString() << "\n";
+      printOrigin("[tmem-copy] exact origin:", maybeExactDstQuery->origin);
+    }
+  }
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
   auto cvt = tmemLl.invertAndCompose(shmemLl);

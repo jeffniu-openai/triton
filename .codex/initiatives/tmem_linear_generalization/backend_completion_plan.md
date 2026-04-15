@@ -90,6 +90,11 @@ Progress:
 - 2026-04-15 06:44 UTC: added side-effect-free physical-query comparison
   helpers covering shape, allocation shape, element bitwidth, physical layout,
   CTA ownership, origin, and scales classification.
+- 2026-04-15 06:48 UTC: wired the comparison helpers into
+  `ttng.tmem_copy` verification as `TRITON_DEBUG_TMEM_QUERY`-gated
+  exact-vs-standalone destination-query reporting. Normal verifier behavior
+  and diagnostics remain unchanged, but copy debugging can now show the first
+  differing physical-query field plus the standalone and exact layouts/origins.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

@@ -95,6 +95,15 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy query debug-consumer checkpoint, 2026-04-15 06:48 UTC:
+  `ttng.tmem_copy` verification now computes the exact destination physical
+  query under `TRITON_DEBUG_TMEM_QUERY` and reports exact-vs-standalone
+  divergence with the first differing query field plus standalone/exact layouts
+  and origins. Normal verifier behavior and diagnostics remain unchanged.
+  Validation passed: `make -j8`, direct invalid/conversion lit RUN lines via
+  local `triton-opt` and `FileCheck`, `TRITON_DEBUG_TMEM_QUERY=1` invalid-file
+  smoke, and `git diff --check`.
+
 - Current physical-query comparison checkpoint, 2026-04-15 06:44 UTC:
   `TMemPhysicalQueryDifference`, `getFirstTMemPhysicalQueryDifference(...)`,
   `haveSameTMemPhysicalQueryProjection(...)`, and

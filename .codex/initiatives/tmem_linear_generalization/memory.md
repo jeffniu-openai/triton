@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current Phase 1 slice, 2026-04-15 06:48 UTC: wired the
+  physical-query comparison helpers into `ttng.tmem_copy` verification as a
+  `TRITON_DEBUG_TMEM_QUERY`-gated consumer. Copy verification still uses the
+  standalone destination query for support decisions, but when query debugging
+  is enabled it also computes the exact destination query and reports the first
+  exact-vs-standalone difference with both layouts and origins. Normal
+  diagnostics are unchanged. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`,
+  `TRITON_DEBUG_TMEM_QUERY=1` invalid-file smoke, and `git diff --check`. Next
+  concrete step: move from passive divergence reporting to a structured copy
+  physical-query support decision that can explain unsupported physical query
+  versus unsupported atom/layout-plan layers.
+
 - Current Phase 1 slice, 2026-04-15 06:44 UTC: added physical-query comparison
   primitives: `TMemPhysicalQueryDifference`,
   `getFirstTMemPhysicalQueryDifference(...)`,
