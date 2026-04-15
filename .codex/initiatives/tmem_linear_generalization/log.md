@@ -1,3 +1,37 @@
+## 2026-04-15 11:52 UTC: legacy subword copy packed-lane diagnostic
+
+- Investigated the remaining dense subword gap for legacy
+  `TensorMemoryLayout` copies after canonical `TensorMemoryLinearLayout`
+  subword copies were promoted.
+- Debug traces show the real abstraction mismatch:
+  - 16-bit legacy layouts map `col=1 -> offset 0`, then `col=2 -> offset 1`;
+  - 8-bit legacy layouts map `col=1 -> offset 0`, `col=2 -> offset 0`, then
+    `col=4 -> offset 1`;
+  - these zero low column bases represent sub-32-bit packed lanes, not a normal
+    shared-memory descriptor address projection.
+- Tried a temporary compiler experiment that zeroed matching leading
+  MMAv5-shared descriptor tile bases for subword layouts. It did not change the
+  planner result, so the experiment was reverted before committing.
+- Committed change: `getTMemCopyInstructionColumnProjectionNote(...)` now
+  emits a specific note when a subword copy projection maps source column bit
+  0 to no shared offset. The message explains that current copy scheduling
+  cannot synthesize packed-lane `tcgen05.copy` descriptors from that pure
+  `LinearLayout` projection and points users to unpacked
+  `TensorMemoryLinearLayout` or `tmem.store/tmem.load` until packed-lane copy
+  semantics are modeled explicitly.
+- Added focused runtime-matrix clean-negative coverage for legacy subword
+  dense copies over `f16`, `bf16`, `i16`, and `i8`.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 ... pytest ... test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
+    (`4 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 ... pytest ... test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes`
+    (`8 passed`);
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - Blackwell conversion FileCheck RUN;
+  - `git diff --check`.
+
 ## 2026-04-15 11:46 UTC: 4x256b view-layout non-route
 
 - Probed a sparse four-row descriptor view over a `128x8` linear parent:

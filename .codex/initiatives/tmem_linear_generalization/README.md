@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:52 UTC: legacy `TensorMemoryLayout` subword dense copy now has
+  a precise planner diagnostic instead of a generic descriptor-synthesis miss.
+  Canonical `TensorMemoryLinearLayout` subword copies remain positive, but
+  legacy packed layouts encode sub-32-bit lane state as zero low column bases
+  (`col=1 -> offset 0` for 16-bit, `col=1/2 -> offset 0` for 8-bit). The copy
+  descriptor planner cannot synthesize a `tcgen05.copy` descriptor from that
+  projection without an explicit packed-lane model, so the clean negative now
+  says to use an unpacked `TensorMemoryLinearLayout` or `tmem.store/load` until
+  packed-lane copy semantics are modeled.
 - 2026-04-15 11:46 UTC: a follow-up `4x256b` view-layout probe tried to make
   the refresh pattern explicit by selecting a four-row view from a
   `128x8` linear parent with rows grouped through a

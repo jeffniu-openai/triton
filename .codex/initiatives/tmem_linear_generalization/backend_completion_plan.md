@@ -288,6 +288,14 @@ Progress:
   four-row parent slice still classifies and is blocked by the refresh
   diagnostic. This keeps the `4x256b` task scoped to explicit refresh schedule
   modeling, not descriptor-view reshaping.
+- 2026-04-15 11:52 UTC: legacy packed subword dense copies now report the
+  actual missing abstraction. The planner sees zero low column bases for
+  16-bit and 8-bit legacy `TensorMemoryLayout` copies, representing packed
+  lanes outside the `LinearLayout` offset dimension. Canonical unpacked
+  `TensorMemoryLinearLayout` subword copies remain positive. The remaining
+  legacy-packed support task is to carry packed-lane semantics in the physical
+  query / copy schedule, or prove that `tcgen05.copy` cannot realize that
+  packed destination image.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

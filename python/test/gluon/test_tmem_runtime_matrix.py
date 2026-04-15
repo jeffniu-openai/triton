@@ -8637,6 +8637,29 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_subword_dtypes(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_SUBWORD_DTYPES)
+def test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error(
+    dtype_name, torch_dtype, capfd
+):
+    m = n = 128
+    inp = torch.arange(m * n, device="cuda", dtype=torch.int32).reshape(m, n).to(torch_dtype)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        tmem_copy_no_scales_kernel[(1, )](inp, out, m, n, n, 32, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.128x256b" in text
+    assert "source column bit 0 maps to no shared offset" in text
+    assert "sub-32-bit packed lane state" in text
+    assert "unpacked TensorMemoryLinearLayout" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("name,layout", CP_LINEAR_EXOTIC_UNSUPPORTED_CASES)
 def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupported(name, layout, capfd):
     m = n = 128

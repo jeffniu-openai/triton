@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current legacy subword copy diagnostic, 2026-04-15 11:52 UTC:
+  canonical `TensorMemoryLinearLayout` dense subword copies are still positive,
+  but legacy `TensorMemoryLayout(block=(128,N), col_stride=32/bitwidth)`
+  subword copies expose a different backend gap. The legacy physical
+  projection carries packed-lane information as zero low column bases:
+  16-bit layouts have `col=1 -> offset 0`, while 8-bit layouts have
+  `col=1 -> offset 0` and `col=2 -> offset 0`. A temporary descriptor
+  experiment that treated those zeros as MMAv5 shared-descriptor lane bits did
+  not change planner support, so the code was reverted. The committed change is
+  a precise diagnostic and runtime clean-negative row: current copy scheduling
+  cannot synthesize packed-lane `tcgen05.copy` descriptors from a pure
+  `LinearLayout` projection. Use unpacked `TensorMemoryLinearLayout` for dense
+  subword copy positives, or keep legacy packed layouts on `tmem.store/load`
+  pack/unpack paths until the physical query model carries packed lanes
+  explicitly.
+
 - Current 4x256b view-layout probe, 2026-04-15 11:46 UTC:
   a temporary `/tmp/probe_4x256_layout.py` kernel selected four rows from a
   `128x8` linear parent through

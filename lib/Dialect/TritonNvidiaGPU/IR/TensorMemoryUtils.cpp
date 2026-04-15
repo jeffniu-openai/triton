@@ -8283,9 +8283,9 @@ selectTMemCopyDescriptorLayout(ArrayRef<LinearLayout> srcDescLayouts,
   return std::nullopt;
 }
 
-static std::optional<std::string>
-getTMemCopyInstructionColumnProjectionNote(
-    const LinearLayout &cvt, const TMemCopyMessagePlan &message) {
+static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
+    const LinearLayout &cvt, const TMemCopyMessagePlan &message,
+    int bitwidth) {
   const LinearLayout &descriptorCvt =
       message.descriptorCvt ? *message.descriptorCvt : cvt;
   auto inDims = descriptorCvt.getInDimNames();
@@ -8308,6 +8308,19 @@ getTMemCopyInstructionColumnProjectionNote(
     return std::nullopt;
 
   int32_t unitOffset = descriptorCvt.getBasis(kCol, 0, kOffset);
+  if (unitOffset == 0 && bitwidth < 32) {
+    std::string note;
+    llvm::raw_string_ostream os(note);
+    os << "Within one " << instrCols
+       << "-column tcgen05.copy instruction, source column bit 0 maps to no "
+          "shared offset. This projection carries sub-32-bit packed lane "
+          "state outside the LinearLayout offset dimension. Current copy "
+          "scheduling cannot synthesize packed-lane tcgen05.copy descriptors "
+          "from that projection; use an unpacked TensorMemoryLinearLayout for "
+          "dense subword copies, or a tmem.store/tmem.load path until packed "
+          "lane copy semantics are modeled explicitly.";
+    return os.str();
+  }
   if (unitOffset <= 0)
     return std::nullopt;
   unsigned offsetDimIndex = descriptorCvt.getOutDimIndex(kOffset);
@@ -8444,7 +8457,7 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
        << "] and instruction shape [" << message.instrShape[0] << ", "
        << message.instrShape[1] << "].";
     if (auto projectionNote =
-            getTMemCopyInstructionColumnProjectionNote(cvt, message))
+            getTMemCopyInstructionColumnProjectionNote(cvt, message, bitwidth))
       os << " " << *projectionNote;
     return {std::nullopt,
             getUnsupportedTMemCopyResult(
