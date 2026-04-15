@@ -9066,6 +9066,7 @@ getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
 
   auto *ctx = inDims.begin()->getContext();
   auto kCol = StringAttr::get(ctx, "col");
+  auto kRow = StringAttr::get(ctx, "row");
   auto kOffset = StringAttr::get(ctx, "offset");
   if (!descriptorCvt.hasInDim(kCol) || !descriptorCvt.hasOutDim(kOffset))
     return projection;
@@ -9100,6 +9101,13 @@ getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
   if (unitOffset <= 0)
     return projection;
   unsigned offsetDimIndex = descriptorCvt.getOutDimIndex(kOffset);
+  std::optional<int32_t> descriptorRowStride;
+  if (descriptorCvt.hasInDim(kRow) &&
+      descriptorCvt.getInDimSizeLog2(kRow) > 0) {
+    int32_t stride = descriptorCvt.getBasis(kRow, 0, kOffset);
+    if (stride > 0)
+      descriptorRowStride = stride;
+  }
 
   auto hasNonOffsetContribution = [&](ArrayRef<int32_t> basis) {
     for (auto [idx, value] : llvm::enumerate(basis)) {
@@ -9131,6 +9139,14 @@ getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
       os << "shared offset " << actualOffset;
     if (nonOffsetContribution)
       os << " plus a non-offset component";
+    if (descriptorRowStride && actualOffset > 0 &&
+        actualOffset % *descriptorRowStride == 0 &&
+        actualOffset != expectedOffset) {
+      os << " (" << (actualOffset / *descriptorRowStride)
+         << " descriptor-row stride"
+         << (actualOffset == *descriptorRowStride ? "" : "s")
+         << ")";
+    }
     os << " instead of contiguous shared offset " << expectedOffset
        << ". Current copy scheduling cannot split sub-instruction source "
           "columns, so this projection needs a different copy atom or a "

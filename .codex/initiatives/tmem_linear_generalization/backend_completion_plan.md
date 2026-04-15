@@ -258,6 +258,12 @@ Progress:
   confirmed the scales descriptor-view copy still fails descriptor synthesis
   after that preflight is removed, so support needs real source-column/message
   splitting rather than broader descriptor enumeration.
+- 2026-04-15 22:02 UTC: sharpened the instruction-column projection diagnostic
+  to identify column bits that select descriptor-row-stride multiples. This
+  keeps the current clean negatives intact while making the next atomization
+  target explicit: a schedule needs to represent column-selected row deltas,
+  or prove that the public `tcgen05.copy` ISA cannot mask/partition that
+  projection.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

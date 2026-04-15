@@ -17547,3 +17547,23 @@ Open after this slice:
     (`74 passed, 10914 deselected in 238.74s`);
   - direct invalid verifier RUN;
   - `git diff --check`.
+
+## 2026-04-15 22:02 UTC: copy projection row-stride diagnostic
+
+- Refined the `tcgen05.copy` instruction-column projection failure to report
+  when the offending source offset is a descriptor-row-stride multiple.
+- This records the scales descriptor-view frontier as a missing
+  column-selected row-delta schedule rather than another descriptor-enumeration
+  problem.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN with
+    `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-diag2
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
+    (`1 passed in 3.31s`);
+  - `git diff --check`.

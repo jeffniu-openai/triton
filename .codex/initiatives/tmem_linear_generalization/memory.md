@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current copy atomization diagnostic checkpoint, 2026-04-15 22:02 UTC:
+  `getTMemCopyInstructionColumnProjectionPlan(...)` now annotates unsupported
+  instruction-column projections with descriptor-row-stride information when
+  the offending source offset is a row-stride multiple. The scales descriptor
+  view and historical warpx4 probe failures are therefore recorded as
+  column-selected row-delta requirements. This is not a support promotion; it
+  tightens the planner contract for the next real atomized schedule attempt.
+  Validation passed: `make -j8`, direct invalid verifier RUN, exact
+  `cp_scales_tmem_descriptor_view` clean-negative pytest row, and
+  `git diff --check`.
+
 - Current M64 row-permuted `ld.red` default-layout checkpoint, 2026-04-15
   21:23 UTC: the row-permuted M64 failure after the lane-16 support commit was
   a default layout-selection/ISA-legality gap, not an unsupported hardware

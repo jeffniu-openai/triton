@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:02 UTC: copy instruction-column projection diagnostics now
+  report when an offending sub-instruction source-column bit is actually
+  selecting a descriptor-row stride. This preserves the current clean-negative
+  behavior, but it makes the scales/warpx4 frontier more precise: the planner
+  is missing a schedule dimension that can atomize a column-selected row delta,
+  not merely a larger MMAShared descriptor search. Validation: `make -j8`,
+  direct invalid verifier RUN, exact `cp_scales_tmem_descriptor_view`
+  clean-negative pytest row passed, and `git diff --check`.
 - 2026-04-15 21:23 UTC: M64 noncanonical-row `ld.red` default reduction
   layout selection now uses the existing split-N `16x32bx2` path instead of
   asking for a scalarizing `32x32b` layout. Row-permuted M64 linear layouts
