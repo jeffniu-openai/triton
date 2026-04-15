@@ -17371,3 +17371,35 @@ Open after this slice:
     `test_tmem_runtime_matrix_ldst_4x256b_refresh_layout_reports_clean_unsupported`:
     `3 passed in 3.48s`;
   - `git diff --check`.
+
+## 2026-04-15 20:51 UTC: scales descriptor-view copy projection probe
+
+- Added and removed a temporary scales descriptor-view projection in
+  `getTMemCopyPlans(...)`.
+- Probe A:
+  - projection moved source offset `256` from low instruction column bit 2
+    into the descriptor row dimension;
+  - projection moved source offset `8` from row bit 0 into instruction column
+    bit 3 so the low instruction-column offsets became `1,2,4,8`;
+  - descriptor synthesis selected an MMAv5 shared descriptor.
+- Result A:
+  - pure column-pattern input round-tripped correctly;
+  - random input mismatched `4014 / 4096` elements;
+  - row-pattern input showed `dst row r` reading `src row rotl7(r)`.
+- Probe B:
+  - restored low descriptor-row bases to the source-row identity sequence
+    `8,16,32,64,128` while keeping the instruction-column `8` slot;
+  - descriptor synthesis rejected the candidate as not representable.
+- Conclusion:
+  - descriptor-basis reassignment alone cannot cover this exact scales view;
+  - the duplicate use of source offset `8` across row and instruction-column
+    roles needs real row/source-message atomization, or it is an ISA-impossible
+    public-copy case.
+- Cleanup/validation:
+  - removed all probe code;
+  - `make -j8` rebuilt the clean source;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-copy-clean-after-probe
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
+    (`1 passed in 3.32s`).

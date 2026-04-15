@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view copy projection probe, 2026-04-15 20:51 UTC:
+  a temporary descriptor projection tried to make the exact
+  `warpx4.32x128b` scales descriptor view representable by moving the
+  offending source offset `256` out of low instruction column bit 2 and using
+  row bit 0's source offset `8` as instruction column bit 3. That projection
+  selected an MMAv5 shared descriptor and preserved pure column patterns, but
+  it copied rows as `src row = rotl7(dst row)`, producing `98%` mismatches on
+  random input. A row-correct variant that restored low descriptor-row bases
+  to `8,16,32,64,128` failed MMAv5 descriptor representability because the
+  same source offset `8` would need to serve both row and instruction-column
+  roles. Probe hooks were removed and `make -j8` rebuilt clean source; the
+  original clean-negative row passed afterward. This reinforces that the
+  remaining support path is not descriptor-basis reassignment alone: it needs
+  row-group/source-message atomization, or a clean proof that the duplicate
+  source-basis requirement cannot be expressed by public `tcgen05.copy`.
+
 - Current 4x256b direct-ld/st backend diagnostic checkpoint, 2026-04-15
   20:44 UTC: direct C++ verification now recognizes the
   `tcgen05.copy.4x256b` refresh-shaped tensor-memory layout and fails it

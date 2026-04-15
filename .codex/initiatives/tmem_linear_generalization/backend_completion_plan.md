@@ -263,6 +263,12 @@ Progress:
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
   from falling through to generic register-layout enumeration and records the
   row-anchor schedule requirement in C++.
+- 2026-04-15 20:51 UTC: scales descriptor-view copy projection probes ruled
+  out descriptor-basis reassignment as a standalone support path. The
+  representable projection preserved columns but rotated rows; the row-correct
+  projection was not representable as an MMAv5 shared descriptor. Treat the
+  duplicate source offset `8` row/column role as a scheduler/ISA atomization
+  problem, not another descriptor enumeration problem.
 - 2026-04-15 19:23 UTC: moved destination tile planning into
   `TMemCopyExecutablePlan`. Plan realization now computes and stores
   destination tiles after descriptor/message scheduling, while lowering only

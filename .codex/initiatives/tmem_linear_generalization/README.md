@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 20:51 UTC: the scales descriptor-view copy source-projection
+  probe was narrowed further. A temporary projection that moved source offset
+  `256` from instruction column bit 2 into the descriptor row dimension and
+  moved source offset `8` from row bit 0 into instruction column bit 3 became
+  descriptor-representable and preserved source columns, but runtime output
+  rotated source rows left by one bit (`dst row r` read `src row rotl7(r)`).
+  The row-correct variant with low descriptor row bases restored to
+  `8,16,32,64,128` was not representable as an MMAv5 shared descriptor.
+  Probe hooks were removed, source rebuilt with `make -j8`, and the original
+  clean-negative pytest row passed. The next real path needs an actual
+  destination-row/source-message schedule with row-group atomization or a proof
+  that the duplicate row/column source basis is ISA-impossible.
 - 2026-04-15 20:44 UTC: the C++ TMEM operand verifier now recognizes the
   `tcgen05.copy.4x256b` refresh-shaped tensor-memory layout as the same
   direct `ld/st` row-anchor boundary guarded in Python. Direct MLIR
