@@ -15743,3 +15743,34 @@ Open after this slice:
   - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
   - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
   - `git diff --check`.
+
+## 2026-04-15 12:10 UTC: dense M=256 exact-query copy promotion
+
+- Promoted dense no-scales `TensorMemoryLinearLayout` copies for `M=256` and
+  `N in {32,64,128}` across swizzle widths `32`, `64`, and `128`.
+- Root cause: the standalone query describes the logical `256xN` linear view,
+  while the exact physical query exposes the MMAv5 backing image that copy can
+  actually atomize (`128x2N`). Selecting the exact query is correct when it
+  preserves active shape, bitwidth, CTA ownership, and scales classification
+  and its image composes with the shared-memory source.
+- Allocation fix: `getTmemAllocSizes` now sizes oversized exact linear layouts
+  from the proven MMAv5 family image when that image fits in 128 TMEM rows,
+  instead of reserving the logical 256 rows and asserting in the allocation
+  pass.
+- Runtime matrix changes:
+  - added positive `cp_no_scales_linear` rows for `256x32`, `256x64`, and
+    `256x128`, each under swizzle `32/64/128`;
+  - kept the unsupported-shape clean-negative on `256x16`, which still does
+    not classify as a supported copy atom.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - focused `cp_no_scales_linear` runtime row (`15 passed`);
+  - focused 32-bit dtype expansion (`30 passed`);
+  - unsupported-shape plus tile/exotic neighbor slice (`8 passed`);
+  - row/column-permuted clean-negative neighbor slice (`15 passed`);
+  - 4-GPU `cp_no_scales` sweep: group 1 `77 passed, 10 skipped`, group 2
+    `87 passed`, group 3 `87 passed`, group 4 `85 passed`;
+  - `git diff --check`.

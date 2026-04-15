@@ -4467,10 +4467,10 @@ bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
   if (haveSameTMemCopyPhysicalProjection(standalone, exact))
     return true;
 
-  return standalone.isScales && exact.isScales &&
-         standalone.shape == exact.shape &&
+  return standalone.shape == exact.shape &&
          standalone.elementBitWidth == exact.elementBitWidth &&
-         standalone.twoCTAs == exact.twoCTAs;
+         standalone.twoCTAs == exact.twoCTAs &&
+         standalone.isScales == exact.isScales;
 }
 
 bool canInvertAndComposeLayouts(const LinearLayout &inner,

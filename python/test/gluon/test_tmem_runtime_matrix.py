@@ -3978,6 +3978,15 @@ CP_LINEAR_NO_SCALES_CASES = [
     (128, 256, 32, 32),
     (128, 256, 64, 32),
     (128, 256, 128, 32),
+    (256, 32, 32, 8),
+    (256, 32, 64, 8),
+    (256, 32, 128, 8),
+    (256, 64, 32, 16),
+    (256, 64, 64, 16),
+    (256, 64, 128, 16),
+    (256, 128, 32, 32),
+    (256, 128, 64, 32),
+    (256, 128, 128, 32),
 ]
 
 CP_LINEAR_NO_SCALES_32BIT_DTYPE_CASES = [
@@ -8725,7 +8734,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean_error(capfd):
-    m, n, swizzle = 256, 128, 32
+    m, n, swizzle = 256, 16, 32
     inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
     out = torch.empty_like(inp)
     layout = _make_tmem_linear_layout(m, n)

@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current dense exact-query row-group support, 2026-04-15 12:10 UTC:
+  single-CTA dense no-scales `TensorMemoryLinearLayout` copies with
+  `M=256` and `N in {32,64,128}` are now positive runtime coverage. The key
+  was not a row-guard lift: the exact physical query for those layouts already
+  exposes a legal MMAv5 family image (`128x64`, `128x128`, or `128x256`), and
+  the copy planner can use that image when it has the same active shape,
+  element bitwidth, CTA ownership, and scales classification as the standalone
+  query and composes with the shared-memory source. `getTmemAllocSizes` now
+  also uses the proven MMAv5 family layout for oversized exact linear layouts,
+  preventing the allocator from trying to reserve 256 TMEM rows. `256x16`
+  still fails cleanly at copy-family classification and keeps the row-group
+  diagnostic.
+
 - Current dense row-group diagnostic, 2026-04-15 11:56 UTC:
   single-CTA dense no-scales `M=256,N=128` fails because the current dense copy
   planner atomizes one 128-row row group per message and has no first-class

@@ -302,6 +302,12 @@ Progress:
   only reaches a descriptor-realization abort; the planner needs to split the
   projection into multiple 128-row messages and carry the high row-group
   selector through descriptor projection plus source/destination row offsets.
+- 2026-04-15 12:10 UTC: the reachable subset of dense `M=256` linear copies is
+  now positive. For `N in {32,64,128}`, the exact physical query exposes a
+  legal `128x2N` MMAv5 family image, so copy planning can use the exact query
+  and the allocator can reserve the proven 128-row physical image. This
+  promotes nine runtime rows and leaves `256x16` as the remaining clean atom
+  classification negative.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

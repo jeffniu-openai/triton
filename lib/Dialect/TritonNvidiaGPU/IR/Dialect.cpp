@@ -1210,6 +1210,19 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   unsigned preferredColStride = 32 / bitwidth;
   int nRow = ll.getInDimSize(kRow);
   int nCol = ll.getInDimSize(kCol) / preferredColStride;
+  // Some exact linear layouts are logically taller than the 128-row TMEM
+  // allocation image but are still an MMAv5 family tile with the high row
+  // selector carried in columns. Allocate the proven physical family image.
+  if (!isLegacyLike && nRow > 128) {
+    if (auto lhsInfo = getMMAv5LhsLayoutInfo(memDescType)) {
+      int familyRows = lhsInfo->familyLayout.getInDimSize(kRow);
+      if (familyRows <= 128) {
+        ll = lhsInfo->familyLayout;
+        nRow = familyRows;
+        nCol = ll.getInDimSize(kCol) / preferredColStride;
+      }
+    }
+  }
   // If we have just one 16xcol block per warp, we don't allocate 128 rows
   // we use 64 rows instead.
   // We could generalise this to when we have more zeros in the layout, but

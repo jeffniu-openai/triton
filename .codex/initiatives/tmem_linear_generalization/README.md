@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 12:10 UTC: dense no-scales linear copies now support the
+  MMAv5-backed `M=256` row-group cases whose exact physical query is a
+  `128x{64,128,256}` family image. Copy planning now accepts exact physical
+  queries whenever active shape, element bitwidth, CTA ownership, and scales
+  classification match and the exact layout composes with the shared-memory
+  source. TMEM allocation sizing also uses the proven MMAv5 family image for
+  oversized exact linear layouts, so `256x32`, `256x64`, and `256x128`
+  `TensorMemoryLinearLayout` copies are positive runtime rows across the
+  32/64/128 swizzle variants. `256x16` remains a clean copy-family negative.
 - 2026-04-15 11:56 UTC: dense no-scales copy now reports the concrete
   multi-message row-group gap for single-CTA `M=256,N=128` projections. A
   temporary guard-lift probe classified the shape only by pretending a
