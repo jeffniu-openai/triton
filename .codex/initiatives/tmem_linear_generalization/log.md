@@ -15367,3 +15367,21 @@ Open after this slice:
 - Next: set `descriptorCvt` only from a proven atomized schedule. Continue by
   deriving a legal scales descriptor-view message projection or by proving that
   this exact source layout requires an ISA form the backend cannot emit.
+
+## 2026-04-15 10:02 UTC: copy conversion debug trace
+
+- Extended the existing `TRITON_DEBUG_TMEM_QUERY=1` verifier trace to print
+  the selected source-to-destination copy conversion (`cvt`) after
+  standalone/exact destination-query selection.
+- Direct scales descriptor-view invocation now prints the exact conversion:
+  row bases `[8, 16, 32, 64, 128, 0, 0]` and column bases
+  `[1, 2, 256, 4, 512, 1024, 2048]` into the shared `offset` address space.
+- This replaces another reason to add temporary source prints during copy
+  schedule derivation.
+- Validation:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - `git diff --check`;
+  - direct `TRITON_DEBUG_TMEM_QUERY=1` invocation of the scales
+    descriptor-view copy row.

@@ -8867,3 +8867,23 @@ rejection, not rescue
   source-column bits; changing source/destination row offsets does not turn it
   into a correct support promotion. The useful durable outcome is the
   descriptor-projection abstraction, not the probed schedule.
+
+## Latest: 2026-04-15 10:02 UTC copy conversion debug trace
+
+- `TRITON_DEBUG_TMEM_QUERY=1` now prints the source-to-destination copy
+  conversion after exact-query selection in `ttng.tmem_copy` verification.
+- This is a diagnostics-only change. It makes the selected `cvt` durable in
+  debug output alongside the standalone/exact destination physical layouts and
+  origins.
+- Current scales descriptor-view debug trace:
+  - row bases: `[8, 16, 32, 64, 128, 0, 0]`;
+  - column bases: `[1, 2, 256, 4, 512, 1024, 2048]`;
+  - source address space: `offset` size `4096`, `block` size `1`.
+- Validation completed:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - `git diff --check`;
+  - direct debug invocation of
+    `tmem_copy_scales_tmem_descriptor_view_kernel` with
+    `TRITON_DEBUG_TMEM_QUERY=1`.

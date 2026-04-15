@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:02 UTC: `TRITON_DEBUG_TMEM_QUERY=1` now prints the
+  source-to-destination copy conversion (`cvt`) after exact-query selection.
+  For scales descriptor-view copy debugging this exposes the actual row/column
+  basis mapping that the copy atom sees, instead of requiring temporary source
+  edits to recover it.
 - 2026-04-15 09:59 UTC: copy message plans now carry an optional
   descriptor-projection conversion separate from the full copy conversion.
   Existing plans leave it unset, so behavior is unchanged, but the planner can

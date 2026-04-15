@@ -1598,6 +1598,10 @@ LogicalResult TMEMCopyOp::verify() {
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
   auto cvt = tmemLl.invertAndCompose(shmemLl);
+  if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
+    llvm::errs() << "[tmem-copy] source-to-destination conversion:\n"
+                 << cvt.toString() << "\n";
+  }
   if (!cvt.isTrivialOver(kBlock))
     return emitOpError("The source and destination must have the same cga "
                        "layout. Got source: ")
