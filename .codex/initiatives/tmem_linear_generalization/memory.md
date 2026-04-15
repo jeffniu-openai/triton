@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current `4x256b` effective-footprint checkpoint, 2026-04-15 23:51 UTC:
+  refresh copy no longer bypasses the generic destination-overlap proof.
+  `getTMemCopyEffectiveInstructionColumns(...)` records that the
+  `tcgen05.copy.4x256b` refresh schedule is two half-width messages: source
+  columns `0..3` and `4..7` land at destination dword offsets `0` and `4`.
+  Source and destination footprints now use that 4-column effective width for
+  each message, so the generic overlap checker can reason about `Dense4x256b`
+  instead of treating it as a special family exemption. Validation passed:
+  `make -j8`, py-compile of `test_tmem_runtime_matrix.py`, `git diff --check`,
+  and 7 targeted copy rows covering single/two-CTA `4x256b` refresh, ordinary
+  contiguous `4x256b` clean-negative, two-CTA `warpx2::01_23`, scales
+  `warpx4`, and the scales descriptor-view clean negative.
+
 - Current copy destination-overlap checkpoint, 2026-04-15 23:47 UTC:
   `getTMemCopyPlanRealization(...)` now checks the final scheduled copy
   instruction stream for overlapping physical destination footprints before

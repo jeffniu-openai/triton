@@ -1,3 +1,33 @@
+## 2026-04-15 23:51 UTC: 4x256b refresh effective footprints
+
+- Removed the family-level `Dense4x256b` bypass from the copy
+  destination-overlap proof.
+- Added `getTMemCopyEffectiveInstructionColumns(...)` so scheduled instruction
+  source and destination footprints can report the real effective width of a
+  copy message.
+- For `tcgen05.copy.4x256b`, the effective width is half of the logical
+  256-bit tile: the refresh schedule uses one message for source columns
+  `0..3` at destination dword offset `0` and a second message for source
+  columns `4..7` at destination dword offset `4`.
+- This keeps the existing `4x256b` refresh positives behavior-preserving while
+  making them pass through the same overlap legality layer as ordinary copy
+  families.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-refresh-footprint
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
+    (`7 passed in 9.22s`).
+
 ## 2026-04-15 23:47 UTC: copy destination-footprint overlap proof
 
 - Added a planner-side destination-footprint overlap check for scheduled

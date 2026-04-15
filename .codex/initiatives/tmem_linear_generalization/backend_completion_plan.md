@@ -356,6 +356,11 @@ Progress:
   plan or an ISA atom with an explicit destination mask. `Dense4x256b` is
   intentionally excluded until the refresh primitive has its own footprint
   model.
+- 2026-04-15 23:51 UTC: removed that `Dense4x256b` exclusion by modeling the
+  refresh primitive's effective instruction width. Each `4x256b` scheduled
+  message now reports a 4-column source/destination footprint, matching the
+  low/high half-message schedule at destination dword offsets `0` and `4`, so
+  refresh copy participates in the same overlap legality proof.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

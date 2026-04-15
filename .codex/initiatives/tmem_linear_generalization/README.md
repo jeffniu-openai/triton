@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:51 UTC: `4x256b` refresh copy now reports the effective
+  half-width instruction footprint used by the proven two-message refresh
+  schedule. Source and destination footprints for `4x256b` messages cover the
+  low or high 4-column half instead of an 8-column rectangle, so the generic
+  destination-overlap proof can run for `Dense4x256b` without a family-level
+  exemption. Validation: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, `git diff --check`, and 7 targeted copy rows
+  covering single/two-CTA `4x256b` refresh, ordinary contiguous `4x256b`
+  clean-negative, neighboring two-CTA `warpx2`, scales `warpx4`, and the
+  scales descriptor-view clean negative.
 - 2026-04-15 23:47 UTC: the copy planner now runs a planner-side
   destination-footprint overlap proof after the emitted instruction stream is
   built. Ordinary copy families are rejected if two scheduled instructions

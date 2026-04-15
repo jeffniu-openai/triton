@@ -8186,6 +8186,18 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
   return tiles;
 }
 
+static std::optional<unsigned>
+getTMemCopyEffectiveInstructionColumns(const TMemCopyMessagePlan &plan) {
+  if (plan.instrShape.size() < 2 || plan.instrShape[1] == 0)
+    return std::nullopt;
+  if (plan.atom.nRow == 4 && plan.atom.bCol == 256) {
+    // The refresh primitive is scheduled as two half-width messages: source
+    // columns 0..3 and 4..7 land at destination dword offsets 0 and 4.
+    return plan.instrShape[1] / 2;
+  }
+  return plan.instrShape[1];
+}
+
 static std::optional<TMemCopySourceFootprint>
 getTMemCopySourceFootprint(const TMemCopyScheduledMessage &message,
                            const TMemCopyScheduledTile &tile,
@@ -8210,11 +8222,20 @@ getTMemCopySourceFootprint(const TMemCopyScheduledMessage &message,
           "shape.";
     return std::nullopt;
   }
+  auto footprintColumns = getTMemCopyEffectiveInstructionColumns(plan);
+  if (!footprintColumns || *footprintColumns == 0) {
+    if (error)
+      *error =
+          "tcgen05.copy source footprint requires a non-empty effective "
+          "instruction width.";
+    return std::nullopt;
+  }
+  unsigned columns = *footprintColumns;
   return TMemCopySourceFootprint{
       /*row=*/static_cast<int32_t>(sourceRow),
       /*col=*/static_cast<int32_t>(sourceCol),
       /*rows=*/plan.instrShape[0],
-      /*columns=*/plan.instrShape[1]};
+      /*columns=*/columns};
 }
 
 static std::optional<TMemCopyDestinationFootprint>
@@ -8261,6 +8282,15 @@ getTMemCopyInstructionDestinationFootprint(
                "coordinate range.";
     return std::nullopt;
   }
+  auto footprintColumns = getTMemCopyEffectiveInstructionColumns(plan);
+  if (!footprintColumns || *footprintColumns == 0) {
+    if (error)
+      *error =
+          "tcgen05.copy destination footprint requires a non-empty effective "
+          "instruction width.";
+    return std::nullopt;
+  }
+  unsigned columns = *footprintColumns;
 
   return TMemCopyDestinationFootprint{
       /*logicalRow=*/tile.destination.logicalRow,
@@ -8268,7 +8298,7 @@ getTMemCopyInstructionDestinationFootprint(
       /*physicalRow=*/static_cast<int32_t>(physicalRow),
       /*physicalCol=*/static_cast<int32_t>(physicalCol),
       /*rows=*/tile.destination.rows,
-      /*columns=*/tile.destination.columns,
+      /*columns=*/columns,
       /*offset=*/static_cast<uint32_t>(offset)};
 }
 
@@ -8313,12 +8343,6 @@ static bool intervalsOverlap(int64_t lhsBegin, int64_t lhsEnd,
 
 static TMemCopySupportResult getTMemCopyDestinationFootprintSupport(
     TMemCopyFamily family, ArrayRef<TMemCopyScheduledInstruction> instructions) {
-  if (family == TMemCopyFamily::Dense4x256b) {
-    // 4x256b is a refresh primitive whose logical row/column footprint is not
-    // the same as an ordinary rectangular TMEM write footprint.
-    return getSupportedTMemCopyResult();
-  }
-
   for (auto [lhsIdx, lhsInstruction] : llvm::enumerate(instructions)) {
     const TMemCopyDestinationFootprint &lhs = lhsInstruction.destination;
     int64_t lhsRowBegin = lhs.physicalRow;
