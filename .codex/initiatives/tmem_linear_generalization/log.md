@@ -15436,3 +15436,28 @@ Open after this slice:
   - Blackwell conversion FileCheck RUN;
   - focused `cp_scales and clean` runtime slice (`9 passed`);
   - `git diff --check`.
+
+## 2026-04-15 10:15 UTC: descriptor projection column-bit diagnostic
+
+- Added a generic descriptor-synthesis diagnostic that inspects the selected
+  per-message source projection and reports when the low source column bits
+  inside one `tcgen05.copy` instruction are not contiguous shared offsets.
+- The exact scales descriptor-view clean-negative now identifies the concrete
+  mismatch: source column bit 2 maps to shared offset 256 instead of the
+  contiguous shared offset 4, and current scheduling cannot split
+  sub-instruction source columns.
+- This explains why the earlier offset-major descriptor projection probe was
+  semantically wrong: making the descriptor representable by dropping or moving
+  that source-column bit loses part of the logical view. A future support
+  promotion must either use a different atom or derive a multi-message/source
+  schedule that preserves the bit.
+- Validation:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - exact scales descriptor-view clean-negative runtime row (`1 passed`);
+  - focused `cp_scales and clean` runtime slice (`9 passed`);
+  - neighboring no-scales single-CTA `02_13` positive plus two-CTA clean
+    negative (`2 passed`);
+  - `git diff --check`.

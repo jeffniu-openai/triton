@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 descriptor-projection diagnostic slice, 2026-04-15 10:15
+  UTC: descriptor-synthesis failures now include a copy-instruction column
+  projection note when the low source column bits required inside one
+  `tcgen05.copy` atom are not contiguous shared offsets. The scales
+  descriptor-view clean negative now reports that source column bit 2 maps to
+  shared offset 256 instead of contiguous shared offset 4, which is why a
+  representable descriptor projection alone cannot be a support proof. This is
+  a generic planner invariant, not a scales-only string. Validation passed:
+  `make -j8`, invalid verifier, Blackwell conversion FileCheck, py-compile,
+  exact scales descriptor-view clean-negative row (`1 passed`), focused
+  `cp_scales and clean` runtime slice (`9 passed`), neighboring no-scales
+  single-CTA `02_13` positive plus two-CTA clean negative (`2 passed`), and
+  `git diff --check`.
+
 - Current Phase 2 projection-consistency slice, 2026-04-15 10:13 UTC:
   descriptor-candidate generation now derives folded descriptor column extents
   and direct shared-seed descriptor extents from

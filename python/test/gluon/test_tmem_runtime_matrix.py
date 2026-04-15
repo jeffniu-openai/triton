@@ -7549,6 +7549,8 @@ def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupp
     assert "maps to tcgen05.copy.warpx4.32x128b" in text
     assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
     assert "descriptor message 0 has no representable MMAv5 shared-memory descriptor" in text
+    assert "source column bit 2 maps to shared offset 256" in text
+    assert "cannot split sub-instruction source columns" in text
     assert "needs a destination-row / source-message schedule" in text
     assert "Source element type should be 32-bit" not in text
     assert "PassManager::run failed" not in text

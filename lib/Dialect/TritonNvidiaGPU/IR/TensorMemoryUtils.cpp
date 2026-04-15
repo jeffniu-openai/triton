@@ -8201,6 +8201,71 @@ selectTMemCopyDescriptorLayout(ArrayRef<LinearLayout> srcDescLayouts,
   return std::nullopt;
 }
 
+static std::optional<std::string>
+getTMemCopyInstructionColumnProjectionNote(
+    const LinearLayout &cvt, const TMemCopyMessagePlan &message) {
+  const LinearLayout &descriptorCvt =
+      message.descriptorCvt ? *message.descriptorCvt : cvt;
+  auto inDims = descriptorCvt.getInDimNames();
+  if (inDims.empty() || message.instrShape.size() < 2)
+    return std::nullopt;
+
+  auto *ctx = inDims.begin()->getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kOffset = StringAttr::get(ctx, "offset");
+  if (!descriptorCvt.hasInDim(kCol) || !descriptorCvt.hasOutDim(kOffset))
+    return std::nullopt;
+
+  unsigned instrCols = message.instrShape[1];
+  if (!llvm::isPowerOf2_32(instrCols) || instrCols <= 1)
+    return std::nullopt;
+  unsigned instrColBits = llvm::Log2_32(instrCols);
+
+  auto colBases = descriptorCvt.getBases().lookup(kCol);
+  if (colBases.size() < instrColBits || colBases.empty())
+    return std::nullopt;
+
+  int32_t unitOffset = descriptorCvt.getBasis(kCol, 0, kOffset);
+  if (unitOffset <= 0)
+    return std::nullopt;
+  unsigned offsetDimIndex = descriptorCvt.getOutDimIndex(kOffset);
+
+  auto hasNonOffsetContribution = [&](ArrayRef<int32_t> basis) {
+    for (auto [idx, value] : llvm::enumerate(basis)) {
+      if (idx != offsetDimIndex && value != 0)
+        return true;
+    }
+    return false;
+  };
+
+  for (unsigned bit = 0; bit < instrColBits; ++bit) {
+    ArrayRef<int32_t> basis = descriptorCvt.getBasis(kCol, bit);
+    int32_t actualOffset = basis[offsetDimIndex];
+    int32_t expectedOffset = unitOffset << bit;
+    bool nonOffsetContribution = hasNonOffsetContribution(basis);
+    if (actualOffset == expectedOffset && !nonOffsetContribution)
+      continue;
+
+    std::string note;
+    llvm::raw_string_ostream os(note);
+    os << "Within one " << instrCols
+       << "-column tcgen05.copy instruction, source column bit " << bit
+       << " maps to ";
+    if (actualOffset == 0)
+      os << "no shared offset";
+    else
+      os << "shared offset " << actualOffset;
+    if (nonOffsetContribution)
+      os << " plus a non-offset component";
+    os << " instead of contiguous shared offset " << expectedOffset
+       << ". Current copy scheduling cannot split sub-instruction source "
+          "columns, so this projection needs a different copy atom or a "
+          "multi-message schedule before it can be supported.";
+    return os.str();
+  }
+  return std::nullopt;
+}
+
 std::optional<TMemCopyDescriptorLayoutSelection>
 selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
                                const LinearLayout &shmemLl,
@@ -8278,6 +8343,9 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
        << message.descriptorShape[0] << ", " << message.descriptorShape[1]
        << "] and instruction shape [" << message.instrShape[0] << ", "
        << message.instrShape[1] << "].";
+    if (auto projectionNote =
+            getTMemCopyInstructionColumnProjectionNote(cvt, message))
+      os << " " << *projectionNote;
     return {std::nullopt,
             getUnsupportedTMemCopyResult(
                 TMemCopySupportFailureLayer::DescriptorSynthesis, os.str())};

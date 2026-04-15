@@ -214,6 +214,12 @@ Progress:
   consumes the per-message descriptor projection for folded descriptor extents
   and direct shared-seed candidates. This keeps the new projection slot
   internally coherent before any planner starts populating it.
+- 2026-04-15 10:15 UTC: descriptor-synthesis failures now carry a generic
+  copy-instruction column projection note. The scales descriptor-view row
+  currently fails because source column bit 2 must map to shared offset 256
+  inside a 16-column copy atom; current scheduling cannot split that
+  sub-instruction source-column bit, so descriptor representability alone is
+  not a support proof.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

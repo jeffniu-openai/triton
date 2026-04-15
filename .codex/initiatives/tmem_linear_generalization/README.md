@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:15 UTC: descriptor-synthesis failures now add a planner
+  note when the source projection moves a source column bit inside one
+  `tcgen05.copy` instruction away from contiguous shared offsets. The exact
+  scales descriptor-view row is now diagnosed as: source column bit 2 maps to
+  shared offset 256 instead of contiguous offset 4, and current scheduling
+  cannot split sub-instruction source columns. This records the concrete
+  schedule invariant that a future support promotion must solve, not just the
+  fact that MMAv5 descriptor synthesis failed.
 - 2026-04-15 10:13 UTC: descriptor-candidate generation now consistently
   uses `TMemCopyMessagePlan::descriptorCvt` for descriptor column extents when
   a future atomized schedule supplies a per-message source projection. This is
