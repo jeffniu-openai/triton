@@ -8679,3 +8679,22 @@ rejection, not rescue
 - Boundary: this covers the remaining cta-group variant for the already-added
   4x256b family. It does not change the harder `warpx2::02_13` two-CTA
   schedule gap.
+
+## Latest: 2026-04-15 08:19 UTC shared copy failure-note attachment
+
+- Added `attachTMemCopyPlanFailureNotes(...)` to `TensorMemoryUtils`.
+- Removed duplicate local lambdas from `ttng.tmem_copy` verification and
+  `tcgen05.copy` LLVM lowering.
+- The helper attaches all non-empty failed-plan messages and falls back to the
+  first failure when the aggregate list is empty, preserving the current
+  all-plan diagnostic behavior while making the planner utility layer own that
+  policy.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+  (`8 passed`);
+  `git diff --check`.
+- Boundary: behavior-preserving cleanup. Next work remains Phase 3 scales
+  physical-query modelling and Phase 2 two-CTA `warpx2::02_13` schedule
+  derivation.

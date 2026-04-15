@@ -1521,20 +1521,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto planSelection =
       selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
                          bitwidth, supportKind);
-  auto attachPlanFailureNotes = [](auto &diag,
-                                   const TMemCopyPlanSelection &selection) {
-    bool attached = false;
-    for (const TMemCopySupportResult &failure : selection.failures) {
-      if (failure.message.empty())
-        continue;
-      diag.attachNote() << failure.message;
-      attached = true;
-    }
-    if (!attached && selection.firstFailure &&
-        !selection.firstFailure->message.empty()) {
-      diag.attachNote() << selection.firstFailure->message;
-    }
-  };
   SmallVector<TMemCopyPlan> loweringPlans;
   if (planSelection)
     loweringPlans.push_back(*planSelection.plan);
@@ -1583,7 +1569,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for tensor memory scales.";
-      attachPlanFailureNotes(diag, planSelection);
+      attachTMemCopyPlanFailureNotes(diag, planSelection);
       diag.attachNote()
           << "Use a shared layout that lowers to tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "
@@ -1597,7 +1583,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
                                 "from shared memory descriptor ")
                 << srcTy << " to tensor memory descriptor " << dstTy;
-    attachPlanFailureNotes(diag, planSelection);
+    attachTMemCopyPlanFailureNotes(diag, planSelection);
     return failure();
   }
 

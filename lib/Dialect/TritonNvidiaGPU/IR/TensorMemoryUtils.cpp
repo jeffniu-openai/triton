@@ -7563,6 +7563,21 @@ TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
   return selection;
 }
 
+void attachTMemCopyPlanFailureNotes(InFlightDiagnostic &diag,
+                                    const TMemCopyPlanSelection &selection) {
+  bool attached = false;
+  for (const TMemCopySupportResult &failure : selection.failures) {
+    if (failure.message.empty())
+      continue;
+    diag.attachNote() << failure.message;
+    attached = true;
+  }
+  if (!attached && selection.firstFailure &&
+      !selection.firstFailure->message.empty()) {
+    diag.attachNote() << selection.firstFailure->message;
+  }
+}
+
 std::optional<uint64_t>
 getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   if (family != TMemCopyFamily::Warpx2_02_13_64x128b)

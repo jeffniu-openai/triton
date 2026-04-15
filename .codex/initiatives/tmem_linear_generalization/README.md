@@ -95,6 +95,15 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy failure-note helper checkpoint, 2026-04-15 08:19 UTC:
+  `attachTMemCopyPlanFailureNotes(...)` now lives in `TensorMemoryUtils` and is
+  used by both `ttng.tmem_copy` verification and LLVM lowering. This keeps
+  all-plan copy failure reporting owned by the shared planner utilities instead
+  of duplicated in verifier/lowering call sites. Validation passed: `make -j8`,
+  direct invalid/conversion RUN lines via local `triton-opt` and
+  `python/triton/FileCheck`, focused `cp_scales and clean` pytest slice
+  (`8 passed`), and `git diff --check`.
+
 - Current 4x256b cta-group::2 coverage checkpoint, 2026-04-15 07:39 UTC:
   local implementation already handled `tcgen05.cp.cta_group::2.4x256b` through
   the dense 4-row copy atom, and conversion coverage now exercises that ISA

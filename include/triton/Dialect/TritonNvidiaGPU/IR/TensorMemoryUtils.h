@@ -356,6 +356,9 @@ TMemCopyPlanSelection selectTMemCopyPlan(gpu::MemDescType srcTy,
                                          int bitwidth,
                                          TMemCopyPlanSupportKind supportKind);
 
+void attachTMemCopyPlanFailureNotes(InFlightDiagnostic &diag,
+                                    const TMemCopyPlanSelection &selection);
+
 bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
                                             TMemCopyFamily family,
                                             std::string *error = nullptr);

@@ -15063,3 +15063,19 @@ Open after this slice:
   - `git diff --check`.
 - Next: commit and push this coverage checkpoint, then continue with the
   unresolved schedule gaps.
+
+## 2026-04-15 08:19 UTC: shared copy failure-note attachment
+
+- Added `attachTMemCopyPlanFailureNotes(...)` to the shared TMEM utility
+  layer.
+- `ttng.tmem_copy` verification and `tcgen05.copy` LLVM lowering now use the
+  same helper for all-plan failure-note attachment.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`8 passed`);
+  - `git diff --check`.
+- Next: commit and push this cleanup checkpoint, then continue with scales
+  physical-query modelling.
