@@ -419,6 +419,10 @@ stringifyTMemCopySupportFailureLayer(TMemCopySupportFailureLayer layer);
 
 StringRef stringifyTMemCopySourceFormat(TMemCopySourceFormat sourceFormat);
 
+TMemCopySupportResult
+getTMemCopySourceFormatSupport(const TMemCopyMessagePlan &message,
+                               int bitwidth);
+
 TMemCopySupportResult getDirectTMemCopyLayoutSupport(gpu::MemDescType memTy,
                                                      TMemCopyFamily family);
 

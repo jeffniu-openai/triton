@@ -2342,6 +2342,10 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
+  planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
+  still use `None`, so behavior is unchanged; the next source-format support
+  attempt now has a dedicated ISA-legality layer.
 - 2026-04-15 20:14 UTC: copy support failures now have an explicit
   `instruction schedule` layer. Source-row projection failures,
   instruction-column projection failures, known cta-group::2 schedule gaps,

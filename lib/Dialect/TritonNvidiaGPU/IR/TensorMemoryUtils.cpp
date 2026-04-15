@@ -7737,6 +7737,21 @@ getUnsupportedTMemCopyResult(TMemCopySupportFailureLayer layer, Twine message) {
 }
 
 TMemCopySupportResult
+getTMemCopySourceFormatSupport(const TMemCopyMessagePlan &message,
+                               int bitwidth) {
+  if (message.sourceFormat == TMemCopySourceFormat::None)
+    return getSupportedTMemCopyResult();
+  if (bitwidth != 8) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::IsaAtom,
+        Twine("tcgen05.copy source format .") +
+            stringifyTMemCopySourceFormat(message.sourceFormat) +
+            " requires 8-bit source elements.");
+  }
+  return getSupportedTMemCopyResult();
+}
+
+TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
                                       TMemCopyFamily family) {
   if (family != TMemCopyFamily::Warpx2_01_23_64x128b &&
@@ -9144,6 +9159,10 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;
     scheduledMessage.plan = message;
+    auto sourceFormatSupport =
+        getTMemCopySourceFormatSupport(message, bitwidth);
+    if (!sourceFormatSupport)
+      return {std::nullopt, sourceFormatSupport};
     std::string rowProjectionError;
     auto rowProjection =
         getTMemCopySourceRowProjectionPlan(cvt, message, &rowProjectionError);

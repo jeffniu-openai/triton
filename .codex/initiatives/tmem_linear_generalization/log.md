@@ -17251,3 +17251,26 @@ Open after this slice:
     cp_no_scales_warpx2_02_13_twocta_indexed_view_reports_clean_unsupported`:
     `15 passed, 10899 deselected in 6.32s`;
   - `git diff --check`.
+
+## 2026-04-15 20:16 UTC: copy source-format support layer
+
+- Added a first-class source-format legality check for copy plans.
+- Implementation:
+  - added `getTMemCopySourceFormatSupport(...)`;
+  - non-default source formats now fail through the ISA-atom layer unless the
+    source element width is 8 bits;
+  - plan realization checks source-format legality before row projection,
+    instruction-column projection, and descriptor synthesis.
+- Semantics:
+  - intended behavior-preserving because all current generated plans still use
+    `TMemCopySourceFormat::None`;
+  - future `.b8x16...` copy schedule work now has an explicit legality hook.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - exact runtime/codegen nodeids:
+    `test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`,
+    `test_tmem_runtime_matrix_cp_scales_warpx4`, and
+    `test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen`:
+    `3 passed in 3.53s`;
+  - `git diff --check`.

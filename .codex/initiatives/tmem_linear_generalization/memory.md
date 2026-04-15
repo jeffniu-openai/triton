@@ -9873,3 +9873,27 @@ rejection, not rescue
     python/test/gluon/test_tmem_runtime_matrix.py`
     (`15 passed, 10899 deselected in 6.32s`);
   - `git diff --check`.
+
+## Latest: 2026-04-15 20:16 UTC copy source-format support layer
+
+- Added `getTMemCopySourceFormatSupport(...)`.
+- The helper accepts `TMemCopySourceFormat::None` and requires 8-bit source
+  elements for non-default `.b8x16...` copy source-format suffixes.
+- `getTMemCopySharedDescriptorPlanRealization(...)` now checks source-format
+  ISA legality before source-row projection, instruction-column projection,
+  and descriptor synthesis.
+- Semantics: behavior-preserving. Current plans still select source format
+  `None`, but the source-format dimension now has a dedicated planner layer
+  for future support-bearing schedule attempts.
+- Validation completed:
+  - `make -j8`;
+  - direct invalid verifier RUN with `triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-source-format-layer
+    PYTHONPATH=./python pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen`
+    (`3 passed in 3.53s`);
+  - `git diff --check`.

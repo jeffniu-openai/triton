@@ -306,6 +306,12 @@ Progress:
   cta-group::2 schedule gaps now report through the scheduler layer instead of
   descriptor synthesis. This keeps the planner semantics layered while
   preserving existing diagnostics.
+- 2026-04-15 20:16 UTC: added
+  `getTMemCopySourceFormatSupport(...)` and invoke it during copy plan
+  realization. The helper validates non-default source-format suffixes as
+  8-bit-source ISA variants before row/instruction scheduling or descriptor
+  synthesis. Current plans still use `None`, so this is behavior-preserving
+  scaffolding for source-format support attempts.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate
