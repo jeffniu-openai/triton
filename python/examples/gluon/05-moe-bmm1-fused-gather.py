@@ -918,26 +918,37 @@ class KernelConfig:
 def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int, reduction_n: int) -> KernelConfig:
     p = KernelConfig()
 
+    # For occupancy=1, BLOCK_N=256, BLOCK_K=128:
+    # slice_size <  14 -> BLOCK_M=16
+    # slice_size <  28 -> BLOCK_M=32
+    # slice_size <  80 -> BLOCK_M=64
+    # slice_size >= 80 -> BLOCK_M=128
+    #
+    # SWIGLU_SUBTILE_FACTOR = min(8, BLOCK_M // 8)
+    #
+    # When BLOCK_M < 128, maximize W_NUM_BUFS. Otherwise, balance them.
     slice_size = ragged_metadata.expected_slice_size
     assert slice_size is not None
-    if slice_size <= 8:
-        p = replace(p, BLOCK_M=16, SWIGLU_SUBTILE_FACTOR=2)
-    elif slice_size <= 16:
-        p = replace(p, BLOCK_M=32, SWIGLU_SUBTILE_FACTOR=4)
-    elif slice_size <= 58:
-        p = replace(p, BLOCK_M=64, SWIGLU_SUBTILE_FACTOR=4)
 
-    x_smem = p.BLOCK_M * p.BLOCK_K
-    w_smem = p.BLOCK_N * p.BLOCK_K
-    w_mx_smem = w_smem // p.MXFP_BLOCK_SIZE
-    c_tile_smem = (p.BLOCK_M // p.SWIGLU_SUBTILE_FACTOR) * (p.BLOCK_N // reduction_n)
+    if slice_size < 14:
+        p = replace(p, BLOCK_M=16)
+    elif slice_size < 28:
+        p = replace(p, BLOCK_M=32)
+    elif slice_size < 80:
+        p = replace(p, BLOCK_M=64)
+    else:
+        p = replace(p, BLOCK_M=128)
+    p = replace(p, SWIGLU_SUBTILE_FACTOR=min(8, p.BLOCK_M // 8))
 
-    smem = 228 * 1024
-    smem -= p.X_NUM_BUFS * x_smem
-    smem -= p.EPILOGUE_BUFFER_DEPTH * c_tile_smem
-
-    w_num_bufs = smem // (w_smem + w_mx_smem)
-    p = replace(p, W_NUM_BUFS=w_num_bufs)
+    match p.BLOCK_M:
+        case 16:
+            p = replace(p, X_NUM_BUFS=11, W_NUM_BUFS=6)
+        case 32:
+            p = replace(p, X_NUM_BUFS=5, W_NUM_BUFS=6)
+        case 64:
+            p = replace(p, X_NUM_BUFS=6, W_NUM_BUFS=5)
+        case 128:
+            p = replace(p, X_NUM_BUFS=5, W_NUM_BUFS=4)
 
     return p
 
@@ -951,7 +962,7 @@ def matmul(
     precision_config: PrecisionConfig,
     c: torch.Tensor,
     fused_activation: FusedActivation,
-    p: KernelConfig | None,
+    p: KernelConfig | None = None,
 ):
     specs = fused_activation.specs
     assert specs.name == "swiglu"
@@ -1282,22 +1293,15 @@ def bench(batch_size, provider):
 
     ms = do_bench_cudagraph(lambda: run_kernel(prepared, kernel, precision_config, out))
     n_tokens = int(prepared.ragged_metadata.slice_sizes.sum().item())
-    k, n = GPT_OSS_120B_MM1_SHAPE
+    k, n = GPT_OSS_120B_CONFIG.hidden_size, GPT_OSS_120B_CONFIG.intermediate_size
     flops = 2 * n_tokens * k * n
     return flops * 1e-12 / (ms * 1e-3)
 
 
-# occupancy=1, block_n=256, block_k=128
-# block_m 16
-# move to 32 when bs=448
-# block_m=16 and 32, pick most w+w_mx bufs
-# move to 64 when bs=896
-# move to 128 when bs=2560
-# for block_m=64, pick most w+w_mx bufs
-# for block_m=128, pick x_bufs=5, w_bufs=4
-
 if __name__ == "__main__":
-    # bench.run(save_path=".", print_data=True)
+    bench.run(save_path=".", print_data=True)
+
+def autotune():
     for bs in get_batch_sizes(GPT_OSS_120B_CONFIG):
         print(f"bs: {bs}")
         prepared = prepare_case(GPT_OSS_120B_CONFIG, bs, device=f"cuda:{torch.cuda.current_device()}", seed=0)
