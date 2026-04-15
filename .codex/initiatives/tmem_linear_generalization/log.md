@@ -15613,3 +15613,23 @@ Open after this slice:
     group 1 `69 passed, 10 skipped`, group 2 `79 passed`, group 3
     `79 passed`, group 4 `78 passed`;
   - `git diff --check`.
+
+## 2026-04-15 11:30 UTC: two-CTA warpx2::02_13 diagnostic evidence
+
+- Updated the no-scales two-CTA `warpx2::02_13` verifier note and runtime/lit
+  expectations with the direct-seed probe result.
+- Durable finding: reusing the single-CTA direct seed under cta-group::2 emits
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but duplicates the low
+  source-column pair instead of preserving the high source-column bit. The
+  aligned dword deltas that complete the single-CTA schedule read zeros under
+  cta-group::2.
+- This is a diagnostics checkpoint, not a support promotion. The remaining
+  support path is a real cta-group::2 descriptor/address schedule, or a
+  proof-level clean negative if the ISA cannot realize the projection.
+- Validation completed:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-warpx2-diag PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_warpx2_02_13_twocta and clean_unsupported'`
+    (`14 passed`);
+  - `git diff --check`.

@@ -266,6 +266,14 @@ Progress:
   requires 32-bit shared elements. Copy plan construction can now build a plan
   from an explicitly supplied dense atom, while dense-only fallbacks stay
   isolated from multicast/scales families.
+- 2026-04-15 11:30 UTC: two-CTA no-scales `warpx2::02_13` remains a
+  schedule gap, and the verifier diagnostic now records why the direct-seed
+  path is not a viable support route. cta-group::2 direct-seed probes emit the
+  opcode but duplicate the low source-column pair; the aligned dword deltas
+  that complete the single-CTA direct-seed schedule read zeros under
+  cta-group::2. The next support attempt must derive a real cta-group::2
+  descriptor/address schedule preserving the high source-column bit rather
+  than reusing the single-CTA schedule.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

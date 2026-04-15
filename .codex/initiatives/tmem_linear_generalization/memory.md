@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current two-CTA `warpx2::02_13` diagnostic checkpoint, 2026-04-15 11:30 UTC:
+  the verifier clean-negative now records the concrete failed direct-seed
+  probe. A cta-group::2 direct-seed variant can emit
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but runtime output
+  duplicates the low source-column pair. The aligned dword deltas that make
+  the single-CTA `02_13` direct-seed schedule work read zeros under
+  cta-group::2, and the other tiny dword deltas are misaligned. Do not retry a
+  guard lift or single-CTA direct-seed reuse for this row; a real support
+  promotion needs a cta-group::2 descriptor/address schedule that preserves
+  the high source-column bit, or this stays a proof-level ISA schedule
+  negative.
+
 - Current dense subword copy checkpoint, 2026-04-15 11:21 UTC:
   canonical dense no-scales `ttng.tmem_copy` no longer rejects subword
   element types in the op verifier. The previous failure was not an ISA

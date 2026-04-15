@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:30 UTC: two-CTA no-scales `warpx2::02_13`
+  diagnostics now preserve the direct probe result in the actual verifier
+  message. Reusing the single-CTA direct seed under `cta_group::2` can emit
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but it duplicates the low
+  source-column pair instead of preserving the high source-column bit. The
+  aligned dword deltas that complete the single-CTA schedule read zeros under
+  `cta_group::2`, and other tiny deltas are misaligned. This keeps the clean
+  negative proof-level while the real work remains deriving a cta-group::2
+  descriptor/address schedule rather than retrying the known-bad direct-seed
+  path.
 - 2026-04-15 11:21 UTC: dense no-scales `tcgen05.cp.128x256b`
   now supports subword element types for canonical linear TMEM copies when the
   source shared-memory descriptor uses the real element bitwidth. The old
