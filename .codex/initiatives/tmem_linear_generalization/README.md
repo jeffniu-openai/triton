@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:27 UTC: probed whether the `warpx2` dense-shared clean
+  negatives were only blocked by an overstrict shared-layout preflight. A
+  temporary relaxation let `warpx2::01_23` dense shared layouts compile and
+  emit the expected opcode for single-CTA and two-CTA rows, but runtime was
+  wrong for both `f32` and `i32` (`maxdiff=127` versus the established
+  `warpx2::01_23` oracle). The probe was removed and `make -j8` restored a
+  source-consistent build. Conclusion: ordinary dense shared-linear source
+  order is another schedule/projection gap, not a safe preflight lift.
 - 2026-04-15 23:22 UTC: scheduled copy tiles now carry a
   `TMemCopyDestinationFootprint` instead of only a raw destination offset. The
   footprint records logical destination coordinate, physical row/column,

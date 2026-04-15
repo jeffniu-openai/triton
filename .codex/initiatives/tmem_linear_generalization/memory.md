@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current `warpx2` dense-shared preflight probe, 2026-04-15 23:27 UTC:
+  temporarily removed the canonical `128x4` shared-linear offset-basis check
+  for `warpx2` copy to test whether dense shared source order was an easy
+  support promotion. It is not. With the preflight relaxed,
+  `warpx2::01_23` dense shared rows compiled and emitted the expected
+  single-CTA and two-CTA opcodes, but runtime output was wrong for both `f32`
+  and `i32` (`maxdiff=127` against the established oracles).
+  `warpx2::02_13` still failed deeper. The probe was removed and `make -j8`
+  restored source-consistent binaries. Do not broaden `warpx2` shared-layout
+  acceptance based only on MMAShared descriptor representability; the source
+  shared layout order needs an explicit schedule/projection proof.
+
 - Current copy destination-footprint checkpoint, 2026-04-15 23:22 UTC:
   `TMemCopyScheduledTile` now owns a `TMemCopyDestinationFootprint` instead of
   just storing a destination offset. The footprint carries logical destination

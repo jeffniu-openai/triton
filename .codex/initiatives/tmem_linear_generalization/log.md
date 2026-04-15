@@ -1,3 +1,18 @@
+## 2026-04-15 23:27 UTC: warpx2 dense-shared preflight probe
+
+- Temporarily removed the strict canonical `128x4` shared-linear offset-basis
+  check for `warpx2` copy to test whether the dense shared clean negatives were
+  caused by a stale preflight.
+- With the relaxation, `warpx2::01_23` dense shared layouts compiled and
+  emitted the expected single-CTA and two-CTA opcodes, but runtime was wrong:
+  both `f32` and `i32` had `maxdiff=127` against the established single-CTA
+  and two-CTA `warpx2::01_23` oracles.
+- `warpx2::02_13` dense shared rows still failed deeper in planning/lowering.
+- Removed the temporary source edit and rebuilt with `make -j8`.
+- Conclusion: dense shared source order is not a simple support promotion.
+  `warpx2` needs a source shared-layout schedule/projection proof before the
+  preflight can be widened.
+
 ## 2026-04-15 23:22 UTC: copy destination-footprint carrier
 
 - Added `TMemCopyDestinationFootprint` as the destination side of each

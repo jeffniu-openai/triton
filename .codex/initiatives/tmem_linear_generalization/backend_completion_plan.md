@@ -332,6 +332,12 @@ Progress:
   schedules are unchanged, but future copy-planner work can reason about
   physical write footprints and overwrite/mask legality without re-deriving
   offsets in lowering.
+- 2026-04-15 23:27 UTC: probed the `warpx2` dense-shared clean negatives by
+  temporarily removing the canonical shared-linear offset-basis preflight.
+  `warpx2::01_23` dense shared rows compiled and emitted the expected opcode,
+  but runtime was wrong (`maxdiff=127` for both single-CTA and two-CTA, `f32`
+  and `i32`); `warpx2::02_13` still failed deeper. Keep the preflight until
+  the planner has an explicit source shared-layout schedule/projection proof.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
