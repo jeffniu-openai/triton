@@ -2342,6 +2342,13 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:39 UTC: pure row-order no-scales copy permutation failures now
+  report through the `instruction schedule` layer instead of the physical
+  query layer. Mixed row/column bases and column-contiguity failures remain
+  separate physical-query/atomization boundaries. Validation: `make -j8`,
+  invalid verifier, `git diff --check`, and the
+  `cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported` sweep passed
+  `15` cases.
 - 2026-04-15 20:36 UTC: copy scheduled tiles now carry explicit
   `logicalRow` and `sourceRow` coordinates. Current schedules still emit zero
   row deltas, so behavior is unchanged, but lowering now consumes the selected

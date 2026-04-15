@@ -324,6 +324,10 @@ Progress:
   loading the shared descriptor. This keeps row partitioning in the executable
   schedule model instead of forcing the next support attempt to rewrite
   lowering again.
+- 2026-04-15 20:39 UTC: pure dense-copy row-order and row-repetition ordering
+  failures now use the `instruction schedule` support layer. Mixed row/column
+  bases remain physical-query failures, while row permutations are classified
+  as missing explicit source-row schedules.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

@@ -17320,3 +17320,24 @@ Open after this slice:
   - use the explicit source-row coordinate to replace row-partition proof-only
     checks with a schedule-producing helper before attempting another
     descriptor-view copy promotion.
+
+## 2026-04-15 20:39 UTC: row-permutation copy failures use schedule layer
+
+- Re-probed representative no-scales copy permutation boundaries:
+  - `reverse/identity` fails with the source-row projection schedule note;
+  - `identity/reverse` fails at copy-instruction column contiguity;
+  - `even_odd/even_odd` follows the row-schedule boundary first.
+- Updated dense copy row-order and row-repetition ordering failures to use
+  `TMemCopySupportFailureLayer::InstructionSchedule` instead of
+  `PhysicalQuery`.
+- Mixed row/column bases still fail as physical-query issues; only separable
+  row ordering that needs a future source-row schedule moved layers.
+- Validation:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-row-schedule-layer
+    PYTHONPATH=./python pytest -s --tb=short -q
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported'`
+    (`15 passed in 5.15s`);
+  - `git diff --check`.

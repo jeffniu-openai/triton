@@ -8130,7 +8130,7 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   }
   if (!isStrictlyIncreasing(rowBasisValues)) {
     return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
+        TMemCopySupportFailureLayer::InstructionSchedule,
         "direct tcgen05.copy requires TMEM row bases to stay in "
         "ascending physical row order until the planner can derive an "
         "explicit source-row projection schedule for row-permuted "
@@ -8152,7 +8152,7 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   }
   if (!isStrictlyIncreasing(rowRepetitionBasisValues)) {
     return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
+        TMemCopySupportFailureLayer::InstructionSchedule,
         "direct tcgen05.copy requires TMEM row-repetition bases stored "
         "in the column address space to remain in ascending row order until "
         "the planner can derive an explicit source-row projection schedule "

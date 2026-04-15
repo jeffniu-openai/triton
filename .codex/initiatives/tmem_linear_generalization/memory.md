@@ -9945,3 +9945,26 @@ rejection, not rescue
     cp_scales_warpx4' python/test/gluon/test_tmem_runtime_matrix.py`
     (`433 passed, 10481 deselected in 762.19s`);
   - `git diff --check`.
+
+## Latest: 2026-04-15 20:39 UTC row-permutation schedule layer
+
+- Re-probed the no-scales copy row/column permutation boundary:
+  - pure row permutations fail because the dense copy planner has no
+    source-row projection schedule yet;
+  - pure column reversal fails because logical column tiles are not contiguous
+    within the selected copy instruction width.
+- Reclassified pure row-order and row-repetition ordering failures from
+  `physical query` to `instruction schedule`.
+- This keeps physical-query failures for true non-separable row/column bases,
+  while preserving the row-permutation text that points at the missing
+  source-row schedule.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-row-schedule-layer
+    PYTHONPATH=./python pytest -s --tb=short -q
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported'`
+    (`15 passed in 5.15s`);
+  - `git diff --check`.
