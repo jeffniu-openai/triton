@@ -8837,3 +8837,33 @@ rejection, not rescue
   implementation work should prefer scales descriptor-view row/message
   scheduling or an ISA-grounded multi-message `02_13` plan over resurrecting
   the direct-seed or forced-canonical descriptor probes.
+
+## Latest: 2026-04-15 09:59 UTC copy descriptor projection abstraction
+
+- Added `TMemCopyMessagePlan::descriptorCvt`, an optional per-message
+  descriptor projection. When unset, descriptor synthesis uses the full copy
+  conversion exactly as before.
+- `getTMemCopyDescriptorLayouts(...)` now selects descriptor-layout candidates
+  from the message descriptor projection instead of implicitly always using
+  the full destination-view conversion. It asserts that the projection targets
+  the same source address space as the full conversion.
+- `TMemCopyPlan::messages` and the `getTMemCopyPlans(...)` return/local vector
+  now use explicit inline capacities. This is required because carrying an
+  optional `LinearLayout` makes the message/plan objects too large for LLVM's
+  default `SmallVector<T>` inline-size heuristic.
+- Semantics: behavior-preserving. No current planner sets `descriptorCvt`, so
+  the support surface and diagnostics are intended to remain unchanged.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`9 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive[f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+    (`2 passed`);
+  - `git diff --check`.
+- Probe note: a temporary scales descriptor-view probe confirmed that a
+  representable offset-major descriptor can compile but only carries the low
+  source-column bits; changing source/destination row offsets does not turn it
+  into a correct support promotion. The useful durable outcome is the
+  descriptor-projection abstraction, not the probed schedule.

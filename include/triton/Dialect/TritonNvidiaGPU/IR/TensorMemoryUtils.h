@@ -134,6 +134,9 @@ struct TMemCopyMessagePlan {
   unsigned sourceWarpGroups;
   llvm::SmallVector<unsigned> descriptorShape;
   llvm::SmallVector<unsigned> instrShape;
+  // Conversion used for the shared-memory descriptor carried by this message.
+  // When unset, descriptor synthesis uses the full copy conversion.
+  std::optional<LinearLayout> descriptorCvt;
   int smemRow = 0;
   int smemColOffset = 0;
   int tmemRowDelta = 0;
@@ -145,7 +148,7 @@ struct TMemCopyMessagePlan {
 
 struct TMemCopyPlan {
   TMemCopyFamily family;
-  llvm::SmallVector<TMemCopyMessagePlan> messages;
+  llvm::SmallVector<TMemCopyMessagePlan, 2> messages;
 };
 
 struct TMemCopyDescriptorLayoutSelection {
@@ -403,8 +406,8 @@ getDirectTMemCopySeedDescriptorImm(gpu::MemDescType srcTy,
 std::optional<TMemCopyAtom> getTMemCopyAtom(const LinearLayout &cvt,
                                             int bitwidth);
 
-llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
-                                                 int bitwidth);
+llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
+                                                    int bitwidth);
 
 llvm::SmallVector<LinearLayout>
 getTMemCopyDescriptorLayouts(gpu::MemDescType srcTy, const LinearLayout &shmemLl,

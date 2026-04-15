@@ -15335,3 +15335,35 @@ Open after this slice:
 - Next: checkpoint these findings, then resume implementation on the remaining
   TMEM copy planner work, with scales descriptor-view scheduling the most
   promising next vertical slice.
+
+## 2026-04-15 09:59 UTC: copy descriptor projection abstraction
+
+- Added an optional per-message descriptor projection to `TMemCopyMessagePlan`.
+  This separates the shared-memory descriptor view used for MMAv5 descriptor
+  synthesis from the full copy conversion used to classify the copy family and
+  destination schedule.
+- Existing behavior is unchanged because all current message plans leave the
+  projection unset. The descriptor-layout helper falls back to the full `cvt`
+  and asserts that any future projection still targets the same source address
+  space.
+- Made the copy-plan vectors explicit about inline capacity:
+  - `TMemCopyPlan::messages` is now `SmallVector<TMemCopyMessagePlan, 2>`;
+  - `getTMemCopyPlans(...)` returns and builds `SmallVector<TMemCopyPlan, 4>`.
+  This avoids LLVM's default `SmallVector<T>` size assertion now that a
+  message can carry an optional `LinearLayout`.
+- Validation:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - focused `cp_scales and clean` runtime slice (`9 passed`);
+  - neighboring no-scales single-CTA `02_13` positive plus two-CTA clean
+    negative (`2 passed`);
+  - `git diff --check`.
+- Temporary probe evidence before the abstraction:
+  - offset-major scales descriptor projections compile but lose high
+    source-column bits;
+  - changing existing row/source offset fields alone does not repair the
+    descriptor-view logical row/column permutation.
+- Next: set `descriptorCvt` only from a proven atomized schedule. Continue by
+  deriving a legal scales descriptor-view message projection or by proving that
+  this exact source layout requires an ISA form the backend cannot emit.

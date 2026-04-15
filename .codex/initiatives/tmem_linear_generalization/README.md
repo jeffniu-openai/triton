@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 09:59 UTC: copy message plans now carry an optional
+  descriptor-projection conversion separate from the full copy conversion.
+  Existing plans leave it unset, so behavior is unchanged, but the planner can
+  now represent future multi-message schedules where one message's
+  shared-memory descriptor covers a legal source projection while the
+  destination row/source offset schedule covers the full TMEM view. `TMemCopyPlan`
+  and message vectors now use explicit inline counts to keep the larger plan
+  objects build-safe.
 - 2026-04-15 09:46 UTC: no-scales two-CTA `warpx2::02_13` was
   re-probed with direct-seed and forced-descriptor schedules and remains a
   real source/address-schedule gap, not a verifier over-restriction. Reusing

@@ -205,6 +205,11 @@ Progress:
   a clean physical-query diagnostic. This is a bounded support promotion inside
   the shared layout predicate; it does not change the pending scales
   row/message schedule work.
+- 2026-04-15 09:59 UTC: copy message plans can now carry an optional
+  descriptor projection separate from the full copy conversion. Existing
+  schedules leave it unset, but this creates the planner slot needed for
+  atomized schedules where the MMAv5 shared descriptor is a legal projection
+  and destination/source offsets complete the full TMEM view.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

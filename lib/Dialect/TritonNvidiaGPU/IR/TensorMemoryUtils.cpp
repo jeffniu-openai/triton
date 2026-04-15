@@ -7793,8 +7793,8 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   return seedImm;
 }
 
-llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
-                                                 int bitwidth) {
+llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
+                                                    int bitwidth) {
   auto atom = getTMemCopyAtom(cvt, bitwidth);
   if (!atom)
     return {};
@@ -7822,7 +7822,7 @@ llvm::SmallVector<TMemCopyPlan> getTMemCopyPlans(const LinearLayout &cvt,
     return plan;
   };
 
-  llvm::SmallVector<TMemCopyPlan> plans;
+  llvm::SmallVector<TMemCopyPlan, 4> plans;
   auto appendWarpx2Plan = [&](unsigned descriptorRows,
                               unsigned sourceWarpGroups, bool directSeed,
                               int tmemDwordDelta,
@@ -7887,7 +7887,13 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
                              const LinearLayout &shmemLl,
                              const LinearLayout &cvt,
                              const TMemCopyMessagePlan &message) {
-  auto inDims = cvt.getInDimNames();
+  const LinearLayout &descriptorCvt =
+      message.descriptorCvt ? *message.descriptorCvt : cvt;
+  assert(to_vector(descriptorCvt.getOutDimNames()) ==
+         to_vector(cvt.getOutDimNames()) &&
+         "tcgen05.copy descriptor projection must target the same source "
+         "address space as the full copy conversion");
+  auto inDims = descriptorCvt.getInDimNames();
   assert(!inDims.empty());
   auto *ctx = inDims.begin()->getContext();
   auto kBlock = StringAttr::get(ctx, "block");
@@ -7896,12 +7902,12 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
   auto kWarp = StringAttr::get(ctx, "warp");
   auto makeLayout = [&](unsigned descriptorRows, unsigned sourceWarpGroups,
                         unsigned descriptorCols) {
-    return cvt
+    return descriptorCvt
         .reshapeIns({{kRow, static_cast<int32_t>(descriptorRows)},
                      {kWarp, static_cast<int32_t>(sourceWarpGroups)},
                      {kCol, static_cast<int32_t>(descriptorCols)},
-                     {kBlock, cvt.getInDimSize(kBlock)}})
-        .sublayout({kRow, kCol}, to_vector(cvt.getOutDimNames()));
+                     {kBlock, descriptorCvt.getInDimSize(kBlock)}})
+        .sublayout({kRow, kCol}, to_vector(descriptorCvt.getOutDimNames()));
   };
   auto makeSharedSeedLayout = [&](unsigned descriptorRows,
                                   unsigned sourceWarpGroups,
@@ -8068,7 +8074,7 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
     }
   };
   pushUnique(makeLayout(message.descriptorRows, message.sourceWarpGroups,
-                        cvt.getInDimSize(kCol)));
+                        descriptorCvt.getInDimSize(kCol)));
   if (auto directSharedLayout =
           makeSharedSeedLayout(message.descriptorRows,
                                message.sourceWarpGroups,
