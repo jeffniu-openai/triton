@@ -14599,3 +14599,30 @@ Open after this slice:
 - Validation completed: `make -j8`; `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`; affected selector collect selected `288/9834`; full-file collect reported `9834`; `ld_red` collect reported `2818`; affected selector passed all `288` cases across split-4 on four GPUs (`72` per group; group times `1563.72s`, `1601.45s`, `638.80s`, and `641.65s`); `git diff --check` passed.
 - Tooling note: an initial no-PYTHONPATH collect imported a stale installed Triton and failed on `TensorMemoryLinearLayout`; the actual validation used `PYTHONPATH=./python` to bind pytest to this checkout.
 - Next: commit/push this bounded explicit-row checkpoint, then decide whether the next compile-heavy `ld.red` explicit slice should cover mixed layouts or whether to move to another non-parked ISA family.
+
+## 2026-04-15 06:15 UTC: backend-completion plan and first copy-planner seam
+
+- Recorded `backend_completion_plan.md` as the post-coverage roadmap. The plan
+  treats the expanded runtime matrix as the correctness anchor and shifts the
+  initiative from coverage-first expansion to backend completeness over exact
+  TMEM physical query and ISA scheduling.
+- Preserved the architectural conclusion from the current debugging session:
+  scales and no-scales two-CTA `warpx2::02_13` expose that the backend is not
+  yet linear-layout complete; `tcgen05.cp ... 4x256b` is a separate missing ISA
+  coverage item but should be added through the same atomized copy-planner
+  model rather than as an isolated workaround.
+- Began Phase 0 by centralizing the duplicated copy shared-descriptor
+  representability predicate into
+  `canSynthesizeTMemCopySharedDescriptorPlan(...)` in `TensorMemoryUtils`.
+  `ttng.tmem_copy` verifier logic now calls that helper for both scales and
+  no-scales plan checks.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`
+    with `PATH` pointed at the local build and `python/triton/FileCheck`
+    tooling;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Tooling note: bare `lit` and `python3 -m lit` are unavailable in this shell,
+  so focused lit RUN lines were executed directly with local `triton-opt` and
+  `python/triton/FileCheck`.

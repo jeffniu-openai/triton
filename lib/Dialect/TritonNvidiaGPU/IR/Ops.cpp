@@ -1576,24 +1576,8 @@ LogicalResult TMEMCopyOp::verify() {
     return emitOpError("The source should not be transposed or padded");
   }
   auto canBuildSharedDescriptorPlan = [&](const TMemCopyPlan &plan) {
-    return llvm::all_of(plan.messages, [&](const auto &message) {
-      if (message.useDirectSeedDescriptor &&
-          getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
-        return true;
-      auto srcDescLayouts =
-          getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
-      return llvm::any_of(srcDescLayouts,
-                          [&](const LinearLayout &srcDescLayout) {
-                            static constexpr unsigned
-                                kDescriptorOrientations[] = {0u, 1u};
-                            return llvm::any_of(ArrayRef(kDescriptorOrientations),
-                                                [&](unsigned mnDim) {
-                              return canRepresentAsMMASmemDescriptor(
-                                  srcDescLayout, message.descriptorShape,
-                                  bitwidth, mnDim, 5);
-                            });
-                          });
-    });
+    return canSynthesizeTMemCopySharedDescriptorPlan(srcTy, shmemLl, cvt, plan,
+                                                     bitwidth);
   };
   if (isa<TensorMemoryScalesEncodingAttr>(getDst().getType().getEncoding())) {
     if (copyPlans.empty()) {
@@ -1657,26 +1641,8 @@ LogicalResult TMEMCopyOp::verify() {
       if (!isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family,
                                                  &layoutSupportError))
         return false;
-      return llvm::all_of(plan.messages, [&](const auto &message) {
-        if (message.useDirectSeedDescriptor &&
-            getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
-          return true;
-        auto srcDescLayouts =
-            getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
-        return llvm::any_of(srcDescLayouts,
-                            [&](const LinearLayout &srcDescLayout) {
-                              static constexpr unsigned
-                                  kDescriptorOrientations[] = {0u, 1u};
-                              return llvm::any_of(
-                                  ArrayRef(kDescriptorOrientations),
-                                  [&](unsigned mnDim) {
-                                    return canRepresentAsMMASmemDescriptor(
-                                        srcDescLayout,
-                                        message.descriptorShape, bitwidth,
-                                        mnDim, 5);
-                                  });
-                            });
-      });
+      return canSynthesizeTMemCopySharedDescriptorPlan(srcTy, shmemLl, cvt,
+                                                       plan, bitwidth);
     };
     if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);

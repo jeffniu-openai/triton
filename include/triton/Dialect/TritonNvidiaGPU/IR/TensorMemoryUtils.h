@@ -259,6 +259,12 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      int bitwidth, unsigned MNdim,
                                      int mmaVersion);
 
+bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
+                                               const LinearLayout &shmemLl,
+                                               const LinearLayout &cvt,
+                                               const TMemCopyPlan &plan,
+                                               int bitwidth);
+
 } // namespace mlir::triton::nvidia_gpu
 
 #endif // TRITON_DIALECT_TRITONNVIDIAGPU_IR_TENSORMEMORYUTILS_H_

@@ -7717,4 +7717,27 @@ bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
   return false;
 }
 
+bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,
+                                               const LinearLayout &shmemLl,
+                                               const LinearLayout &cvt,
+                                               const TMemCopyPlan &plan,
+                                               int bitwidth) {
+  return llvm::all_of(plan.messages, [&](const auto &message) {
+    if (message.useDirectSeedDescriptor &&
+        getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
+      return true;
+    auto srcDescLayouts =
+        getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
+    return llvm::any_of(srcDescLayouts, [&](const LinearLayout &srcDescLayout) {
+      static constexpr unsigned kDescriptorOrientations[] = {0u, 1u};
+      return llvm::any_of(ArrayRef(kDescriptorOrientations),
+                          [&](unsigned mnDim) {
+                            return canRepresentAsMMASmemDescriptor(
+                                srcDescLayout, message.descriptorShape,
+                                bitwidth, mnDim, 5);
+                          });
+    });
+  });
+}
+
 } // namespace mlir::triton::nvidia_gpu

@@ -37,6 +37,10 @@ When resuming the initiative:
   `run_tmem_runtime_matrix_sweep.py` for the full current runtime-matrix
   sweep; this is the coverage-preserving replacement for raw static split-4
   full-file runs that time out while still making progress.
+- use `backend_completion_plan.md` for the post-coverage TMEM backend
+  completion roadmap: exact physical TMEM query model, atomized copy planning,
+  scales unification, load/store/reduction cleanup, MMA/scaled-MMA unification,
+  broad fuzzing, and compatibility deletion.
 
 ## Current Project Invariant
 
@@ -90,6 +94,21 @@ When resuming the initiative:
   layout's broadcast and physical mapping directly.
 
 ## Current Checkpoint
+
+- Current backend-completion planning checkpoint, 2026-04-15 06:15 UTC: the
+  expanded runtime matrix is now the correctness anchor for backend work rather
+  than the end goal. Preserve the conclusion that the remaining hard gaps
+  expose an incomplete linear-layout backend: scales and no-scales two-CTA
+  `warpx2::02_13` still lower through under-specified physical query/planner
+  machinery, while `tcgen05.cp ... 4x256b` is a separate missing ISA-coverage
+  item that should be easier to add once copy lowering is atomized through the
+  shared planner. The multi-phase plan is recorded in
+  `backend_completion_plan.md`; the first implementation slice centralizes copy
+  descriptor-plan representability in `TensorMemoryUtils` so
+  `ttng.tmem_copy` verifier logic can evolve toward a shared planner instead
+  of carrying duplicate inline descriptor synthesis checks. Validation passed:
+  `make -j8`, direct invalid/conversion lit RUN lines via local `triton-opt`
+  and `FileCheck`, and `git diff --check`.
 
 - Current `ld.red` explicit pure-row permutation checkpoint, 2026-04-15 05:08 UTC: descriptor-chain and direct explicit `ld.red` N-sweep variants now cover pure row `row_rotate1` and `row_even_odd` layouts at `N in {32,64,256}` for `32x32b`, `16x32bx2`, and `32x32b_splitn`, crossed with min/max and all legal `abs`/`NaN` modifier modes. These rows use the canonical split offsets; the special `N=256` non-`32x32b` split offset table remains limited to `col_reverse`, `col_rotate1`, and `rowcol_rotate_reverse`. Runtime-matrix collection is now `9834` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2818`, and `ldst=2985`; bucketed evidence aggregates to `9383 passed, 451 skipped`. Validation: `make -j8`; py-compile; full-file collect `9834`; `ld_red` collect `2818`; affected pure-row explicit selector collect `288/9834`; four-GPU split execution passed all `288` affected cases (`72` per group; slowest `1601.45s`). Tooling note: pytest in this shell needed `PYTHONPATH=./python` after rebuild because a no-PYTHONPATH collect imported a stale installed Triton.
 

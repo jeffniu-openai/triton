@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current backend-completion directive, 2026-04-15 06:15 UTC: use the expanded
+  runtime matrix as the correctness anchor for making the TMEM backend
+  linear-layout complete over the Blackwell TMEM ISA surface. Preserve this
+  conclusion: scales issues and no-scales two-CTA `warpx2::02_13` are evidence
+  that the backend still relies on incomplete physical-query/planner
+  abstractions, not random layout-specific bugs. `tcgen05.cp ... 4x256b` is a
+  separate missing ISA-coverage item, but it should be added through the same
+  atomized copy-planner model rather than as another isolated special case.
+  The multi-phase roadmap lives in `backend_completion_plan.md`. First
+  execution slice completed: centralize copy descriptor-plan representability in
+  `TensorMemoryUtils`, then use that as the seam for a structured copy planner
+  that can report unsupported physical query, unsupported atom, descriptor
+  synthesis failure, CTA ownership failure, or resource boundary precisely.
+  Validation passed: `make -j8`, direct invalid/conversion lit RUN lines via
+  local `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current `ld.red` explicit pure-row permutation checkpoint, 2026-04-15 05:08 UTC: descriptor-chain and direct explicit `ld.red` N-sweep variants now cover pure row `row_rotate1` and `row_even_odd` layouts at `N in {32,64,256}` for `32x32b`, `16x32bx2`, and `32x32b_splitn`, crossed with min/max and all legal `abs`/`NaN` modifier modes. Pure-row split variants use canonical offsets; no new entry was added to `LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS`. Runtime-matrix collection is now `9834` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2818`, and `ldst=2985`; bucketed evidence aggregates to `9383 passed, 451 skipped`. Validation: `make -j8`; py-compile; full-file collect `9834`; `ld_red` collect `2818`; affected pure-row explicit selector collect `288/9834`; four-GPU split execution passed all `288` cases (`72` per group; slowest `1601.45s`). Tooling note: pytest required `PYTHONPATH=./python` in this shell to avoid importing a stale site-packages Triton.
 
 - Current `ld.red` explicit pure-column permutation checkpoint, 2026-04-14 17:45 UTC: descriptor-chain and direct explicit `ld.red` N-sweep variants now cover pure column `col_rotate1` and `col_even_odd` layouts at `N in {32,64,256}` for `32x32b`, `16x32bx2`, and `32x32b_splitn`, crossed with min/max and all legal `abs`/`NaN` modifier modes. The `col_rotate1`, `N=256`, split explicit variants use offset order `[0,128,64,192]`, while `col_even_odd` keeps canonical `[0,64,128,192]`; `32x32b` remains canonical. Runtime-matrix collection is now `9546` tests: `cp=677`, `mma=2783`, splitn/misc `=571`, `ld_red=2530`, and `ldst=2985`; bucketed evidence aggregates to `9095 passed, 451 skipped`. Validation: `make -j8`; py-compile; full-file collect `9546`; `ld_red` collect `2530`; affected pure-column explicit selector collect `288/9546`; four-GPU split execution passed all `288` affected cases (`72` per group; slowest `1542.86s`).
