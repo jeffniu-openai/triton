@@ -13,6 +13,7 @@
 - This machine can be unstable. Make frequent, modular, incremental commits instead of carrying large uncommitted diffs.
 - Commit messages must be detailed enough to serve as a durable handoff: record context, why the change was needed, what changed, and any important validation or remaining boundaries.
 - After each commit for ongoing TMEM work, push the current `HEAD` to `jeffniu-openai/codex/tmem` so the remote branch is always recoverable if the node dies mid-session.
+- Always push checkpoint commits to the `github.com/jeffniu-openai/triton` remote using the `jeffniu-openai` GitHub credentials. For long checkpoints or changesets, make occasional recoverability commits with the subject `WIP checkpoint: <very brief tag>` and push them promptly so interrupted work is not lost.
 - Keep commits scoped so they can be understood and reverted independently.
 - Before resuming the TMEM linear-layout generalization initiative, start with `.codex/initiatives/tmem_linear_generalization/README.md`, then re-read `.codex/initiatives/tmem_linear_generalization/memory.md` as the initiative's durable memory/source of truth, and then read the latest tail of `.codex/initiatives/tmem_linear_generalization/handoff_2026-04-09.md`. Do not optimize only for the current red tests; keep the work aligned with the full mission:
   - support arbitrary linear TMEM layouts and descriptor-view chains whenever the ISA can realize them correctly;
