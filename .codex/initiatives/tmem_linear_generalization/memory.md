@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Current executable destination tile-plan checkpoint, 2026-04-15 19:23 UTC:
+  destination tile planning is now part of `TMemCopyExecutablePlan`.
+  `getTMemCopyPlanRealization(...)` computes `destinationTiles` after shared
+  descriptor-plan realization, and lowering iterates the selected plan's tiles
+  instead of recomputing a destination tile list. This keeps row projection,
+  instruction-column projection, descriptor realization, and destination tile
+  scheduling in the same selected-plan object, which is the needed shape for
+  future non-uniform source-column/message splitting. A temporary
+  `TRITON_TMEM_COPY_PROBE_FORCE_STANDALONE_QUERY` probe for the scales
+  descriptor-view copy was added, rebuilt, run, and removed: forcing the root
+  standalone query did not compile because it fails copy-family classification,
+  confirming the exact descriptor-view schedule still needs real splitting.
+  Validation after cleanup: `make -j8`, direct invalid verifier RUN, broad
+  focused copy selector
+  `cp_no_scales_linear_tile_permuted or
+  cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+  cp_no_scales_linear_32bit_dtypes or
+  cp_no_scales_4x256b_refresh_layout_codegen or cp_scales_warpx4 or
+  cp_scales_tmem_descriptor_view_reports_clean_unsupported` passed `409`
+  selected rows, and `git diff --check` passed.
+
 - Current instruction-column projection plan checkpoint, 2026-04-15 19:08 UTC:
   copy instruction-column projection is now represented by
   `TMemCopyInstructionColumnProjection` and stored on each

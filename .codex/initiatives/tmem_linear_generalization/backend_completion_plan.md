@@ -258,6 +258,13 @@ Progress:
   confirmed the scales descriptor-view copy still fails descriptor synthesis
   after that preflight is removed, so support needs real source-column/message
   splitting rather than broader descriptor enumeration.
+- 2026-04-15 19:23 UTC: moved destination tile planning into
+  `TMemCopyExecutablePlan`. Plan realization now computes and stores
+  destination tiles after descriptor/message scheduling, while lowering only
+  consumes the selected executable plan. A temporary standalone-query probe for
+  scales descriptor-view copy failed copy-family classification, confirming the
+  remaining path must preserve the exact descriptor-view query and add real
+  split scheduling.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

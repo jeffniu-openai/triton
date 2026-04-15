@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 19:23 UTC: destination tile planning now lives on the selected
+  executable copy plan. `TMemCopyExecutablePlan` carries
+  `destinationTiles`, populated in `getTMemCopyPlanRealization(...)`, and
+  lowering consumes those tiles instead of recomputing them after plan
+  selection. A temporary standalone-query probe for scales descriptor-view copy
+  confirmed there is no shortcut through the root query: the standalone view
+  fails copy-family classification, so exact-view source-column splitting is
+  still required. Validation: `make -j8`, direct invalid verifier RUN, broad
+  focused copy selector passed all `409` selected rows, and `git diff --check`
+  passed.
 - 2026-04-15 19:08 UTC: copy instruction-column projection is now an
   executable-plan carrier, `TMemCopyInstructionColumnProjection`, populated
   during shared copy-plan realization beside the source-row carrier. A bounded

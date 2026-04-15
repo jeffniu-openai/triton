@@ -17063,3 +17063,37 @@ Open after this slice:
     or cp_scales_shared_subslice_layout_reports_clean_unsupported or
     cp_scales_warpx4 and not scaled_mma`: `12 passed`;
   - `git diff --check`.
+
+## 2026-04-15 19:23 UTC: executable copy destination tile-plan carrier
+
+- Moved destination tile planning into the selected executable copy plan.
+- Temporary probe:
+  - added and removed a local
+    `TRITON_TMEM_COPY_PROBE_FORCE_STANDALONE_QUERY` hook in copy physical-query
+    selection;
+  - forcing the scales descriptor-view copy to use the standalone/root query
+    failed earlier at copy-family classification;
+  - conclusion: the descriptor-view copy cannot be fixed by root-query
+    selection. It must preserve the exact physical query and add real
+    source-column/message split scheduling.
+- Implementation:
+  - added `destinationTiles` to `TMemCopyExecutablePlan`;
+  - `getTMemCopyPlanRealization(...)` now computes the destination tile list
+    after shared descriptor/message realization succeeds;
+  - lowering consumes `planSelection.plan->destinationTiles` instead of
+    recomputing destination tiles after selection.
+- Semantics:
+  - intended behavior-preserving;
+  - selected copy plans now carry source-row projection, instruction-column
+    projection, descriptor realization, and destination tile scheduling in one
+    object.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - broad focused copy selector
+    `cp_no_scales_linear_tile_permuted or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_linear_32bit_dtypes or
+    cp_no_scales_4x256b_refresh_layout_codegen or cp_scales_warpx4 or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported`: `409 passed`;
+  - `git diff --check`.

@@ -194,14 +194,15 @@ struct TMemCopyScheduledMessage {
   std::optional<uint64_t> directSeedDescriptorImm;
 };
 
-struct TMemCopyExecutablePlan {
-  TMemCopyFamily family;
-  llvm::SmallVector<TMemCopyScheduledMessage, 2> messages;
-};
-
 struct TMemCopyDestinationTile {
   int32_t logicalCol;
   uint32_t offset;
+};
+
+struct TMemCopyExecutablePlan {
+  TMemCopyFamily family;
+  llvm::SmallVector<TMemCopyScheduledMessage, 2> messages;
+  llvm::SmallVector<TMemCopyDestinationTile> destinationTiles;
 };
 
 struct TMemCopyPlanSelection {

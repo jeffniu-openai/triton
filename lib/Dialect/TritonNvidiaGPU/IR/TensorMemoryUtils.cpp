@@ -8266,8 +8266,49 @@ getTMemCopyPlanRealization(MemDescType srcTy,
       return {std::nullopt, sharedLayoutSupport};
   }
 
-  return getTMemCopySharedDescriptorPlanRealization(srcTy, shmemLl, cvt, plan,
-                                                    bitwidth);
+  auto [executablePlan, descriptorSupport] =
+      getTMemCopySharedDescriptorPlanRealization(srcTy, shmemLl, cvt, plan,
+                                                 bitwidth);
+  if (!descriptorSupport)
+    return {std::nullopt, descriptorSupport};
+  assert(executablePlan &&
+         "supported tcgen05.copy descriptor plan must carry an executable "
+         "schedule");
+  assert(!executablePlan->messages.empty() &&
+         "supported tcgen05.copy plan must contain at least one message");
+
+  auto inDims = cvt.getInDimNames();
+  if (inDims.empty()) {
+    return {std::nullopt,
+            getUnsupportedTMemCopyResult(
+                TMemCopySupportFailureLayer::PhysicalQuery,
+                "tcgen05.copy destination tile planning has no input "
+                "dimensions.")};
+  }
+  auto kCol = StringAttr::get(inDims.begin()->getContext(), "col");
+  if (!cvt.hasInDim(kCol)) {
+    return {std::nullopt,
+            getUnsupportedTMemCopyResult(
+                TMemCopySupportFailureLayer::PhysicalQuery,
+                "tcgen05.copy destination tile planning requires a column "
+                "dimension.")};
+  }
+  const unsigned colStride = executablePlan->messages.front().plan.instrShape[1];
+  std::string destinationTileError;
+  auto destinationTiles = getTMemCopyDestinationTilePlan(
+      dstQuery, executablePlan->family, colStride, cvt.getInDimSize(kCol),
+      &destinationTileError);
+  if (!destinationTiles) {
+    return {std::nullopt,
+            getUnsupportedTMemCopyResult(
+                TMemCopySupportFailureLayer::PhysicalQuery,
+                destinationTileError.empty()
+                    ? "failed to compute physical tcgen05.copy destination "
+                      "tile plan from the selected tensor-memory layout"
+                    : destinationTileError)};
+  }
+  executablePlan->destinationTiles = std::move(*destinationTiles);
+  return {std::move(*executablePlan), descriptorSupport};
 }
 
 TMemCopySupportResult

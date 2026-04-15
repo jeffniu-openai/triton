@@ -1474,8 +1474,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
                                       triton::nvidia_gpu::TMEMCopyOp op,
                                       Value src, Value baseDst, Value pred) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
-  auto *ctx = op.getContext();
-  auto kCol = str_attr("col");
 
   MemDescType srcTy = op.getSrc().getType();
   MemDescType dstTy = op.getDst().getType();
@@ -1586,20 +1584,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
             ? destinationBaseOffset - alreadyAdjustedBase
             : 0;
 
-  const unsigned colStride = plannedMessages.front().schedule.plan.instrShape[1];
-  std::string destinationTileError;
-  auto destinationTiles = getTMemCopyDestinationTilePlan(
-      supportDstQuery, planSelection.plan->family, colStride,
-      cvt.getInDimSize(kCol), &destinationTileError);
-  if (!destinationTiles) {
-    return op->emitOpError(
-        destinationTileError.empty()
-            ? "failed to compute physical tcgen05.copy destination tile plan "
-              "from the selected tensor-memory layout"
-            : destinationTileError);
-  }
-
-  for (const TMemCopyDestinationTile &destinationTile : *destinationTiles) {
+  for (const TMemCopyDestinationTile &destinationTile :
+       planSelection.plan->destinationTiles) {
     int col = destinationTile.logicalCol;
     for (const auto &message : plannedMessages) {
       Value desc;
