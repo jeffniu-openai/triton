@@ -8579,3 +8579,29 @@ rejection, not rescue
   changed. The next backend slice remains to use these planner facts to decide
   whether missing scales/two-CTA schedules need new descriptor-layout search
   dimensions or are true ISA/resource negatives.
+
+## Latest: 2026-04-15 07:25 UTC unified copy-plan selector modes
+
+- Added `TMemCopyPlanSupportKind` with explicit modes for ordinary tensor
+  memory copies and tensor-memory-scales copies.
+- `getTMemCopyPlanSupport(...)` and `selectTMemCopyPlan(...)` now take the
+  support kind. `TensorMemory` mode preserves the existing destination
+  physical-layout checks, no-scales shared-runtime checks, and descriptor
+  synthesis. `TensorMemoryScales` mode uses the common descriptor-synthesis
+  layer without pulling in no-scales-only shared source-layout restrictions.
+- `ttng.tmem_copy` verification now uses `selectTMemCopyPlan(...)` for both
+  scales and no-scales paths.
+- `tcgen05.copy` lowering now also uses the same selector for both paths, so
+  scales lowering starts from the same selected plan and first-failure evidence
+  as verification rather than scanning all copy plans independently.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+  (`8 passed`);
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+  (`2 passed`);
+  `git diff --check`.
+- Boundary: intended behavior-preserving abstraction cleanup. This creates a
+  single selector seam for the next support work but does not yet promote
+  scales `warpx2` or no-scales two-CTA `warpx2::02_13`.

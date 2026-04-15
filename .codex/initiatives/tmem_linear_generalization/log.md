@@ -14972,3 +14972,28 @@ Open after this slice:
   diagnostics into the real support frontier: build a unified copy planner
   result that carries query projection, descriptor-message synthesis, and
   source/destination schedule facts for scales and no-scales paths alike.
+
+## 2026-04-15 07:25 UTC: unified copy-plan selector modes
+
+- Added `TMemCopyPlanSupportKind` so the copy planner can state whether it is
+  checking ordinary tensor memory or tensor-memory scales.
+- Threaded the support kind through `getTMemCopyPlanSupport(...)` and
+  `selectTMemCopyPlan(...)`.
+- Ordinary tensor-memory mode keeps the existing destination-layout,
+  shared-runtime, and descriptor-synthesis checks.
+- Tensor-memory-scales mode uses the common descriptor-synthesis check without
+  applying no-scales-only warpx2 shared-layout runtime preconditions.
+- Verification and lowering now both use `selectTMemCopyPlan(...)` for scales
+  and no-scales copy paths.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales and clean'`
+    (`8 passed`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+    (`2 passed`);
+  - `git diff --check`.
+- Next: commit and push this selector-mode checkpoint, then extend the planner
+  result from "selected copy plan" to "selected executable schedule" so the
+  scales/no-scales lowerers do not duplicate descriptor-loader construction.

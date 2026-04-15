@@ -1516,17 +1516,14 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   };
   SmallVector<PlannedCopyMessage, 2> plannedMessages;
   std::optional<TMemCopyPlan> selectedPlan;
-  TMemCopyPlanSelection noScalesPlanSelection;
+  auto supportKind = isScales ? TMemCopyPlanSupportKind::TensorMemoryScales
+                              : TMemCopyPlanSupportKind::TensorMemory;
+  auto planSelection =
+      selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
+                         bitwidth, supportKind);
   SmallVector<TMemCopyPlan> loweringPlans;
-  if (isScales) {
-    loweringPlans = copyPlans;
-  } else {
-    noScalesPlanSelection =
-        selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
-                           bitwidth);
-    if (noScalesPlanSelection)
-      loweringPlans.push_back(*noScalesPlanSelection.plan);
-  }
+  if (planSelection)
+    loweringPlans.push_back(*planSelection.plan);
   for (const auto &plan : loweringPlans) {
     SmallVector<PlannedCopyMessage, 2> candidateMessages;
     candidateMessages.reserve(plan.messages.size());
@@ -1579,6 +1576,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for tensor memory scales.";
+      if (planSelection.firstFailure &&
+          !planSelection.firstFailure->message.empty())
+        diag.attachNote() << planSelection.firstFailure->message;
       diag.attachNote()
           << "Use a shared layout that lowers to tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "
@@ -1592,9 +1592,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
                                 "from shared memory descriptor ")
                 << srcTy << " to tensor memory descriptor " << dstTy;
-    if (noScalesPlanSelection.firstFailure &&
-        !noScalesPlanSelection.firstFailure->message.empty())
-      diag.attachNote() << noScalesPlanSelection.firstFailure->message;
+    if (planSelection.firstFailure &&
+        !planSelection.firstFailure->message.empty())
+      diag.attachNote() << planSelection.firstFailure->message;
     return failure();
   }
 

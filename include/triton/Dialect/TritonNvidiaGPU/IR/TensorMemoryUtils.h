@@ -117,6 +117,11 @@ struct TMemCopySupportResult {
   explicit operator bool() const { return supported; }
 };
 
+enum class TMemCopyPlanSupportKind {
+  TensorMemory,
+  TensorMemoryScales,
+};
+
 struct TMemCopyMessagePlan {
   TMemCopyAtom atom;
   unsigned descriptorRows;
@@ -334,14 +339,16 @@ TMemCopySupportResult
 getTMemCopyPlanSupport(gpu::MemDescType srcTy,
                        const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
-                       const TMemCopyPlan &plan, int bitwidth);
+                       const TMemCopyPlan &plan, int bitwidth,
+                       TMemCopyPlanSupportKind supportKind);
 
 TMemCopyPlanSelection selectTMemCopyPlan(gpu::MemDescType srcTy,
                                          const TMemPhysicalQuery &dstQuery,
                                          const LinearLayout &shmemLl,
                                          const LinearLayout &cvt,
                                          llvm::ArrayRef<TMemCopyPlan> plans,
-                                         int bitwidth);
+                                         int bitwidth,
+                                         TMemCopyPlanSupportKind supportKind);
 
 bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
                                             TMemCopyFamily family,

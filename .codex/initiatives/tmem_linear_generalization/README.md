@@ -95,6 +95,18 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current unified copy-plan selector checkpoint, 2026-04-15 07:25 UTC:
+  copy-plan support now has an explicit `TMemCopyPlanSupportKind` for
+  no-scales tensor memory versus tensor-memory scales. Verification and
+  lowering both call `selectTMemCopyPlan(...)`; no-scales mode preserves the
+  existing destination-layout and shared-runtime preconditions, while scales
+  mode uses the shared descriptor-synthesis checks without inheriting
+  no-scales-only source-layout restrictions. Validation passed: `make -j8`,
+  direct invalid/conversion RUN lines via local `triton-opt` and
+  `python/triton/FileCheck`, focused `cp_scales and clean` pytest slice
+  (`8 passed`), two representative no-scales copy rows (`2 passed`), and
+  `git diff --check`.
+
 - Current scales descriptor-failure diagnostics checkpoint, 2026-04-15
   07:22 UTC: the copy descriptor-synthesis support helper is now public to the
   verifier, and tensor-memory-scales copy clean-negatives surface the same

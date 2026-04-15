@@ -7523,15 +7523,18 @@ getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
 TMemCopySupportResult
 getTMemCopyPlanSupport(MemDescType srcTy, const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
-                       const TMemCopyPlan &plan, int bitwidth) {
-  auto layoutSupport = getDirectTMemCopyLayoutSupport(dstQuery, plan.family);
-  if (!layoutSupport)
-    return layoutSupport;
+                       const TMemCopyPlan &plan, int bitwidth,
+                       TMemCopyPlanSupportKind supportKind) {
+  if (supportKind == TMemCopyPlanSupportKind::TensorMemory) {
+    auto layoutSupport = getDirectTMemCopyLayoutSupport(dstQuery, plan.family);
+    if (!layoutSupport)
+      return layoutSupport;
 
-  auto sharedLayoutSupport =
-      getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
-  if (!sharedLayoutSupport)
-    return sharedLayoutSupport;
+    auto sharedLayoutSupport =
+        getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
+    if (!sharedLayoutSupport)
+      return sharedLayoutSupport;
+  }
 
   return getTMemCopySharedDescriptorPlanSupport(srcTy, shmemLl, cvt, plan,
                                                 bitwidth);
@@ -7542,11 +7545,13 @@ TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
                                          const LinearLayout &shmemLl,
                                          const LinearLayout &cvt,
                                          ArrayRef<TMemCopyPlan> plans,
-                                         int bitwidth) {
+                                         int bitwidth,
+                                         TMemCopyPlanSupportKind supportKind) {
   TMemCopyPlanSelection selection;
   for (const TMemCopyPlan &plan : plans) {
     auto support =
-        getTMemCopyPlanSupport(srcTy, dstQuery, shmemLl, cvt, plan, bitwidth);
+        getTMemCopyPlanSupport(srcTy, dstQuery, shmemLl, cvt, plan, bitwidth,
+                               supportKind);
     if (support) {
       selection.plan = plan;
       return selection;
