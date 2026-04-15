@@ -278,6 +278,13 @@ Progress:
   columns; subaligned destination dword deltas fault and aligned deltas read
   zeros. Keep this as a real Phase 2 schedule gap until a `cta_group::2`
   descriptor/address plan preserves the high source-column bit.
+- 2026-04-15 22:29 UTC: rechecked the scales shared row-subslice copy row.
+  It is the same Phase 2 atomization class as the scales descriptor-view copy:
+  source column bit 2 maps to shared offset `1024`, or `32`
+  descriptor-row strides, inside one `warpx4.32x128b` instruction. This
+  confirms the next support-bearing copy edit must introduce a real
+  sub-instruction source-column/message split or destination-column mask rather
+  than another descriptor basis enumeration.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
@@ -784,6 +791,12 @@ Progress:
   layout can be forced to compile, but representative scaled format pairs all
   produce wrong output. Keep this as a true matrix-B scale-fragment addressing
   gap until the scale descriptor model can express sub-64-column B fragments.
+- 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
+  guard and found that representative tile and subslice TMEM-LHS cases compile
+  but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy
+  and linear accumulator layouts. Keep mixed fp4A TMEM-LHS as a padded
+  operand-A storage contract boundary until the TMEM storage model can express
+  the same padded physical image as shared memory.
 
 Exit criteria:
 - Plain and scaled MMAv5 descriptor-view support are explained by the same

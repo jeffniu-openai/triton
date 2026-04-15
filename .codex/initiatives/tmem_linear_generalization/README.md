@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:29 UTC: two quick guard-lift reprobes were recorded and
+  removed without source changes. Mixed-precision fp4A TMEM-LHS scaled-MMAv5
+  compiles if the verifier guard is bypassed, but representative tile,
+  subslice, legacy-accumulator, and linear-accumulator cases all produce the
+  same large numerical error (`max ~= 1084`, `mean ~= 69.8`), confirming this
+  is still a padded operand-A storage contract boundary. The scales
+  shared-row-subslice copy row fails for the same sub-instruction
+  column-selected descriptor-row stride as the descriptor-view row: source
+  column bit 2 maps to shared offset 1024, i.e. 32 descriptor-row strides,
+  which current `warpx4` copy scheduling cannot split or mask inside one atom.
+  The temporary guard lift was removed and `make -j8` rebuilt clean source.
 - 2026-04-15 22:23 UTC: two-CTA no-scales
   `tcgen05.copy.warpx2::02_13.64x128b` diagnostics now record the current
   descriptor/address schedule proof instead of the older coarse probe

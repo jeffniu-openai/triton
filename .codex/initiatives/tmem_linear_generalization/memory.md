@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current mixed-fp4A / scales-subslice reprobe checkpoint, 2026-04-15
+  22:29 UTC: two tempting guard lifts are still not support paths. Temporarily
+  bypassing the mixed-precision fp4 LHS TMEM verifier guard made representative
+  `mxfp4`-A/`mxfp8`-B scaled-MMAv5 TMEM-LHS tile and subslice cases compile
+  for both legacy and linear accumulator layouts, but every case had the same
+  wrong result (`max ~= 1084`, `mean ~= 69.8`). This keeps the fp4A TMEM-LHS
+  boundary on the padded operand-A storage contract, not on a stale verifier.
+  Rechecking the scales shared row-subslice copy row with query debug showed
+  the same atomization class as the descriptor-view scale-copy row: source
+  column bit 2 maps to shared offset `1024`, or `32` descriptor-row strides,
+  inside a `warpx4.32x128b` instruction. Current copy scheduling cannot split
+  that sub-instruction source-column bit or mask destination columns inside one
+  atom. The temporary verifier lift was removed and `make -j8` rebuilt source
+  consistent binaries before continuing.
+
 - Current two-CTA `warpx2::02_13` copy diagnostic checkpoint,
   2026-04-15 22:23 UTC: the no-scales two-CTA `tcgen05.copy` clean negative
   now records the sharper schedule evidence. Query debug showed the

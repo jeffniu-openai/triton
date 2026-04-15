@@ -17647,3 +17647,32 @@ Open after this slice:
     'cp_no_scales_warpx2_02_13_twocta'`
     (`14 passed, 10974 deselected in 7.41s`);
   - `git diff --check`.
+
+## 2026-04-15 22:29 UTC: mixed fp4A and scales-subslice guard-lift reprobes
+
+- Temporarily bypassed the mixed-precision fp4 LHS TMEM verifier guard in
+  `TCGen5MMAScaledOp::verify()` and rebuilt.
+- Representative `mxfp4`-A/`mxfp8`-B TMEM-LHS cases compiled for:
+  - tile-permuted LHS with legacy accumulator;
+  - tile-permuted LHS with linear accumulator;
+  - LHS subslice with legacy accumulator;
+  - LHS subslice with linear accumulator.
+- All four produced the same wrong numerical result (`max ~= 1084`,
+  `mean ~= 69.8`), so this remains a padded operand-A storage contract
+  boundary rather than a stale verifier guard.
+- Rechecked the scales shared row-subslice copy row with
+  `TRITON_DEBUG_TMEM_QUERY=1`. Both `start_row=0` and `start_row=64` fail the
+  `warpx4.32x128b` instruction-column projection because source column bit 2
+  maps to shared offset `1024`, or `32` descriptor-row strides, requiring a
+  sub-instruction source-column split or destination-column mask.
+- Removed the temporary verifier lift and rebuilt source-consistent binaries.
+- Validation/probes:
+  - `make -j8` after applying the temporary guard lift;
+  - local mixed-fp4A probe script under
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-mixed-fp4a-probe`;
+  - scales shared-subslice debug script under
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-subslice-debug2
+    TRITON_DEBUG_TMEM_QUERY=1`;
+  - `make -j8` after removing the temporary guard lift.
