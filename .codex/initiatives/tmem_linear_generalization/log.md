@@ -15718,3 +15718,28 @@ Open after this slice:
   - row-coded/column-coded direct runtime invocation of the same kernel;
   - `git status --short` after reverting probe code returned clean before
     recording this note.
+
+## 2026-04-15 11:56 UTC: dense copy row-group diagnostic
+
+- Probed the single-CTA dense no-scales `M=256,N=128` clean negative by
+  temporarily allowing the dense atom classifier to treat `row=256` as a
+  candidate.
+- The exact layout facts show the shape is not an ISA-family miss in the usual
+  sense: the conversion carries 256 logical source rows, while dense
+  `tcgen05.copy.128x256b` atomization only covers one 128-row row group per
+  message. The temporary guard lift reached descriptor realization and aborted
+  because no row-group selector was represented in the descriptor projection.
+- The committed change adds a planner-layer note to the family-miss diagnostic:
+  supporting this shape needs a first-class multi-message row-group schedule
+  that preserves the extra row selector through descriptor projection plus
+  source and destination row offsets.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cp-m256-diag PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean_error'`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-cp-linear-neighbor PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear'`
+    (`6 passed`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.

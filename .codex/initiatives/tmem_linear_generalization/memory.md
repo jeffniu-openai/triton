@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current dense row-group diagnostic, 2026-04-15 11:56 UTC:
+  single-CTA dense no-scales `M=256,N=128` fails because the current dense copy
+  planner atomizes one 128-row row group per message and has no first-class
+  representation for the extra logical row selector. The exact conversion has
+  source row bases through `row=128 -> offset 1024`; a temporary classifier
+  guard lift reached descriptor realization and aborted because the descriptor
+  projection had no row-group dimension. The committed behavior is a sharper
+  clean-negative diagnostic, not a support promotion: support requires a
+  multi-message row-group schedule that carries the extra selector as
+  descriptor projection plus source and destination row offsets.
+
 - Current legacy subword copy diagnostic, 2026-04-15 11:52 UTC:
   canonical `TensorMemoryLinearLayout` dense subword copies are still positive,
   but legacy `TensorMemoryLayout(block=(128,N), col_stride=32/bitwidth)`

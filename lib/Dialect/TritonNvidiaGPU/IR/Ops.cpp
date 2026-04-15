@@ -1607,6 +1607,7 @@ LogicalResult TMEMCopyOp::verify() {
   }
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
+  auto kRow = StringAttr::get(srcTy.getContext(), "row");
   auto cvt = tmemLl.invertAndCompose(shmemLl);
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
     llvm::errs() << "[tmem-copy] source-to-destination conversion:\n"
@@ -1674,6 +1675,15 @@ LogicalResult TMEMCopyOp::verify() {
       auto diag = emitOpError(
           "The source shared layout does not match any recognized "
           "tcgen05.copy family for non-scales tensor memory copies.");
+      if (cvt.hasInDim(kRow) && cvt.getInDimSize(kRow) > 128) {
+        diag.attachNote()
+            << "This projection has " << cvt.getInDimSize(kRow)
+            << " logical source rows. Dense tcgen05.copy planning currently "
+               "atomizes one 128-row row group per message; supporting this "
+               "shape needs a first-class multi-message row-group schedule "
+               "that preserves the extra row selector as descriptor "
+               "projection plus source and destination row offsets.";
+      }
       diag.attachNote()
           << "Recognized tcgen05.copy families are 4x256b, 128x128b, "
              "128x256b, warpx2::01_23.64x128b, "

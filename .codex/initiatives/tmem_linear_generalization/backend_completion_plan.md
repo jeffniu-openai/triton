@@ -296,6 +296,12 @@ Progress:
   legacy-packed support task is to carry packed-lane semantics in the physical
   query / copy schedule, or prove that `tcgen05.copy` cannot realize that
   packed destination image.
+- 2026-04-15 11:56 UTC: dense no-scales `M=256,N=128` now has a row-group
+  diagnostic that names the missing atomized schedule. A temporary classifier
+  guard lift proved that treating a 256-row projection as a single dense atom
+  only reaches a descriptor-realization abort; the planner needs to split the
+  projection into multiple 128-row messages and carry the high row-group
+  selector through descriptor projection plus source/destination row offsets.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:56 UTC: dense no-scales copy now reports the concrete
+  multi-message row-group gap for single-CTA `M=256,N=128` projections. A
+  temporary guard-lift probe classified the shape only by pretending a
+  `256`-row conversion was one dense atom, then aborted in descriptor
+  realization because the descriptor planner has no first-class row-group
+  dimension. The verifier now says the projection has 256 logical source rows
+  and that support needs a multi-message row-group schedule preserving the
+  extra row selector as descriptor projection plus source and destination row
+  offsets.
 - 2026-04-15 11:52 UTC: legacy `TensorMemoryLayout` subword dense copy now has
   a precise planner diagnostic instead of a generic descriptor-synthesis miss.
   Canonical `TensorMemoryLinearLayout` subword copies remain positive, but

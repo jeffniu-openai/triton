@@ -8740,6 +8740,9 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_unsupported_shape_reports_clean
         or "could not synthesize a compatible shared-memory descriptor plan for it" in text
         or "supported TMEM register layout" in text
     )
+    if "does not match any recognized tcgen05.copy family" in text:
+        assert "256 logical source rows" in text
+        assert "multi-message row-group schedule" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
