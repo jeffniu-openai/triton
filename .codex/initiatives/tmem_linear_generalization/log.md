@@ -16843,3 +16843,32 @@ Open after this slice:
     The SFB-ID/low-address degrees of freedom needed for the logical N32
     subfragment collide with the current use of SFB-ID for K scale subcolumns
     and with the hardware scale-address alignment requirement.
+
+## 2026-04-15 18:32 UTC: dense row-permutation descriptor/lowering probe
+
+- Added a temporary env-gated bypass for the dense direct-copy row-order guard,
+  then removed it before this checkpoint.
+- Representative case:
+  - no-scales dense `tcgen05.copy`, `M=N=128`, f32, swizzle 32;
+  - destination layout `_make_tmem_linear_layout_permuted(128, 128,
+    "reverse", "identity")`.
+- Result:
+  - the selected physical destination query had reversed row bases
+    `64,32,16,8,4,2,1`;
+  - the source-to-destination conversion carried descending/non-affine source
+    row offsets for the row bases;
+  - descriptor search selected a nominal shared descriptor candidate, but
+    lowering then hit the existing dense row-stride assertion for the
+    `128x256b` family because the 8/32/64 row bases do not form the affine
+    progression that the instruction lowering assumes.
+- Cleanup/validation:
+  - removed the temporary bypass;
+  - verified no live `TRITON_TMEM_PROBE_COPY_IGNORE_ROW_ORDER` references
+    remain under source/test paths;
+  - `make -j8` rebuilt the restored source tree.
+- Current conclusion:
+  - row-permuted dense copy support cannot be achieved by allowing descriptor
+    search to see the inverse projection. The schedule needs a first-class
+    source-row projection/atomization model that proves how each physical row
+    group maps to source rows before lowering, or the current clean negative
+    remains the correct ISA atom boundary.

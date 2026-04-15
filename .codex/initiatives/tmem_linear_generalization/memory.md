@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current dense row-permutation descriptor/lowering probe,
+  2026-04-15 18:32 UTC: a temporary guard lift for the
+  `reverse/identity` dense copy row showed the current descriptor search can
+  select a nominal MMAv5 shared descriptor from the inverse source projection,
+  but lowering then trips the dense row-stride invariant because
+  `128x256b` assumes affine ascending physical row offsets for the 8/32/64 row
+  bases. All probe hooks were removed and `make -j8` rebuilt clean source.
+  This sharpens the row-permutation boundary: a descriptor projection alone is
+  insufficient; real support would need a copy schedule that can program
+  non-affine source-row projection per physical row group, or a different ISA
+  atom that can mask/atomize rows.
+
 - Current repeated-N32 B-scale XOR/alignment probe, 2026-04-15 18:28 UTC:
   the PTX scale-B `scale_vec::1X` figure implies that the logical 32-column
   N fragment selected by a B-scale word column and SFB-ID follows an XOR-like

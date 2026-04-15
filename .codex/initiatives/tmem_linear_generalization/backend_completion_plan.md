@@ -248,6 +248,13 @@ Progress:
   dense copy row after a direct probe showed the first macro-tile schedule only
   handled high-low crossings. This keeps the support predicate general over
   instruction-tile physical destinations rather than tied to one tile width.
+- 2026-04-15 18:32 UTC: re-probed dense row-permuted copies by temporarily
+  lifting the row-order support guard. The inverse source projection reaches
+  descriptor selection, but dense lowering then fails the `128x256b` affine
+  row-stride invariant. This confirms descriptor projection alone is not the
+  missing layer; the copy planner needs an explicit source-row schedule that
+  can materialize non-affine physical row order, or it must keep the clean
+  negative as an ISA atom boundary.
 - 2026-04-15 10:57 UTC: fixed a descriptor-view base-offset lowering hole
   exposed by no-scales `warpx2` indexed and slice-index views. Zero trailing
   logical coordinates no longer force `getTMemViewOffsetImpl` to pseudoinvert

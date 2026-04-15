@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 18:32 UTC: dense row-permuted copy was re-probed with only the
+  row-order physical-query guard lifted. Descriptor search can pick a nominal
+  shared descriptor for `reverse/identity`, but lowering then hits the dense
+  row-stride invariant because `128x256b` expects affine ascending physical row
+  offsets. The probe hooks were removed and `make -j8` rebuilt clean source.
+  Keep the current clean negative until a real source-row projection or row
+  atomization schedule exists.
 - 2026-04-15 18:28 UTC: repeated-`N=32` scaled-MMAv5 got one more targeted
   scale-B probe based on the PTX `scale_vec::1X` B-scale sub-column layout.
   The XOR-derived schedule needs odd B-scale TMEM word columns for some
