@@ -210,6 +210,10 @@ Progress:
   schedules leave it unset, but this creates the planner slot needed for
   atomized schedules where the MMAv5 shared descriptor is a legal projection
   and destination/source offsets complete the full TMEM view.
+- 2026-04-15 10:13 UTC: descriptor-candidate generation now consistently
+  consumes the per-message descriptor projection for folded descriptor extents
+  and direct shared-seed candidates. This keeps the new projection slot
+  internally coherent before any planner starts populating it.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

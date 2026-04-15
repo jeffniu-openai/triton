@@ -8046,7 +8046,8 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
           unsigned residualWarpGroups = message.sourceWarpGroups >> foldedBits;
           pushUnique(makeLayout(message.descriptorRows << rowFoldBits,
                                 residualWarpGroups,
-                                cvt.getInDimSize(kCol) << colFoldBits));
+                                descriptorCvt.getInDimSize(kCol)
+                                    << colFoldBits));
         }
       }
     }
@@ -8080,7 +8081,7 @@ getTMemCopyDescriptorLayouts(MemDescType srcTy,
   if (auto directSharedLayout =
           makeSharedSeedLayout(message.descriptorRows,
                                message.sourceWarpGroups,
-                               cvt.getInDimSize(kCol))) {
+                               descriptorCvt.getInDimSize(kCol))) {
     pushUnique(*directSharedLayout);
     pushSortedInputBasesVariant(*directSharedLayout);
   }

@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 projection-consistency slice, 2026-04-15 10:13 UTC:
+  descriptor-candidate generation now derives folded descriptor column extents
+  and direct shared-seed descriptor extents from
+  `TMemCopyMessagePlan::descriptorCvt` when present, instead of falling back to
+  the full copy conversion in those two spots. Existing behavior is unchanged
+  because all current schedules leave `descriptorCvt` unset, but the planner
+  slot is now internally consistent for the next atomized copy schedules.
+  Validation passed: `make -j8`, invalid verifier, Blackwell conversion
+  FileCheck, focused `cp_scales and clean` runtime slice (`9 passed`), and
+  `git diff --check`.
+
 - Current Phase 2 dense-copy support slice, 2026-04-15 09:31 UTC: direct
   no-scales dense `tcgen05.copy.128x256b` no longer requires globally
   ascending TMEM column bases. The support predicate now proves the exact

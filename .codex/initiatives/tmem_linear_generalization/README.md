@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:13 UTC: descriptor-candidate generation now consistently
+  uses `TMemCopyMessagePlan::descriptorCvt` for descriptor column extents when
+  a future atomized schedule supplies a per-message source projection. This is
+  behavior-preserving today because no current plan sets `descriptorCvt`, but
+  it closes a layering hole where folded `warpx2` descriptor variants and the
+  direct shared-seed candidate would have mixed the full copy conversion back
+  into descriptor synthesis.
 - 2026-04-15 10:06 UTC: exact scales descriptor-view copy diagnostics now
   tell developers to set `TRITON_DEBUG_TMEM_QUERY=1` to print the selected
   copy conversion and descriptor candidates. This keeps the clean negative

@@ -15416,3 +15416,23 @@ Open after this slice:
   - focused `cp_scales and clean` runtime slice (`9 passed`);
   - invalid verifier RUN;
   - `git diff --check`.
+
+## 2026-04-15 10:13 UTC: descriptor projection consistency
+
+- Fixed the first bug found after adding `TMemCopyMessagePlan::descriptorCvt`:
+  descriptor-candidate generation still read the full copy conversion for the
+  folded `warpx2` descriptor column extent and direct shared-seed descriptor
+  extent.
+- Both paths now use `descriptorCvt` when present, matching the main
+  `makeLayout(...)` candidate and preserving the invariant that descriptor
+  synthesis consumes one per-message source projection.
+- This is behavior-preserving for current schedules because no plan sets
+  `descriptorCvt` yet, but it prevents the next atomized scales/two-CTA copy
+  schedules from silently mixing full-copy source dimensions into a descriptor
+  projection.
+- Validation:
+  - `make -j8`;
+  - invalid verifier RUN;
+  - Blackwell conversion FileCheck RUN;
+  - focused `cp_scales and clean` runtime slice (`9 passed`);
+  - `git diff --check`.
