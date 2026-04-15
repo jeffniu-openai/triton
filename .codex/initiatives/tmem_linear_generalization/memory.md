@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 slice, 2026-04-15 06:55 UTC: aligned no-scales
+  `tcgen05.copy` lowering with verification. `TensorMemoryToLLVM.cpp` now
+  derives the destination facts with `inferStandaloneTMemPhysicalQuery(...)`
+  and uses `getTMemCopyPlanSupport(...)` for plan filtering and late
+  diagnostics. This removes another type-only support call site while
+  preserving behavior; scales lowering remains on the current descriptor
+  synthesis path for now. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`. Next concrete step: add explicit copy support context for
+  CTA ownership / exact-query divergence, then choose the first
+  behavior-equivalent exact-query migration.
+
 - Current Phase 2 slice, 2026-04-15 06:53 UTC: added
   `getTMemCopyPlanSupport(...)`, which checks a no-scales copy plan through
   destination physical-query support, shared-layout/runtime support, and

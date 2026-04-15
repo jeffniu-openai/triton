@@ -107,6 +107,11 @@ Progress:
   physical-query support, shared-layout/runtime support, and
   shared-descriptor synthesis into one result while preserving existing
   diagnostics.
+- 2026-04-15 06:55 UTC: aligned `tcgen05.copy` lowering with verification by
+  using `inferStandaloneTMemPhysicalQuery(...)` and `getTMemCopyPlanSupport(...)`
+  in `TensorMemoryToLLVM.cpp`. The lowering path now consumes the same
+  physical-query carrier and per-plan support helper as verification for
+  no-scales copy plans.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

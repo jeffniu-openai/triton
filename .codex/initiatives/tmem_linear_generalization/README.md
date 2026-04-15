@@ -95,6 +95,15 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy lowering alignment checkpoint, 2026-04-15 06:55 UTC:
+  `TensorMemoryToLLVM.cpp` now uses `inferStandaloneTMemPhysicalQuery(...)` and
+  `getTMemCopyPlanSupport(...)` for no-scales `tcgen05.copy` lowering, matching
+  the verifier's physical-query/per-plan support path. This is intended to be
+  behavior-preserving and keeps the scales lowering path on its current
+  descriptor-synthesis flow. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`.
+
 - Current copy per-plan support checkpoint, 2026-04-15 06:53 UTC:
   `getTMemCopyPlanSupport(...)` now returns one structured support result for a
   copy plan by checking destination physical-query support,

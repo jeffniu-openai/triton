@@ -14785,3 +14785,22 @@ Open after this slice:
 - Next: enrich copy-plan support with operation-specific context for
   CTA-ownership and descriptor-synthesis boundaries, then start using exact
   physical-query support decisions where they are known behavior-equivalent.
+
+## 2026-04-15 06:55 UTC: copy lowering uses physical-query plan support
+
+- Updated `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`
+  so no-scales `tcgen05.copy` lowering uses
+  `inferStandaloneTMemPhysicalQuery(...)` instead of
+  `inferStandaloneTMemViewType(...)`.
+- The lowering path now uses `getTMemCopyPlanSupport(...)` for no-scales plan
+  filtering and late no-plan diagnostics.
+- Scales lowering stays on the existing descriptor-synthesis flow in this
+  checkpoint.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: add copy support context for CTA ownership and exact-query divergence,
+  then migrate the first behavior-equivalent support decision from standalone
+  query to exact query.

@@ -1476,14 +1476,14 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   MemDescType dstTy = op.getDst().getType();
   auto shmemLl = toLinearLayout(srcTy);
   std::string tmemError;
-  auto maybeStandaloneDstTy = inferStandaloneTMemViewType(op.getDst(), &tmemError);
-  if (failed(maybeStandaloneDstTy)) {
+  auto maybeDstQuery = inferStandaloneTMemPhysicalQuery(op.getDst(), &tmemError);
+  if (failed(maybeDstQuery)) {
     return op->emitOpError(tmemError.empty()
                                ? "unsupported tensor memory descriptor view "
                                  "for tcgen05.copy lowering"
                                : tmemError);
   }
-  auto tmemLl = toLinearLayout(*maybeStandaloneDstTy);
+  auto tmemLl = maybeDstQuery->layout;
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(dstTy.getEncoding());
 
   // This subtlely handles subviews
@@ -1511,8 +1511,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   std::optional<TMemCopyPlan> selectedPlan;
   for (const auto &plan : copyPlans) {
     if (!isScales &&
-        (!isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy, plan.family) ||
-         !isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family)))
+        !getTMemCopyPlanSupport(srcTy, *maybeDstQuery, shmemLl, cvt, plan,
+                                bitwidth))
       continue;
     SmallVector<PlannedCopyMessage, 2> candidateMessages;
     candidateMessages.reserve(plan.messages.size());
@@ -1572,20 +1572,14 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
              "memory allocation.";
       return failure();
     }
-    std::string layoutSupportError;
-    (void)isDirectTMemCopyLayoutSupported(*maybeStandaloneDstTy,
-                                          copyPlans.front().family,
-                                          &layoutSupportError);
-    std::string sharedLayoutSupportError;
-    (void)isTMemCopySharedLayoutRuntimeSupported(
-        srcTy, copyPlans.front().family, &sharedLayoutSupportError);
+    auto planSupport =
+        getTMemCopyPlanSupport(srcTy, *maybeDstQuery, shmemLl, cvt,
+                               copyPlans.front(), bitwidth);
     auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
                                 "from shared memory descriptor ")
                 << srcTy << " to tensor memory descriptor " << dstTy;
-    if (!layoutSupportError.empty())
-      diag.attachNote() << layoutSupportError;
-    if (!sharedLayoutSupportError.empty())
-      diag.attachNote() << sharedLayoutSupportError;
+    if (!planSupport.message.empty())
+      diag.attachNote() << planSupport.message;
     return failure();
   }
 
