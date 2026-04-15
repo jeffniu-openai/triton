@@ -1361,6 +1361,42 @@ def tmem_copy_no_scales_linear_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M
 
 
 @gluon.jit
+def tmem_copy_no_scales_4x256b_view_kernel(in_ptr, out_ptr, parent_layout: ttgl.constexpr):
+    M: ttgl.constexpr = 4
+    N: ttgl.constexpr = 8
+    PARENT_M: ttgl.constexpr = 128
+
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0])
+    in_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+    in_n = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+    in_offs = in_m[:, None] * N + in_n[None, :]
+    value = ttgl.load(in_ptr + in_offs)
+
+    parent = allocate_tensor_memory(in_ptr.dtype.element_ty, [PARENT_M, N], layout=parent_layout)
+    tmem = parent.slice(0, M, dim=0)
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[1, 0], [2, 0], [0, 1], [0, 2], [0, 4]],
+        alignment=16,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared()
+
+    bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+
+    reg_layout: ttgl.constexpr = parent.get_reg_layout()
+    out_m = ttgl.arange(0, PARENT_M, ttgl.SliceLayout(1, reg_layout))
+    out_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    out_offs = out_m[:, None] * N + out_n[None, :]
+    output = parent.load(reg_layout)
+    ttgl.store(out_ptr + out_offs, output)
+
+
+@gluon.jit
 def tmem_copy_no_scales_indexed_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
     N: ttgl.constexpr = 4
     blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
@@ -7656,6 +7692,33 @@ def test_tmem_runtime_matrix_cp_no_scales_shared_subslice_bad_offset_reports_cle
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "The split offset may not touch the tile" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported(capfd):
+    m = 4
+    n = 8
+    parent_m = 128
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty((parent_m, n), device="cuda", dtype=torch.float32)
+    parent_layout = _make_tmem_linear_layout(parent_m, n)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_4x256b_view_kernel[(1, )](
+            inp,
+            out,
+            parent_layout,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.4x256b" in text
+    assert "validated descriptor/address schedule" in text
+    assert "source row values into a single destination row" in text
+    assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

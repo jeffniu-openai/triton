@@ -1,3 +1,32 @@
+## 2026-04-15 10:29 UTC: 4x256b copy safety checkpoint
+
+- Disabled `tcgen05.cp.4x256b` plan realization until Triton has a validated
+  descriptor/address schedule. The family is still classified as recognized
+  ISA coverage, but the planner now returns a structured descriptor-synthesis
+  failure explaining that the prior four-row candidate moved source row values
+  into one destination row.
+- Removed the single-CTA and two-CTA positive `4x256b` Blackwell conversion
+  checks because they only proved opcode emission and contradicted the runtime
+  probe evidence.
+- Added verifier clean-negative coverage for single-CTA and two-CTA 4x256b
+  shapes in `test/TritonNvidiaGPU/invalid.mlir`.
+- Added `tmem_copy_no_scales_4x256b_view_kernel` plus a runtime-matrix
+  clean-negative test for the parent-slice repro that previously emitted
+  `tcgen05.cp.cta_group::1.4x256b` and miscopied data.
+- Kept the `TRITON_DEBUG_TMEM_QUERY=1` selected-descriptor trace as durable
+  diagnostic output for future schedule work.
+- Validation:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported'`
+    (`1 passed`);
+  - `git diff --check`.
+- Next: continue atomized copy planner work. Re-enable 4x256b only after the
+  planner derives a source descriptor plus destination/source address schedule
+  and a row-coded runtime oracle proves it.
+
 ## 2026-04-14 14:44 UTC: two-CTA no-scales copy subview coverage
 
 - Added a dense two-CTA no-scales copy descriptor-view positive matrix in `python/test/gluon/test_tmem_runtime_matrix.py`.

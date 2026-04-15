@@ -162,7 +162,9 @@ Tasks:
 
 Progress:
 - 2026-04-15 07:08 UTC: added `tcgen05.cp.4x256b` as a normal copy family
-  with descriptor synthesis and conversion coverage.
+  with descriptor synthesis and conversion coverage. Superseded by the
+  2026-04-15 10:29 safety checkpoint below after runtime probing showed the
+  emitted schedule was semantically wrong.
 - 2026-04-15 07:12 UTC: added a copy-specific physical-query projection
   comparator so exact descriptor-view queries can be used when active copy
   layout facts match even if origin/allocation metadata differs.
@@ -181,7 +183,8 @@ Progress:
   produces zeroed output.
 - 2026-04-15 07:39 UTC: added conversion coverage for
   `tcgen05.cp.cta_group::2.4x256b`, confirming the 4x256b copy-family support
-  reaches both cta-group ISA variants.
+  reaches both cta-group ISA variants. Superseded by the 2026-04-15 10:29
+  safety checkpoint below; opcode emission was not a correctness proof.
 - 2026-04-15 09:02 UTC: `selectTMemCopyPlan(...)` now returns a realized
   executable schedule, including per-message descriptor-layout selection or
   direct-seed descriptor immediates. Lowering consumes that schedule directly,
@@ -220,6 +223,12 @@ Progress:
   inside a 16-column copy atom; current scheduling cannot split that
   sub-instruction source-column bit, so descriptor representability alone is
   not a support proof.
+- 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
+  clean unsupported family until the atomized planner derives a validated
+  descriptor/address schedule. The previous four-row descriptor candidate
+  emitted `tcgen05.cp.cta_group::1.4x256b` but placed source row values into
+  one destination row at runtime, so conversion-only coverage was removed and
+  replaced with verifier plus runtime clean-negative coverage.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a
@@ -227,7 +236,8 @@ Exit criteria:
 - True scales `warpx2` and no-scales two-CTA `warpx2::02_13` are either
   positive or rejected with proof-level diagnostics.
 - `4x256b`, if ISA-valid for the targeted backend, is represented as a normal
-  copy atom rather than a special case.
+  copy atom with a row-coded runtime proof rather than a conversion-only opcode
+  emission case.
 
 ## Phase 3: Make Scales A Full Physical Layout Citizen
 

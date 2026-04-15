@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 4x256b safety slice, 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b`
+  remains recognized as an ISA family, but Triton now rejects it during copy
+  plan realization until there is a validated descriptor/address schedule.
+  A runtime probe of the previous four-row descriptor candidate emitted
+  `tcgen05.cp.cta_group::1.4x256b` but placed source row values into one
+  destination row, proving the conversion-only positive coverage was unsafe.
+  The positive Blackwell conversion checks were removed, verifier clean-negative
+  coverage now covers single-CTA and two-CTA 4x256b shapes, and the runtime
+  matrix has a focused clean-negative row for the parent-slice repro. Validation
+  passed: `make -j8`, invalid verifier, Blackwell conversion FileCheck,
+  py-compile, exact 4x256b clean-negative runtime row (`1 passed`), and
+  `git diff --check`. Next: derive the real 4x256b schedule through the same
+  atomized planner as the other copy families, with row-coded runtime proof
+  before re-enabling opcode emission.
+
 - Current Phase 2 descriptor-projection diagnostic slice, 2026-04-15 10:15
   UTC: descriptor-synthesis failures now include a copy-instruction column
   projection note when the low source column bits required inside one

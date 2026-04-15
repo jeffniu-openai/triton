@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:29 UTC: the earlier positive `tcgen05.cp.4x256b`
+  conversion-only coverage has been retracted into a clean unsupported
+  contract. Runtime probing showed the naïve four-row descriptor schedule
+  silently placed source row values into one destination row, so plan
+  realization now rejects `4x256b` with an explicit "recognized by the ISA but
+  no validated descriptor/address schedule" diagnostic. The family remains a
+  real missing ISA-coverage item for the atomized copy planner; it must not be
+  re-enabled until a row-coded runtime oracle proves the schedule.
 - 2026-04-15 10:15 UTC: descriptor-synthesis failures now add a planner
   note when the source projection moves a source column bit inside one
   `tcgen05.copy` instruction away from contiguous shared offsets. The exact

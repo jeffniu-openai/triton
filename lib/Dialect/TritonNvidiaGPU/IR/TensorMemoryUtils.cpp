@@ -8297,6 +8297,16 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
   TMemCopyExecutablePlan executablePlan;
   executablePlan.family = plan.family;
   bool debugTMemQuery = std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr;
+  if (plan.family == TMemCopyFamily::Dense4x256b) {
+    return {std::nullopt,
+            getUnsupportedTMemCopyResult(
+                TMemCopySupportFailureLayer::DescriptorSynthesis,
+                "tcgen05.copy.4x256b is recognized by the ISA, but Triton "
+                "does not yet have a validated descriptor/address schedule for "
+                "it. The previous four-row descriptor candidate placed source "
+                "row values into a single destination row, so this family is "
+                "disabled until the linear-layout schedule is proven.")};
+  }
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;
     scheduledMessage.plan = message;
@@ -8330,6 +8340,11 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
             selectTMemCopyDescriptorLayout(srcDescLayouts,
                                            message.descriptorShape,
                                            plan.family, bitwidth)) {
+      if (debugTMemQuery) {
+        llvm::errs() << "[tmem-copy] selected descriptor mnDim="
+                     << descriptorLayout->mnDim << ":\n"
+                     << descriptorLayout->layout.toString() << "\n";
+      }
       scheduledMessage.descriptorLayout = std::move(*descriptorLayout);
       executablePlan.messages.push_back(std::move(scheduledMessage));
       continue;
