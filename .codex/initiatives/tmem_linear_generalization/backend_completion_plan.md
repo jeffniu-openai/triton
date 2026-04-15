@@ -503,6 +503,11 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 16:58 UTC: extended the `N=32` plain-MMAv5 accumulator coverage
+  through adjacent single-CTA root/index/subslice matrices and
+  TensorDescriptor-fed two-CTA matrices. Direct i8 unsupported diagnostics now
+  cover `N=32` as well. This keeps the N32 cleanup as matrix saturation over
+  the now-general accumulator family instead of a new backend branch.
 - 2026-04-15 16:43 UTC: promoted plain MMAv5 two-CTA accumulator
   `block_n=32` coverage for root layouts, indexed accumulator descriptor
   views, and accumulator subslice views. The backend already supports the

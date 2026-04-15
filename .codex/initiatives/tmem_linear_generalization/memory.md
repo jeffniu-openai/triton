@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Current adjacent plain MMAv5 `N=32` matrix promotion, 2026-04-15 16:58 UTC:
+  the single-CTA root accumulator, indexed accumulator view, accumulator
+  subslice view, and TensorDescriptor-fed two-CTA matrices now include `N=32`
+  in their positive/diagnostic tables. The affected four-GPU selector over
+  those rows passed `1016` selected tests. The post-family-floor clean-negative
+  selector also passed after the previous two-CTA promotion (`403 passed`,
+  `1 skipped`). This reinforces that the recent `N=32` work was coverage debt
+  and stale family floors, not a new lowering special case.
+
 - Current plain MMAv5 two-CTA `block_n=32` checkpoint, 2026-04-15 16:43 UTC:
   root two-CTA accumulator layouts and their indexed/subslice descriptor views
   now carry `block_n=32` in the positive runtime matrix. Direct probes over all

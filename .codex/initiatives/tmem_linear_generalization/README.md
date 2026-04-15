@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 16:58 UTC: the plain MMAv5 `N=32` accumulator promotion now
+  reaches the adjacent single-CTA and TensorDescriptor-fed two-CTA matrices.
+  Positive coverage includes single-CTA root accumulator, indexed accumulator
+  view, and accumulator subslice view rows, plus two-CTA TensorDescriptor-fed
+  non-TF32 and TF32-transposed-B rows. The direct i8 unsupported diagnostics
+  also now cover `N=32`.
 - 2026-04-15 16:43 UTC: plain MMAv5 two-CTA accumulator coverage now includes
   `block_n=32` for root layouts, indexed accumulator descriptor views, and
   accumulator subslice views. The backend already handled the narrow

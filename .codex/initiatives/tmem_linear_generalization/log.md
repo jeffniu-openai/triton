@@ -16514,3 +16514,38 @@ Open after this slice:
   - four-GPU split selector
     `-k "mma_twocta_plain_kinds or mma_twocta_indexed_acc_view or mma_twocta_acc_subslice_view_plain_kinds"`
     passed all `720` selected tests (`180` per shard).
+
+## 2026-04-15 16:44 UTC: post-family-floor clean-negative sweep
+
+- Re-ran the named clean unsupported/error selector after the recent
+  accumulator-family and LHS-family floor promotions.
+- Validation:
+  - `make -j8`;
+  - four-GPU split selector
+    `-k "reports_clean_unsupported or clean_unsupported or reports_clean_error"`
+    passed with `403 passed` and `1 skipped`.
+- Current conclusion:
+  - the recent plain and LHS family-floor promotions did not leave stale rows
+    in the named clean-negative/error buckets.
+
+## 2026-04-15 16:58 UTC: adjacent plain MMAv5 N32 matrix promotion
+
+- Promoted `N=32` into the neighboring single-CTA and TensorDescriptor-fed
+  two-CTA plain-MMAv5 matrices:
+  - `MMA_PLAIN_KIND_ACC_CASES`;
+  - `MMA_INDEXED_ACC_CASES`;
+  - `MMA_ACC_SUBSLICE_CASES`;
+  - `MMA_TWOCTA_TMA_NON_TF32_CASES`;
+  - `MMA_TWOCTA_TMA_TF32_CASES`;
+  - direct i8 unsupported diagnostics for single-CTA and two-CTA MMA.
+- Kept the existing `N=256` linear-parent indexed-view resource exclusion.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split execution of the affected root/index/subslice,
+    TensorDescriptor-fed two-CTA, TF32-transposed-B, and i8 diagnostic test
+    functions passed all `1016` selected tests (`254` per shard).
+- Current conclusion:
+  - these rows were stale matrix floors over the now-general plain
+    accumulator family and descriptor-view handling; no new lowering branch was
+    needed.

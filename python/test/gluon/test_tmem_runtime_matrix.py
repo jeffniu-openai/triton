@@ -9228,7 +9228,7 @@ MMA_PLAIN_KIND_CASES = [
 MMA_INDEXED_ACC_CASES = [
     (kind, parent_layout_kind, n, k, use_acc)
     for kind, parent_layout_kind, n, k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128), (False, True)
     )
     # Linear parent views keep the whole [2, M, N] physical image live; N=256
     # needs 1024 TMEM columns and is therefore a hardware resource boundary.
@@ -9240,13 +9240,13 @@ MMA_INDEXED_ACC_CASES = [
 
 MMA_ACC_SUBSLICE_CASES = [
     (kind, n, k, slice_start, use_acc)
-    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128), (False, True))
+    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128), (False, True))
     for slice_start in (0, n)
 ]
 
 MMA_PLAIN_KIND_ACC_CASES = [
     (kind, acc_layout_kind, n, k)
-    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128))
+    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
 ]
 
 MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
@@ -9260,13 +9260,13 @@ MMA_TWOCTA_TMA_NON_TF32_CASES = [
     (dtype_name, acc_layout_kind, block_n, block_k, use_acc)
     for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES
     for acc_layout_kind, block_n, block_k, use_acc in product(
-        ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
+        ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128), (False, True)
     )
 ]
 
 MMA_TWOCTA_TMA_TF32_CASES = [
     (acc_layout_kind, block_n, block_k)
-    for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (64, 128, 256), (32, 64, 128))
+    for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
 ]
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [
@@ -9496,7 +9496,7 @@ def test_tmem_runtime_matrix_mma_m64_acc_subslice_view_plain_kinds(kind, n, k, s
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-@pytest.mark.parametrize("n", (64, 128, 256))
+@pytest.mark.parametrize("n", (32, 64, 128, 256))
 @pytest.mark.parametrize("k", (32, 64))
 def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, k, capfd):
     m = 128
@@ -9655,7 +9655,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, n, k, us
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
-@pytest.mark.parametrize("block_n", (64, 128, 256))
+@pytest.mark.parametrize("block_n", (32, 64, 128, 256))
 @pytest.mark.parametrize("block_k", (32, 64))
 def test_tmem_runtime_matrix_mma_twocta_i8_reports_clean_error(acc_layout_kind, block_n, block_k, capfd):
     ctas_per_cga = [2, 1]
