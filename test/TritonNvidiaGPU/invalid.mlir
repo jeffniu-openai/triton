@@ -326,9 +326,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
   tt.func public @tmem_copy_no_scales_warpx2_candidate(
       %src: !ttg.memdesc<128x4xi32, #shared_cp_warpx2_candidate, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<128x4xi32, #tmem_linear_cp_128x4, #ttng.tensor_memory, mutable>) {
-    // expected-error @+5 {{The source shared layout maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
-    // expected-note @+4 {{tcgen05.copy.128x128b descriptor message 0 has no representable MMAv5 shared-memory descriptor; tried 2 candidate layout(s) for descriptor shape [32, 4] and instruction shape [32, 4].}}
-    // expected-note @+3 {{tcgen05.copy.128x128b descriptor message 0 has no representable MMAv5 shared-memory descriptor; tried 3 candidate layout(s) for descriptor shape [64, 4] and instruction shape [64, 4].}}
+    // expected-error @+4 {{The source shared layout maps to tcgen05.copy.128x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-note @+3 {{tcgen05.copy source row projection requires logical row bit 5 to remain an affine multiple of the 8-row source stride for this copy atom.}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.128x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<128x4xi32, #shared_cp_warpx2_candidate, #ttg.shared_memory, mutable>, !ttg.memdesc<128x4xi32, #tmem_linear_cp_128x4, #ttng.tensor_memory, mutable>

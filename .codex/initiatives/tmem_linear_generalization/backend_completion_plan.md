@@ -241,6 +241,11 @@ Progress:
   destination offsets inline. Current behavior is preserved, but this creates
   the carrier needed for future non-uniform destination/source message
   schedules.
+- 2026-04-15 18:59 UTC: added
+  `getTMemCopySourceRowProjectionSupport(...)` and replaced dense-copy
+  lowering assertions with shared source-row projection checks. Unsupported
+  source row projections now fail during plan realization with diagnostics
+  instead of relying on lowering-time asserts.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

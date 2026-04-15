@@ -9659,3 +9659,14 @@ rejection, not rescue
   - the next missing carrier is source-row / destination-row message mapping,
     which should replace proof-only row-order predicates before attempting
     scales descriptor-view row-permutation support.
+
+## Latest: 2026-04-15 18:59 UTC copy source-row projection
+
+- Copy source-row projection is now checked in the shared planner layer and
+  reused by lowering.
+- This removes the lowering-only assertion path for non-direct dense copy row
+  assumptions. If support selection ever misses a bad row projection, lowering
+  now emits the same clean diagnostic instead of asserting.
+- The current helper is still a proof, not a full row schedule. The next step
+  should promote it into an explicit row projection plan object so row/source
+  mapping can become schedule data rather than only a predicate.

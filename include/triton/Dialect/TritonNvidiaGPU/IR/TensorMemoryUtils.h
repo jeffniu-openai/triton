@@ -414,6 +414,10 @@ getTMemCopyPlanSupport(gpu::MemDescType srcTy,
                        const TMemCopyPlan &plan, int bitwidth,
                        TMemCopyPlanSupportKind supportKind);
 
+TMemCopySupportResult
+getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,
+                                      const TMemCopyMessagePlan &message);
+
 TMemCopyPlanSelection selectTMemCopyPlan(gpu::MemDescType srcTy,
                                          const TMemPhysicalQuery &dstQuery,
                                          const LinearLayout &shmemLl,

@@ -1475,10 +1475,7 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
                                       Value src, Value baseDst, Value pred) {
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   auto *ctx = op.getContext();
-  auto kOffset = str_attr("offset");
-  auto kRow = str_attr("row");
   auto kCol = str_attr("col");
-  auto kBlock = str_attr("block");
 
   MemDescType srcTy = op.getSrc().getType();
   MemDescType dstTy = op.getDst().getType();
@@ -1588,22 +1585,11 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
         destinationBaseOffset > alreadyAdjustedBase
             ? destinationBaseOffset - alreadyAdjustedBase
             : 0;
-  // Check correct lbo/sbo along the multicast
-  bool usesDirectSeedDescriptor =
-      llvm::any_of(plannedMessages, [](const PlannedCopyMessage &message) {
-        return message.schedule.directSeedDescriptorImm.has_value();
-      });
-  const auto &copyAtom = plannedMessages.front().schedule.plan.atom;
-  if (!usesDirectSeedDescriptor && copyAtom.nRow != 4) {
-    auto strideRow = cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
-    if ((copyAtom.multicast & 1) == 0) {
-      assert(cvt.getBasis(kRow, llvm::Log2_32(32), kOffset) ==
-             strideRow * (32 / 8));
-    }
-    if (copyAtom.multicast != 1 && (copyAtom.multicast & 2) == 0) {
-      assert(cvt.getBasis(kRow, llvm::Log2_32(64), kOffset) ==
-             strideRow * (64 / 8));
-    }
+  for (const auto &message : plannedMessages) {
+    auto rowProjectionSupport =
+        getTMemCopySourceRowProjectionSupport(cvt, message.schedule.plan);
+    if (!rowProjectionSupport)
+      return op->emitOpError(rowProjectionSupport.message);
   }
 
   const unsigned colStride = plannedMessages.front().schedule.plan.instrShape[1];

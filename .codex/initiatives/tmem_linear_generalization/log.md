@@ -16975,3 +16975,28 @@ Open after this slice:
     row/column clean negatives, 4x256b refresh, and scales `warpx4`:
     `408 passed`;
   - `git diff --check`.
+
+## 2026-04-15 18:59 UTC: copy source-row projection preflight
+
+- Moved the source-row projection assumptions for non-direct `tcgen05.copy`
+  messages out of lowering assertions and into shared planner support.
+- Implementation:
+  - added `getTMemCopySourceRowProjectionSupport(...)`;
+  - plan realization now runs this support check for each message before
+    descriptor synthesis;
+  - lowering reuses the same helper and emits a diagnostic if an impossible
+    row projection somehow reaches lowering;
+  - updated the invalid MLIR case that now fails at source-row projection
+    rather than descriptor enumeration.
+- Semantics:
+  - intended behavior-preserving for supported rows;
+  - unsupported source row projections now fail as clean planner negatives,
+    which is the correct layer for future row/source message scheduling work.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused runtime selector
+    `cp_no_scales_linear_tile_permuted or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_warpx2_01_23_candidate_positive`: `21 passed`;
+  - `git diff --check`.

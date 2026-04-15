@@ -2298,6 +2298,9 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 18:59 UTC: copy source-row projection checks now live in the
+  shared planner and lowering uses the same helper, replacing lowering-only
+  row projection assertions with clean diagnostics.
 - 2026-04-15 18:55 UTC: copy lowering now consumes
   `getTMemCopyDestinationTilePlan(...)`, making destination tile offsets an
   explicit planner artifact for future non-uniform schedules.
