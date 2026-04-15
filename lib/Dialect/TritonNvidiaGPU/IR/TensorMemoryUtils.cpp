@@ -8119,11 +8119,47 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
          (static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
 }
 
+static std::optional<TMemCopyDestinationFootprint>
+getTMemCopyDestinationFootprint(const TMemPhysicalQuery &query,
+                                TMemCopyFamily family, int32_t logicalCol,
+                                unsigned rows, unsigned columns) {
+  int32_t physicalRow = 0;
+  int32_t physicalCol = logicalCol;
+  auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
+  if (family == TMemCopyFamily::Dense4x256b &&
+      isTMemCopy4x256RefreshLayout(query.layout, query.memTy.getContext(),
+                                   query.elementBitWidth)) {
+    physicalCol = 0;
+  } else if (isDenseTMemCopyFamily(family) &&
+             needsDenseTMemCopyPhysicalColumnTileOffsets(
+                 ll, query.memTy.getContext(), query.elementBitWidth)) {
+    auto coord = getDenseTMemCopyDestinationTileCoord(
+        ll, query.memTy.getContext(), logicalCol);
+    if (!coord)
+      return std::nullopt;
+    physicalRow = coord->first;
+    physicalCol = coord->second;
+  }
+
+  auto offset = getTMemCopyDestinationTileOffset(query, family, logicalCol);
+  if (!offset)
+    return std::nullopt;
+  return TMemCopyDestinationFootprint{
+      /*logicalRow=*/0,
+      /*logicalCol=*/logicalCol,
+      /*physicalRow=*/physicalRow,
+      /*physicalCol=*/physicalCol,
+      /*rows=*/rows,
+      /*columns=*/columns,
+      /*offset=*/static_cast<uint32_t>(*offset)};
+}
+
 std::optional<llvm::SmallVector<TMemCopyScheduledTile>>
 getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
-                             TMemCopyFamily family, unsigned colStride,
+                             TMemCopyFamily family, unsigned rowStride,
+                             unsigned colStride,
                              int32_t logicalCols, std::string *error) {
-  if (colStride == 0 || logicalCols < 0) {
+  if (rowStride == 0 || colStride == 0 || logicalCols < 0) {
     if (error)
       *error = "invalid tcgen05.copy destination tile stride";
     return std::nullopt;
@@ -8132,8 +8168,9 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
   llvm::SmallVector<TMemCopyScheduledTile> tiles;
   for (int32_t logicalCol = 0; logicalCol < logicalCols;
        logicalCol += static_cast<int32_t>(colStride)) {
-    auto offset = getTMemCopyDestinationTileOffset(query, family, logicalCol);
-    if (!offset) {
+    auto footprint = getTMemCopyDestinationFootprint(
+        query, family, logicalCol, rowStride, colStride);
+    if (!footprint) {
       if (error) {
         *error = "failed to compute physical tcgen05.copy destination tile "
                  "offset from the selected tensor-memory layout";
@@ -8141,11 +8178,9 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
       return std::nullopt;
     }
     tiles.push_back(TMemCopyScheduledTile{
-        /*logicalRow=*/0,
-        /*logicalCol=*/logicalCol,
+        /*destination=*/ *footprint,
         /*sourceRow=*/0,
-        /*sourceCol=*/logicalCol,
-        /*destinationOffset=*/static_cast<uint32_t>(*offset)});
+        /*sourceCol=*/logicalCol});
   }
   return tiles;
 }
@@ -8400,11 +8435,12 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                 "tcgen05.copy destination tile planning requires a column "
                 "dimension.")};
   }
+  const unsigned rowStride = executablePlan->messages.front().plan.instrShape[0];
   const unsigned colStride = executablePlan->messages.front().plan.instrShape[1];
   std::string destinationTileError;
   auto scheduledTiles = getTMemCopyScheduledTilePlan(
-      dstQuery, executablePlan->family, colStride, cvt.getInDimSize(kCol),
-      &destinationTileError);
+      dstQuery, executablePlan->family, rowStride, colStride,
+      cvt.getInDimSize(kCol), &destinationTileError);
   if (!scheduledTiles) {
     return {std::nullopt,
             getUnsupportedTMemCopyResult(

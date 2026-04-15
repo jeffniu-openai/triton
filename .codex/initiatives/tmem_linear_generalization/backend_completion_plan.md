@@ -325,6 +325,13 @@ Progress:
   it gives Phase 2 a single exact-`LinearLayout` seam for future physical
   instruction-footprint scheduling and keeps verifier/lowering conversion
   algebra locked together.
+- 2026-04-15 23:22 UTC: generalized scheduled copy tiles to carry
+  `TMemCopyDestinationFootprint`: logical destination coordinate, physical
+  row/column, instruction footprint rows/columns, and encoded TMEM offset.
+  Lowering now consumes the footprint instead of a raw tile offset. Current
+  schedules are unchanged, but future copy-planner work can reason about
+  physical write footprints and overwrite/mask legality without re-deriving
+  offsets in lowering.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

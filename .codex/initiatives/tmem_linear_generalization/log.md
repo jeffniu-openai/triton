@@ -1,3 +1,23 @@
+## 2026-04-15 23:22 UTC: copy destination-footprint carrier
+
+- Added `TMemCopyDestinationFootprint` as the destination side of each
+  scheduled copy tile. It records logical destination coordinate, physical
+  destination row/column, instruction footprint rows/columns, and the encoded
+  TMEM offset.
+- Routed tile planning through `getTMemCopyDestinationFootprint(...)` so
+  dense physical-column tile offsets and `4x256b` refresh-shaped offsets are
+  still derived in one shared planner utility.
+- Updated copy lowering to read `tile.destination.offset` instead of a raw
+  `destinationOffset` field. Current schedules remain the same tile/message
+  stream as before; this is representation work for the next physical
+  instruction-footprint scheduler slice.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-footprint PYTHONPATH=./python pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_linear_tile_permuted or cp_no_scales_4x256b_refresh_layout_codegen or cp_scales_warpx4 or cp_scales_tmem_descriptor_view_reports_clean_unsupported'`
+    (`360 passed, 10628 deselected in 577.22s`);
+  - `git diff --check`.
+
 ## 2026-04-15 11:52 UTC: legacy subword copy packed-lane diagnostic
 
 - Investigated the remaining dense subword gap for legacy

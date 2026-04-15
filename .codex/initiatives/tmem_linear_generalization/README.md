@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:22 UTC: scheduled copy tiles now carry a
+  `TMemCopyDestinationFootprint` instead of only a raw destination offset. The
+  footprint records logical destination coordinate, physical row/column,
+  instruction footprint rows/columns, and encoded TMEM offset, and lowering now
+  consumes `tile.destination.offset`. This is behavior-preserving scaffolding
+  for planner-owned physical instruction-footprint scheduling and future
+  overwrite/mask proofs. Validation: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, focused copy runtime selector
+  (`360 passed, 10628 deselected in 577.22s`), and `git diff --check`.
 - 2026-04-15 23:08 UTC: verification and lowering now share
   `getTMemCopySourceConversion(...)` for the exact physical TMEM query to
   shared-memory source conversion. This is behavior-preserving, but it removes

@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current copy destination-footprint checkpoint, 2026-04-15 23:22 UTC:
+  `TMemCopyScheduledTile` now owns a `TMemCopyDestinationFootprint` instead of
+  just storing a destination offset. The footprint carries logical destination
+  row/column, physical row/column, instruction footprint rows/columns, and the
+  encoded TMEM offset derived from the selected physical query/family. LLVM
+  lowering now consumes `tile.destination.offset`; current schedules remain
+  behavior-preserving. This gives the Phase 2 copy planner a first-class place
+  to reason about exact physical instruction footprints before attempting
+  scales descriptor-view masking/overwrite proofs, row partitions, or
+  non-uniform source-column schedules. Validation passed: `make -j8`,
+  py-compile, `git diff --check`, and the focused copy selector
+  (`360 passed, 10628 deselected in 577.22s`).
+
 - Current copy source-conversion helper checkpoint, 2026-04-15 23:08 UTC:
   `TMEMCopyOp` verification and LLVM lowering now share
   `getTMemCopySourceConversion(...)` for deriving the selected physical TMEM

@@ -217,12 +217,20 @@ struct TMemCopyScheduledMessage {
   std::optional<uint64_t> directSeedDescriptorImm;
 };
 
-struct TMemCopyScheduledTile {
+struct TMemCopyDestinationFootprint {
   int32_t logicalRow;
   int32_t logicalCol;
+  int32_t physicalRow;
+  int32_t physicalCol;
+  unsigned rows;
+  unsigned columns;
+  uint32_t offset;
+};
+
+struct TMemCopyScheduledTile {
+  TMemCopyDestinationFootprint destination;
   int32_t sourceRow;
   int32_t sourceCol;
-  uint32_t destinationOffset;
 };
 
 struct TMemCopyScheduledInstruction {
@@ -542,7 +550,8 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
 
 std::optional<llvm::SmallVector<TMemCopyScheduledTile>>
 getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
-                             TMemCopyFamily family, unsigned colStride,
+                             TMemCopyFamily family, unsigned rowStride,
+                             unsigned colStride,
                              int32_t logicalCols,
                              std::string *error = nullptr);
 
