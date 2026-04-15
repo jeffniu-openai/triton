@@ -853,7 +853,7 @@ def get_operand_layout(t: Tensor, block_shape: list[int]):
 
     assert t.dtype == torch.float8_e4m3fn
     return gl.NVMMASharedLayout(
-        swizzle_byte_width=128,
+        swizzle_byte_width=block_shape[-1],
         element_bitwidth=8,
         rank=rank,
     )
@@ -897,6 +897,8 @@ class KernelConfig:
     LOAD_WEIGHT_REGS: int = 48
     MMA_REGS: int = 48
     STORE_HELPER_REGS: int = 48
+    MAXNREG: int = None
+    OCCUPANCY: int = 1
 
     MXFP_BLOCK_SIZE: int = 32
     SCALE_SIZE_OUTER: int = 128
@@ -915,20 +917,36 @@ class KernelConfig:
         return (self.BLOCK_M // self.SWIGLU_SUBTILE_FACTOR) * (self.BLOCK_N // reduction_n)
 
 
-def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int, reduction_n: int) -> KernelConfig:
-    p = KernelConfig()
 
-    # For occupancy=1, BLOCK_N=256, BLOCK_K=128:
-    # slice_size <  14 -> BLOCK_M=16
-    # slice_size <  28 -> BLOCK_M=32
-    # slice_size <  80 -> BLOCK_M=64
-    # slice_size >= 80 -> BLOCK_M=128
-    #
-    # SWIGLU_SUBTILE_FACTOR = min(8, BLOCK_M // 8)
-    #
-    # When BLOCK_M < 128, maximize W_NUM_BUFS. Otherwise, balance them.
-    slice_size = ragged_metadata.expected_slice_size
-    assert slice_size is not None
+def _select_occ1_config(slice_size: int) -> KernelConfig:
+    p = KernelConfig(BLOCK_N=128, OCCUPANCY=2, MAXNREG=64, LOAD_ACTIVATION_REGS=48, LOAD_WEIGHT_REGS=32, MMA_REGS=32, STORE_HELPER_REGS=32)
+
+    if slice_size <= 14:
+        p = replace(p, BLOCK_M=16)
+    elif slice_size <= 32:
+        p = replace(p, BLOCK_M=32)
+    elif slice_size <= 64:
+        p = replace(p, BLOCK_M=64)
+    else:
+        p = replace(p, BLOCK_M=128)
+
+    p = replace(p, SWIGLU_SUBTILE_FACTOR=min(8, p.BLOCK_M // 8))
+
+    match p.BLOCK_M:
+        case 16:
+            p = replace(p, X_NUM_BUFS=10, W_NUM_BUFS=5)
+        case 32:
+            p = replace(p, X_NUM_BUFS=5, W_NUM_BUFS=5)
+        case 64:
+            p = replace(p, X_NUM_BUFS=4, W_NUM_BUFS=4)
+        case 128:
+            p = replace(p, X_NUM_BUFS=3, W_NUM_BUFS=3)
+
+    return p
+
+
+def _select_occ2_config(slice_size: int) -> KernelConfig:
+    p = KernelConfig()
 
     if slice_size < 14:
         p = replace(p, BLOCK_M=16)
@@ -938,6 +956,7 @@ def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int, reductio
         p = replace(p, BLOCK_M=64)
     else:
         p = replace(p, BLOCK_M=128)
+
     p = replace(p, SWIGLU_SUBTILE_FACTOR=min(8, p.BLOCK_M // 8))
 
     match p.BLOCK_M:
@@ -951,6 +970,13 @@ def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int, reductio
             p = replace(p, X_NUM_BUFS=5, W_NUM_BUFS=4)
 
     return p
+
+
+def select_kernel_config(slice_size: int) -> KernelConfig:
+    if slice_size <= 64:
+        return _select_occ1_config(slice_size)
+    else:
+        return _select_occ2_config(slice_size)
 
 
 def matmul(
@@ -983,12 +1009,13 @@ def matmul(
     _, _, n = b.shape
     m = gather_indx.shape[0]
 
-    p = p or select_kernel_config(a_ragged_metadata, m, reduction_n)
+    p = p or select_kernel_config(a_ragged_metadata.expected_slice_size)
     x_block_idx = p.BLOCK_M.bit_length() - 5
 
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
     grid_n = triton.cdiv(n, p.BLOCK_N)
     sms = torch.cuda.get_device_properties(bias.device).multi_processor_count
+    sms *= p.OCCUPANCY
     launch_grid = max(1, min(sms, expected_grid_m * grid_n))
     grid = (launch_grid,)
 
@@ -1061,6 +1088,7 @@ def matmul(
         MXFP_BLOCK_SIZE=p.MXFP_BLOCK_SIZE,
         #
         num_warps=8,
+        maxnreg=p.MAXNREG,
     )
 
     return c
@@ -1263,7 +1291,7 @@ def test_op(c:MLPConfig, batch_size: tuple[int,...]):
 # Benchmarking
 # ===-----------------------------------------------------------------------===#
 
-providers = ["example", "reference"]
+providers = ["example TFLOPS", "example TBPS", "reference TFLOPS", "reference TBPS"]
 bench_configs = [
     triton.testing.Benchmark(
         x_names=["batch_size"],
@@ -1298,37 +1326,24 @@ def bench(batch_size, provider):
     return flops * 1e-12 / (ms * 1e-3)
 
 
-if __name__ == "__main__":
-    bench.run(save_path=".", print_data=True)
-
 def autotune():
     for bs in get_batch_sizes(GPT_OSS_120B_CONFIG):
         print(f"bs: {bs}")
-        prepared = prepare_case(GPT_OSS_120B_CONFIG, bs, device=f"cuda:{torch.cuda.current_device()}", seed=0)
-        precision_config = make_precision_config(prepared)
-        out = make_output_buffer(prepared)
 
-        slice_size = prepared.ragged_metadata.expected_slice_size
-        block_ms = set()
-        block_ms.add(1<<slice_size.bit_length())
-        block_ms.add(1<<(slice_size.bit_length() - 1))
-        if slice_size in block_ms:
-            block_ms.add(slice_size//2)
-        block_ms = {min(max(16, bm), 128) for bm in block_ms}
+        for block_m in [16, 32, 64, 128]:
+            swiglu_subtile_factor = min(8, block_m // 8)
+            p = KernelConfig(BLOCK_M=block_m, SWIGLU_SUBTILE_FACTOR=swiglu_subtile_factor, BLOCK_N=128)
 
-        block_ms = sorted(list(block_ms))
-        block_ms = [16, 32, 64, 128]
-        print(f"block_ms: {block_ms}")
-
-        for block_m in block_ms:
-            subtile_factor = {16:2, 32:4, 64:4, 128:8, 256:8}[block_m]
-            p = KernelConfig(BLOCK_M=block_m, SWIGLU_SUBTILE_FACTOR=subtile_factor)
             x_smem = p.get_x_tile_smem()
             w_smem = p.get_w_tile_smem() + p.get_w_mx_tile_smem()
             c_smem = p.get_c_tile_smem(reduction_n=2) * p.EPILOGUE_BUFFER_DEPTH
 
-            test_p = KernelConfig(BLOCK_M=block_m, SWIGLU_SUBTILE_FACTOR=subtile_factor, X_NUM_BUFS=20, W_NUM_BUFS=20)
+            test_p = replace(p, X_NUM_BUFS=20, W_NUM_BUFS=20)
+
             err = None
+            prepared = prepare_case(GPT_OSS_120B_CONFIG, bs, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+            precision_config = make_precision_config(prepared)
+            out = make_output_buffer(prepared)
             try:
                 matmul(prepared.x, prepared.w, prepared.bias, prepared.ragged_metadata, prepared.gather_indx, precision_config, out, prepared.fused_activation, test_p)
             except triton.runtime.errors.OutOfResources as e:
@@ -1339,8 +1354,7 @@ def autotune():
             estimate_smem = 20 * x_smem + 20 * w_smem + c_smem
             assert estimate_smem < actual_smem
             overhead_smem = actual_smem - estimate_smem
-            smem = err.limit - overhead_smem
-            print(f"{overhead_smem=}")
+            smem = err.limit-1024 - overhead_smem
 
 
             bufs = []
@@ -1351,8 +1365,6 @@ def autotune():
                 if x_num_bufs < 3:
                     break
                 bufs.append((x_num_bufs, w_num_bufs))
-            print(f"bufs: {bufs}")
-
             for x_num_bufs, w_num_bufs in bufs:
                 p = replace(p, X_NUM_BUFS=x_num_bufs, W_NUM_BUFS=w_num_bufs)
 
@@ -1367,6 +1379,12 @@ def autotune():
 
 
                 ms = do_bench_cudagraph(fn)
-                print(f"ms: {ms}")
+                print(f"block_m: {block_m}, x_num_bufs: {x_num_bufs}, w_num_bufs: {w_num_bufs}, ms: {ms}")
             print()
             print()
+
+
+
+if __name__ == "__main__":
+    # autotune()
+    bench.run(save_path=".", print_data=True)
