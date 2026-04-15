@@ -9920,3 +9920,28 @@ rejection, not rescue
   - do not use them as a blind fallback for descriptor-view copy;
   - continue with row-partition/sub-instruction scheduling, or only use source
     formats when the data format contract actually requires them.
+
+## Latest: 2026-04-15 20:36 UTC copy scheduled source-row carrier
+
+- Copy scheduled tiles now carry explicit `logicalRow` and `sourceRow`
+  coordinates in addition to logical/source columns and the destination offset.
+- Current tile planning still emits `logicalRow=0` and `sourceRow=0`, so the
+  change is behavior-preserving for all existing schedules.
+- Lowering now loads shared descriptors from
+  `messagePlan.smemRow + tile.sourceRow`, making source-row selection a
+  planner-owned schedule fact instead of a lowering assumption.
+- This is the next small prerequisite for row-partition/sub-instruction copy
+  schedules: a future schedule can vary shared rows per instruction without
+  changing the lowering loop again.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scheduled-source-row
+    PYTHONPATH=./python pytest -s --tb=short -k
+    'cp_no_scales_warpx2 or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4' python/test/gluon/test_tmem_runtime_matrix.py`
+    (`433 passed, 10481 deselected in 762.19s`);
+  - `git diff --check`.

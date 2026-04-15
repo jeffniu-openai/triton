@@ -318,6 +318,12 @@ Progress:
   output, so source-format suffix availability alone is not a valid support
   promotion for descriptor-view scales copy. The hook was removed; keep
   looking for a row-partition or sub-instruction schedule.
+- 2026-04-15 20:36 UTC: scheduled copy tiles now carry explicit
+  `logicalRow` and `sourceRow` coordinates. Current schedules still use zero
+  row coordinates, but lowering consumes the planner-owned source row when
+  loading the shared descriptor. This keeps row partitioning in the executable
+  schedule model instead of forcing the next support attempt to rewrite
+  lowering again.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

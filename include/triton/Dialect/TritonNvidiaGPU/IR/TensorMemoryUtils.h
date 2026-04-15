@@ -196,7 +196,9 @@ struct TMemCopyScheduledMessage {
 };
 
 struct TMemCopyScheduledTile {
+  int32_t logicalRow;
   int32_t logicalCol;
+  int32_t sourceRow;
   int32_t sourceCol;
   uint32_t destinationOffset;
 };

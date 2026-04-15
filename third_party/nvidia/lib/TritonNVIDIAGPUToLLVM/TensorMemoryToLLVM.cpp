@@ -1605,8 +1605,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
       desc = b.add(b.int_val(64, descImm), baseb128);
     } else {
       desc = message.loader->smemLoad(
-          messagePlan.smemRow, tile.sourceCol + messagePlan.smemColOffset,
-          rewriter, loc);
+          messagePlan.smemRow + tile.sourceRow,
+          tile.sourceCol + messagePlan.smemColOffset, rewriter, loc);
     }
     assert(messagePlan.tmemRowDelta >= 0 &&
            "tcgen05.copy destination row delta must be non-negative");

@@ -2342,6 +2342,14 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:36 UTC: copy scheduled tiles now carry explicit
+  `logicalRow` and `sourceRow` coordinates. Current schedules still emit zero
+  row deltas, so behavior is unchanged, but lowering now consumes the selected
+  schedule's source row instead of assuming all copy tiles start at shared row
+  zero. Validation: `make -j8`, invalid verifier, `git diff --check`, and the
+  focused copy selector
+  `cp_no_scales_warpx2 or cp_scales_tmem_descriptor_view_reports_clean_unsupported or cp_scales_warpx4`
+  passed `433` cases.
 - 2026-04-15 20:18 UTC: source-format suffix probes on the already-supported
   int8 scales `warpx4` copy compiled but produced wrong output for both
   `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64`. Source-format suffixes are

@@ -17293,3 +17293,30 @@ Open after this slice:
 - Cleanup:
   - removed the temporary hook;
   - verified `git status --short` and the source diff were clean afterward.
+
+## 2026-04-15 20:36 UTC: copy scheduled source-row carrier
+
+- Added explicit `logicalRow` and `sourceRow` fields to
+  `TMemCopyScheduledTile`.
+- Current `getTMemCopyScheduledTilePlan(...)` still emits a single row origin
+  with `logicalRow=0` and `sourceRow=0`, preserving all existing schedules.
+- `copySharedToTmem(...)` now passes
+  `messagePlan.smemRow + tile.sourceRow` to the selected shared-memory
+  descriptor loader. Source-row selection is therefore schedule data rather
+  than a lowering-local invariant.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scheduled-source-row
+    PYTHONPATH=./python pytest -s --tb=short -k
+    'cp_no_scales_warpx2 or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4' python/test/gluon/test_tmem_runtime_matrix.py`
+    (`433 passed, 10481 deselected in 762.19s`).
+- Next:
+  - use the explicit source-row coordinate to replace row-partition proof-only
+    checks with a schedule-producing helper before attempting another
+    descriptor-view copy promotion.

@@ -8082,7 +8082,9 @@ getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
       return std::nullopt;
     }
     tiles.push_back(TMemCopyScheduledTile{
+        /*logicalRow=*/0,
         /*logicalCol=*/logicalCol,
+        /*sourceRow=*/0,
         /*sourceCol=*/logicalCol,
         /*destinationOffset=*/static_cast<uint32_t>(*offset)});
   }
