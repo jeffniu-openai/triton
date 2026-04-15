@@ -502,6 +502,13 @@ Tasks:
 - Route scale descriptors through physical query plus explicit scale semantics.
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
+Progress:
+- 2026-04-15 15:58 UTC: repeated `N=32` direct block-scaled MMAv5 was re-probed
+  with a temporary verifier/lowering guard lift. The accumulator physical
+  layout can be forced to compile, but representative scaled format pairs all
+  produce wrong output. Keep this as a true matrix-B scale-fragment addressing
+  gap until the scale descriptor model can express sub-64-column B fragments.
+
 Exit criteria:
 - Plain and scaled MMAv5 descriptor-view support are explained by the same
   physical-query framework plus operation-specific legality checks.

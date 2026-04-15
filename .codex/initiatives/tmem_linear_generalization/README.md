@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 15:58 UTC: scaled-MMAv5 repeated-`N=32` accumulator layouts were
+  re-probed with a temporary verifier/lowering guard lift. Every representative
+  scaled format pair compiled, but the runtime oracle failed with large output
+  error. This confirms that the existing guard is not stale: the current public
+  tensor-memory scales descriptor model only exposes matrix-B scale fragments
+  at 64-column alignment, so repeated `N=32` scaled MMA needs a real
+  scale-B fragment/addressing plan before promotion.
 - 2026-04-15 15:53 UTC: dense no-scales row/column permutation copy guards
   were re-probed with a temporary environment-gated guard lift. Forcing row
   basis permutations past the physical-query guard reached lowering asserts in

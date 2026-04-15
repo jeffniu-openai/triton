@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current scaled-MMAv5 repeated-N32 probe, 2026-04-15 15:58 UTC:
+  repeated `N=32` direct block-scaled MMAv5 accumulator layouts remain a real
+  scale-fragment/addressing boundary. A temporary
+  `TRITON_TMEM_PROBE_ALLOW_SCALED_N32_REPEAT=1` hook bypassed the verifier and
+  lowering guards for `128x128/tile_n=32` scaled accumulators. Representative
+  format pairs (`mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
+  `mxfp4/mxfp8`, `nvfp4/nvfp4`) at `K in {128,256}` compiled and emitted the
+  repeated scaled-MMA opcode stream, but all sampled rows produced large
+  numerical mismatches against the dequantized reference. The temporary hooks
+  were removed and `make -j8` rebuilt the clean tree. Keep these rows clean
+  unsupported until the scaled-MMA lowering has an explicit matrix-B scale
+  fragment model below the current 64-column public descriptor alignment.
+
 - Current dense no-scales copy permutation probe, 2026-04-15 15:53 UTC:
   row/column basis permutations remain real schedule gaps. A temporary
   `TRITON_TMEM_COPY_PROBE_IGNORE_DENSE_LAYOUT_GUARDS=1` hook bypassed only the

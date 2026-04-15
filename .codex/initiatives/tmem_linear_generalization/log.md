@@ -16344,3 +16344,32 @@ Open after this slice:
   - dense row/column basis permutations should stay clean unsupported until
     the copy planner has an explicit row/packet destination schedule. Guard
     lifting is not a support path.
+
+## 2026-04-15 15:58 UTC: scaled-MMAv5 repeated-N32 guard-lift probe
+
+- Added temporary local environment-gated verifier and lowering bypasses for
+  the direct block-scaled MMAv5 repeated-`N=32` accumulator guard, then removed
+  them before this checkpoint.
+- Probe coverage:
+  - accumulator layout: `128x128` tile-permuted with `tile_n=32`;
+  - format pairs: `mxfp8/mxfp8`, `mxfp4/mxfp4`, `mxfp8/mxfp4`,
+    `mxfp4/mxfp8`, and `nvfp4/nvfp4`;
+  - `K in {128,256}`;
+  - fresh Python processes/cache directories for representative runs so the
+    env-gated guard lift could not reuse stale JIT artifacts.
+- Result:
+  - all sampled cases compiled and emitted the repeated scaled-MMA opcode
+    stream;
+  - every sampled case produced large numerical mismatch against the
+    dequantized reference, e.g. representative max diffs around `5e2`-`8e2`;
+  - this rules out treating the repeated-`N=32` guard as stale.
+- Cleanup/validation:
+  - removed the temporary verifier/lowering hooks;
+  - `git diff -- lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`
+    is empty;
+  - `make -j8` rebuilt the clean source state after probe removal.
+- Current conclusion:
+  - repeated `N=32` block-scaled MMAv5 remains a real scale-B fragment
+    addressing gap. The public tensor-memory scales layout currently exposes
+    matrix-B scale fragments at 64-column alignment, so support needs a new
+    scale-fragment/addressing schedule rather than a guard lift.
