@@ -811,7 +811,11 @@ static std::optional<MMAv5TMemLayoutPlan>
 planMMAv5AccumulatorFamily(ArrayRef<int64_t> shape, Attribute layout,
                           std::optional<unsigned> preferredColStride =
                               std::nullopt) {
-  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  // Plain MMAv5 accumulator layouts can be planned down to the public narrow
+  // instruction N shapes. Scaled MMAv5 keeps a separate planner because its
+  // matrix-B scale fragments currently impose wider alignment constraints.
+  static constexpr unsigned kAccumulatorBlockNs[] = {8u,  16u,  32u,
+                                                     64u, 128u, 256u};
   if (auto exact = planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
                                         preferredColStride)) {
     return exact;
@@ -826,7 +830,9 @@ planMMAv5AccumulatorFamily(ArrayRef<int64_t> shape,
                            gpu::CGAEncodingAttr cga, bool twoCTAs,
                            std::optional<unsigned> preferredColStride =
                                std::nullopt) {
-  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  // See the Attribute overload: this is the plain accumulator planner only.
+  static constexpr unsigned kAccumulatorBlockNs[] = {8u,  16u,  32u,
+                                                     64u, 128u, 256u};
   if (auto exact = planMMAv5ExactFamily(shape, canonicalLayout, cga, twoCTAs,
                                         kAccumulatorBlockNs,
                                         preferredColStride)) {

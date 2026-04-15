@@ -16405,3 +16405,38 @@ Open after this slice:
   - this was a real backend incompleteness in the LHS family planner, not an
     ISA-impossible case. The important distinction is storage-column planning
     for packed fp4 LHS operands.
+
+## 2026-04-15 16:18 UTC: plain MMAv5 narrow tile-permuted accumulator promotion
+
+- Implemented the support path proved by bounded probes: the plain MMAv5
+  accumulator family planner now includes `blockN=8` and `blockN=16`.
+- Rationale:
+  - plain MMAv5 accumulator layouts can be planned down to the public narrow
+    instruction N shapes;
+  - the old minimum `blockN=32` made `N=32/tile_n=8` and `N=64/tile_n=16`
+    look unsupported even though runtime probes passed for all current plain
+    MMAv5 kinds and both accumulator modes;
+  - scaled MMAv5 keeps a separate accumulator planner because B-scale fragment
+    alignment still makes its narrow repeated-N cases real clean negatives.
+- Test matrix update:
+  - expanded `MMA_TILE_PERMUTED_CASES` and
+    `MMA_TILE_PERMUTED_KIND_CASES` with `(N,tile_n)=(32,8)` and `(64,16)`;
+  - kept `K in {32,64,128}` for the positive matrix;
+  - removed `MMA_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES` and its
+    clean-negative test.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - direct probes over all `MMA_PLAIN_KINDS`, both accumulator modes, and
+    `N=32/tile_n=8`, `N=64/tile_n=16`;
+  - four-GPU split selector `-k "tile_permuted_acc and not scaled"` passed all
+    `120` selected cases (`30` per group);
+  - narrower helper selector `-k "mma_acc_tile_permuted and not scaled"`
+    passed all `12` selected cases;
+  - scaled narrow clean-negative selector passed (`20 passed`);
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Current conclusion:
+  - the plain narrow tile-permuted accumulator rows were stale planner
+    negatives. The remaining scaled narrow rows are distinct scale-fragment
+    constraints, not implied by this plain-MMAv5 promotion.

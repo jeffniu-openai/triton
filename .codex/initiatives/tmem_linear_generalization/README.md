@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 16:18 UTC: plain MMAv5 tile-permuted accumulator coverage now
+  includes the narrow public instruction families `N=32/tile_n=8` and
+  `N=64/tile_n=16`. The plain accumulator planner now admits 8- and
+  16-column N families; scaled MMAv5 keeps its separate wider-alignment
+  planner. The stale plain narrow clean-negative table/test was removed, while
+  scaled narrow negatives remain green.
 - 2026-04-15 16:09 UTC: scaled-MMAv5 full-shape TMEM-LHS tile-permuted fp4
   storage `K=128` is now positive. The LHS MMAv5 family planner now includes
   16-column storage families because packed fp4/nvfp4 operands plan over byte

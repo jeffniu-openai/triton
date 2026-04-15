@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current plain MMAv5 narrow tile-permuted accumulator checkpoint,
+  2026-04-15 16:18 UTC: plain `tcgen05.mma` accumulator layouts now support
+  the previous narrow tile-permuted clean negatives. The plain accumulator
+  planner admits `blockN=8` and `blockN=16`, which matches the public narrow
+  instruction N shapes for `N=32/tile_n=8` and `N=64/tile_n=16`. The positive
+  `MMA_TILE_PERMUTED_CASES` and `MMA_TILE_PERMUTED_KIND_CASES` tables now
+  include those pairs over `K in {32,64,128}` and both accumulator modes, and
+  the stale `MMA_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES` clean-negative test
+  was removed. Scaled MMAv5 deliberately keeps a separate planner and its
+  narrow scale-fragment negatives still pass. Validation: `make -j8`;
+  py-compile; probe of `N=32/tile_n=8` and `N=64/tile_n=16` over all plain
+  kinds; four-GPU split selector `tile_permuted_acc and not scaled`
+  (`120 passed`); f16 helper selector (`12 passed`); scaled narrow clean
+  negatives (`20 passed`); invalid verifier; `git diff --check`.
+
 - Current scaled-MMAv5 TMEM-LHS fp4 storage `K=128` checkpoint,
   2026-04-15 16:09 UTC: the full-shape tile-permuted TMEM-LHS scaled-MMAv5
   matrix now covers the previous fp4/nvfp4 `K=128` storage boundary.

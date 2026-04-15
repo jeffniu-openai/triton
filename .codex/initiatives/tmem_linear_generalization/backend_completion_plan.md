@@ -503,6 +503,11 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 16:18 UTC: promoted plain MMAv5 narrow tile-permuted accumulator
+  rows. The plain accumulator planner now admits 8- and 16-column N families,
+  moving `(N,tile_n)=(32,8)` and `(64,16)` into the positive tile-permuted
+  matrices. Scaled MMAv5 keeps the separate wider-alignment planner because
+  its narrow rows remain scale-fragment clean negatives.
 - 2026-04-15 16:09 UTC: promoted full-shape tile-permuted scaled-MMAv5 TMEM-LHS
   fp4/nvfp4 `K=128` storage rows. The LHS planner now admits 16-column physical
   storage families, which is correct for packed fp4 operands because LHS TMEM
