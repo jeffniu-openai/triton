@@ -102,6 +102,11 @@ Progress:
   results. Direct destination support now consumes the `TMemPhysicalQuery`
   layout instead of re-deriving support from the memdesc type at the copy
   verifier call site.
+- 2026-04-15 06:53 UTC: added `getTMemCopyPlanSupport(...)`, the first
+  per-plan structured support helper for copy. It combines destination
+  physical-query support, shared-layout/runtime support, and
+  shared-descriptor synthesis into one result while preserving existing
+  diagnostics.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

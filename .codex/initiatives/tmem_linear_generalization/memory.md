@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 slice, 2026-04-15 06:53 UTC: added
+  `getTMemCopyPlanSupport(...)`, which checks a no-scales copy plan through
+  destination physical-query support, shared-layout/runtime support, and
+  shared-descriptor synthesis and returns one `TMemCopySupportResult`.
+  `ttng.tmem_copy` verification now uses that helper for plan support. This is
+  still behavior-preserving: existing diagnostics remain stable, while
+  descriptor-synthesis failures are now structurally classified for later
+  diagnostics/planner tracing. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`. Next concrete step: enrich copy-plan support results with
+  operation-specific context for CTA ownership and descriptor-synthesis
+  boundaries, then use that context to drive exact-query support decisions.
+
 - Current Phase 1/2 bridge slice, 2026-04-15 06:51 UTC: introduced
   `TMemCopySupportResult` and `TMemCopySupportFailureLayer` for structured
   copy support outcomes. Direct destination support and shared-layout/runtime

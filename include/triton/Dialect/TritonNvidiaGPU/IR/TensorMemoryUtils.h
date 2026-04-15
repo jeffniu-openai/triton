@@ -317,6 +317,12 @@ TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(gpu::MemDescType srcTy,
                                       TMemCopyFamily family);
 
+TMemCopySupportResult
+getTMemCopyPlanSupport(gpu::MemDescType srcTy,
+                       const TMemPhysicalQuery &dstQuery,
+                       const LinearLayout &shmemLl, const LinearLayout &cvt,
+                       const TMemCopyPlan &plan, int bitwidth);
+
 bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
                                             TMemCopyFamily family,
                                             std::string *error = nullptr);

@@ -95,6 +95,16 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy per-plan support checkpoint, 2026-04-15 06:53 UTC:
+  `getTMemCopyPlanSupport(...)` now returns one structured support result for a
+  copy plan by checking destination physical-query support,
+  shared-layout/runtime support, and shared-descriptor synthesis in planner
+  order. `ttng.tmem_copy` verification now asks that helper for no-scales plan
+  support. Existing diagnostics remain stable; descriptor-synthesis failures
+  are classified structurally but do not add a new note yet. Validation passed:
+  `make -j8`, direct invalid/conversion lit RUN lines via local `triton-opt`
+  and `FileCheck`, and `git diff --check`.
+
 - Current copy support-result checkpoint, 2026-04-15 06:51 UTC:
   copy support checks now have `TMemCopySupportResult` plus
   `TMemCopySupportFailureLayer` so destination physical-query failures and

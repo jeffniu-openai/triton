@@ -14765,3 +14765,23 @@ Open after this slice:
   structured result for destination physical-query, shared-layout/runtime, and
   shared-descriptor synthesis, so diagnostics can identify the failing planner
   layer before behavior-changing copy support expansion.
+
+## 2026-04-15 06:53 UTC: per-plan copy support helper
+
+- Added `getTMemCopyPlanSupport(...)`.
+- The helper checks a copy plan in planner order:
+  destination physical-query support, shared-layout/runtime support, then
+  shared-descriptor synthesis.
+- `TTNG::TMemCopyOp::verify` now uses the helper for no-scales copy plan
+  support.
+- Semantics are preserved. Descriptor-synthesis failures are classified as
+  `TMemCopySupportFailureLayer::DescriptorSynthesis` but intentionally carry
+  no new note yet, so existing `verify-diagnostics` expectations stay stable.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: enrich copy-plan support with operation-specific context for
+  CTA-ownership and descriptor-synthesis boundaries, then start using exact
+  physical-query support decisions where they are known behavior-equivalent.
