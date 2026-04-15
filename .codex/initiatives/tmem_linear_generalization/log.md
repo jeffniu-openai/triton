@@ -17770,3 +17770,39 @@ Open after this slice:
     (`7 passed, 10981 deselected in 3.75s`);
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
+
+## 2026-04-15 22:50 UTC: packed-lane shifted-descriptor wrong-code proof
+
+- No support source remains from this probe.
+- Temporary source change:
+  - built a packed-lane descriptor projection by dropping zero-offset low lane
+    bases from the copy conversion;
+  - scheduled destination tiles over the projected physical dword-column
+    extent rather than the lane-expanded logical column extent.
+- Result:
+  - legacy `f16`, `bf16`, `i16`, and `i8` copy rows compiled instead of
+    raising the packed-lane clean negative;
+  - f16/bf16/i16 emitted eight `tcgen05.cp.cta_group::1.128x256b` operations;
+  - i8 emitted four `tcgen05.cp.cta_group::1.128x256b` operations;
+  - runtime output was wrong: f16/i16 row 0 read source columns
+    `0,2,4,...`; i8 row 0 read `0,4,8,...`.
+- Interpretation:
+  - dropping packed lane bases from the descriptor projection loses lane
+    selection;
+  - physical dword-column scheduling is necessary but insufficient;
+  - correct support needs a descriptor/tile model that carries lane bits
+    explicitly and proves how the copy atom maps them into TMEM sub-dword
+    lanes.
+- Cleanup and validation:
+  - removed the temporary shifted-descriptor support edits;
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-failure-fields-final
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_legacy_subword_dtypes_report_clean_error or
+    cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout'`
+    (`7 passed, 10981 deselected in 3.79s`);
+  - `git diff --check`.

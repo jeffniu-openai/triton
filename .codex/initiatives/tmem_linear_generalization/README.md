@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:50 UTC: packed-lane copy was probed one step further with a
+  temporary shifted descriptor projection and adjusted physical-column schedule.
+  It compiled and emitted the expected dense `tcgen05.cp.128x256b` counts, but
+  runtime was wrong: f16/i16 read every second source column and i8 read every
+  fourth source column. The probe was removed. This proves that simply dropping
+  zero-offset lane bases loses lane selection; real support needs descriptor
+  synthesis that preserves lane bits rather than treating physical dword
+  columns as logical element columns.
 - 2026-04-15 22:45 UTC: the structured copy instruction-column failure now
   preserves the schedule dimensions identified by the latest probes:
   `packedLaneBits` for sub-dword packed-lane state and `descriptorRowDelta` for

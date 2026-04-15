@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current packed-lane shifted-descriptor proof, 2026-04-15 22:50 UTC: the
+  next natural packed-lane support attempt is also invalid. Temporarily
+  projecting away zero-offset lane bases and scheduling over physical dword
+  columns made legacy subword copy compile and emit the expected dense
+  `tcgen05.cp.128x256b` stream, but runtime proved wrong-code: f16/i16 outputs
+  read source columns `0,2,4,...`, while i8 outputs read `0,4,8,...`. The
+  source edits were removed and the focused packed/scales clean-negative
+  selector passed again (`7` rows). Conclusion: packed-lane copy cannot be
+  implemented by dropping lane bits from the descriptor projection; the
+  descriptor/tile schedule must preserve lane selection explicitly.
+
 - Current copy failure-field checkpoint, 2026-04-15 22:45 UTC: the structured
   instruction-column failure object now carries the two missing schedule
   dimensions exposed by the recent probes. Packed-lane failures record

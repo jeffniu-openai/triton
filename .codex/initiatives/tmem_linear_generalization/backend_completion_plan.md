@@ -305,6 +305,12 @@ Progress:
   for descriptor-row-stride selections, so the next scheduler implementation
   can consume the required lane or row-delta fact without reparsing diagnostic
   text.
+- 2026-04-15 22:50 UTC: a temporary packed-lane descriptor projection that
+  dropped zero-offset lane bases and scheduled physical dword columns compiled
+  but produced wrong runtime output (`f16/i16` copied every second source
+  column, `i8` every fourth). This rules out treating lane removal as a
+  descriptor projection; correct support needs lane bits preserved as explicit
+  schedule state.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
