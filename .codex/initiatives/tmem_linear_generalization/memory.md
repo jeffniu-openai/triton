@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current repeated-N32 scaled-MMAv5 B-scale probe, 2026-04-15 18:23 UTC:
+  a temporary env-gated lowering sweep bypassed the repeated-`N=32` guard and
+  tried candidate matrix-B scale address/SFB-ID formulas for
+  `mxfp8/mxfp8, N=128, tile_n=32, K=128`. The default path still produced
+  `16` MMA ops with only the first 32-column tile correct
+  (`tile_means ~= [0, 31.58, 23.38, 24.18]`). `wordaddr_nid` and
+  `wordaddr_xor` compiled but stayed wrong; `kaddr_nid`, `kaddr_xor`, and
+  `packed` faulted during execution. All probe hooks were removed and
+  `make -j8` rebuilt the clean tree. This reinforces that repeated-N32 scaled
+  support needs an explicit B-scale fragment model, not a one-line remap of
+  the current address/sub-ID calculation.
+
 - Current dense copy row-projection diagnostic checkpoint, 2026-04-15 18:08 UTC:
   the row-permuted dense `tcgen05.copy` clean negative now names the missing
   abstraction as an explicit `source-row projection schedule` for row-permuted

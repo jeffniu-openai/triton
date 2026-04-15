@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 18:23 UTC: repeated-`N=32` scaled-MMAv5 was re-probed with an
+  env-gated lowering sweep over B-scale address and SFB-ID formulas. The
+  default guard-lift path again left only the first 32-column tile correct;
+  `wordaddr_nid` and `wordaddr_xor` compiled but stayed numerically wrong,
+  while `kaddr_nid`, `kaddr_xor`, and `packed` faulted during execution. All
+  probe hooks were removed and `make -j8` rebuilt the clean source. Keep the
+  guard: this needs a real B-scale fragment model, not scalar remaps.
 - 2026-04-15 18:08 UTC: the dense row-permutation clean negative now reports
   the actual missing layer: an explicit source-row projection schedule for
   row-permuted destinations. Focused four-GPU split validation over the

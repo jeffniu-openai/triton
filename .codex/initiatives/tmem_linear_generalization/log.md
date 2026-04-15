@@ -16743,3 +16743,37 @@ Open after this slice:
   - four-GPU split focused selector for
     `test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`:
     groups passed `4`, `4`, `4`, and `3` selected rows, `15` total.
+
+## 2026-04-15 18:23 UTC: repeated-N32 B-scale address/SFB-ID probe
+
+- Added a temporary env-gated probe, then removed it before this checkpoint:
+  - verifier/lowering guard bypass for repeated-`N=32` scaled-MMAv5;
+  - `TRITON_TMEM_PROBE_SCALE_B_N32_MODE` variants in scaled MMA lowering for
+    B-scale address and SFB-ID selection.
+- Representative case:
+  - `mxfp8/mxfp8`, `M=N=128`, `K=128`, accumulator layout
+    `_make_tmem_linear_layout_tile_permuted(128, 128, 32)`;
+  - one process/cache per mode where possible to avoid env-dependent cache
+    reuse.
+- Results:
+  - default guard-lift path emitted `16` scaled MMA ops and kept only the
+    first 32-column tile correct; max diff was about `603.87`, tile mean
+    diffs were approximately `[0, 31.58, 23.38, 24.18]`;
+  - `wordaddr_nid` compiled but was worse across all tiles, max diff about
+    `767.94`;
+  - `wordaddr_xor` compiled but stayed wrong, max diff about `591.05`;
+  - `kaddr_nid`, `kaddr_xor`, and `packed` faulted during execution with a
+    CUDA/CUBLAS context error, consistent with invalid scale address/sub-ID
+    combinations rather than a support path.
+- Cleanup/validation:
+  - removed every temporary probe hook;
+  - verified only historical probe notes remain under `.codex`;
+  - `make -j8` rebuilt the restored source state;
+  - source tree is clean after cleanup.
+- Current conclusion:
+  - the public B-scale fragment schedule for repeated 32-column N tiles is not
+    expressible as a scalar tweak of the current
+    `(n + wordIdx * numRepN) * numColPerScaleBlockB` address plus
+    `subWordIdx` SFB-ID formula. Future support needs a real fragment model
+    that describes which N and K scale sub-fragments each MMAv5 instruction
+    consumes.
