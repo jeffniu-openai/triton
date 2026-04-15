@@ -14825,3 +14825,29 @@ Open after this slice:
   descriptor-view rows, especially no-scales two-CTA `warpx2::02_13` and
   scales layout probes, then promote only proven behavior-equivalent or
   ISA-realizable divergence classes into exact-query planning.
+
+## 2026-04-15 06:59 UTC: copy exact-query divergence probe
+
+- Ran `TRITON_DEBUG_TMEM_QUERY=1` targeted probes for no-scales two-CTA
+  `warpx2::02_13` copy rows.
+- Root candidate row: no copy exact-vs-standalone divergence reported.
+- Indexed outer-view rows: no copy exact-vs-standalone divergence reported.
+- Subslice rows: divergence reported as allocation shape; the physical layout
+  is identical, with exact origin `0 0 0` for the low half and `0 4 0` for the
+  high half.
+- Slice-index rows: the high-half case reports physical-origin divergence
+  (`standalone origin 0 0 0`, exact origin `0 4 0`) with identical physical
+  layout.
+- Probe commands included:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python TRITON_DEBUG_TMEM_QUERY=1 pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`;
+  - a direct Python probe over the two-CTA `warpx2::02_13` root, subslice,
+    indexed, and slice-index helper kernels with
+    `PYTHONPATH=./python:./python/test/gluon`.
+- Current inference:
+  - The immediate descriptor-view gap is origin/address scheduling, not family
+    classification.
+  - The root two-CTA `warpx2::02_13` negative still points at the known
+    cta_group::2 descriptor/address schedule gap for preserving the high
+    source-column bit.
+- Next: add a copy-planning data path for destination query origin and use it
+  in lowering/support diagnostics before changing accepted rows.

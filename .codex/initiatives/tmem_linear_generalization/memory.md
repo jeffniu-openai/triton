@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current copy divergence probe, 2026-04-15 06:59 UTC: targeted
+  `TRITON_DEBUG_TMEM_QUERY=1` probes on the no-scales two-CTA
+  `warpx2::02_13` clean-negative rows showed that root and indexed views do
+  not report standalone/exact divergence, while `memdesc_subslice` and
+  slice-index views report either allocation-shape or physical-origin
+  divergence with the same physical layout. In particular, slice/subslice cases
+  at the nonzero column half carry exact origin `0 4 0` where standalone
+  remains `0 0 0`. This means the immediate blocker is not copy-family
+  classification for those descriptor views; it is that the copy schedule and
+  address generation still have no origin-aware path for the exact physical
+  query. Next concrete step: teach copy plan/support/lowering to carry and
+  apply query origin in a structured way, then re-evaluate whether two-CTA
+  `warpx2::02_13` still needs a new cta_group::2 descriptor/address schedule
+  or whether only the root/high-column-bit atom remains impossible.
+
 - Current Phase 2 slice, 2026-04-15 06:57 UTC: added the first guarded
   exact-query migration for copy. `ttng.tmem_copy` verification and no-scales
   lowering now compute `inferExactTMemPhysicalQuery(...)` and prefer the exact
