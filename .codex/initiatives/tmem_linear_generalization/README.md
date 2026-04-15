@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 19:36 UTC: copy tile scheduling now carries both the logical
+  destination column and the shared-memory source column. The old
+  `TMemCopyDestinationTile` carrier was replaced by `TMemCopyScheduledTile`
+  with `logicalCol`, `sourceCol`, and `destinationOffset`, and lowering uses
+  `sourceCol` for both descriptor-loader and direct-seed source addressing.
+  Current plans keep `sourceCol == logicalCol`, so this is a
+  behavior-preserving split-schedule carrier for future non-uniform
+  source-column planning. Validation: `make -j8`, direct invalid verifier RUN,
+  focused copy selector passed all `375` selected rows, and `git diff --check`
+  passed.
 - 2026-04-15 19:23 UTC: destination tile planning now lives on the selected
   executable copy plan. `TMemCopyExecutablePlan` carries
   `destinationTiles`, populated in `getTMemCopyPlanRealization(...)`, and

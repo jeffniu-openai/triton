@@ -194,15 +194,16 @@ struct TMemCopyScheduledMessage {
   std::optional<uint64_t> directSeedDescriptorImm;
 };
 
-struct TMemCopyDestinationTile {
+struct TMemCopyScheduledTile {
   int32_t logicalCol;
-  uint32_t offset;
+  int32_t sourceCol;
+  uint32_t destinationOffset;
 };
 
 struct TMemCopyExecutablePlan {
   TMemCopyFamily family;
   llvm::SmallVector<TMemCopyScheduledMessage, 2> messages;
-  llvm::SmallVector<TMemCopyDestinationTile> destinationTiles;
+  llvm::SmallVector<TMemCopyScheduledTile> tiles;
 };
 
 struct TMemCopyPlanSelection {
@@ -494,11 +495,11 @@ std::optional<uint32_t>
 getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
                                  TMemCopyFamily family, int32_t logicalCol);
 
-std::optional<llvm::SmallVector<TMemCopyDestinationTile>>
-getTMemCopyDestinationTilePlan(const TMemPhysicalQuery &query,
-                               TMemCopyFamily family, unsigned colStride,
-                               int32_t logicalCols,
-                               std::string *error = nullptr);
+std::optional<llvm::SmallVector<TMemCopyScheduledTile>>
+getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
+                             TMemCopyFamily family, unsigned colStride,
+                             int32_t logicalCols,
+                             std::string *error = nullptr);
 
 bool canRepresentAsMMASmemDescriptor(const LinearLayout &ll,
                                      llvm::ArrayRef<unsigned> instrShape,

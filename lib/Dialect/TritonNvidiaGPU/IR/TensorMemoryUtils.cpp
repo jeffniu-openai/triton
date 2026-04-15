@@ -8043,17 +8043,17 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
          (static_cast<uint32_t>(coord->second) * query.elementBitWidth / 32);
 }
 
-std::optional<llvm::SmallVector<TMemCopyDestinationTile>>
-getTMemCopyDestinationTilePlan(const TMemPhysicalQuery &query,
-                               TMemCopyFamily family, unsigned colStride,
-                               int32_t logicalCols, std::string *error) {
+std::optional<llvm::SmallVector<TMemCopyScheduledTile>>
+getTMemCopyScheduledTilePlan(const TMemPhysicalQuery &query,
+                             TMemCopyFamily family, unsigned colStride,
+                             int32_t logicalCols, std::string *error) {
   if (colStride == 0 || logicalCols < 0) {
     if (error)
       *error = "invalid tcgen05.copy destination tile stride";
     return std::nullopt;
   }
 
-  llvm::SmallVector<TMemCopyDestinationTile> tiles;
+  llvm::SmallVector<TMemCopyScheduledTile> tiles;
   for (int32_t logicalCol = 0; logicalCol < logicalCols;
        logicalCol += static_cast<int32_t>(colStride)) {
     auto offset = getTMemCopyDestinationTileOffset(query, family, logicalCol);
@@ -8064,7 +8064,10 @@ getTMemCopyDestinationTilePlan(const TMemPhysicalQuery &query,
       }
       return std::nullopt;
     }
-    tiles.push_back(TMemCopyDestinationTile{logicalCol, *offset});
+    tiles.push_back(TMemCopyScheduledTile{
+        /*logicalCol=*/logicalCol,
+        /*sourceCol=*/logicalCol,
+        /*destinationOffset=*/static_cast<uint32_t>(*offset)});
   }
   return tiles;
 }
@@ -8295,10 +8298,10 @@ getTMemCopyPlanRealization(MemDescType srcTy,
   }
   const unsigned colStride = executablePlan->messages.front().plan.instrShape[1];
   std::string destinationTileError;
-  auto destinationTiles = getTMemCopyDestinationTilePlan(
+  auto scheduledTiles = getTMemCopyScheduledTilePlan(
       dstQuery, executablePlan->family, colStride, cvt.getInDimSize(kCol),
       &destinationTileError);
-  if (!destinationTiles) {
+  if (!scheduledTiles) {
     return {std::nullopt,
             getUnsupportedTMemCopyResult(
                 TMemCopySupportFailureLayer::PhysicalQuery,
@@ -8307,7 +8310,7 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                       "tile plan from the selected tensor-memory layout"
                     : destinationTileError)};
   }
-  executablePlan->destinationTiles = std::move(*destinationTiles);
+  executablePlan->tiles = std::move(*scheduledTiles);
   return {std::move(*executablePlan), descriptorSupport};
 }
 

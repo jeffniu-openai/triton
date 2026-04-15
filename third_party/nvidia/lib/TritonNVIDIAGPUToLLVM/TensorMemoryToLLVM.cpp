@@ -1584,16 +1584,14 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
             ? destinationBaseOffset - alreadyAdjustedBase
             : 0;
 
-  for (const TMemCopyDestinationTile &destinationTile :
-       planSelection.plan->destinationTiles) {
-    int col = destinationTile.logicalCol;
+  for (const TMemCopyScheduledTile &tile : planSelection.plan->tiles) {
     for (const auto &message : plannedMessages) {
       Value desc;
       const auto &messagePlan = message.schedule.plan;
       if (message.schedule.directSeedDescriptorImm) {
         uint64_t sourceOffsetB128 =
             messagePlan.directSourceOffsetB128 +
-            ((col + messagePlan.smemColOffset) * bitwidth) / 128;
+            ((tile.sourceCol + messagePlan.smemColOffset) * bitwidth) / 128;
         uint64_t descImm = *message.schedule.directSeedDescriptorImm;
         descImm &= ~(((1ULL << 14) - 1) | (0x7ULL << 49));
         descImm |= sourceOffsetB128;
@@ -1605,13 +1603,13 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
         desc = b.add(b.int_val(64, descImm), baseb128);
       } else {
         desc = message.loader->smemLoad(
-            messagePlan.smemRow, col + messagePlan.smemColOffset, rewriter,
-            loc);
+            messagePlan.smemRow, tile.sourceCol + messagePlan.smemColOffset,
+            rewriter, loc);
       }
       assert(messagePlan.tmemRowDelta >= 0 &&
              "tcgen05.copy destination row delta must be non-negative");
       uint32_t messageDestinationOffset =
-          destinationBaseOffset + destinationTile.offset +
+          destinationBaseOffset + tile.destinationOffset +
           (static_cast<uint32_t>(messagePlan.tmemRowDelta) << 16) +
           messagePlan.tmemDwordDelta;
       auto tmemAddr = b.add(b.ptrtoint(i32_ty, baseDst),

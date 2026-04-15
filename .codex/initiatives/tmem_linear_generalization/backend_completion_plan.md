@@ -265,6 +265,13 @@ Progress:
   scales descriptor-view copy failed copy-family classification, confirming the
   remaining path must preserve the exact descriptor-view query and add real
   split scheduling.
+- 2026-04-15 19:36 UTC: generalized the destination tile carrier into
+  `TMemCopyScheduledTile`, which records both the logical destination column
+  and the source shared-memory column for each emitted copy tile. Current
+  schedules keep `sourceCol == logicalCol`, but lowering now consumes the
+  selected plan's source coordinate instead of recomputing it from the
+  destination tile loop. This is the behavior-preserving carrier needed before
+  planner-generated source-column/message splits can be expressed cleanly.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

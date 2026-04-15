@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current scheduled copy tile checkpoint, 2026-04-15 19:36 UTC:
+  copy tile scheduling now records source and destination coordinates in one
+  selected-plan carrier. `TMemCopyScheduledTile` replaces the destination-only
+  tile carrier and stores `logicalCol`, `sourceCol`, and
+  `destinationOffset`; `getTMemCopyScheduledTilePlan(...)` currently emits
+  `sourceCol == logicalCol`, and lowering consumes `sourceCol` for
+  descriptor-loader and direct-seed source addressing. This preserves current
+  behavior while creating the exact slot needed for future source-column /
+  message splitting in scales descriptor-view copy. Validation after `make
+  -j8`: direct invalid verifier RUN, focused copy selector
+  `cp_no_scales_linear_tile_permuted or
+  cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+  cp_no_scales_4x256b_refresh_layout_codegen or
+  cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+  cp_scales_warpx4` passed `375` selected rows, and `git diff --check` passed.
+
 - Current executable destination tile-plan checkpoint, 2026-04-15 19:23 UTC:
   destination tile planning is now part of `TMemCopyExecutablePlan`.
   `getTMemCopyPlanRealization(...)` computes `destinationTiles` after shared

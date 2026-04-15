@@ -17097,3 +17097,32 @@ Open after this slice:
     cp_no_scales_4x256b_refresh_layout_codegen or cp_scales_warpx4 or
     cp_scales_tmem_descriptor_view_reports_clean_unsupported`: `409 passed`;
   - `git diff --check`.
+
+## 2026-04-15 19:36 UTC: scheduled copy tile source-coordinate carrier
+
+- Generalized the copy tile schedule from a destination-only carrier to a
+  source/destination carrier.
+- Implementation:
+  - replaced `TMemCopyDestinationTile` with `TMemCopyScheduledTile`;
+  - the scheduled tile stores `logicalCol`, `sourceCol`, and
+    `destinationOffset`;
+  - renamed `getTMemCopyDestinationTilePlan(...)` to
+    `getTMemCopyScheduledTilePlan(...)`;
+  - current planning emits `sourceCol == logicalCol`;
+  - lowering uses `tile.sourceCol` for both shared-descriptor loader column
+    addressing and direct-seed descriptor source offsets, and uses
+    `tile.destinationOffset` for the TMEM address.
+- Semantics:
+  - intended behavior-preserving;
+  - this creates the exact selected-plan slot needed for future non-uniform
+    source-column/message splitting without another lowering-only rewrite.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused copy selector
+    `cp_no_scales_linear_tile_permuted or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_4x256b_refresh_layout_codegen or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_warpx4`: `375 passed`;
+  - `git diff --check`.
