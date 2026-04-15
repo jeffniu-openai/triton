@@ -373,6 +373,15 @@ Progress:
   in TMEM columns and low logical column bits in rows 32/64. Copy remains
   positive for the proved refresh images; direct `get_reg_layout`, `load`,
   reduction load, and `store` now fail early with that explanation.
+- 2026-04-15 17:59 UTC: re-probed the 4x256 refresh direct-ld/st boundary by
+  temporarily bypassing the frontend guard. The backend raw-query planner also
+  found no legal layout: it selected the 128-row row plan for the exact
+  refresh query, but every atom returned no layout and the only fallback
+  candidates had zero warp bases while carrying the needed 32/64 row anchors
+  through lanes or logical columns. This confirms the remaining 4x256 work is
+  not a stale guard; direct ld/st would need a new row-anchor rematerialization
+  model, while copy opcode support is already positive for the ISA refresh
+  image.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

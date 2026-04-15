@@ -16699,3 +16699,28 @@ Open after this slice:
   - this is a cleanup checkpoint that removes duplicated policy. The support
     frontier remains a real matrix-B scale-fragment representation below
     64-column alignment.
+
+## 2026-04-15 17:59 UTC: 4x256b refresh direct-ld/st probe
+
+- Temporarily bypassed the Python frontend guard for
+  `_raise_unsupported_4x256b_refresh_tmem_ldst(...)` with a local probe hook,
+  then removed the hook before this checkpoint.
+- Re-ran the single-CTA `tmem.get_reg_layout()` refresh kernel with
+  `TRITON_DEBUG_TMEM_QUERY=1`, `TRITON_DEBUG_TMEM_REG_LAYOUT=1`, and
+  `TRITON_TRACE_TMEM_REG_LAYOUT_FILE=1`.
+- Result:
+  - the raw refresh query used the 128-row row plan on the exact refresh
+    layout;
+  - raw atom probes for `I32x32b`, `I16x256b`, `I16x128b`, `I16x64b`, and
+    `I16x32bx2` all returned no layout;
+  - fallback candidates failed with zero warp bases, either carrying row
+    anchors in lanes or in logical columns.
+- Current conclusion:
+  - the frontend clean negative is aligned with backend reality. Direct
+    `tcgen05.ld/st` for refresh-shaped 4x256 active layouts remains a
+    row-anchor materialization boundary, not a stale guard or missing test
+    promotion.
+- Validation:
+  - `make -j8` before the probe;
+  - restored the probe hook and verified the source tree returned to a clean
+    diff before updating docs.

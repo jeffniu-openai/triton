@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 17:59 UTC: the 4x256b refresh direct `tcgen05.ld/st` negative
+  was re-probed by temporarily bypassing the Python API guard. The backend
+  still found no legal register layout: the raw refresh query uses the
+  128-row row plan, but all candidate atoms leave warp bases at zero while
+  carrying the required 32/64 row anchors through columns or lane bases. Keep
+  this as a true direct-ld/st row-anchor materialization boundary, separate
+  from the now-positive `tcgen05.cp.4x256b` refresh copy opcode support.
 - 2026-04-15 17:55 UTC: the repeated-`N=32` scaled-MMAv5 guard is now a
   shared physical-layout helper used by both verifier and lowering. Follow-up
   probes confirmed the boundary: fixed B-scale selector remaps do not repair

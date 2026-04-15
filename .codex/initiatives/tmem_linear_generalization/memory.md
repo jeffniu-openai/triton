@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current 4x256b refresh direct-ld/st repro, 2026-04-15 17:59 UTC:
+  the explicit frontend clean negative is not hiding a working backend path.
+  A temporary probe bypassed `_raise_unsupported_4x256b_refresh_tmem_ldst(...)`
+  and let `tmem.get_reg_layout()` query the lowerer directly. The raw query is
+  the refresh layout `row=[0,0,0,0,0,(0,1),(0,2)]`,
+  `col=[(1,0),(2,0),(0,4)]` with a `128`-row row plan, but every atom returned
+  no layout. The only fallback candidates kept warp bases at zero:
+  one candidate placed row anchors as lane bases `(1,0),(2,0)`, and the
+  refresh-shaped candidate placed the 32/64 anchors in logical columns. This
+  confirms the direct `ld/st` boundary is row-anchor materialization, not a
+  stale Python guard. Do not promote refresh active layouts to direct
+  `get_reg_layout`, `load`, `store`, or `ld.red` without a new schedule that
+  makes the required row anchors programmable warp bases.
+
 - Current scaled-MMAv5 repeated-N32 guard cleanup, 2026-04-15 17:55 UTC:
   verifier and lowering now share
   `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)`, so the repeated-`N=32`
