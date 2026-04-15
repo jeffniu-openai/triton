@@ -7603,12 +7603,20 @@ static bool isTMemCopy4x256RefreshLayout(const LinearLayout &layout,
     return false;
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
   if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
       layout.getNumOutDims() != 2 || layout.getInDimSize(kRow) != 128 ||
       layout.getInDimSize(kCol) != 8)
     return false;
+  int64_t expectedRows = 4;
+  if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) > 1) {
+    if (layout.getInDimSize(kBlock) != 2 ||
+        !basisEquals(layout.getBasis(kBlock, 0), {4, 0}))
+      return false;
+    expectedRows = 8;
+  }
   auto outDims = llvm::to_vector(layout.getOutDims());
-  if (outDims[0].second != 4 || outDims[1].second != 8)
+  if (outDims[0].second != expectedRows || outDims[1].second != 8)
     return false;
   for (unsigned bit = 0; bit < 5; ++bit) {
     if (!isAllZeroBasis(layout.getBasis(kRow, bit)))

@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Current two-CTA `4x256b` refresh checkpoint, 2026-04-15 13:03 UTC:
+  the proved refresh-shaped copy image now lowers for `cta_group::2` as well
+  as `cta_group::1`. The accepted two-CTA layout is the single-CTA refresh
+  image lifted with `block_bases=[[4,0]]`, `shape=[8,8]`, and
+  `two_ctas=True`; the backend accepts this real block lift while ignoring an
+  implicit size-1 block dimension in single-CTA queries. The planner emits two
+  `tcgen05.cp.cta_group::2.4x256b` messages with the existing per-message
+  descriptor projection and high-column `tmemDwordDelta=4` schedule. New
+  runtime-matrix coverage asserts the exact cta-group::2 opcode pair, and
+  the Blackwell conversion FileCheck has a matching compiler-only case.
+  Validation passed: `make -j8`, py-compile, invalid verifier, Blackwell
+  conversion FileCheck, focused two-CTA refresh positive plus single-CTA
+  refresh positive plus ordinary contiguous 4x8 clean-negative pytest rows
+  (`3 passed`), and `git diff --check`. Remaining boundary: direct
+  refresh-shaped load/store still fails at register-layout selection, so the
+  `4x256b` family is copy-codegen complete for the proved refresh images but
+  not yet a full TMEM round-trip data oracle.
+
 - Current `4x256b` refresh support, 2026-04-15 12:52 UTC:
   the active refresh-shaped `TensorMemoryLinearLayout`
   (`row` low five bits zero, row bits 5/6 to TMEM columns 1/2, column bits

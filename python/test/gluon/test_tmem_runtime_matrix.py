@@ -49,12 +49,16 @@ def _make_tmem_linear_layout(m, n):
     )
 
 
-def _make_tmem_copy_4x256b_refresh_layout():
-    return TensorMemoryLinearLayout(
+def _make_tmem_copy_4x256b_refresh_layout(two_ctas=False):
+    kwargs = dict(
         rows=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1], [0, 2]],
         cols=[[1, 0], [2, 0], [0, 4]],
-        shape=[4, 8],
+        shape=[8, 8] if two_ctas else [4, 8],
     )
+    if two_ctas:
+        kwargs["block_bases"] = [[4, 0]]
+        kwargs["two_ctas"] = True
+    return TensorMemoryLinearLayout(**kwargs)
 
 
 def _permute_pow2_bases_by_kind(bits, kind):
@@ -1433,6 +1437,37 @@ def tmem_copy_no_scales_4x256b_refresh_kernel(in_ptr, out_ptr, layout: ttgl.cons
     fence_async_shared()
 
     bar = ttgl.allocate_shared_memory(ttgl.int64, [1], mbarrier.MBarrierLayout())
+    mbarrier.init(bar, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(bar)
+    mbarrier.wait(bar, phase=0)
+
+    ttgl.store(out_ptr + offs, value)
+
+
+@gluon.jit
+def tmem_copy_no_scales_4x256b_refresh_twocta_kernel(in_ptr, out_ptr, layout: ttgl.constexpr,
+                                                     cga_layout: ttgl.constexpr):
+    M: ttgl.constexpr = 8
+    N: ttgl.constexpr = 8
+
+    blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [4, 1], [1, 0], cga_layout=cga_layout)
+    in_m = ttgl.arange(0, M, ttgl.SliceLayout(1, blocked))
+    in_n = ttgl.arange(0, N, ttgl.SliceLayout(0, blocked))
+    offs = in_m[:, None] * N + in_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=layout)
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[1, 0], [2, 0], [0, 1], [0, 2], [0, 4]],
+        block_bases=[[4, 0]],
+        alignment=16,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    smem.store(value)
+    fence_async_shared(cluster=True)
+
+    bar = mbarrier.allocate_mbarrier()
     mbarrier.init(bar, count=1)
     tcgen05_copy(smem, tmem)
     tcgen05_commit(bar)
@@ -7815,6 +7850,30 @@ def test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen():
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
     expected_op = "tcgen05.cp.cta_group::1.4x256b"
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_op, expected_op])
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen():
+    m = 8
+    n = 8
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_copy_4x256b_refresh_layout(two_ctas=True)
+    cga_layout = ((1, 0), )
+
+    compiled = tmem_copy_no_scales_4x256b_refresh_twocta_kernel[(1, )](
+        inp,
+        out,
+        layout,
+        cga_layout,
+        num_warps=4,
+        num_ctas=2,
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    expected_op = "tcgen05.cp.cta_group::2.4x256b"
     _assert_exact_cp_ptx_llir_match(compiled, [expected_op, expected_op])
     assert "tensor_memory_linear" in compiled.asm["ttgir"]
 

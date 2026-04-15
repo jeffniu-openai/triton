@@ -330,6 +330,15 @@ Progress:
   four-row copies stay negative because they are not the refresh image the ISA
   realizes. Remaining `4x256b` work is the load/store/register-layout contract
   for the refresh layout, not the copy opcode schedule.
+- 2026-04-15 13:03 UTC: the same refresh-shaped `4x256b` copy support now
+  covers two-CTA `cta_group::2`. The accepted layout is the single-CTA refresh
+  image lifted with `block_bases=[[4,0]]`, `shape=[8,8]`, and
+  `two_ctas=True`; the recognizer ignores implicit size-1 block dimensions so
+  single-CTA exact queries still match. Runtime and conversion coverage now
+  assert two `tcgen05.cp.cta_group::2.4x256b` messages, while ordinary
+  contiguous two-CTA 4x256 remains a clean negative. Remaining `4x256b` work is
+  still the direct load/store/register-layout contract for refresh-shaped
+  active layouts.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

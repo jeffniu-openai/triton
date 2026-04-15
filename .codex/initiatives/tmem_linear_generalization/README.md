@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 13:03 UTC: `tcgen05.cp.4x256b` refresh support now covers the
+  two-CTA `cta_group::2` image as well as the single-CTA image. The refresh
+  recognizer treats an implicit size-1 block dimension as single-CTA but
+  accepts the real two-CTA block lift when `block=1 -> (4,0)` and
+  `shape=[8,8]`; the planner then emits the same two-message refresh schedule
+  using `tcgen05.cp.cta_group::2.4x256b`. Runtime-matrix coverage now pins the
+  two-CTA codegen row, the Blackwell conversion test has the matching
+  compiler-only check, and the ordinary contiguous two-CTA `4x256b` case
+  remains a clean unsupported negative. Remaining boundary is unchanged:
+  direct refresh-layout `tmem.load`/`tmem.store` still lacks a register-layout
+  contract, so this checkpoint proves copy scheduling/codegen.
 - 2026-04-15 12:52 UTC: `tcgen05.cp.4x256b` now has first-class support for
   the refresh-shaped active `TensorMemoryLinearLayout` image proved in the
   earlier probes. Copy physical-query selection is shared between verifier and

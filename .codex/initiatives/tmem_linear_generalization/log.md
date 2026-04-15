@@ -15875,3 +15875,36 @@ Open after this slice:
   - direct `tmem.load`/`tmem.store` for the refresh-shaped active layout still
     lacks a supported register-layout contract, so the positive row is a copy
     codegen/opcode proof rather than a full data round-trip through TMEM.
+
+## 2026-04-15 13:03 UTC: two-CTA 4x256b refresh-shaped copy support
+
+- Promoted the refresh-shaped `tcgen05.cp.4x256b` support to the two-CTA
+  `cta_group::2` image.
+- Implementation:
+  - `isTMemCopy4x256RefreshLayout(...)` now ignores an implicit size-1 block
+    input dimension in single-CTA exact queries, but accepts the real two-CTA
+    lift only when the block dimension has size 2 and basis `[4,0]`;
+  - the existing refresh copy planner then emits the same two-message
+    descriptor-projection schedule for `cta_group::2`, producing two
+    `tcgen05.cp.cta_group::2.4x256b` messages;
+  - the ordinary contiguous two-CTA 4x256 layout remains clean unsupported
+    because it is not the refresh image the ISA writes.
+- Tests:
+  - extended the runtime helper to build the two-CTA refresh linear layout
+    (`block_bases=[[4,0]]`, `shape=[8,8]`, `two_ctas=True`);
+  - added a focused runtime-matrix codegen row that asserts exactly two
+    `tcgen05.cp.cta_group::2.4x256b` messages;
+  - added a Blackwell conversion FileCheck chunk for the two-CTA refresh copy.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported`
+    (`3 passed`);
+  - `git diff --check`.
+- Remaining boundary:
+  - direct refresh-shaped `tmem.load`/`tmem.store` still fails at register
+    layout selection, so the 4x256 family is now copy-codegen complete for the
+    proved single-CTA and two-CTA refresh images but not a full TMEM
+    round-trip oracle.
