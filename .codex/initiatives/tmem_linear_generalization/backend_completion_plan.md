@@ -326,6 +326,15 @@ Progress:
   through; column-basis permutations either misalign or produce wrong data with
   the existing per-tile address schedule. Keep these clean negatives parked on
   a future row/packet scheduler rather than treating them as stale guards.
+- 2026-04-15 17:36 UTC: the dense row-permutation gap was sharpened with a
+  second temporary probe. Bypassing both the physical-query row-order guard and
+  the lowering row-stride guard lets row-only permutations compile, but they
+  copy rows in physical row-basis order (`reverse` exposes bit-reversed source
+  rows; `rotate1` exposes alternating low/high physical groups). The selected
+  shared descriptor does not invert the destination row-basis permutation.
+  Column-only permutations still fail at packet-contiguity. The real Phase 2
+  task is now explicit: derive a row/source projection schedule or row-group
+  atomization that proves logical row order, rather than relaxing dense guards.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent

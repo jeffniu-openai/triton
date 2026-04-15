@@ -16605,3 +16605,56 @@ Open after this slice:
   - scaled two-CTA `block_n=32` descriptor-view rows are valid. The remaining
     scaled N32 boundary is not generic CTA ownership or view arithmetic; it is
     the repeated/tile-permuted scale-B fragment schedule.
+
+## 2026-04-15 17:33 UTC: post-scaled-promotion clean-negative sweep
+
+- Re-ran the named clean unsupported/error selector after promoting the scaled
+  single-CTA and two-CTA `N=32` rows.
+- Validation:
+  - `make -j8`;
+  - four-GPU split selector
+    `-k "reports_clean_unsupported or clean_unsupported or reports_clean_error"`
+    passed with `417 passed` and `1 skipped`.
+- Current conclusion:
+  - the current clean-negative buckets remain aligned after the scaled N32
+    promotions. The remaining scaled N32 failures are repeated/tile-permuted
+    scale-B fragment schedules, and the copy clean negatives still represent
+    row/packet schedule gaps.
+
+## 2026-04-15 17:36 UTC: dense no-scales copy row-permutation probe
+
+- Temporarily bypassed the dense physical-query row-order guard in
+  `getDirectTMemCopyLayoutSupportForLayout(...)` and the lowering row-stride
+  guard in `copySharedToTmem(...)`, then removed both changes before this
+  checkpoint.
+- Probe coverage:
+  - row-only permutations: `reverse/identity`, `rotate1/identity`,
+    `even_odd/identity`;
+  - column-only permutations: `identity/reverse`, `identity/rotate1`,
+    `identity/even_odd`.
+- Result:
+  - row-only permutations compiled under the temporary guard lift, but all
+    produced wrong output;
+  - `reverse/identity` exposed bit-reversed source-row order, and the sampled
+    first rows mapped as
+    `[0,64,32,96,16,80,48,112,8,72,40,104,24,88,56,120]`;
+  - `rotate1/identity` exposed alternating low/high source-row groups such as
+    `[0,64,1,65,2,66]`;
+  - `even_odd/identity` showed the same physical-row-basis symptom;
+  - column-only permutations remained clean unsupported at the physical column
+    packet-contiguity proof.
+- Debug evidence:
+  - for `reverse/identity`, the selected descriptor candidate used dim0 bases
+    `[8,16,36,64,128]` and did not invert the destination row-basis
+    permutation;
+  - destination row bases were reversed in the physical query, while the
+    source-to-destination conversion still drove source rows in physical basis
+    order.
+- Cleanup/validation:
+  - restored both temporary source edits exactly;
+  - `make -j8` rebuilt the clean source state;
+  - the two probed backend files have no remaining diff.
+- Current conclusion:
+  - dense row permutations need an explicit row/source projection schedule or
+    row-group atomization. Relaxing the row-order guard is wrong because it
+    preserves physical row order instead of logical layout semantics.

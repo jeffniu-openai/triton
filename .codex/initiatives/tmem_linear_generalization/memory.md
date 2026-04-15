@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Current dense no-scales copy row-permutation probe, 2026-04-15 17:36 UTC:
+  bypassing the dense physical-query row-order guard and the lowering
+  row-stride guard is not a support path. Row-only permutations compile under
+  that temporary lift but copy source rows according to physical row-basis
+  order instead of logical row order. `reverse/identity` maps output rows
+  through a bit-reversed source-row sequence; `rotate1/identity` maps rows
+  as alternating low/high physical groups; `even_odd/identity` has the same
+  physical-basis symptom. Column-only permutations remain clean unsupported at
+  the packet-contiguity proof. The selected descriptor for the
+  `reverse/identity` probe used descriptor dim0 bases `[8,16,36,64,128]`,
+  so it did not invert the destination row-basis permutation. Real support
+  needs an explicit row/source projection schedule or row-group atomization,
+  not relaxed guards.
+
+- Current post-scaled-promotion clean-negative sweep, 2026-04-15 17:33 UTC:
+  after the scaled single-CTA/two-CTA `N=32` promotions, the named
+  clean-unsupported/error selector still passes with `417 passed` and
+  `1 skipped`. This keeps the current negative buckets aligned with true
+  remaining boundaries: repeated/tile-permuted scaled scale-B fragments and
+  copy row/packet scheduling.
+
 - Current scaled MMAv5 two-CTA `block_n=32` checkpoint, 2026-04-15 17:28 UTC:
   scaled two-CTA accumulator subslice rows now include `block_n=32`. The
   affected four-GPU selector passed all `240` selected rows across current

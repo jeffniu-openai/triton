@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 17:36 UTC: dense no-scales copy row permutations were re-probed
+  with the physical-query and lowering row-stride guards temporarily bypassed.
+  Row-only permutations compile in that mode but produce wrong output:
+  `reverse` exposes bit-reversed source-row order, while `rotate1` and
+  `even_odd` expose analogous physical-row-basis ordering. Column-only
+  permutations still fail cleanly at physical column packet contiguity. Keep
+  these as real row/source projection scheduler gaps; guard lifting is wrong.
+- 2026-04-15 17:33 UTC: the post-scaled-promotion clean unsupported/error
+  selector is still green (`417 passed`, `1 skipped`) after the scaled
+  single-CTA and two-CTA `N=32` promotions. The current clean-negative buckets
+  remain aligned with the sharpened scaled-N32 and copy-scheduler boundaries.
 - 2026-04-15 17:28 UTC: scaled MMAv5 two-CTA accumulator subslice coverage
   now includes `block_n=32`. The two-CTA scaled view rows pass across current
   format pairs, K-depths, multicast modes, slice starts, and accumulator
