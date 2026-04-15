@@ -182,6 +182,11 @@ Progress:
 - 2026-04-15 07:39 UTC: added conversion coverage for
   `tcgen05.cp.cta_group::2.4x256b`, confirming the 4x256b copy-family support
   reaches both cta-group ISA variants.
+- 2026-04-15 09:02 UTC: `selectTMemCopyPlan(...)` now returns a realized
+  executable schedule, including per-message descriptor-layout selection or
+  direct-seed descriptor immediates. Lowering consumes that schedule directly,
+  reducing support/lowering drift before adding row-offset/source-format
+  schedule dimensions.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

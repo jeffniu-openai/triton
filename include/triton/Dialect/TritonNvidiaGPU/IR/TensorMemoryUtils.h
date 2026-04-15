@@ -140,17 +140,28 @@ struct TMemCopyPlan {
   llvm::SmallVector<TMemCopyMessagePlan> messages;
 };
 
+struct TMemCopyDescriptorLayoutSelection {
+  LinearLayout layout;
+  unsigned mnDim;
+};
+
+struct TMemCopyScheduledMessage {
+  TMemCopyMessagePlan plan;
+  std::optional<TMemCopyDescriptorLayoutSelection> descriptorLayout;
+  std::optional<uint64_t> directSeedDescriptorImm;
+};
+
+struct TMemCopyExecutablePlan {
+  TMemCopyFamily family;
+  llvm::SmallVector<TMemCopyScheduledMessage, 2> messages;
+};
+
 struct TMemCopyPlanSelection {
-  std::optional<TMemCopyPlan> plan;
+  std::optional<TMemCopyExecutablePlan> plan;
   std::optional<TMemCopySupportResult> firstFailure;
   llvm::SmallVector<TMemCopySupportResult> failures;
 
   explicit operator bool() const { return plan.has_value(); }
-};
-
-struct TMemCopyDescriptorLayoutSelection {
-  LinearLayout layout;
-  unsigned mnDim;
 };
 
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);

@@ -7566,24 +7566,42 @@ getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
                                        const TMemCopyPlan &plan,
                                        int bitwidth);
 
+static std::pair<std::optional<TMemCopyExecutablePlan>, TMemCopySupportResult>
+getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
+                                           const LinearLayout &shmemLl,
+                                           const LinearLayout &cvt,
+                                           const TMemCopyPlan &plan,
+                                           int bitwidth);
+
+static std::pair<std::optional<TMemCopyExecutablePlan>, TMemCopySupportResult>
+getTMemCopyPlanRealization(MemDescType srcTy,
+                           const TMemPhysicalQuery &dstQuery,
+                           const LinearLayout &shmemLl, const LinearLayout &cvt,
+                           const TMemCopyPlan &plan, int bitwidth,
+                           TMemCopyPlanSupportKind supportKind) {
+  if (supportKind == TMemCopyPlanSupportKind::TensorMemory) {
+    auto layoutSupport = getDirectTMemCopyLayoutSupport(dstQuery, plan.family);
+    if (!layoutSupport)
+      return {std::nullopt, layoutSupport};
+
+    auto sharedLayoutSupport =
+        getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
+    if (!sharedLayoutSupport)
+      return {std::nullopt, sharedLayoutSupport};
+  }
+
+  return getTMemCopySharedDescriptorPlanRealization(srcTy, shmemLl, cvt, plan,
+                                                    bitwidth);
+}
+
 TMemCopySupportResult
 getTMemCopyPlanSupport(MemDescType srcTy, const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
                        const TMemCopyPlan &plan, int bitwidth,
                        TMemCopyPlanSupportKind supportKind) {
-  if (supportKind == TMemCopyPlanSupportKind::TensorMemory) {
-    auto layoutSupport = getDirectTMemCopyLayoutSupport(dstQuery, plan.family);
-    if (!layoutSupport)
-      return layoutSupport;
-
-    auto sharedLayoutSupport =
-        getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
-    if (!sharedLayoutSupport)
-      return sharedLayoutSupport;
-  }
-
-  return getTMemCopySharedDescriptorPlanSupport(srcTy, shmemLl, cvt, plan,
-                                                bitwidth);
+  return getTMemCopyPlanRealization(srcTy, dstQuery, shmemLl, cvt, plan,
+                                    bitwidth, supportKind)
+      .second;
 }
 
 TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
@@ -7595,11 +7613,13 @@ TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
                                          TMemCopyPlanSupportKind supportKind) {
   TMemCopyPlanSelection selection;
   for (const TMemCopyPlan &plan : plans) {
-    auto support =
-        getTMemCopyPlanSupport(srcTy, dstQuery, shmemLl, cvt, plan, bitwidth,
-                               supportKind);
+    auto [executablePlan, support] =
+        getTMemCopyPlanRealization(srcTy, dstQuery, shmemLl, cvt, plan,
+                                   bitwidth, supportKind);
     if (support) {
-      selection.plan = plan;
+      assert(executablePlan.has_value() &&
+             "supported tcgen05.copy plan must carry a realized schedule");
+      selection.plan = std::move(*executablePlan);
       return selection;
     }
     selection.failures.push_back(support);
@@ -8088,15 +8108,40 @@ getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
                                        const LinearLayout &cvt,
                                        const TMemCopyPlan &plan,
                                        int bitwidth) {
+  return getTMemCopySharedDescriptorPlanRealization(srcTy, shmemLl, cvt, plan,
+                                                    bitwidth)
+      .second;
+}
+
+static std::pair<std::optional<TMemCopyExecutablePlan>, TMemCopySupportResult>
+getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
+                                           const LinearLayout &shmemLl,
+                                           const LinearLayout &cvt,
+                                           const TMemCopyPlan &plan,
+                                           int bitwidth) {
+  TMemCopyExecutablePlan executablePlan;
+  executablePlan.family = plan.family;
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
-    if (message.useDirectSeedDescriptor &&
-        getDirectTMemCopySeedDescriptorImm(srcTy, plan.family))
-      continue;
+    TMemCopyScheduledMessage scheduledMessage;
+    scheduledMessage.plan = message;
+    if (message.useDirectSeedDescriptor) {
+      if (auto seedDescriptor =
+              getDirectTMemCopySeedDescriptorImm(srcTy, plan.family)) {
+        scheduledMessage.directSeedDescriptorImm = *seedDescriptor;
+        executablePlan.messages.push_back(std::move(scheduledMessage));
+        continue;
+      }
+    }
     auto srcDescLayouts =
         getTMemCopyDescriptorLayouts(srcTy, shmemLl, cvt, message);
-    if (selectTMemCopyDescriptorLayout(srcDescLayouts, message.descriptorShape,
-                                       plan.family, bitwidth))
+    if (auto descriptorLayout =
+            selectTMemCopyDescriptorLayout(srcDescLayouts,
+                                           message.descriptorShape,
+                                           plan.family, bitwidth)) {
+      scheduledMessage.descriptorLayout = std::move(*descriptorLayout);
+      executablePlan.messages.push_back(std::move(scheduledMessage));
       continue;
+    }
     std::string reason;
     llvm::raw_string_ostream os(reason);
     os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)
@@ -8106,10 +8151,11 @@ getTMemCopySharedDescriptorPlanSupport(gpu::MemDescType srcTy,
        << message.descriptorShape[0] << ", " << message.descriptorShape[1]
        << "] and instruction shape [" << message.instrShape[0] << ", "
        << message.instrShape[1] << "].";
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis, os.str());
+    return {std::nullopt,
+            getUnsupportedTMemCopyResult(
+                TMemCopySupportFailureLayer::DescriptorSynthesis, os.str())};
   }
-  return getSupportedTMemCopyResult();
+  return {std::move(executablePlan), getSupportedTMemCopyResult()};
 }
 
 bool canSynthesizeTMemCopySharedDescriptorPlan(gpu::MemDescType srcTy,

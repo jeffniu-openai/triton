@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 09:02 UTC: copy plan selection now returns a realized executable
+  schedule. `TMemCopyPlanSelection` carries the selected family plus per-message
+  descriptor-layout selection or direct-seed descriptor immediate, and LLVM
+  lowering consumes that schedule instead of recomputing descriptor selection.
+  This is intended behavior-preserving, but it removes another verifier/lowering
+  drift point before adding destination-row/source-format schedule dimensions.
 - 2026-04-15 08:54 UTC: exact scales descriptor-view copy probe showed that
   offset-major repacking of the failing `warpx4.32x128b` descriptor is not a
   correct support promotion. It synthesizes a valid MMAv5 shared descriptor,

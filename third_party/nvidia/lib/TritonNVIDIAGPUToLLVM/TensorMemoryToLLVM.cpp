@@ -1513,58 +1513,39 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   auto smemBase = smemObj.getShmemAffineBase(loc, rewriter, srcTy);
 
   struct PlannedCopyMessage {
-    TMemCopyMessagePlan plan;
+    TMemCopyScheduledMessage schedule;
     std::optional<DotOpMmaSmemLoader> loader;
-    std::optional<uint64_t> directSeedDescriptorImm;
   };
   SmallVector<PlannedCopyMessage, 2> plannedMessages;
-  std::optional<TMemCopyPlan> selectedPlan;
   auto supportKind = isScales ? TMemCopyPlanSupportKind::TensorMemoryScales
                               : TMemCopyPlanSupportKind::TensorMemory;
   auto planSelection =
       selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
                          bitwidth, supportKind);
-  SmallVector<TMemCopyPlan> loweringPlans;
-  if (planSelection)
-    loweringPlans.push_back(*planSelection.plan);
-  for (const auto &plan : loweringPlans) {
-    SmallVector<PlannedCopyMessage, 2> candidateMessages;
-    candidateMessages.reserve(plan.messages.size());
-    bool validPlan = true;
-    for (const auto &message : plan.messages) {
-      if (message.useDirectSeedDescriptor) {
-        if (auto seedDescImm =
-                getDirectTMemCopySeedDescriptorImm(srcTy, plan.family)) {
-          candidateMessages.push_back(
-              PlannedCopyMessage{message, std::nullopt, *seedDescImm});
-          continue;
-        }
+  if (planSelection) {
+    plannedMessages.reserve(planSelection.plan->messages.size());
+    for (const auto &message : planSelection.plan->messages) {
+      if (message.directSeedDescriptorImm) {
+        plannedMessages.push_back(PlannedCopyMessage{message, std::nullopt});
+        continue;
       }
-      auto descriptorLayout = selectTMemCopyDescriptorLayout(
-          srcTy, shmemLl, cvt, message, plan.family, bitwidth);
-      if (!descriptorLayout) {
-        validPlan = false;
-        break;
-      }
+      assert(message.descriptorLayout &&
+             "non-direct tcgen05.copy message must carry a descriptor layout");
       auto loader = DotOpMmaSmemLoader::build(
-          loc, rewriter, descriptorLayout->layout, bitwidth, smemBase,
-          message.descriptorShape, descriptorLayout->mnDim, 5);
+          loc, rewriter, message.descriptorLayout->layout, bitwidth, smemBase,
+          message.plan.descriptorShape, message.descriptorLayout->mnDim, 5);
       if (failed(loader) ||
           (loader->getDescriptor().transposed &&
-           plan.family != TMemCopyFamily::Dense4x256b)) {
-        validPlan = false;
-        break;
+           planSelection.plan->family != TMemCopyFamily::Dense4x256b)) {
+        return op->emitOpError(
+            "failed to realize selected tcgen05.copy descriptor plan during "
+            "lowering");
       }
-      PlannedCopyMessage plannedMessage{message, *loader, std::nullopt};
-      candidateMessages.push_back(std::move(plannedMessage));
+      PlannedCopyMessage plannedMessage{message, *loader};
+      plannedMessages.push_back(std::move(plannedMessage));
     }
-    if (!validPlan)
-      continue;
-    selectedPlan = plan;
-    plannedMessages = std::move(candidateMessages);
-    break;
   }
-  if (!selectedPlan) {
+  if (!planSelection) {
     if (isScales) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
       auto diag =
@@ -1603,9 +1584,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   // Check correct lbo/sbo along the multicast
   bool usesDirectSeedDescriptor =
       llvm::any_of(plannedMessages, [](const PlannedCopyMessage &message) {
-        return message.directSeedDescriptorImm.has_value();
+        return message.schedule.directSeedDescriptorImm.has_value();
       });
-  const auto &copyAtom = plannedMessages.front().plan.atom;
+  const auto &copyAtom = plannedMessages.front().schedule.plan.atom;
   if (!usesDirectSeedDescriptor && copyAtom.nRow != 4) {
     auto strideRow = cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
     if ((copyAtom.multicast & 1) == 0) {
@@ -1618,15 +1599,16 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     }
   }
 
-  const unsigned colStride = plannedMessages.front().plan.instrShape[1];
+  const unsigned colStride = plannedMessages.front().schedule.plan.instrShape[1];
   for (int col = 0; col < cvt.getInDimSize(kCol); col += colStride) {
     for (const auto &message : plannedMessages) {
       Value desc;
-      if (message.directSeedDescriptorImm) {
+      const auto &messagePlan = message.schedule.plan;
+      if (message.schedule.directSeedDescriptorImm) {
         uint64_t sourceOffsetB128 =
-            message.plan.directSourceOffsetB128 +
-            ((col + message.plan.smemColOffset) * bitwidth) / 128;
-        uint64_t descImm = *message.directSeedDescriptorImm;
+            messagePlan.directSourceOffsetB128 +
+            ((col + messagePlan.smemColOffset) * bitwidth) / 128;
+        uint64_t descImm = *message.schedule.directSeedDescriptorImm;
         descImm &= ~(((1ULL << 14) - 1) | (0x7ULL << 49));
         descImm |= sourceOffsetB128;
         descImm |= ((sourceOffsetB128 >> 3) & 0x7ULL) << 49;
@@ -1637,14 +1619,14 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
         desc = b.add(b.int_val(64, descImm), baseb128);
       } else {
         desc = message.loader->smemLoad(
-            message.plan.smemRow, col + message.plan.smemColOffset, rewriter,
+            messagePlan.smemRow, col + messagePlan.smemColOffset, rewriter,
             loc);
       }
       auto tmemAddr = b.add(
           b.ptrtoint(i32_ty, baseDst),
-          b.i32_val(destinationBaseOffset + message.plan.tmemDwordDelta +
+          b.i32_val(destinationBaseOffset + messagePlan.tmemDwordDelta +
                     col * bitwidth / 32));
-      createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, message.plan.atom,
+      createTcgen05Cp(rewriter, loc, tmemAddr, desc, pred, messagePlan.atom,
                       twoCTAs);
     }
   }

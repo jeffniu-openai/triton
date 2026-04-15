@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current Phase 2/3 layering slice, 2026-04-15 09:02 UTC: copy plan selection
+  now returns a realized executable schedule instead of only an abstract copy
+  plan. `TMemCopyExecutablePlan` carries each selected message together with
+  either the exact MMAv5 shared descriptor layout/MN orientation or the
+  direct-seed descriptor immediate. LLVM lowering now builds loaders from this
+  realized schedule, eliminating a descriptor-selection recomputation path that
+  could drift from verifier support. Validation passed: `make -j8`, invalid
+  verifier, Blackwell conversion FileCheck, focused `cp_scales_tmem_descriptor_view
+  or cp_scales and clean` pytest slice (`9 passed`), and representative
+  single-CTA direct-seed plus two-CTA clean-negative `warpx2::02_13` rows
+  (`2 passed`). Next concrete step: use this executable-schedule object as the
+  hook for destination-row/source-format schedule dimensions or for sharper
+  proof-level negatives when the ISA cannot realize a view.
+
 - Current Phase 3 probe, 2026-04-15 08:54 UTC: do not promote the failing
   scale-backed reshape/transpose/reshape `tcgen05.copy.warpx4.32x128b` row by
   merely repacking descriptor bases in offset-major order. That candidate

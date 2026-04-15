@@ -14973,6 +14973,29 @@ Open after this slice:
   result that carries query projection, descriptor-message synthesis, and
   source/destination schedule facts for scales and no-scales paths alike.
 
+## 2026-04-15 09:02 UTC: realized copy schedule selection
+
+- Added `TMemCopyScheduledMessage` and `TMemCopyExecutablePlan`.
+- `selectTMemCopyPlan(...)` now returns the realized executable schedule for
+  the accepted candidate: each message carries either a selected shared
+  descriptor layout/MN orientation or the direct-seed descriptor immediate.
+- `getTMemCopyPlanSupport(...)` still exposes the same support result, now as
+  a wrapper around the same realization path used by selection.
+- `tcgen05.copy` LLVM lowering consumes the selected schedule directly instead
+  of recomputing descriptor-layout selection after verifier/planner support.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_scales_tmem_descriptor_view or cp_scales and clean'`
+    (`9 passed`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive[f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`
+    (`2 passed`).
+- Next: commit and push this checkpoint, then extend the executable-schedule
+  object with the next real dimension: destination row offsets/source formats,
+  or a proof-level unsupported reason when a view requires a non-realizable
+  source/destination permutation.
+
 ## 2026-04-15 07:25 UTC: unified copy-plan selector modes
 
 - Added `TMemCopyPlanSupportKind` so the copy planner can state whether it is
