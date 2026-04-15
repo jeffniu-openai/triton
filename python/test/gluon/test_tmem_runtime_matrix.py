@@ -5131,7 +5131,12 @@ CP_LINEAR_EXOTIC_UNSUPPORTED_CASES = [
     ("scrambled_rows_cols", _make_tmem_linear_layout_permuted(128, 128, "even_odd", "even_odd")),
 ]
 
-CP_LINEAR_TILE_PERMUTED_CASES = (8, 16, 32)
+CP_LINEAR_TILE_PERMUTED_CASES = (
+    (128, 8, 16),
+    (128, 16, 16),
+    (128, 32, 16),
+    (256, 64, 32),
+)
 
 CP_LINEAR_PERMUTED_UNSUPPORTED_CASES = [
     (row_perm_kind, col_perm_kind)
@@ -8618,9 +8623,9 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupporte
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("tile_n", CP_LINEAR_TILE_PERMUTED_CASES)
-def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(tile_n):
-    m = n = 128
+@pytest.mark.parametrize("n,tile_n,expected_count", CP_LINEAR_TILE_PERMUTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(n, tile_n, expected_count):
+    m = 128
     inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
     out = torch.empty_like(inp)
     layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
@@ -8628,7 +8633,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(tile_n):
     compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
-    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * 16)
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 dense-copy macro-selector follow-up, 2026-04-15 10:41 UTC:
+  the dense destination-tile scheduler now treats non-ascending high
+  macro-selector bases as needing physical per-tile TMEM destination offsets.
+  The previous checkpoint promoted the high-low `N=128/tile_n=32` crossing;
+  a direct runtime probe showed `N=256/tile_n=64` still miscopied because its
+  reordered column bases are both above the 128-byte macro-tile width. The
+  helper now detects both high-low and high-high macro reorders, and runtime
+  coverage adds `N=256/tile_n=64` as a positive with 32
+  `tcgen05.cp.cta_group::1.128x256b` messages. Validation passed: `make -j8`,
+  invalid verifier, Blackwell conversion FileCheck, py-compile plus
+  `git diff --check`, focused tile-permuted/exotic dense-copy rows
+  (`7 passed`), and row/column permuted clean-negatives (`15 passed`).
+
 - Current Phase 2 dense-copy scheduler slice, 2026-04-15 10:38 UTC:
   dense no-scales `tcgen05.copy.128x256b` can now realize TMEM-linear
   destination layouts that permute whole 128-byte column macro-tiles. The

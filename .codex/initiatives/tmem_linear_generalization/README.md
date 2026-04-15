@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:41 UTC: the dense macro-tile destination schedule now also
+  handles non-ascending high macro-selector bases. The first macro-tile
+  promotion covered a high-low crossing (`N=128`, `tile_n=32`); a follow-up
+  `N=256`, `tile_n=64` probe exposed the high-high reorder case (`128` before
+  `64`). `needsDenseTMemCopyPhysicalColumnTileOffsets(...)` now switches to
+  physical per-tile destination offsets for both patterns, and the runtime
+  matrix covers `tile_n=64` at `N=256` as a positive.
 - 2026-04-15 10:38 UTC: dense no-scales `tcgen05.copy.128x256b`
   now separates source-column iteration from destination TMEM tile addressing
   when the destination `LinearLayout` permutes whole 128-byte column

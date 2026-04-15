@@ -7530,6 +7530,7 @@ static bool needsDenseTMemCopyPhysicalColumnTileOffsets(const LinearLayout &ll,
 
   unsigned descriptorMacroCols = 1024 / bitwidth;
   bool sawColumnMacroSelector = false;
+  int32_t previousColumnMacroSelector = 0;
   for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
     bool touchesRow = basis[0] != 0;
     bool touchesCol = basis[1] != 0;
@@ -7538,7 +7539,10 @@ static bool needsDenseTMemCopyPhysicalColumnTileOffsets(const LinearLayout &ll,
 
     int32_t colBasis = std::abs(basis[1]);
     if (colBasis > static_cast<int32_t>(descriptorMacroCols)) {
+      if (sawColumnMacroSelector && colBasis <= previousColumnMacroSelector)
+        return true;
       sawColumnMacroSelector = true;
+      previousColumnMacroSelector = colBasis;
       continue;
     }
     if (sawColumnMacroSelector)

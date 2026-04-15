@@ -236,6 +236,11 @@ Progress:
   `tile_n=32` dense linear copy to positive runtime coverage while preserving
   the existing `tile_n=8/16` positives and clean negatives for mixed or
   bit-scrambled layouts.
+- 2026-04-15 10:41 UTC: the dense macro-tile scheduler now also detects
+  non-ascending high macro-selector bases, promoting the `N=256/tile_n=64`
+  dense copy row after a direct probe showed the first macro-tile schedule only
+  handled high-low crossings. This keeps the support predicate general over
+  instruction-tile physical destinations rather than tied to one tile width.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

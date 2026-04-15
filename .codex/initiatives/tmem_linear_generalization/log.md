@@ -15515,3 +15515,23 @@ Open after this slice:
   - focused tile-permuted plus exotic dense-copy runtime rows (`6 passed`);
   - neighboring row/column permuted clean-negative rows (`15 passed`);
   - `git diff --check`.
+
+## 2026-04-15 10:41 UTC: dense copy high-macro reorder follow-up
+
+- Extended the dense destination-tile scheduler to cover macro-tile
+  permutations where both reordered column bases are above the 128-byte
+  descriptor macro width.
+- The direct runtime probe `N=256/tile_n=64` initially failed by swapping
+  64-column halves. The helper now detects non-ascending high macro-selector
+  bases, not only high-low crossings, and therefore selects physical per-tile
+  destination offsets for this case.
+- Runtime coverage now parameterizes the dense tile-permuted copy matrix over
+  `(N, tile_n, expected_count)` and adds `(256, 64, 32)`.
+- Validation:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | python/triton/FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused tile-permuted plus exotic dense-copy runtime rows (`7 passed`);
+  - neighboring row/column permuted clean-negative rows (`15 passed`);
+  - `git diff --check`.
