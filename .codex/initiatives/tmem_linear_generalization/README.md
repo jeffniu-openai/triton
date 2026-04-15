@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 12:35 UTC: `tcgen05.cp.4x256b` now has a stronger physical
+  refresh-schedule proof. A temporary re-enable showed one message maps source
+  columns 0..3 to physical rows 0/32/64/96 with source rows packed across
+  destination dwords; a second message with `smemColOffset=4` and
+  `tmemDwordDelta=4` fills source columns 4..7. A refresh-shaped logical view
+  would need row bits in TMEM columns, low column bits in TMEM rows 32/64, and
+  the high column bit at destination dword +4. Current descriptor-view
+  inference/load-store support cannot expose that as a legal logical
+  `ttng.tmem_copy` target yet, so ordinary contiguous `4x8` copies remain
+  clean unsupported with an updated diagnostic.
 - 2026-04-15 12:25 UTC: scales descriptor-view copy was re-probed with
   temporary multi-message and descriptor-skip machinery. A second
   `warpx4.32x128b` message with `smemRow=64` does not change the parent-order

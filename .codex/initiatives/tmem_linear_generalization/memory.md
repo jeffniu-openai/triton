@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current `4x256b` refresh proof, 2026-04-15 12:35 UTC:
+  temporary source probes validated the physical two-message refresh schedule
+  for an 8-column tile. With the old guard disabled, one
+  `tcgen05.cp.cta_group::1.4x256b` message writes source columns 0..3 to
+  physical rows 0/32/64/96, packing the four source rows across destination
+  dwords. Adding a second message with `smemColOffset=4` and
+  `tmemDwordDelta=4` fills physical columns 4..7, proving the ISA schedule for
+  the refresh-shaped image. A matching logical view would map logical row bits
+  to physical columns 1/2, logical column bits 0/1 to physical rows 32/64, and
+  logical column bit 2 to physical column 4. The current blocker is view/query
+  expressibility: a refresh-shaped 4x8 slice from a 128x8 parent is rejected as
+  `unsupported tensor memory memdesc_subslice view`, and direct load/store of
+  the active view also lacks a contract. Keep ordinary contiguous `4x8`
+  `ttng.tmem_copy` clean unsupported, but the next real support task is now a
+  refresh-view representation plus load/store contract, not discovering the
+  opcode's physical schedule.
+
 - Current scales descriptor-view schedule probe, 2026-04-15 12:25 UTC:
   temporary probes ruled out the obvious current-message-field schedules for
   the 128x32 `TensorMemoryScalesLayout` descriptor view. Adding a second

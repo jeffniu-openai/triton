@@ -15806,3 +15806,31 @@ Open after this slice:
   - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-clean-after-probe PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported'`
     (`1 passed`);
   - `git diff --check`.
+
+## 2026-04-15 12:35 UTC: 4x256b physical refresh schedule proof
+
+- Temporarily removed the `Dense4x256b` realization guard and probed the
+  current 4x8 f32 row/column-coded runtime kernel. Probe source changes were
+  reverted except for the final diagnostic text update.
+- Single-message mapping:
+  - one `tcgen05.cp.cta_group::1.4x256b` writes source column 0 to physical row
+    0, source column 1 to row 32, source column 2 to row 64, and source column
+    3 to row 96;
+  - the four source rows are packed across destination dwords/columns.
+- Two-message mapping:
+  - adding a second message with `smemColOffset=4` and `tmemDwordDelta=4`
+    fills physical columns 4..7 with source columns 4..7;
+  - the observed rows were:
+    row 0 `[0, 1000, 2000, 3000, 4, 1004, 2004, 3004]`;
+    row 32 `[1, 1001, 2001, 3001, 5, 1005, 2005, 3005]`;
+    row 64 `[2, 1002, 2002, 3002, 6, 1006, 2006, 3006]`;
+    row 96 `[3, 1003, 2003, 3003, 7, 1007, 2007, 3007]`.
+- View expressibility probe:
+  - a matching refresh-shaped view would map logical rows to physical columns
+    and logical low column bits to physical rows 32/64;
+  - a 4x8 slice from a 128x8 parent with that bijective parent layout is still
+    rejected by current `memdesc_subslice` query inference, and direct
+    load/store of the active view lacks support.
+- Source diagnostic was updated to say Triton cannot yet expose 4x256b as a
+  correct logical `ttng.tmem_copy` lowering, while recording the known
+  two-message physical refresh schedule.

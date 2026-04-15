@@ -315,6 +315,12 @@ Progress:
   output, and the only two representable descriptor selections are both wrong.
   Keep the row as a clean schedule gap until the planner has a new row
   partition abstraction or ISA evidence for one.
+- 2026-04-15 12:35 UTC: the physical `4x256b` refresh schedule is now known:
+  two messages with source column offsets 0 and 4 and destination dword offsets
+  0 and 4 cover an 8-column tile. The support blocker moved to representing a
+  refresh-shaped destination view and its load/store contract; the current
+  public API/view inference rejects the needed 4x8 slice over a 128x8 physical
+  parent as an unsupported `memdesc_subslice` view.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

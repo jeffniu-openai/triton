@@ -7751,10 +7751,12 @@ def test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported(capfd
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "maps to tcgen05.copy.4x256b" in text
-    assert "validated descriptor/address schedule" in text
+    assert "cannot yet expose it as a correct logical ttng.tmem_copy lowering" in text
     assert "TMEM refresh primitive" in text
     assert "lanes separated by 32" in text
     assert "four source rows packed into destination dwords" in text
+    assert "two-message physical refresh schedule" in text
+    assert "refresh-shaped destination view" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
