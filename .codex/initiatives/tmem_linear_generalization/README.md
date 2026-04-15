@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 22:56 UTC: descriptor-row-stride copy failures now record
+  whether the offending source row delta spans a full instruction row
+  footprint. The scales descriptor-view repro reports
+  `descriptorRowDelta=32 spansInstructionRows=1`, and the user-facing
+  diagnostic now names the public `tcgen05.copy` operand boundary: one TMEM
+  address plus one shared descriptor per instruction, with no per-column
+  destination mask. This keeps the row as a clean negative unless a different
+  atom/source format or a proven multi-message schedule can avoid overwriting
+  unrelated destination columns. Validation: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, focused packed/scales copy pytest selector
+  (`7` rows), descriptor-view query-debug probe, and `git diff --check`.
 - 2026-04-15 22:50 UTC: packed-lane copy was probed one step further with a
   temporary shifted descriptor projection and adjusted physical-column schedule.
   It compiled and emitted the expected dense `tcgen05.cp.128x256b` counts, but

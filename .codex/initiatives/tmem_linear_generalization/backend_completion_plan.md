@@ -311,6 +311,14 @@ Progress:
   column, `i8` every fourth). This rules out treating lane removal as a
   descriptor projection; correct support needs lane bits preserved as explicit
   schedule state.
+- 2026-04-15 22:56 UTC: descriptor-row-stride instruction-column failures now
+  record whether the source row delta spans a full copy-instruction row
+  footprint. The scales descriptor-view row reports
+  `descriptorRowDelta=32 spansInstructionRows=1`, and the diagnostic now names
+  the public `tcgen05.copy` operand boundary: one tensor-memory address and
+  one shared descriptor per instruction, with no per-column destination mask.
+  This pushes the next support attempt toward physical-footprint scheduling
+  instead of another descriptor enumeration.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

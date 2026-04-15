@@ -17771,6 +17771,38 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-15 22:56 UTC: descriptor-row copy mask-boundary diagnostic
+
+- Added `descriptorRowDeltaSpansInstructionRows` to
+  `TMemCopyInstructionColumnProjectionFailure`.
+- The scales descriptor-view repro now records that the low source-column bit
+  selecting `descriptorRowDelta=32` spans a whole `warpx4.32x128b`
+  instruction row footprint.
+- Updated the diagnostic from a generic "current scheduling cannot split"
+  statement to the concrete public-ISA operand boundary: `tcgen05.copy` has
+  one tensor-memory address and one shared descriptor per instruction and no
+  per-column destination mask.
+- Updated the runtime-matrix assertion for
+  `cp_scales_tmem_descriptor_view_reports_clean_unsupported` to pin the mask
+  boundary and full-footprint wording.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-mask-diag
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_legacy_subword_dtypes_report_clean_error or
+    cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout'`
+    (`7 passed, 10981 deselected in 4.06s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-mask-debug
+    TRITON_DEBUG_TMEM_QUERY=1 PYTHONPATH=./python:python/test/gluon
+    python3 - <<'PY' ...` confirmed
+    `descriptorRowDelta=32 spansInstructionRows=1`;
+  - `git diff --check`.
+
 ## 2026-04-15 22:50 UTC: packed-lane shifted-descriptor wrong-code proof
 
 - No support source remains from this probe.

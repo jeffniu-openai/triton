@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current descriptor-row mask-boundary checkpoint, 2026-04-15 22:56 UTC: the
+  structured copy instruction-column failure now preserves whether a
+  descriptor-row-stride selection spans at least one full instruction row
+  footprint. The scales descriptor-view repro prints
+  `descriptorRowDelta=32 spansInstructionRows=1`, matching the physical fact
+  that low instruction column bit 2 selects an entire `warpx4.32x128b`
+  32-row source-footprint delta. The diagnostic now names the public
+  `tcgen05.copy` operand boundary: each instruction takes one TMEM address and
+  one shared descriptor and has no per-column destination mask, so support
+  requires a different copy atom/source format or a proven multi-message
+  schedule that avoids overwriting unrelated destination columns. Validation
+  passed: `make -j8`, py-compile, focused packed/scales copy selector
+  (`7` rows), descriptor-view query-debug probe, and `git diff --check`.
+
 - Current packed-lane shifted-descriptor proof, 2026-04-15 22:50 UTC: the
   next natural packed-lane support attempt is also invalid. Temporarily
   projecting away zero-offset lane bases and scheduling over physical dword

@@ -9122,12 +9122,16 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
        << (failure.actualOffset == *failure.descriptorRowStride ? "" : "s")
        << "), which would require this column bit to select a different "
           "descriptor row within the same instruction footprint";
+    if (failure.descriptorRowDeltaSpansInstructionRows)
+      os << " (an entire " << failure.instructionColumns
+         << "-column instruction row footprint)";
   }
   os << " instead of contiguous shared offset " << failure.expectedOffset
-     << ". Current copy scheduling cannot split sub-instruction source "
-        "columns or mask destination columns inside one tcgen05.copy atom, "
-        "so this projection needs a different copy atom, source format, or "
-        "masked multi-message schedule before it can be supported.";
+     << ". Public tcgen05.copy takes one tensor-memory address and one shared "
+        "descriptor per instruction and has no per-column destination mask, "
+        "so this projection needs a different copy atom, source format, or a "
+        "proven multi-message schedule that avoids overwriting unrelated "
+        "destination columns before it can be supported.";
   return os.str();
 }
 
@@ -9226,6 +9230,10 @@ getTMemCopyInstructionColumnProjectionPlan(
       failureInfo.kind = TMemCopyInstructionColumnProjectionFailureKind::
           DescriptorRowStrideSelection;
       failureInfo.descriptorRowDelta = actualOffset / *descriptorRowStride;
+      failureInfo.descriptorRowDeltaSpansInstructionRows =
+          failureInfo.descriptorRowDelta &&
+          *failureInfo.descriptorRowDelta >=
+              static_cast<int32_t>(message.instrShape[0]);
     } else {
       failureInfo.kind =
           TMemCopyInstructionColumnProjectionFailureKind::NonContiguousOffset;
@@ -9348,6 +9356,9 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         if (instructionProjectionFailure.descriptorRowDelta)
           llvm::errs() << " descriptorRowDelta="
                        << *instructionProjectionFailure.descriptorRowDelta;
+        if (instructionProjectionFailure
+                .descriptorRowDeltaSpansInstructionRows)
+          llvm::errs() << " spansInstructionRows=1";
         if (instructionProjectionFailure.packedLaneBits > 0)
           llvm::errs() << " packedLaneBits="
                        << instructionProjectionFailure.packedLaneBits;

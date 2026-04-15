@@ -198,6 +198,7 @@ struct TMemCopyInstructionColumnProjectionFailure {
   int32_t expectedOffset = 0;
   std::optional<int32_t> descriptorRowStride;
   std::optional<int32_t> descriptorRowDelta;
+  bool descriptorRowDeltaSpansInstructionRows = false;
   unsigned packedLaneBits = 0;
   bool hasNonOffsetContribution = false;
 };
