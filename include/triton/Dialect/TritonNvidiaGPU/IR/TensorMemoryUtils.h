@@ -246,6 +246,9 @@ bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
 bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
                                          const TMemPhysicalQuery &exact);
 
+bool canInvertAndComposeLayouts(const LinearLayout &inner,
+                                const LinearLayout &outer);
+
 std::optional<std::string>
 getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
                                  const TMemPhysicalQuery &exact);

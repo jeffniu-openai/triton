@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 10:57 UTC: no-scales `warpx2` indexed and
+  slice-index descriptor views no longer assert while computing already
+  adjusted TMEM copy base offsets. The root cause was `getTMemViewOffsetImpl`
+  pseudoinverting a non-surjective 2-D view layout even when all trailing
+  logical offsets were zero; for `memdesc_index` and related prefix views the
+  zero trailing coordinate maps to physical row/column zero, and the prefix
+  contribution is added separately. Copy verifier/lowering now also reject
+  non-composable exact physical queries before lowering tries to
+  `invertAndCompose`, and the legacy load/store support probe now guards the
+  same operation. Validation passed: `make -j8`, the exact original failing
+  warpx2 indexed-view row (`1 passed`), the 24-case indexed/slice-index
+  warpx2 view bucket (`24 passed`), the full 4-GPU `cp_no_scales` sweep
+  (`305 passed, 10 skipped`), and `git diff --check`.
 - 2026-04-15 10:41 UTC: the dense macro-tile destination schedule now also
   handles non-ascending high macro-selector bases. The first macro-tile
   promotion covered a high-low crossing (`N=128`, `tile_n=32`); a follow-up

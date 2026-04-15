@@ -4473,6 +4473,11 @@ bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
          standalone.twoCTAs == exact.twoCTAs;
 }
 
+bool canInvertAndComposeLayouts(const LinearLayout &inner,
+                                const LinearLayout &outer) {
+  return canInvertAndComposeSafely(inner, outer);
+}
+
 std::optional<std::string>
 getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
                                  const TMemPhysicalQuery &exact) {
@@ -6586,6 +6591,8 @@ computeTMemLdStEncodingInfoImpl(
               matchedCanonicalLayout->getBasis(kRow, 6))) {
       return std::nullopt;
     }
+    if (!canInvertAndComposeSafely(regLayout, *matchedCanonicalLayout))
+      return std::nullopt;
     auto legacyCvt = regLayout.invertAndCompose(*matchedCanonicalLayout);
     legacyCvt = squeezeTrivialBlock(std::move(legacyCvt));
     bool legacyHasBlockIn = legacyCvt.hasInDim(kBlock);

@@ -241,6 +241,14 @@ Progress:
   dense copy row after a direct probe showed the first macro-tile schedule only
   handled high-low crossings. This keeps the support predicate general over
   instruction-tile physical destinations rather than tied to one tile width.
+- 2026-04-15 10:57 UTC: fixed a descriptor-view base-offset lowering hole
+  exposed by no-scales `warpx2` indexed and slice-index views. Zero trailing
+  logical coordinates no longer force `getTMemViewOffsetImpl` to pseudoinvert
+  a non-surjective 2-D view layout; the prefix offset is still applied
+  separately. Copy verifier/lowering now also require selected exact physical
+  queries to be safely composable with the shared-memory layout before
+  planning. This is another example of replacing an accidental layout-family
+  assumption with explicit linear-layout algebra and clean diagnostics.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

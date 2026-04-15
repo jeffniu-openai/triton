@@ -1493,10 +1493,20 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   }
   auto maybeExactDstQuery = inferExactTMemPhysicalQuery(op.getDst());
   const TMemPhysicalQuery *supportDstQuery = &*maybeDstQuery;
+  auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
+    return canInvertAndComposeLayouts(query.layout, shmemLl);
+  };
   if (succeeded(maybeExactDstQuery) &&
       shouldUseExactTMemCopyPhysicalQuery(*maybeDstQuery,
-                                          *maybeExactDstQuery)) {
+                                          *maybeExactDstQuery) &&
+      canUseCopyQuery(*maybeExactDstQuery)) {
     supportDstQuery = &*maybeExactDstQuery;
+  }
+  if (!canUseCopyQuery(*supportDstQuery)) {
+    return op->emitOpError(
+        "unsupported tensor memory descriptor view for tcgen05.copy lowering: "
+        "the source shared-memory layout image is not contained in the "
+        "selected tensor-memory descriptor view image");
   }
   auto tmemLl = supportDstQuery->layout;
   bool isScales = supportDstQuery->isScales;

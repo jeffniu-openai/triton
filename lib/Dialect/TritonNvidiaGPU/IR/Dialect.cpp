@@ -1257,14 +1257,19 @@ static uint32_t getTMemViewOffsetImpl(const LinearLayout &ll, unsigned memRank,
     logicalOffsets.push_back({dim, offset});
   }
 
-  auto rowColBlock = ll.pseudoinvert().apply(logicalOffsets);
   uint32_t offsetRow = 0;
   uint32_t offsetCol = 0;
-  for (auto [dim, value] : rowColBlock) {
-    if (dim == kRow) {
-      offsetRow = value;
-    } else if (dim == kCol) {
-      offsetCol = value * bitwidth / 32;
+  if (llvm::any_of(logicalOffsets,
+                   [](const std::pair<StringAttr, int32_t> &offset) {
+                     return offset.second != 0;
+                   })) {
+    auto rowColBlock = ll.pseudoinvert().apply(logicalOffsets);
+    for (auto [dim, value] : rowColBlock) {
+      if (dim == kRow) {
+        offsetRow = value;
+      } else if (dim == kCol) {
+        offsetCol = value * bitwidth / 32;
+      }
     }
   }
   if (extraRank > 0) {

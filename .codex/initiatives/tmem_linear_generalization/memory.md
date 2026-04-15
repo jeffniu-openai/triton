@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Current Phase 2 descriptor-view offset slice, 2026-04-15 10:57 UTC:
+  no-scales `warpx2` indexed and slice-index descriptor-view copies no longer
+  hit `LinearLayout::lstsq` assertions during LLVM lowering. The assertion was
+  not a copy-family support failure: `getAlreadyAdjustedTMemSubviewBaseOffset`
+  passed a nonzero prefix offset plus zero trailing logical coordinates to
+  `getTMemViewOffsetImpl`, which then pseudoinverted the non-surjective 2-D
+  `warpx2` TMEM view unnecessarily. The fix keeps row/column at zero when all
+  trailing logical offsets are zero and then applies the prefix contribution
+  normally. Copy verifier/lowering now additionally guard exact-query
+  selection with a shared `canInvertAndComposeLayouts(...)` predicate, and the
+  legacy load/store anchored-family probe now skips unsafe
+  `invertAndCompose`. Validation passed: `make -j8`, the exact failing
+  single-row repro (`1 passed`), the focused 24-case warpx2 indexed/slice-index
+  view bucket (`24 passed`), the full 4-GPU `cp_no_scales` sweep
+  (`305 passed, 10 skipped`), and `git diff --check`. Next: keep pulling copy
+  descriptor-view and source/destination schedule decisions into exact
+  layout-algebra checks, then return to the remaining hard frontiers: scales
+  descriptor-view source projection, no-scales two-CTA `warpx2::02_13`, and
+  validated `4x256b` schedule derivation.
+
 - Current Phase 2 dense-copy macro-selector follow-up, 2026-04-15 10:41 UTC:
   the dense destination-tile scheduler now treats non-ascending high
   macro-selector bases as needing physical per-tile TMEM destination offsets.

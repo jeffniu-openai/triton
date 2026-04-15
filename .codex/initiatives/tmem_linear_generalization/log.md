@@ -15535,3 +15535,28 @@ Open after this slice:
   - focused tile-permuted plus exotic dense-copy runtime rows (`7 passed`);
   - neighboring row/column permuted clean-negative rows (`15 passed`);
   - `git diff --check`.
+
+## 2026-04-15 10:57 UTC: warpx2 descriptor-view offset composition
+
+- Fixed the `LinearLayout::lstsq` assertion that surfaced in no-scales
+  `warpx2` indexed and slice-index descriptor-view copies during LLVM lowering.
+- Root cause: `getAlreadyAdjustedTMemSubviewBaseOffset` asks
+  `getTMemViewOffsetImpl` for an offset with a nonzero prefix view index and
+  zero trailing logical coordinates. The previous implementation still called
+  `ll.pseudoinvert()` on the trailing 2-D `warpx2` view layout, which is not
+  surjective for these physical images. Zero trailing logical coordinates do
+  not need a pseudoinverse: they map to physical row/column zero and then the
+  prefix contribution is added separately.
+- Added a public `canInvertAndComposeLayouts(...)` wrapper around the existing
+  safe composition predicate and used it to keep copy verifier/lowering from
+  selecting an exact descriptor-view query that cannot compose with the source
+  shared-memory layout. The legacy load/store anchored-family support probe now
+  guards its fallback `invertAndCompose` the same way.
+- Validation:
+  - `make -j8`;
+  - exact original indexed-view repro (`1 passed`);
+  - focused indexed/slice-index warpx2 view bucket (`24 passed`);
+  - full 4-GPU `cp_no_scales` sweep:
+    group 1 `69 passed, 10 skipped`, group 2 `79 passed`, group 3
+    `79 passed`, group 4 `78 passed`;
+  - `git diff --check`.
