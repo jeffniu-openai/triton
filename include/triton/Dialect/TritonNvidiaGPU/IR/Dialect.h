@@ -127,6 +127,12 @@ LinearLayout getTileLayout(MLIRContext *ctx, TMemAccessAtom atom, bool unpacked,
 
 TMemAllocation getTmemAllocSizes(gpu::MemDescType memDescType);
 
+bool isExpandedRowColumnPermutedTMemLinearLayout(gpu::MemDescType memDescType,
+                                                 const LinearLayout &layout);
+
+bool isExpandedRowColumnPermutedTMemLinearLayout(
+    gpu::MemDescType memDescType);
+
 uint32_t getTMemSubSliceOffset(gpu::MemDescType memDescType, int32_t nOffset);
 
 uint32_t getTMemViewOffset(const LinearLayout &layout,

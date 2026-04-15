@@ -153,6 +153,51 @@ def _raise_unsupported_4x256b_refresh_tmem_ldst(op_name):
     )
 
 
+def _pure_power_basis_order(bases, out_dim, extent, rank):
+    if not _is_power_of_two(extent):
+        return None
+    values = []
+    for basis in bases:
+        if len(basis) != rank:
+            return None
+        if basis[out_dim] <= 0:
+            return None
+        for dim, value in enumerate(basis):
+            if dim != out_dim and value != 0:
+                return None
+        values.append(basis[out_dim])
+    expected = [1 << bit for bit in range(extent.bit_length() - 1)]
+    if sorted(values) != expected:
+        return None
+    return values
+
+
+def _is_expanded_row_column_permuted_tmem_layout(layout, element_bitwidth, shape, alloc_shape):
+    if not isinstance(layout, TensorMemoryLinearLayout):
+        return False
+    shape = list(shape)
+    alloc_shape = list(alloc_shape)
+    if element_bitwidth != 32 or len(shape) != 2 or shape != alloc_shape:
+        return False
+    if list(layout.shape) != shape or shape[0] <= 128:
+        return False
+    row_order = _pure_power_basis_order(layout.rows, 0, shape[0], rank=2)
+    col_order = _pure_power_basis_order(layout.cols, 1, shape[1], rank=2)
+    if row_order is None or col_order is None:
+        return False
+    expected_cols = [1 << bit for bit in range(shape[1].bit_length() - 1)]
+    return col_order != expected_cols
+
+
+def _raise_unsupported_expanded_row_column_permuted_tmem_ldst(op_name):
+    raise ValueError(
+        f"direct TMEM {op_name} is unsupported for expanded-row "
+        "TensorMemoryLinearLayout values with non-canonical column packet "
+        "order. tcgen05.ld/st packets need an explicit packet-offset schedule "
+        "for these layouts before they can be lowered safely."
+    )
+
+
 def _canonical_m64_splitn_reg_layout(shape, num_warps, layout):
     if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
         return None
@@ -625,6 +670,10 @@ class tensor_memory_descriptor(base_value):
         self._require_rank2_tmem_ldst("load")
         if _is_4x256b_refresh_tmem_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
             _raise_unsupported_4x256b_refresh_tmem_ldst("load")
+        if _is_expanded_row_column_permuted_tmem_layout(
+            self.layout, self.dtype.primitive_bitwidth, self.shape, self.type.alloc_shape
+        ):
+            _raise_unsupported_expanded_row_column_permuted_tmem_ldst("load")
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
             layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
@@ -723,6 +772,10 @@ class tensor_memory_descriptor(base_value):
         self._require_rank2_tmem_ldst("store")
         if _is_4x256b_refresh_tmem_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
             _raise_unsupported_4x256b_refresh_tmem_ldst("store")
+        if _is_expanded_row_column_permuted_tmem_layout(
+            self.layout, self.dtype.primitive_bitwidth, self.shape, self.type.alloc_shape
+        ):
+            _raise_unsupported_expanded_row_column_permuted_tmem_ldst("store")
         pred = _unwrap_if_constexpr(pred)
         pred = _semantic.to_tensor(pred)
         assert value.shape == self.shape, f"source shape {value.shape} does not match destination shape {self.shape}"
@@ -877,6 +930,10 @@ def allocate_tensor_memory(element_ty, shape, layout, value=None, _semantic=None
     alloc_shape = shape
     if isinstance(layout, (TensorMemoryLinearLayout, TensorMemoryScalesLayout)):
         alloc_shape = builder.get_tmem_alloc_shape(shape, layout._to_ir(builder))
+    if value is not None and _is_expanded_row_column_permuted_tmem_layout(
+        layout, element_ty.primitive_bitwidth, shape, alloc_shape
+    ):
+        _raise_unsupported_expanded_row_column_permuted_tmem_ldst("source initialization")
     ty = tensor_memory_descriptor_type(element_ty, shape, layout, alloc_shape)
     handle = builder.create_tmem_alloc(ty.to_ir(builder), value)
     return tensor_memory_descriptor(handle, element_ty, shape, layout, alloc_shape)

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 13:59 UTC: expanded-row `TensorMemoryLinearLayout` values with
+  non-canonical column packet order now have a shared clean direct `ld/st`
+  boundary. A common classifier recognizes the pure expanded-row physical
+  image and detects column packet-order permutations. Gluon `load`/`store`,
+  source-initialized TMEM allocs, and IR op verifiers now report that direct
+  `tcgen05.ld/st` needs an explicit packet-offset schedule for these layouts
+  instead of letting them reach allocator assertions or known wrong-code-prone
+  schedules. The nearby `ld.red` expanded-row column-permuted negatives now
+  point at this first failing store/source packet boundary.
 - 2026-04-15 13:43 UTC: `tcgen05.ld.red` now covers 256-row
   `TensorMemoryLinearLayout` sources with row basis permutations and canonical
   column packet order. The allocator now recognizes separable expanded-row

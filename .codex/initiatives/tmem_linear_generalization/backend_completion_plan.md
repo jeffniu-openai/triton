@@ -422,6 +422,14 @@ Progress:
   row permutations. Expanded-row column permutations remain clean unsupported
   because probes showed current direct `ld/st` packet scheduling can miscopy
   them after allocation succeeds.
+- 2026-04-15 13:59 UTC: moved the expanded-row column-permutation boundary
+  into a shared direct `ld/st` classifier and diagnostic. The backend now
+  detects pure 256-row linear images whose column bases are not in canonical
+  packet order and rejects direct `tcgen05.ld/st`/source initialization before
+  allocation or lowering can assert or expose wrong-code behavior. This is a
+  clean negative, not a support promotion: the remaining support work is to
+  derive the explicit packet-offset schedule that would make these layouts
+  realizable.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

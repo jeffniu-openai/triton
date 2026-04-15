@@ -4930,7 +4930,7 @@ LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
         256,
         64,
         8,
-        "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+        "expanded-row TensorMemoryLinearLayout values with non-canonical column packet order",
         id="m256_col_reverse_256x64",
     ),
     pytest.param(
@@ -4939,7 +4939,7 @@ LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
         256,
         128,
         8,
-        "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+        "expanded-row TensorMemoryLinearLayout values with non-canonical column packet order",
         id="m256_rowcol_even_odd_256x128",
     ),
     *[
@@ -5593,6 +5593,25 @@ def test_tmem_runtime_matrix_ldst_exotic_layouts_report_clean_unsupported(layout
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     _assert_clean_cta_per_cga_mismatch_or_descriptor_unsupported(text, layout_ctas=2, required_ctas=1)
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_expanded_row_col_permuted_reports_clean_unsupported(capfd):
+    m = 256
+    n = 64
+    layout = _make_tmem_linear_layout_permuted(m, n, "identity", "reverse")
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch.float32)
+    out = torch.empty_like(inp)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_ldst_variant_kernel[(1, )](inp, out, layout, m, n, "auto", num_warps=8)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "expanded-row TensorMemoryLinearLayout values with non-canonical column packet order" in text
+    assert "explicit packet-offset schedule" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

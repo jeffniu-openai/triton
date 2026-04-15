@@ -16014,3 +16014,38 @@ Open after this slice:
   - expanded-row column permutations need a real direct `ld/st` packet
     schedule proof before they can be promoted for `ld.red`; do not treat the
     allocation fold as sufficient support evidence.
+
+## 2026-04-15 13:59 UTC: shared direct `ld/st` expanded-row column diagnostic
+
+- Closed the allocator-assertion/wrong-code edge exposed by expanded-row
+  column-permuted `TensorMemoryLinearLayout` direct load/store cases.
+- Root cause:
+  - the register-layout query path was allowed to select direct `tcgen05.ld/st`
+    layouts for pure 256-row linear images even when TMEM column basis order
+    was reversed or otherwise non-canonical;
+  - the allocation fold from the previous checkpoint is only valid for
+    canonical column packet order. If forced broader, column permutations can
+    miscopy; if left unfurled, the allocator sees 256 physical rows and asserts.
+- Implementation:
+  - factored a shared C++ classifier for expanded-row pure-power linear images
+    with non-canonical column packet order;
+  - reused the pure-basis helper in allocation sizing and the lowering guard;
+  - added direct `TMEMStoreOp`, non-reduction `TMEMLoadOp`, and source-init
+    `TMEMAllocOp` verifier diagnostics for this boundary;
+  - added the matching Gluon frontend `load`/`store`/source-init guard so user
+    code gets a semantic error before the pass pipeline;
+  - added a runtime-matrix clean-negative for direct `ld/st` expanded-row
+    column permutation and re-pointed the affected `ld.red` expanded-row
+    column negatives at the first failing store packet boundary.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-expanded-col-clean2 pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ldst_expanded_row_col_permuted_reports_clean_unsupported or ld_red_expanded_row_permuted_linear_layout or m256_col_reverse_256x64 or m256_rowcol_even_odd_256x128"`
+    (`41 passed`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.
+- Remaining boundary:
+  - this is still a clean unsupported boundary. Support requires deriving and
+    proving an explicit direct packet-offset schedule for expanded-row column
+    permutations, then replacing the diagnostic with positive runtime
+    coverage.

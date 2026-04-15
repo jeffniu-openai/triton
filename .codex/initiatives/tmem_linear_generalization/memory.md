@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current direct `ld/st` expanded-row column-permutation boundary,
+  2026-04-15 13:59 UTC: expanded-row `TensorMemoryLinearLayout` values with
+  non-canonical column packet order now fail through a shared clean diagnostic
+  for direct `tcgen05.ld/st` instead of falling through to allocator assertions
+  or wrong-code-prone allocation folds. The new classifier proves the exact
+  pure power-of-two expanded-row shape and detects column basis order drift.
+  Direct Gluon `load`/`store`, source-initialized TMEM allocs, and IR op
+  verifiers now report that these layouts need an explicit packet-offset
+  schedule before they can be lowered safely. The `ld.red` expanded-row
+  column-permuted negatives now use this packet-schedule boundary because the
+  test kernel must store into TMEM before issuing the reduction. Validation
+  passed: `make -j8`, py-compile for the frontend/runtime matrix files,
+  focused expanded-row direct `ld/st` clean-negative plus nearby `ld.red`
+  positive/negative slice (`41 passed`), invalid verifier, and
+  `git diff --check`.
+
 - Current `ld.red` expanded-row permutation checkpoint, 2026-04-15 13:43 UTC:
   256-row `TensorMemoryLinearLayout` reductions now support row-basis
   permutations when the column packet order remains canonical. The immediate

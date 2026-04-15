@@ -1188,13 +1188,12 @@ static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
   return linearized;
 }
 
-static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
-                                      StringAttr inDim, unsigned outDimIdx,
-                                      int64_t extent,
-                                      bool requireAscendingOrder = false) {
+static std::optional<SmallVector<int32_t>>
+getPurePowerOfTwoBasisOrder(const LinearLayout &layout, StringAttr inDim,
+                            unsigned outDimIdx, int64_t extent) {
   if (!layout.hasInDim(inDim) || extent < 1 || !llvm::isPowerOf2_64(extent) ||
       layout.getInDimSize(inDim) != extent)
-    return false;
+    return std::nullopt;
 
   SmallVector<int32_t> bases;
   bases.reserve(layout.getInDimSizeLog2(inDim));
@@ -1202,22 +1201,83 @@ static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
     auto basis = layout.getBasis(inDim, idx);
     if (basis.size() != static_cast<size_t>(layout.getNumOutDims()) ||
         basis[outDimIdx] <= 0)
-      return false;
+      return std::nullopt;
     for (auto [coordIdx, coord] : llvm::enumerate(basis)) {
       if (coordIdx == outDimIdx)
         continue;
       if (coord != 0)
-        return false;
+        return std::nullopt;
     }
     bases.push_back(basis[outDimIdx]);
   }
 
-  if (!requireAscendingOrder)
-    llvm::sort(bases);
+  auto sorted = bases;
+  llvm::sort(sorted);
   SmallVector<int32_t> expected;
   for (int64_t bit = 1; bit < extent; bit <<= 1)
     expected.push_back(static_cast<int32_t>(bit));
-  return llvm::equal(bases, expected);
+  if (!llvm::equal(sorted, expected))
+    return std::nullopt;
+  return bases;
+}
+
+static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
+                                      StringAttr inDim, unsigned outDimIdx,
+                                      int64_t extent,
+                                      bool requireAscendingOrder = false) {
+  auto order = getPurePowerOfTwoBasisOrder(layout, inDim, outDimIdx, extent);
+  if (!order)
+    return false;
+  if (!requireAscendingOrder)
+    return true;
+  SmallVector<int32_t> expected;
+  for (int64_t bit = 1; bit < extent; bit <<= 1)
+    expected.push_back(static_cast<int32_t>(bit));
+  return llvm::equal(*order, expected);
+}
+
+bool isExpandedRowColumnPermutedTMemLinearLayout(MemDescType memDescType,
+                                                 const LinearLayout &layout) {
+  if (memDescType.getElementTypeBitWidth() != 32 || memDescType.getRank() != 2 ||
+      memDescType.getShape() != memDescType.getAllocShape() ||
+      !isa<TensorMemoryLinearEncodingAttr>(memDescType.getEncoding()) ||
+      layout.getNumOutDims() != 2)
+    return false;
+
+  auto *ctx = memDescType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto dims = standardOutDimNames(ctx, 2);
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (!llvm::is_contained(outDims, dims[0]) ||
+      !llvm::is_contained(outDims, dims[1]))
+    return false;
+
+  int64_t logicalRows = memDescType.getShape()[0];
+  int64_t logicalCols = memDescType.getShape()[1];
+  if (logicalRows <= 128)
+    return false;
+
+  auto rowOrder = getPurePowerOfTwoBasisOrder(
+      layout, kRow, layout.getOutDimIndex(dims[0]), logicalRows);
+  auto colOrder = getPurePowerOfTwoBasisOrder(
+      layout, kCol, layout.getOutDimIndex(dims[1]), logicalCols);
+  if (!rowOrder || !colOrder)
+    return false;
+
+  SmallVector<int32_t> expectedCols;
+  for (int64_t col = 1; col < logicalCols; col <<= 1)
+    expectedCols.push_back(static_cast<int32_t>(col));
+  return !llvm::equal(*colOrder, expectedCols);
+}
+
+bool isExpandedRowColumnPermutedTMemLinearLayout(MemDescType memDescType) {
+  if (memDescType.getRank() != 2 ||
+      !isa<TensorMemoryLinearEncodingAttr>(memDescType.getEncoding()))
+    return false;
+  return isExpandedRowColumnPermutedTMemLinearLayout(
+      memDescType,
+      toLinearLayout(memDescType.getShape(), memDescType.getEncoding()));
 }
 
 static std::optional<TMemAllocation>

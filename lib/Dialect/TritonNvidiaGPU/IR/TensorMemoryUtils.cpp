@@ -5891,6 +5891,17 @@ computeTMemLdStEncodingInfoImpl(
       bitwidth == 16 && !hasZeroRowBasis && !hasZeroColBasis &&
       memLayout.hasInDim(kCol) && logicalRows == activePhysicalRows &&
       logicalCols == memLayout.getInDimSize(kCol) * 2;
+  if (isExpandedRowColumnPermutedTMemLinearLayout(memTy, memLayout)) {
+    if (emitError) {
+      emitError()
+          << "Failed to lower TMEM load/store: expanded-row "
+             "TensorMemoryLinearLayout values require canonical column packet "
+             "order for direct tcgen05.ld/st. Column-permuted expanded-row "
+             "layouts need an explicit packet-offset schedule before they can "
+             "be lowered safely.";
+    }
+    return failure();
+  }
   // Zero row/col bases are part of the descriptor layout contract: they
   // describe broadcast/support bits in the logical view, not disposable
   // physical storage. Direct planning must keep those bases so loads, stores,
