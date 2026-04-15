@@ -331,6 +331,11 @@ FailureOr<TMemCopyPhysicalQuerySelection>
 selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
                             std::string *error = nullptr);
 
+FailureOr<LinearLayout>
+getTMemCopySourceConversion(const TMemPhysicalQuery &query,
+                            const LinearLayout &shmemLl,
+                            std::string *error = nullptr);
+
 std::optional<std::string>
 getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
                                  const TMemPhysicalQuery &exact);

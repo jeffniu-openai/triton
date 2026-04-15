@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current copy source-conversion helper checkpoint, 2026-04-15 23:08 UTC:
+  `TMEMCopyOp` verification and LLVM lowering now share
+  `getTMemCopySourceConversion(...)` for deriving the selected physical TMEM
+  query to shared-memory source conversion. This is behavior-preserving but
+  important scaffolding: the exact `LinearLayout` algebra for copy now has one
+  utility seam instead of verifier/lowering recomputing
+  `layout.invertAndCompose(shmemLl)` independently. Debug output now calls
+  this the `destination-to-source conversion`, matching the actual direction.
+  Validation passed: `make -j8`, py-compile, focused copy mini-sweep
+  (`362 passed, 10626 deselected in 562.01s`), descriptor-view debug probe,
+  and `git diff --check`.
+
 - Current descriptor-row mask-boundary checkpoint, 2026-04-15 22:56 UTC: the
   structured copy instruction-column failure now preserves whether a
   descriptor-row-stride selection spans at least one full instruction row

@@ -1628,9 +1628,17 @@ LogicalResult TMEMCopyOp::verify() {
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
   auto kRow = StringAttr::get(srcTy.getContext(), "row");
-  auto cvt = tmemLl.invertAndCompose(shmemLl);
+  std::string conversionError;
+  auto maybeCvt =
+      getTMemCopySourceConversion(supportDstQuery, shmemLl, &conversionError);
+  if (failed(maybeCvt))
+    return emitOpError(conversionError.empty()
+                           ? "unsupported tensor memory descriptor view for "
+                             "tcgen05.copy"
+                           : conversionError);
+  auto cvt = *maybeCvt;
   if (std::getenv("TRITON_DEBUG_TMEM_QUERY") != nullptr) {
-    llvm::errs() << "[tmem-copy] source-to-destination conversion:\n"
+    llvm::errs() << "[tmem-copy] destination-to-source conversion:\n"
                  << cvt.toString() << "\n";
   }
   if (!cvt.isTrivialOver(kBlock))

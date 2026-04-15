@@ -319,6 +319,12 @@ Progress:
   one shared descriptor per instruction, with no per-column destination mask.
   This pushes the next support attempt toward physical-footprint scheduling
   instead of another descriptor enumeration.
+- 2026-04-15 23:08 UTC: factored copy destination-to-source conversion into
+  `getTMemCopySourceConversion(...)` and routed both `TMEMCopyOp::verify()`
+  and `TensorMemoryToLLVM.cpp` through it. This does not change support, but
+  it gives Phase 2 a single exact-`LinearLayout` seam for future physical
+  instruction-footprint scheduling and keeps verifier/lowering conversion
+  algebra locked together.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

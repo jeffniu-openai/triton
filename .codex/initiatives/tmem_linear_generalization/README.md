@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:08 UTC: verification and lowering now share
+  `getTMemCopySourceConversion(...)` for the exact physical TMEM query to
+  shared-memory source conversion. This is behavior-preserving, but it removes
+  the duplicated `layout.invertAndCompose(shmemLl)` call from `TMEMCopyOp`
+  verification and LLVM lowering and gives the next physical-footprint copy
+  planner one place to enrich destination-to-source layout algebra. Validation:
+  `make -j8`, py-compile of `test_tmem_runtime_matrix.py`, a focused copy
+  mini-sweep covering dense tile permutations, `4x256b` refresh copy,
+  positive scales `warpx4`, and scales clean negatives (`362` rows), the
+  descriptor-view debug probe, and `git diff --check`.
 - 2026-04-15 22:56 UTC: descriptor-row-stride copy failures now record
   whether the offending source row delta spans a full instruction row
   footprint. The scales descriptor-view repro reports

@@ -4691,6 +4691,20 @@ bool canInvertAndComposeLayouts(const LinearLayout &inner,
   return canInvertAndComposeSafely(inner, outer);
 }
 
+FailureOr<LinearLayout>
+getTMemCopySourceConversion(const TMemPhysicalQuery &query,
+                            const LinearLayout &shmemLl, std::string *error) {
+  if (!canInvertAndComposeLayouts(query.layout, shmemLl)) {
+    if (error) {
+      *error = "unsupported tensor memory descriptor view for tcgen05.copy: "
+               "the source shared-memory layout image is not contained in "
+               "the selected tensor-memory descriptor view image";
+    }
+    return failure();
+  }
+  return query.layout.invertAndCompose(shmemLl);
+}
+
 FailureOr<TMemCopyPhysicalQuerySelection>
 selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
                             std::string *error) {
@@ -4707,7 +4721,7 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
     selection.exact = *maybeExact;
 
   auto canUseCopyQuery = [&](const TMemPhysicalQuery &query) {
-    return canInvertAndComposeLayouts(query.layout, shmemLl);
+    return succeeded(getTMemCopySourceConversion(query, shmemLl));
   };
   if (debug) {
     if (selection.standalone) {
@@ -4729,12 +4743,10 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   }
   auto choose = [&](const TMemPhysicalQuery &query, bool usedExact)
       -> FailureOr<TMemCopyPhysicalQuerySelection> {
-    if (!canUseCopyQuery(query)) {
+    std::string conversionError;
+    if (failed(getTMemCopySourceConversion(query, shmemLl, &conversionError))) {
       if (error)
-        *error = "unsupported tensor memory descriptor view for "
-                 "tcgen05.copy: the source shared-memory layout image is not "
-                 "contained in the selected tensor-memory descriptor view "
-                 "image";
+        *error = conversionError;
       return failure();
     }
     selection.query = query;

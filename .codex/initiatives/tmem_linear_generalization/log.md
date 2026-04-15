@@ -17771,6 +17771,37 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-15 23:08 UTC: shared copy source-conversion helper
+
+- Added `getTMemCopySourceConversion(...)` beside physical query selection in
+  `TensorMemoryUtils`.
+- Routed both `TMEMCopyOp::verify()` and `copySharedToTmem(...)` lowering
+  through the helper instead of recomputing
+  `supportDstQuery.layout.invertAndCompose(shmemLl)` independently.
+- Renamed the debug print from `source-to-destination conversion` to
+  `destination-to-source conversion`, which matches the actual layout
+  direction: selected physical TMEM row/column coordinates to shared-memory
+  source offset.
+- This is behavior-preserving scaffolding for Phase 2. The next planner slice
+  can enrich this one utility when deriving physical instruction-footprint
+  schedules for noncanonical copy layouts.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-cvt-helper
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_linear_tile_permuted or
+    cp_no_scales_4x256b_refresh_layout_codegen or cp_scales_warpx4 or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_scales_shared_subslice_layout_reports_clean_unsupported'`
+    (`362 passed, 10626 deselected in 562.01s`);
+  - descriptor-view query-debug probe confirmed the shared helper path and the
+    existing `descriptorRowDelta=32 spansInstructionRows=1` failure;
+  - `git diff --check`.
+
 ## 2026-04-15 22:56 UTC: descriptor-row copy mask-boundary diagnostic
 
 - Added `descriptorRowDeltaSpansInstructionRows` to

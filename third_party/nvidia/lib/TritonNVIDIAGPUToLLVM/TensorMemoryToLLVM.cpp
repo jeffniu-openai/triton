@@ -1533,11 +1533,18 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   assert(maybeQuerySelection->query &&
          "successful tcgen05.copy query selection must carry a query");
   const TMemPhysicalQuery &supportDstQuery = *maybeQuerySelection->query;
-  auto tmemLl = supportDstQuery.layout;
   bool isScales = supportDstQuery.isScales;
 
-  // This subtlely handles subviews
-  auto cvt = tmemLl.invertAndCompose(shmemLl);
+  std::string conversionError;
+  auto maybeCvt =
+      getTMemCopySourceConversion(supportDstQuery, shmemLl, &conversionError);
+  if (failed(maybeCvt)) {
+    return op->emitOpError(conversionError.empty()
+                               ? "unsupported tensor memory descriptor view "
+                                 "for tcgen05.copy lowering"
+                               : conversionError);
+  }
+  auto cvt = *maybeCvt;
 
   auto bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
   auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
