@@ -8398,56 +8398,83 @@ getKnownTMemCopyScheduleGap(MemDescType srcTy, const LinearLayout &cvt,
       "granularity.");
 }
 
-TMemCopySupportResult
-getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,
-                                      const TMemCopyMessagePlan &message) {
+std::optional<TMemCopySourceRowProjection>
+getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
+                                   const TMemCopyMessagePlan &message,
+                                   std::string *error) {
+  TMemCopySourceRowProjection projection;
   const TMemCopyAtom &atom = message.atom;
   if (message.useDirectSeedDescriptor || atom.nRow == 4)
-    return getSupportedTMemCopyResult();
+    return projection;
 
   auto inDims = cvt.getInDimNames();
-  if (inDims.empty())
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis,
-        "tcgen05.copy source row projection has no input dimensions.");
+  if (inDims.empty()) {
+    if (error)
+      *error = "tcgen05.copy source row projection has no input dimensions.";
+    return std::nullopt;
+  }
   auto *ctx = inDims.begin()->getContext();
   auto kRow = StringAttr::get(ctx, "row");
   auto kOffset = StringAttr::get(ctx, "offset");
   if (!cvt.hasInDim(kRow) || !cvt.hasOutDim(kOffset)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis,
+    if (error) {
+      *error =
         "tcgen05.copy source row projection requires row and offset "
-        "dimensions.");
+        "dimensions.";
+    }
+    return std::nullopt;
   }
 
-  auto rowBitIsAffineMultiple = [&](unsigned rowBit,
-                                    int32_t expectedMultiplier) {
-    unsigned strideBit = llvm::Log2_32(8);
+  unsigned strideBit = llvm::Log2_32(8);
+  if (strideBit >= cvt.getInDimSizeLog2(kRow)) {
+    if (error) {
+      *error = "tcgen05.copy source row projection requires the 8-row source "
+               "stride to be explicit in the row dimension.";
+    }
+    return std::nullopt;
+  }
+  projection.sourceRowStride = cvt.getBasis(kRow, strideBit, kOffset);
+
+  auto appendAffineRowStep = [&](unsigned rowBit, int32_t expectedMultiplier,
+                                 StringRef message) -> bool {
     if (rowBit >= cvt.getInDimSizeLog2(kRow) ||
-        strideBit >= cvt.getInDimSizeLog2(kRow))
+        cvt.getBasis(kRow, rowBit, kOffset) !=
+            projection.sourceRowStride * expectedMultiplier) {
+      if (error)
+        *error = message.str();
       return false;
-    int32_t strideRow = cvt.getBasis(kRow, strideBit, kOffset);
-    return cvt.getBasis(kRow, rowBit, kOffset) ==
-           strideRow * expectedMultiplier;
+    }
+    projection.steps.push_back(TMemCopySourceRowProjectionStep{
+        rowBit, cvt.getBasis(kRow, rowBit, kOffset)});
+    return true;
   };
 
   if ((atom.multicast & 1) == 0 &&
-      !rowBitIsAffineMultiple(llvm::Log2_32(32), 32 / 8)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis,
-        "tcgen05.copy source row projection requires logical row bit 5 to "
-        "remain an affine multiple of the 8-row source stride for this copy "
-        "atom.");
-  }
+      !appendAffineRowStep(
+          llvm::Log2_32(32), 32 / 8,
+          "tcgen05.copy source row projection requires logical row bit 5 to "
+          "remain an affine multiple of the 8-row source stride for this copy "
+          "atom."))
+    return std::nullopt;
   if (atom.multicast != 1 && (atom.multicast & 2) == 0 &&
-      !rowBitIsAffineMultiple(llvm::Log2_32(64), 64 / 8)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis,
-        "tcgen05.copy source row projection requires logical row bit 6 to "
-        "remain an affine multiple of the 8-row source stride for this copy "
-        "atom.");
-  }
+      !appendAffineRowStep(
+          llvm::Log2_32(64), 64 / 8,
+          "tcgen05.copy source row projection requires logical row bit 6 to "
+          "remain an affine multiple of the 8-row source stride for this copy "
+          "atom."))
+    return std::nullopt;
 
+  return projection;
+}
+
+TMemCopySupportResult
+getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,
+                                      const TMemCopyMessagePlan &message) {
+  std::string error;
+  if (!getTMemCopySourceRowProjectionPlan(cvt, message, &error)) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::DescriptorSynthesis, error);
+  }
   return getSupportedTMemCopyResult();
 }
 
@@ -9033,10 +9060,16 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;
     scheduledMessage.plan = message;
-    auto rowProjectionSupport =
-        getTMemCopySourceRowProjectionSupport(cvt, message);
-    if (!rowProjectionSupport)
-      return {std::nullopt, rowProjectionSupport};
+    std::string rowProjectionError;
+    auto rowProjection =
+        getTMemCopySourceRowProjectionPlan(cvt, message, &rowProjectionError);
+    if (!rowProjection) {
+      return {std::nullopt,
+              getUnsupportedTMemCopyResult(
+                  TMemCopySupportFailureLayer::DescriptorSynthesis,
+                  rowProjectionError)};
+    }
+    scheduledMessage.sourceRowProjection = std::move(*rowProjection);
     if (message.useDirectSeedDescriptor) {
       if (auto seedDescriptor =
               getDirectTMemCopySeedDescriptorImm(srcTy, plan.family)) {

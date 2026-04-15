@@ -1585,12 +1585,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
         destinationBaseOffset > alreadyAdjustedBase
             ? destinationBaseOffset - alreadyAdjustedBase
             : 0;
-  for (const auto &message : plannedMessages) {
-    auto rowProjectionSupport =
-        getTMemCopySourceRowProjectionSupport(cvt, message.schedule.plan);
-    if (!rowProjectionSupport)
-      return op->emitOpError(rowProjectionSupport.message);
-  }
 
   const unsigned colStride = plannedMessages.front().schedule.plan.instrShape[1];
   std::string destinationTileError;

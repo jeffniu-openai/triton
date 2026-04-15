@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current source-row projection plan checkpoint, 2026-04-15 19:02 UTC:
+  copy source-row projection is now represented by
+  `TMemCopySourceRowProjection` and stored on each `TMemCopyScheduledMessage`
+  produced by the shared copy-plan realization path. The plan currently
+  captures the 8-row source stride plus the affine logical row-bit steps that
+  supported copy atoms require; unsupported row projections still produce the
+  same clean diagnostics. Lowering no longer reruns the support helper after
+  plan selection, which reduces verifier/lowering drift and gives future
+  row/source-message scheduling a concrete carrier to extend. Validation:
+  `make -j8`, direct invalid verifier RUN, focused row-plan runtime selector
+  `cp_no_scales_linear_tile_permuted or
+  cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+  cp_no_scales_warpx2_01_23_candidate_positive` passed `21` selected rows, and
+  `git diff --check` passed.
+
 - Current dense copy row-projection helper checkpoint, 2026-04-15 18:35 UTC:
   dense direct-copy row-order and row-repetition proof is now factored into
   `getDenseTMemCopyRowProjectionSupport(...)`. This is behavior-preserving,

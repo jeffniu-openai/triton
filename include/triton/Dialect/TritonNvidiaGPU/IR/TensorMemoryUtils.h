@@ -165,8 +165,19 @@ struct TMemCopyDescriptorLayoutSelection {
   unsigned mnDim;
 };
 
+struct TMemCopySourceRowProjectionStep {
+  unsigned logicalRowBit;
+  int32_t sourceOffset;
+};
+
+struct TMemCopySourceRowProjection {
+  int32_t sourceRowStride = 0;
+  llvm::SmallVector<TMemCopySourceRowProjectionStep, 2> steps;
+};
+
 struct TMemCopyScheduledMessage {
   TMemCopyMessagePlan plan;
+  TMemCopySourceRowProjection sourceRowProjection;
   std::optional<TMemCopyDescriptorLayoutSelection> descriptorLayout;
   std::optional<uint64_t> directSeedDescriptorImm;
 };
@@ -413,6 +424,11 @@ getTMemCopyPlanSupport(gpu::MemDescType srcTy,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
                        const TMemCopyPlan &plan, int bitwidth,
                        TMemCopyPlanSupportKind supportKind);
+
+std::optional<TMemCopySourceRowProjection>
+getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
+                                   const TMemCopyMessagePlan &message,
+                                   std::string *error = nullptr);
 
 TMemCopySupportResult
 getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,

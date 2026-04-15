@@ -246,6 +246,11 @@ Progress:
   lowering assertions with shared source-row projection checks. Unsupported
   source row projections now fail during plan realization with diagnostics
   instead of relying on lowering-time asserts.
+- 2026-04-15 19:02 UTC: promoted the source-row projection proof into a
+  structured executable-plan carrier. `TMemCopySourceRowProjection` now records
+  the 8-row source stride and affine row-bit steps on each scheduled copy
+  message during plan realization, and lowering no longer repeats the support
+  check after the plan is selected.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

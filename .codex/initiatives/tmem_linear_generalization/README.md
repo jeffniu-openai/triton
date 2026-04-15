@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 19:02 UTC: copy source-row projection is now an executable-plan
+  carrier, `TMemCopySourceRowProjection`, populated during shared copy-plan
+  realization. Lowering no longer reruns the support predicate after selecting
+  a plan; it consumes a scheduled message whose row-projection proof has
+  already been materialized. Validation: `make -j8`, direct invalid verifier
+  RUN, focused row-plan runtime selector passed all `21` selected rows, and
+  `git diff --check` passed.
 - 2026-04-15 18:35 UTC: dense direct-copy row projection proof is now a named
   helper, `getDenseTMemCopyRowProjectionSupport(...)`. The refactor preserves
   current behavior and diagnostics while creating one planner insertion point

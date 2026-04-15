@@ -17000,3 +17000,30 @@ Open after this slice:
     cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
     cp_no_scales_warpx2_01_23_candidate_positive`: `21 passed`;
   - `git diff --check`.
+
+## 2026-04-15 19:02 UTC: copy source-row projection plan carrier
+
+- Promoted the source-row projection proof into an explicit plan carrier.
+- Implementation:
+  - added `TMemCopySourceRowProjectionStep` and
+    `TMemCopySourceRowProjection`;
+  - added `getTMemCopySourceRowProjectionPlan(...)` and kept
+    `getTMemCopySourceRowProjectionSupport(...)` as a support-result wrapper;
+  - populated the projection plan on each `TMemCopyScheduledMessage` during
+    shared descriptor-plan realization;
+  - removed the duplicate lowering-side support recheck because selected
+    schedules now already carry the materialized proof.
+- Semantics:
+  - intended behavior-preserving;
+  - current plans record the 8-row source stride plus the affine row-bit steps
+    required by the selected copy atom;
+  - future row-permuted/source-atomization work can extend the carrier instead
+    of adding another verifier-only predicate or lowering assertion.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused runtime selector
+    `cp_no_scales_linear_tile_permuted or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_warpx2_01_23_candidate_positive`: `21 passed`;
+  - `git diff --check`.
