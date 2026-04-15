@@ -8517,3 +8517,22 @@ rejection, not rescue
 - Boundary: this is a projection/abstraction cleanup, not a support promotion.
   The two-CTA `warpx2::02_13` root schedule remains blocked on a true
   cta_group::2 descriptor/address schedule.
+
+## Latest: 2026-04-15 07:15 UTC no-scales copy plan selection helper
+
+- Added `TMemCopyPlanSelection` and `selectTMemCopyPlan(...)`.
+- The selector walks candidate no-scales copy plans once, returns the first
+  supported plan, and preserves the first structured failure for diagnostics.
+- `ttng.tmem_copy` verification now uses the selector instead of open-coding
+  `llvm::any_of(getTMemCopyPlanSupport(...))`.
+- No-scales lowering now uses the same selector before building MMAv5 shared
+  descriptor loaders. Tensor-memory scales copy lowering is intentionally left
+  on its existing path for this checkpoint.
+- Validation completed: `make -j8`;
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`;
+  `git diff --check`.
+- Next: extend the selector/result toward a true copy planner object that can
+  carry selected query facts, descriptor-message schedules, and descriptor
+  synthesis failure evidence instead of only returning a supported plan.

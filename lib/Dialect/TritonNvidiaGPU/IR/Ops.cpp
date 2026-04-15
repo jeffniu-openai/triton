@@ -1669,23 +1669,19 @@ LogicalResult TMEMCopyOp::verify() {
              "those families.";
       return failure();
     }
-    auto isNoScalesPlanSupported = [&](const TMemCopyPlan &plan) {
-      return getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt, plan,
-                                    bitwidth)
-          .supported;
-    };
-    if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
+    auto planSelection =
+        selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
+                           bitwidth);
+    if (!planSelection) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
-      auto planSupport =
-          getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt,
-                                 copyPlans.front(), bitwidth);
       auto diag =
           emitOpError("The source shared layout maps to tcgen05.copy.")
           << family
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for it.";
-      if (!planSupport.message.empty()) {
-        diag.attachNote() << planSupport.message;
+      if (planSelection.firstFailure &&
+          !planSelection.firstFailure->message.empty()) {
+        diag.attachNote() << planSelection.firstFailure->message;
       }
       if (copyPlans.front().family == TMemCopyFamily::Warpx2_02_13_64x128b &&
           srcTy.getRank() == 2 && srcTy.getShape()[0] == 256) {

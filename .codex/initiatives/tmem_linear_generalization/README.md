@@ -95,6 +95,17 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy plan selection checkpoint, 2026-04-15 07:15 UTC:
+  no-scales `ttng.tmem_copy` verification and lowering now share
+  `selectTMemCopyPlan(...)`, which returns the first supported plan plus the
+  first structured failure. This keeps support/failure ordering in one utility
+  and gives the next planner slice a concrete result object to extend with
+  query-origin, descriptor-message, and schedule-failure details. Validation
+  passed: `make -j8`, direct invalid/conversion lit RUN lines via local
+  `triton-opt` and `FileCheck`, targeted positive
+  `warpx2::01_23` two-CTA slice-index runtime row, targeted clean-negative
+  `warpx2::02_13` two-CTA root row, and `git diff --check`.
+
 - Current copy exact-query projection checkpoint, 2026-04-15 07:12 UTC:
   copy verification and lowering now use a copy-specific physical-query
   comparator when deciding whether an exact descriptor-view query may replace

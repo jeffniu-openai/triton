@@ -7534,6 +7534,26 @@ getTMemCopyPlanSupport(MemDescType srcTy, const TMemPhysicalQuery &dstQuery,
   return getSupportedTMemCopyResult();
 }
 
+TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
+                                         const TMemPhysicalQuery &dstQuery,
+                                         const LinearLayout &shmemLl,
+                                         const LinearLayout &cvt,
+                                         ArrayRef<TMemCopyPlan> plans,
+                                         int bitwidth) {
+  TMemCopyPlanSelection selection;
+  for (const TMemCopyPlan &plan : plans) {
+    auto support =
+        getTMemCopyPlanSupport(srcTy, dstQuery, shmemLl, cvt, plan, bitwidth);
+    if (support) {
+      selection.plan = plan;
+      return selection;
+    }
+    if (!selection.firstFailure)
+      selection.firstFailure = std::move(support);
+  }
+  return selection;
+}
+
 std::optional<uint64_t>
 getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   if (family != TMemCopyFamily::Warpx2_02_13_64x128b)

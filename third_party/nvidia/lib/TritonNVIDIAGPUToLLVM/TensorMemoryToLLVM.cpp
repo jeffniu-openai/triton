@@ -1516,11 +1516,18 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   };
   SmallVector<PlannedCopyMessage, 2> plannedMessages;
   std::optional<TMemCopyPlan> selectedPlan;
-  for (const auto &plan : copyPlans) {
-    if (!isScales &&
-        !getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt, plan,
-                                bitwidth))
-      continue;
+  TMemCopyPlanSelection noScalesPlanSelection;
+  SmallVector<TMemCopyPlan> loweringPlans;
+  if (isScales) {
+    loweringPlans = copyPlans;
+  } else {
+    noScalesPlanSelection =
+        selectTMemCopyPlan(srcTy, *supportDstQuery, shmemLl, cvt, copyPlans,
+                           bitwidth);
+    if (noScalesPlanSelection)
+      loweringPlans.push_back(*noScalesPlanSelection.plan);
+  }
+  for (const auto &plan : loweringPlans) {
     SmallVector<PlannedCopyMessage, 2> candidateMessages;
     candidateMessages.reserve(plan.messages.size());
     bool validPlan = true;
@@ -1582,14 +1589,12 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
              "memory allocation.";
       return failure();
     }
-    auto planSupport =
-        getTMemCopyPlanSupport(srcTy, *supportDstQuery, shmemLl, cvt,
-                               copyPlans.front(), bitwidth);
     auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
                                 "from shared memory descriptor ")
                 << srcTy << " to tensor memory descriptor " << dstTy;
-    if (!planSupport.message.empty())
-      diag.attachNote() << planSupport.message;
+    if (noScalesPlanSelection.firstFailure &&
+        !noScalesPlanSelection.firstFailure->message.empty())
+      diag.attachNote() << noScalesPlanSelection.firstFailure->message;
     return failure();
   }
 

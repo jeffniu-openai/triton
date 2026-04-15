@@ -14902,3 +14902,26 @@ Open after this slice:
   continue Phase 2 by moving copy schedule selection toward a first-class
   planner result that can carry query origin/base facts and descriptor schedule
   failure layers explicitly.
+
+## 2026-04-15 07:15 UTC: no-scales copy plan selection helper
+
+- Added `TMemCopyPlanSelection` and `selectTMemCopyPlan(...)`.
+- The helper centralizes no-scales copy plan selection by returning the first
+  supported `TMemCopyPlan` plus the first structured failure encountered when
+  no plan is supported.
+- `TTNG::TMemCopyOp::verify` now uses the selector for no-scales copy support
+  instead of a local `llvm::any_of` over `getTMemCopyPlanSupport(...)`.
+- No-scales `tcgen05.copy` lowering now uses the same selector before
+  constructing descriptor loaders. Scales copy lowering remains unchanged for
+  this checkpoint.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_slice_index_view_positive[1-f32-torch_dtype0]' 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]'`;
+  - `git diff --check`.
+- Next: commit and push this selector checkpoint. The next useful Phase 2 slice
+  is to make the selector result carry the selected destination query and
+  descriptor synthesis evidence explicitly, so the two-CTA `warpx2::02_13` and
+  scales failures can be explained by planner facts rather than by late generic
+  descriptor failure text.

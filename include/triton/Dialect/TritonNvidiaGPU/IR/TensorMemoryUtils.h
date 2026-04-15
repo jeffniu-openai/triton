@@ -135,6 +135,13 @@ struct TMemCopyPlan {
   llvm::SmallVector<TMemCopyMessagePlan> messages;
 };
 
+struct TMemCopyPlanSelection {
+  std::optional<TMemCopyPlan> plan;
+  std::optional<TMemCopySupportResult> firstFailure;
+
+  explicit operator bool() const { return plan.has_value(); }
+};
+
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(gpu::MemDescType memTy);
 
 Value getTMemForwardingSource(Value memDesc);
@@ -328,6 +335,13 @@ getTMemCopyPlanSupport(gpu::MemDescType srcTy,
                        const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
                        const TMemCopyPlan &plan, int bitwidth);
+
+TMemCopyPlanSelection selectTMemCopyPlan(gpu::MemDescType srcTy,
+                                         const TMemPhysicalQuery &dstQuery,
+                                         const LinearLayout &shmemLl,
+                                         const LinearLayout &cvt,
+                                         llvm::ArrayRef<TMemCopyPlan> plans,
+                                         int bitwidth);
 
 bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
                                             TMemCopyFamily family,
