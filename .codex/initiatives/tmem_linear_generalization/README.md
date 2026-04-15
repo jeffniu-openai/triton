@@ -2342,6 +2342,11 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:14 UTC: copy support failures now have an explicit
+  `instruction schedule` layer. Source-row projection failures,
+  instruction-column projection failures, known cta-group::2 schedule gaps,
+  and invalid emitted-instruction streams no longer masquerade as descriptor
+  synthesis failures. Diagnostics stayed text-compatible.
 - 2026-04-15 20:11 UTC: bounded frontier probes left no source changes but
   sharpened next-step selection. The scales descriptor-view copy still needs a
   sub-instruction source split or smaller valid atom than the current 16-column

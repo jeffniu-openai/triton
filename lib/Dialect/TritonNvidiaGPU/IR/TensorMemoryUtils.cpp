@@ -7701,6 +7701,8 @@ stringifyTMemCopySupportFailureLayer(TMemCopySupportFailureLayer layer) {
     return "physical query";
   case TMemCopySupportFailureLayer::IsaAtom:
     return "ISA atom";
+  case TMemCopySupportFailureLayer::InstructionSchedule:
+    return "instruction schedule";
   case TMemCopySupportFailureLayer::DescriptorSynthesis:
     return "descriptor synthesis";
   case TMemCopySupportFailureLayer::CtaOwnership:
@@ -8338,7 +8340,7 @@ getTMemCopyPlanRealization(MemDescType srcTy,
   if (!instructions) {
     return {std::nullopt,
             getUnsupportedTMemCopyResult(
-                TMemCopySupportFailureLayer::PhysicalQuery,
+                TMemCopySupportFailureLayer::InstructionSchedule,
                 instructionScheduleError.empty()
                     ? "failed to build tcgen05.copy instruction schedule"
                     : instructionScheduleError)};
@@ -8464,7 +8466,7 @@ getKnownTMemCopyScheduleGap(MemDescType srcTy, const LinearLayout &cvt,
     return std::nullopt;
 
   return getUnsupportedTMemCopyResult(
-      TMemCopySupportFailureLayer::DescriptorSynthesis,
+      TMemCopySupportFailureLayer::InstructionSchedule,
       "The two-CTA warpx2::02_13 path remains unsupported until Triton can "
       "synthesize a cta_group::2 descriptor/address schedule that preserves "
       "the high source-column bit; direct-seed cta_group::2 probes emit the "
@@ -8550,7 +8552,7 @@ getTMemCopySourceRowProjectionSupport(const LinearLayout &cvt,
   std::string error;
   if (!getTMemCopySourceRowProjectionPlan(cvt, message, &error)) {
     return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::DescriptorSynthesis, error);
+        TMemCopySupportFailureLayer::InstructionSchedule, error);
   }
   return getSupportedTMemCopyResult();
 }
@@ -9148,7 +9150,7 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
     if (!rowProjection) {
       return {std::nullopt,
               getUnsupportedTMemCopyResult(
-                  TMemCopySupportFailureLayer::DescriptorSynthesis,
+                  TMemCopySupportFailureLayer::InstructionSchedule,
                   rowProjectionError)};
     }
     scheduledMessage.sourceRowProjection = std::move(*rowProjection);
@@ -9172,7 +9174,7 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
          << instructionProjectionError;
       return {std::nullopt,
               getUnsupportedTMemCopyResult(
-                  TMemCopySupportFailureLayer::DescriptorSynthesis, os.str())};
+                  TMemCopySupportFailureLayer::InstructionSchedule, os.str())};
     }
     scheduledMessage.instructionColumnProjection =
         std::move(*instructionProjection);

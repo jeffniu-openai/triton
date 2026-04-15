@@ -300,6 +300,12 @@ Progress:
   rejected every candidate with `compInput cannot compose`; remove no guard or
   test expectation until a real row-anchor/register-layout representation is
   derived.
+- 2026-04-15 20:14 UTC: added an explicit copy support failure layer for
+  `instruction schedule`. Source-row projection, instruction-column
+  projection, invalid emitted-instruction stream construction, and known
+  cta-group::2 schedule gaps now report through the scheduler layer instead of
+  descriptor synthesis. This keeps the planner semantics layered while
+  preserving existing diagnostics.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

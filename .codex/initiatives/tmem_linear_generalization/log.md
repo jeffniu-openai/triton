@@ -17226,3 +17226,28 @@ Open after this slice:
   - removed the temporary Python env hook;
   - verified `git status --short` and the Python file diff were clean after
     cleanup.
+
+## 2026-04-15 20:14 UTC: copy scheduler failure layer
+
+- Added the `instruction schedule` support-failure layer.
+- Implementation:
+  - inserted `TMemCopySupportFailureLayer::InstructionSchedule`;
+  - updated stringification;
+  - routed invalid instruction-stream construction, source-row projection
+    failures, instruction-column projection failures, and the known two-CTA
+    `warpx2::02_13` gap through that layer.
+- Semantics:
+  - behavior and diagnostic text are intended to remain unchanged;
+  - descriptor synthesis now more narrowly means MMAShared descriptor
+    representability after the planned schedule projection is legal.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN;
+  - focused schedule-clean-negative selector:
+    `cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported or
+    cp_no_scales_warpx2_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_slice_index_view_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_indexed_view_reports_clean_unsupported`:
+    `15 passed, 10899 deselected in 6.32s`;
+  - `git diff --check`.

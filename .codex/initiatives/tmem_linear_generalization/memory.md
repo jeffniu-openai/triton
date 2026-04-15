@@ -9844,3 +9844,32 @@ rejection, not rescue
     space;
   - do not promote 4x256b refresh direct ld/st without deriving a register
     layout whose image composes with the refresh physical view.
+
+## Latest: 2026-04-15 20:14 UTC copy scheduler failure layer
+
+- Added `TMemCopySupportFailureLayer::InstructionSchedule`.
+- Routed scheduler/atomization failures through it:
+  - invalid emitted-instruction stream construction;
+  - known two-CTA `warpx2::02_13` schedule gap;
+  - source-row projection failures;
+  - instruction-column projection failures.
+- Descriptor synthesis is now reserved for failures to build a representable
+  shared-memory descriptor after the schedule projection is legal.
+- Semantics: diagnostics are text-compatible; this is a layering cleanup so
+  the support stack can distinguish physical-query, schedule, descriptor, and
+  resource failures.
+- Validation completed:
+  - `make -j8`;
+  - direct invalid verifier RUN with `triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-schedule-layer
+    PYTHONPATH=./python pytest -s --tb=short -k
+    'cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported or
+    cp_no_scales_warpx2_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_slice_index_view_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_indexed_view_reports_clean_unsupported'
+    python/test/gluon/test_tmem_runtime_matrix.py`
+    (`15 passed, 10899 deselected in 6.32s`);
+  - `git diff --check`.

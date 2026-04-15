@@ -112,6 +112,7 @@ enum class TMemCopySupportFailureLayer {
   None,
   PhysicalQuery,
   IsaAtom,
+  InstructionSchedule,
   DescriptorSynthesis,
   CtaOwnership,
   SharedLayout,
