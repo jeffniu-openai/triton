@@ -2342,6 +2342,11 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-15 20:18 UTC: source-format suffix probes on the already-supported
+  int8 scales `warpx4` copy compiled but produced wrong output for both
+  `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64`. Source-format suffixes are
+  therefore not a drop-in descriptor-view copy fix; continue with row
+  partition/sub-instruction scheduling.
 - 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
   planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
   still use `None`, so behavior is unchanged; the next source-format support

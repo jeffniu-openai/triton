@@ -17274,3 +17274,22 @@ Open after this slice:
     `test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen`:
     `3 passed in 3.53s`;
   - `git diff --check`.
+
+## 2026-04-15 20:18 UTC: source-format suffix probe boundary
+
+- Added and removed a temporary env-gated source-format override in
+  `getTMemCopyPlans(...)`.
+- Probed `test_tmem_runtime_matrix_cp_scales_warpx4` with:
+  - `TRITON_TMEM_COPY_PROBE_SOURCE_FORMAT=b6`;
+  - `TRITON_TMEM_COPY_PROBE_SOURCE_FORMAT=b4`.
+- Results:
+  - `.b8x16.b6x16_p32` compiled but mismatched `999 / 1024` elements;
+  - `.b8x16.b4x16_p64` compiled but mismatched `1018 / 1024` elements.
+- Conclusion:
+  - source-format suffixes are not a drop-in way to fix the scales
+    descriptor-view copy schedule;
+  - the next support path still needs a true row-partition or
+    sub-instruction source schedule.
+- Cleanup:
+  - removed the temporary hook;
+  - verified `git status --short` and the source diff were clean afterward.

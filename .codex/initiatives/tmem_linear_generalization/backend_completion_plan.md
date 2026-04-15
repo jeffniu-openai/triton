@@ -312,6 +312,12 @@ Progress:
   8-bit-source ISA variants before row/instruction scheduling or descriptor
   synthesis. Current plans still use `None`, so this is behavior-preserving
   scaffolding for source-format support attempts.
+- 2026-04-15 20:18 UTC: a temporary source-format probe forced
+  `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` onto the already-supported int8
+  scales `warpx4` copy. Both variants compiled but produced wrong runtime
+  output, so source-format suffix availability alone is not a valid support
+  promotion for descriptor-view scales copy. The hook was removed; keep
+  looking for a row-partition or sub-instruction schedule.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

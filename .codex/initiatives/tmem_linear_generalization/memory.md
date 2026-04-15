@@ -9897,3 +9897,26 @@ rejection, not rescue
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen`
     (`3 passed in 3.53s`);
   - `git diff --check`.
+
+## Latest: 2026-04-15 20:18 UTC source-format suffix probe boundary
+
+- No source changes remain from this probe.
+- Temporary hook:
+  - forced all generated copy messages to use
+    `TMemCopySourceFormat::B8x16B6x16P32` when
+    `TRITON_TMEM_COPY_PROBE_SOURCE_FORMAT=b6`;
+  - forced all generated copy messages to use
+    `TMemCopySourceFormat::B8x16B4x16P64` when
+    `TRITON_TMEM_COPY_PROBE_SOURCE_FORMAT=b4`;
+  - hook was removed after probing.
+- Probe target:
+  - already-supported `test_tmem_runtime_matrix_cp_scales_warpx4`.
+- Results:
+  - `b6` compiled but mismatched `999 / 1024` elements;
+  - `b4` compiled but mismatched `1018 / 1024` elements.
+- Interpretation:
+  - source-format suffixes are real ISA variants but not a semantic no-op for
+    current int8 scales copy;
+  - do not use them as a blind fallback for descriptor-view copy;
+  - continue with row-partition/sub-instruction scheduling, or only use source
+    formats when the data format contract actually requires them.
