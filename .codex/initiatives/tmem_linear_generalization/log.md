@@ -16592,3 +16592,16 @@ Open after this slice:
   - scaled-MMAv5 single-tile/root/view `N=32` is valid. The remaining scaled
     `N=32` failures are not generic N32 layout failures; they are specifically
     repeated/tile-permuted sub-64-column scale-B fragment/addressing gaps.
+
+## 2026-04-15 17:28 UTC: scaled MMAv5 two-CTA block_n=32 matrix promotion
+
+- Promoted `block_n=32` into `SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES`.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split execution of scaled two-CTA accumulator subslice matrix and
+    use-acc functions passed all `240` selected tests (`60` per shard).
+- Current conclusion:
+  - scaled two-CTA `block_n=32` descriptor-view rows are valid. The remaining
+    scaled N32 boundary is not generic CTA ownership or view arithmetic; it is
+    the repeated/tile-permuted scale-B fragment schedule.

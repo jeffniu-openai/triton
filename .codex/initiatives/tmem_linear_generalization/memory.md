@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Current scaled MMAv5 two-CTA `block_n=32` checkpoint, 2026-04-15 17:28 UTC:
+  scaled two-CTA accumulator subslice rows now include `block_n=32`. The
+  affected four-GPU selector passed all `240` selected rows across current
+  format pairs, `K in {128,256}`, multicast modes, slice starts, and
+  accumulator modes. Together with the 17:26 single-CTA checkpoint, this
+  confirms that supported root/view/two-CTA `N=32` scaled layouts work; the
+  remaining scaled N32 boundary is specifically repeated/tile-permuted
+  scale-B fragment addressing.
+
 - Current scaled MMAv5 `N=32` root/view checkpoint, 2026-04-15 17:26 UTC:
   scaled-MMAv5 root accumulators, indexed accumulator views, accumulator
   subslice views, TMEM-LHS subslice views, and TMEM-LHS tile-permuted rows now

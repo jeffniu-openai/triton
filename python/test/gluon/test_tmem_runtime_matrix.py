@@ -4319,7 +4319,7 @@ SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
 SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = [
     (a_format, b_format, block_n, slice_start, block_k, multicast)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
-    for block_n, block_k, multicast in product((64, 128), (128, 256), (False, True))
+    for block_n, block_k, multicast in product((32, 64, 128), (128, 256), (False, True))
     for slice_start in (0, block_n)
 ]
 

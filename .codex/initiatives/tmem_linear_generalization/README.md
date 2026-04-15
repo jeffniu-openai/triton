@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 17:28 UTC: scaled MMAv5 two-CTA accumulator subslice coverage
+  now includes `block_n=32`. The two-CTA scaled view rows pass across current
+  format pairs, K-depths, multicast modes, slice starts, and accumulator
+  modes, further isolating the remaining scaled `N=32` issue to repeated
+  tile-permuted scale-fragment schedules.
 - 2026-04-15 17:26 UTC: scaled MMAv5 `N=32` root/view coverage is now
   positive for the supported single-CTA families: root accumulators, indexed
   accumulator views, accumulator subslice views, TMEM-LHS subslice views, and

@@ -503,6 +503,9 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 17:28 UTC: promoted scaled-MMAv5 two-CTA accumulator subslice
+  `block_n=32` rows. Scaled root/view/two-CTA N32 coverage is now positive
+  where each operation maps to supported scale fragments.
 - 2026-04-15 17:26 UTC: promoted supported scaled-MMAv5 `N=32`
   root/index/subslice/LHS matrices. This narrows the remaining scale issue:
   single-tile/root/view `N=32` is valid, while repeated/tile-permuted `N=32`
