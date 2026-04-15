@@ -95,6 +95,15 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current copy-query routing checkpoint, 2026-04-15 06:42 UTC:
+  direct TMEM copy layout support now has a `TMemPhysicalQuery` overload, and
+  `ttng.tmem_copy` verification calls that overload for destination layout
+  support. The overload deliberately delegates to the existing memdesc-type
+  implementation, so support decisions and diagnostics remain unchanged while
+  another copy-verifier decision moves onto the physical-query carrier.
+  Validation passed: `make -j8`, direct invalid/conversion lit RUN lines via
+  local `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current exact physical-query API checkpoint, 2026-04-15 06:39 UTC:
   `inferExactTMemPhysicalQuery(...)` now exists beside the standalone physical
   query. The exact path validates the descriptor, reuses the existing

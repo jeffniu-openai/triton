@@ -260,6 +260,10 @@ bool isDirectTMemCopyLayoutSupported(gpu::MemDescType memTy,
                                      TMemCopyFamily family,
                                      std::string *error = nullptr);
 
+bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
+                                     TMemCopyFamily family,
+                                     std::string *error = nullptr);
+
 bool isTMemCopySharedLayoutRuntimeSupported(gpu::MemDescType srcTy,
                                             TMemCopyFamily family,
                                             std::string *error = nullptr);

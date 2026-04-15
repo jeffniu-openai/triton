@@ -1558,7 +1558,6 @@ LogicalResult TMEMCopyOp::verify() {
                              "tcgen05.copy"
                            : tmemError);
   }
-  auto maybeStandaloneDstTy = maybeDstQuery->memTy;
   auto tmemLl = maybeDstQuery->layout;
 
   auto kBlock = StringAttr::get(srcTy.getContext(), "block");
@@ -1636,7 +1635,7 @@ LogicalResult TMEMCopyOp::verify() {
     }
     auto isNoScalesPlanSupported = [&](const TMemCopyPlan &plan) {
       std::string layoutSupportError;
-      if (!isDirectTMemCopyLayoutSupported(maybeStandaloneDstTy, plan.family,
+      if (!isDirectTMemCopyLayoutSupported(*maybeDstQuery, plan.family,
                                            &layoutSupportError))
         return false;
       if (!isTMemCopySharedLayoutRuntimeSupported(srcTy, plan.family,
@@ -1648,7 +1647,7 @@ LogicalResult TMEMCopyOp::verify() {
     if (!llvm::any_of(copyPlans, isNoScalesPlanSupported)) {
       StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
       std::string layoutSupportError;
-      (void)isDirectTMemCopyLayoutSupported(maybeStandaloneDstTy,
+      (void)isDirectTMemCopyLayoutSupported(*maybeDstQuery,
                                             copyPlans.front().family,
                                             &layoutSupportError);
       std::string sharedLayoutSupportError;

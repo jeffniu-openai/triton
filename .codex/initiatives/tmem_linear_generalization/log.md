@@ -14684,3 +14684,20 @@ Open after this slice:
 - Next: compare exact and standalone physical queries in the copy verifier for
   diagnostic-only classification, then use that comparison to identify where
   type-only fallback is masking physical projection boundaries.
+
+## 2026-04-15 06:42 UTC: direct copy support accepts physical query
+
+- Added an `isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &, ...)`
+  overload.
+- Updated `TTNG::TMemCopyOp::verify` to call the physical-query overload for
+  destination direct-layout support.
+- The overload currently delegates to the existing memdesc-type implementation,
+  preserving support decisions while moving the call site onto the shared query
+  carrier.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: introduce exact-vs-standalone query comparison helpers and keep their
+  initial use diagnostic-only.

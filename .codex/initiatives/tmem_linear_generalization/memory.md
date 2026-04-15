@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current Phase 1 slice, 2026-04-15 06:42 UTC: added a
+  `TMemPhysicalQuery` overload for `isDirectTMemCopyLayoutSupported(...)` and
+  routed `ttng.tmem_copy` verification through it. The overload delegates to
+  the existing memdesc-type implementation, so this is behavior-preserving. It
+  moves one more copy-planner decision onto the query carrier before the
+  underlying support logic is changed. Validation passed: `make -j8`, direct
+  invalid/conversion lit RUN lines via local `triton-opt` and `FileCheck`, and
+  `git diff --check`. Next concrete step: add exact-vs-standalone query
+  comparison helpers and use them for debug/diagnostic classification without
+  altering positives.
+
 - Current Phase 1 slice, 2026-04-15 06:39 UTC: added
   `inferExactTMemPhysicalQuery(...)` as the exact counterpart to
   `inferStandaloneTMemPhysicalQuery(...)`. The exact path builds a

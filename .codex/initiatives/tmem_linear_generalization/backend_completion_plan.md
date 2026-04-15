@@ -84,6 +84,9 @@ Progress:
 - 2026-04-15 06:39 UTC: added `inferExactTMemPhysicalQuery(...)`, which builds
   `TMemPhysicalQuery` from the existing descriptor-view query algebra and can
   carry exact origin/layout facts separately from standalone type fallback.
+- 2026-04-15 06:42 UTC: routed direct copy destination layout support through a
+  `TMemPhysicalQuery` overload while delegating to the existing memdesc-type
+  implementation to preserve behavior.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

@@ -7378,6 +7378,12 @@ bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,
   return true;
 }
 
+bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
+                                     TMemCopyFamily family,
+                                     std::string *error) {
+  return isDirectTMemCopyLayoutSupported(query.memTy, family, error);
+}
+
 std::optional<uint64_t>
 getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   if (family != TMemCopyFamily::Warpx2_02_13_64x128b)
