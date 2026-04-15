@@ -8369,10 +8369,13 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
             getUnsupportedTMemCopyResult(
                 TMemCopySupportFailureLayer::DescriptorSynthesis,
                 "tcgen05.copy.4x256b is recognized by the ISA, but Triton "
-                "does not yet have a validated descriptor/address schedule for "
-                "it. The previous four-row descriptor candidate placed source "
-                "row values into a single destination row, so this family is "
-                "disabled until the linear-layout schedule is proven.")};
+                "does not yet have a validated descriptor/address schedule "
+                "for it. The instruction behaves as a TMEM refresh primitive: "
+                "one message maps source-column vectors onto tensor-memory "
+                "lanes separated by 32, with four source rows packed into "
+                "destination dwords. Ordinary contiguous four-row tensor "
+                "memory copies remain disabled until that refresh schedule is "
+                "represented explicitly in the linear-layout planner.")};
   }
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;

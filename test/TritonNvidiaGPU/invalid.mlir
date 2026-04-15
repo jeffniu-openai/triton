@@ -364,7 +364,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
       %src: !ttg.memdesc<4x8xi32, #shared_cp_4x256b, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<4x8xi32, #tmem_linear_cp_4x256b, #ttng.tensor_memory, mutable>) {
     // expected-error @+4 {{The source shared layout maps to tcgen05.copy.4x256b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
-    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton does not yet have a validated descriptor/address schedule for it. The previous four-row descriptor candidate placed source row values into a single destination row}}
+    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton does not yet have a validated descriptor/address schedule for it. The instruction behaves as a TMEM refresh primitive: one message maps source-column vectors onto tensor-memory lanes separated by 32}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.4x256b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<4x8xi32, #shared_cp_4x256b, #ttg.shared_memory, mutable>, !ttg.memdesc<4x8xi32, #tmem_linear_cp_4x256b, #ttng.tensor_memory, mutable>
@@ -381,7 +381,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttng.two-ctas" = true, "ttg.num-wa
       %src: !ttg.memdesc<8x8xi32, #shared_cp_4x256b_twocta, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<8x8xi32, #tmem_linear_cp_4x256b_twocta, #ttng.tensor_memory, mutable>) {
     // expected-error @+4 {{The source shared layout maps to tcgen05.copy.4x256b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
-    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton does not yet have a validated descriptor/address schedule for it. The previous four-row descriptor candidate placed source row values into a single destination row}}
+    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton does not yet have a validated descriptor/address schedule for it. The instruction behaves as a TMEM refresh primitive: one message maps source-column vectors onto tensor-memory lanes separated by 32}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.4x256b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<8x8xi32, #shared_cp_4x256b_twocta, #ttg.shared_memory, mutable>, !ttg.memdesc<8x8xi32, #tmem_linear_cp_4x256b_twocta, #ttng.tensor_memory, mutable>

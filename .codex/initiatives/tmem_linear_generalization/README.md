@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 11:10 UTC: `tcgen05.cp.4x256b` diagnostics now reflect the
+  ISA-grounded probe result instead of the earlier coarse "single destination
+  row" summary. CUTLASS models this instruction as a TMEM refresh primitive,
+  and direct runtime probes agree: one message maps source-column vectors onto
+  tensor-memory lanes separated by 32, with four source rows packed into
+  destination dwords; destination dword offsets must be 128-bit aligned. The
+  family remains clean unsupported for ordinary contiguous four-row
+  `ttng.tmem_copy` until the linear-layout planner has an explicit refresh
+  schedule and a row-coded runtime oracle.
 - 2026-04-15 10:57 UTC: no-scales `warpx2` indexed and
   slice-index descriptor views no longer assert while computing already
   adjusted TMEM copy base offsets. The root cause was `getTMemViewOffsetImpl`

@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current 4x256b ISA-semantics checkpoint, 2026-04-15 11:10 UTC:
+  the clean unsupported diagnostic now names the actual refresh semantics
+  exposed by official PTX/CUTLASS evidence and direct runtime probes. A
+  `tcgen05.cp.cta_group::1.4x256b` message does not implement an ordinary
+  contiguous four-row copy: varying `smemColOffset` shows it reads
+  source-column vectors, and the destination image lands in lanes
+  `row_delta + {0, 32, 64, 96}` with four source rows packed into dwords.
+  Valid destination dword offsets are 128-bit aligned (`0` and `4` in the
+  8-column f32 probe); misaligned dword deltas fault. Keep `4x256b` disabled
+  for generic `ttng.tmem_copy` until the planner represents this refresh
+  schedule explicitly rather than pretending it is a normal four-row tile.
+
 - Current Phase 2 descriptor-view offset slice, 2026-04-15 10:57 UTC:
   no-scales `warpx2` indexed and slice-index descriptor-view copies no longer
   hit `LinearLayout::lstsq` assertions during LLVM lowering. The assertion was

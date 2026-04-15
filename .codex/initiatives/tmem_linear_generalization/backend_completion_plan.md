@@ -227,6 +227,13 @@ Progress:
   emitted `tcgen05.cp.cta_group::1.4x256b` but placed source row values into
   one destination row at runtime, so conversion-only coverage was removed and
   replaced with verifier plus runtime clean-negative coverage.
+- 2026-04-15 11:10 UTC: follow-up probes refined the `4x256b` gap from
+  "wrong four-row copy" to the exact missing schedule: the instruction behaves
+  as a TMEM refresh primitive. `smemColOffset` selects source columns, each
+  message writes four source rows into destination dwords across lanes
+  separated by 32, and destination dword deltas must be 128-bit aligned. The
+  current clean negative now records those semantics so future work adds an
+  explicit refresh schedule instead of retrying descriptor-orientation tweaks.
 - 2026-04-15 10:38 UTC: dense no-scales copy scheduling now has an exact
   destination-tile offset helper. The direct-copy support proof no longer
   rejects whole 128-byte column macro-tile permutations by global basis order;

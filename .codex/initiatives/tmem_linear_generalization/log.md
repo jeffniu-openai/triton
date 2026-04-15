@@ -1,3 +1,28 @@
+## 2026-04-15 11:10 UTC: 4x256b refresh-semantics diagnostic
+
+- Replaced the coarse `4x256b` clean-negative note with an ISA-grounded
+  diagnostic: `tcgen05.cp.4x256b` behaves as a TMEM refresh primitive, not as
+  an ordinary contiguous four-row copy.
+- Probe evidence:
+  - `smemColOffset=0..7` selects source columns; each message reads a
+    four-row source-column vector.
+  - With `tmemDwordDelta=0`, source columns land in lanes
+    `{0, 32, 64, 96}` and are packed into destination dwords.
+  - `tmemDwordDelta=4` moves the packed vector to the upper 128 bits of the
+    256-bit row; unaligned dword deltas fault.
+  - Varying `tmemRowDelta` shifts the lane group modulo the 32-lane
+    subpartition.
+- Interpretation: the planner needs an explicit refresh schedule before
+  `4x256b` can be a positive generic `ttng.tmem_copy` path. Descriptor
+  representability and opcode emission remain insufficient support proof.
+- Validation:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 PYTHONPATH=./python pytest -s --tb=short 'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported'`
+    (`1 passed`);
+  - `git diff --check`.
+
 ## 2026-04-15 10:29 UTC: 4x256b copy safety checkpoint
 
 - Disabled `tcgen05.cp.4x256b` plan realization until Triton has a validated
