@@ -78,6 +78,9 @@ Progress:
   destination analysis through it. This preserves existing standalone
   view-type behavior while creating the API seam for exact physical-query
   expansion.
+- 2026-04-15 06:37 UTC: enriched `TMemPhysicalQuery` with active shape,
+  allocation shape, and element bitwidth so future planner layers can consume
+  resource and atom-legality facts directly from the query object.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

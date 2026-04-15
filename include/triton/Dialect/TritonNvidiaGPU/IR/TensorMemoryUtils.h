@@ -33,6 +33,9 @@ struct TMemLdStQueryLayout {
 
 struct TMemPhysicalQuery {
   gpu::MemDescType memTy;
+  llvm::SmallVector<int64_t> shape;
+  llvm::SmallVector<int64_t> allocShape;
+  unsigned elementBitWidth;
   LinearLayout layout;
   bool twoCTAs;
   llvm::SmallVector<int32_t> origin;

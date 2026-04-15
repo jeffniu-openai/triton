@@ -4366,7 +4366,12 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
 
   auto layout = toLinearLayout(*maybeTy);
   return TMemPhysicalQuery{
-      *maybeTy, layout, twoCTAs,
+      *maybeTy,
+      llvm::to_vector(maybeTy->getShape()),
+      llvm::to_vector(maybeTy->getAllocShape()),
+      static_cast<unsigned>(maybeTy->getElementTypeBitWidth()),
+      layout,
+      twoCTAs,
       SmallVector<int32_t>(layout.getNumInDims(), 0), isScales};
 }
 

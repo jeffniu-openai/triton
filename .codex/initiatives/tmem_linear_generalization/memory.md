@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Current Phase 1 slice, 2026-04-15 06:37 UTC: enriched
+  `TMemPhysicalQuery` with explicit active shape, allocation shape, and element
+  bitwidth. This remains behavior-preserving scaffolding, but it gives the
+  planner a single place to read the common physical-query facts needed for
+  atom legality, resource diagnostics, and scales-vs-linear handling. Validation
+  passed: `make -j8`, direct invalid/conversion lit RUN lines via local
+  `triton-opt` and `FileCheck`, and `git diff --check`. Next concrete step:
+  split exact descriptor-view origin/layout from standalone type fallback so
+  two-CTA/scales support decisions can stop relying on canonicalized type facts.
+
 - Current Phase 1 slice, 2026-04-15 06:34 UTC: introduced
   `TMemPhysicalQuery` and `inferStandaloneTMemPhysicalQuery(...)` as the first
   shared physical-query API. The query currently wraps the existing standalone

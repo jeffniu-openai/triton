@@ -95,6 +95,15 @@ When resuming the initiative:
 
 ## Current Checkpoint
 
+- Current physical-query shape-facts checkpoint, 2026-04-15 06:37 UTC:
+  `TMemPhysicalQuery` now carries explicit active shape, allocation shape, and
+  element bitwidth in addition to the standalone memdesc type, physical layout,
+  `twoCTAs`, origin, and scales classification. This keeps common planner facts
+  available without repeatedly unpacking `MemDescType` and prepares the next
+  step: distinguishing exact descriptor-view origin from standalone type
+  fallback. Validation passed: `make -j8`, direct invalid/conversion lit RUN
+  lines via local `triton-opt` and `FileCheck`, and `git diff --check`.
+
 - Current physical-query API checkpoint, 2026-04-15 06:34 UTC:
   `TMemPhysicalQuery` now exists as the first shared carrier for standalone
   physical TMEM view facts: standalone memdesc type, physical `LinearLayout`,

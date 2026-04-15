@@ -14649,3 +14649,20 @@ Open after this slice:
 - Next: extend the physical-query object with explicit active shape,
   allocation shape, and element bitwidth, then begin separating exact
   descriptor-view origin from standalone type fallback.
+
+## 2026-04-15 06:37 UTC: physical-query shape and bitwidth facts
+
+- Extended `TMemPhysicalQuery` with explicit active shape, allocation shape, and
+  element bitwidth.
+- The query still wraps existing standalone view-type behavior, so this is a
+  behavior-preserving carrier enrichment rather than a support expansion.
+- Rationale: copy atom planning, resource diagnostics, and scales/unpacked
+  handling need these facts without repeatedly unpacking `MemDescType` at each
+  operation verifier or lowering site.
+- Validation completed:
+  - `make -j8`;
+  - `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `triton-opt test/Conversion/tritongpu_to_llvm_blackwell.mlir -split-input-file --convert-triton-gpu-to-llvm=compute-capability=100 -cse | FileCheck test/Conversion/tritongpu_to_llvm_blackwell.mlir`;
+  - `git diff --check`.
+- Next: add an exact descriptor-view physical-query path that can carry
+  non-zero origins separately from the standalone type fallback.
