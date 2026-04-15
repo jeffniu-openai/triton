@@ -8,6 +8,7 @@
 #include "triton/Tools/LayoutUtils.h"
 #include "third_party/f2reduce/f2reduce.h"
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <tuple>
 
@@ -3822,9 +3823,13 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
       hasNonTrivialBlock = rawQuery->layout.hasInDim(kBlock) &&
                            rawQuery->layout.getInDimSize(kBlock) > 1;
     }
+    bool hasExactSupportedQuery =
+        succeeded(rawQuery) &&
+        isTwoCTAScalesDescriptorViewTMemLdStQuery(queryTy, rawQuery->layout);
     if (failed(rawQuery) ||
         (hasNonTrivialBlock && (hasZeroBasisAlong(typeLayout, kRow) ||
-                                hasZeroBasisAlong(typeLayout, kCol)))) {
+                                hasZeroBasisAlong(typeLayout, kCol)) &&
+         !hasExactSupportedQuery)) {
       return unsupported(
           "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
           "two-CTA 8-bit descriptor views with broadcast/support bases must "
@@ -4446,6 +4451,80 @@ getTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
   if (auto support = getTMemLdStSupportQueryPlan(memDesc, error))
     return support->query;
   return std::nullopt;
+}
+
+static bool hasExactBasisSequence(
+    const LinearLayout &layout, StringAttr dim,
+    std::initializer_list<std::array<int32_t, 2>> expected) {
+  if (!layout.hasInDim(dim) ||
+      layout.getInDimSizeLog2(dim) != expected.size()) {
+    return false;
+  }
+  for (auto [idx, expectedBasis] : llvm::enumerate(expected)) {
+    auto basis = layout.getBasis(dim, idx);
+    if (basis.size() != 2 || basis[0] != expectedBasis[0] ||
+        basis[1] != expectedBasis[1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool isTwoCTAScalesDescriptorViewTMemLdStQuery(MemDescType memTy,
+                                               const LinearLayout &queryLayout) {
+  if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 8 ||
+      memTy.getShape()[0] != 128 || memTy.getShape()[1] != 64) {
+    return false;
+  }
+  auto linear =
+      dyn_cast<TensorMemoryLinearEncodingAttr>(memTy.getEncoding());
+  if (!linear || !linear.getTwoCTAs())
+    return false;
+
+  auto outDimSizes = llvm::to_vector(queryLayout.getOutDimSizes());
+  if (outDimSizes.size() != 2 || outDimSizes[0] != 128 ||
+      outDimSizes[1] != 64) {
+    return false;
+  }
+
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  return hasExactBasisSequence(queryLayout, kRow,
+                               {{64, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0},
+                                {0, 0}, {0, 0}}) &&
+         hasExactBasisSequence(queryLayout, kCol,
+                               {{0, 1}, {0, 2}, {16, 0}, {0, 4}, {0, 8},
+                                {0, 16}, {0, 32}}) &&
+         hasExactBasisSequence(queryLayout, kBlock, {{32, 0}});
+}
+
+std::optional<LinearLayout>
+getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
+                                            TMemAccessAtom atom,
+                                            unsigned numWarps,
+                                            const LinearLayout &queryLayout) {
+  if (atom != TMemAccessAtom::I32x32b || numWarps != 4 ||
+      !isTwoCTAScalesDescriptorViewTMemLdStQuery(memTy, queryLayout)) {
+    return std::nullopt;
+  }
+
+  auto *ctx = memTy.getContext();
+  auto kRegister = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto dims = standardOutDimNames(ctx, 2);
+
+  LinearLayout::BasesT bases;
+  bases[kRegister] = {{0, 1}, {0, 2}, {16, 0}, {0, 4},
+                      {0, 8}, {0, 16}, {0, 32}};
+  bases[kLane] = {{64, 0}, {1, 0}, {2, 0}, {4, 0}, {8, 0}};
+  bases[kWarp] = {{0, 0}, {0, 0}};
+  bases[kBlock] = {{32, 0}};
+  return LinearLayout(std::move(bases), {{dims[0], 128}, {dims[1], 64}},
+                      /*requireSurjective=*/false);
 }
 
 FailureOr<MemDescType> inferStandaloneTMemViewType(Value memDesc,

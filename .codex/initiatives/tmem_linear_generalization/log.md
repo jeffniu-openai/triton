@@ -16136,3 +16136,44 @@ Open after this slice:
     for remaining non-separable or subword `ld/st`/`ld.red` gaps, or return to
     the copy planner frontiers if the reduction matrix no longer has a
     support-bearing blocker.
+
+## 2026-04-15 14:58 UTC: two-CTA scales descriptor-view `ld/st` support
+
+- Promoted the first two-CTA scales descriptor-view direct `ld/st` row after
+  the manual explicit-layout probe proved the exact `128x64` CGA image.
+- Probe result:
+  - the old backend rejected the view before raw-query selection because the
+    two-CTA int8 guard saw block ownership plus zero/support bases and assumed
+    a type-only fallback would be required;
+  - with that guard temporarily lifted, an explicit layout
+    `register=[[0,1],[0,2],[16,0],[0,4],[0,8],[0,16],[0,32]]`,
+    `lane=[[64,0],[1,0],[2,0],[4,0],[8,0]]`, `warp=[[0,0],[0,0]]`,
+    `block=[[32,0]]` passed runtime and emitted
+    `st.16x32bx2.x32`, `ld.32x32b.x32`, `st.32x32b.x32`,
+    `ld.16x32bx2.x32`;
+  - raw-query tracing showed the real view query has row anchors `16,32`,
+    `row=[[64,0],[1,0],[2,0],[4,0],[8,0],[0,0],[0,0]]`,
+    `col=[[0,1],[0,2],[16,0],[0,4],[0,8],[0,16],[0,32]]`, and
+    `block=[[32,0]]`.
+- Implementation:
+  - added a shared exact recognizer for this two-CTA scales descriptor-view
+    raw query;
+  - added a planner layout for the `I32x32b`/4-warp case and validates it
+    through `computeTMemLdStEncodingInfo(...)` against the raw query instead
+    of using a query-type fallback;
+  - narrowed the two-CTA int8 descriptor-view guard so it continues to reject
+    unproved support/broadcast views while allowing this exact family to reach
+    the planner;
+  - moved the `128x64` CGA row from clean-negative coverage to a positive
+    runtime roundtrip and kept `256x32`/`256x64` as clean negatives.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-cga-positive pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ldst_scales_descriptor_view_cga"`
+    (`3 passed, 9913 deselected`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Remaining boundary:
+  - `256x32` and `256x64` two-CTA scales descriptor views still need their
+    exact raw-query/register-layout derivation. Do not generalize the
+    `128x64` layout by shape alone; probe and validate each physical family.

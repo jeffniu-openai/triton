@@ -2473,6 +2473,14 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   if (queryLayoutOverride)
     ll = *queryLayoutOverride;
   auto bitwidth = memType.getElementTypeBitWidth();
+  if (queryLayoutOverride) {
+    if (auto layout = getTwoCTAScalesDescriptorViewTMemLdStLayout(
+            memType, atom, numWarps, *queryLayoutOverride);
+        layout && isValidLayoutForQuery(*layout, *queryLayoutOverride,
+                                        rowPlanOverride)) {
+      return layout;
+    }
+  }
   auto stripped = stripZeroBasesForTmemLdStSelection(ll);
   if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
       !rowPlanOverride) {

@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 14:58 UTC: two-CTA scales descriptor-view direct
+  `tcgen05.ld/st` now covers the proved `128x64` CGA view. The backend has an
+  exact raw-query recognizer for the view produced by the scales
+  reshape/permute/reshape chain: logical row bit 6 is carried by lane state,
+  logical row bit 4 is the register row selector, CTA ownership is the block
+  row selector, and the selected register layout validates against the raw
+  descriptor-view query instead of falling through to type-only fallback. The
+  old two-CTA int8 guard still blocks unproved views, but allows this exact
+  family so the real planner can prove it. Runtime coverage promotes
+  `M=128,N=64,num_ctas=2,cga=[[1,0]]`; the `256x32` and `256x64` CGA rows
+  remain clean unsupported until their distinct exact layouts are proved.
 - 2026-04-15 14:32 UTC: `tcgen05.ld.red` now also covers the expanded-row
   column-permuted f32 subset enabled by the folded direct query. The reduction
   source predicate no longer requires canonical column basis order for

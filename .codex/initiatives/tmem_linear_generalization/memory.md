@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Current two-CTA scales descriptor-view `ld/st` checkpoint,
+  2026-04-15 14:58 UTC: direct `tcgen05.ld/st` now supports the proved
+  `M=128,N=64,num_ctas=2,cga=[[1,0]]` descriptor view produced by
+  `reshape((M//2,2,N)).permute([1,0,2]).reshape((M,N))` on a scales root.
+  The exact raw query is recognized only for the physical image with
+  `row=[[64,0],[1,0],[2,0],[4,0],[8,0],[0,0],[0,0]]`,
+  `col=[[0,1],[0,2],[16,0],[0,4],[0,8],[0,16],[0,32]]`, and
+  `block=[[32,0]]`. The planner returns the proved register layout
+  `register=[[0,1],[0,2],[16,0],[0,4],[0,8],[0,16],[0,32]]`,
+  `lane=[[64,0],[1,0],[2,0],[4,0],[8,0]]`,
+  `warp=[[0,0],[0,0]]`, `block=[[32,0]]`, and validates it against the raw
+  descriptor-view query with row anchors `16,32`. This keeps the two-CTA int8
+  descriptor-view type-only fallback disabled while allowing the exact family
+  through the guard. Validation passed: `make -j8`, focused CGA positive plus
+  remaining clean-negative pytest slice (`3 passed`), invalid verifier,
+  py-compile, and `git diff --check`. Remaining boundary: the `256x32` and
+  `256x64` two-CTA scales descriptor-view rows still require separate exact
+  layout proofs and remain clean unsupported.
+
 - Current `ld.red` expanded-row column-permutation support,
   2026-04-15 14:32 UTC: `tcgen05.ld.red` now accepts representative
   256-row f32 `TensorMemoryLinearLayout` sources with non-canonical column

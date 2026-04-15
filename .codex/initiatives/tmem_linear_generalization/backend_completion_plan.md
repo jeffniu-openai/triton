@@ -445,6 +445,14 @@ Progress:
   responsible for rejecting layouts the folded query cannot realize. Positive
   runtime rows now cover `identity/reverse,N=64` and
   `even_odd/even_odd,N=128` across min/max, abs, and NaN propagation.
+- 2026-04-15 14:58 UTC: promoted the first two-CTA scales descriptor-view
+  direct `ld/st` row. The backend now recognizes the exact `128x64`
+  reshape/permute scales view raw query and returns a proved 4-warp
+  `I32x32b` register layout that validates against the descriptor-view query
+  with row anchors `16,32`. This keeps the broader two-CTA int8 guard and
+  type-only fallback ban intact while letting the exact supported family
+  through. The `256x32` and `256x64` scales CGA views remain clean unsupported
+  pending separate exact-query/layout proofs.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

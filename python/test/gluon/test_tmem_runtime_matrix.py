@@ -4608,7 +4608,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
     ),
 ]
 
-SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = [
     (
         128,
         64,
@@ -4616,8 +4616,11 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
         2,
         ((1, 0),),
         "32x32b",
-        "TMEM layout 'constexpr[32x32b]' unsupported for descriptor view",
+        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
     ),
+]
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
     (
         256,
         32,
@@ -6927,6 +6930,31 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip(
 
     compiled = tmem_scales_ldst_descriptor_view_kernel[(1, )](
         inp, out, M, N, instr_variant, cga_layout, num_warps=num_warps
+    )
+    torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    assert ops == expected_ops
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_scales_encoding" in ttgir
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize(
+    "M,N,num_warps,num_ctas,cga_layout,instr_variant,expected_ops",
+    SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES,
+)
+def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
+    M, N, num_warps, num_ctas, cga_layout, instr_variant, expected_ops
+):
+    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_scales_ldst_descriptor_view_kernel[(1, )](
+        inp, out, M, N, instr_variant, cga_layout, num_warps=num_warps, num_ctas=num_ctas
     )
     torch.testing.assert_close(out, inp + 3, atol=0, rtol=0)
 

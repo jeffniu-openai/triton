@@ -220,6 +220,15 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error = nullptr);
 std::optional<TMemLdStQueryLayout> getTMemLdStSupportQueryLayout(
     Value memDesc, std::string *error = nullptr);
 
+bool isTwoCTAScalesDescriptorViewTMemLdStQuery(gpu::MemDescType memTy,
+                                               const LinearLayout &queryLayout);
+
+std::optional<LinearLayout>
+getTwoCTAScalesDescriptorViewTMemLdStLayout(gpu::MemDescType memTy,
+                                            TMemAccessAtom atom,
+                                            unsigned numWarps,
+                                            const LinearLayout &queryLayout);
+
 bool isUnsupportedDirectTMemLdStDescriptorView(
     Value memDesc, std::string *error = nullptr);
 
