@@ -17553,8 +17553,9 @@ Open after this slice:
 - Refined the `tcgen05.copy` instruction-column projection failure to report
   when the offending source offset is a descriptor-row-stride multiple.
 - This records the scales descriptor-view frontier as a missing
-  column-selected row-delta schedule rather than another descriptor-enumeration
-  problem.
+  column-selected row-delta schedule that also needs a destination-column mask,
+  source format, or equivalent smaller atom rather than another
+  descriptor-enumeration problem.
 - Validation:
   - `make -j8`;
   - direct invalid verifier RUN with

@@ -9145,12 +9145,14 @@ getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,
       os << " (" << (actualOffset / *descriptorRowStride)
          << " descriptor-row stride"
          << (actualOffset == *descriptorRowStride ? "" : "s")
-         << ")";
+         << "), which would require this column bit to select a different "
+            "descriptor row within the same instruction footprint";
     }
     os << " instead of contiguous shared offset " << expectedOffset
        << ". Current copy scheduling cannot split sub-instruction source "
-          "columns, so this projection needs a different copy atom or a "
-          "multi-message schedule before it can be supported.";
+          "columns or mask destination columns inside one tcgen05.copy atom, "
+          "so this projection needs a different copy atom, source format, or "
+          "masked multi-message schedule before it can be supported.";
     if (error)
       *error = os.str();
     return std::nullopt;

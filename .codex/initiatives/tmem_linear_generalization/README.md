@@ -48,7 +48,8 @@ When resuming the initiative:
   report when an offending sub-instruction source-column bit is actually
   selecting a descriptor-row stride. This preserves the current clean-negative
   behavior, but it makes the scales/warpx4 frontier more precise: the planner
-  is missing a schedule dimension that can atomize a column-selected row delta,
+  is missing a schedule dimension that can atomize a column-selected row delta
+  with a destination-column mask, source format, or equivalent smaller atom,
   not merely a larger MMAShared descriptor search. Validation: `make -j8`,
   direct invalid verifier RUN, exact `cp_scales_tmem_descriptor_view`
   clean-negative pytest row passed, and `git diff --check`.
