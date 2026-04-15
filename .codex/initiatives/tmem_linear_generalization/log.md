@@ -17403,3 +17403,48 @@ Open after this slice:
     PYTHONPATH=./python pytest -s --tb=short -q
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
     (`1 passed in 3.32s`).
+
+## 2026-04-15 21:09 UTC: M64 split-N ld.red support
+
+- Promoted the M64 split-N `tcgen05.ld.red` family from clean unsupported to
+  positive support.
+- Implementation:
+  - added `getTmemLoadReductionLaneSplitMask(...)` as the shared verifier and
+    lowering predicate for reduction layouts;
+  - kept the old all-N-in-registers case as mask `0`;
+  - admitted exactly one cross-lane reduction shape: lane bit 4 carries the
+    single missing N basis, producing xor mask `16`;
+  - `TMEMLoadOp::verify()` now accepts that structured lane split while still
+    rejecting broader N sharding;
+  - LLVM lowering combines per-message reduction values, then combines the
+    lane-16 partial reductions after `tcgen05.wait::ld` with `shfl.xor 16`
+    and the requested min/max/NaN semantics.
+- Tests:
+  - M64 `N in {32,64,128,256}` moved out of
+    `LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES`;
+  - new positive runtime rows cover default `load_min/load_max`;
+  - explicit rows cover `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`;
+  - the stale invalid-MLIR lane-split rejection was removed.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/tmem_test_utils.py`;
+  - direct invalid verifier RUN with
+    `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-m64-tests2
+    PYTHONPATH=./python pytest -s --tb=short -q -k 'ld_red_m64'
+    python/test/gluon/test_tmem_runtime_matrix.py`
+    (`64 passed, 10882 deselected in 22.91s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-neighbors
+    PYTHONPATH=./python pytest -s --tb=short -q -k
+    'ld_red_identity_linear_layout or
+    ld_red_explicit_compatible_layout_variants or
+    ld_red_explicit_n_sharded_layout_reports_clean_unsupported or
+    ld_red_additional_unsupported_layouts_report_clean_unsupported'
+    python/test/gluon/test_tmem_runtime_matrix.py`
+    (`160 passed, 10786 deselected in 261.44s`);
+  - `git diff --check`.

@@ -2924,19 +2924,76 @@ getTmemLoadLayoutSplitLongM(RankedTensorType tensorType, MemDescType memType,
   return std::nullopt;
 }
 
-bool isReductionFriendlyTmemLoadLayout(RankedTensorType tensorType,
-                                       const LinearLayout &layout) {
+std::optional<unsigned>
+getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType,
+                                  const LinearLayout &layout) {
   if (layout.getNumOutDims() != 2)
-    return false;
+    return std::nullopt;
   auto attr = LinearEncodingAttr::get(tensorType.getContext(), layout);
   auto regTy = tensorType.cloneWithEncoding(attr);
   auto kReg = StringAttr::get(tensorType.getContext(), "register");
+  auto kLane = StringAttr::get(tensorType.getContext(), "lane");
   auto regLayout = toLinearLayout(regTy);
   auto regDims = toLinearEncoding(regTy).basesPerDim(kReg);
   auto outDims = llvm::to_vector(regLayout.getOutDimSizes());
   if (outDims.size() < 2)
-    return false;
-  return regDims[1] == outDims[1] && regDims[0] == 1;
+    return std::nullopt;
+
+  constexpr int dimM = 0;
+  constexpr int dimN = 1;
+  if (regDims[dimM] != 1)
+    return std::nullopt;
+  if (regDims[dimN] == outDims[dimN])
+    return 0u;
+  if (outDims[dimN] < 2 || outDims[dimN] != regDims[dimN] * 2)
+    return std::nullopt;
+
+  auto dims = llvm::to_vector(regLayout.getOutDimNames());
+  SmallVector<int32_t> nBases;
+  for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(kReg); ++idx) {
+    if (regLayout.getBasis(kReg, idx, dims[dimM]) != 0)
+      return std::nullopt;
+    int32_t nBasis = regLayout.getBasis(kReg, idx, dims[dimN]);
+    if (nBasis != 0)
+      nBases.push_back(nBasis);
+  }
+
+  std::optional<unsigned> laneSplitMask;
+  for (StringAttr inDim : regLayout.getInDimNames()) {
+    if (inDim == kReg)
+      continue;
+    for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(inDim); ++idx) {
+      int32_t nBasis = regLayout.getBasis(inDim, idx, dims[dimN]);
+      if (nBasis == 0)
+        continue;
+      if (inDim != kLane || idx != 4 ||
+          regLayout.getBasis(inDim, idx, dims[dimM]) != 0 || laneSplitMask)
+        return std::nullopt;
+      laneSplitMask = 1u << idx;
+      nBases.push_back(nBasis);
+    }
+  }
+  if (!laneSplitMask)
+    return std::nullopt;
+
+  llvm::sort(nBases);
+  SmallVector<int32_t> expectedNBases;
+  for (int64_t n = 1; n < outDims[dimN]; n <<= 1)
+    expectedNBases.push_back(static_cast<int32_t>(n));
+  if (!llvm::equal(nBases, expectedNBases))
+    return std::nullopt;
+  return *laneSplitMask;
+}
+
+std::optional<unsigned>
+getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType) {
+  return getTmemLoadReductionLaneSplitMask(tensorType,
+                                           toLinearLayout(tensorType));
+}
+
+bool isReductionFriendlyTmemLoadLayout(RankedTensorType tensorType,
+                                       const LinearLayout &layout) {
+  return getTmemLoadReductionLaneSplitMask(tensorType, layout).has_value();
 }
 
 bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
@@ -2962,7 +3019,7 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
   // 256-row identity layouts are still directly reducible: the row packet
   // anchors remain materializable, and the extra row selector is represented
   // by the physical TMEM layout rather than by a column carry basis.
-  if (blockM != 128 && blockM != 256)
+  if (blockM != 64 && blockM != 128 && blockM != 256)
     return false;
 
   SmallVector<int32_t> pureRowBases;

@@ -1275,6 +1275,35 @@ static void combinePartialReductions(Location loc,
   }
 }
 
+static void combineLaneSplitReduction(Location loc,
+                                      ConversionPatternRewriter &rewriter,
+                                      SmallVector<Value> &redvalVals,
+                                      RankedTensorType regTy,
+                                      TMEMLoadReduceModifier redOp,
+                                      bool useNaN) {
+  auto laneSplitMask = getTmemLoadReductionLaneSplitMask(regTy);
+  if (!laneSplitMask || *laneSplitMask == 0)
+    return;
+  assert(redvalVals.size() == 1 &&
+         "lane-split reduction combine expects per-thread reductions to be "
+         "combined first");
+  auto isMin = redOp == TMEMLoadReduceModifier::MIN;
+  Value peer =
+      LLVM::NVIDIA::shuffleXor(loc, rewriter, redvalVals.front(),
+                               static_cast<int>(*laneSplitMask));
+  redvalVals.front() =
+      useNaN ? (isMin ? LLVM::MinimumOp::create(rewriter, loc,
+                                                redvalVals.front(), peer)
+                      : LLVM::MaximumOp::create(rewriter, loc,
+                                                redvalVals.front(), peer))
+                     ->getResult(0)
+             : (isMin ? LLVM::MinNumOp::create(rewriter, loc,
+                                               redvalVals.front(), peer)
+                      : LLVM::MaxNumOp::create(rewriter, loc,
+                                               redvalVals.front(), peer))
+                     ->getResult(0);
+}
+
 struct TensorMemoryLoadOpConversion
     : public ConvertOpToLLVMPattern<triton::nvidia_gpu::TMEMLoadOp> {
   using ConvertOpToLLVMPattern::ConvertOpToLLVMPattern;
@@ -1317,8 +1346,11 @@ struct TensorMemoryLoadOpConversion
     NVVM::Tcgen05WaitOp::create(rewriter, loc, NVVM::Tcgen05WaitKind::LOAD);
 
     // tcgen05.ld.red is async, redval registers aren't valid until the wait
-    if (redOp)
+    if (redOp) {
       combinePartialReductions(loc, rewriter, redvalVals, *redOp, useNaN);
+      combineLaneSplitReduction(loc, rewriter, redvalVals, regTy, *redOp,
+                                useNaN);
+    }
 
     // Handle reduction output if present
     SmallVector<Value> results = {resultStruct};

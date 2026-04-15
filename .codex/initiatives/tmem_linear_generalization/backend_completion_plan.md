@@ -636,6 +636,15 @@ Progress:
   selector and multiple messages; a direct `ld.red.16x32bx2` row-plan lift
   aliases rows and leaves half the tile uncovered. Treat future support here
   as a cross-lane/thread partial-reduction design, not a row-plan guard lift.
+- 2026-04-15 21:09 UTC: completed that M64 split-N cross-lane reduction
+  design for the ISA-realizable lane-16 case. The backend now models the
+  reduction layout as either all N bits in registers or exactly one missing N
+  basis carried by lane bit 4. Lowering combines per-message partial
+  reductions, waits for `tcgen05.ld.red`, and then combines the lane-16 pair
+  with `shfl.xor 16` and the requested min/max/NaN semantics. M64
+  `N in {32,64,128,256}` is positive for default reductions and explicit
+  `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn`; broader N sharding
+  remains a software-reduction boundary.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

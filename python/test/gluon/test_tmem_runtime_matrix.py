@@ -1241,6 +1241,38 @@ def tmem_ld_red_descriptor_chain_kernel(
 
 
 @gluon.jit
+def tmem_ld_red_m64_explicit_layout_kernel(
+    in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, N: ttgl.constexpr, load_variant: ttgl.constexpr,
+    red_op: ttgl.constexpr, use_abs: ttgl.constexpr, propagate_nan: ttgl.constexpr
+):
+    M: ttgl.constexpr = 64
+    num_warps: ttgl.constexpr = 4
+    global_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, num_warps], [1, 0])
+    global_layout_1d: ttgl.constexpr = ttgl.BlockedLayout([1], [32], [num_warps], [0])
+
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, global_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, global_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=layout)
+    store_layout: ttgl.constexpr = tmem.get_reg_layout()
+    tmem.store(ttgl.convert_layout(value, store_layout))
+
+    load_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=load_variant)
+    if red_op == "min":
+        output, reduced = tmem.load_min(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
+    else:
+        output, reduced = tmem.load_max(layout=load_layout, abs=use_abs, propagate_nan=propagate_nan)
+    output = ttgl.convert_layout(output, global_layout)
+    ttgl.store(out_ptr + offs, output)
+
+    red_offs = ttgl.arange(0, M, global_layout_1d)
+    reduced = ttgl.convert_layout(reduced, global_layout_1d)
+    ttgl.store(red_ptr + red_offs, reduced)
+
+
+@gluon.jit
 def tmem_ld_red_non_f32_contract_kernel(
     in_ptr,
     out_ptr,
@@ -4674,9 +4706,9 @@ def _assert_ld_red_opcode_pairs(
         if ".ld.red." in pair[0]
     ]
     assert ptx_red_pairs == llir_red_pairs
-    assert len(ptx_red_pairs) == LD_RED_EXPECTED_OP_COUNT[N]
     if expected_offsets is None:
         expected_offsets = LD_RED_EXPECTED_OFFSETS[N]
+    assert len(ptx_red_pairs) == len(expected_offsets)
     assert [offset for _, offset in ptx_red_pairs] == list(expected_offsets)
     assert ptx.count("tcgen05.wait::st.sync.aligned;") == 1
     assert ptx.count("tcgen05.wait::ld.sync.aligned;") == 1
@@ -4883,6 +4915,21 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
 
 LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES = LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES
 
+LD_RED_M64_SPLITN_CASES = [
+    pytest.param(n, f"16x32bx2.x{n // 2}", (0,), id=f"m64_64x{n}")
+    for n in (32, 64, 128, 256)
+]
+
+LD_RED_M64_EXPLICIT_VARIANT_CASES = [
+    pytest.param(n, "32x32b", f"16x32bx2.x{n // 2}", (0,), id=f"m64_64x{n}_32x32b")
+    for n in (32, 64, 128, 256)
+] + [
+    pytest.param(n, load_variant, f"16x32bx2.x{n // 4}", (0, n // 2),
+                 id=f"m64_64x{n}_{load_variant}")
+    for n in (32, 64, 128, 256)
+    for load_variant in ("auto", "16x32bx2", "32x32b_splitn")
+]
+
 
 def _make_ld_red_descriptor_chain_n_sweep_explicit_layout(layout_name, n):
     if layout_name == "identity":
@@ -4914,18 +4961,6 @@ LD_RED_MIXED_CASES = [
 ]
 
 LD_RED_ADDITIONAL_UNSUPPORTED_LAYOUT_CASES = [
-    *[
-        pytest.param(
-            f"m64_64x{n}",
-            lambda n=n: _make_tmem_linear_layout_m64(n),
-            64,
-            n,
-            4,
-            "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
-            id=f"m64_64x{n}",
-        )
-        for n in (32, 64, 128, 256)
-    ],
     *[
         pytest.param(
             f"block_128x{n}",
@@ -7178,6 +7213,66 @@ def test_tmem_runtime_matrix_ld_red_identity_linear_layout(red_op, use_abs, prop
     assert "tensor_memory_linear" in ttgir
 
     _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("N,expected_shape,expected_offsets", LD_RED_M64_SPLITN_CASES)
+def test_tmem_runtime_matrix_ld_red_m64_splitn_linear_layout(
+    red_op, use_abs, propagate_nan, N, expected_shape, expected_offsets
+):
+    M = 64
+    layout = _make_tmem_linear_layout_m64(N)
+    compiled = _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=4,
+        expected_red_opcode_prefix="tcgen05.ld.red.sync.aligned.16x32bx2.x",
+    )
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        expected_shape,
+        red_op,
+        use_abs,
+        propagate_nan,
+        expected_offsets=expected_offsets,
+    )
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("N,load_variant,expected_shape,expected_offsets", LD_RED_M64_EXPLICIT_VARIANT_CASES)
+def test_tmem_runtime_matrix_ld_red_m64_explicit_splitn_variants(
+    red_op, N, load_variant, expected_shape, expected_offsets
+):
+    M = 64
+    layout = _make_tmem_linear_layout_m64(N)
+    inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty(M, dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ld_red_m64_explicit_layout_kernel[(1, )](
+        inp, out, red, layout, N, load_variant, red_op, False, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, False, tl.PropagateNan.NONE)
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        expected_shape,
+        red_op,
+        False,
+        tl.PropagateNan.NONE,
+        expected_offsets=expected_offsets,
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

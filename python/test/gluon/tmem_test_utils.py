@@ -202,7 +202,17 @@ def tmem_reduction_kernel(
     ttgl.store(red_ptr + offs_1d, reduced)
 
 
-def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_warps, expect_hw_reduce=True):
+def _run_tmem_reduction_case(
+    layout,
+    M,
+    N,
+    red_op,
+    use_abs,
+    propagate_nan,
+    num_warps,
+    expect_hw_reduce=True,
+    expected_red_opcode_prefix="tcgen05.ld.red.sync.aligned.32x32b.x",
+):
     input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
 
     use_nan = propagate_nan == tl.PropagateNan.ALL
@@ -248,7 +258,8 @@ def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_w
         if propagate_nan == tl.PropagateNan.ALL:
             expected_modifier += ".NaN"
         expected_modifier += ".f32"
-        assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x") for op in ptx_red_ops)
+        if expected_red_opcode_prefix is not None:
+            assert all(op.startswith(expected_red_opcode_prefix) for op in ptx_red_ops)
         assert all(expected_modifier in op for op in ptx_red_ops)
     else:
         assert not ptx_red_ops
@@ -489,4 +500,3 @@ def mma_scaled_tcgen05_copy(A, B, A_scale, B_scale, VEC_SIZE, BLOCK_M, BLOCK_N, 
         multicast=multicast,
     )
     return C_desc.base, compiled
-

@@ -249,6 +249,18 @@ bool isReductionFriendlyTmemSourceLayout(gpu::MemDescType memType);
 bool isReductionFriendlyTmemLoadLayout(RankedTensorType tensorType,
                                        const LinearLayout &regLayout);
 
+// Returns 0 when the load layout keeps the full reduction dimension in
+// registers. Returns a lane-id xor mask when the layout has one supported
+// lane-local split of the reduction dimension that lowering must combine after
+// tcgen05.ld.red. Returns std::nullopt for layouts that need unsupported
+// cross-thread/warp reduction.
+std::optional<unsigned>
+getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType,
+                                  const LinearLayout &regLayout);
+
+std::optional<unsigned>
+getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType);
+
 SmallVector<gpu::DistributedEncodingTrait>
 getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
                          gpu::MemDescType memType);

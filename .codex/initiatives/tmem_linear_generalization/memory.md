@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current M64 split-N `ld.red` support checkpoint, 2026-04-15 21:09 UTC:
+  M64 `tcgen05.ld.red` is no longer a clean negative for the canonical
+  split-N family. The source predicate now admits normalized pure `64xN`
+  row/column images, and the reduction-layout predicate returns a structured
+  lane-split plan: `0` when all N bits are in registers, or lane-id xor mask
+  `16` when exactly lane bit 4 carries the single missing N basis. The op
+  verifier uses that shared predicate instead of the old all-N-in-registers
+  check, and LLVM lowering calls the same helper after `tcgen05.wait::ld` to
+  combine per-thread message reductions and then combine the lane-16 partial
+  reductions with `shfl.xor 16` plus the requested min/max/NaN semantics.
+  Runtime probes and committed coverage show correct full load output and row
+  reductions for M64 `N in {32,64,128,256}` with default `load_min/load_max`
+  and explicit `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` layout
+  requests. Broader N sharding across arbitrary lanes or warps remains a clean
+  unsupported software-reduction boundary.
+
 - Current scales descriptor-view copy projection probe, 2026-04-15 20:51 UTC:
   a temporary descriptor projection tried to make the exact
   `warpx4.32x128b` scales descriptor view representable by moving the

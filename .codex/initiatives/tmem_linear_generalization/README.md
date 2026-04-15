@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 21:09 UTC: M64 split-N `tcgen05.ld.red` is now positive for
+  the `16x32bx2` lane-split family. The reduction layout predicate now
+  distinguishes layouts whose N dimension is entirely in registers from the
+  one ISA-realizable cross-lane case where exactly lane bit 4 carries the
+  missing N basis. Verifier and lowering share
+  `getTmemLoadReductionLaneSplitMask(...)`; lowering combines the two
+  per-lane partial reduction values after `tcgen05.wait::ld` with a
+  `shfl.xor 16` min/max. Runtime coverage moved M64 `N in {32,64,128,256}`
+  out of the clean-negative bucket and covers default `load_min/load_max`
+  plus explicit `auto`, `32x32b`, `16x32bx2`, and `32x32b_splitn` variants.
+  Validation: `make -j8`, direct invalid verifier RUN, `64` focused M64
+  rows passed, neighboring `ld.red` positives/negatives passed `160` rows,
+  `py_compile`, and `git diff --check`.
 - 2026-04-15 20:51 UTC: the scales descriptor-view copy source-projection
   probe was narrowed further. A temporary projection that moved source offset
   `256` from instruction column bit 2 into the descriptor row dimension and

@@ -1453,20 +1453,20 @@ LogicalResult TMEMLoadOp::verify() {
       return emitOpError(
           "tmem_load reduction requires packed format (unpacked=false)");
 
-    // Verify that N dimension is in registers entirely, and is not sharded
-    // across threads. This could be relaxed in the future to only reduce the
-    // kReg bases along N then cross-warp/block reduction becomes needed.
-    auto kReg = StringAttr::get(regTy.getContext(), "register");
-    int dimM = 0, dimN = 1;
-    auto regLayout = toLinearLayout(regTy);
-    auto regDims = toLinearEncoding(regTy).basesPerDim(kReg);
-    if (regDims[dimN] != regLayout.getOutDimSizes().begin()[dimN] ||
-        regDims[dimM] != 1) {
+    // Verify that the N dimension is directly reducible: either entirely in
+    // registers, or split only across lane bit 4 where lowering combines the
+    // two tcgen05.ld.red partial reductions with a warp shuffle. Broader
+    // cross-thread/warp reductions still need an explicit software reduce.
+    auto reductionLaneSplitMask = getTmemLoadReductionLaneSplitMask(regTy);
+    if (!reductionLaneSplitMask) {
       InFlightDiagnostic diag = emitOpError(
           "tmem_load reduction with N dimension sharded across threads is not "
           "supported.");
       diag.attachNote() << "Reduction requires all N elements to reside in the "
-                           "register dimension and M to be unsharded.";
+                           "register dimension and M to be unsharded. A single "
+                           "lane-16 split of N is supported when lowering can "
+                           "combine the partial tcgen05.ld.red results.";
+      auto regLayout = toLinearLayout(regTy);
       diag.attachNote() << "Got register layout:\n" << regLayout.toString();
       return diag;
     }
