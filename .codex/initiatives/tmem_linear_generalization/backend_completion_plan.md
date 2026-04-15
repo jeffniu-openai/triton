@@ -519,6 +519,12 @@ Progress:
   root/index/subslice/LHS matrices. This narrows the remaining scale issue:
   single-tile/root/view `N=32` is valid, while repeated/tile-permuted `N=32`
   remains a scale-B fragment/addressing gap.
+- 2026-04-15 17:55 UTC: verifier and lowering now share one helper for the
+  repeated-`N=32` scaled-MMAv5 boundary. Probes ruled out the easy fixes:
+  fixed B-scale selector remaps stay wrong, and removing the forced
+  64-column B-scale address stride reaches a misaligned scale address. The
+  remaining support task is a real B-scale fragment representation below the
+  current public 64-column scale layout, not another guard or selector tweak.
 - 2026-04-15 17:12 UTC: saturated the remaining supported plain-MMAv5 `N=32`
   M64 and TMEM-LHS matrices. M64 linear/root and subslice rows plus LHS
   tile/subslice rows are positive at `N=32`; the M64 legacy root remains on

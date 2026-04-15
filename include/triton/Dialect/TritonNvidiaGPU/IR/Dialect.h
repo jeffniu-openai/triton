@@ -229,6 +229,9 @@ getMMAv5AccumulatorLayoutInfo(gpu::MemDescType memDescType);
 std::optional<MMAv5AccumulatorLayoutInfo>
 getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
+std::optional<std::string>
+getMMAv5ScaledRepeatedN32ScaleFragmentError(gpu::MemDescType memDescType);
+
 SmallVector<gpu::DistributedEncodingTrait>
 getTmemCompatibleLayouts(gpu::MemDescType memType, unsigned numWarps,
                          ArrayRef<int64_t> ctaSplit = {1, 1});

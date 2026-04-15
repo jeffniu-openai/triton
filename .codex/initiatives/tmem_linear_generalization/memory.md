@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Current scaled-MMAv5 repeated-N32 guard cleanup, 2026-04-15 17:55 UTC:
+  verifier and lowering now share
+  `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)`, so the repeated-`N=32`
+  scale-fragment boundary is enforced from one physical-layout predicate and
+  one diagnostic string. Fresh probes kept the boundary intact: fixed
+  `TRITON_MMAV5_SCALE_ID_MAP_B` remaps all stayed numerically wrong, and
+  removing the forced two-column B-scale address stride made the scale address
+  misaligned. For `mxfp8/mxfp8, N=128, tile_n=32`, the first 32-column tile is
+  correct under a guard lift, the second is mis-scaled, and the last two are
+  effectively zero. The missing abstraction is a matrix-B scale-fragment model
+  below the current 64-column public scale layout, not accumulator view
+  addressing.
+
+- Current rejected quick support probes, 2026-04-15 17:55 UTC:
+  a temporary 128-row/one-warp dense copy descriptor factorization still
+  selected/copy-executed in physical row order for row-permuted dense copies;
+  allowing transposed dense descriptors did not change the wrong output.
+  Temporarily lifting the `warpx2` 32-bit source gate made single-CTA
+  `01_23` f16/bf16/i16 emit the base opcode but produce wrong output, while
+  `02_13` subword rows still failed descriptor synthesis. Keep both frontiers
+  on real scheduler/source-format work.
+
 - Current dense no-scales copy row-permutation probe, 2026-04-15 17:36 UTC:
   bypassing the dense physical-query row-order guard and the lowering
   row-stride guard is not a support path. Row-only permutations compile under

@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 17:55 UTC: the repeated-`N=32` scaled-MMAv5 guard is now a
+  shared physical-layout helper used by both verifier and lowering. Follow-up
+  probes confirmed the boundary: fixed B-scale selector remaps do not repair
+  the repeated-N32 result, and removing the 64-column B-scale stride reaches a
+  misaligned scale address. The next real support path needs a new B-scale
+  fragment model, not duplicated guard text or selector-map tuning.
 - 2026-04-15 17:36 UTC: dense no-scales copy row permutations were re-probed
   with the physical-query and lowering row-stride guards temporarily bypassed.
   Row-only permutations compile in that mode but produce wrong output:

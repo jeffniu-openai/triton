@@ -16658,3 +16658,44 @@ Open after this slice:
   - dense row permutations need an explicit row/source projection schedule or
     row-group atomization. Relaxing the row-order guard is wrong because it
     preserves physical row order instead of logical layout semantics.
+
+## 2026-04-15 17:55 UTC: scaled repeated-N32 guard cleanup and probes
+
+- Centralized the repeated-`N=32` scaled-MMAv5 boundary in
+  `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)`.
+- Implementation:
+  - added the helper in `Dialect.cpp` and declared it in `Dialect.h`;
+  - routed `TCGen5MMAScaledOp::verify()` through the helper;
+  - routed `convertScaledDot(...)` lowering through the same helper.
+- Probe evidence before committing the cleanup:
+  - temporarily bypassing the verifier/lowering guard and sweeping fixed
+    `TRITON_MMAV5_SCALE_ID_MAP_B` remaps (`0123`, `0011`, `0101`, `0022`,
+    `0202`, `0132`, `3210`) left the `mxfp8/mxfp8, N=128, tile_n=32` row
+    numerically wrong;
+  - with the default B-scale address stride, the first 32-column output tile
+    was correct, the second was mis-scaled, and the final two were effectively
+    zero;
+  - temporarily removing the minimum two-column B-scale address stride reached
+    a misaligned scale address, confirming the 64-column B-scale address
+    alignment is real.
+- Adjacent rejected probes:
+  - a temporary dense copy `128x1` descriptor factorization and transposed
+    descriptor allowance did not fix row-permuted dense copies;
+  - temporarily lifting the `warpx2` 32-bit shared-element gate made
+    single-CTA `01_23` f16/bf16/i16 emit the base opcode but produce wrong
+    output, and `02_13` subword rows still failed descriptor synthesis.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-n32-helper pytest -s
+    --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k
+    "scaled_acc_tile_permuted_32_repeated_n32 or
+    scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported"`
+    passed `20` selected rows;
+  - `git diff --check`.
+- Current conclusion:
+  - this is a cleanup checkpoint that removes duplicated policy. The support
+    frontier remains a real matrix-B scale-fragment representation below
+    64-column alignment.

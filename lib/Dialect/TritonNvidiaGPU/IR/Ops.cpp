@@ -930,19 +930,12 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   }
   if (info->mmaSizeM != 128)
     return emitOpError("only supports instruction shape blockM=128");
-  auto ctaShape = getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
-                                 getD().getType().getShape());
+  auto ctaShape =
+      getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
+                     getD().getType().getShape());
   auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
-  if ((ctaShape[1] + instrSizeN - 1) / instrSizeN > 1 && instrSizeN == 32) {
-    return emitOpError()
-           << "direct block-scaled MMAv5 does not support repeated N=32 "
-              "instructions along N for "
-           << getD().getType().getEncoding()
-           << ". The public tensor-memory scales layout only exposes matrix-B "
-              "scale fragments at 64-column alignment, so layouts that would "
-              "need multiple N=32 scaled instructions must be reshaped to a "
-              "larger directly supported MMAv5 tile.";
-  }
+  if (auto error = getMMAv5ScaledRepeatedN32ScaleFragmentError(getD().getType()))
+    return emitOpError() << *error;
   if (getTwoCtas() && (ctaShape[1] + instrSizeN - 1) / instrSizeN > 1) {
     return emitOpError(
         "We don't allow to emit more than one mma instruction along N. "

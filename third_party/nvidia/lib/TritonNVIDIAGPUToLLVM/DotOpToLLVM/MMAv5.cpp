@@ -812,22 +812,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.shape.N = dstPerCTA[1];
   dot.shape.K = op.getBlockK(); // K is not split across CTAs
   dot.mmaSizeK = !opKindIsMXFP4 ? 32 : 64;
-  if (auto scaledInfo = ttng::getMMAv5ScaledAccumulatorLayoutInfo(dTensorTy)) {
-    unsigned scaledMmaSizeN =
-        std::min<unsigned>(scaledInfo->mmaSizeN, dot.shape.N);
-    if (scaledMmaSizeN == 32 &&
-        ceil<unsigned>(dot.shape.N, scaledMmaSizeN) > 1) {
-      return mlir::emitError(
-                 loc,
-                 "direct block-scaled MMAv5 does not support repeated N=32 "
-                 "instructions along N for ")
-             << dTensorTy.getEncoding()
-             << ". The public tensor-memory scales layout only exposes "
-                "matrix-B scale fragments at 64-column alignment, so layouts "
-                "that would need multiple N=32 scaled instructions must be "
-                "reshaped to a larger directly supported MMAv5 tile.";
-    }
-  }
+  if (auto error = ttng::getMMAv5ScaledRepeatedN32ScaleFragmentError(dTensorTy))
+    return mlir::emitError(loc, *error);
 
   dot.shapeA = triton::gpu::getAllocationShapePerCTA(aTensorTy);
   dot.shapeB = triton::gpu::getAllocationShapePerCTA(bTensorTy);

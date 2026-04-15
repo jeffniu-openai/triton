@@ -1188,6 +1188,36 @@ getMMAv5ScaledAccumulatorLayoutInfo(MemDescType memDescType) {
                                            planMMAv5ScaledAccumulatorFamily);
 }
 
+std::optional<std::string>
+getMMAv5ScaledRepeatedN32ScaleFragmentError(MemDescType memDescType) {
+  auto info = getMMAv5ScaledAccumulatorLayoutInfo(memDescType);
+  if (!info)
+    return std::nullopt;
+
+  auto ctaShape =
+      getShapePerCTA(getCGALayout(memDescType.getEncoding()).getCTASplitNum(),
+                     memDescType.getShape());
+  if (ctaShape.size() < 2)
+    return std::nullopt;
+
+  auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
+  if (instrSizeN != 32 ||
+      (ctaShape[1] + instrSizeN - 1) / instrSizeN <= 1) {
+    return std::nullopt;
+  }
+
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << "direct block-scaled MMAv5 does not support repeated N=32 "
+        "instructions along N for "
+     << memDescType.getEncoding()
+     << ". The public tensor-memory scales layout only exposes matrix-B scale "
+        "fragments at 64-column alignment, so layouts that would need "
+        "multiple N=32 scaled instructions must be reshaped to a larger "
+        "directly supported MMAv5 tile.";
+  return os.str();
+}
+
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,
                                       ArrayRef<int32_t> offsets) {
   assert(shape.size() == offsets.size());
