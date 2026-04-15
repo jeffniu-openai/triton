@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:47 UTC: the copy planner now runs a planner-side
+  destination-footprint overlap proof after the emitted instruction stream is
+  built. Ordinary copy families are rejected if two scheduled instructions
+  write overlapping rectangular physical destination footprints, producing an
+  `instruction schedule` diagnostic that asks for a non-overlapping schedule or
+  an ISA atom with an explicit destination mask. `Dense4x256b` is exempted
+  because its refresh semantics are not modeled as an ordinary rectangular
+  logical row/column write footprint. Validation: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, `git diff --check`, and 15 targeted copy rows
+  covering direct-seed and two-CTA `warpx2`, `4x256b` refresh, scales
+  `warpx4`, the scales descriptor-view clean negative, and a dense tile
+  permutation.
 - 2026-04-15 23:43 UTC: scheduled copy instructions now also carry the
   message-adjusted `TMemCopyDestinationFootprint`. The instruction scheduler
   applies `tmemRowDelta` and `tmemDwordDelta` once, records the final physical

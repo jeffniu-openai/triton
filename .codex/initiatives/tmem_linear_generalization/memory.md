@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Current copy destination-overlap checkpoint, 2026-04-15 23:47 UTC:
+  `getTMemCopyPlanRealization(...)` now checks the final scheduled copy
+  instruction stream for overlapping physical destination footprints before
+  handing it to lowering. Ordinary copy families use the message-adjusted
+  `TMemCopyDestinationFootprint` rectangles recorded on each instruction; if
+  any two rectangles overlap, the plan fails in the `instruction schedule`
+  layer with a diagnostic requiring either a non-overlapping destination
+  schedule or an ISA atom with an explicit destination mask. `Dense4x256b` is
+  currently exempted because that refresh primitive's logical write footprint
+  is not the same as an ordinary rectangular TMEM row/column copy footprint.
+  This does not promote new layouts yet, but it turns the next scales/view
+  support attempt into a planner proof instead of a lowering-side hope.
+  Validation passed: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, `git diff --check`, and 15 targeted copy rows
+  covering direct-seed `warpx2::02_13`, two-CTA `warpx2::01_23`, two-CTA
+  `warpx2::02_13` clean-negative diagnostics, `4x256b` refresh copy, scales
+  `warpx4`, the scales descriptor-view clean negative, and a dense tile
+  permutation.
+
 - Current copy instruction-destination-footprint checkpoint, 2026-04-15
   23:43 UTC: `TMemCopyScheduledInstruction` now also carries the
   message-adjusted `TMemCopyDestinationFootprint`. `getTMemCopyInstructionSchedule(...)`

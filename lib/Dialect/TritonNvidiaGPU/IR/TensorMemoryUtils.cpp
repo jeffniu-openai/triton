@@ -8306,6 +8306,46 @@ getTMemCopyInstructionSchedule(ArrayRef<TMemCopyScheduledMessage> messages,
   return instructions;
 }
 
+static bool intervalsOverlap(int64_t lhsBegin, int64_t lhsEnd,
+                             int64_t rhsBegin, int64_t rhsEnd) {
+  return lhsBegin < rhsEnd && rhsBegin < lhsEnd;
+}
+
+static TMemCopySupportResult getTMemCopyDestinationFootprintSupport(
+    TMemCopyFamily family, ArrayRef<TMemCopyScheduledInstruction> instructions) {
+  if (family == TMemCopyFamily::Dense4x256b) {
+    // 4x256b is a refresh primitive whose logical row/column footprint is not
+    // the same as an ordinary rectangular TMEM write footprint.
+    return getSupportedTMemCopyResult();
+  }
+
+  for (auto [lhsIdx, lhsInstruction] : llvm::enumerate(instructions)) {
+    const TMemCopyDestinationFootprint &lhs = lhsInstruction.destination;
+    int64_t lhsRowBegin = lhs.physicalRow;
+    int64_t lhsRowEnd = lhsRowBegin + lhs.rows;
+    int64_t lhsColBegin = lhs.physicalCol;
+    int64_t lhsColEnd = lhsColBegin + lhs.columns;
+    for (const auto &rhsInstruction : instructions.drop_front(lhsIdx + 1)) {
+      const TMemCopyDestinationFootprint &rhs = rhsInstruction.destination;
+      int64_t rhsRowBegin = rhs.physicalRow;
+      int64_t rhsRowEnd = rhsRowBegin + rhs.rows;
+      int64_t rhsColBegin = rhs.physicalCol;
+      int64_t rhsColEnd = rhsColBegin + rhs.columns;
+      if (intervalsOverlap(lhsRowBegin, lhsRowEnd, rhsRowBegin, rhsRowEnd) &&
+          intervalsOverlap(lhsColBegin, lhsColEnd, rhsColBegin, rhsColEnd)) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            Twine("tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+                " instruction schedule writes overlapping destination "
+                "footprints. The planner must prove a non-overlapping "
+                "destination schedule or use an ISA atom with an explicit "
+                "destination mask before this layout can be supported.");
+      }
+    }
+  }
+  return getSupportedTMemCopyResult();
+}
+
 static TMemCopySupportResult
 getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   auto kRow = StringAttr::get(ctx, "row");
@@ -8560,6 +8600,10 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                     ? "failed to build tcgen05.copy instruction schedule"
                     : instructionScheduleError)};
   }
+  auto destinationFootprintSupport = getTMemCopyDestinationFootprintSupport(
+      executablePlan->family, *instructions);
+  if (!destinationFootprintSupport)
+    return {std::nullopt, destinationFootprintSupport};
   executablePlan->instructions = std::move(*instructions);
   return {std::move(*executablePlan), descriptorSupport};
 }

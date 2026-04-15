@@ -1,3 +1,37 @@
+## 2026-04-15 23:47 UTC: copy destination-footprint overlap proof
+
+- Added a planner-side destination-footprint overlap check for scheduled
+  `tcgen05.copy` instruction streams.
+- The check consumes the final message-adjusted
+  `TMemCopyDestinationFootprint` stored on each `TMemCopyScheduledInstruction`
+  and rejects ordinary copy-family schedules whose physical row/column
+  rectangles overlap.
+- The failure is reported through the `instruction schedule` support layer with
+  an explicit requirement: the planner must prove a non-overlapping
+  destination schedule or use an ISA atom with an explicit destination mask
+  before the layout can be supported.
+- `Dense4x256b` is exempted for now because the refresh primitive's logical
+  write semantics are not the same as a normal rectangular TMEM row/column copy
+  footprint.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-footprint-overlap
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4_twocta_direct_copy
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted`
+    (`15 passed in 21.98s`).
+
 ## 2026-04-15 23:43 UTC: copy instruction-destination footprint
 
 - Added the message-adjusted destination footprint to each scheduled copy

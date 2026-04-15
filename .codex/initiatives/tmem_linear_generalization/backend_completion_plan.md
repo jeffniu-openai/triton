@@ -349,6 +349,13 @@ Progress:
   applied during instruction scheduling, with lowering consuming
   `instruction.destination.offset` directly. Each emitted copy instruction now
   owns both final source and final destination footprints.
+- 2026-04-15 23:47 UTC: added the first destination-footprint legality proof
+  on top of those scheduled instructions. Ordinary copy-family plans are now
+  rejected if the final physical destination footprints overlap; the diagnostic
+  names this as an instruction-schedule failure requiring a non-overlapping
+  plan or an ISA atom with an explicit destination mask. `Dense4x256b` is
+  intentionally excluded until the refresh primitive has its own footprint
+  model.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
