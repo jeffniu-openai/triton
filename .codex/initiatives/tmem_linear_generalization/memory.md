@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current plain MMAv5 two-CTA `block_n=32` checkpoint, 2026-04-15 16:43 UTC:
+  root two-CTA accumulator layouts and their indexed/subslice descriptor views
+  now carry `block_n=32` in the positive runtime matrix. Direct probes over all
+  `MMA_PLAIN_KINDS`, both accumulator modes, and the representative
+  indexed/subslice view chains passed before the table promotion. The focused
+  four-GPU selector
+  `mma_twocta_plain_kinds or mma_twocta_indexed_acc_view or mma_twocta_acc_subslice_view_plain_kinds`
+  passed all `720` selected rows. This was a stale coverage floor; the backend
+  already emits correct cta-group::2 MMAv5 schedules for the narrow physical
+  accumulator image. The existing `N=256` linear-parent descriptor-view
+  exclusion remains a hardware resource boundary.
+
 - Current plain MMAv5 TMEM-LHS small-K tile-permuted checkpoint,
   2026-04-15 16:29 UTC: full-shape tile-permuted TMEM-LHS plain MMAv5 now
   covers `K=32` and `K=64` in addition to the old `K=128/256` rows. The LHS

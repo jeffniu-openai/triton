@@ -9271,13 +9271,15 @@ MMA_TWOCTA_TMA_TF32_CASES = [
 
 MMA_TWOCTA_PLAIN_KIND_CASES = [
     (kind, acc_layout_kind, block_n, block_k)
-    for kind, acc_layout_kind, block_n, block_k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128))
+    for kind, acc_layout_kind, block_n, block_k in product(
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128)
+    )
 ]
 
 MMA_TWOCTA_INDEXED_ACC_CASES = [
     (kind, parent_layout_kind, block_n, block_k, use_acc)
     for kind, parent_layout_kind, block_n, block_k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
+        MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128), (False, True)
     )
     # Linear parent views keep the whole [2, M, N] two-CTA physical image live;
     # N=256 needs 1024 TMEM columns and is a hardware resource boundary.
@@ -9289,7 +9291,9 @@ MMA_TWOCTA_INDEXED_ACC_CASES = [
 
 MMA_TWOCTA_ACC_SUBSLICE_CASES = [
     (kind, block_n, block_k, slice_start, use_acc)
-    for kind, block_n, block_k, use_acc in product(MMA_PLAIN_KINDS, (64, 128, 256), (32, 64, 128), (False, True))
+    for kind, block_n, block_k, use_acc in product(
+        MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128), (False, True)
+    )
     for slice_start in (0, block_n)
 ]
 

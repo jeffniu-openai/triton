@@ -16493,3 +16493,24 @@ Open after this slice:
 - Current conclusion:
   - the old lack of small-K TMEM-LHS tile-permuted coverage was another LHS
     family-enumerator floor, not an ISA limit.
+
+## 2026-04-15 16:43 UTC: plain MMAv5 two-CTA block_n=32 matrix promotion
+
+- Promoted `block_n=32` into the positive plain two-CTA accumulator runtime
+  matrix for root layouts, indexed accumulator views, and accumulator subslice
+  views.
+- Kept the existing `N=256` linear-parent indexed-view exclusion because the
+  lifted `[2, M, N]` linear parent still needs 1024 TMEM columns there and is
+  a hardware resource boundary.
+- Probe evidence before the table change:
+  - root two-CTA `block_n=32, block_k=64` passed for all `MMA_PLAIN_KINDS`,
+    both `legacy`/`linear` accumulator layouts, and both accumulator modes;
+  - indexed and subslice descriptor views passed for all `MMA_PLAIN_KINDS`,
+    `legacy`/`linear` parents, the unit linear parent probe, both accumulator
+    modes, and slice starts `0` and `32`.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - four-GPU split selector
+    `-k "mma_twocta_plain_kinds or mma_twocta_indexed_acc_view or mma_twocta_acc_subslice_view_plain_kinds"`
+    passed all `720` selected tests (`180` per shard).

@@ -503,6 +503,11 @@ Tasks:
 - Preserve packed 128-row scale descriptor minima and padded scale-copy behavior.
 
 Progress:
+- 2026-04-15 16:43 UTC: promoted plain MMAv5 two-CTA accumulator
+  `block_n=32` coverage for root layouts, indexed accumulator descriptor
+  views, and accumulator subslice views. The backend already supports the
+  narrow cta-group::2 physical image; this removes a stale runtime-matrix
+  floor while keeping the `N=256` linear-parent hardware resource boundary.
 - 2026-04-15 16:29 UTC: promoted plain MMAv5 full-shape TMEM-LHS
   tile-permuted rows for `K=32` and `K=64`. The LHS planner now admits
   8-column storage families, and the positive LHS matrix spans
