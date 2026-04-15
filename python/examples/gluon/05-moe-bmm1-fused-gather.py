@@ -902,6 +902,18 @@ class KernelConfig:
     SCALE_SIZE_OUTER: int = 128
     SCALE_SIZE_INNER: int = 4
 
+    def get_x_tile_smem(self) -> int:
+        return self.BLOCK_M * self.BLOCK_K
+
+    def get_w_tile_smem(self) -> int:
+        return self.BLOCK_N * self.BLOCK_K
+
+    def get_w_mx_tile_smem(self) -> int:
+        return self.get_w_tile_smem() // self.MXFP_BLOCK_SIZE
+
+    def get_c_tile_smem(self, reduction_n: int) -> int:
+        return (self.BLOCK_M // self.SWIGLU_SUBTILE_FACTOR) * (self.BLOCK_N // reduction_n)
+
 
 def select_kernel_config(ragged_metadata: RaggedTensorMetadata, m: int, reduction_n: int) -> KernelConfig:
     p = KernelConfig()
@@ -939,6 +951,7 @@ def matmul(
     precision_config: PrecisionConfig,
     c: torch.Tensor,
     fused_activation: FusedActivation,
+    p: KernelConfig | None,
 ):
     specs = fused_activation.specs
     assert specs.name == "swiglu"
@@ -959,7 +972,7 @@ def matmul(
     _, _, n = b.shape
     m = gather_indx.shape[0]
 
-    p = select_kernel_config(a_ragged_metadata, m, reduction_n)
+    p = p or select_kernel_config(a_ragged_metadata, m, reduction_n)
     x_block_idx = p.BLOCK_M.bit_length() - 5
 
     expected_grid_m = a_ragged_metadata.n_blocks(a_ragged_metadata.n_slices, m, p.BLOCK_M)
@@ -969,6 +982,7 @@ def matmul(
     grid = (launch_grid,)
 
     x_desc = make_operand_descriptor(a, (1, p.BLOCK_K))
+    # Divide by 2 along the contiguous dim due to fp4_padded=True.
     w_desc = make_operand_descriptor(b, (1, p.BLOCK_N, p.BLOCK_K // 2), transposed=True)
     scale_desc = make_operand_descriptor(
         b_mx_scales,
@@ -1273,5 +1287,82 @@ def bench(batch_size, provider):
     return flops * 1e-12 / (ms * 1e-3)
 
 
+# occupancy=1, block_n=256, block_k=128
+# block_m 16
+# move to 32 when bs=448
+# block_m=16 and 32, pick most w+w_mx bufs
+# move to 64 when bs=896
+# move to 128 when bs=2560
+# for block_m=64, pick most w+w_mx bufs
+# for block_m=128, pick x_bufs=5, w_bufs=4
+
 if __name__ == "__main__":
-    bench.run(save_path=".", print_data=True)
+    # bench.run(save_path=".", print_data=True)
+    for bs in get_batch_sizes(GPT_OSS_120B_CONFIG):
+        print(f"bs: {bs}")
+        prepared = prepare_case(GPT_OSS_120B_CONFIG, bs, device=f"cuda:{torch.cuda.current_device()}", seed=0)
+        precision_config = make_precision_config(prepared)
+        out = make_output_buffer(prepared)
+
+        slice_size = prepared.ragged_metadata.expected_slice_size
+        block_ms = set()
+        block_ms.add(1<<slice_size.bit_length())
+        block_ms.add(1<<(slice_size.bit_length() - 1))
+        if slice_size in block_ms:
+            block_ms.add(slice_size//2)
+        block_ms = {min(max(16, bm), 128) for bm in block_ms}
+
+        block_ms = sorted(list(block_ms))
+        block_ms = [16, 32, 64, 128]
+        print(f"block_ms: {block_ms}")
+
+        for block_m in block_ms:
+            subtile_factor = {16:2, 32:4, 64:4, 128:8, 256:8}[block_m]
+            p = KernelConfig(BLOCK_M=block_m, SWIGLU_SUBTILE_FACTOR=subtile_factor)
+            x_smem = p.get_x_tile_smem()
+            w_smem = p.get_w_tile_smem() + p.get_w_mx_tile_smem()
+            c_smem = p.get_c_tile_smem(reduction_n=2) * p.EPILOGUE_BUFFER_DEPTH
+
+            test_p = KernelConfig(BLOCK_M=block_m, SWIGLU_SUBTILE_FACTOR=subtile_factor, X_NUM_BUFS=20, W_NUM_BUFS=20)
+            err = None
+            try:
+                matmul(prepared.x, prepared.w, prepared.bias, prepared.ragged_metadata, prepared.gather_indx, precision_config, out, prepared.fused_activation, test_p)
+            except triton.runtime.errors.OutOfResources as e:
+                err = e
+            assert err is not None
+            assert err.name == "shared memory"
+            actual_smem = err.required
+            estimate_smem = 20 * x_smem + 20 * w_smem + c_smem
+            assert estimate_smem < actual_smem
+            overhead_smem = actual_smem - estimate_smem
+            smem = err.limit - overhead_smem
+            print(f"{overhead_smem=}")
+
+
+            bufs = []
+            for w_num_bufs in range(3, 10):
+                ws = w_num_bufs * w_smem
+                used = smem - c_smem - ws
+                x_num_bufs = used // x_smem
+                if x_num_bufs < 3:
+                    break
+                bufs.append((x_num_bufs, w_num_bufs))
+            print(f"bufs: {bufs}")
+
+            for x_num_bufs, w_num_bufs in bufs:
+                p = replace(p, X_NUM_BUFS=x_num_bufs, W_NUM_BUFS=w_num_bufs)
+
+                def fn():
+                    matmul(prepared.x, prepared.w, prepared.bias, prepared.ragged_metadata, prepared.gather_indx, precision_config, out, prepared.fused_activation, p)
+
+                try:
+                    fn()
+                except triton.runtime.errors.OutOfResources as e:
+                    print(f"OutOfResources: {e}")
+                    continue
+
+
+                ms = do_bench_cudagraph(fn)
+                print(f"ms: {ms}")
+            print()
+            print()
