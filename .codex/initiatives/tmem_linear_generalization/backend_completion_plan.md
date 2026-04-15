@@ -539,12 +539,18 @@ Progress:
   64-column B-scale address stride reaches a misaligned scale address. The
   remaining support task is a real B-scale fragment representation below the
   current public 64-column scale layout, not another guard or selector tweak.
-- 2026-04-15 18:23 UTC: a broader temporary B-scale address/SFB-ID sweep for
+- 2026-04-15 18:17 UTC: a broader temporary B-scale address/SFB-ID sweep for
   repeated `N=32` confirmed the same boundary. Address/sub-ID formulas
   `wordaddr_nid` and `wordaddr_xor` compiled but stayed wrong; `kaddr_nid`,
   `kaddr_xor`, and `packed` faulted. The default guard lift again left only
   the first 32-column tile correct. A support path needs a fragment planner
   that models B-scale N/K sub-fragments explicitly.
+- 2026-04-15 18:20 UTC: factored scaled-MMAv5 scale operand addressing into
+  `MMAv5ScaleFactorFragment`, a behavior-preserving helper that returns a
+  TMEM column offset plus SFA/SFB sub-column ID for each MMA repetition. This
+  keeps all current semantics and diagnostics intact while replacing inline
+  arithmetic with the abstraction point needed for repeated-N32 B-scale
+  fragment modeling.
 - 2026-04-15 17:12 UTC: saturated the remaining supported plain-MMAv5 `N=32`
   M64 and TMEM-LHS matrices. M64 linear/root and subslice rows plus LHS
   tile/subslice rows are positive at `N=32`; the M64 legacy root remains on

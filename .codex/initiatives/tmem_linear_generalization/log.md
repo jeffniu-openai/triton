@@ -16744,7 +16744,7 @@ Open after this slice:
     `test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`:
     groups passed `4`, `4`, `4`, and `3` selected rows, `15` total.
 
-## 2026-04-15 18:23 UTC: repeated-N32 B-scale address/SFB-ID probe
+## 2026-04-15 18:17 UTC: repeated-N32 B-scale address/SFB-ID probe
 
 - Added a temporary env-gated probe, then removed it before this checkpoint:
   - verifier/lowering guard bypass for repeated-`N=32` scaled-MMAv5;
@@ -16777,3 +16777,36 @@ Open after this slice:
     `subWordIdx` SFB-ID formula. Future support needs a real fragment model
     that describes which N and K scale sub-fragments each MMAv5 instruction
     consumes.
+
+## 2026-04-15 18:20 UTC: scaled-MMAv5 scale-fragment helper
+
+- Factored scaled-MMAv5 scale operand addressing into
+  `MMAv5ScaleFactorFragment`.
+- Implementation:
+  - added a helper in `MMAv5.cpp` that derives a scale operand's TMEM column
+    offset and SFA/SFB sub-column ID from the non-K repetition, K repetition,
+    repetition counts, physical scale-column allocation, scale set width, and
+    the existing debug override env var;
+  - replaced the inline A-scale and B-scale arithmetic in `convertScaledDot`
+    with calls to that helper.
+- This is intentionally behavior-preserving:
+  - the B-scale minimum two-column block remains intact;
+  - existing `TRITON_MMAV5_SCALE_ID_MAP_A/B` debug override behavior remains
+    centralized through `overrideScaleFactorSubIdx(...)`;
+  - the repeated-N32 guard remains a clean negative until a real B-scale
+    fragment planner exists.
+- Validation:
+  - `make -j8`;
+  - repeated-N32 clean-negative selector split across four GPUs:
+    groups passed `3`, `3`, `3`, and `1` selected rows, `10` total;
+  - positive scaled-root row:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scalefrag-pos
+    PYTHONPATH=./python pytest -s --tb=short
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_root_format_matrix[mxfp8-mxfp8-128-128-linear]'`
+    passed `1` selected row;
+  - `git diff --check`.
+- Current conclusion:
+  - the lowering now has the right abstraction seam for the next support slice,
+    but support still requires a richer B-scale N/K fragment model rather than
+    changing scalar address or SFB-ID formulas.

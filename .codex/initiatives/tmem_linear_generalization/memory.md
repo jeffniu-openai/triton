@@ -1,6 +1,18 @@
 # TMEM Linear Generalization
 
-- Current repeated-N32 scaled-MMAv5 B-scale probe, 2026-04-15 18:23 UTC:
+- Current scaled-MMAv5 scale-fragment helper checkpoint, 2026-04-15 18:20 UTC:
+  scaled-MMAv5 lowering now has a behavior-preserving
+  `MMAv5ScaleFactorFragment` helper that computes each scale operand's TMEM
+  column offset and SFA/SFB sub-column ID from the non-K repetition, K
+  repetition, repetition counts, physical scale-column allocation, scale set
+  width, and the existing debug override env var. This preserves the current
+  supported schedule while creating a real seam for the future repeated-N32
+  B-scale fragment model. Validation after `make -j8`: the four-GPU split
+  repeated-N32 clean-negative selector passed all `10` selected rows, the
+  positive `mxfp8/mxfp8, M=N=128, K=128, linear` scaled-root row passed, and
+  `git diff --check` passed.
+
+- Current repeated-N32 scaled-MMAv5 B-scale probe, 2026-04-15 18:17 UTC:
   a temporary env-gated lowering sweep bypassed the repeated-`N=32` guard and
   tried candidate matrix-B scale address/SFB-ID formulas for
   `mxfp8/mxfp8, N=128, tile_n=32, K=128`. The default path still produced

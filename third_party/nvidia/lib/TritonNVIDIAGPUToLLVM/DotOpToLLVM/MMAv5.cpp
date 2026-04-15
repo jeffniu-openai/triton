@@ -788,6 +788,32 @@ int getScaleFactorColsPerSet(mxfpKind kind) {
   }
 };
 
+struct MMAv5ScaleFactorFragment {
+  int tmemColumnOffset;
+  int subColumnId;
+};
+
+static MMAv5ScaleFactorFragment
+getMMAv5ScaleFactorFragment(int nonKRep, int kRep, int numRepNonK,
+                            int numRepK, int numTMemScaleCols,
+                            int scaleFactorColsPerSet,
+                            int minColsPerScaleBlock,
+                            const char *subColumnOverrideEnv) {
+  int colsPerWord = 4 / scaleFactorColsPerSet;
+  int numColPerScaleBlock =
+      ceil<int>(numTMemScaleCols,
+                numRepNonK * (ceil<int>(numRepK, colsPerWord)));
+  numColPerScaleBlock = std::max(numColPerScaleBlock, minColsPerScaleBlock);
+
+  int subWordIdx = kRep % colsPerWord;
+  int wordIdx = kRep / colsPerWord;
+  return MMAv5ScaleFactorFragment{
+      /*tmemColumnOffset=*/(nonKRep + wordIdx * numRepNonK) *
+          numColPerScaleBlock,
+      /*subColumnId=*/overrideScaleFactorSubIdx(subColumnOverrideEnv,
+                                                subWordIdx)};
+}
+
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                                ConversionPatternRewriter &rewriter,
                                Location loc, ttng::TCGen5MMAScaledOp op,
@@ -855,28 +881,22 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                           int k) {
     auto [numRepM, numRepN, numRepK] = desc.repShape;
     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
-    int colsPerWord = 4 / scaleFactorColsPerSet;
-    int numColPerScaleBlockA = ceil<int>(
-        ttng::getTmemAllocSizes(aScaleTy).numCols,
-        numRepM * (ceil<int>(numRepK, colsPerWord)));
-    int numColPerScaleBlockB = ceil<int>(
-        ttng::getTmemAllocSizes(bScaleTy).numCols,
-        numRepN * (ceil<int>(numRepK, colsPerWord)));
-    numColPerScaleBlockB = std::max(numColPerScaleBlockB, 2);
-    int subWordIdx = k % colsPerWord;
-    int wordIdx = k / colsPerWord;
-    Value scaleA = tb.add(
-        baseScaleA, tb.i32_val((m + wordIdx * numRepM) * numColPerScaleBlockA));
-    Value scaleB = tb.add(
-        baseScaleB, tb.i32_val((n + wordIdx * numRepN) * numColPerScaleBlockB));
-    int scaleSubIdxA =
-        overrideScaleFactorSubIdx("TRITON_MMAV5_SCALE_ID_MAP_A", subWordIdx);
-    int scaleSubIdxB =
-        overrideScaleFactorSubIdx("TRITON_MMAV5_SCALE_ID_MAP_B", subWordIdx);
+    auto scaleAFragment = getMMAv5ScaleFactorFragment(
+        m, k, numRepM, numRepK, ttng::getTmemAllocSizes(aScaleTy).numCols,
+        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1,
+        "TRITON_MMAV5_SCALE_ID_MAP_A");
+    auto scaleBFragment = getMMAv5ScaleFactorFragment(
+        n, k, numRepN, numRepK, ttng::getTmemAllocSizes(bScaleTy).numCols,
+        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/2,
+        "TRITON_MMAV5_SCALE_ID_MAP_B");
+    Value scaleA =
+        tb.add(baseScaleA, tb.i32_val(scaleAFragment.tmemColumnOffset));
+    Value scaleB =
+        tb.add(baseScaleB, tb.i32_val(scaleBFragment.tmemColumnOffset));
     Value instDescriptor = createScaleInstDescriptor(
         rewriter, op, twoCTAs ? desc.mmaSizeM * 2 : desc.mmaSizeM,
-        desc.mmaSizeN, desc.transA, desc.transB, scaleSubIdxA, scaleSubIdxB,
-        mxfpInstKind);
+        desc.mmaSizeN, desc.transA, desc.transB, scaleAFragment.subColumnId,
+        scaleBFragment.subColumnId, mxfpInstKind);
     createScaledGen5MMA(rewriter, loc, op, a, b, accAddress, scaleA, scaleB,
                         pred, instDescriptor, useInitAcc, desc.aInTmem,
                         mxfpInstKind, twoCTAs);

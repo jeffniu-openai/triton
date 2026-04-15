@@ -44,7 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
-- 2026-04-15 18:23 UTC: repeated-`N=32` scaled-MMAv5 was re-probed with an
+- 2026-04-15 18:20 UTC: scaled-MMAv5 lowering now factors scale address and
+  SFA/SFB sub-column selection through a behavior-preserving
+  `MMAv5ScaleFactorFragment` helper. This does not relax the repeated-N32
+  guard; it creates the implementation seam needed for a real future B-scale
+  fragment planner. Validation after `make -j8`: repeated-N32 clean-negative
+  selector split across four GPUs passed all `10` selected rows, the positive
+  `mxfp8/mxfp8, M=N=128, K=128, linear` scaled-root row passed, and
+  `git diff --check` passed.
+- 2026-04-15 18:17 UTC: repeated-`N=32` scaled-MMAv5 was re-probed with an
   env-gated lowering sweep over B-scale address and SFB-ID formulas. The
   default guard-lift path again left only the first 32-column tile correct;
   `wordaddr_nid` and `wordaddr_xor` compiled but stayed numerically wrong,
