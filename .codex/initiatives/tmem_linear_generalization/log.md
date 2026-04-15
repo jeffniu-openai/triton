@@ -16101,3 +16101,38 @@ Open after this slice:
     reduction slice should decide whether the folded direct query is enough
     to derive a reduction source layout or whether `ld.red` has an independent
     ISA/atomization limit.
+
+## 2026-04-15 14:32 UTC: `ld.red` expanded-row column-permutation support
+
+- Promoted the remaining expanded-row column-permuted reduction boundary after
+  the folded direct query made the source store/load contract exact.
+- Probe result:
+  - removing only the `blockM == 256` canonical-column-order check from
+    `isReductionFriendlyTmemSourceLayout(...)` made both former clean-negative
+    rows compile and execute across all reduction modifiers;
+  - the failed pytest run reported `DID NOT RAISE` for every min/max,
+    abs/no-abs, and NaN/no-NaN variant, indicating the old diagnostic was the
+    only blocker;
+  - converting the rows to positives made the runtime oracle check the full
+    TMEM roundtrip output and the reduced min/max vector.
+- Implementation:
+  - the reduction-friendly source predicate now proves pure column bases as a
+    set for 256-row separable layouts, matching the folded direct-query model;
+  - removed the two expanded-row column-permuted clean-negative rows from the
+    unsupported table;
+  - added positive runtime coverage for `identity/reverse,N=64` and
+    `even_odd/even_odd,N=128` over `min`, `max`, abs, and NaN propagation.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=python CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-expanded-folded-ldred-final pytest -s --tb=short python/test/gluon/test_tmem_runtime_matrix.py -k "ldst_expanded_rowcol_permuted_linear_layout or ld_red_expanded_row_permuted_linear_layout or ld_red_expanded_rowcol_permuted_linear_layout"`
+    (`42 passed, 9874 deselected`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - Blackwell conversion FileCheck RUN;
+  - `python3 -m py_compile python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Remaining boundary:
+  - the 256-row f32 separable direct/reduction path is now positive for the
+    representative row and column permutations. Continue Phase 4 by looking
+    for remaining non-separable or subword `ld/st`/`ld.red` gaps, or return to
+    the copy planner frontiers if the reduction matrix no longer has a
+    support-bearing blocker.

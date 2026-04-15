@@ -438,6 +438,13 @@ Progress:
   avoids both wrong raw row-128 schedules and canonical fallback queries that
   would erase column order. `ld.red` still has an independent source-layout
   boundary for expanded-row column permutations.
+- 2026-04-15 14:32 UTC: promoted representative expanded-row
+  column-permuted `ld.red` sources using the folded direct-query semantics.
+  The source predicate now proves the 256-row separable column bases as a set
+  instead of requiring canonical order, and direct encoding validation remains
+  responsible for rejecting layouts the folded query cannot realize. Positive
+  runtime rows now cover `identity/reverse,N=64` and
+  `even_odd/even_odd,N=128` across min/max, abs, and NaN propagation.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current `ld.red` expanded-row column-permutation support,
+  2026-04-15 14:32 UTC: `tcgen05.ld.red` now accepts representative
+  256-row f32 `TensorMemoryLinearLayout` sources with non-canonical column
+  bases. After the direct `ld/st` folded-query fix, the reduction source
+  predicate no longer needs to require canonical column basis order for
+  `blockM == 256`; it proves pure column bases as a set and lets direct
+  load/store encoding validation decide whether the physical query is
+  realizable. The former clean-negative rows
+  `m256_col_reverse_256x64` and `m256_rowcol_even_odd_256x128` are now
+  positive runtime coverage over min/max, abs, and NaN propagation.
+  Validation passed: `make -j8`, focused expanded-row direct `ld/st` plus
+  row-only and row+column `ld.red` slice (`42 passed`), invalid verifier,
+  Blackwell conversion FileCheck, py-compile, and `git diff --check`.
+
 - Current direct `ld/st` expanded-row folded-query support,
   2026-04-15 14:26 UTC: expanded-row f32
   `TensorMemoryLinearLayout` direct load/store now supports separable 256-row

@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 14:32 UTC: `tcgen05.ld.red` now also covers the expanded-row
+  column-permuted f32 subset enabled by the folded direct query. The reduction
+  source predicate no longer requires canonical column basis order for
+  256-row pure separable layouts; it proves the column bases as a set and
+  relies on direct load/store encoding validation to reject any schedule the
+  folded query cannot realize. Runtime coverage promotes representative
+  `identity/reverse, N=64` and `even_odd/even_odd, N=128` reduction rows over
+  min/max, abs, and NaN propagation.
 - 2026-04-15 14:26 UTC: expanded-row f32
   `TensorMemoryLinearLayout` direct `tcgen05.ld/st` now supports separable
   256-row layouts with non-canonical column basis order. The temporary

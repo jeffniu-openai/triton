@@ -2930,7 +2930,7 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
     return false;
 
   SmallVector<int32_t> pureRowCarryBases;
-  SmallVector<int32_t> pureColBasesInOrder;
+  SmallVector<int32_t> pureColBases;
   for (unsigned idx = 0; idx < layout.getInDimSizeLog2(kCol); ++idx) {
     auto basis = layout.getBasis(kCol, idx);
     if (basis.size() != 2)
@@ -2940,15 +2940,13 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
       continue;
     }
     if (basis[0] == 0 && basis[1] != 0) {
-      pureColBasesInOrder.push_back(basis[1]);
+      pureColBases.push_back(basis[1]);
       continue;
     }
     return false;
   }
 
   llvm::sort(pureRowCarryBases);
-  SmallVector<int32_t> pureColBases(pureColBasesInOrder.begin(),
-                                    pureColBasesInOrder.end());
   llvm::sort(pureColBases);
 
   SmallVector<int32_t> expectedPureRowCarryBases;
@@ -2967,9 +2965,6 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
     return false;
   for (int64_t col = 1; col < n; col <<= 1)
     expectedPureColBases.push_back(static_cast<int32_t>(col));
-  if (blockM == 256 &&
-      !llvm::equal(pureColBasesInOrder, expectedPureColBases))
-    return false;
   return llvm::equal(pureColBases, expectedPureColBases);
 }
 
