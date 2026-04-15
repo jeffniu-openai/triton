@@ -218,9 +218,17 @@ Progress:
 - 2026-04-15 10:15 UTC: descriptor-synthesis failures now carry a generic
   copy-instruction column projection note. The scales descriptor-view row
   currently fails because source column bit 2 must map to shared offset 256
-  inside a 16-column copy atom; current scheduling cannot split that
+  instead of a contiguous sub-instruction offset that a single copy message
+  can carry inside a 16-column copy atom; current scheduling cannot split that
   sub-instruction source-column bit, so descriptor representability alone is
   not a support proof.
+- 2026-04-15 18:39 UTC: moved the two-CTA no-scales
+  `warpx2::02_13` boundary into the shared copy-plan realization layer. The
+  planner now returns the known cta-group::2 descriptor/address schedule gap
+  directly, and diagnostic attachment suppresses duplicate failure notes. This
+  keeps verifier and lowering aligned and avoids treating bounded descriptor
+  enumeration as a possible realization for a schedule already disproven by
+  direct-seed probes.
 - 2026-04-15 10:29 UTC: `tcgen05.cp.4x256b` is recognized but disabled as a
   clean unsupported family until the atomized planner derives a validated
   descriptor/address schedule. The previous four-row descriptor candidate

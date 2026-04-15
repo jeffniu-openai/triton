@@ -16896,3 +16896,35 @@ Open after this slice:
     `test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted[128-32-16]`
     passed;
   - `git diff --check`.
+
+## 2026-04-15 18:39 UTC: two-CTA warpx2::02_13 known schedule gap
+
+- Moved the two-CTA no-scales `tcgen05.copy.warpx2::02_13.64x128b`
+  boundary from a verifier-only addendum into shared copy-plan realization.
+- Implementation:
+  - added a planner-layer known-gap check for the 256x4, 32-bit,
+    cta-group::2 `warpx2::02_13` projection;
+  - kept the diagnostic wording that records the direct-seed probe evidence:
+    cta-group::2 direct seed emits the opcode but duplicates the low
+    source-column pair, while the aligned dword deltas that complete the
+    single-CTA schedule read zeros;
+  - removed the verifier-local special note and let
+    `attachTMemCopyPlanFailureNotes(...)` report the shared planner reason;
+  - deduplicated copy-plan failure notes so multiple fallback plans that hit
+    the same structured boundary do not produce repeated notes.
+- Semantics:
+  - no support promotion;
+  - the clean negative is now a descriptor/address schedule failure produced by
+    the same planner API used by verification and lowering;
+  - bounded descriptor candidate enumeration is skipped for this known
+    non-realized two-CTA schedule.
+- Validation:
+  - `make -j8`;
+  - direct invalid verifier RUN:
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - focused clean-negative selector
+    `-k 'cp_no_scales_warpx2_02_13_twocta'`: `14 passed`;
+  - positive two-CTA `warpx2::01_23` candidate selector: `2 passed`;
+  - `git diff --check`.

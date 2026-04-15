@@ -9610,3 +9610,21 @@ rejection, not rescue
   design rather than a guard lift or row-plan override.
 - Probe code was removed before this checkpoint; keep this as a clean negative
   unless that reduction-combine design is added.
+
+## Latest: 2026-04-15 18:39 UTC two-CTA warpx2::02_13 planner boundary
+
+- Two-CTA no-scales `tcgen05.copy.warpx2::02_13.64x128b` is now classified by
+  the shared copy planner as a known descriptor/address schedule gap.
+- This is not a support promotion. It replaces the verifier-local addendum
+  with a planner result that both verification and lowering consume.
+- Preserve the root-cause conclusion:
+  - exact and standalone destination queries are identical for the canonical
+    failing row;
+  - the source-to-destination projection is the intended `02_13` projection;
+  - the disproven routes are direct-seed cta-group::2 and descriptor-only
+    enumeration;
+  - support requires deriving a cta-group::2 schedule that preserves the high
+    source-column bit, not another bounded descriptor search.
+- Validation for the checkpoint: `make -j8`, direct invalid verifier RUN,
+  focused `cp_no_scales_warpx2_02_13_twocta` selector (`14 passed`), positive
+  two-CTA `warpx2::01_23` selector (`2 passed`), and `git diff --check`.

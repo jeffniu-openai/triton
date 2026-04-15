@@ -2295,3 +2295,12 @@ When resuming the initiative:
   than leaving that knowledge only in chat context.
 - Keep dated historical analyses in `log.md` and the dated handoff files
   instead of rewriting old reports in place.
+
+## Latest Checkpoint
+
+- 2026-04-15 18:39 UTC: two-CTA no-scales
+  `tcgen05.copy.warpx2::02_13.64x128b` is now rejected by the shared copy
+  planner as a known cta-group::2 descriptor/address schedule gap, rather than
+  by a verifier-only note after descriptor enumeration. See `memory.md`,
+  `log.md`, and `handoff_2026-04-09.md` for the exact validation and next
+  planner targets.

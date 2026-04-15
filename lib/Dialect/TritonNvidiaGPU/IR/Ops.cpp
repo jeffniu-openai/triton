@@ -1698,19 +1698,6 @@ LogicalResult TMEMCopyOp::verify() {
           << ", but Triton could not synthesize a compatible shared-memory "
              "descriptor plan for it.";
       attachTMemCopyPlanFailureNotes(diag, planSelection);
-      if (copyPlans.front().family == TMemCopyFamily::Warpx2_02_13_64x128b &&
-          srcTy.getRank() == 2 && srcTy.getShape()[0] == 256) {
-        diag.attachNote()
-            << "The two-CTA warpx2::02_13 path remains unsupported until "
-               "Triton can synthesize a cta_group::2 descriptor/address "
-               "schedule that preserves the high source-column bit; "
-               "direct-seed cta_group::2 probes emit the opcode but "
-               "duplicate the low source-column pair, while the aligned dword "
-               "deltas that complete the single-CTA schedule read zeros under "
-               "cta_group::2. Decomposing this tensor-memory view into "
-               "cta_group::1 copies is not valid because two-CTA TMEM "
-               "allocation uses cta_group::2 granularity.";
-      }
       diag.attachNote()
           << "Use the canonical shared layout for tcgen05.copy." << family
           << ", or reshape / permute the shared tile until it lowers to the "

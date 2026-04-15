@@ -8282,10 +8282,14 @@ TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
 void attachTMemCopyPlanFailureNotes(InFlightDiagnostic &diag,
                                     const TMemCopyPlanSelection &selection) {
   bool attached = false;
+  SmallVector<std::string> attachedMessages;
   for (const TMemCopySupportResult &failure : selection.failures) {
     if (failure.message.empty())
       continue;
+    if (llvm::is_contained(attachedMessages, failure.message))
+      continue;
     diag.attachNote() << failure.message;
+    attachedMessages.push_back(failure.message);
     attached = true;
   }
   if (!attached && selection.firstFailure &&
@@ -8340,6 +8344,32 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   seedImm |= 1ULL << 46;
   seedImm |= 8ULL << 32;
   return seedImm;
+}
+
+static std::optional<TMemCopySupportResult>
+getKnownTMemCopyScheduleGap(MemDescType srcTy, const LinearLayout &cvt,
+                            const TMemCopyPlan &plan, int bitwidth) {
+  if (plan.family != TMemCopyFamily::Warpx2_02_13_64x128b)
+    return std::nullopt;
+  if (bitwidth != 32 || srcTy.getRank() != 2 || srcTy.getShape()[0] != 256 ||
+      srcTy.getShape()[1] != 4)
+    return std::nullopt;
+
+  auto *ctx = srcTy.getContext();
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!cvt.hasInDim(kBlock) || cvt.getInDimSize(kBlock) != 2)
+    return std::nullopt;
+
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::DescriptorSynthesis,
+      "The two-CTA warpx2::02_13 path remains unsupported until Triton can "
+      "synthesize a cta_group::2 descriptor/address schedule that preserves "
+      "the high source-column bit; direct-seed cta_group::2 probes emit the "
+      "opcode but duplicate the low source-column pair, while the aligned "
+      "dword deltas that complete the single-CTA schedule read zeros under "
+      "cta_group::2. Decomposing this tensor-memory view into cta_group::1 "
+      "copies is not valid because two-CTA TMEM allocation uses cta_group::2 "
+      "granularity.");
 }
 
 llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
@@ -8903,6 +8933,8 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
                 "load/store contract are represented explicitly in the "
                 "linear-layout planner.")};
   }
+  if (auto knownGap = getKnownTMemCopyScheduleGap(srcTy, cvt, plan, bitwidth))
+    return {std::nullopt, *knownGap};
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;
     scheduledMessage.plan = message;
