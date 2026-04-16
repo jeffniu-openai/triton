@@ -9477,6 +9477,39 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
   return os.str();
 }
 
+static std::optional<TMemCopySupportResult>
+getTMemCopyDescriptorRowSplitScheduleSupport(
+    TMemCopyFamily family, unsigned messageIdx,
+    const TMemCopyInstructionColumnProjectionFailure &failure,
+    StringRef instructionProjectionError) {
+  auto splitRequirement = getTMemCopyDescriptorRowSplitRequirement(failure);
+  if (!splitRequirement)
+    return std::nullopt;
+
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "tcgen05.copy." << stringifyTMemCopyFamily(family)
+     << " descriptor message " << messageIdx
+     << " has an unsupported instruction-column projection. "
+     << instructionProjectionError;
+  if (splitRequirement->selectedColumnRun > 0 &&
+      splitRequirement->selectedColumnRun <
+          splitRequirement->instructionColumns) {
+    os << " The derived descriptor-row split would need to update only "
+       << splitRequirement->selectedColumnRun << " of every "
+       << splitRequirement->columnSelectionPeriod
+       << " destination columns, but this copy atom writes the full "
+       << splitRequirement->instructionColumns
+       << "-column destination footprint for each descriptor row. A schedule "
+          "with separate descriptor rows for the split would therefore "
+          "overwrite columns owned by the complementary descriptor row unless "
+          "the ISA provides a narrower atom, source format, or destination "
+          "column mask.";
+  }
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
+}
+
 static std::optional<TMemCopyPackedLaneProjection>
 getTMemCopyPackedLaneProjectionPlan(const LinearLayout &descriptorCvt,
                                     StringAttr colDim, StringAttr offsetDim,
@@ -9776,6 +9809,10 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
                               ->physicalInstructionColumns;
         llvm::errs() << "\n";
       }
+      if (auto splitSupport = getTMemCopyDescriptorRowSplitScheduleSupport(
+              plan.family, messageIdx, instructionProjectionFailure,
+              instructionProjectionError))
+        return {std::nullopt, *splitSupport};
       std::string reason;
       llvm::raw_string_ostream os(reason);
       os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)

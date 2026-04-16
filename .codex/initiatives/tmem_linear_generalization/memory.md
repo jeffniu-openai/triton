@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current descriptor-row split schedule proof, 2026-04-16 01:55 UTC:
+  the copy planner now consumes the typed descriptor-row split requirement
+  when instruction-column projection fails. If the selected destination-column
+  run is narrower than the copy instruction footprint, it returns a dedicated
+  instruction-schedule failure explaining that separate descriptor-row
+  messages would overwrite the complementary columns because public
+  `tcgen05.copy` writes the full destination footprint for each descriptor
+  row. For the scales descriptor-view/subslice class this proves the public
+  `warpx4.32x128b` atom needs a narrower atom, source format, or destination
+  column mask before it can be promoted. Validation passed: `make -j8`,
+  direct `invalid.mlir` verifier, focused scales copy selector (`9 passed,
+  10979 deselected`), py-compile, and `git diff --check`.
+
 - Current descriptor-row split API checkpoint, 2026-04-16 01:52 UTC:
   `getTMemCopyDescriptorRowSplitRequirement(...)` is now a shared utility
   declared in `TensorMemoryUtils.h` instead of a formatter-private helper.

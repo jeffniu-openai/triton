@@ -69,6 +69,35 @@
     (`1 passed`);
   - `git diff --check`.
 
+## 2026-04-16 01:55 UTC: descriptor-row split schedule proof
+
+- Added a scheduler-layer support check for descriptor-row split
+  requirements.
+- When an instruction-column failure carries a descriptor-row split and the
+  selected destination-column run is narrower than the instruction footprint,
+  the planner now returns a dedicated instruction-schedule failure. The
+  failure explains that using separate descriptor rows for the split would
+  overwrite columns owned by the complementary descriptor row because public
+  `tcgen05.copy` writes the full destination footprint for each descriptor
+  row.
+- This does not promote the scales descriptor-view/subslice copies. It proves
+  their current `warpx4.32x128b` path needs a narrower atom, source format, or
+  destination column mask before support can be correct.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-row-split-proof
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout or
+    cp_scales_layout_probe'`
+    (`9 passed, 10979 deselected in 3.67s`);
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-16 00:04 UTC: invalid.mlir copy diagnostic refresh
 
 - Updated `test/TritonNvidiaGPU/invalid.mlir` expected notes for:

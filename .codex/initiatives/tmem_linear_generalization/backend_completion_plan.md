@@ -340,6 +340,14 @@ Progress:
   `getTMemCopyDescriptorRowSplitRequirement(...)` as shared planner API and
   added query-debug output for the derived selected-column run and period.
   Future split scheduling should consume this helper directly.
+- 2026-04-16 01:55 UTC: the shared descriptor-row split requirement now feeds
+  a schedule-proof support check. When the selected destination-column run is
+  narrower than the instruction footprint, the planner reports that separate
+  descriptor-row messages would overwrite the complementary columns because
+  the public copy atom writes the full destination footprint for each
+  descriptor row. This classifies the scales descriptor-view/subslice copy
+  gap as a masked/narrow-atom/source-format ISA boundary under current public
+  `warpx4.32x128b`, not a descriptor synthesis gap.
 - 2026-04-15 23:08 UTC: factored copy destination-to-source conversion into
   `getTMemCopySourceConversion(...)` and routed both `TMEMCopyOp::verify()`
   and `TensorMemoryToLLVM.cpp` through it. This does not change support, but
