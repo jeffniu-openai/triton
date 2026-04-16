@@ -721,6 +721,31 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-16 05:30 UTC: dense copy row-order failure made concrete
+
+- Starting point: `codex/tmem` at `c32af1e42`.
+- Change:
+  - added a small structured row-basis step helper for dense copy
+    row-projection support;
+  - the row-order diagnostic now reports the first logical row or
+    row-repetition bit whose physical row basis is not ascending;
+  - the row/column-permuted copy clean-negative test pins the new
+    `first non-ascending basis` text for non-identity row permutations.
+- Intent:
+  - keep dense row-permuted copies as clean instruction-schedule negatives;
+  - make the missing source-row rematerialization input explicit for the next
+    row-mask / row-partition planner attempt.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-row-order-diag
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`
+    (`15 passed`);
+  - `git diff --check`.
+
 ## 2026-04-16 05:27 UTC: lifted row-half diagnostic centralized
 
 - Starting point: `codex/tmem` at `c5c5c3606`.

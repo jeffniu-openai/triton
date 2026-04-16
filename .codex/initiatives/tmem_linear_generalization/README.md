@@ -44,6 +44,11 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 05:30 UTC: dense copy row-order clean negatives now report the
+  first row or row-repetition basis that breaks ascending physical row order.
+  This keeps the unsupported decision at the instruction-schedule layer while
+  exposing the exact source-row rematerialization input a future row-mask /
+  row-partition planner would need.
 - 2026-04-16 05:27 UTC: the lifted row-half direct `ld/st` clean-negative
   diagnostic is now centralized in the backend and records the actual planner
   boundary from the latest probe. The message states that support-query layout

@@ -7998,16 +7998,6 @@ static bool basisEquals(ArrayRef<int32_t> basis,
   return llvm::equal(basis, ArrayRef<int32_t>(expected));
 }
 
-static bool isStrictlyIncreasing(ArrayRef<int32_t> values) {
-  if (values.size() < 2)
-    return true;
-  for (auto [lhs, rhs] : llvm::zip(values, values.drop_front())) {
-    if (rhs <= lhs)
-      return false;
-  }
-  return true;
-}
-
 static bool isPureOffsetBasis(const LinearLayout &layout, StringAttr dim,
                               unsigned bit, StringAttr offsetDim,
                               int32_t expectedOffset) {
@@ -8589,34 +8579,67 @@ static TMemCopySupportResult getTMemCopyDestinationFootprintSupport(
   return getSupportedTMemCopyResult();
 }
 
+struct DenseTMemCopyRowBasisStep {
+  unsigned bit = 0;
+  int32_t physicalRow = 0;
+};
+
+static std::optional<unsigned> findFirstNonAscendingRowBasis(
+    ArrayRef<DenseTMemCopyRowBasisStep> steps) {
+  if (steps.size() < 2)
+    return std::nullopt;
+  for (unsigned idx = 1; idx < steps.size(); ++idx) {
+    if (steps[idx].physicalRow <= steps[idx - 1].physicalRow)
+      return idx;
+  }
+  return std::nullopt;
+}
+
+static TMemCopySupportResult getDenseTMemCopyRowOrderFailure(
+    ArrayRef<DenseTMemCopyRowBasisStep> steps, StringRef basisKind) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "direct tcgen05.copy requires TMEM " << basisKind
+     << " to stay in ascending physical row order until the planner can "
+        "derive an explicit source-row projection schedule with a "
+        "destination-row mask, row-partitioned atom, or equivalent smaller "
+        "copy footprint for row-permuted destinations.";
+  if (auto offendingIdx = findFirstNonAscendingRowBasis(steps)) {
+    const auto &previous = steps[*offendingIdx - 1];
+    const auto &current = steps[*offendingIdx];
+    os << " The first non-ascending basis is bit " << current.bit
+       << " mapping to physical row " << current.physicalRow
+       << " after bit " << previous.bit << " mapped to physical row "
+       << previous.physicalRow << ".";
+  }
+  os << " Current dense copy atoms write the full physical row footprint in "
+        "basis order.";
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
+}
+
 static TMemCopySupportResult
 getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
 
-  SmallVector<int32_t> rowBasisValues;
-  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kRow)) {
+  SmallVector<DenseTMemCopyRowBasisStep> rowBasisValues;
+  for (auto [idx, basis] : llvm::enumerate(ll.getBases().lookup(kRow))) {
     if (basis[0] == 0 || basis[1] != 0) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,
           "direct tcgen05.copy does not support TMEM row bases that mix row "
           "and column contributions.");
     }
-    rowBasisValues.push_back(std::abs(basis[0]));
+    rowBasisValues.push_back(
+        DenseTMemCopyRowBasisStep{static_cast<unsigned>(idx),
+                                  std::abs(basis[0])});
   }
-  if (!isStrictlyIncreasing(rowBasisValues)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::InstructionSchedule,
-        "direct tcgen05.copy requires TMEM row bases to stay in "
-        "ascending physical row order until the planner can derive an "
-        "explicit source-row projection schedule with a destination-row mask, "
-        "row-partitioned atom, or equivalent smaller copy footprint for "
-        "row-permuted destinations. Current dense copy atoms write the full "
-        "physical row footprint in basis order.");
-  }
+  if (findFirstNonAscendingRowBasis(rowBasisValues))
+    return getDenseTMemCopyRowOrderFailure(rowBasisValues, "row bases");
 
-  SmallVector<int32_t> rowRepetitionBasisValues;
-  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
+  SmallVector<DenseTMemCopyRowBasisStep> rowRepetitionBasisValues;
+  for (auto [idx, basis] : llvm::enumerate(ll.getBases().lookup(kCol))) {
     bool touchesRow = basis[0] != 0;
     bool touchesCol = basis[1] != 0;
     if (touchesRow && touchesCol) {
@@ -8626,18 +8649,14 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
           "mix row and column contributions.");
     }
     if (touchesRow && !touchesCol)
-      rowRepetitionBasisValues.push_back(std::abs(basis[0]));
+      rowRepetitionBasisValues.push_back(
+          DenseTMemCopyRowBasisStep{static_cast<unsigned>(idx),
+                                    std::abs(basis[0])});
   }
-  if (!isStrictlyIncreasing(rowRepetitionBasisValues)) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::InstructionSchedule,
-        "direct tcgen05.copy requires TMEM row-repetition bases stored "
-        "in the column address space to remain in ascending row order until "
-        "the planner can derive an explicit source-row projection schedule "
-        "with a destination-row mask, row-partitioned atom, or equivalent "
-        "smaller copy footprint for row-permuted destinations. Current dense "
-        "copy atoms write the full physical row footprint in basis order.");
-  }
+  if (findFirstNonAscendingRowBasis(rowRepetitionBasisValues))
+    return getDenseTMemCopyRowOrderFailure(
+        rowRepetitionBasisValues,
+        "row-repetition bases stored in the column address space");
   return getSupportedTMemCopyResult();
 }
 

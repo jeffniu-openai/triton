@@ -1,5 +1,11 @@
 # TMEM Linear Generalization
 
+- Current dense copy source-row diagnostic checkpoint, 2026-04-16 05:30 UTC:
+  dense row-order copy failures now carry the first non-ascending physical row
+  basis in the diagnostic. This does not promote row-permuted copies; it makes
+  the schedule proof more concrete by exposing the row/rematerialization fact
+  a future row-mask, row-partition, or smaller-footprint planner would need.
+
 - Current lifted row-half diagnostic checkpoint, 2026-04-16 05:27 UTC:
   `isUnsupportedDirectTMemLdStDescriptorView(...)` now uses one shared
   backend diagnostic for lifted row-half direct `ld/st` views. The wording is
