@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current exact `32x32` descriptor-view row-plan probe, 2026-04-16 01:04 UTC:
+  temporarily adding a 32-row `ld/st` query plan and preferring it for exact
+  f32 `32x32` subviews is not a support answer. The probe moved the identity
+  multidim-slice case past the row-plan guard but then failed during
+  `GluonInline` verification: `MemDescSubsliceOp` inferred the active
+  `1x32x1x32` view with the rank-4 original reshape layout, while the IR held
+  the already squeezed rank-3 layout. The temporary source edit was removed.
+  Treat this as evidence that exact canonical `32x32` descriptor-view support
+  needs two pieces before any promotion: active-subview type inference must be
+  consistent across creation and verifier inference, and the `ld/st` planner
+  still needs a proved packet/row-anchor rematerialization model. Validation
+  after cleanup passed: `make -j8` and the exact identity descriptor row (`1
+  passed, 10987 deselected`).
+
 - Current descriptor-view reshape checkpoint, 2026-04-16 00:57 UTC:
   reshaping an active TMEM descriptor view no longer requires the active shape
   to cover the full backing allocation image. The reshape/query inference path

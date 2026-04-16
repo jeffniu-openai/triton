@@ -18275,3 +18275,31 @@ Open after this slice:
   - `PYTHONPATH=./python python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-16 01:04 UTC: exact 32-row descriptor-view probe removed
+
+- Temporarily added a 32-row `ld/st` query plan and preferred it for exact f32
+  `32x32` descriptor subviews to test whether the current identity
+  multidim-slice negative was only a stale row-plan guard.
+- Result:
+  - the case advanced far enough to construct the full IR, then failed
+    `GluonInline` verification;
+  - the verifier expected the intermediate `1x32x1x32` `memdesc_subslice` to
+    retain the rank-4 original reshape layout, while the IR carried the
+    squeezed rank-3 layout already produced by frontend construction;
+  - this is not a correct support path for direct `32x32` descriptor-view
+    `ld/st`.
+- Interpretation:
+  - exact canonical `32x32` descriptor-view support still needs consistent
+    active-subview type inference and a packet/row-anchor rematerialization
+    model;
+  - do not reintroduce the 32-row query-plan lift as a standalone fix.
+- Cleanup and validation:
+  - removed the temporary source probe;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-multidim-identity-restored
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slice_identity'`
+    (`1 passed, 10987 deselected`).

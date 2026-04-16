@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 01:04 UTC: re-probed the exact canonical `32x32` descriptor-view
+  `ld/st` boundary by temporarily adding a 32-row query plan. The probe was
+  removed: it got past the previous row-plan gate but exposed an intermediate
+  `memdesc_subslice` verifier mismatch between rank-4 active-view inference
+  and the rank-3 squeezed type already materialized by IR construction. This
+  confirms the current row is still a clean unsupported direct-ISA boundary,
+  not a row-plan guard to lift. Future support needs both consistent active
+  subview type inference and a proven packet/row-anchor rematerialization
+  model. Validation after cleanup: `make -j8`, exact identity descriptor row
+  (`1 passed`), and a clean worktree before this docs checkpoint.
 - 2026-04-16 00:57 UTC: descriptor-view reshape inference now strips leading
   unit dimensions by layout rank instead of requiring the active view to cover
   the full backing image, and trims only trailing zero bases when the reshaped

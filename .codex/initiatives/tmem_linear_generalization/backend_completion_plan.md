@@ -829,6 +829,12 @@ Progress:
   identity `[1,32,1,32] -> [32,32]` slice chain. It does not promote that row:
   after exact view inference succeeds, the planner correctly reports the real
   direct `tcgen05.ld/st` row-anchor boundary for the canonical `32x32` subview.
+- 2026-04-16 01:04 UTC: a temporary 32-row `ld/st` query-plan lift for the
+  same exact `32x32` descriptor-view row was removed. It exposed a deeper
+  active-subview type-inference mismatch in intermediate `memdesc_subslice`
+  verification instead of proving support. Keep this row as a clean
+  row-anchor/rematerialization boundary until active-view inference and packet
+  scheduling are both modeled algebraically.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate
