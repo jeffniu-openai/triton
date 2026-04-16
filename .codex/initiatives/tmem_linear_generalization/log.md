@@ -19802,3 +19802,50 @@ Open after this slice:
   - finish hygiene, commit, and push this small correction checkpoint;
   - a true follow-up must move the noncanonical M64 split-N derivation into
     the backend helper rather than deleting the fallback prematurely.
+
+## 2026-04-16 10:38 UTC: noncanonical M64 split-N reduction moved into backend bridge
+
+- Starting point: `codex/tmem` at `35beb0bbc`.
+- Failed intermediate probes before this slice:
+  - returning the direct-compatible layout from the reduction helper did not
+    fix row-reverse M64;
+  - synthesizing a raw-layout `I16x32bx2` helper in `Dialect.cpp` did not
+    solve the row-permuted explicit path;
+  - applying the canonical split-N fallback to already-canonical M64 rows
+    regressed column-only M64 permutations by changing packetization/offsets.
+- Change:
+  - taught `compute_tmem_reduce_reg_layout_from_memdesc(...)` to derive the
+    canonical M64 split-N register layout when the exact raw query describes
+    rank-2 M64 f32 non-scales TMEM with noncanonical row bases;
+  - kept a canonical-row guard so column-only permutations continue on the
+    existing backend route;
+  - removed the Python explicit-`32x32b` fallback to
+    `_try_handle_aware_m64_splitn_auto_layout(...)`.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-bridge-trimmed-focused
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ld_red_m64_rowcol_permuted_default_layout or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn'`
+    (`9 passed, 11124 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-bridge-trimmed-full-m64
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`73 passed, 11060 deselected`);
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `rg -n
+    "TRITON_DEBUG_TMEM_REDUCE_LAYOUT|debugReduce|tmem-reduce"
+    python/src/gluon_ir.cc lib/Dialect/TritonNvidiaGPU/IR/Dialect.cpp
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`
+    (no matches);
+  - `git diff --check`.
+- Next:
+  - commit and push this backend-ownership checkpoint;
+  - continue with the next support-bearing TMEM backend slice. Good candidates
+    remain copy source-message scheduling, destination masks, the no-scales
+    two-CTA `warpx2::02_13` descriptor/address schedule, and exact
+    packet-order equivalence for broader reduction overrides.

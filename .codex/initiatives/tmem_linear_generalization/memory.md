@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current backend-owned explicit-M64 reduction checkpoint, 2026-04-16
+  10:38 UTC: the noncanonical M64 explicit-`32x32b` reduction rescue is now in
+  `compute_tmem_reduce_reg_layout_from_memdesc(...)`, not in the Python
+  frontend fallback. The bridge uses the exact raw memdesc query to recognize
+  rank-2 M64 f32 non-scales descriptors whose row bases are not already the
+  canonical M64 split-N row pattern; for those cases it derives
+  `getCanonicalM64SplitNLayout(...)`, validates the result with
+  `isReductionFriendlyTmemLoadLayout(...)`, and returns it to `_load_red`.
+  `_try_m64_reduction_layout_for_explicit_32x32b(...)` now trusts the backend
+  answer and returns `None` if the bridge cannot prove a layout. The
+  canonical-row guard is important: without it, column-only M64 permutations
+  regress to different packetization/offsets. Validation: `make -j8`, focused
+  M64 row/column-permuted selector (`9 passed, 11124 deselected`), full
+  `ld_red_m64` selector (`73 passed, 11060 deselected`), py-compile of
+  `blackwell/__init__.py`, no debug hooks, and `git diff --check`.
+
 - Current explicit-M64 reduction fallback boundary, 2026-04-16 10:12 UTC:
   a follow-up probe removed the explicit-`32x32b` M64 fallback from
   `_try_m64_reduction_layout_for_explicit_32x32b(...)`; full `ld_red_m64`

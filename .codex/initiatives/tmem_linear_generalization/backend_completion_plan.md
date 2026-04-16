@@ -1004,6 +1004,13 @@ Progress:
   returns no layout; otherwise they select scalar `.x1` reduction packets.
   This pins the next Phase 4 cleanup target: teach the backend reduction
   helper to derive those noncanonical M64 split-N layouts directly.
+- 2026-04-16 10:38 UTC: completed that Phase 4 cleanup target for the current
+  M64 row/column-permuted reduction matrix. The C++ memdesc reduction bridge
+  now recognizes exact raw rank-2 M64 f32 non-scales queries with
+  noncanonical row bases, derives the canonical M64 split-N layout, and
+  validates it before returning it to `_load_red`. The explicit Python helper
+  no longer falls back to the frontend split-N planner. A canonical-row guard
+  preserves the existing column-only M64 path and its packet offsets.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

@@ -2,10 +2,11 @@
 #include "pybind11/pybind11.h"
 #include <pybind11/stl.h>
 
-#include <optional>
-#include <stdexcept>
+#include <array>
 #include <cstdlib>
 #include <numeric>
+#include <optional>
+#include <stdexcept>
 
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -2505,6 +2506,7 @@ void init_gluon_ir(py::module &&m) {
         auto shape = llvm::to_vector(memDescTy.getShape());
         auto elementType = memDescTy.getElementType();
         auto tensorTy = RankedTensorType::get(shape, elementType);
+        auto ctx = memDesc.getContext();
         if (!ttng::isReductionFriendlyTmemSourceLayout(memDescTy))
           return py::none();
         std::optional<ttng::TMemLdStQueryLayout> rawQueryLayout;
@@ -2551,11 +2553,51 @@ void init_gluon_ir(py::module &&m) {
                     regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
                     queryRowPlan));
               };
+          auto tryRawQueryCompatibleM64Layout = [&]() -> py::object {
+            if (!rawQueryLayout || memDescTy.getRank() != 2 ||
+                memDescTy.getShape()[0] != 64 ||
+                memDescTy.getElementTypeBitWidth() != 32 ||
+                isa<ttng::TensorMemoryScalesEncodingAttr>(
+                    memDescTy.getEncoding())) {
+              return py::none();
+            }
+            auto hasCanonicalM64SplitNRows = [&]() {
+              auto *ctx = memDesc.getContext();
+              auto kRow = StringAttr::get(ctx, "row");
+              const auto &layout = rawQueryLayout->layout;
+              if (!layout.hasInDim(kRow) || layout.getInDimSize(kRow) != 128)
+                return false;
+              constexpr std::array<int32_t, 7> expectedRows = {
+                  1, 2, 4, 8, 0, 16, 32};
+              if (layout.getInDimSizeLog2(kRow) != expectedRows.size())
+                return false;
+              for (auto [idx, expected] : llvm::enumerate(expectedRows)) {
+                auto basis = layout.getBasis(kRow, idx);
+                if (basis.size() != 2 || basis[0] != expected ||
+                    basis[1] != 0)
+                  return false;
+              }
+              return true;
+            };
+            if (hasCanonicalM64SplitNRows())
+              return py::none();
+            if (auto canonical =
+                    ttng::getCanonicalM64SplitNLayout(queryTy, numWarps)) {
+              auto attr =
+                  ttg::LinearEncodingAttr::get(ctx, std::move(*canonical));
+              auto regTy = RankedTensorType::get(shape, elementType, attr);
+              if (ttng::isReductionFriendlyTmemLoadLayout(
+                      tensorTy, ttg::toLinearLayout(regTy))) {
+                return layoutToGluon(attr);
+              }
+            }
+            return py::none();
+          };
 
           auto maybeLayout =
               ttng::getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);
           if (!maybeLayout)
-            return py::none();
+            return tryRawQueryCompatibleM64Layout();
 
           if (!layoutIsReductionCompatible(*maybeLayout))
             return py::none();

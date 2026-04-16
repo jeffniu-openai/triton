@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 10:38 UTC: the explicit-`32x32b` M64 reduction fallback has been
+  moved into the C++ memdesc reduction bridge. When the raw exact query is an
+  M64 f32 non-scales view with noncanonical row bases, the bridge now derives
+  the canonical M64 split-N register layout, validates it against the exact
+  reduction message predicate, and returns it to `_load_red`; the Python
+  explicit-layout helper no longer falls back to the frontend split-N planner.
+  A canonical-row guard keeps column-only M64 permutations on the existing
+  backend path so packet offsets stay stable. Validation: `make -j8`,
+  focused row/column-permuted M64 selector (`9 passed`), full `ld_red_m64`
+  selector (`73 passed`), py-compile, and `git diff --check`.
 - 2026-04-16 10:12 UTC: the explicit-`32x32b` M64 reduction fallback is still
   required. A follow-up removal probe failed six row/column-permuted M64
   default/explicit rows with scalar `.x1` reduction packets, so the fallback
