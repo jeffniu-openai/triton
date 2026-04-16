@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current packed-lane raw-dword descriptor probe, 2026-04-16 00:39 UTC:
+  attempted the obvious support path enabled by `TMemCopyPackedLaneProjection`:
+  drop the hidden lane bases from the descriptor projection, schedule physical
+  source columns, shift scheduled source columns by the lane count, and build
+  the shared descriptor as raw 32-bit dword columns while keeping the logical
+  subword copy atom. The temporary edit built, but the legacy f16 row still
+  failed before lowering because no MMAv5 shared-memory descriptor represented
+  the raw-dword projection of the actual f16 `NVMMASharedLayout`. Debug showed
+  descriptor shapes `[32,8]`, `[64,8]`, `[32,4]`, and `[64,4]` with
+  `descriptorBitwidth=32`, all rejected. The temporary source edit was removed
+  and the worktree returned to the pushed `45946a3a2` carrier state. Do not
+  retry "drop lane bases + raw dword descriptor" as the packed-lane support
+  answer; the missing model must preserve the packed source storage semantics
+  through descriptor synthesis.
+
 - Current packed-lane projection checkpoint, 2026-04-16 00:32 UTC:
   legacy subword `tcgen05.copy` still remains a clean unsupported schedule
   boundary, but the planner now preserves the support-relevant fact instead of

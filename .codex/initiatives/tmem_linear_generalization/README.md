@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:39 UTC: probed the first support path using the packed-lane
+  carrier, then removed the temporary source edits. The attempted schedule
+  dropped packed lane bases from the descriptor view, used physical source
+  widths, shifted source columns, and tried a raw 32-bit MMAShared descriptor.
+  It got past the packed-lane preflight but failed descriptor synthesis for
+  the actual f16 shared layout: the raw-dword projection is not
+  MMAShared-representable. The source tree is restored to the pushed
+  `45946a3a2` carrier state. Next packed-lane work needs a descriptor/storage
+  model that can preserve the packed source layout, not only a raw dword
+  descriptor projection.
 - 2026-04-16 00:32 UTC: packed subword copy failures now carry a structured
   physical dword-column projection. Legacy subword `TensorMemoryLayout`
   copies still remain clean unsupported, but the instruction-column planner

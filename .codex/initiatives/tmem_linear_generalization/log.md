@@ -18008,6 +18008,30 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-16 00:39 UTC: packed-lane raw-dword descriptor probe removed
+
+- Temporary support attempt:
+  - let packed-lane projections pass instruction-column planning;
+  - dropped packed lane bases from the descriptor conversion;
+  - used physical source-column widths and shifted source tile columns;
+  - built the MMAShared descriptor with `descriptorBitwidth=32`.
+- Result:
+  - the edit built with `make -j8`;
+  - the legacy subword clean-negative test no longer hit the packed-lane
+    diagnostic, but still failed before lowering;
+  - `TRITON_DEBUG_TMEM_QUERY=1` on the legacy f16 row showed raw descriptor
+    shapes `[32,8]`, `[64,8]`, `[32,4]`, and `[64,4]` with
+    `descriptorBitwidth=32`, all with no representable MMAv5 shared-memory
+    descriptor for the actual f16 shared layout.
+- Conclusion:
+  - the raw 32-bit descriptor projection is not the support path;
+  - packed-lane support still needs descriptor/storage semantics that preserve
+    the packed source layout rather than projecting lane bases away.
+- Cleanup:
+  - removed the temporary source edits;
+  - `git diff --check` and `git status --short` are clean at pushed
+    `45946a3a2`.
+
 ## 2026-04-16 00:32 UTC: packed-lane physical projection carrier
 
 - Added `TMemCopyPackedLaneProjection` and attached it to packed-lane

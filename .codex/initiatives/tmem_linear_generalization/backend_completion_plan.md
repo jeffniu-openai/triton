@@ -405,6 +405,13 @@ Progress:
   (`laneBits`, `lanesPerDword`, `physicalInstructionColumns`, and physical
   offset steps) instead of reducing legacy subword copy to a diagnostic-only
   zero-offset column bit.
+- 2026-04-16 00:39 UTC: a temporary raw-dword descriptor support attempt was
+  removed. The candidate used the packed-lane carrier to drop hidden lane
+  bases, schedule physical source columns, and synthesize a 32-bit MMAShared
+  descriptor. It built, but the actual f16 shared layout had no representable
+  MMAv5 descriptor for those raw-dword shapes. This rules out the simple
+  "drop lanes + raw descriptor" path; support needs a packed source-storage
+  descriptor model or must remain a clean ISA/layout boundary.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
