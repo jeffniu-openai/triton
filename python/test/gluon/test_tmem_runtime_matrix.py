@@ -724,13 +724,17 @@ def _expected_ldst_ops(op_shape: str, offsets):
     return ops
 
 
-def _expected_scales_ldst_descriptor_view_ops(root_shape: str, view_shape: str):
-    return [
-        (f"tcgen05.st.sync.aligned.{root_shape}", 0),
-        (f"tcgen05.ld.sync.aligned.{view_shape}", 0),
-        (f"tcgen05.st.sync.aligned.{view_shape}", 0),
-        (f"tcgen05.ld.sync.aligned.{root_shape}", 0),
-    ]
+def _expected_scales_ldst_descriptor_view_ops(root_shape: str, view_shape: str, offsets=(0, )):
+    ops = []
+    for offset in offsets:
+        ops.append((f"tcgen05.st.sync.aligned.{root_shape}", offset))
+    for offset in offsets:
+        ops.append((f"tcgen05.ld.sync.aligned.{view_shape}", offset))
+    for offset in offsets:
+        ops.append((f"tcgen05.st.sync.aligned.{view_shape}", offset))
+    for offset in offsets:
+        ops.append((f"tcgen05.ld.sync.aligned.{root_shape}", offset))
+    return ops
 
 
 SCALES_LDST_N_SHARDED_VARIANT_WIDTHS = {
@@ -4687,7 +4691,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
     ),
 ]
 
-SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = [
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES = [
     (
         M,
         N,
@@ -4701,6 +4705,32 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = [
     )
     for M, N in product((128, 256), (4, 8, 16, 32, 64, 128))
 ]
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES = [
+    (
+        M,
+        N,
+        4,
+        2,
+        ((1, 0),),
+        instr_variant,
+        _expected_scales_ldst_descriptor_view_ops(
+            f"{instr_variant}.x{M * N // (8 * width)}.b32",
+            f"{instr_variant}.x{M * N // (8 * width)}.b32",
+            (0, 1048576),
+        ),
+    )
+    for M, N, (instr_variant, width) in product(
+        (128, 256),
+        (4, 8, 16, 32, 64, 128),
+        SCALES_LDST_N_SHARDED_VARIANT_WIDTHS.items(),
+    )
+    if M * N >= 8 * width
+]
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
+    SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES + SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES
+)
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = []
 

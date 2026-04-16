@@ -19314,3 +19314,53 @@ Open after this slice:
     --split-input-file test/TritonNvidiaGPU/invalid.mlir
     --verify-diagnostics`;
   - `git diff --check`.
+
+## 2026-04-16 07:32 UTC: two-CTA scales descriptor-view explicit atoms promoted
+
+- Starting point: `codex/tmem` at `04d2e0f5a`.
+- Root cause:
+  - two-CTA scales descriptor-view `get_reg_layout("16x64b"|"16x128b"|"16x256b")`
+    still failed because the special exact-query helper only produced the
+    `I32x32b` view layout;
+  - removing the old atom gate alone was insufficient, because the generic
+    bitwidth-packing planner tried to rediscover the descriptor-view layout
+    from a stripped query and failed composition/invertibility checks.
+- Change:
+  - added an explicit n-sharded atom path inside
+    `getTwoCTAScalesDescriptorViewTMemLdStLayout(...)`;
+  - the new path builds the requested atom's pre-packed physical packet basis
+    for i8 scales (`16x64b`, `16x128b`, or `16x256b`), lifts each physical
+    row/column basis through the exact descriptor-view `LinearLayout` query,
+    preserves the query's block ownership basis, and still relies on
+    `computeTMemLdStEncodingInfo(...)` to validate the selected atom before
+    returning it;
+  - expanded the CGA descriptor-view runtime matrix to include every
+    power-of-two `N=4..128` row for `M in {128,256}` where the explicit atom
+    has at least one per-CTA packet.
+- Probe result:
+  - representative `M,N` rows for all three explicit atom families compiled
+    and produced correct output before the test matrix was expanded;
+  - emitted packets use the explicit atom on both root and view accesses, with
+    offsets `0` and `1048576`.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-view-cga-expanded
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_cga_roundtrip'`
+    (`44 passed, 11086 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-view-noncga
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip`
+    (`3 passed`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `git diff --check`.
+- Remaining boundary:
+  - explicit two-CTA descriptor-view `16x32bx2` is not covered by this
+    n-sharded atom lift; it needs a separate split-N/second-half-offset proof.

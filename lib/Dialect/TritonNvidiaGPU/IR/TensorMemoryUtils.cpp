@@ -4635,7 +4635,7 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
                                             TMemAccessAtom atom,
                                             unsigned numWarps,
                                             const LinearLayout &queryLayout) {
-  if (atom != TMemAccessAtom::I32x32b || numWarps != 4 ||
+  if (numWarps != 4 ||
       !isTwoCTAScalesDescriptorViewTMemLdStQuery(memTy, queryLayout)) {
     return std::nullopt;
   }
@@ -4645,11 +4645,102 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
   auto kLane = StringAttr::get(ctx, "lane");
   auto kWarp = StringAttr::get(ctx, "warp");
   auto kBlock = StringAttr::get(ctx, "block");
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
   auto dims = standardOutDimNames(ctx, 2);
   int32_t rows = static_cast<int32_t>(memTy.getShape()[0]);
   int32_t cols = static_cast<int32_t>(memTy.getShape()[1]);
 
   LinearLayout::BasesT bases;
+  if (atom != TMemAccessAtom::I32x32b) {
+    if (atom != TMemAccessAtom::I16x64b &&
+        atom != TMemAccessAtom::I16x128b &&
+        atom != TMemAccessAtom::I16x256b) {
+      return std::nullopt;
+    }
+
+    if (!queryLayout.hasInDim(kRow) || !queryLayout.hasInDim(kCol))
+      return std::nullopt;
+    int32_t physicalRows = queryLayout.getInDimSize(kRow);
+    int32_t physicalCols = queryLayout.getInDimSize(kCol);
+    auto queryInDims = llvm::to_vector(queryLayout.getInDimNames());
+    auto liftPhysicalBasis =
+        [&](ArrayRef<int32_t> rowCol) -> std::optional<std::vector<int32_t>> {
+      assert(rowCol.size() == 2);
+      if (rowCol[0] < 0 || rowCol[0] >= physicalRows || rowCol[1] < 0 ||
+          rowCol[1] >= physicalCols)
+        return std::nullopt;
+      auto logicalCoords = queryLayout.apply(makeFullLinearLayoutCoords(
+          queryInDims, {{kRow, rowCol[0]}, {kCol, rowCol[1]}}));
+      std::vector<int32_t> logicalBasis;
+      logicalBasis.reserve(dims.size());
+      for (StringAttr dim : dims)
+        logicalBasis.push_back(lookupLinearLayoutCoord(logicalCoords, dim));
+      return logicalBasis;
+    };
+    auto appendBasis = [&](StringAttr dim, ArrayRef<int32_t> rowCol) {
+      auto lifted = liftPhysicalBasis(rowCol);
+      if (!lifted)
+        return false;
+      bases[dim].push_back(std::move(*lifted));
+      return true;
+    };
+
+    // The scales value type is i8, so the direct-lowering query first packs
+    // four logical columns into a 32-bit physical column.  Build the pre-packed
+    // physical packet layout, then lift each physical TMEM basis through the
+    // exact descriptor-view query.  This is the same algebra as
+    // regLayout.invertAndCompose(queryLayout), just solved in the other
+    // direction for the register layout.
+    if (!appendBasis(kRegister, {0, 1}) ||
+        !appendBasis(kRegister, {0, 2}))
+      return std::nullopt;
+
+    int32_t prepackTileCols = 0;
+    switch (atom) {
+    case TMemAccessAtom::I16x64b:
+      prepackTileCols = 8;
+      if (!appendBasis(kLane, {8, 0}) || !appendBasis(kLane, {0, 4}) ||
+          !appendBasis(kLane, {1, 0}) || !appendBasis(kLane, {2, 0}) ||
+          !appendBasis(kLane, {4, 0}))
+        return std::nullopt;
+      break;
+    case TMemAccessAtom::I16x128b:
+      prepackTileCols = 16;
+      if (!appendBasis(kRegister, {8, 0}) ||
+          !appendBasis(kLane, {0, 4}) || !appendBasis(kLane, {0, 8}) ||
+          !appendBasis(kLane, {1, 0}) || !appendBasis(kLane, {2, 0}) ||
+          !appendBasis(kLane, {4, 0}))
+        return std::nullopt;
+      break;
+    case TMemAccessAtom::I16x256b:
+      prepackTileCols = 32;
+      if (!appendBasis(kRegister, {0, 4}) ||
+          !appendBasis(kRegister, {8, 0}) ||
+          !appendBasis(kLane, {0, 8}) || !appendBasis(kLane, {0, 16}) ||
+          !appendBasis(kLane, {1, 0}) || !appendBasis(kLane, {2, 0}) ||
+          !appendBasis(kLane, {4, 0}))
+        return std::nullopt;
+      break;
+    case TMemAccessAtom::I32x32b:
+    case TMemAccessAtom::I16x32bx2:
+      llvm_unreachable("handled above");
+    }
+
+    for (int32_t col = prepackTileCols; col < physicalCols; col <<= 1) {
+      if (!appendBasis(kRegister, {0, col}))
+        return std::nullopt;
+    }
+    if (!appendBasis(kRegister, {16, 0}))
+      return std::nullopt;
+
+    bases[kWarp] = {{0, 0}, {0, 0}};
+    if (queryLayout.hasInDim(kBlock))
+      bases[kBlock] = queryLayout.getBases().lookup(kBlock);
+    return LinearLayout(std::move(bases), {{dims[0], rows}, {dims[1], cols}},
+                        /*requireSurjective=*/false);
+  }
+
   bases[kRegister] = {{0, 1}, {0, 2}};
   for (int32_t rowCarry = 16; rowCarry < rows / 4; rowCarry <<= 1)
     bases[kRegister].push_back({rowCarry, 0});

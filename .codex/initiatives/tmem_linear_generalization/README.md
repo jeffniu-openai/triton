@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 07:32 UTC: two-CTA tensor-memory-scales descriptor-view
+  `tcgen05.ld/st` now supports explicit `16x64b`, `16x128b`, and `16x256b`
+  view register layouts. The backend constructs the pre-packed physical
+  packet layout for the requested atom and lifts each physical TMEM basis
+  through the exact descriptor-view linear query, then keeps the result behind
+  the existing `computeTMemLdStEncodingInfo(...)` validation. The expanded CGA
+  runtime matrix covers all realizable power-of-two `N=4..128` rows for
+  `M in {128,256}` and checks the two-packet offsets (`0`, `1048576`) for the
+  explicit atom families. Validation: `make -j8`, py-compile, expanded CGA
+  selector (`44 passed`), adjacent non-CGA descriptor-view node (`3 passed`),
+  direct `invalid.mlir` verifier, and `git diff --check`.
 - 2026-04-16 07:15 UTC: two-CTA tensor-memory-scales descriptor-view
   `tcgen05.ld/st` now uses the exact-query recognizer over the full validated
   power-of-two `N=4..128` range for `M in {128,256}`, instead of the stale

@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view explicit-atom checkpoint, 2026-04-16
+  07:32 UTC: two-CTA tensor-memory-scales descriptor-view `ld/st` now has an
+  algebraic register-layout builder for explicit `16x64b`, `16x128b`, and
+  `16x256b`. The helper builds the pre-packed physical packet basis for the
+  requested atom (`i8` columns packed into 32-bit physical columns), lifts
+  every physical row/column basis through the exact descriptor-view
+  `LinearLayout` query, preserves block ownership from the query, and still
+  returns the layout only after exact `computeTMemLdStEncodingInfo(...)`
+  validation. Runtime validation promoted all realizable two-CTA CGA rows for
+  `M in {128,256}`, power-of-two `N=4..128`, and explicit atom families where
+  the per-CTA packet count is at least one. The emitted view/root packets use
+  the explicit atom with offsets `(0, 1048576)`. Validation: `make -j8`,
+  py-compile of `test_tmem_runtime_matrix.py`, expanded CGA selector
+  (`44 passed, 11086 deselected`), non-CGA descriptor-view node (`3 passed`),
+  direct `invalid.mlir` verifier, and `git diff --check`. Remaining nearby
+  frontier: explicit two-CTA descriptor-view `16x32bx2` still needs its own
+  split-N/second-half layout proof; do not treat it as covered by the
+  n-sharded atom lift.
+
 - Current scales descriptor-view `ld/st` support checkpoint, 2026-04-16
   07:15 UTC: two-CTA tensor-memory-scales descriptor-view register-layout
   selection no longer has the stale `N in {32,64}` shape gate. The exact-query

@@ -928,6 +928,14 @@ Progress:
   verification instead of proving support. Keep this row as a clean
   row-anchor/rematerialization boundary until active-view inference and packet
   scheduling are both modeled algebraically.
+- 2026-04-16 07:32 UTC: promoted explicit two-CTA tensor-memory-scales
+  descriptor-view `ld/st` for `16x64b`, `16x128b`, and `16x256b`. The backend
+  now derives those register layouts by constructing the requested atom's
+  pre-packed physical packet basis and lifting each physical basis through the
+  exact descriptor-view query layout, rather than adding another shape-family
+  rewrite. The exact encoding-info validator remains the support proof. The
+  expanded runtime matrix covers all realizable power-of-two `N=4..128` rows
+  for `M in {128,256}` and pins the explicit two-offset packet schedule.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:
