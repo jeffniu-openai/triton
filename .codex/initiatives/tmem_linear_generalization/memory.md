@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current descriptor-view reshape checkpoint, 2026-04-16 00:57 UTC:
+  reshaping an active TMEM descriptor view no longer requires the active shape
+  to cover the full backing allocation image. The reshape/query inference path
+  now strips leading unit dimensions whenever the descriptor rank exceeds the
+  layout rank, then removes only trailing zero row/column/block bases until the
+  inferred layout's input cardinality matches the active view element count.
+  This fixes the identity multidim-slice chain from `[1,32,1,32] -> [32,32]`:
+  it now builds a clean `32x32` view type and fails later at the real
+  direct-ISA row-anchor boundary instead of reporting `failed to infer
+  memdesc_reshape result type`. The exact identity row remains a clean
+  unsupported `ld/st` case because `tcgen05.ld/st` needs materializable
+  `32,64` row anchors for that view; the mixed layout remains positive.
+  Validation passed: `make -j8`, focused descriptor-view sweep (`38 passed, 1
+  skipped`), exact identity row (`1 passed`), direct `invalid.mlir` verifier,
+  py-compile, and `git diff --check`.
+
 - Current packed-lane raw-dword descriptor probe, 2026-04-16 00:39 UTC:
   attempted the obvious support path enabled by `TMemCopyPackedLaneProjection`:
   drop the hidden lane bases from the descriptor projection, schedule physical

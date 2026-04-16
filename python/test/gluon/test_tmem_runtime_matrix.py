@@ -6153,14 +6153,9 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_cle
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert (
-        "TMEM layout 'auto' unsupported for descriptor view" in text
-        or "invalid tensor memory rank/layout combination" in text
-    )
-    if "TMEM layout 'auto' unsupported for descriptor view" in text:
-        assert "tensor_memory_descriptor<fp32, [32, 32]," in text
-    else:
-        assert "failed to infer memdesc_reshape result type" in text
+    assert "TMEM layout 'auto' unsupported for descriptor view" in text
+    assert "tensor_memory_descriptor<fp32, [32, 32]," in text
+    assert "failed to infer memdesc_reshape result type" not in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

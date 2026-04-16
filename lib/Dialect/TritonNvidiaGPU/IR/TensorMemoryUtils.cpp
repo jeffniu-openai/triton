@@ -422,6 +422,34 @@ restrictTMemAnalysisLayoutToShape(const LinearLayout &layout,
   return restrictedLayout;
 }
 
+static LinearLayout trimTrailingZeroBasesToElementCount(LinearLayout layout,
+                                                        int64_t targetElems) {
+  if (targetElems <= 0 || layout.getNumInDims() == 0)
+    return layout;
+
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto trimDim = [&](StringAttr dim) {
+    while (layout.hasInDim(dim) &&
+           static_cast<int64_t>(layout.getTotalInDimSize()) > targetElems) {
+      auto bases = layout.getBases();
+      auto it = bases.find(dim);
+      if (it == bases.end() || it->second.empty())
+        return;
+      if (!llvm::all_of(it->second.back(),
+                        [](int32_t value) { return value == 0; }))
+        return;
+      it->second.pop_back();
+      layout = LinearLayout(std::move(bases), layout.getOutDims(),
+                            layout.isSurjective());
+    }
+  };
+
+  trimDim(StringAttr::get(ctx, "row"));
+  trimDim(StringAttr::get(ctx, "col"));
+  trimDim(StringAttr::get(ctx, "block"));
+  return layout;
+}
+
 static LogicalResult verifyTMemSubsliceProjection(
     const LinearLayout &srcInv, ArrayRef<StringAttr> srcLogicalDims,
     ArrayRef<std::pair<StringAttr, int32_t>> encodedOffsets,
@@ -1407,14 +1435,16 @@ inferTMemReshapeQueryLayout(ArrayRef<int64_t> srcShape,
   auto layoutDstShape = dstShape;
   int64_t layoutElems = static_cast<int64_t>(ll.getTotalOutDimSize());
 
-  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape) {
+  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape,
+                                  int64_t layoutRank) {
     while (!shape.empty() && shape.front() == 1 &&
-           product<int64_t>(shape.drop_front()) >= layoutElems)
+           (static_cast<int64_t>(shape.size()) > layoutRank ||
+            product<int64_t>(shape.drop_front()) >= layoutElems))
       shape = shape.drop_front();
     return shape;
   };
-  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape);
-  layoutDstShape = stripLeadingUnitDims(layoutDstShape);
+  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape, ll.getNumOutDims());
+  layoutDstShape = stripLeadingUnitDims(layoutDstShape, ll.getNumOutDims());
   while (static_cast<size_t>(ll.getNumOutDims()) > layoutSrcShape.size()) {
     auto firstDim = *ll.getOutDimNames().begin();
     if (ll.getOutDimSize(firstDim) != 1)
@@ -1461,8 +1491,11 @@ inferTMemReshapeQueryLayout(ArrayRef<int64_t> srcShape,
     return failure();
   }
 
-  return TMemLdStQueryLayout{reshapeLayout(ctx, ll, layoutDstShape),
-                             srcQuery.twoCTAs, srcQuery.origin};
+  auto dstLayout = reshapeLayout(ctx, ll, layoutDstShape);
+  dstLayout = trimTrailingZeroBasesToElementCount(
+      std::move(dstLayout), product<int64_t>(layoutDstShape));
+  return TMemLdStQueryLayout{std::move(dstLayout), srcQuery.twoCTAs,
+                             srcQuery.origin};
 }
 
 static FailureOr<TMemLdStQueryLayout>
@@ -1476,14 +1509,16 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
   auto layoutDstShape = dstShape;
   int64_t layoutElems = static_cast<int64_t>(ll.getTotalOutDimSize());
 
-  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape) {
+  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape,
+                                  int64_t layoutRank) {
     while (!shape.empty() && shape.front() == 1 &&
-           product<int64_t>(shape.drop_front()) >= layoutElems)
+           (static_cast<int64_t>(shape.size()) > layoutRank ||
+            product<int64_t>(shape.drop_front()) >= layoutElems))
       shape = shape.drop_front();
     return shape;
   };
-  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape);
-  layoutDstShape = stripLeadingUnitDims(layoutDstShape);
+  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape, ll.getNumOutDims());
+  layoutDstShape = stripLeadingUnitDims(layoutDstShape, ll.getNumOutDims());
   while (static_cast<size_t>(ll.getNumOutDims()) > layoutSrcShape.size()) {
     auto firstDim = *ll.getOutDimNames().begin();
     if (ll.getOutDimSize(firstDim) != 1)
@@ -3658,42 +3693,6 @@ getHalfRowsTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
   return result;
 }
 
-static bool isExactCanonicalContiguous32x32TMemViewType(MemDescType memTy) {
-  if (!memTy || memTy.getRank() != 2 || memTy.getShape()[0] != 32 ||
-      memTy.getShape()[1] != 32 ||
-      !isTensorMemoryEncoding(memTy.getEncoding()) ||
-      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
-    return false;
-  }
-  auto linear =
-      dyn_cast<TensorMemoryLinearEncodingAttr>(memTy.getEncoding());
-  if (!linear)
-    return false;
-  auto ll = linear.getLinearLayout();
-  auto *ctx = memTy.getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  auto kCol = StringAttr::get(ctx, "col");
-  if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getNumInDims() != 2 ||
-      ll.getNumOutDims() != 2 || ll.getInDimSize(kRow) != 32 ||
-      ll.getInDimSize(kCol) != 32) {
-    return false;
-  }
-  SmallVector<int64_t> expectedOutShape{32, 32};
-  if (!llvm::equal(ll.getOutDimSizes(), expectedOutShape))
-    return false;
-  for (unsigned idx = 0; idx < ll.getInDimSizeLog2(kRow); ++idx) {
-    auto basis = ll.getBasis(kRow, idx);
-    if (basis.size() != 2 || basis[0] != (1 << idx) || basis[1] != 0)
-      return false;
-  }
-  for (unsigned idx = 0; idx < ll.getInDimSizeLog2(kCol); ++idx) {
-    auto basis = ll.getBasis(kCol, idx);
-    if (basis.size() != 2 || basis[0] != 0 || basis[1] != (1 << idx))
-      return false;
-  }
-  return true;
-}
-
 static std::optional<std::string>
 getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
     Value memDesc, MemDescType memTy, std::optional<TMemLdStRowPlan> rowPlan) {
@@ -3773,16 +3772,6 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
       !isTensorMemoryEncoding(queryTy.getEncoding()) ||
       isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding())) {
     return false;
-  }
-  bool explicitViewProducer =
-      isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp, gpu::MemDescIndexOp,
-                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
-                      gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
-  if (explicitViewProducer &&
-      isExactCanonicalContiguous32x32TMemViewType(queryTy)) {
-    return unsupported("unsupported tensor memory descriptor view for direct "
-                       "TMEM load/store: exact canonical 32x32 subviews from "
-                       "larger TMEM tiles are not directly representable");
   }
   if (isDirectHalfRowsSubview(memDesc) ||
       isHigherRankHalfRowsSubview(memDesc)) {
@@ -5602,14 +5591,18 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   int64_t layoutElems =
       static_cast<int64_t>(maybeSrcLayout->layout.getTotalOutDimSize());
 
-  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape) {
+  auto stripLeadingUnitDims = [&](ArrayRef<int64_t> shape,
+                                  int64_t layoutRank) {
     while (!shape.empty() && shape.front() == 1 &&
-           product<int64_t>(shape.drop_front()) >= layoutElems)
+           (static_cast<int64_t>(shape.size()) > layoutRank ||
+            product<int64_t>(shape.drop_front()) >= layoutElems))
       shape = shape.drop_front();
     return shape;
   };
-  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape);
-  layoutDstShape = stripLeadingUnitDims(layoutDstShape);
+  layoutSrcShape = stripLeadingUnitDims(layoutSrcShape,
+                                        maybeSrcLayout->layout.getNumOutDims());
+  layoutDstShape = stripLeadingUnitDims(layoutDstShape,
+                                        maybeSrcLayout->layout.getNumOutDims());
   while (static_cast<size_t>(maybeSrcLayout->layout.getNumOutDims()) >
          layoutSrcShape.size()) {
     auto firstDim = *maybeSrcLayout->layout.getOutDimNames().begin();
@@ -5661,6 +5654,8 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   }
 
   auto dstLL = reshapeLayout(ctx, maybeSrcLayout->layout, layoutDstShape);
+  dstLL = trimTrailingZeroBasesToElementCount(
+      std::move(dstLL), product<int64_t>(layoutDstShape));
   auto result =
       tryMakeTMemViewEncoding(ctx, std::move(dstLL), maybeSrcLayout->twoCTAs,
                               error);

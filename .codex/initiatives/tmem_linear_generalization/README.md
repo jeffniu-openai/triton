@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:57 UTC: descriptor-view reshape inference now strips leading
+  unit dimensions by layout rank instead of requiring the active view to cover
+  the full backing image, and trims only trailing zero bases when the reshaped
+  logical input cardinality exceeds the active element count. The identity
+  multidim-slice `ld/st` row now reaches the real direct-ISA boundary
+  (`32x32` exact subview cannot materialize the required row anchors) instead
+  of failing `memdesc_reshape` type inference. Validation: `make -j8`,
+  focused descriptor-view sweep (`38 passed, 1 skipped`), identity exact row,
+  direct `invalid.mlir` verifier, py-compile, and `git diff --check`.
 - 2026-04-16 00:39 UTC: probed the first support path using the packed-lane
   carrier, then removed the temporary source edits. The attempted schedule
   dropped packed lane bases from the descriptor view, used physical source

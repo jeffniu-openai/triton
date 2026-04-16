@@ -18239,3 +18239,39 @@ Open after this slice:
     cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout'`
     (`7 passed, 10981 deselected in 3.79s`);
   - `git diff --check`.
+
+## 2026-04-16 00:57 UTC: descriptor-view reshape active-shape cleanup
+
+- Changed TMEM descriptor-view reshape/query inference to strip leading unit
+  dimensions when descriptor rank exceeds layout rank, even when the active
+  view is smaller than the full backing image.
+- Added `trimTrailingZeroBasesToElementCount(...)` and used it after TMEM
+  reshape layout construction so sliced-away backing dimensions do not leave
+  inactive trailing row/column/block zero bases in the active reshaped view.
+- Removed the broad exact-canonical `32x32` descriptor-view guard; unsupported
+  direct `ld/st` views now flow to the row-anchor planner reason instead of a
+  shape-name guard.
+- Tightened
+  `test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error`
+  so the identity multidim-slice row must no longer fail `memdesc_reshape`
+  type inference. The row still remains clean unsupported because the direct
+  `tcgen05.ld/st` packet row anchors are not materializable for that exact
+  canonical `32x32` subview.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-multidim-focused
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slice_identity or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_reports_clean_unsupported or
+    ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout or
+    ldst_descriptor_higher_rank_half_rows'`
+    (`38 passed, 1 skipped, 10949 deselected`);
+  - exact identity row (`1 passed, 10987 deselected`);
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
