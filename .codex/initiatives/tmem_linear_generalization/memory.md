@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current direct-seed source-bounds checkpoint, 2026-04-16 00:25 UTC:
+  direct-seed `tcgen05.copy` messages no longer skip source-footprint
+  legality entirely. The scheduler now verifies that the direct seed source
+  row is representable by the immediate descriptor, that the source column is
+  aligned to the 128-bit descriptor offset unit used by lowering, and that the
+  resulting source bit range stays within the rank-2 shared source tile. This
+  is not a new support promotion, but it closes the last unchecked source
+  range in the copy instruction stream; descriptor-backed messages use
+  descriptor-layout bounds, direct-seed messages use source byte-range bounds.
+  Validation passed: `make -j8`, direct `invalid.mlir` verifier, py-compile,
+  `git diff --check`, and the direct-seed-heavy `warpx2::02_13` selector
+  (`16 passed, 10972 deselected`).
+
 - Current descriptor-source cleanup checkpoint, 2026-04-16 00:22 UTC:
   removed the stale `LogicalSharedTile` coordinate-space enum value and the
   logical-source bounds branch from copy source-footprint support. The source

@@ -8352,14 +8352,6 @@ static TMemCopySupportResult getTMemCopySourceFootprintSupport(
     ArrayRef<TMemCopyScheduledInstruction> instructions) {
   for (const TMemCopyScheduledInstruction &instruction : instructions) {
     const TMemCopySourceFootprint &source = instruction.source;
-    if (source.coordinateSpace ==
-        TMemCopySourceCoordinateSpace::DirectSeedImmediate) {
-      continue;
-    }
-
-    assert(source.coordinateSpace ==
-               TMemCopySourceCoordinateSpace::DescriptorLoader &&
-           "unknown tcgen05.copy source coordinate space");
     if (instruction.messageIndex >= messages.size()) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::InstructionSchedule,
@@ -8367,6 +8359,56 @@ static TMemCopySupportResult getTMemCopySourceFootprintSupport(
           "message.");
     }
     const auto &message = messages[instruction.messageIndex];
+    if (source.coordinateSpace ==
+        TMemCopySourceCoordinateSpace::DirectSeedImmediate) {
+      if (srcTy.getRank() != 2) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::PhysicalQuery,
+            "tcgen05.copy direct-seed source-footprint bounds checking "
+            "requires a rank-2 shared-memory source tile.");
+      }
+      if (source.row != 0) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            "tcgen05.copy direct-seed source footprint has a non-zero source "
+            "row, but the direct seed descriptor only carries a base source "
+            "offset.");
+      }
+      int64_t sourceColBits =
+          static_cast<int64_t>(source.col) * srcTy.getElementTypeBitWidth();
+      if (sourceColBits % 128 != 0) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            "tcgen05.copy direct-seed source footprint has a source column "
+            "that is not aligned to a 128-bit descriptor offset.");
+      }
+      int64_t sourceOffsetBits =
+          (static_cast<int64_t>(message.plan.directSourceOffsetB128) +
+           sourceColBits / 128) *
+          128;
+      int64_t sourceFootprintBits = static_cast<int64_t>(source.rows) *
+                                    source.columns *
+                                    srcTy.getElementTypeBitWidth();
+      int64_t sourceTileBits = static_cast<int64_t>(srcTy.getShape()[0]) *
+                               srcTy.getShape()[1] *
+                               srcTy.getElementTypeBitWidth();
+      if (sourceOffsetBits < 0 ||
+          sourceOffsetBits + sourceFootprintBits > sourceTileBits) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            Twine("tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+                " direct-seed instruction schedule reads source bit range [" +
+                Twine(sourceOffsetBits) + ", " +
+                Twine(sourceOffsetBits + sourceFootprintBits) +
+                ") outside source tile bit range [0, " +
+                Twine(sourceTileBits) + ").");
+      }
+      continue;
+    }
+
+    assert(source.coordinateSpace ==
+               TMemCopySourceCoordinateSpace::DescriptorLoader &&
+           "unknown tcgen05.copy source coordinate space");
     if (!message.descriptorLayout) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::InstructionSchedule,

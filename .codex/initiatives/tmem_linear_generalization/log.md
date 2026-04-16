@@ -18008,6 +18008,32 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-16 00:25 UTC: direct-seed copy source bounds
+
+- Added source range validation for `DirectSeedImmediate` copy messages.
+- The proof checks:
+  - rank-2 shared source tile;
+  - zero scheduled source row, because the immediate descriptor only carries a
+    base source offset;
+  - scheduled source column aligned to the 128-bit descriptor offset unit used
+    by lowering;
+  - direct seed source offset plus scheduled footprint stays within the shared
+    source tile bit range.
+- This closes the last source-footprint skip after descriptor-backed messages
+  moved to selected descriptor-layout bounds.
+- Validation:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-seed-bounds
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2_02_13 and not subword'`
+    (`16 passed, 10972 deselected in 12.21s`).
+
 ## 2026-04-16 00:22 UTC: descriptor source-coordinate cleanup
 
 - Completed the broad copy split validation for the 00:14 descriptor-backed

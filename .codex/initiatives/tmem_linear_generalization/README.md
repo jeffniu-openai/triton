@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:25 UTC: direct-seed `tcgen05.copy` messages now get explicit
+  source bit-range bounds instead of being an unchecked skip. The planner
+  checks rank, direct-seed row representability, 128-bit source-offset
+  alignment, and source-tile range. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, py-compile, `git diff --check`, and `warpx2::02_13`
+  selector (`16 passed`).
 - 2026-04-16 00:22 UTC: removed the stale `LogicalSharedTile`
   source-coordinate mode from the copy scheduler. The source-footprint model
   now has only descriptor-loader coordinates for selected MMAShared

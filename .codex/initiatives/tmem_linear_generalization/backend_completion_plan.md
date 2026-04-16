@@ -393,6 +393,11 @@ Progress:
   direct-seed immediates. This keeps the source-footprint carrier aligned with
   the actual public `tcgen05.copy` operand model before the next scheduler
   work.
+- 2026-04-16 00:25 UTC: added explicit source byte-range legality for
+  direct-seed copy messages. Direct-seed messages still do not have a selected
+  descriptor layout, but they now prove the immediate source offset and
+  scheduled footprint stay inside the shared source tile instead of bypassing
+  source bounds.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
