@@ -44,6 +44,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 11:54 UTC: the handle-aware M64 `32x32b_splitn`
+  auto-layout fallback is now backend-owned for simple noncanonical split-N
+  physical images. `compute_tmem_reg_layout_from_memdesc(...)` recognizes the
+  exact rank-2 M64 32-bit non-scales raw query with one zero row basis plus
+  permuted power-of-two row/column bases and returns the canonical split-N
+  register layout; `_try_handle_aware_m64_splitn_auto_layout(...)` no longer
+  falls back to the Python canonical/type-only stack. Validation: `make -j8`,
+  py-compile, the exact old failure set (`15 passed`), full `ld_red_m64`
+  (`73 passed`), and `splitn_rowcol_permuted` (`518 passed`). A broader
+  combined `splitn or ld_red_m64` sweep was interrupted after a long pass-only
+  stretch, so do not record it as passed. A probe deleting the separate
+  explicit-`16x32bx2` Python canonical fallback failed many row/column
+  permutation rows and was restored; that remains the next M64 split-N cleanup
+  target.
 - 2026-04-16 11:07 UTC: a deletion probe for the remaining handle-aware M64
   split-N Python fallback was rejected and restored. Returning only
   `compute_tmem_reg_layout_from_memdesc(..., "32x32b_splitn")` broke

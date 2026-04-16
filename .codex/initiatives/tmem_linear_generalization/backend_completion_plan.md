@@ -1029,6 +1029,15 @@ Progress:
   cleanup above is valid, but generic M64 split-N auto selection still needs a
   backend physical-query/packet-equivalence proof before the Python fallback
   can be removed.
+- 2026-04-16 11:54 UTC: completed that generic M64 split-N auto-selection
+  cleanup for simple noncanonical rank-2 M64 raw queries. The C++ memdesc
+  register-layout bridge now proves the split-N support image by checking one
+  zero row basis plus permuted power-of-two row/column bases and returns the
+  canonical split-N register layout for `32x32b_splitn`. The handle-aware
+  Python auto helper now trusts the backend query directly. A probe showed the
+  separate explicit-`16x32bx2` requested-variant path still needs its Python
+  canonical fallback; keep that as the next cleanup target rather than
+  treating all M64 split-N fallback deletion as complete.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

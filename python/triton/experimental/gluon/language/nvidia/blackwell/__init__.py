@@ -234,41 +234,17 @@ def _canonical_m64_splitn_reg_layout(shape, num_warps, layout):
 def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
     num_warps = _unwrap_if_constexpr(num_warps)
     shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.shape)]
-    alloc_shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.type.alloc_shape)]
-    layout = _unwrap_if_constexpr(desc.layout)
 
     if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
         return None
     if desc.dtype.primitive_bitwidth != 32:
         return None
-    if isinstance(layout, TensorMemoryScalesLayout):
+    if isinstance(_unwrap_if_constexpr(desc.layout), TensorMemoryScalesLayout):
         return None
 
-    splitn_layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
+    return gluon_ir.compute_tmem_reg_layout_from_memdesc(
         desc.handle, num_warps, "32x32b_splitn"
     )
-    if splitn_layout is not None:
-        # The handle-aware memdesc query already returns the final split-N
-        # register layout. Only the pure type-based fallback needs the Python
-        # basis rewrite that materializes the split-N half-column basis in the
-        # frontend-visible layout.
-        return splitn_layout
-
-    splitn_layout = _canonical_m64_splitn_reg_layout(shape, num_warps, layout)
-    if splitn_layout is not None:
-        return splitn_layout
-
-    try:
-        return _compute_tmem_reg_layout(
-            desc.dtype,
-            shape,
-            alloc_shape,
-            layout,
-            num_warps,
-            "auto",
-        )
-    except ValueError:
-        return None
 
 
 def _try_m64_reduction_layout_for_explicit_32x32b(desc, layout, num_warps):

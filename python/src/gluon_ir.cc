@@ -2266,6 +2266,111 @@ void init_gluon_ir(py::module &&m) {
               debugLog << "[tmem-reg-layout] reshaped support query failed\n";
             return py::none();
           };
+          auto tryCanonicalM64SplitNRawQuery =
+              [&](const ttng::TMemLdStQueryLayout &rawQueryLayout)
+              -> py::object {
+            if (atomName != "32x32b_splitn" || numWarps != 4 ||
+                !desiredAtom ||
+                *desiredAtom != ttng::TMemAccessAtom::I16x32bx2 ||
+                queryMemDescTy.getRank() != 2 ||
+                queryMemDescTy.getShape()[0] != 64 ||
+                queryMemDescTy.getElementTypeBitWidth() != 32 ||
+                isa<ttng::TensorMemoryScalesEncodingAttr>(
+                    queryMemDescTy.getEncoding())) {
+              return py::none();
+            }
+            int64_t n = queryMemDescTy.getShape()[1];
+            if (n < 2 || !llvm::isPowerOf2_64(n))
+              return py::none();
+
+            const auto &rawLayout = rawQueryLayout.layout;
+            auto kRow = StringAttr::get(ctx, "row");
+            auto kCol = StringAttr::get(ctx, "col");
+            if (rawLayout.getNumOutDims() != 2 ||
+                rawLayout.getNumInDims() != 2 ||
+                !rawLayout.hasInDim(kRow) || !rawLayout.hasInDim(kCol) ||
+                rawLayout.getInDimSize(kRow) != 128 ||
+                rawLayout.getInDimSize(kCol) != n) {
+              return py::none();
+            }
+            auto outDims = llvm::to_vector(rawLayout.getOutDimNames());
+            if (rawLayout.getOutDimSize(outDims[0]) !=
+                    queryMemDescTy.getShape()[0] ||
+                rawLayout.getOutDimSize(outDims[1]) != n) {
+              return py::none();
+            }
+
+            std::array<bool, 6> seenRows = {};
+            unsigned zeroRows = 0;
+            for (unsigned bit = 0; bit < rawLayout.getInDimSizeLog2(kRow);
+                 ++bit) {
+              auto basis = rawLayout.getBasis(kRow, bit);
+              if (basis.size() != 2 || basis[1] != 0)
+                return py::none();
+              if (basis[0] == 0) {
+                ++zeroRows;
+                continue;
+              }
+              if (basis[0] < 0 || basis[0] > 32 ||
+                  !llvm::isPowerOf2_32(
+                      static_cast<uint32_t>(basis[0]))) {
+                return py::none();
+              }
+              unsigned rowBit =
+                  llvm::Log2_32(static_cast<uint32_t>(basis[0]));
+              if (rowBit >= seenRows.size() || seenRows[rowBit])
+                return py::none();
+              seenRows[rowBit] = true;
+            }
+            if (zeroRows != 1 ||
+                !llvm::all_of(seenRows, [](bool seen) { return seen; })) {
+              return py::none();
+            }
+
+            SmallVector<bool> seenCols(rawLayout.getInDimSizeLog2(kCol),
+                                       false);
+            for (unsigned bit = 0; bit < rawLayout.getInDimSizeLog2(kCol);
+                 ++bit) {
+              auto basis = rawLayout.getBasis(kCol, bit);
+              if (basis.size() != 2 || basis[0] != 0 || basis[1] <= 0 ||
+                  basis[1] >= n ||
+                  !llvm::isPowerOf2_32(
+                      static_cast<uint32_t>(basis[1]))) {
+                return py::none();
+              }
+              unsigned colBit =
+                  llvm::Log2_32(static_cast<uint32_t>(basis[1]));
+              if (colBit >= seenCols.size() || seenCols[colBit])
+                return py::none();
+              seenCols[colBit] = true;
+            }
+            if (!llvm::all_of(seenCols, [](bool seen) { return seen; }))
+              return py::none();
+
+            // The generic exact-query search still rejects this simple M64
+            // split-N image as an unsupported destination layout because the
+            // raw TMEM view carries the unused half tile as a zero row basis.
+            // Once the raw query proves exactly that image, return the
+            // canonical register layout that the load/store lowering already
+            // accepts for the same physical TMEM data.
+            auto canonical =
+                ttng::getCanonicalM64SplitNLayout(ctx, n, numWarps);
+            if (!canonical)
+              return py::none();
+            auto normalizedLayout =
+                normalizeRegLayoutForAttr(std::move(*canonical));
+            if (!normalizedLayout)
+              return py::none();
+            auto attr = createLinearRegAttr(std::move(*normalizedLayout));
+            if (!attr)
+              return py::none();
+            if (traceToFile) {
+              appendTrace(Twine("canonicalM64SplitNRawQuery atomName=") +
+                          atomName + " recognized");
+            }
+            appendTrace("findDirectLayoutForMemDesc canonicalM64SplitNRawQuery");
+            return layoutToGluon(*attr);
+          };
           if (auto supportPlan =
                   ttng::getTMemLdStSupportQueryPlan(queryMemDesc,
                                                     &supportError)) {
@@ -2296,6 +2401,9 @@ void init_gluon_ir(py::module &&m) {
               appendTrace("findDirectLayoutForMemDesc rawQuery");
               return layout;
             }
+            layout = tryCanonicalM64SplitNRawQuery(*rawQueryLayout);
+            if (!layout.is_none())
+              return layout;
           }
           if (isGenericHalfRowsDescriptorView(queryMemDesc)) {
             if (traceToFile)

@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Current backend-owned M64 split-N auto checkpoint, 2026-04-16 11:54 UTC:
+  the C++ memdesc register-layout bridge now handles the simple noncanonical
+  M64 `32x32b_splitn` raw-query image that the 11:07 deletion probe exposed.
+  The bridge checks for rank-2 M64, 32-bit non-scales, four warps, raw row
+  size 128 with exactly one zero row basis and the remaining row bases as
+  `{1,2,4,8,16,32}`, and column bases as a permuted power-of-two set. It then
+  returns `getCanonicalM64SplitNLayout(...)` directly, matching the layout the
+  op lowering already accepts for those physical TMEM images.
+  `_try_handle_aware_m64_splitn_auto_layout(...)` now trusts only
+  `compute_tmem_reg_layout_from_memdesc(..., "32x32b_splitn")` and no longer
+  falls back to the Python canonical/type-only stack. Validation: `make -j8`,
+  py-compile, exact old failure selector (`15 passed`), full `ld_red_m64`
+  (`73 passed`), and `splitn_rowcol_permuted` (`518 passed`). A combined
+  `splitn or ld_red_m64` sweep was interrupted after a long pass-only stretch,
+  so it is not a passed validation. A follow-up probe deleting the separate
+  explicit-`16x32bx2` Python canonical fallback failed many row/column
+  permutation rows and was restored; the remaining M64 frontend rescue is now
+  explicitly the requested-variant `16x32bx2` path, not auto/default
+  selection.
+
 - Current M64 split-N Python fallback boundary, 2026-04-16 11:07 UTC:
   deleting the remaining fallback tail of
   `_try_handle_aware_m64_splitn_auto_layout(...)` is still invalid. A

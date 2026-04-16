@@ -19962,3 +19962,46 @@ Open after this slice:
   - a future deletion must first teach the backend bridge to prove exact
     physical-query and packet-equivalence for noncanonical M64 split-N auto
     layouts, not just derive a candidate layout spelling.
+
+## 2026-04-16 11:54 UTC: backend-owned M64 split-N auto selection
+
+- Starting point: `codex/tmem` at `8ce38f275`.
+- Change:
+  - added a narrow raw-query recognizer to
+    `compute_tmem_reg_layout_from_memdesc(..., "32x32b_splitn")`;
+  - the recognizer accepts only rank-2 M64, 32-bit non-scales, four-warps
+    raw queries whose row dimension is the 128-row split-N support image with
+    exactly one zero row basis and the remaining row bases as a permutation of
+    `{1,2,4,8,16,32}`, plus power-of-two column bases;
+  - when that proof succeeds, the C++ bridge returns
+    `getCanonicalM64SplitNLayout(...)`, matching the register layout already
+    accepted by the load/store lowering for the same physical TMEM image;
+  - `_try_handle_aware_m64_splitn_auto_layout(...)` now returns only the
+    backend memdesc query result and no longer falls back to Python canonical
+    M64 split-N layout construction or the type-only `auto` query.
+- Probe / boundary:
+  - a broader `splitn or ld_red_m64` sweep was interrupted after a long
+    pass-only stretch and is not counted as passed validation;
+  - a follow-up cleanup probe removed the separate explicit-`16x32bx2`
+    Python canonical fallback, but it failed many
+    `splitn_rowcol_permuted_layout_sweep` rows with unsupported
+    `16x32bx2` layout queries, so that fallback was restored. The remaining
+    M64 split-N frontend rescue is specifically the requested-variant
+    `16x32bx2` path.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - traced representative
+    `splitn_rowcol_permuted_auto_selects_16x32bx2[...]` confirmed
+    `canonicalM64SplitNRawQuery ... recognized`;
+  - exact previous failure-set selector passed (`15 passed, 11118
+    deselected`);
+  - full `ld_red_m64` selector passed (`73 passed, 11060 deselected`);
+  - `splitn_rowcol_permuted` selector passed after restoring the explicit
+    fallback (`518 passed, 10615 deselected`);
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - continue with the explicit-`16x32bx2` M64 requested-variant backend gap,
+    or switch back to the copy scheduler/scales message-planning frontiers.
