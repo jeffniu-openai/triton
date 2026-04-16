@@ -7389,7 +7389,7 @@ def test_tmem_runtime_matrix_ld_red_m64_explicit_splitn_variants(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-def test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_reports_clean_unsupported(capfd):
+def test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_uses_splitn():
     M = 64
     N = 32
     layout = _make_tmem_linear_layout_m64_permuted(N, "reverse", "identity")
@@ -7397,15 +7397,20 @@ def test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_reports_cle
     out = torch.empty_like(inp)
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
-    with pytest.raises(Exception) as err:
-        tmem_ld_red_m64_explicit_layout_kernel[(1, )](
-            inp, out, red, layout, N, "32x32b", "min", False, tl.PropagateNan.NONE, num_warps=4
-        )
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert "tcgen05.ld.red requires at least an .x2 message shape" in text
-    assert "PTXAS error" not in text
-    assert "PassManager::run failed" not in text
+    compiled = tmem_ld_red_m64_explicit_layout_kernel[(1, )](
+        inp, out, red, layout, N, "32x32b", "min", False, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, "min", False, tl.PropagateNan.NONE)
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        "16x32bx2.x8",
+        "min",
+        False,
+        tl.PropagateNan.NONE,
+        expected_offsets=(0, 16),
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 07:56 UTC: M64 row-permuted `tcgen05.ld.red` with an explicit
+  `instr_variant="32x32b"` is now positive instead of falling into the
+  scalar `.x1` reduction guard. The reduction API keeps normal
+  `get_reg_layout("32x32b")` behavior unchanged for load/store, but when a
+  provided layout exactly matches the direct explicit `32x32b` M64
+  row-permuted layout, it asks the existing handle-aware split-N planner for
+  the reduction-compatible layout and uses that for `load_min`/`load_max`.
+  Validation: py-compile, `make -j8`, promoted row-permuted node (`1
+  passed`), full M64 `ld.red` selector (`71 passed`), and `git diff --check`.
 - 2026-04-16 07:51 UTC: the explicit two-CTA scales descriptor-view
   `16x32bx2` frontier is now pinned as a precise clean unsupported boundary
   instead of a generic frontend fallback. A temporary support probe showed the

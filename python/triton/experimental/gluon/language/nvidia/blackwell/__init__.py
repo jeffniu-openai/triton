@@ -271,6 +271,30 @@ def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
         return None
 
 
+def _try_m64_reduction_layout_for_explicit_32x32b(desc, layout, num_warps):
+    num_warps = _unwrap_if_constexpr(num_warps)
+    shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.shape)]
+    raw_layout = _unwrap_if_constexpr(desc.layout)
+
+    if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
+        return None
+    if desc.dtype != ttgl.float32:
+        return None
+    if isinstance(raw_layout, TensorMemoryScalesLayout):
+        return None
+    if _has_canonical_m64_splitn_rows(raw_layout):
+        return None
+    if not _is_simple_m64_splitn_tmem_layout(raw_layout, shape[1]):
+        return None
+
+    direct_32x32b_layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
+        desc.handle, num_warps, "32x32b"
+    )
+    if direct_32x32b_layout is None or layout != direct_32x32b_layout:
+        return None
+    return _try_handle_aware_m64_splitn_auto_layout(desc, num_warps)
+
+
 @gluon.jit
 def _reduce_min_direct(a, b):
     return ttgl.minimum(a, b)
@@ -742,6 +766,12 @@ class tensor_memory_descriptor(base_value):
                 except Exception as e:
                     raise ValueError(str(e)) from e
         layout = _unwrap_if_constexpr(layout)
+        num_warps = _semantic.builder.options.num_warps
+        reduction_layout = _try_m64_reduction_layout_for_explicit_32x32b(
+            self, layout, num_warps
+        )
+        if reduction_layout is not None:
+            layout = reduction_layout
 
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder

@@ -944,6 +944,13 @@ Progress:
   split is represented by register/message repetition, so footprint or shape
   promotion would be a false support claim. The frontend split-N fallback now
   preserves the backend requested-variant reason for this row.
+- 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
+  `ld.red` row by making reduction layout selection reuse the existing
+  handle-aware split-N planner when the provided direct `32x32b` layout would
+  produce scalar `.x1` reduction packets. This keeps load/store layout queries
+  stable while eliminating a frontend spelling gap for an already
+  ISA-realizable M64 physical query. Long-term cleanup is still to move this
+  decision into a backend reduction message planner.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:

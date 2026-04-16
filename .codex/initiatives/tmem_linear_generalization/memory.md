@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current M64 explicit-`32x32b` reduction checkpoint, 2026-04-16 07:56 UTC:
+  row-permuted M64 `tcgen05.ld.red` now reuses the existing handle-aware
+  split-N planner when the user passes the exact explicit `32x32b` layout that
+  would otherwise lower to an illegal scalar `.x1` reduction packet. The
+  adjustment is made inside `_load_red`, so ordinary `get_reg_layout("32x32b")`
+  and load/store behavior stay unchanged. The formerly clean-negative
+  `reverse` row layout now emits `16x32bx2.x8` reduction packets at offsets
+  `0` and `16` and matches the runtime oracle. Validation: py-compile,
+  `make -j8`, promoted node (`1 passed`), full M64 `ld.red` selector
+  (`71 passed, 11059 deselected`), and `git diff --check`. Remaining cleanup:
+  this is still frontend-mediated reduction layout selection; the long-term
+  Phase 4 target remains a backend reduction message planner that can select
+  reduction-compatible layouts directly from physical query facts.
+
 - Current scales descriptor-view `16x32bx2` diagnostic checkpoint,
   2026-04-16 07:51 UTC: explicit two-CTA scales descriptor-view
   `get_reg_layout("16x32bx2")` has been probed and is now recorded as a clean

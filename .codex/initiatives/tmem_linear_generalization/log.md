@@ -19409,3 +19409,42 @@ Open after this slice:
   - continue with a support-bearing backend slice: packed-lane source-storage
     scheduling, two-CTA `warpx2::02_13` source-row projection, scales copy
     split/mask scheduling, or sparse `4x256b` direct readback.
+
+## 2026-04-16 07:56 UTC: M64 explicit 32x32b ld.red row permutation promoted
+
+- Starting point: `codex/tmem` at `bc67e0fbf`.
+- Root cause:
+  - M64 row-permuted `load_min/load_max` with an explicit
+    `get_reg_layout("32x32b")` selected a layout that is legal for direct
+    load/store but lowers reduction as scalar `.x1` packets;
+  - `tcgen05.ld.red` requires at least `.x2`, while the existing handle-aware
+    split-N path already knows how to realize the same row-permuted physical
+    query as two `16x32bx2.x8` messages.
+- Change:
+  - `_load_red` now recognizes the exact M64 f32 noncanonical direct
+    `32x32b` layout and replaces it with the backend's handle-aware split-N
+    layout for reduction only;
+  - normal `get_reg_layout("32x32b")` and direct load/store behavior are not
+    changed;
+  - the previous clean-negative runtime row is now a positive runtime+opcode
+    assertion.
+- Validation:
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-m64-explicit32-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_uses_splitn`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-m64-family
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`71 passed, 11059 deselected`);
+  - `git diff --check`.
+- Next:
+  - continue reducing frontend-mediated layout selection in Phase 4 by moving
+    reduction-compatible message planning into backend physical-query support,
+    or switch to the next copy support frontier.
