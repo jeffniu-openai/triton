@@ -402,6 +402,20 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 // -----
 
+#blocked_cp_4x256b_refresh_raw = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [1, 32], warpsPerCTA = [4, 1], order = [1, 0]}>
+#tmem_linear_cp_4x256b_refresh_raw = #ttng.tensor_memory_linear<{row = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0], [2, 0]], col = [[0, 1], [0, 2], [8, 0], [16, 0], [4, 0]], out = [32, 4]}>
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
+  tt.func public @tmem_load_4x256b_refresh_raw_bitcast_clean_unsupported(
+      %src: !ttg.memdesc<32x4xi8, #tmem_linear_cp_4x256b_refresh_raw, #ttng.tensor_memory, mutable>) {
+    // expected-error @+2 {{result has no supported register layout}}
+    // expected-note @+1 {{the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a sparse row/column projection}}
+    %0 = ttng.tmem_load %src : !ttg.memdesc<32x4xi8, #tmem_linear_cp_4x256b_refresh_raw, #ttng.tensor_memory, mutable> -> tensor<32x4xi8, #blocked_cp_4x256b_refresh_raw>
+    tt.return
+  }
+}
+
+// -----
+
 #shared_f32 = #ttg.nvmma_shared<{swizzlingByteWidth = 128, transposed = false, elementBitWidth = 32}>
 #tmem_linear_m64 = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {

@@ -149,14 +149,42 @@ def _is_4x256b_refresh_tmem_layout(layout, element_bitwidth, shape):
     return False
 
 
+def _is_4x256b_refresh_physical_bitcast_tmem_layout(layout, element_bitwidth, shape):
+    if not isinstance(layout, TensorMemoryLinearLayout):
+        return False
+    if element_bitwidth != 8:
+        return False
+    if list(shape) != [32, 4] or list(layout.shape) != [32, 4]:
+        return False
+    if layout.two_ctas or layout.block_bases:
+        return False
+    rows = [list(basis) for basis in layout.rows]
+    cols = [list(basis) for basis in layout.cols]
+    return rows == [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0], [2, 0]] and cols == [
+        [0, 1],
+        [0, 2],
+        [8, 0],
+        [16, 0],
+        [4, 0],
+    ]
+
+
+def _is_unsupported_4x256b_refresh_tmem_ldst_layout(layout, element_bitwidth, shape):
+    return _is_4x256b_refresh_tmem_layout(
+        layout, element_bitwidth, shape
+    ) or _is_4x256b_refresh_physical_bitcast_tmem_layout(layout, element_bitwidth, shape)
+
+
 def _raise_unsupported_4x256b_refresh_tmem_ldst(op_name):
     raise ValueError(
         f"direct TMEM {op_name} is unsupported for the tcgen05.copy.4x256b "
-        "refresh-shaped TensorMemoryLinearLayout. tcgen05.ld/st packets require "
-        "TMEM row anchors to be materializable as warp bases, but this refresh "
-        "view stores logical row bits in TMEM columns and low logical column "
-        "bits in TMEM rows 32/64. Use tcgen05_copy from shared memory for this "
-        "refresh image, or access a directly supported 128-row physical layout."
+        "refresh-shaped TensorMemoryLinearLayout or its raw physical bitcast. "
+        "tcgen05.ld/st packets require TMEM row anchors to be materializable as "
+        "warp bases and read whole row footprints, but this refresh image stores "
+        "logical row bits in TMEM columns and low logical column bits in sparse "
+        "TMEM rows 32/64 without a lane mask. Use tcgen05_copy from shared "
+        "memory for this refresh image, or access a directly supported 128-row "
+        "physical layout."
     )
 
 
@@ -488,7 +516,7 @@ class tensor_memory_descriptor_type(base_type):
             raise ValueError("num_warps could not be inferred; pass a positive power of two")
         if not isinstance(num_warps, int) or num_warps <= 0 or (num_warps & (num_warps - 1)) != 0:
             raise ValueError(f"num_warps must be a positive power of two, got {num_warps!r}")
-        if _is_4x256b_refresh_tmem_layout(
+        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(
             tmem_ty.layout,
             _unwrap_tmem_layout_arg(tmem_ty.element_ty).primitive_bitwidth,
             _unwrap_tmem_layout_arg(tmem_ty.shape),
@@ -571,7 +599,7 @@ class tensor_memory_descriptor(base_value):
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
         self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
-        if _is_4x256b_refresh_tmem_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
+        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
             _raise_unsupported_4x256b_refresh_tmem_ldst(f"{requested_variant} register layout query")
         splitn_direct_fallback = requested_variant in ("32x32b_splitn", "16x32bx2")
         prefer_type_only_m64_splitn = (
@@ -651,7 +679,7 @@ class tensor_memory_descriptor(base_value):
             tensor: A distributed tensor containing the loaded data.
         """
         self._require_rank2_tmem_ldst("load")
-        if _is_4x256b_refresh_tmem_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
+        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
             _raise_unsupported_4x256b_refresh_tmem_ldst("load")
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
@@ -673,7 +701,7 @@ class tensor_memory_descriptor(base_value):
         #   abs (bool): If True, reduce absolute values.
         #   propagate_nan (NONE): If ALL, propagate NaN in specified reduction operation.
         self._require_rank2_tmem_ldst("reduction load")
-        if _is_4x256b_refresh_tmem_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
+        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
             _raise_unsupported_4x256b_refresh_tmem_ldst("reduction load")
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
@@ -762,7 +790,7 @@ class tensor_memory_descriptor(base_value):
             pred (bool): Scalar predicate. Operation is skipped if predicate is False. Defaults to True.
         """
         self._require_rank2_tmem_ldst("store")
-        if _is_4x256b_refresh_tmem_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
+        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
             _raise_unsupported_4x256b_refresh_tmem_ldst("store")
         pred = _unwrap_if_constexpr(pred)
         pred = _semantic.to_tensor(pred)

@@ -3850,6 +3850,53 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
                        "reshape/copy so the TMEM rows stay materializable.");
   }
 
+  auto is4x256RefreshPhysicalBitcastView = [&]() {
+    if (queryTy.getElementTypeBitWidth() != 8 || queryTy.getShape()[0] != 32 ||
+        queryTy.getShape()[1] != 4)
+      return false;
+    std::string rawQueryError;
+    auto rawQuery = inferStandaloneTMemLdStQueryLayoutImpl(
+        memDesc, /*preserveNonCanonicalView=*/true, &rawQueryError);
+    if (failed(rawQuery))
+      return false;
+    auto *ctx = queryTy.getContext();
+    auto kRow = StringAttr::get(ctx, "row");
+    auto kCol = StringAttr::get(ctx, "col");
+    auto layout = rawQuery->layout;
+    if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
+        layout.getInDimSize(kRow) != 128 || layout.getInDimSize(kCol) != 32)
+      return false;
+    auto outDims = llvm::to_vector(layout.getOutDims());
+    if (outDims.size() != 2 || outDims[0].second != 32 ||
+        outDims[1].second != 4)
+      return false;
+    auto isZero = [](ArrayRef<int32_t> basis) {
+      return llvm::all_of(basis, [](int32_t value) { return value == 0; });
+    };
+    auto isBasis = [](ArrayRef<int32_t> basis, int32_t row, int32_t col) {
+      return basis.size() == 2 && basis[0] == row && basis[1] == col;
+    };
+    for (unsigned bit = 0; bit < 5; ++bit)
+      if (!isZero(layout.getBasis(kRow, bit)))
+        return false;
+    return isBasis(layout.getBasis(kRow, 5), 1, 0) &&
+           isBasis(layout.getBasis(kRow, 6), 2, 0) &&
+           isBasis(layout.getBasis(kCol, 0), 0, 1) &&
+           isBasis(layout.getBasis(kCol, 1), 0, 2) &&
+           isBasis(layout.getBasis(kCol, 2), 8, 0) &&
+           isBasis(layout.getBasis(kCol, 3), 16, 0) &&
+           isBasis(layout.getBasis(kCol, 4), 4, 0);
+  };
+  if (is4x256RefreshPhysicalBitcastView()) {
+    return unsupported(
+        "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
+        "the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a "
+        "sparse row/column projection. tcgen05.ld/st packets read whole row "
+        "footprints and do not provide a lane mask for this refresh image. "
+        "Use tcgen05_copy from shared memory for this refresh image, or access "
+        "a directly supported 128-row physical layout.");
+  }
+
   std::string supportError;
   if (getTMemLdStSupportQueryPlan(memDesc, &supportError)) {
     return false;

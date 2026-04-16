@@ -1525,6 +1525,15 @@ def tmem_4x256b_refresh_get_reg_layout_unsupported_kernel(out_ptr, layout: ttgl.
 
 
 @gluon.jit
+def tmem_4x256b_refresh_raw_bitcast_get_reg_layout_unsupported_kernel(out_ptr, layout: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [4, 8], layout=layout)
+    raw = tmem.bitcast(ttgl.int8, [32, 4])
+    reg_layout: ttgl.constexpr = raw.get_reg_layout()
+    value = ttgl.full((), 0, ttgl.int8)
+    ttgl.store(out_ptr, ttgl.convert_layout(value, reg_layout))
+
+
+@gluon.jit
 def tmem_copy_no_scales_indexed_view_kernel(in_ptr, out_ptr, M: ttgl.constexpr):
     N: ttgl.constexpr = 4
     blocked: ttgl.constexpr = ttgl.BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0])
@@ -8199,7 +8208,30 @@ def test_tmem_runtime_matrix_ldst_4x256b_refresh_layout_reports_clean_unsupporte
     assert "tcgen05.copy.4x256b refresh-shaped TensorMemoryLinearLayout" in text
     assert "row anchors to be materializable as warp bases" in text
     assert "logical row bits in TMEM columns" in text
-    assert "low logical column bits in TMEM rows 32/64" in text
+    assert "low logical column bits in sparse TMEM rows 32/64" in text
+    assert "directly supported 128-row physical layout" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_4x256b_refresh_raw_bitcast_reports_clean_unsupported(capfd):
+    out = torch.empty((), device="cuda", dtype=torch.int8)
+    layout = _make_tmem_copy_4x256b_refresh_layout()
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_4x256b_refresh_raw_bitcast_get_reg_layout_unsupported_kernel[(1, )](
+            out,
+            layout,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "direct TMEM auto register layout query is unsupported" in text
+    assert "tcgen05.copy.4x256b refresh-shaped TensorMemoryLinearLayout or its raw physical bitcast" in text
+    assert "read whole row footprints" in text
+    assert "sparse TMEM rows 32/64 without a lane mask" in text
     assert "directly supported 128-row physical layout" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

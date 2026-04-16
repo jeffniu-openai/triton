@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 05:13 UTC: the 4x256b refresh raw physical bitcast readback
+  probe is now recorded as an explicit direct `tcgen05.ld/st` unsupported
+  contract in both frontend and backend paths. The frontend recognizes the
+  original refresh-shaped `4x8xf32` TensorMemoryLinearLayout and its raw
+  `32x4xi8` physical bitcast; the backend descriptor-view verifier mirrors
+  the raw bitcast signature before generic support-query fallback. The
+  diagnostic now states the actual ISA boundary: public `tcgen05.ld/st`
+  packets read whole row footprints and expose no lane mask for the sparse
+  refresh rows, so the supported access path remains `tcgen05_copy` from
+  shared memory or a directly supported 128-row physical layout. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, py-compile of touched Python
+  files, focused runtime-matrix `4x256b` selector (`5 passed`), and
+  `git diff --check`.
 - 2026-04-16 05:04 UTC: two no-code probes were completed from the
   `1d07b3bd5` checkpoint and the source tree was restored clean. First,
   temporarily removing the scaled-MMAv5 repeated-N32 guard and trying grouped

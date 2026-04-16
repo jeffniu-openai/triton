@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current 4x256b raw bitcast unsupported-contract checkpoint, 2026-04-16
+  05:13 UTC: the raw `32x4xi8` physical bitcast of the
+  `tcgen05.copy.4x256b` refresh image now fails with a precise clean
+  unsupported diagnostic instead of falling through to the generic auto-layout
+  miss. The frontend guard covers both the original refresh-shaped
+  `4x8xf32` TensorMemoryLinearLayout and the inferred raw physical bitcast
+  layout (`row = [[0,0] x5, [1,0], [2,0]]`, `col = [[0,1], [0,2], [8,0],
+  [16,0], [4,0]]`). The C++ descriptor-view guard mirrors the raw bitcast
+  signature, so hand-authored IR cannot bypass the contract. This is still a
+  true `tcgen05.ld/st` sparse-lane boundary, not a bitcast arithmetic problem:
+  public direct load/store packets read whole row footprints and expose no lane
+  mask for this refresh image. Validation passed: `make -j8`, direct
+  `invalid.mlir` verifier, py-compile of touched Python files, focused
+  runtime-matrix `4x256b` selector (`5 passed`), and `git diff --check`.
+
 - Current probe checkpoint, 2026-04-16 05:04 UTC: the tree is clean at
   `1d07b3bd5` after backing out two temporary probes. Removing the
   scaled-MMAv5 repeated-N32 guard and trying to group matrix-B scale fragments

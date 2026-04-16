@@ -18874,3 +18874,44 @@ Open after this slice:
 - Validation/cleanup:
   - `make -j8` passed after restoring the source;
   - no source/test files were left dirty before this docs checkpoint.
+
+## 2026-04-16 05:13 UTC: raw 4x256b refresh bitcast clean unsupported contract
+
+- Root cause:
+  - after physical bitcast inference was fixed, the raw `32x4xi8` view of the
+    `tcgen05.copy.4x256b` refresh image reached `get_reg_layout(auto)` with
+    the correct physical layout;
+  - direct `tcgen05.ld/st` still cannot realize that sparse image as an
+    ordinary row/column register layout because the public load/store packets
+    read whole row footprints and expose no lane mask for the selected refresh
+    rows/columns.
+- Implementation:
+  - the frontend now recognizes both the original refresh-shaped
+    `4x8xf32` TensorMemoryLinearLayout and its inferred raw `32x4xi8`
+    physical bitcast before auto layout selection, load, reduction load, or
+    store;
+  - the shared diagnostic names the sparse-row/whole-footprint ISA boundary
+    and points users to `tcgen05_copy` from shared memory or a directly
+    supported 128-row physical layout;
+  - `isUnsupportedDirectTMemLdStDescriptorView(...)` now mirrors the raw
+    physical-bitcast signature before generic support-query fallback, so stale
+    or hand-authored IR receives the same clean backend diagnostic.
+- Coverage:
+  - added a Gluon runtime-matrix test for
+    `tmem.bitcast(ttgl.int8, [32, 4]).get_reg_layout()`;
+  - added a direct `invalid.mlir` case for the raw `32x4xi8` descriptor-view
+    load.
+- Validation:
+  - `make -j8`;
+  - direct `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-refresh-guard-selector3
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k '4x256b'`
+    (`5 passed, 11084 deselected`);
+  - `git diff --check`.
