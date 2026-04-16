@@ -5265,10 +5265,27 @@ CP_LINEAR_EXOTIC_UNSUPPORTED_CASES = [
 ]
 
 CP_LINEAR_TILE_PERMUTED_CASES = (
-    (128, 8, 16),
-    (128, 16, 16),
-    (128, 32, 16),
-    (256, 64, 32),
+    (64, 4, 16, "tcgen05.cp.cta_group::1.128x128b"),
+    (64, 8, 8, "tcgen05.cp.cta_group::1.128x256b"),
+    (64, 16, 8, "tcgen05.cp.cta_group::1.128x256b"),
+    (128, 4, 32, "tcgen05.cp.cta_group::1.128x128b"),
+    (128, 8, 16, "tcgen05.cp.cta_group::1.128x256b"),
+    (128, 16, 16, "tcgen05.cp.cta_group::1.128x256b"),
+    (128, 32, 16, "tcgen05.cp.cta_group::1.128x256b"),
+    (256, 4, 64, "tcgen05.cp.cta_group::1.128x128b"),
+    (256, 8, 32, "tcgen05.cp.cta_group::1.128x256b"),
+    (256, 16, 32, "tcgen05.cp.cta_group::1.128x256b"),
+    (256, 32, 32, "tcgen05.cp.cta_group::1.128x256b"),
+    (256, 64, 32, "tcgen05.cp.cta_group::1.128x256b"),
+)
+
+CP_LINEAR_TILE_PERMUTED_UNSUPPORTED_CASES = (
+    (64, 1),
+    (64, 2),
+    (128, 1),
+    (128, 2),
+    (256, 1),
+    (256, 2),
 )
 
 CP_LINEAR_PERMUTED_UNSUPPORTED_CASES = [
@@ -9062,8 +9079,8 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupporte
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("n,tile_n,expected_count", CP_LINEAR_TILE_PERMUTED_CASES)
-def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(n, tile_n, expected_count):
+@pytest.mark.parametrize("n,tile_n,expected_count,expected_opcode", CP_LINEAR_TILE_PERMUTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(n, tile_n, expected_count, expected_opcode):
     m = 128
     inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
     out = torch.empty_like(inp)
@@ -9072,7 +9089,29 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(n, tile_n, expect
     compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
 
     torch.testing.assert_close(out, inp, atol=0, rtol=0)
-    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.128x256b"] * expected_count)
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode] * expected_count)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("n,tile_n", CP_LINEAR_TILE_PERMUTED_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted_subinstruction_reports_clean_unsupported(
+    n, tile_n, capfd
+):
+    m = 128
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.128x256b" in text
+    assert "contiguous in physical TMEM column order" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

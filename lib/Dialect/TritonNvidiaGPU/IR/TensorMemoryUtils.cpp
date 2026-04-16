@@ -8027,36 +8027,6 @@ getDenseTMemCopyDestinationTileCoord(const LinearLayout &layout,
   return std::pair<int32_t, int32_t>{row, col};
 }
 
-static bool needsDenseTMemCopyPhysicalColumnTileOffsets(const LinearLayout &ll,
-                                                        MLIRContext *ctx,
-                                                        unsigned bitwidth) {
-  auto kCol = StringAttr::get(ctx, "col");
-  if (!ll.hasInDim(kCol))
-    return false;
-
-  unsigned descriptorMacroCols = 1024 / bitwidth;
-  bool sawColumnMacroSelector = false;
-  int32_t previousColumnMacroSelector = 0;
-  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
-    bool touchesRow = basis[0] != 0;
-    bool touchesCol = basis[1] != 0;
-    if (!touchesCol || touchesRow)
-      continue;
-
-    int32_t colBasis = std::abs(basis[1]);
-    if (colBasis > static_cast<int32_t>(descriptorMacroCols)) {
-      if (sawColumnMacroSelector && colBasis <= previousColumnMacroSelector)
-        return true;
-      sawColumnMacroSelector = true;
-      previousColumnMacroSelector = colBasis;
-      continue;
-    }
-    if (sawColumnMacroSelector)
-      return true;
-  }
-  return false;
-}
-
 std::optional<uint32_t>
 getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
                                  TMemCopyFamily family, int32_t logicalCol) {
@@ -8068,13 +8038,6 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
     return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
 
   auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
-  // Low descriptor-macro column permutations are carried by the TMEM layout
-  // already; only permutations that cross 128-byte macro-tile selectors need a
-  // different physical destination address per copy tile.
-  if (!needsDenseTMemCopyPhysicalColumnTileOffsets(
-          ll, query.memTy.getContext(), query.elementBitWidth))
-    return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
-
   auto coord = getDenseTMemCopyDestinationTileCoord(
       ll, query.memTy.getContext(), logicalCol);
   if (!coord)
@@ -8094,9 +8057,7 @@ getTMemCopyDestinationFootprint(const TMemPhysicalQuery &query,
       isTMemCopy4x256RefreshLayout(query.layout, query.memTy.getContext(),
                                    query.elementBitWidth)) {
     physicalCol = 0;
-  } else if (isDenseTMemCopyFamily(family) &&
-             needsDenseTMemCopyPhysicalColumnTileOffsets(
-                 ll, query.memTy.getContext(), query.elementBitWidth)) {
+  } else if (isDenseTMemCopyFamily(family)) {
     auto coord = getDenseTMemCopyDestinationTileCoord(
         ll, query.memTy.getContext(), logicalCol);
     if (!coord)
@@ -8379,18 +8340,15 @@ static TMemCopySupportResult getTMemCopySourceFootprintSupport(
           "descriptor layout.");
     }
     const LinearLayout &descriptorLayout = message.descriptorLayout->layout;
-    auto *ctx = srcTy.getContext();
-    auto kRow = StringAttr::get(ctx, "row");
-    auto kCol = StringAttr::get(ctx, "col");
-    if (!descriptorLayout.hasInDim(kRow) ||
-        !descriptorLayout.hasInDim(kCol)) {
+    auto descriptorDims = llvm::to_vector(descriptorLayout.getInDimNames());
+    if (descriptorDims.size() != 2) {
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::InstructionSchedule,
           "tcgen05.copy descriptor-loader source footprint requires a "
-          "selected descriptor layout with row and column dimensions.");
+          "selected two-dimensional descriptor layout.");
     }
-    int64_t sourceRows = descriptorLayout.getInDimSize(kRow);
-    int64_t sourceCols = descriptorLayout.getInDimSize(kCol);
+    int64_t sourceRows = descriptorLayout.getInDimSize(descriptorDims[0]);
+    int64_t sourceCols = descriptorLayout.getInDimSize(descriptorDims[1]);
 
     int64_t rowEnd = static_cast<int64_t>(source.row) + source.rows;
     int64_t colEnd = static_cast<int64_t>(source.col) + source.columns;

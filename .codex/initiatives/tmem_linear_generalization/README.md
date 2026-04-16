@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 02:46 UTC: dense `tcgen05.copy` destination scheduling now uses
+  exact physical tile coordinates for every dense copy tile instead of a
+  128-byte macro-tile heuristic. This fixes a real wrong-code hole for
+  no-scales tile-permuted column layouts with 4-column tiles: the planner now
+  emits physical tile offsets and uses the narrower `128x128b` fallback where
+  needed. Sub-instruction tile permutations (`tile_n` 1/2) remain clean
+  unsupported because they break contiguity inside the instruction footprint,
+  and row-basis permutations remain a source-row rematerialization gap.
+  Validation: `make -j8`, tile-permutation selector (`18 passed`),
+  neighboring copy clean-negative/positive selector (`19 passed`), direct
+  `invalid.mlir` verifier, py-compile, and `git diff --check`.
 - 2026-04-16 02:35 UTC: `MemDescSubsliceOp::fold` now recomputes the inferred
   return type after combining chained subslice offsets and updates the folded
   op result type to match the original source view. This fixes the

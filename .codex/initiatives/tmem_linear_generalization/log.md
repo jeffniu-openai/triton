@@ -18534,3 +18534,43 @@ Open after this slice:
     ldst_descriptor_multidim_slice_reports_clean_unsupported'`
     (`3 passed, 10985 deselected in 17.31s`);
   - `git diff --check`.
+
+## 2026-04-16 02:46 UTC: dense copy physical tile-offset repair
+
+- Investigated no-scales dense copy permutations after the `4x256b`/row-window
+  boundaries were classified.
+- Row-basis permutation probe:
+  - temporarily bypassed the row-order and source-row-projection guards for a
+    `rotate1` row layout;
+  - descriptor synthesis got past the old naming assumption after a local
+    support fix, but runtime output was wrong (`row 1` read high-row data);
+  - the temporary bypass was removed. This confirms row-basis permutations
+    still need an actual source-row/rematerialization schedule.
+- Tile-column permutation finding:
+  - a local sweep found `tile_n=4` compiled before this change but produced
+    wrong output;
+  - root cause was `needsDenseTMemCopyPhysicalColumnTileOffsets(...)`, which
+    only switched to physical tile offsets for permutations crossing a
+    128-byte descriptor macro-tile;
+  - low tile-granular permutations still need physical tile addresses when the
+    copy instruction footprint is contiguous but the tile order is permuted.
+- Implementation:
+  - removed the macro-only helper;
+  - all dense copy destination offsets now use
+    `getDenseTMemCopyDestinationTileCoord(...)`;
+  - destination footprint tracking uses the same exact physical row/column;
+  - descriptor-loader source footprint support now accepts any selected
+    two-dimensional descriptor input names instead of requiring literal
+    `row`/`col`, matching `DotOpMmaSmemLoader::smemLoad(...)`.
+- Tests:
+  - promoted no-scales tile-permuted `tile_n=4` rows for
+    `N in {64,128,256}`, expecting the `128x128b` fallback;
+  - broadened existing wider tile-permuted rows;
+  - added clean negatives for `tile_n in {1,2}` at `N in {64,128,256}`.
+- Validation:
+  - `make -j8`;
+  - py-compile of `python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused tile-permutation selector (`18 passed, 10984 deselected`);
+  - neighboring copy selector (`19 passed, 10983 deselected`);
+  - direct `invalid.mlir` verifier;
+  - `git diff --check`.

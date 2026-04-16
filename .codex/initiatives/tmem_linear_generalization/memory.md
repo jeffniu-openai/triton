@@ -10601,3 +10601,41 @@ rejection, not rescue
     ldst_descriptor_multidim_slice_reports_clean_unsupported'`
     (`3 passed, 10985 deselected`);
   - `git diff --check`.
+
+## Latest: 2026-04-16 02:46 UTC dense copy physical tile offsets
+
+- Dense `tcgen05.copy` destination scheduling now derives the emitted TMEM
+  destination offset from the exact physical coordinate of each logical copy
+  tile for all dense families.
+- Removed the old macro-tile-only heuristic that assumed low descriptor-macro
+  column permutations were carried by the TMEM layout. That assumption was
+  wrong for 4-column tile permutations: the copy wrote correct contiguous
+  instruction footprints, but to the logical tile offsets rather than the
+  permuted physical tile offsets.
+- Runtime impact:
+  - no-scales tile-permuted copies with `tile_n=4` now pass for
+    `N in {64,128,256}`;
+  - these use the narrower `tcgen05.cp.cta_group::1.128x128b` fallback;
+  - existing wider tile-permuted positives remain on `128x256b`.
+- Boundaries preserved:
+  - tile permutations with `tile_n in {1,2}` remain clean unsupported because
+    the logical columns inside one copy instruction are not physically
+    contiguous;
+  - row-basis permutations were re-probed by temporarily bypassing row
+    projection guards, compiled, and produced wrong output, confirming they
+    still need a real source-row/rematerialization schedule.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cp-tileperm-focused2
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_linear_tile_permuted'`
+    (`18 passed, 10984 deselected`);
+  - neighboring copy selector covering row/column clean negatives, 4x256b
+    refresh, and two-CTA `warpx2::02_13` (`19 passed, 10983 deselected`);
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `git diff --check`.
