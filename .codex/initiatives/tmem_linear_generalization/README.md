@@ -2682,6 +2682,10 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-16 01:52 UTC: the descriptor-row split requirement derivation is
+  now a shared TMEM utility API, and copy query debug prints the derived
+  selected destination-column run and selection period. This keeps the next
+  scheduler slice from reparsing diagnostic fields.
 - 2026-04-16 01:49 UTC: descriptor-row-stride copy failures now derive an
   explicit `TMemCopyDescriptorRowSplitRequirement`. The scales
   descriptor-view row still remains clean unsupported, but the planner now

@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current descriptor-row split API checkpoint, 2026-04-16 01:52 UTC:
+  `getTMemCopyDescriptorRowSplitRequirement(...)` is now a shared utility
+  declared in `TensorMemoryUtils.h` instead of a formatter-private helper.
+  `TRITON_DEBUG_TMEM_QUERY=1` also prints the derived
+  `selectedColumnRun` and `columnSelectionPeriod` for descriptor-row-stride
+  failures. The exact scales descriptor-view repro now prints
+  `selectedColumnRun=4 columnSelectionPeriod=8` beside
+  `descriptorRowDelta=32 spansInstructionRows=1`. Validation passed:
+  `make -j8`, direct `invalid.mlir` verifier, exact descriptor-view pytest
+  row (`1 passed`), debug repro, and `git diff --check`.
+
 - Current descriptor-row split requirement checkpoint, 2026-04-16 01:49 UTC:
   scales descriptor-view/subslice copy still remains a true Phase 2 copy
   scheduler gap, but the planner now derives a first-class

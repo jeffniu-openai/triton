@@ -48,6 +48,27 @@
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
 
+## 2026-04-16 01:52 UTC: descriptor-row split requirement API exposure
+
+- Promoted `getTMemCopyDescriptorRowSplitRequirement(...)` from a
+  formatter-private helper to the shared TMEM utility API in
+  `TensorMemoryUtils.h`.
+- Extended `TRITON_DEBUG_TMEM_QUERY=1` output for descriptor-row-stride
+  failures to include the derived `selectedColumnRun` and
+  `columnSelectionPeriod`.
+- Debug repro for scales descriptor-view copy now prints:
+  `descriptor-row-stride-selection bit=2 actual=256 expected=4
+  descriptorRowDelta=32 spansInstructionRows=1 selectedColumnRun=4
+  columnSelectionPeriod=8`.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - exact
+    `test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
+    (`1 passed`);
+  - `git diff --check`.
+
 ## 2026-04-16 00:04 UTC: invalid.mlir copy diagnostic refresh
 
 - Updated `test/TritonNvidiaGPU/invalid.mlir` expected notes for:

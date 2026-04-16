@@ -225,6 +225,10 @@ struct TMemCopyInstructionColumnProjectionFailure {
   bool hasNonOffsetContribution = false;
 };
 
+std::optional<TMemCopyDescriptorRowSplitRequirement>
+getTMemCopyDescriptorRowSplitRequirement(
+    const TMemCopyInstructionColumnProjectionFailure &failure);
+
 struct TMemCopyInstructionColumnProjection {
   unsigned instructionColumns = 0;
   int32_t unitSourceOffset = 0;

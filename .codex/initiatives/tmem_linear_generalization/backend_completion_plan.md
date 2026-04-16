@@ -336,6 +336,10 @@ Progress:
   source footprint. This is the right input to a split/mask schedule proof;
   the public atom still remains clean unsupported until a non-overlapping
   destination schedule or different ISA format is proven.
+- 2026-04-16 01:52 UTC: exposed
+  `getTMemCopyDescriptorRowSplitRequirement(...)` as shared planner API and
+  added query-debug output for the derived selected-column run and period.
+  Future split scheduling should consume this helper directly.
 - 2026-04-15 23:08 UTC: factored copy destination-to-source conversion into
   `getTMemCopySourceConversion(...)` and routed both `TMEMCopyOp::verify()`
   and `TensorMemoryToLLVM.cpp` through it. This does not change support, but

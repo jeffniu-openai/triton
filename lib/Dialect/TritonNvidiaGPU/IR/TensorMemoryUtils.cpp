@@ -9382,7 +9382,7 @@ static StringRef stringifyTMemCopyInstructionColumnProjectionFailureKind(
   llvm_unreachable("unknown tcgen05.copy instruction-column failure kind");
 }
 
-static std::optional<TMemCopyDescriptorRowSplitRequirement>
+std::optional<TMemCopyDescriptorRowSplitRequirement>
 getTMemCopyDescriptorRowSplitRequirement(
     const TMemCopyInstructionColumnProjectionFailure &failure) {
   if (failure.kind != TMemCopyInstructionColumnProjectionFailureKind::
@@ -9760,6 +9760,13 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         if (instructionProjectionFailure
                 .descriptorRowDeltaSpansInstructionRows)
           llvm::errs() << " spansInstructionRows=1";
+        if (auto splitRequirement = getTMemCopyDescriptorRowSplitRequirement(
+                instructionProjectionFailure)) {
+          llvm::errs() << " selectedColumnRun="
+                       << splitRequirement->selectedColumnRun
+                       << " columnSelectionPeriod="
+                       << splitRequirement->columnSelectionPeriod;
+        }
         if (instructionProjectionFailure.packedLaneBits > 0)
           llvm::errs() << " packedLaneBits="
                        << instructionProjectionFailure.packedLaneBits;
