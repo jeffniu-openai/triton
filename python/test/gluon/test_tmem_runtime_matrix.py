@@ -4734,6 +4734,15 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
     (
+        64,
+        64,
+        4,
+        2,
+        ((1, 0),),
+        "32x32b",
+        "M=64 two-CTA tensor-memory-scales view carries the second 32-row warp anchor as broadcast/support state",
+    ),
+    (
         128,
         64,
         4,

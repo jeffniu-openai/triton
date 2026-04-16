@@ -19595,3 +19595,33 @@ Open after this slice:
   - commit and push this selector checkpoint;
   - continue to copy planner/scales frontiers or to a true packet-order
     equivalence proof for direct-compatible reduction overrides.
+
+## 2026-04-16 09:37 UTC: M64 scales descriptor-view row-anchor diagnostic
+
+- Starting point: `codex/tmem` at `897f6460b`.
+- Probe:
+  - temporarily allowed the two-CTA tensor-memory-scales descriptor-view
+    recognizer to consider `M=64`;
+  - direct `32x32b` still could not be promoted because the raw view carries a
+    needed 32-row warp anchor through broadcast/support bases rather than a
+    materializable TMEM row basis;
+  - the temporary recognizer expansion was removed.
+- Change:
+  - `isUnsupportedDirectTMemLdStDescriptorView(...)` now reports a specific
+    M64 scales row-anchor boundary for two-CTA 8-bit descriptor views with
+    nontrivial block ownership and broadcast/support bases;
+  - runtime-matrix coverage pins the `M=64,N=64,32x32b` CGA descriptor-view
+    row as a clean unsupported case with that diagnostic.
+- Validation:
+  - `make -j8`;
+  - exact new clean-negative row (`1 passed`);
+  - adjacent CGA scales descriptor-view selector (`46 passed, 11087
+    deselected`);
+  - py-compile of `python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - continue with a support-bearing planner slice. For M64 scales
+    descriptor-view `ld/st`, the next valid support attempt needs row-anchor
+    rematerialization or a packet-footprint model, not another recognizer
+    relaxation.

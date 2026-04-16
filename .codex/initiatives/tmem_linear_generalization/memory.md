@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current M64 two-CTA scales descriptor-view diagnostic checkpoint,
+  2026-04-16 09:37 UTC: a bounded probe tried to promote `M=64` two-CTA
+  tensor-memory-scales descriptor-view `ld/st` by extending the exact-query
+  recognizer. The support attempt remained blocked because the view carries
+  the second 32-row warp anchor as broadcast/support state rather than a
+  materializable TMEM row basis, while the current scales lowering requires
+  row anchors 32 and 64. The backend now reports this exact row-anchor /
+  packet-footprint boundary for the `M=64,N=64,32x32b` clean-negative row.
+  Adjacent promoted `M in {128,256}` CGA descriptor-view rows remain green
+  (`46 passed`). Treat future support here as a row-anchor rematerialization
+  or packet-footprint model task, not another shape-gate relaxation.
+
 - Current safe backend default-reduction query checkpoint, 2026-04-16
   09:18 UTC: `tensor_memory_descriptor._load_red(layout=None)` now asks the
   backend reduction-layout helper first for f32 non-scales TMEM. The helper is

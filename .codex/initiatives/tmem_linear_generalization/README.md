@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 09:37 UTC: the two-CTA tensor-memory-scales descriptor-view
+  `M=64` direct `ld/st` boundary now reports a specific row-anchor diagnostic
+  instead of the generic exact-projection fallback. A temporary recognizer
+  expansion showed that the raw view carries one 32-row warp anchor as
+  broadcast/support state; current scales `tcgen05.ld/st` lowering still
+  requires materializable row anchors 32 and 64. Validation: `make -j8`,
+  exact new clean-negative row (`1 passed`), adjacent CGA scales
+  descriptor-view selector (`46 passed`), py-compile, and `git diff --check`.
 - 2026-04-16 09:18 UTC: default `load_min/load_max(layout=None)` now asks
   the backend reduction-layout helper first for f32 non-scales TMEM, but the
   helper is conservative: if direct `32x32b` is already reduction-compatible

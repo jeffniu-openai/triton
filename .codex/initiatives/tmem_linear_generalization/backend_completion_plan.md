@@ -981,6 +981,14 @@ Progress:
   still returns the split-N rescue layout for M64 scalarized direct
   reductions, so the special case is backend-routed without reopening the
   rejected broad-route failures.
+- 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
+  direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
+  `M in {128,256}` forms, but support is not a stale shape gate: one required
+  32-row warp anchor is represented as broadcast/support state, so the current
+  scales lowering cannot materialize the 32/64 row-anchor pair. The backend
+  diagnostic now names this M64 row-anchor rematerialization /
+  packet-footprint boundary directly, and the runtime matrix pins it as a
+  clean negative.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:

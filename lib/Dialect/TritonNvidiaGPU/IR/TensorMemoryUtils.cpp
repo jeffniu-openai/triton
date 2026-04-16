@@ -3960,6 +3960,26 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
     bool hasExactSupportedQuery =
         succeeded(rawQuery) &&
         isTwoCTAScalesDescriptorViewTMemLdStQuery(queryTy, rawQuery->layout);
+    auto isM64ScalesDescriptorViewRowAnchorBoundary = [&]() {
+      if (!linearQuery || !linearQuery.getTwoCTAs() ||
+          queryTy.getElementTypeBitWidth() != 8 ||
+          queryTy.getShape()[0] != 64 || queryTy.getShape()[1] < 4) {
+        return false;
+      }
+      return hasNonTrivialBlock &&
+             (hasZeroBasisAlong(typeLayout, kRow) ||
+              hasZeroBasisAlong(typeLayout, kCol));
+    }();
+    if (isM64ScalesDescriptorViewRowAnchorBoundary) {
+      return unsupported(
+          "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
+          "this M=64 two-CTA tensor-memory-scales view carries the second "
+          "32-row warp anchor as broadcast/support state instead of a "
+          "materializable TMEM row basis. Current tcgen05.ld/st scales "
+          "lowering requires row anchors 32 and 64; supporting this view "
+          "needs a row-anchor rematerialization or packet-footprint model for "
+          "M64 scales views.");
+    }
     if (failed(rawQuery) ||
         (hasNonTrivialBlock && (hasZeroBasisAlong(typeLayout, kRow) ||
                                 hasZeroBasisAlong(typeLayout, kCol)) &&
