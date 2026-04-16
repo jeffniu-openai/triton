@@ -8808,17 +8808,33 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
 }
 
 static std::optional<TMemCopySupportResult>
-getKnownTMemCopyScheduleGap(MemDescType srcTy, const LinearLayout &cvt,
-                            const TMemCopyPlan &plan, int bitwidth) {
+getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
+                                       const LinearLayout &cvt,
+                                       const TMemCopyPlan &plan,
+                                       const TMemCopyMessagePlan &message,
+                                       int bitwidth) {
   if (plan.family != TMemCopyFamily::Warpx2_02_13_64x128b)
+    return std::nullopt;
+  if (message.useDirectSeedDescriptor)
     return std::nullopt;
   if (bitwidth != 32 || srcTy.getRank() != 2 || srcTy.getShape()[0] != 256 ||
       srcTy.getShape()[1] != 4)
     return std::nullopt;
 
   auto *ctx = srcTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kOffset = StringAttr::get(ctx, "offset");
   auto kBlock = StringAttr::get(ctx, "block");
-  if (!cvt.hasInDim(kBlock) || cvt.getInDimSize(kBlock) != 2)
+  if (!cvt.hasInDim(kRow) || !cvt.hasOutDim(kOffset) ||
+      !cvt.hasInDim(kBlock) || cvt.getInDimSize(kBlock) != 2)
+    return std::nullopt;
+  if (cvt.getInDimSizeLog2(kRow) <= llvm::Log2_32(32))
+    return std::nullopt;
+  int32_t sourceRowStride =
+      cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
+  int32_t row32Offset = cvt.getBasis(kRow, llvm::Log2_32(32), kOffset);
+  if (sourceRowStride <= 0 || row32Offset != 1 ||
+      row32Offset == sourceRowStride * (32 / 8))
     return std::nullopt;
 
   return getUnsupportedTMemCopyResult(
@@ -9658,8 +9674,6 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
                 "load/store contract are represented explicitly in the "
                 "linear-layout planner.")};
   }
-  if (auto knownGap = getKnownTMemCopyScheduleGap(srcTy, cvt, plan, bitwidth))
-    return {std::nullopt, *knownGap};
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;
     scheduledMessage.plan = message;
@@ -9671,6 +9685,9 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
     auto rowProjection =
         getTMemCopySourceRowProjectionPlan(cvt, message, &rowProjectionError);
     if (!rowProjection) {
+      if (auto knownGap = getKnownTMemCopySourceRowProjectionGap(
+              srcTy, cvt, plan, message, bitwidth))
+        return {std::nullopt, *knownGap};
       return {std::nullopt,
               getUnsupportedTMemCopyResult(
                   TMemCopySupportFailureLayer::InstructionSchedule,

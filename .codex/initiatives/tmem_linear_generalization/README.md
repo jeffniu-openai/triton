@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 01:41 UTC: moved the two-CTA no-scales
+  `warpx2::02_13` clean-negative from a shape-only early schedule-gap guard
+  into the source-row projection planner. A bounded bypass confirmed the
+  underlying failure: logical row bit 5 maps to a one-dword source offset, not
+  an affine multiple of the 8-row source stride. The final unsupported
+  diagnostic is unchanged for users, but it now fires only after the planner
+  proves that exact row-projection mismatch. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, py-compile, `git diff --check`, exact two-CTA
+  `02_13` candidate clean-negative (`2 passed`), and the focused
+  `cp_no_scales_warpx2` selector (`78 passed`).
 - 2026-04-16 01:29 UTC: fixed the scales descriptor-view `ld/st` regression
   caused by the 00:57 reshape cleanup. The trailing zero-basis cardinality
   trim was removed: row/column/block zero bases are semantic TMEM

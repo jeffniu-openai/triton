@@ -278,6 +278,13 @@ Progress:
   columns; subaligned destination dword deltas fault and aligned deltas read
   zeros. Keep this as a real Phase 2 schedule gap until a `cta_group::2`
   descriptor/address plan preserves the high source-column bit.
+- 2026-04-16 01:41 UTC: removed the blanket early `warpx2::02_13` two-CTA
+  known-gap return from shared descriptor plan realization. The diagnostic now
+  derives from the actual source-row projection planner failure, and the
+  special schedule-gap evidence is attached only when the conversion proves
+  row bit 5 is the one-dword offset case. This keeps the gap classified at the
+  correct instruction-schedule layer without letting descriptor enumeration
+  masquerade as a proof of support.
 - 2026-04-15 22:29 UTC: rechecked the scales shared row-subslice copy row.
   It is the same Phase 2 atomization class as the scales descriptor-view copy:
   source column bit 2 maps to shared offset `1024`, or `32`

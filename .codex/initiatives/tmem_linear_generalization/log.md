@@ -18290,6 +18290,43 @@ Open after this slice:
     (`7 passed, 10981 deselected in 3.79s`);
   - `git diff --check`.
 
+## 2026-04-16 01:41 UTC: derived two-CTA `warpx2::02_13` row-projection gap
+
+- Rehydrated the no-scales two-CTA `warpx2::02_13` copy frontier from the
+  pushed `8212c1fcb` checkpoint.
+- Ran a bounded source probe that bypassed the existing known-gap return:
+  - the planner then failed in `getTMemCopySourceRowProjectionPlan(...)`;
+  - query debug showed the exact destination-to-source conversion maps logical
+    row bit 5 to shared offset `1` while the 8-row source stride is represented
+    by the ordinary row-stride basis;
+  - this confirms the descriptor path failure is the real source-row
+    projection mismatch, not descriptor candidate starvation.
+- Replaced the shape-only early known-gap return with
+  `getKnownTMemCopySourceRowProjectionGap(...)`.
+  - The helper only emits the long two-CTA `02_13` schedule-gap diagnostic
+    after the source-row planner fails and the conversion proves the
+    one-dword row-bit-5 mapping.
+  - The user-facing diagnostic remains text-compatible, including the recorded
+    direct-seed `cta_group::2` evidence.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-derived-gap2
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    (`2 passed`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-derived-gap-selector
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2'`
+    (`78 passed, 10910 deselected in 200.90s`);
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-16 00:57 UTC: descriptor-view reshape active-shape cleanup
 
 - Changed TMEM descriptor-view reshape/query inference to strip leading unit

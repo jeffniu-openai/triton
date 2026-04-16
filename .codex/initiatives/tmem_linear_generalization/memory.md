@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current derived two-CTA `warpx2::02_13` row-projection gap, 2026-04-16
+  01:41 UTC: removed the blanket early `getKnownTMemCopyScheduleGap(...)`
+  return from shared descriptor plan realization. The long two-CTA
+  `warpx2::02_13` schedule-gap diagnostic now comes from
+  `getKnownTMemCopySourceRowProjectionGap(...)`, which only fires after
+  `getTMemCopySourceRowProjectionPlan(...)` fails and the conversion proves
+  logical row bit 5 maps to a one-dword source offset. A temporary bypass of
+  the old guard confirmed this is the real descriptor-path failure layer:
+  query debug showed row bit 5 at offset `1`, not an affine 8-row source
+  stride. The user-facing diagnostic and direct-seed `cta_group::2` evidence
+  remain unchanged, but the failure is no longer a shape-only preflight.
+  Validation passed: `make -j8`, direct `invalid.mlir` verifier, exact
+  two-CTA `02_13` candidate clean-negative (`2 passed`), focused
+  `cp_no_scales_warpx2` selector (`78 passed, 10910 deselected`),
+  py-compile, and `git diff --check`.
+
 - Current scales descriptor-view reshape correction, 2026-04-16 01:29 UTC:
   the 00:57 active-shape cleanup over-trimmed semantic zero bases. The removed
   `trimTrailingZeroBasesToElementCount(...)` helper forced reshaped TMEM view
