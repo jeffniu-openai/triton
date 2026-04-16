@@ -235,6 +235,16 @@ Progress:
   column pair into both destination pairs (`dword_delta=0`) or write zeros
   (aligned nonzero deltas), so this remains a true descriptor/address schedule
   gap rather than a parameter choice in the existing direct-seed path.
+- 2026-04-16 12:04 UTC: rehydrated the copy frontier after the M64 backend
+  cleanup. The current two-CTA `warpx2::02_13` exact conversion still maps
+  row bit 32 to source offset `1`, confirming the missing fact is a
+  source-column selector, not a row-stride variant. The current scales
+  descriptor-view exact conversion still maps source column bit 2 to descriptor
+  row `+32` for 4-column destination runs every 8 columns inside one
+  `warpx4.32x128b` instruction. Source-format suffixes are packed source data
+  formats and do not provide a destination-column mask. Treat both as
+  source-message / destination-footprint modeling tasks, not frontend fallback
+  cleanup.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

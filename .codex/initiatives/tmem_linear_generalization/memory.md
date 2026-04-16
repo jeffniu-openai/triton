@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Current copy-scheduler frontier reprobe, 2026-04-16 12:04 UTC:
+  rehydrated `codex/tmem` at `cb0a8811f` and reran the exact two-CTA
+  no-scales `warpx2::02_13` failure with `TRITON_DEBUG_TMEM_QUERY=1`. The
+  exact conversion is still destination row bits
+  `1,2,4,8,16 -> source offsets 8,16,32,64,128`, row bit `32 -> source offset
+  1`, row bit `64 -> 0`, col bits `1,2 -> source offsets 2,4`, and block bit
+  `1 -> source block 1`. Row bit 32 is therefore a high source-column selector
+  that the current planner cannot preserve by treating it as affine row
+  projection. The previous direct-seed two-CTA probe remains definitive:
+  simple source-offset / destination-dword-delta tuning emits the opcode but
+  duplicates the low source-column pair into the high destination columns.
+  Also reran the scales descriptor-view copy failure. Its exact
+  `warpx4.32x128b` query still maps source column bit 2 to shared offset 256,
+  i.e. descriptor row `+32`, for 4-column destination runs every 8 columns.
+  The existing source-format suffixes are packed source data formats; they do
+  not provide a destination-column mask. Shared conclusion: these two copy
+  frontiers are real source-message / destination-footprint gaps, not stale
+  frontend fallbacks or shape gates.
+
 - Current explicit M64 split-N backend checkpoint, 2026-04-16 12:00 UTC:
   the explicit requested-variant `16x32bx2` M64 row/column-permuted path is
   now covered by the same C++ raw-query recognizer as `32x32b_splitn`.

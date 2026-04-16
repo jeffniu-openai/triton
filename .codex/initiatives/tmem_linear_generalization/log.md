@@ -20033,3 +20033,41 @@ Open after this slice:
     backend-completeness frontier: two-CTA `warpx2::02_13` copy scheduling,
     scales copy source-message/destination-mask planning, or broader
     physical-query equivalence cleanup.
+
+## 2026-04-16 12:04 UTC: copy scheduler frontier reprobes
+
+- Starting point: `codex/tmem` at `cb0a8811f`.
+- Reprobed two-CTA no-scales `warpx2::02_13` with:
+  `CUDA_VISIBLE_DEVICES=0
+  TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-0213-direct-debug
+  TRITON_DEBUG_TMEM_QUERY=1
+  PYTHONPATH=./python:./python/test/gluon python3 - <<'PY' ...`.
+- Current exact conversion:
+  - destination row bits `1,2,4,8,16` map to source offsets
+    `8,16,32,64,128`;
+  - destination row bit `32` maps to source offset `1`;
+  - destination row bit `64` maps to `0`;
+  - destination col bits `1,2` map to source offsets `2,4`;
+  - block bit `1` maps to source block `1`.
+- Interpretation:
+  - row bit 32 is the high source-column selector, not an affine source-row
+    stride;
+  - this lines up with the earlier direct-seed probe where cta-group::2
+    `02_13` emitted but duplicated the low source-column pair into both
+    destination column pairs.
+- Reprobed scales descriptor-view copy with:
+  `CUDA_VISIBLE_DEVICES=0
+  TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-view-debug
+  TRITON_DEBUG_TMEM_QUERY=1
+  PYTHONPATH=./python:./python/test/gluon python3 - <<'PY' ...`.
+- Current exact scales conversion:
+  - `tcgen05.copy.warpx4.32x128b` is selected;
+  - source column bit 2 maps to shared offset `256`, or descriptor row `+32`,
+    for 4-column destination runs every 8 columns;
+  - current source-format suffixes are packed source data formats and do not
+    provide a destination-column mask for that split.
+- Next:
+  - treat both rows as first-class source-message / destination-footprint
+    modeling tasks;
+  - do not spend more time on direct-seed parameter tuning or frontend layout
+    fallbacks for these shapes.

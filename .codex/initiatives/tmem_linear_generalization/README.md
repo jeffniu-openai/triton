@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 12:04 UTC: rehydrated the copy frontiers after the M64 backend
+  checkpoint. Two-CTA no-scales `warpx2::02_13` still fails because row bit 32
+  is a high source-column selector (`source offset 1`) that current row
+  projection cannot carry through a cta-group::2 descriptor schedule. The
+  scales descriptor-view copy still fails because source column bit 2 selects
+  descriptor row `+32` for 4-column runs inside one 16-column
+  `warpx4.32x128b` instruction. These are now documented as
+  source-message / destination-footprint scheduler gaps, not frontend fallback
+  or shape-gate cleanup.
 - 2026-04-16 12:00 UTC: the remaining explicit M64
   requested-variant `16x32bx2` Python canonical fallback has been deleted.
   The same C++ raw-query recognizer now covers both `32x32b_splitn` and
