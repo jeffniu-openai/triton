@@ -34,6 +34,11 @@ The central conclusion to preserve is:
   (`2.252s` cold compile, sub-millisecond warm execution); if broad sweeps are
   still too slow, fix shard balance, duration-cache use, pytest
   collection/import overhead, or new compiler hot spots.
+- 2026-04-16 follow-up: the x1 two-CTA subword descriptor-chain hotspot is
+  also within target after verifier duplicate-work cleanup (`3.614s` cold
+  compile). Avoid context-unsafe static caches for TMEM encoding info; prefer
+  reducing repeated proofs or adding context-owned caches if future hotspots
+  require memoization.
 
 ## Design Invariants
 

@@ -2885,14 +2885,21 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
   if (isa<TensorMemoryScalesEncodingAttr>(encoding))
     return backingPlan;
 
+  auto preferBackingQueryTypes = [&]() {
+    if (!isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
+                         gpu::MemDescIndexOp, gpu::MemDescReshapeOp>(
+            memDesc.getDefiningOp())) {
+      return false;
+    }
+    return queryPlan && backingPlan && queryPlan->rowSpan < backingPlan->rowSpan;
+  }();
   auto preferQueryPlanForM64SplitNSubview = [&]() {
     return queryPlan && queryPlan->rowSpan == 64 && queryTy.getRank() == 2 &&
            queryTy.getElementTypeBitWidth() == 32 && queryTy.getShape()[0] == 64 &&
            !queryTy.getAllocShape().empty() &&
            queryTy.getAllocShape().back() > queryTy.getShape()[1];
   };
-  if (preferBackingTMemLdStQueryTypes(memDesc) &&
-      !preferQueryPlanForM64SplitNSubview())
+  if (preferBackingQueryTypes && !preferQueryPlanForM64SplitNSubview())
     return backingPlan;
 
   auto layoutRank =

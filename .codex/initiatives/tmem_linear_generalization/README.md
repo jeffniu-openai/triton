@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 15:59 UTC: continued compile-time optimization on the TMEM
+  verifier paths added during this initiative. A second representative
+  hotspot,
+  `ldst_x1_subword_twocta_descriptor_chain_roundtrip[auto-i8-torch_dtype3-4]`,
+  initially compiled at `4.67s` cold with `ttgir 2.225s` and `llir 1.980s`.
+  The verifier now tries the exact memdesc type proof before constructing
+  surrogate query-type stacks, and `getTMemLdStRowPlanForQuery(...)` no
+  longer recomputes the same query/backing row plans through
+  `preferBackingTMemLdStQueryTypes(...)`. Final fresh-cache timing for that
+  row is `3.614s` compile (`ir_initialization 0.880s`, `ttgir 1.442s`,
+  `llir 1.269s`, `ptx 0.004s`, `cubin 0.019s`) with warm execution still not
+  the bottleneck. Focused x1 pytest and the previous 8-case guard set passed.
 - 2026-04-16 14:34 UTC: interrupted backend-completeness work to profile the
   slow `ld.red` runtime-matrix tests. The representative
   `rowcol_rotate_reverse_n256_32x32b_splitn` cold compile is now compiler-bound

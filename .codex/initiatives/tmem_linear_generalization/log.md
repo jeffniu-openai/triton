@@ -1,3 +1,41 @@
+## 2026-04-16 15:59 UTC: verifier compile-time optimization checkpoint
+
+- Continued profiling compile time for TMEM code added during this initiative.
+- Representative profiled hotspot:
+  `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip[auto-i8-torch_dtype3-4]`.
+- Baseline for this slice:
+  - direct fresh-cache profile batch measured that x1 row at `4.67s` compile
+    (`ir_initialization 0.440s`, `ttgir 2.225s`, `llir 1.980s`);
+  - copy descriptor-view rows were already fast (`0.34s` one-CTA indexed,
+    `0.68s` two-CTA indexed), and the previous `ld.red` representative was
+    still in range.
+- Change:
+  - generic `TMEMLoadOp`/`TMEMStoreOp` verification now tries the exact
+    memdesc type proof before constructing broader surrogate query-type stacks;
+  - reduction verification does the same for reduction-compatible direct
+    memdesc proofs before fallback query-type/support/raw proofs;
+  - `getTMemLdStRowPlanForQuery(...)` reuses the query/backing row plans it
+    has already computed instead of calling
+    `preferBackingTMemLdStQueryTypes(...)`, which recomputed both;
+  - rejected a broader static result cache because cached
+    `TMemLdStEncodingInfo` objects carry context-owned layout attributes and
+    would need explicit context lifetime management.
+- Final direct fresh-cache profile:
+  - x1 two-CTA subword descriptor chain: `3.614s` compile
+    (`ir_initialization 0.880s`, `ttgir 1.442s`, `llir 1.269s`, `ptx 0.004s`,
+    `cubin 0.019s`), synchronized call `3.618s`, assertion `0.058s`;
+  - `ld_red_rowcol_n256_splitn`: `2.250s`;
+  - `ld_red_identity_n256_splitn`: `0.687s`;
+  - one-CTA copy indexed `128x128`: `0.328s`;
+  - two-CTA copy indexed `256x128`: `0.637s`.
+- Validation:
+  - `make -j8`;
+  - exact x1 pytest row: `1 passed in 6.31s`;
+  - previous non-preexisting 8-case guard set: `8 passed in 8.77s`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `git diff --check`.
+
 ## 2026-04-16 14:34 UTC: runtime-matrix compile-time profiling checkpoint
 
 - Interrupted TMEM backend feature work to profile the slow runtime-matrix

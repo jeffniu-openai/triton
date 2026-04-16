@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Current verifier compile-time optimization checkpoint, 2026-04-16 15:59 UTC:
+  a second compile profile found
+  `test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip[auto-i8-torch_dtype3-4]`
+  at `4.67s` cold compile (`ir_initialization 0.440s`, `ttgir 2.225s`,
+  `llir 1.980s`) before this slice. The safe fix is not a cross-context
+  result cache; a temporary cache got the row lower but was rejected because
+  `TMemLdStEncodingInfo` contains context-owned layout attributes. The
+  committed fix keeps only deterministic duplicate-work reductions: direct
+  memdesc proof before surrogate query-type construction, direct reduction
+  proof before reduction query-type stacks, and local reuse of already
+  computed query/backing row plans inside `getTMemLdStRowPlanForQuery(...)`.
+  Final fresh-cache timing for the x1 row is `3.614s` compile
+  (`ir_initialization 0.880s`, `ttgir 1.442s`, `llir 1.269s`, `ptx 0.004s`,
+  `cubin 0.019s`), synchronized call `3.618s`, assertion `0.058s`. The
+  representative profile batch also kept `ld_red_rowcol_n256_splitn` at
+  `2.250s`, identity `ld.red` at `0.687s`, one-CTA copy indexed at `0.328s`,
+  and two-CTA copy indexed at `0.637s`.
+
 - Current profiling checkpoint, 2026-04-16 14:34 UTC: interrupted TMEM backend
   feature work to address runtime-matrix throughput. The worst representative
   row profiled here is

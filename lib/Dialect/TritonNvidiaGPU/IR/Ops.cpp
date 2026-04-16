@@ -1196,6 +1196,15 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   }();
 
   auto maxnreg = getContextualMaxNReg(op);
+  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
+    auto directRowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
+    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, maxnreg,
+                                              /*emitError=*/{},
+                                              directRowPlan))) {
+      return success();
+    }
+  }
+
   auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
   if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
     for (MemDescType queryTy : queryTypes) {
@@ -1409,12 +1418,20 @@ LogicalResult TMEMLoadOp::verify() {
           "explicitly for software reduction");
     auto regTy = getType();
     auto maxnreg = getContextualMaxNReg(*this);
+    auto srcMemTy = cast<MemDescType>(getSrc().getType());
     std::string encodingDetails;
-    auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(getSrc());
     auto encodingInfoOr = [&]() -> FailureOr<TMemLdStEncodingInfo> {
       llvm::raw_string_ostream os(encodingDetails);
       ScopedDiagnosticHandler handler(getContext(),
                                       [&](Diagnostic &diag) { diag.print(os); });
+      auto directRowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
+      if (auto maybeInfo = computeTMemLdStEncodingInfo(
+              regTy, srcMemTy, maxnreg, /*emitError=*/{}, directRowPlan);
+          succeeded(maybeInfo) && isTMemLdStReductionCompatible(*maybeInfo)) {
+        return maybeInfo;
+      }
+
+      auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(getSrc());
       for (MemDescType queryTy : queryTypes) {
         auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
         if (auto maybeInfo = computeTMemLdStEncodingInfo(
@@ -1431,7 +1448,6 @@ LogicalResult TMEMLoadOp::verify() {
       std::string supportError;
       if (auto supportPlan = getTMemLdStSupportQueryPlan(getSrc(),
                                                          &supportError)) {
-        auto srcMemTy = cast<MemDescType>(getSrc().getType());
         auto rowPlan = supportPlan->rowPlan;
         if (!rowPlan)
           rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
@@ -1449,7 +1465,6 @@ LogicalResult TMEMLoadOp::verify() {
       if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
               getSrc(), /*preserveNonCanonicalView=*/true, &rawError);
           succeeded(rawQuery)) {
-        auto srcMemTy = cast<MemDescType>(getSrc().getType());
         auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), srcMemTy);
         if (!rowPlan)
           rowPlan = getBackingTMemLdStRowPlan(getSrc());
