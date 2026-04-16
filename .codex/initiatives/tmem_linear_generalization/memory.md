@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current probe checkpoint, 2026-04-16 05:04 UTC: the tree is clean at
+  `1d07b3bd5` after backing out two temporary probes. Removing the
+  scaled-MMAv5 repeated-N32 guard and trying to group matrix-B scale fragments
+  by two N32 instructions did not produce correct results: the first
+  mxfp8/mxfp8 `N=128,K=128` runtime row still mismatched exactly half the
+  tile. The observed failure matches the scale-layout model: B scales pack a
+  64-column N fragment into two TMEM word columns, and the public scaled-MMA
+  descriptor exposes the scale-factor sub-column for K but no independent
+  selector for the low/high 32-column N half. Keep the repeated-N32 scaled-MMA
+  clean negative unless a real ISA mechanism for selecting the N32 half is
+  found. A separate 4x256b refresh readback probe copied with
+  `tcgen05.cp.4x256b`, bitcast the destination to raw `32x4xi8`, and failed
+  during `raw.get_reg_layout(auto)`. The raw bitcast inference is correct
+  (`row` zero-support bases with byte-lane column bases), but the remaining
+  readback gap is sparse physical TMEM gather/layout selection, not copy
+  scheduling or bitcast arithmetic.
+
 - Current broadcasted load expansion checkpoint, 2026-04-16 04:38 UTC:
   the parked no-scales two-CTA subword column-slice/subslice rows are now
   supported. The root cause was not copy planning: `tcgen05.cp.cta_group::2`

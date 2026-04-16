@@ -18856,3 +18856,21 @@ Open after this slice:
     python/test/gluon/test_frontend.py
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-16 05:04 UTC: repeated-N32 scaled-MMA and 4x256b refresh readback probes
+
+- Starting point: `codex/tmem` at `1d07b3bd5`; worktree clean before probes.
+- Scaled-MMAv5 repeated-N32 probe:
+  - temporarily removed the repeated-N32 verifier/lowering guard and rebuilt;
+  - the old scale-fragment formula compiled but produced wrong output for
+    `mxfp8/mxfp8,N=128,K=128,tile_n=32`;
+  - a grouped B-scale offset attempt still mismatched half the output tile;
+  - source edits were reverted.
+- 4x256b refresh readback probe:
+  - copied through the refresh layout, then bitcast the destination to
+    `32x4xi8`;
+  - `raw.get_reg_layout(auto)` failed for the correct raw physical layout,
+    proving the current readback gap is sparse physical layout selection.
+- Validation/cleanup:
+  - `make -j8` passed after restoring the source;
+  - no source/test files were left dirty before this docs checkpoint.

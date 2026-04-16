@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 05:04 UTC: two no-code probes were completed from the
+  `1d07b3bd5` checkpoint and the source tree was restored clean. First,
+  temporarily removing the scaled-MMAv5 repeated-N32 guard and trying grouped
+  matrix-B scale fragments still produced runtime mismatch (`50%` for the
+  mxfp8/mxfp8 `N=128,K=128` row). This confirms the current repeated-N32
+  scaled-MMA negative is a real public scale-fragment boundary: the B scale
+  layout exposes 64-column fragments and the instruction descriptor has only
+  the K sub-column selector, not a low/high N32-half selector. Second, a
+  runtime probe copied through `tcgen05.cp.4x256b`, bitcast the refresh image
+  to the raw `32x4xi8` physical view, and failed at `get_reg_layout(auto)`.
+  The bitcast layout is now inferred correctly, but direct readback still
+  needs a sparse physical gather/register-layout plan for the refresh image.
 - 2026-04-16 04:53 UTC: physical TMEM bitcast reinterpret inference now
   preserves source physical row/column coordinate units when the source view is
   non-injective only because of inactive zero support bases, and scales TMEM
