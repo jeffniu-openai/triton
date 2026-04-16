@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current two-CTA `warpx2::02_13` direct-seed probe checkpoint, 2026-04-16
+  10:50 UTC: a temporary env-controlled C++ probe allowed the two-CTA
+  no-scales `warpx2::02_13` path to use the single-CTA direct-seed descriptor
+  schedule with configurable `directSourceOffsetB128` and `tmemDwordDelta`.
+  Safe source offsets `0,16,32,48,64` with `dword_delta=0` emitted
+  `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`, but the output always
+  duplicated the selected source-column pair into both destination column
+  pairs. Aligned nonzero deltas `4,8,12,16` wrote zeros. Source offsets `80`
+  and `96` produced unspecified launch failures and should be treated as
+  unsafe direct-seed reads for this shape. The probe hook was removed; `make
+  -j8` and the exact clean-negative row passed afterward. Conclusion: the
+  missing support is not a direct-seed source-offset/dword-delta parameter; it
+  still needs a real two-CTA descriptor/address schedule or different ISA
+  evidence.
+
 - Current backend-owned 4x256b direct-ld/st diagnostic checkpoint, 2026-04-16
   10:43 UTC: descriptor-level direct `ld/st` and register-layout queries for
   the `tcgen05.copy.4x256b` refresh image now get their unsupported reason

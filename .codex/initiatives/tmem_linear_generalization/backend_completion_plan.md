@@ -229,6 +229,12 @@ Progress:
   keeps verifier and lowering aligned and avoids treating bounded descriptor
   enumeration as a possible realization for a schedule already disproven by
   direct-seed probes.
+- 2026-04-16 10:50 UTC: re-probed that two-CTA `warpx2::02_13` direct-seed
+  boundary with configurable source offsets and destination dword deltas. The
+  only non-faulting opcode-emitting variants still either duplicate one source
+  column pair into both destination pairs (`dword_delta=0`) or write zeros
+  (aligned nonzero deltas), so this remains a true descriptor/address schedule
+  gap rather than a parameter choice in the existing direct-seed path.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

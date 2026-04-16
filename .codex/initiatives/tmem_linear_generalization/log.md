@@ -19894,3 +19894,38 @@ Open after this slice:
   - commit and push this backend-layering checkpoint;
   - continue support-bearing copy work, especially the two-CTA
     `warpx2::02_13` source/address schedule and scales copy message splitting.
+
+## 2026-04-16 10:50 UTC: two-CTA warpx2::02_13 direct-seed parameter probe
+
+- Starting point: `codex/tmem` at `f663af8d0`.
+- Temporary source edit:
+  - added env-controlled direct-seed plan injection for two-CTA
+    `warpx2::02_13` in `getTMemCopyPlans(...)`;
+  - temporarily allowed `getDirectTMemCopySeedDescriptorImm(...)` to accept
+    the canonical 256x4 two-CTA shared layout;
+  - env variables used by the temporary hook were
+    `TRITON_PROBE_TMEM_WARPX2_0213_CTA2_DIRECT`,
+    `TRITON_PROBE_TMEM_WARPX2_0213_SOURCE_B128`, and
+    `TRITON_PROBE_TMEM_WARPX2_0213_DWORD_DELTA`.
+- Probe results:
+  - for source offsets `0,16,32,48,64` with `dword_delta=0`, the kernel
+    emitted `tcgen05.cp.cta_group::2.warpx2::02_13.64x128b`;
+  - all of those outputs duplicated one source-column pair into both
+    destination column pairs, for example source offset 32 produced first rows
+    like `[64, 192, 64, 192]`, `[66, 194, 66, 194]`, ...;
+  - aligned nonzero destination dword deltas `4,8,12,16` wrote zeros for the
+    sampled source offsets;
+  - source offsets `80` and `96` caused unspecified launch failures, so they
+    are unsafe for this direct-seed path.
+- Cleanup / validation:
+  - removed the temporary probe hook;
+  - verified no `TRITON_PROBE_TMEM_WARPX2_0213` references remain;
+  - `make -j8`;
+  - exact clean-negative row
+    `test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported[f32-torch_dtype0]`
+    passed (`1 passed`).
+- Next:
+  - do not spend more time on direct-seed offset/dword-delta tuning for this
+    two-CTA gap;
+  - a valid support attempt needs a different descriptor/address schedule, a
+    source-message split with proven non-overlap, or new ISA semantics.

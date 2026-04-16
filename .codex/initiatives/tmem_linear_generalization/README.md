@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 10:50 UTC: a temporary env-controlled direct-seed probe for
+  two-CTA no-scales `warpx2::02_13` was completed and removed. Source
+  offsets `0,16,32,48,64` with `dword_delta=0` all emitted the
+  `cta_group::2.warpx2::02_13` opcode but duplicated one source-column pair
+  into both destination column pairs; aligned nonzero deltas
+  `4,8,12,16` wrote zeros, and source offsets `80+` caused unspecified launch
+  failures. After removing the probe hook, `make -j8` and the exact clean
+  negative passed. Treat this as confirmation that a direct-seed parameter
+  tweak is not the missing two-CTA schedule.
 - 2026-04-16 10:43 UTC: descriptor-level direct `ld/st` rejection for the
   `tcgen05.copy.4x256b` refresh image is now backend-owned. The shared
   `isUnsupportedDirectTMemLdStDescriptorView(...)` helper reports the root
