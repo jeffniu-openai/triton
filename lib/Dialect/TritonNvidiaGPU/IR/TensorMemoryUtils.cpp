@@ -7793,6 +7793,12 @@ getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
       {32, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0},
       {4, 0},  {8, 0}, {16, 0}, {64, 0},
   };
+  // This is stronger than a descriptor-representability precheck. Local
+  // probes showed noncanonical dense/near-canonical shared layouts can either
+  // select a descriptor and still copy the wrong logical source rows/columns,
+  // or fail only after source-footprint scheduling. Keep this as the current
+  // source-layout contract until warpx2 planning carries the full source
+  // rematerialization schedule instead of only an MMAShared descriptor.
   auto actualOffsetBases = shmemLl.getBases().lookup(kOffset);
   if (actualOffsetBases.size() != std::size(expectedOffsetBases)) {
     return setError("warpx2 tcgen05.copy currently supports only the "
@@ -9837,6 +9843,15 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         executablePlan.messages.push_back(std::move(scheduledMessage));
         continue;
       }
+      return {std::nullopt,
+              getUnsupportedTMemCopyResult(
+                  TMemCopySupportFailureLayer::InstructionSchedule,
+                  Twine("tcgen05.copy.") +
+                      stringifyTMemCopyFamily(plan.family) +
+                      " direct-seed descriptor plan requires a shared-memory "
+                      "source layout whose base and offset bits can be encoded "
+                      "in the immediate seed descriptor; this source layout "
+                      "must use a descriptor-loader plan instead.")};
     }
     std::string instructionProjectionError;
     TMemCopyInstructionColumnProjectionFailure instructionProjectionFailure;

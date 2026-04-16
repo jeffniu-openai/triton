@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current warpx2 source-layout checkpoint, 2026-04-16 03:45 UTC:
+  `tcgen05.copy` direct-seed message plans now fail immediately when the
+  source shared layout cannot be encoded as the immediate seed descriptor
+  instead of falling through to descriptor-loader lowering with
+  `useDirectSeedDescriptor` still set. This closes a verifier/lowering drift
+  hole exposed by temporarily lifting the `warpx2` canonical shared-layout
+  preflight: noncanonical shared layouts can either fail later at
+  descriptor-loader source-footprint bounds or compile to wrong output
+  (`row32_after_cols`, `row32_row64_tail_swapped`, and dense `02_13` copied
+  the wrong logical source rows/columns). The canonical source-layout guard
+  remains in place and is now documented as a real source-rematerialization
+  contract, not merely an MMAShared descriptor representability shortcut.
+  Validation passed: `make -j8`, affected `warpx2` rows (`6 passed`), and
+  the focused `cp_no_scales_warpx2` selector (`78 passed, 10928 deselected`).
+
 - Current packed-lane source-storage proof, 2026-04-16 01:59 UTC:
   legacy subword `tcgen05.copy` failures now derive a first-class
   `TMemCopyPackedLaneRequirement` from the packed-lane instruction-column

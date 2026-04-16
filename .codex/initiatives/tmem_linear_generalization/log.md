@@ -18646,3 +18646,34 @@ Open after this slice:
   - py-compile of `test_tmem_runtime_matrix.py`;
   - combined existing/new tile-permutation selector
     (`22 passed, 10984 deselected`).
+
+## 2026-04-16 03:45 UTC: warpx2 direct-seed plan invariant
+
+- Investigated whether the canonical shared-linear source-layout preflight for
+  no-scales `warpx2` copy was hiding real linear-layout support.
+- Temporary preflight lift findings:
+  - canonical `01_23` remains correct;
+  - dense `01_23` fails planner-side descriptor-loader source-footprint bounds;
+  - near-canonical `01_23` source layouts such as `row32_after_cols` and
+    `row32_row64_tail_swapped` compile but copy wrong logical source
+    rows/columns;
+  - dense single-CTA `02_13` compiles but copies source row 0 where the
+    logical operation expects row 16, so descriptor representability is not a
+    correctness proof for noncanonical shared sources.
+- Root cause:
+  - a `TMemCopyMessagePlan` marked `useDirectSeedDescriptor` could fail
+    `getDirectTMemCopySeedDescriptorImm(...)` and then fall through to
+    descriptor-loader plan realization while source-footprint support still
+    treated the message as a direct-seed immediate.
+- Implementation:
+  - direct-seed messages now return an instruction-schedule failure if the
+    immediate seed descriptor cannot be synthesized;
+  - restored the existing canonical shared-layout guard and documented it as
+    the current source-rematerialization contract for `warpx2`, not just a
+    descriptor-representability precheck.
+- Validation:
+  - `make -j8`;
+  - affected `warpx2` focused selector
+    (`6 passed, 11000 deselected in 8.70s`);
+  - full `cp_no_scales_warpx2` selector
+    (`78 passed, 10928 deselected in 201.12s`).

@@ -375,6 +375,15 @@ Progress:
   but runtime was wrong (`maxdiff=127` for both single-CTA and two-CTA, `f32`
   and `i32`); `warpx2::02_13` still failed deeper. Keep the preflight until
   the planner has an explicit source shared-layout schedule/projection proof.
+- 2026-04-16 03:45 UTC: re-probed `warpx2` noncanonical shared layouts after
+  the copy planner gained source-footprint proofs. The conclusion sharpened:
+  descriptor representability is still not enough. Dense `01_23` now fails
+  descriptor-loader footprint bounds, while other near-canonical `01_23`
+  layouts and dense single-CTA `02_13` can emit opcodes but copy wrong logical
+  source rows/columns. The direct-seed plan path is now guarded so a missing
+  seed immediate cannot fall through to descriptor-loader lowering with stale
+  direct-seed source semantics. The canonical shared-layout preflight remains
+  until `warpx2` source rematerialization is modeled explicitly.
 - 2026-04-15 23:40 UTC: added `TMemCopySourceFootprint` to scheduled copy
   instructions. The planner-owned emitted instruction stream now pairs each
   destination tile/footprint with the source row/column footprint that lowering

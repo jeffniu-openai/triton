@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 03:45 UTC: `tcgen05.copy` direct-seed message plans now fail
+  when the immediate seed descriptor cannot be synthesized instead of falling
+  through to descriptor-loader lowering while still carrying direct-seed source
+  semantics. A temporary `warpx2` shared-layout preflight lift showed why the
+  canonical shared-layout guard remains a real source-rematerialization
+  boundary: some noncanonical shared layouts fail descriptor-loader footprint
+  bounds, while others compile and copy wrong logical source rows/columns.
+  Validation: `make -j8`, affected `warpx2` rows (`6 passed`), and full
+  `cp_no_scales_warpx2` selector (`78 passed`).
 - 2026-04-16 02:46 UTC: dense `tcgen05.copy` destination scheduling now uses
   exact physical tile coordinates for every dense copy tile instead of a
   128-byte macro-tile heuristic. This fixes a real wrong-code hole for
