@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:22 UTC: removed the stale `LogicalSharedTile`
+  source-coordinate mode from the copy scheduler. The source-footprint model
+  now has only descriptor-loader coordinates for selected MMAShared
+  descriptors and direct-seed immediates for the immediate descriptor path.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, py-compile,
+  `git diff --check`, focused copy selector (`9 passed`). Broad copy
+  validation for the preceding descriptor-coordinate fix is complete:
+  split groups 1-4 passed with group 1 carrying the repaired 256-row bucket.
 - 2026-04-16 00:14 UTC: descriptor-backed copy source footprints now use
   descriptor-loader bounds consistently, including dense no-scales copies. A
   broad copy shard showed that the previous dense/logical-source split falsely

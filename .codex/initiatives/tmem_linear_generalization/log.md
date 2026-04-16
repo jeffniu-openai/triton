@@ -18008,6 +18008,29 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-16 00:22 UTC: descriptor source-coordinate cleanup
+
+- Completed the broad copy split validation for the 00:14 descriptor-backed
+  source-coordinate fix:
+  - group 1: `171 passed, 10 skipped, 10807 deselected`;
+  - group 2: `181 passed, 10807 deselected`;
+  - group 3: `181 passed, 10807 deselected`;
+  - group 4: `178 passed, 10810 deselected`.
+- Removed the stale `LogicalSharedTile` coordinate-space enum value and the
+  logical-source bounds branch from `getTMemCopySourceFootprintSupport(...)`.
+- `TMemCopySourceFootprint` now defaults to descriptor-loader coordinates; the
+  only non-descriptor coordinate space left is `DirectSeedImmediate`, which is
+  skipped because it has no selected descriptor layout.
+- Validation for the cleanup:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - focused runtime selector covering the minimal 256-row no-scales repro,
+    scales layout probe, scales descriptor-view clean negative, and two-CTA
+    `warpx2::02_13` clean negative (`9 passed, 10980 deselected in 4.13s`).
+
 ## 2026-04-16 00:14 UTC: descriptor-backed source coordinate correction
 
 - Broad copy validation found a regression from the 00:02 source-bounds

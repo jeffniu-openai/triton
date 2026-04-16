@@ -234,7 +234,6 @@ struct TMemCopyScheduledTile {
 };
 
 enum class TMemCopySourceCoordinateSpace {
-  LogicalSharedTile,
   DescriptorLoader,
   DirectSeedImmediate,
 };
@@ -245,7 +244,7 @@ struct TMemCopySourceFootprint {
   unsigned rows;
   unsigned columns;
   TMemCopySourceCoordinateSpace coordinateSpace =
-      TMemCopySourceCoordinateSpace::LogicalSharedTile;
+      TMemCopySourceCoordinateSpace::DescriptorLoader;
 };
 
 struct TMemCopyScheduledInstruction {

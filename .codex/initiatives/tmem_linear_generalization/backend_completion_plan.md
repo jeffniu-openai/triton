@@ -387,6 +387,12 @@ Progress:
   selectors into the copy column dimension. Source-footprint bounds now check
   every non-direct-seed copy message against its selected descriptor layout,
   while direct-seed immediates remain skipped.
+- 2026-04-16 00:22 UTC: deleted the now-stale logical shared-tile coordinate
+  mode from `TMemCopySourceFootprint`. The copy scheduler has two realized
+  source coordinate spaces: selected descriptor-loader coordinates and
+  direct-seed immediates. This keeps the source-footprint carrier aligned with
+  the actual public `tcgen05.copy` operand model before the next scheduler
+  work.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

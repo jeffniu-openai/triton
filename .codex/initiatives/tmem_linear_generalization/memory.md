@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current descriptor-source cleanup checkpoint, 2026-04-16 00:22 UTC:
+  removed the stale `LogicalSharedTile` coordinate-space enum value and the
+  logical-source bounds branch from copy source-footprint support. The source
+  model now has only the two realized coordinate spaces: descriptor-loader
+  coordinates for every selected MMAShared descriptor-backed message, and
+  direct-seed immediates for the immediate descriptor path. This is a
+  behavior-preserving cleanup on top of `5359270cf`, but it prevents future
+  scheduler work from defaulting a source footprint back into the bad logical
+  shared-tile assumption. Validation passed: `make -j8`, direct
+  `invalid.mlir` verifier, py-compile, `git diff --check`, and a focused copy
+  runtime selector (`9 passed, 10980 deselected`). Additional broad validation
+  for the preceding descriptor-coordinate fix is now complete across the copy
+  split groups: group 1 `171 passed, 10 skipped`; group 2 `181 passed`; group
+  3 `181 passed`; group 4 `178 passed`.
+
 - Current descriptor-backed source-coordinate checkpoint, 2026-04-16 00:14
   UTC: all non-immediate `tcgen05.copy` source footprints now validate in the
   selected descriptor-loader coordinate space. The prior 00:02 split between
