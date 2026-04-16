@@ -19184,3 +19184,35 @@ Open after this slice:
     'cp_no_scales_warpx2 and not subword_dtypes'`
     (`64 passed, 11025 deselected`);
   - `git diff --check`.
+
+## 2026-04-16 06:45 UTC: scales source-format suffix probe rejected
+
+- Starting point: `codex/tmem` at `6aad968d0`.
+- Probe:
+  - temporarily added `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` source-format
+    candidate messages for int8 `warpx4.32x128b` copy plans;
+  - temporarily bypassed the instruction-column projection preflight for those
+    non-default source-format messages to see whether descriptor synthesis
+    could select an executable MMAv5 shared descriptor.
+- Result:
+  - descriptor synthesis still found no representable descriptor for the
+    exact scales row-split source image;
+  - `TRITON_DEBUG_TMEM_QUERY=1` confirmed the same descriptor-row split:
+    source column bit 2 maps to descriptor row `+32`, selecting 4-column
+    destination runs every 8 columns inside one 16-column public copy atom;
+  - public `tcgen05.copy.warpx4.32x128b` still has one TMEM address and one
+    shared descriptor per instruction, with no destination-column mask.
+- Conclusion:
+  - source-format suffix availability alone is not a support proof for scales
+    descriptor-view/shared-subslice copy;
+  - support needs a real source-format descriptor semantics model plus a
+    non-overwriting destination schedule, or this remains a clean ISA/layout
+    boundary.
+- Cleanup and validation:
+  - removed the temporary source edits;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-source-format-restore
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported`
+    (`2 passed`).

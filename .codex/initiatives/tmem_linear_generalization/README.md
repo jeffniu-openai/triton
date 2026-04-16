@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:45 UTC: a no-code scales source-format probe was completed
+  and reverted. Forcing `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` onto the
+  int8 scales `warpx4.32x128b` descriptor-view/shared-subslice frontier did
+  not produce a support path: even with the instruction-column preflight
+  bypassed for those experimental messages, descriptor synthesis still had no
+  representable MMAv5 shared descriptor for the row-split source image. The
+  remaining failure is still descriptor row `+32` for 4-column destination
+  runs every 8 columns inside one 16-column public copy atom, with no
+  destination column mask. Validation after removing the temporary source
+  edit: `make -j8` and the scales shared-subslice clean-negative selector
+  (`2 passed`).
 - 2026-04-16 06:37 UTC: live diagnostics now carry the 06:30 subword
   `warpx2::01_23` finding. Descriptor-synthesis failures append a generic
   source-storage note when a subword copy instruction spans more logical

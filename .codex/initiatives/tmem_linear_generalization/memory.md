@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current scales source-format probe checkpoint, 2026-04-16 06:45 UTC:
+  a temporary planner probe forced the dormant `tcgen05.cp` source-format
+  suffixes `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` onto the int8 scales
+  `warpx4.32x128b` descriptor-view/shared-subslice frontier. Even when the
+  probe bypassed the instruction-column projection preflight for those
+  source-format messages, descriptor synthesis still found no representable
+  MMAv5 shared descriptor for the row-split source image. The selected
+  failure remains descriptor row `+32` for 4-column destination runs every
+  8 columns inside one 16-column public copy atom, with no destination column
+  mask. The temporary source edit was removed; validation after cleanup:
+  `make -j8` and the scales shared-subslice clean-negative selector
+  (`2 passed`). Conclusion: these source-format suffixes are not an escape
+  hatch for scales row-split copy unless the backend first has a real
+  descriptor/source-format semantic model and a non-overwriting destination
+  schedule.
+
 - Current warpx2 subword source-storage diagnostic checkpoint,
   2026-04-16 06:37 UTC: descriptor-synthesis failures now append a generic
   subword source-storage note when the copy instruction footprint spans more

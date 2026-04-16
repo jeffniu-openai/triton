@@ -710,6 +710,14 @@ Progress:
   instruction footprint spans more logical element columns than the source
   layout exposes, failures state that the extra sub-dword lanes need packed
   source-storage or descriptor semantic-equivalence modeling before lowering.
+- 2026-04-16 06:45 UTC: a temporary scales source-format probe ruled out the
+  simplest use of the dormant `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64`
+  suffixes for the scales row-split frontier. Adding those source formats as
+  candidate `warpx4.32x128b` messages and bypassing the instruction-column
+  projection preflight still failed descriptor synthesis: the exact source
+  image has no representable MMAv5 shared descriptor for the descriptor-row
+  `+32` split. Keep this bucket on real descriptor/source-format semantics
+  plus a non-overwriting destination schedule, not a suffix-only promotion.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent
