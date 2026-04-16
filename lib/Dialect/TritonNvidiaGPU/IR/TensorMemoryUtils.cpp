@@ -4590,7 +4590,8 @@ bool isTwoCTAScalesDescriptorViewTMemLdStQuery(MemDescType memTy,
                                                const LinearLayout &queryLayout) {
   if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 8 ||
       !llvm::is_contained(ArrayRef<int64_t>{128, 256}, memTy.getShape()[0]) ||
-      !llvm::is_contained(ArrayRef<int64_t>{32, 64}, memTy.getShape()[1])) {
+      memTy.getShape()[1] < 4 || memTy.getShape()[1] > 128 ||
+      !llvm::isPowerOf2_64(memTy.getShape()[1])) {
     return false;
   }
   auto linear =

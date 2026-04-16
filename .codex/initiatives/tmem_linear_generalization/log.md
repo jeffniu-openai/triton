@@ -19280,3 +19280,37 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'warpx2_subword_dtypes'`
     (`14 passed, 11075 deselected`).
+
+## 2026-04-16 07:15 UTC: two-CTA scales descriptor-view ld/st shape gate removed
+
+- Starting point: `codex/tmem` at `82e75a76e`.
+- Change:
+  - relaxed `isTwoCTAScalesDescriptorViewTMemLdStQuery(...)` from the stale
+    `N in {32,64}` shape gate to the exact-query-supported power-of-two
+    `N=4..128` range for `M in {128,256}`;
+  - kept the existing validation discipline: the special layout is only
+    returned if `computeTMemLdStEncodingInfo(...)` accepts it for the exact
+    query and selected atom;
+  - expanded `SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES` to cover the full newly
+    validated two-CTA range and assert the expected root/view packet shapes.
+- Probe result before the test update:
+  - `M in {128,256}`, `N in {4,8,16,32,64,128}` all produced correct runtime
+    output after the shape gate relaxation;
+  - `M=64` rows still fail with the row-anchor/packet-footprint diagnostic,
+    so that boundary remains separate.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-ldst-cga
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_cga_roundtrip or
+    ldst_scales_descriptor_view_roundtrip or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error'`
+    (`16 passed, 11082 deselected`);
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `git diff --check`.

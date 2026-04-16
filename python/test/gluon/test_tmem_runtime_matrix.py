@@ -4689,32 +4689,17 @@ SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = [
     (
-        128,
-        64,
+        M,
+        N,
         4,
         2,
         ((1, 0),),
         "32x32b",
-        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
-    ),
-    (
-        256,
-        32,
-        4,
-        2,
-        ((1, 0),),
-        "32x32b",
-        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x32.b32", "32x32b.x32.b32"),
-    ),
-    (
-        256,
-        64,
-        4,
-        2,
-        ((1, 0),),
-        "32x32b",
-        _expected_scales_ldst_descriptor_view_ops("16x32bx2.x64.b32", "32x32b.x64.b32"),
-    ),
+        _expected_scales_ldst_descriptor_view_ops(
+            f"16x32bx2.x{M * N // 256}.b32", f"32x32b.x{M * N // 256}.b32"
+        ),
+    )
+    for M, N in product((128, 256), (4, 8, 16, 32, 64, 128))
 ]
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = []

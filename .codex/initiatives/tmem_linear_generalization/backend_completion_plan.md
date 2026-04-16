@@ -965,6 +965,13 @@ Progress:
   that is still missing, so the expanded runtime matrix no longer collapses
   the identity high-quadrant gap into a generic frontend "auto unsupported"
   message.
+- 2026-04-16 07:15 UTC: promoted the stale two-CTA scales descriptor-view
+  shape gate for direct `ld/st`. The exact-query recognizer now covers
+  `M in {128,256}` with power-of-two `N=4..128`, and the returned layout is
+  still selected only after exact-query `computeTMemLdStEncodingInfo(...)`
+  validation. Runtime coverage now spans the full promoted CGA range with
+  `16x32bx2` root packets and `32x32b` descriptor-view packets. `M=64`
+  remains a row-anchor/packet-footprint boundary.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

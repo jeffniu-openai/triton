@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 07:15 UTC: two-CTA tensor-memory-scales descriptor-view
+  `tcgen05.ld/st` now uses the exact-query recognizer over the full validated
+  power-of-two `N=4..128` range for `M in {128,256}`, instead of the stale
+  hard-coded `N in {32,64}` gate. The recognizer is still validated by the
+  existing register-layout lowering proof before it is selected. Newly
+  promoted runtime rows cover both narrow and wide `N` values and assert the
+  expected `16x32bx2` root plus `32x32b` view packet shapes. Validation:
+  `make -j8`, py-compile, focused descriptor-view scales runtime selector
+  (`16 passed`), direct `invalid.mlir` verifier, and `git diff --check`.
 - 2026-04-16 07:05 UTC: a no-code packed-lane `warpx2::01_23` probe was
   completed and reverted. Treating subword copy footprints as physical dword
   columns and allowing the 32-row core descriptor to cover the packed-lane row

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view `ld/st` support checkpoint, 2026-04-16
+  07:15 UTC: two-CTA tensor-memory-scales descriptor-view register-layout
+  selection no longer has the stale `N in {32,64}` shape gate. The exact-query
+  recognizer now accepts power-of-two `N=4..128` for `M in {128,256}` and still
+  requires the generated layout to pass `computeTMemLdStEncodingInfo(...)`
+  against the exact physical query before it is selected. Runtime probes and
+  tests promoted the previously blocked two-CTA `N=4,8,16,128` rows, with
+  root packets using `16x32bx2.x{M*N/256}.b32` and descriptor-view packets
+  using `32x32b.x{M*N/256}.b32`. The `M=64` descriptor-view rows remain a
+  real row-anchor/packet-footprint boundary because row anchors 32/64 are not
+  materializable in the active support image. Validation: `make -j8`,
+  py-compile of `python/test/gluon/test_tmem_runtime_matrix.py`, focused
+  scales descriptor-view runtime selector (`16 passed, 11082 deselected`),
+  direct `invalid.mlir` verifier, and `git diff --check`.
+
 - Current packed-lane `warpx2::01_23` footprint-relaxation probe,
   2026-04-16 07:05 UTC: a temporary planner edit treated subword `warpx2`
   source/destination footprints as physical 32-bit dword columns and allowed
