@@ -721,6 +721,35 @@
 
 # TMEM Linear Generalization Log
 
+## 2026-04-16 05:27 UTC: lifted row-half diagnostic centralized
+
+- Starting point: `codex/tmem` at `c5c5c3606`.
+- Change:
+  - added a shared backend diagnostic helper for lifted row-half direct
+    `tcgen05.ld/st` descriptor views;
+  - replaced the duplicated row-half unsupported strings in
+    `isUnsupportedDirectTMemLdStDescriptorView(...)`;
+  - updated the runtime matrix to assert the sharper packet-base /
+    row-anchor / per-message-offset explanation when the backend row-half
+    diagnostic is emitted.
+- Intent:
+  - keep the clean negative attached to the real planner boundary discovered
+    by the 05:23 probe;
+  - avoid future support attempts that only relax the verifier or only select
+    a support-query register layout without decomposing the translated row
+    origin.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-halfrows-diag
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'higher_rank_half_rows'`
+    (`30 passed, 1 skipped, 11058 deselected`);
+  - `git diff --check`.
+
 ## 2026-04-14 14:25 UTC: ld.red non-f32 direct dtype-boundary coverage
 
 - Expanded `LD_RED_NON_F32_CONTRACT_CASES` to cover direct bf16/f16/i16/i8 source layouts for plain reductions, and bf16/f16 `NaN` plus `abs` modifier diagnostics. Existing i32 and legacy f16-unpacked rows remain.

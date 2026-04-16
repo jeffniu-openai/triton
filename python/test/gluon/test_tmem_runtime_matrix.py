@@ -6374,6 +6374,8 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_clean
         f"TMEM layout 'constexpr[{variant}]' unsupported" in msg
         or "lifted row-half TMEM views translate the TMEM row origin" in msg
     )
+    if "lifted row-half TMEM views translate the TMEM row origin" in msg:
+        assert "packet base, row anchors, and per-message offsets" in msg
     assert "descriptor view" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
@@ -6447,6 +6449,8 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_report
         f"TMEM layout 'constexpr[{variant}]' unsupported" in msg
         or "lifted row-half TMEM views translate the TMEM row origin" in msg
     )
+    if "lifted row-half TMEM views translate the TMEM row origin" in msg:
+        assert "packet base, row anchors, and per-message offsets" in msg
     assert "descriptor view" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg

@@ -3827,6 +3827,17 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
          "materializable.";
 }
 
+static StringRef getUnsupportedDirectTMemLdStHalfRowsReason() {
+  return "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
+         "lifted row-half TMEM views translate the TMEM row origin. The "
+         "support-query planner can derive a register layout for some of "
+         "these views, but correct direct lowering still needs the row origin "
+         "decomposed into packet base, row anchors, and per-message offsets. "
+         "Without that decomposition, tcgen05.ld/st packets address the wrong "
+         "half of the backing tile or an invalid TMEM row. Access the full "
+         "backing tile or reshape/copy so the TMEM rows stay materializable.";
+}
+
 bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
                                                std::string *error) {
   auto unsupported = [&](StringRef reason) {
@@ -3843,11 +3854,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   }
   if (isDirectHalfRowsSubview(memDesc) ||
       isHigherRankHalfRowsSubview(memDesc)) {
-    return unsupported("unsupported tensor memory descriptor view for direct "
-                       "tcgen05.ld/st: lifted row-half TMEM views translate "
-                       "the TMEM row origin and are not directly realizable by "
-                       "tcgen05.ld/st packets. Access the full backing tile or "
-                       "reshape/copy so the TMEM rows stay materializable.");
+    return unsupported(getUnsupportedDirectTMemLdStHalfRowsReason());
   }
 
   auto is4x256RefreshPhysicalBitcastView = [&]() {
@@ -3982,12 +3989,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
     auto offsets = subslice.getOffsets();
     if (rejectHalfRowsView(srcTy) && offsets.size() == 2 &&
         offsets[0] == queryTy.getShape()[0] && offsets[1] == 0) {
-      return unsupported("unsupported tensor memory descriptor view for "
-                         "direct tcgen05.ld/st: lifted row-half TMEM views "
-                         "translate the TMEM row origin and are not directly "
-                         "realizable by tcgen05.ld/st packets. Access the "
-                         "full backing tile or reshape/copy so the TMEM rows "
-                         "stay materializable.");
+      return unsupported(getUnsupportedDirectTMemLdStHalfRowsReason());
     }
     return false;
   }
@@ -4023,11 +4025,7 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
     return false;
   }
 
-  return unsupported("unsupported tensor memory descriptor view for direct "
-                     "tcgen05.ld/st: lifted row-half TMEM views translate "
-                     "the TMEM row origin and are not directly realizable by "
-                     "tcgen05.ld/st packets. Access the full backing tile or "
-                     "reshape/copy so the TMEM rows stay materializable.");
+  return unsupported(getUnsupportedDirectTMemLdStHalfRowsReason());
 }
 
 static std::optional<TMemLdStQueryLayout>

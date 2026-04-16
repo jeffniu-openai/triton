@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 05:27 UTC: the lifted row-half direct `ld/st` clean-negative
+  diagnostic is now centralized in the backend and records the actual planner
+  boundary from the latest probe. The message states that support-query layout
+  selection alone is insufficient; correct direct lowering needs the translated
+  row origin decomposed into packet base, row anchors, and per-message offsets.
+  The runtime matrix now pins that sharper diagnostic for single-CTA and
+  two-CTA lifted half-row views.
 - 2026-04-16 05:23 UTC: a no-code lifted row-half `ld/st` probe was
   completed and reverted. Removing the blanket row-half verifier guard lets
   the canonical single-CTA half-row view compile, but runtime output is wrong:

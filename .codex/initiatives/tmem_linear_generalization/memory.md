@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Current lifted row-half diagnostic checkpoint, 2026-04-16 05:27 UTC:
+  `isUnsupportedDirectTMemLdStDescriptorView(...)` now uses one shared
+  backend diagnostic for lifted row-half direct `ld/st` views. The wording is
+  intentionally tied to the 05:23 probe: support-query layout selection is not
+  enough; the missing abstraction is packet base / row-anchor / per-message
+  offset decomposition for the translated row origin. The runtime matrix pins
+  this diagnostic for both single-CTA and two-CTA lifted half-row clean
+  negatives.
+
 - Current lifted row-half `ld/st` probe checkpoint, 2026-04-16 05:23 UTC:
   temporarily relaxing the direct `tcgen05.ld/st` row-half verifier guard is
   not sufficient. The canonical single-CTA lifted half-row view compiles, but
