@@ -924,6 +924,14 @@ Progress:
   into the 128-row support image does not avoid that over-update. This keeps
   lifted half-row support as a true packet/warp rematerialization or predicate
   model task, not a base-offset or row-plan override cleanup.
+- 2026-04-16 06:11 UTC: re-probed the exact identity `32x32`
+  descriptor-view high quadrant after active-view folding was fixed. The
+  standalone query algebra is correct and carries `origin=(64,64)`, but naive
+  support promotions are wrong-code: final/root support layouts select wider
+  `16x32bx2.x32.b32` row bands, and a forced 32-row row plan selects scalar
+  packets that over-cover all rows for the target columns. This keeps the row
+  as a Phase 4 packet-footprint/rematerialization task, not a type fallback or
+  row-plan lookup task.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

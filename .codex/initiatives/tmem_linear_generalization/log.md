@@ -19032,3 +19032,28 @@ Open after this slice:
 - Cleanup:
   - all temporary source edits were removed;
   - the working tree was clean before this docs checkpoint.
+
+## 2026-04-16 06:11 UTC: exact identity descriptor-view high-quadrant probe
+
+- Starting point: clean `codex/tmem` at `b31101e91`.
+- Target:
+  - identity `128x128` multidimensional descriptor view selecting the high
+    `32x32` quadrant and lowering direct `tcgen05.ld/st` with
+    `instr_variant="16x128b"`.
+- Findings:
+  - exact descriptor-chain arithmetic preserved the logical view correctly:
+    final `memdesc_reshape` query had row bases `1..16`, column bases
+    `1..16`, zero tail bases, and `origin=(64,64)`;
+  - a temporary support plan using the final descriptor/root physical layout
+    selected `16x32bx2.x32.b32`, but runtime wrote row bands outside the
+    logical quadrant;
+  - a temporary exact 32-row row-plan support path selected
+    `32x32b.x1.b32`, but runtime updated every physical row for columns
+    `64..95`;
+  - all temporary source edits were removed.
+- Conclusion:
+  - the remaining gap is not descriptor-view arithmetic; it is the direct
+    public packet footprint. Promotion needs a first-class
+    packet/rematerialization or support-footprint read/modify/write model, or
+    the row should stay a clean direct-ISA negative with a diagnostic tied to
+    that packet-footprint proof.

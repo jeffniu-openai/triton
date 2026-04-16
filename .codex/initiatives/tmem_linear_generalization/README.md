@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:11 UTC: a no-code exact `32x32` identity descriptor-view
+  `ld/st` high-quadrant probe refined the direct-packet boundary. Exact
+  value-level view arithmetic preserved the final `origin=(64,64)` and the
+  expected `32x32` logical layout after `memdesc_subslice`/`memdesc_reshape`.
+  Three temporary support-plan attempts were then removed because they
+  compiled but produced wrong runtime output: rebuilding support from the
+  final descriptor type/root query selected `16x32bx2.x32.b32` and updated
+  row bands outside the logical quadrant, while forcing a logical 32-row row
+  plan selected scalar `32x32b.x1.b32` packets and over-updated the whole row
+  range. Conclusion: this is not a stale type-inference guard; direct support
+  needs a semantics-preserving packet/rematerialization or read/modify/write
+  model for the exact physical footprint, or it must remain a clean
+  ISA-impossible diagnostic.
 - 2026-04-16 05:42 UTC: a no-code lifted row-half `ld/st` support probe
   refined the 05:23 boundary. Temporarily preserving the outer leading-buffer
   column offset while subtracting only the already-applied row component made

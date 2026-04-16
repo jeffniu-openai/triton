@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current exact `32x32` identity descriptor-view high-quadrant probe,
+  2026-04-16 06:11 UTC: the exact descriptor-chain arithmetic is now known to
+  be right for the `origin=(64,64)` high quadrant. Debugging the failing
+  runtime row showed the final `memdesc_reshape` query keeps row bases
+  `1..16`, column bases `1..16`, zero tail bases, and origin `64 64`.
+  The remaining direct `ld/st` failure is the support-packet model. Three
+  temporary support promotions were removed because they compiled but produced
+  wrong output: using the final descriptor type/root query selected
+  `16x32bx2.x32.b32` and updated row bands `0..15`, `48..79`, and
+  `112..127` at columns `64..95`; forcing a logical 32-row row plan selected
+  scalar `32x32b.x1.b32` offsets and updated all rows at columns `64..95`.
+  Keep the current clean negative until the backend has a true
+  packet/rematerialization or read/modify/write support-footprint model, or a
+  final proof that the public `tcgen05.ld/st` ISA cannot realize the view.
+
 - Current dense copy source-row diagnostic checkpoint, 2026-04-16 05:30 UTC:
   dense row-order copy failures now carry the first non-ascending physical row
   basis in the diagnostic. This does not promote row-permuted copies; it makes
