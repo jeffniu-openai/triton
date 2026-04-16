@@ -50,7 +50,7 @@ namespace nvidia_gpu {
 // -- WarpGroupDotOp --
 LogicalResult WarpGroupDotOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   // type is the same as the accumulator
   auto accTy = cast<RankedTensorType>(operands[2].getType());
@@ -157,7 +157,7 @@ bool WarpGroupDotOp::verifyDims() {
 // -- WarpGroupDotWaitOp --
 LogicalResult WarpGroupDotWaitOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   for (Value operand : operands)
     inferredReturnTypes.push_back(operand.getType());
@@ -407,10 +407,8 @@ static LogicalResult verifyAsyncTMAGatherScatterOp(Operation *op,
   if (failed(verifyGatherScatterResultType(op, memDescType, indicesType)))
     return failure();
 
-  auto shapePerCTA = getShapePerCTA(memDescType);
-  if (shapePerCTA[1] != blockType.getShape()[1])
-    return op->emitOpError(
-               "result tensor number of columns per CTA must match block (")
+  if (memDescType.getShape()[1] != blockType.getShape()[1])
+    return op->emitOpError("result tensor number of columns must match block (")
            << blockType.getShape()[1] << "), but got " << memDescType;
   if (memDescType.getElementType() != blockType.getElementType())
     return op->emitOpError("result tensor element type must match block (")
@@ -503,11 +501,14 @@ static LogicalResult verifyTMAMode(Operation *op, bool isIm2Col,
 
 bool AsyncTMAReduceOp::isSupportedReduceKind(DescriptorReduceKind kind,
                                              Type elementType) {
-  bool isInt32Or64 = elementType.isInteger(32) || elementType.isInteger(64);
+  bool isInt32 = elementType.isInteger(32);
+  bool isInt32Or64 = isInt32 || elementType.isInteger(64);
+  bool isNotSignedInt64 =
+      elementType.isInteger(64) && !elementType.isSignedInteger();
   bool isF16OrBF16 = elementType.isF16() || elementType.isBF16();
   switch (kind) {
   case DescriptorReduceKind::ADD:
-    return isInt32Or64 || elementType.isF32() || isF16OrBF16;
+    return isInt32 || isNotSignedInt64 || elementType.isF32() || isF16OrBF16;
   case DescriptorReduceKind::MIN:
   case DescriptorReduceKind::MAX:
     return isInt32Or64 || isF16OrBF16;
@@ -577,10 +578,11 @@ LogicalResult AsyncTMAReduceOp::verify() {
     return failure();
   if (failed(verifyAsyncTMAStoreOp(*this, getDesc(), srcType)))
     return failure();
-  if (!isSupportedReduceKind(getKind(), srcType.getElementType()))
+  Type elementType = getDesc().getType().getElementType();
+  if (!isSupportedReduceKind(getKind(), elementType))
     return emitOpError("unsupported reduce kind ")
            << stringifyDescriptorReduceKind(getKind()) << " for element type "
-           << srcType.getElementType();
+           << elementType;
   return success();
 }
 
