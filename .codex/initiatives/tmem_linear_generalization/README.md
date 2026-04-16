@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 16:32 UTC: investigated `GluonInline` in the slow compile
+  profile. IR dumps showed the expensive inliner invocations were running on
+  modules with one function and zero call ops, so the cost was generic MLIR
+  inliner setup/call-graph overhead rather than useful inlining. The Gluon
+  inline pass now returns early when the module has no `CallOpInterface`
+  operations. Updated representative cold compiles: `ld/st 3.299s`,
+  `ld.red 2.071s`, no-scales copy `0.904s`, scales copy `0.543s`, MMA
+  `1.880s`, scaled-MMA+copy `1.087s`. Exact profile representatives passed
+  (`6 passed`) and the previous focused guard set passed (`8 passed`).
 - 2026-04-16 16:24 UTC: expanded the compile-time profile from the original
   `ld.red`/`ld/st` rows to representative `ld/st`, `ld.red`, no-scales copy,
   scales copy, MMA, and scaled-MMA cases. All cold compiles are now within the

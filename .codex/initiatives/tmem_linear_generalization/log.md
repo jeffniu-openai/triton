@@ -20197,3 +20197,41 @@ Open after this slice:
   descriptor chain. `MLIR_ENABLE_TIMING=1` shows the remaining time distributed
   over normal `ttgir`/`llir` lowering passes, not concentrated in a new single
   TMEM verifier hotspot.
+
+## 2026-04-16 16:32 UTC: Gluon inliner no-call fast path
+
+- Starting point: `codex/tmem` at `0db3d0fc5`.
+- Question: why does `GluonInline` take roughly `0.3s` in both the `ttgir` and
+  `llir` timing reports for the slow `ld/st` representative?
+- Investigation:
+  - `lib/Dialect/Gluon/Transforms/Inline.cpp` is a thin wrapper around MLIR
+    `createInlinerPass(...)` with `GluonSimplifyControlFlow` as the callee
+    pipeline;
+  - `MLIR_ENABLE_DUMP=1` on
+    `tmem_ldst_x1_subword_twocta_descriptor_chain_kernel` showed both
+    `GluonInline` invocations run on modules with one `tt.func` and zero
+    `tt.call` / `func.call` operations;
+  - the reported inliner cost was therefore generic inliner/call-graph setup
+    on already-inlined Gluon frontend IR, not useful inlining work.
+- Change:
+  - `GluonInline` now scans for `CallOpInterface` and returns before
+    constructing the nested MLIR inliner pass manager when there are no calls.
+- Direct cold-cache listener matrix after the change:
+  - `ldst_x1_subword_twocta_chain`: total `3.299s`
+    (`ttgir 1.350s`, `llir 1.060s`);
+  - `ld_red_descriptor_chain_rowcol_n256_splitn`: total `2.071s`
+    (`ttgir 0.517s`, `llir 0.621s`);
+  - `copy_no_scales_twocta_linear_indexed`: total `0.904s`;
+  - `copy_scales_warpx4_twocta_direct`: total `0.543s`;
+  - `mma_twocta_indexed_acc_linear_f16`: total `1.880s`;
+  - `mma_scaled_copy_twocta_linear_mxfp8`: total `1.087s`.
+- Validation:
+  - `make -j8`;
+  - exact representative pytest nodes passed (`6 passed in 10.89s`);
+  - previous focused nonpreexisting guard set passed (`8 passed in 7.92s`);
+  - `git diff --check`.
+- Remaining compile-time note:
+  - the now-early-returning pass still has pass-manager/timer bookkeeping
+    overhead, so `MLIR_ENABLE_TIMING` does not drop to zero. The end-to-end
+    listener timings are the more relevant signal and show the avoidable
+    generic-inliner work was removed.

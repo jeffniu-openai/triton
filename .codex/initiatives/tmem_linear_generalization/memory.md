@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current Gluon inliner compile-time checkpoint, 2026-04-16 16:32 UTC:
+  investigated why `GluonInline` showed up as a major cost in the slow
+  `ld/st` representative. `MLIR_ENABLE_DUMP=1` showed both `GluonInline`
+  invocations in the x1 subword two-CTA descriptor-chain compile run on
+  modules with one `tt.func` and zero `tt.call`/`func.call` operations. The
+  pass was therefore paying generic MLIR inliner setup/call-graph overhead for
+  already-inlined frontend IR. `GluonInline` now scans for `CallOpInterface`
+  and returns before constructing `createInlinerPass(...)` when the module has
+  no calls. Direct cold-cache listener timings after this cleanup:
+  `ld/st 3.299s`, `ld.red 2.071s`, no-scales copy `0.904s`, scales copy
+  `0.543s`, MMA `1.880s`, scaled-MMA+copy `1.087s`.
+
 - Current expanded compile-profile checkpoint, 2026-04-16 16:24 UTC:
   profiled one representative from each TMEM instruction family touched by
   this initiative with direct `triton.knobs.compilation.listener` cold-cache

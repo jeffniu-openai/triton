@@ -1,5 +1,6 @@
 #include "triton/Dialect/Gluon/Transforms/Passes.h"
 
+#include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -20,6 +21,14 @@ struct Inline : public gluon::impl::GluonInlineBase<Inline> {
 } // namespace
 
 void Inline::runOnOperation() {
+  bool hasCall = false;
+  getOperation()->walk([&](CallOpInterface) {
+    hasCall = true;
+    return WalkResult::interrupt();
+  });
+  if (!hasCall)
+    return;
+
   mlir::PassManager pm(&getContext());
   pm.addPass(createInlinerPass(/*opPipelines=*/{}, [](OpPassManager &pm) {
     pm.addPass(gluon::createGluonSimplifyControlFlow());
