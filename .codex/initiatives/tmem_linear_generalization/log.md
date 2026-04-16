@@ -18915,3 +18915,32 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k '4x256b'`
     (`5 passed, 11084 deselected`);
   - `git diff --check`.
+
+## 2026-04-16 05:23 UTC: lifted row-half direct ld/st probe
+
+- Starting point: clean `codex/tmem` at `a9e5dcc0f`.
+- Probe:
+  - temporarily removed the blanket
+    `isDirectHalfRowsSubview(...) || isHigherRankHalfRowsSubview(...)`
+    unsupported guard in `isUnsupportedDirectTMemLdStDescriptorView(...)`;
+  - rebuilt with `make -j8`;
+  - ran the canonical single-CTA
+    `test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows...`
+    row for `identity,N=64,32x32b`.
+- Result:
+  - the row compiled instead of raising, but output was wrong: the intended
+    second half remained unchanged (`50%` mismatch for the row);
+  - tracing showed support-query lowering selecting `baseOffset=64<<16` for
+    the half-row load/store packets;
+  - a second temporary probe that forced support-query base-offset preservation
+    off for the lifted row-origin case faulted with CUDA misaligned address.
+- Conclusion:
+  - lifted row-half direct `ld/st` is not just blocked by an over-conservative
+    verifier guard;
+  - the support-query model can find a register layout, but lowering needs a
+    real packet-address / row-origin decomposition that is consistent with the
+    lowered `memdesc_subslice -> memdesc_index` pointer arithmetic.
+- Cleanup:
+  - restored all temporary source/test edits;
+  - rebuilt with `make -j8`;
+  - working tree was clean before this docs checkpoint.

@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current lifted row-half `ld/st` probe checkpoint, 2026-04-16 05:23 UTC:
+  temporarily relaxing the direct `tcgen05.ld/st` row-half verifier guard is
+  not sufficient. The canonical single-CTA lifted half-row view compiles, but
+  the runtime result leaves the target half unchanged, proving the selected
+  register/support layout is not enough to address the lifted row origin
+  correctly. A second temporary probe that dropped the preserved
+  support-query row-origin base offset produced a CUDA misaligned-address
+  fault. The correct next step for this bucket is a packet-address
+  decomposition that models lifted row origins explicitly; do not promote it
+  by only relaxing `isUnsupportedDirectTMemLdStDescriptorView(...)` or by
+  toggling `preserveTMemLdStSupportQueryBaseOffset(...)`. The source tree and
+  build were restored clean with `make -j8`.
+
 - Current 4x256b raw bitcast unsupported-contract checkpoint, 2026-04-16
   05:13 UTC: the raw `32x4xi8` physical bitcast of the
   `tcgen05.copy.4x256b` refresh image now fails with a precise clean

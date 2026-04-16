@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 05:23 UTC: a no-code lifted row-half `ld/st` probe was
+  completed and reverted. Removing the blanket row-half verifier guard lets
+  the canonical single-CTA half-row view compile, but runtime output is wrong:
+  the selected packets do not update the intended second half. A follow-up
+  attempt to suppress the support-query row-origin base offset faults with a
+  CUDA misaligned-address error. Conclusion: the existing support-query model
+  can find register layouts for the view, but lowering still needs a real
+  packet-address / row-origin decomposition for lifted row-half descriptors;
+  this is not a safe verifier relaxation or type-fallback issue. The source
+  tree and build were restored clean after the probe with `make -j8`.
 - 2026-04-16 05:13 UTC: the 4x256b refresh raw physical bitcast readback
   probe is now recorded as an explicit direct `tcgen05.ld/st` unsupported
   contract in both frontend and backend paths. The frontend recognizes the
