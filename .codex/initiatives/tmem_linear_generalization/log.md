@@ -19625,3 +19625,36 @@ Open after this slice:
     descriptor-view `ld/st`, the next valid support attempt needs row-anchor
     rematerialization or a packet-footprint model, not another recognizer
     relaxation.
+
+## 2026-04-16 09:43 UTC: scales copy source-column/orientation probes rejected
+
+- Starting point: `codex/tmem` at `8c4656c8c`.
+- Probe:
+  - temporarily relaxed only the
+    `TMemCopyInstructionColumnProjectionFailureKind::NonContiguousOffset`
+    preflight so descriptor synthesis could evaluate source-column
+    permutations inside one scales `warpx4.32x128b` instruction;
+  - temporarily allowed transposed MMAv5 shared-memory descriptors for
+    `warpx4.32x128b`, first alone and then combined with the column-preflight
+    relaxation.
+- Finding:
+  - the relaxation did not produce a support path;
+  - `warpx2_no_scales_like_column_tail` advanced to a later
+    descriptor-row split/destination-mask boundary (`source column bit 3`,
+    descriptor-row delta `128`);
+  - `warpx2_row32_after_columns` reached descriptor synthesis but still had no
+    representable MMAv5 descriptor, even with transposed orientation allowed;
+  - therefore the strict instruction-column preflight remains the right live
+    behavior until the planner has a real source-message, source-format, or
+    destination-mask schedule.
+- Validation:
+  - `make -j8` after each temporary source edit;
+  - scales layout probe selector with the non-contiguous relaxation (`6
+    passed, 11127 deselected`);
+  - direct debug repros for `warpx2_no_scales_like_column_tail` and
+    `warpx2_row32_after_columns`;
+  - all temporary source edits were removed before this log entry.
+- Next:
+  - checkpoint this durable finding;
+  - continue with a support-bearing planner slice outside descriptor
+    orientation / preflight relaxation.

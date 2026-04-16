@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current scales-copy scheduler probe checkpoint, 2026-04-16 09:43 UTC:
+  source-column preflight relaxation and transposed descriptor orientation are
+  not viable support paths for the remaining scales `tcgen05.copy.warpx4`
+  descriptor-view / warpx2-like rows. A temporary non-contiguous-column
+  relaxation kept the matrix clean-negative: `warpx2_no_scales_like_column_tail`
+  merely advanced to a later descriptor-row split/destination-mask failure
+  (`bit 3`, descriptor-row delta `128`), while
+  `warpx2_row32_after_columns` reached descriptor synthesis but had no
+  representable MMAv5 descriptor even after transposed orientation was allowed
+  for `warpx4.32x128b`. The temporary edits were removed. Do not relax the
+  instruction-column preflight or descriptor orientation as a support strategy;
+  the remaining scales-copy work needs a real source-message, source-format, or
+  destination-mask schedule.
+
 - Current M64 two-CTA scales descriptor-view diagnostic checkpoint,
   2026-04-16 09:37 UTC: a bounded probe tried to promote `M=64` two-CTA
   tensor-memory-scales descriptor-view `ld/st` by extending the exact-query

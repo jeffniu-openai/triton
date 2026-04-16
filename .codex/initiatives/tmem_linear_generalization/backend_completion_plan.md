@@ -258,6 +258,14 @@ Progress:
   confirmed the scales descriptor-view copy still fails descriptor synthesis
   after that preflight is removed, so support needs real source-column/message
   splitting rather than broader descriptor enumeration.
+- 2026-04-16 09:43 UTC: repeated the scales-copy source-column probe on the
+  current backend after the later descriptor-view work. The result is still
+  negative: relaxing non-contiguous source-column preflight either exposes a
+  later descriptor-row split/destination-mask requirement or no representable
+  MMAv5 descriptor, and allowing transposed descriptors for `warpx4.32x128b`
+  does not change the boundary. Keep this as evidence that the next copy slice
+  must add a real source-message/source-format/destination-mask schedule rather
+  than widening descriptor enumeration.
 - 2026-04-15 22:02 UTC: sharpened the instruction-column projection diagnostic
   to identify column bits that select descriptor-row-stride multiples. This
   keeps the current clean negatives intact while making the next atomization

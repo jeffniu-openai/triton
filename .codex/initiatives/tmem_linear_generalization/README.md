@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 09:43 UTC: two no-code scales-copy support probes were
+  completed and reverted. Relaxing only the non-contiguous source-column
+  preflight did not promote the scales `warpx2`-like probe family: one case
+  immediately became a later descriptor-row split/destination-mask failure and
+  another reached descriptor synthesis with no representable MMAv5 descriptor.
+  Allowing transposed MMAv5 descriptor orientation for `warpx4.32x128b`,
+  both alone and combined with that relaxation, also produced no support path.
+  Keep the current preflight strict; support still needs a real source-message
+  / destination-mask / source-format model, not descriptor-orientation or
+  column-preflight relaxation.
 - 2026-04-16 09:37 UTC: the two-CTA tensor-memory-scales descriptor-view
   `M=64` direct `ld/st` boundary now reports a specific row-anchor diagnostic
   instead of the generic exact-projection fallback. A temporary recognizer
