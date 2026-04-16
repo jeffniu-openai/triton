@@ -754,17 +754,6 @@ class tensor_memory_descriptor(base_value):
                 layout = gluon_ir.compute_tmem_reduce_reg_layout_from_memdesc(
                     self.handle, num_warps
                 )
-            if (
-                layout is None
-                and num_warps == 4
-                and len(shape) == 2
-                and shape[0] == 64
-                and self.dtype.primitive_bitwidth == 32
-                and not isinstance(raw_layout, TensorMemoryScalesLayout)
-                and _is_simple_m64_splitn_tmem_layout(raw_layout, shape[1])
-                and not _has_canonical_m64_splitn_rows(raw_layout)
-            ):
-                layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
             if layout is None:
                 try:
                     layout = self.get_reg_layout(

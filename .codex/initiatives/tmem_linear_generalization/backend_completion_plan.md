@@ -993,6 +993,11 @@ Progress:
   rule into C++ `getTmemLoadReductionLayout(...)`, so the backend helper owns
   the safe selector contract and the Python binding no longer duplicates the
   packet-order guard.
+- 2026-04-16 10:08 UTC: removed the now-redundant Python default-path M64
+  split-N fallback from `_load_red(layout=None)`. Default reductions now rely
+  on the backend bridge for M64 split-N selection after the helper's
+  no-override contract, while the explicit-`32x32b` helper fallback remains as
+  a distinct user-provided-layout escape path.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

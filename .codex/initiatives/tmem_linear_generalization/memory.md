@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current Python default-reduction cleanup checkpoint, 2026-04-16 10:08 UTC:
+  `_load_red(layout=None)` no longer has a Python-side M64 split-N rescue
+  after the backend reduction-layout query. With the 09:59 backend
+  no-override contract in place, the default M64 reduction path is now fully
+  selected by `compute_tmem_reduce_reg_layout_from_memdesc(...)`; the
+  frontend fallback remains only in the explicit-`32x32b` helper path, where
+  it is still a last resort if the backend cannot return a reduction layout.
+  Validation: `make -j8`, full `ld_red_m64` selector (`73 passed, 11060
+  deselected`), targeted unsafe selector (`46 passed, 11087 deselected`), and
+  `git diff --check`.
+
 - Current reduction helper ownership checkpoint, 2026-04-16 09:59 UTC:
   `getTmemLoadReductionLayout(...)` now implements the direct-compatible
   `32x32b` no-override rule in C++ instead of relying on the Python binding to

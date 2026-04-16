@@ -19732,3 +19732,40 @@ Open after this slice:
   - commit and push this layering checkpoint;
   - continue reducing Python-mediated TMEM layout selection or return to the
     copy scheduler frontiers.
+
+## 2026-04-16 10:08 UTC: default M64 reduction fallback removed
+
+- Starting point: `codex/tmem` at `39cab1c7e`.
+- Change:
+  - removed the Python-side `_load_red(layout=None)` fallback that retried
+    `_try_handle_aware_m64_splitn_auto_layout(...)` after
+    `compute_tmem_reduce_reg_layout_from_memdesc(...)` returned `None`;
+  - kept the explicit-`32x32b` helper fallback intact, because that path still
+    intentionally handles a user-provided direct layout and only falls back if
+    the backend bridge cannot return a reduction-compatible layout.
+- Rationale:
+  - the backend helper now owns both hardware-reduction message legality and
+    the direct-compatible `32x32b` no-override rule;
+  - the default M64 reduction path can therefore be selected by one backend
+    bridge rather than a backend query followed by a frontend rescue stack.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-remove-python-m64-fallback
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`73 passed, 11060 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-remove-python-fallback-unsafe
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    '(ld_red_row_permuted_linear_layout and rotate1 and identity) or
+    (ld_red_col_permuted_linear_layout and 256) or
+    ld_red_m64_rowcol_permuted_default_layout or
+    (ld_red_m64_splitn_linear_layout and m64_64x32)'`
+    (`46 passed, 11087 deselected`).
+- Next:
+  - run `git diff --check`, commit, and push this cleanup checkpoint;
+  - move to the next support-bearing TMEM backend frontier: packet-order
+    equivalence for broader reduction overrides, copy source-message
+    scheduling, destination masks, or a proven ISA-coverage gap.

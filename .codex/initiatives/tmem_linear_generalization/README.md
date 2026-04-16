@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 10:08 UTC: default M64 `load_min/load_max(layout=None)` no
+  longer needs the Python fallback after the backend reduction-layout query.
+  With the no-override rule owned by `getTmemLoadReductionLayout(...)`, the
+  default M64 split-N reduction layout is now selected by the backend bridge;
+  the Python split-N fallback remains only as the explicit-`32x32b`
+  last-resort path. Validation: `make -j8`, full `ld_red_m64` selector (`73
+  passed`), targeted unsafe selector (`46 passed`), and `git diff --check`.
 - 2026-04-16 09:59 UTC: the reduction-layout helper now owns the safe
   no-override rule for direct-compatible `32x32b` reductions. C++
   `getTmemLoadReductionLayout(...)` returns no override when direct
