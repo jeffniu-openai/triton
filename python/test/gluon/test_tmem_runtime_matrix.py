@@ -9138,7 +9138,6 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
         or "ascending physical column order" in text
         or "aligned to the copy instruction width" in text
         or "contiguous in physical TMEM column order" in text
-        or "128-byte descriptor macro-tile" in text
     )
     if row_perm_kind != "identity":
         assert "source-row projection schedule" in text

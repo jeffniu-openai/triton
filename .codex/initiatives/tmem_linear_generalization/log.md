@@ -18610,3 +18610,19 @@ Open after this slice:
     - group 2: `184 passed, 10818 deselected`;
     - group 3: `184 passed, 10818 deselected`;
     - group 4: `183 passed, 10819 deselected`.
+
+## 2026-04-16 03:18 UTC: source-row gap reprobe and diagnostic tightening
+
+- Reprobed dense row-permuted no-scales copy after the folded-row offset fix:
+  - `rotate1/identity` maps logical row bit 64 down to physical row 1 and
+    still fails before descriptor enumeration with the destination-row-mask /
+    row-partition schedule diagnostic;
+  - a high-row-tile-only scratch layout with row bases
+    `1,2,4,8,16,64,32` reaches the same row-order boundary;
+  - conclusion: the next support-bearing edit is not another destination
+    column-offset rule. Dense row permutations need a real row-partitioned
+    schedule or ISA evidence for a narrower/masked row footprint.
+- Tightened the row/column copy clean-negative assertion by removing the stale
+  `128-byte descriptor macro-tile` diagnostic allowance. The current contract
+  is instruction-width physical tile alignment/contiguity plus source-row
+  schedule diagnostics.

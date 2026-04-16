@@ -2712,6 +2712,12 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-16 03:18 UTC: dense row-permutation reprobes confirm the remaining
+  source-row copy frontier is not another destination column offset bug.
+  `rotate1` and high-row-tile-only row permutations still need a
+  destination-row mask, row-partitioned atom, or smaller footprint schedule.
+  The row/column copy clean-negative assertion no longer accepts the stale
+  `128-byte descriptor macro-tile` wording.
 - 2026-04-16 03:05 UTC: refined dense copy destination scheduling after broad
   `cp_` validation caught a regression in M256 folded-row copies. Physical
   tile offsets are now used only when pure column tile selectors are permuted

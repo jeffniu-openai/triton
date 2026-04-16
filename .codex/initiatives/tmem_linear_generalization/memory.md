@@ -10672,3 +10672,23 @@ rejection, not rescue
     unsupported;
   - packed-lane legacy subword copy and scales descriptor-view/subslice copy
     still require separate planner work rather than tile-offset heuristics.
+
+## Latest: 2026-04-16 03:18 UTC dense row-permutation reprobe
+
+- Reprobed dense row-permuted no-scales copy after the folded-row offset
+  repair:
+  - full `rotate1/identity` row permutation still maps a high logical row bit
+    into low physical row position and is rejected before descriptor
+    enumeration;
+  - a narrower high-row-tile permutation (`rows=1,2,4,8,16,64,32`) reaches the
+    same direct dense row-order boundary.
+- Interpretation:
+  - this is not a remaining destination-column address bug;
+  - current public dense copy atoms still write a full physical row footprint
+    in basis order, so row permutations require a destination-row mask,
+    row-partitioned atom, or equivalent smaller copy footprint before they can
+    be promoted.
+- Test cleanup:
+  - removed the stale `128-byte descriptor macro-tile` allowance from the
+    row/column-permuted copy clean-negative assertion so the test contract
+    stays aligned with instruction-width tile addressing.

@@ -580,6 +580,11 @@ Progress:
   unchanged while separating row/source projection legality from column tile
   offset legality, giving the future scheduler a clean place to replace the
   strict ascending-row proof with a real source-row schedule.
+- 2026-04-16 03:18 UTC: rechecked dense row-permuted copy after the folded-row
+  offset repair. Both the full `rotate1` row permutation and a high-row-tile
+  scratch layout still stop at the row-order proof, confirming this frontier
+  needs a destination-row mask, row-partitioned atom, or smaller copy footprint
+  schedule rather than more destination column-offset logic.
 - 2026-04-15 10:57 UTC: fixed a descriptor-view base-offset lowering hole
   exposed by no-scales `warpx2` indexed and slice-index views. Zero trailing
   logical coordinates no longer force `getTMemViewOffsetImpl` to pseudoinvert
