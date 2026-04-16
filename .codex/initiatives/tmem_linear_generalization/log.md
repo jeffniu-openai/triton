@@ -20235,3 +20235,40 @@ Open after this slice:
     overhead, so `MLIR_ENABLE_TIMING` does not drop to zero. The end-to-end
     listener timings are the more relevant signal and show the avoidable
     generic-inliner work was removed.
+
+## 2026-04-16 18:12 UTC: representative runtime-matrix reduction
+
+- Starting point: `codex/tmem` at `9d310c652`.
+- User request: reduce the current test surface while maintaining reasonable
+  code coverage so iteration is faster.
+- Baseline collect:
+  - `python/test/gluon/test_tmem_runtime_matrix.py` collected `11133` tests.
+  - Largest avoidable products were `ld.red` explicit N-sweeps with full
+    modifier cross-products, row/column layout sweeps, M64 split-N
+    row/column permutations, and duplicate MMA/scaled-MMA view/use-acc grids.
+- Change:
+  - broad `ld.red` layout/view sweeps now use representative
+    `min`/no-abs/no-NaN reductions; core identity/compatible tests still own
+    full red-op, abs, and NaN modifier coverage;
+  - row/column `ld/st` and descriptor-roundtrip sweeps keep every permutation
+    class at canonical geometry plus selected edge N/variant rows;
+  - M64 split-N row/column permutations keep every permutation class at one
+    representative geometry plus the old fallback-bug edge rows;
+  - MMA matrices keep all plain data kinds at one stable geometry, while f16
+    covers the broad N/K/view/use-acc axes;
+  - scaled-MMA accumulator-add and scaled-copy-use-acc matrices no longer
+    duplicate the full no-acc geometry matrix.
+- Result:
+  - full-file collect is now `5019` tests.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - full-file collect: `5019 tests collected`;
+  - four-GPU reduced row/column selector passed all `101` selected tests
+    (`26`, `26`, `26`, `23`);
+  - exact heavy representatives passed (`8 passed in 13.61s`);
+  - extra MMA representatives passed (`4 passed in 8.68s`).
+- Remaining note:
+  - this is an iteration-speed default. When actively changing a planner
+    family, temporarily run or expand that family's targeted matrix as needed
+    instead of rebuilding a globally exhaustive Cartesian product.

@@ -39,6 +39,13 @@ The central conclusion to preserve is:
   compile). Avoid context-unsafe static caches for TMEM encoding info; prefer
   reducing repeated proofs or adding context-owned caches if future hotspots
   require memoization.
+- 2026-04-16 test-surface note: the runtime matrix is now representative
+  rather than exhaustive over every independent Cartesian axis. Collection was
+  reduced from `11133` to `5019` tests by keeping each instruction family,
+  hard-frontier diagnostic, data kind, layout class, and edge geometry
+  represented while avoiding duplicate modifier/use-acc/view products. When
+  changing a specific planner family, temporarily expand or target that family
+  as needed, then keep the default matrix lean for iteration.
 
 ## Design Invariants
 

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current runtime-matrix surface reduction checkpoint, 2026-04-16 18:12 UTC:
+  reduced `python/test/gluon/test_tmem_runtime_matrix.py` collection from
+  `11133` to `5019` tests while keeping every TMEM instruction family and the
+  documented hard-frontier clean negatives represented. The reduction policy is
+  to keep exhaustive modifier/opcode semantics on the core tests, but make
+  broad layout/view sweeps representative: all row/column permutation classes
+  at one canonical geometry plus selected edge N/variant rows; all M64
+  row/column permutation classes at one split-N geometry plus the prior
+  fallback-bug edge rows; all MMA data kinds at one stable geometry plus f16
+  coverage for the broad N/K/view/use-acc axes; scaled-MMA accumulator-add
+  rows no longer duplicate the full no-acc geometry matrix. Validation:
+  `make -j8`, py-compile, full-file collect `5019`, four-GPU reduced row/col
+  selector passed `101` tests, exact heavy representative set passed `8`
+  tests, and extra MMA representative set passed `4` tests.
+
 - Current Gluon inliner compile-time checkpoint, 2026-04-16 16:32 UTC:
   investigated why `GluonInline` showed up as a major cost in the slow
   `ld/st` representative. `MLIR_ENABLE_DUMP=1` showed both `GluonInline`

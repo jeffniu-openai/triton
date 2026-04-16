@@ -3846,6 +3846,12 @@ ALLOC_LIFETIME_LDST_CASES = [
 
 PERMUTED_LAYOUT_KINDS = ("identity", "rotate1", "even_odd", "reverse")
 PERMUTED_ROW_COL_LAYOUT_KINDS = list(product(PERMUTED_LAYOUT_KINDS, PERMUTED_LAYOUT_KINDS))
+PERMUTED_ROW_COL_EDGE_LAYOUT_KINDS = (
+    ("identity", "reverse"),
+    ("reverse", "identity"),
+    ("rotate1", "even_odd"),
+    ("even_odd", "reverse"),
+)
 
 LDST_PERMUTED_N32_CASES = [
     (dtype_name, torch_dtype, mode, perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
@@ -3875,12 +3881,24 @@ LDST_PERMUTED_CASES = [
     )
 ]
 
+# Keep all row/column permutation classes covered at one canonical geometry,
+# then sample edge geometries where N width or explicit atom variant changes
+# the packet schedule. The one-dimensional permutation matrices above already
+# cover the full dtype/N/variant Cartesian product.
+LDST_ROWCOL_PERMUTED_CASE_SPECS = [
+    ("f32", torch.float32, row_perm_kind, col_perm_kind, 128, "auto")
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
+] + [
+    ("f32", torch.float32, row_perm_kind, col_perm_kind, n, variant)
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_EDGE_LAYOUT_KINDS
+    for n, variant in product((64, 256), ("32x32b", "16x128b"))
+] + [
+    ("i32", torch.int32, "rotate1", "reverse", 128, "32x32b")
+]
+
 LDST_ROWCOL_PERMUTED_CASES = [
     (dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
-    for (dtype_name, torch_dtype), (row_perm_kind, col_perm_kind), n, variant in product(
-        LDST_32BIT_DTYPES, PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_VARIANTS
-    )
-    if dtype_name == "f32" or not (row_perm_kind == "identity" and col_perm_kind == "identity")
+    for dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant in LDST_ROWCOL_PERMUTED_CASE_SPECS
 ]
 
 LDST_EXOTIC_CASES = [
@@ -3919,11 +3937,21 @@ LDST_LIFTED_ROUNDTRIP_OOR_SKIP_REASON = (
     "preserves instruction/op coverage while avoiding known non-executable compiles"
 )
 
+# Descriptor roundtrip coverage follows the same representative policy as the
+# direct row/column sweep; descriptor-chain operation coverage is asserted by
+# the dedicated lifted-view tests.
+LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASE_SPECS = [
+    (row_perm_kind, col_perm_kind, 128, "auto")
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
+] + [
+    (row_perm_kind, col_perm_kind, n, "16x128b")
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_EDGE_LAYOUT_KINDS
+    for n in (64, 256)
+]
+
 LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
     (row_perm_kind, col_perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
-    for (row_perm_kind, col_perm_kind), n, variant in product(
-        PERMUTED_ROW_COL_LAYOUT_KINDS, (64, 128, 256), LDST_VARIANTS
-    )
+    for row_perm_kind, col_perm_kind, n, variant in LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASE_SPECS
 ]
 
 LDST_HIGHER_RANK_INDEX_CASES = [
@@ -4041,12 +4069,27 @@ M64_SPLITN_CASES = [
     for n, splitn_x, offset_imm_pairs in M64_SPLITN_BASE_CASES
 ]
 
+# M64 split-N keeps every row/column permutation class at one representative
+# N/variant and samples the edge widths/explicit variants on the layouts that
+# previously exposed backend fallback bugs.
+M64_ROWCOL_PERMUTED_CASE_SPECS = [
+    ("f32", torch.float32, row_perm_kind, col_perm_kind, 128, "32x32b_splitn")
+    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
+] + [
+    ("f32", torch.float32, row_perm_kind, col_perm_kind, n, variant)
+    for row_perm_kind, col_perm_kind in (
+        ("rotate1", "identity"),
+        ("identity", "reverse"),
+        ("reverse", "even_odd"),
+    )
+    for n, variant in product((2, 32, 256), ("32x32b_splitn", "16x32bx2"))
+] + [
+    ("i32", torch.int32, "reverse", "even_odd", 128, "16x32bx2")
+]
+
 M64_ROWCOL_PERMUTED_CASES = [
     (dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant)
-    for dtype_name, torch_dtype in M64_SPLITN_DTYPES
-    for (row_perm_kind, col_perm_kind), n, variant in product(
-        PERMUTED_ROW_COL_LAYOUT_KINDS, (2, 4, 8, 16, 32, 64, 128, 256), ("32x32b_splitn", "16x32bx2")
-    )
+    for dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant in M64_ROWCOL_PERMUTED_CASE_SPECS
 ]
 
 M64_ROWCOL_PERMUTED_AUTO_CASES = [
@@ -4315,9 +4358,14 @@ SCALED_MMA_ROOT_FORMAT_CASES = [
 ]
 
 SCALED_MMA_ROOT_USE_ACC_CASES = [
-    (a_format, b_format, n, k, acc_layout_kind)
-    for (a_format, b_format), n, k, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (32, 64, 128, 256), (128, 256), ("legacy", "linear")
+    (a_format, b_format, 128, 128, "linear")
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+] + [
+    ("mxfp8", "mxfp8", n, k, acc_layout_kind)
+    for n, k, acc_layout_kind in (
+        (32, 128, "linear"),
+        (64, 256, "legacy"),
+        (256, 256, "linear"),
     )
 ]
 
@@ -4417,7 +4465,16 @@ CP_SCALES_WARPX4_SCALED_MMA_CASES = [
         CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256), (1, 2), (False, True), ("legacy", "linear")
     )
 ]
-CP_SCALES_WARPX4_SCALED_MMA_USE_ACC_CASES = CP_SCALES_WARPX4_SCALED_MMA_CASES
+# Accumulator-add semantics do not need to duplicate the full scaled-MMA copy
+# geometry matrix; keep format coverage plus representative CTA/multicast and
+# large-N/K rows.
+CP_SCALES_WARPX4_SCALED_MMA_USE_ACC_CASES = [
+    (a_format, b_format, 128, 128, 1, False, "linear")
+    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+] + [
+    ("mxfp8", "mxfp8", 256, 256, 2, True, "legacy"),
+    ("nvfp4", "nvfp4", 128, 256, 2, False, "linear"),
+]
 
 CP_SCALES_WARPX4_GEOMETRY_CASES = [
     (block_n, block_k, multicast, num_ctas, acc_layout_kind)
@@ -4826,6 +4883,8 @@ LD_RED_MODIFIER_CASES = [
     (True, tl.PropagateNan.NONE),
     (True, tl.PropagateNan.ALL),
 ]
+LD_RED_REPRESENTATIVE_MODIFIER_CASES = [(False, tl.PropagateNan.NONE)]
+LD_RED_REPRESENTATIVE_RED_OPS = ("min",)
 
 LD_RED_TILE_PERMUTED_CASES = [
     (32, 8, 4, "32x32b.x32"),
@@ -7450,8 +7509,8 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,layout_factory,load_variant", LD_RED_DESCRIPTOR_CHAIN_CASES)
 def test_tmem_runtime_matrix_ld_red_descriptor_chain(
     layout_name, layout_factory, load_variant, use_abs, propagate_nan, red_op
@@ -7486,8 +7545,8 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,layout_factory,N,expected_shape", LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES)
 def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep(
     layout_name, layout_factory, N, expected_shape, use_abs, propagate_nan, red_op
@@ -7513,8 +7572,8 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize(
     "layout_name,N,expected_shape,load_variant,expected_offsets",
     LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES,
@@ -7567,8 +7626,8 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep_explicit_variants(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize(
     "layout_name,N,expected_shape,load_variant,expected_offsets",
     LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES,
@@ -7617,8 +7676,8 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sweep_variants(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,layout_factory", LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES)
 @pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
 def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b(
@@ -7716,8 +7775,8 @@ def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_unsup
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("N,tile_n,num_warps,expected_shape", LD_RED_TILE_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
     red_op, use_abs, propagate_nan, N, tile_n, num_warps, expected_shape
@@ -7740,8 +7799,8 @@ def test_tmem_runtime_matrix_ld_red_tile_permuted_linear_layout(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("col_perm_kind,N,expected_shape", LD_RED_COL_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout(
     red_op, use_abs, propagate_nan, col_perm_kind, N, expected_shape
@@ -7765,8 +7824,8 @@ def test_tmem_runtime_matrix_ld_red_col_permuted_linear_layout(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("row_perm_kind,col_perm_kind,expected_shape", LD_RED_ROW_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout(
     red_op, use_abs, propagate_nan, row_perm_kind, col_perm_kind, expected_shape
@@ -7790,8 +7849,8 @@ def test_tmem_runtime_matrix_ld_red_row_permuted_linear_layout(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("row_perm_kind,N,expected_shape", LD_RED_PURE_ROW_PERMUTED_N_SWEEP_CASES)
 def test_tmem_runtime_matrix_ld_red_pure_row_permuted_n_sweep(
     red_op, use_abs, propagate_nan, row_perm_kind, N, expected_shape
@@ -7815,8 +7874,8 @@ def test_tmem_runtime_matrix_ld_red_pure_row_permuted_n_sweep(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("row_perm_kind,N,expected_shape", LD_RED_EXPANDED_ROW_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_expanded_row_permuted_linear_layout(
     red_op, use_abs, propagate_nan, row_perm_kind, N, expected_shape
@@ -7840,8 +7899,8 @@ def test_tmem_runtime_matrix_ld_red_expanded_row_permuted_linear_layout(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("row_perm_kind,col_perm_kind,N,expected_shape", LD_RED_EXPANDED_ROWCOL_PERMUTED_CASES)
 def test_tmem_runtime_matrix_ld_red_expanded_rowcol_permuted_linear_layout(
     red_op, use_abs, propagate_nan, row_perm_kind, col_perm_kind, N, expected_shape
@@ -7865,8 +7924,8 @@ def test_tmem_runtime_matrix_ld_red_expanded_rowcol_permuted_linear_layout(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
+@pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
+@pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("row_perm_kind,col_perm_kind,N,expected_shape", LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES)
 def test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep(
     red_op, use_abs, propagate_nan, row_perm_kind, col_perm_kind, N, expected_shape
@@ -9558,29 +9617,54 @@ MMA_PLAIN_KIND_CASES = [
     for kind, acc_layout_kind in product(MMA_PLAIN_KINDS, ("legacy", "linear"))
 ]
 
-MMA_INDEXED_ACC_CASES = [
-    (kind, parent_layout_kind, n, k, use_acc)
-    for kind, parent_layout_kind, n, k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128), (False, True)
-    )
-    # Linear parent views keep the whole [2, M, N] physical image live; N=256
-    # needs 1024 TMEM columns and is therefore a hardware resource boundary.
-    if not (parent_layout_kind == "linear" and n == 256)
-] + [
-    (kind, "linear_unit_parent", 256, k, use_acc)
-    for kind, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128), (False, True))
-]
+def _dedupe_matrix_cases(cases):
+    deduped = []
+    seen = set()
+    for case in cases:
+        if case in seen:
+            continue
+        seen.add(case)
+        deduped.append(case)
+    return deduped
 
-MMA_ACC_SUBSLICE_CASES = [
-    (kind, n, k, slice_start, use_acc)
-    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128), (False, True))
-    for slice_start in (0, n)
-]
 
-MMA_PLAIN_KIND_ACC_CASES = [
-    (kind, acc_layout_kind, n, k)
-    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
-]
+MMA_REPRESENTATIVE_NK_CASES = ((32, 32), (64, 64), (128, 128), (256, 128))
+MMA_KIND_REPRESENTATIVE_NK = (128, 64)
+
+# The MMA runtime surface is intentionally representative rather than
+# exhaustive: every data kind is checked on a stable geometry, and the broad
+# N/K/view/use-acc axes are checked on f16 where those axes affect descriptor
+# and packet planning but not the opcode-family dispatch.
+MMA_PLAIN_KIND_ACC_CASES = _dedupe_matrix_cases(
+    [(kind, "linear", *MMA_KIND_REPRESENTATIVE_NK) for kind in MMA_PLAIN_KINDS] + [
+        ("f16", acc_layout_kind, n, k)
+        for acc_layout_kind in ("legacy", "linear")
+        for n, k in MMA_REPRESENTATIVE_NK_CASES
+    ]
+)
+
+MMA_INDEXED_ACC_CASES = _dedupe_matrix_cases(
+    [(kind, "linear", *MMA_KIND_REPRESENTATIVE_NK, False) for kind in MMA_PLAIN_KINDS] + [
+        ("f16", parent_layout_kind, n, k, use_acc)
+        for parent_layout_kind in ("legacy", "linear")
+        for n, k in MMA_REPRESENTATIVE_NK_CASES
+        for use_acc in (False, True)
+        # Linear parent views keep the whole [2, M, N] physical image live; N=256
+        # needs 1024 TMEM columns and is therefore a hardware resource boundary.
+        if not (parent_layout_kind == "linear" and n == 256)
+    ] + [
+        ("f16", "linear_unit_parent", 256, k, use_acc)
+        for k, use_acc in product((32, 128), (False, True))
+    ]
+)
+
+MMA_ACC_SUBSLICE_CASES = _dedupe_matrix_cases(
+    [(kind, *MMA_KIND_REPRESENTATIVE_NK, 0, False) for kind in MMA_PLAIN_KINDS] + [
+        ("f16", n, k, slice_start, use_acc)
+        for n, k in MMA_REPRESENTATIVE_NK_CASES
+        for slice_start, use_acc in product((0, n), (False, True))
+    ]
+)
 
 MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
     "f16": (torch.float16, ttgl.float16, "tcgen05.mma.cta_group::2.kind::f16", 1e-1, 8e-2),
@@ -9602,49 +9686,25 @@ MMA_TWOCTA_TMA_TF32_CASES = [
     for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
 ]
 
-MMA_TWOCTA_PLAIN_KIND_CASES = [
-    (kind, acc_layout_kind, block_n, block_k)
-    for kind, acc_layout_kind, block_n, block_k in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128)
-    )
-]
+MMA_TWOCTA_PLAIN_KIND_CASES = MMA_PLAIN_KIND_ACC_CASES
 
-MMA_TWOCTA_INDEXED_ACC_CASES = [
-    (kind, parent_layout_kind, block_n, block_k, use_acc)
-    for kind, parent_layout_kind, block_n, block_k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128), (False, True)
-    )
-    # Linear parent views keep the whole [2, M, N] two-CTA physical image live;
-    # N=256 needs 1024 TMEM columns and is a hardware resource boundary.
-    if not (parent_layout_kind == "linear" and block_n == 256)
-] + [
-    (kind, "linear_unit_parent", 256, block_k, use_acc)
-    for kind, block_k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128), (False, True))
-]
+MMA_TWOCTA_INDEXED_ACC_CASES = MMA_INDEXED_ACC_CASES
 
-MMA_TWOCTA_ACC_SUBSLICE_CASES = [
-    (kind, block_n, block_k, slice_start, use_acc)
-    for kind, block_n, block_k, use_acc in product(
-        MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128), (False, True)
-    )
-    for slice_start in (0, block_n)
-]
+MMA_TWOCTA_ACC_SUBSLICE_CASES = MMA_ACC_SUBSLICE_CASES
 
-MMA_M64_PLAIN_KIND_CASES = [
-    (kind, acc_layout_kind, n, k, use_acc)
-    for kind, acc_layout_kind, n, k, use_acc in product(
-        MMA_PLAIN_KINDS, ("legacy", "linear"), (64, 128, 256), (32, 64, 128), (False, True)
-    )
-] + [
-    (kind, "linear", 32, k, use_acc)
-    for kind, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128), (False, True))
-]
+MMA_M64_REPRESENTATIVE_NK_CASES = ((32, 32), (64, 64), (128, 128), (256, 128))
 
-MMA_M64_ACC_SUBSLICE_CASES = [
-    (kind, n, k, slice_start, use_acc)
-    for kind, n, k, use_acc in product(MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128), (False, True))
-    for slice_start in (0, n)
-]
+MMA_M64_PLAIN_KIND_CASES = _dedupe_matrix_cases(
+    [(kind, "linear", *MMA_KIND_REPRESENTATIVE_NK, False) for kind in MMA_PLAIN_KINDS] + [
+        ("f16", acc_layout_kind, n, k, use_acc)
+        for acc_layout_kind in ("legacy", "linear")
+        for n, k in MMA_M64_REPRESENTATIVE_NK_CASES
+        for use_acc in (False, True)
+        if acc_layout_kind == "linear" or n != 32
+    ]
+)
+
+MMA_M64_ACC_SUBSLICE_CASES = MMA_ACC_SUBSLICE_CASES
 
 MMA_TILE_PERMUTED_CASES = [
     (n, tile_n, k)
@@ -9659,17 +9719,14 @@ MMA_TILE_PERMUTED_KIND_CASES = [
     for k in (32, 64, 128)
 ]
 
-MMA_LHS_TILE_PERMUTED_NK_CASES = [
-    (kind, n, k, k // 4)
-    for kind, n, k in product(MMA_PLAIN_KINDS, (32, 64, 128, 256), (32, 64, 128, 256))
-    # The direct shared-B helper's tf32 128x256x256 tile exceeds shared memory.
-    if not (kind == "tf32" and n == 256 and k == 256)
-]
+MMA_LHS_TILE_PERMUTED_NK_CASES = _dedupe_matrix_cases(
+    [(kind, *MMA_KIND_REPRESENTATIVE_NK, MMA_KIND_REPRESENTATIVE_NK[1] // 4) for kind in MMA_PLAIN_KINDS] + [
+        ("f16", n, k, k // 4)
+        for n, k in ((32, 32), (64, 64), (128, 128), (256, 256))
+    ]
+)
 
-MMA_LHS_SUBSLICE_NK_CASES = [
-    (kind, acc_layout_kind, n, k)
-    for kind, acc_layout_kind, n, k in product(MMA_PLAIN_KINDS, ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
-]
+MMA_LHS_SUBSLICE_NK_CASES = MMA_PLAIN_KIND_ACC_CASES
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

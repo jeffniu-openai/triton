@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 18:12 UTC: reduced the TMEM runtime-matrix collection from
+  `11133` to `5019` tests to improve iteration speed without dropping any
+  instruction family or known hard-frontier diagnostic. The new policy keeps
+  full semantic coverage where a test owns modifier/opcode behavior, and uses
+  representative matrices for broad layout/view Cartesian products: row/column
+  permutations, M64 split-N permutations, MMA descriptor views, and scaled-MMA
+  accumulator-add duplication. Validation: `make -j8`, py-compile,
+  full-file collect, four-GPU reduced row/column selector (`101` passed),
+  exact heavy representatives (`8` passed), and extra MMA representatives
+  (`4` passed).
 - 2026-04-16 16:32 UTC: investigated `GluonInline` in the slow compile
   profile. IR dumps showed the expensive inliner invocations were running on
   modules with one function and zero call ops, so the cost was generic MLIR
