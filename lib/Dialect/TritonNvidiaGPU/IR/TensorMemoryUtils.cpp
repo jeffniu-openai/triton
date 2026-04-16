@@ -422,34 +422,6 @@ restrictTMemAnalysisLayoutToShape(const LinearLayout &layout,
   return restrictedLayout;
 }
 
-static LinearLayout trimTrailingZeroBasesToElementCount(LinearLayout layout,
-                                                        int64_t targetElems) {
-  if (targetElems <= 0 || layout.getNumInDims() == 0)
-    return layout;
-
-  auto *ctx = (*layout.getInDimNames().begin()).getContext();
-  auto trimDim = [&](StringAttr dim) {
-    while (layout.hasInDim(dim) &&
-           static_cast<int64_t>(layout.getTotalInDimSize()) > targetElems) {
-      auto bases = layout.getBases();
-      auto it = bases.find(dim);
-      if (it == bases.end() || it->second.empty())
-        return;
-      if (!llvm::all_of(it->second.back(),
-                        [](int32_t value) { return value == 0; }))
-        return;
-      it->second.pop_back();
-      layout = LinearLayout(std::move(bases), layout.getOutDims(),
-                            layout.isSurjective());
-    }
-  };
-
-  trimDim(StringAttr::get(ctx, "row"));
-  trimDim(StringAttr::get(ctx, "col"));
-  trimDim(StringAttr::get(ctx, "block"));
-  return layout;
-}
-
 static LogicalResult verifyTMemSubsliceProjection(
     const LinearLayout &srcInv, ArrayRef<StringAttr> srcLogicalDims,
     ArrayRef<std::pair<StringAttr, int32_t>> encodedOffsets,
@@ -1491,10 +1463,8 @@ inferTMemReshapeQueryLayout(ArrayRef<int64_t> srcShape,
     return failure();
   }
 
-  auto dstLayout = reshapeLayout(ctx, ll, layoutDstShape);
-  dstLayout = trimTrailingZeroBasesToElementCount(
-      std::move(dstLayout), product<int64_t>(layoutDstShape));
-  return TMemLdStQueryLayout{std::move(dstLayout), srcQuery.twoCTAs,
+  return TMemLdStQueryLayout{reshapeLayout(ctx, ll, layoutDstShape),
+                             srcQuery.twoCTAs,
                              srcQuery.origin};
 }
 
@@ -5654,8 +5624,6 @@ inferTMemReshapeOpType(gpu::MemDescType srcTy, ArrayRef<int64_t> dstShape,
   }
 
   auto dstLL = reshapeLayout(ctx, maybeSrcLayout->layout, layoutDstShape);
-  dstLL = trimTrailingZeroBasesToElementCount(
-      std::move(dstLL), product<int64_t>(layoutDstShape));
   auto result =
       tryMakeTMemViewEncoding(ctx, std::move(dstLL), maybeSrcLayout->twoCTAs,
                               error);

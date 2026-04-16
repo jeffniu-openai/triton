@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 01:29 UTC: fixed the scales descriptor-view `ld/st` regression
+  caused by the 00:57 reshape cleanup. The trailing zero-basis cardinality
+  trim was removed: row/column/block zero bases are semantic TMEM
+  broadcast/support axes, not inactive shape padding, and direct support
+  planning must decide whether an operation can realize them. Keeping the
+  reshaped support bases restores all single-CTA and two-CTA scales
+  descriptor-view positives and keeps the exact `32x32` identity descriptor
+  row at its later clean direct-ISA boundary. Validation: `make -j8`,
+  scales descriptor-view `ld/st` rows (`6 passed`), focused descriptor-view
+  sweep (`38 passed, 1 skipped`), scales descriptor-view copy clean-negative
+  (`1 passed`), direct `invalid.mlir` verifier, py-compile, and
+  `git diff --check`.
 - 2026-04-16 01:04 UTC: re-probed the exact canonical `32x32` descriptor-view
   `ld/st` boundary by temporarily adding a 32-row query plan. The probe was
   removed: it got past the previous row-plan gate but exposed an intermediate

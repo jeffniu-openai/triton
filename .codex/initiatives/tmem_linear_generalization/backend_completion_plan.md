@@ -823,10 +823,9 @@ Progress:
 - 2026-04-16 00:57 UTC: cleaned up multidimensional descriptor-view reshape
   inference for active subviews that are smaller than their backing allocation
   image. The backend now strips leading unit dimensions by comparing descriptor
-  rank to layout rank, then trims only trailing zero row/column/block bases
-  until the reshaped layout's input cardinality matches the active element
-  count. This removes a false `memdesc_reshape` type-inference failure for the
-  identity `[1,32,1,32] -> [32,32]` slice chain. It does not promote that row:
+  rank to layout rank. This removes a false `memdesc_reshape` type-inference
+  failure for the identity `[1,32,1,32] -> [32,32]` slice chain. It does not
+  promote that row:
   after exact view inference succeeds, the planner correctly reports the real
   direct `tcgen05.ld/st` row-anchor boundary for the canonical `32x32` subview.
 - 2026-04-16 01:04 UTC: a temporary 32-row `ld/st` query-plan lift for the
@@ -835,6 +834,13 @@ Progress:
   verification instead of proving support. Keep this row as a clean
   row-anchor/rematerialization boundary until active-view inference and packet
   scheduling are both modeled algebraically.
+- 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
+  the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
+  Preserving zero row/column/block bases is the correct Phase 4 invariant:
+  these bases are support/broadcast axes, and operation planners must prove
+  or reject their equivalence classes instead of reshape inference deleting
+  them. The scales descriptor-view positives and the identity descriptor-view
+  clean-negative are green together with this simpler rule.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

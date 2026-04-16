@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view reshape correction, 2026-04-16 01:29 UTC:
+  the 00:57 active-shape cleanup over-trimmed semantic zero bases. The removed
+  `trimTrailingZeroBasesToElementCount(...)` helper forced reshaped TMEM view
+  input cardinality to match the active element count, but scales
+  descriptor-view `ld/st` relies on the extra zero row/column bases as
+  physical broadcast/support axes for row-anchor materialization. The correct
+  general rule is to preserve reshaped zero bases and let the operation
+  planner prove or reject the resulting equivalence class. Removing the trim
+  restores all single-CTA and two-CTA scales descriptor-view `ld/st` positives,
+  keeps the scales descriptor-view copy test at its intended copy-planner
+  diagnostic, and keeps the exact `32x32` identity descriptor row cleanly
+  unsupported after reshape inference. Validation passed: `make -j8`; scales
+  descriptor-view `ld/st` rows (`6 passed`); focused descriptor-view sweep
+  (`38 passed, 1 skipped`); scales descriptor-view copy clean-negative (`1
+  passed`); direct `invalid.mlir` verifier; py-compile; `git diff --check`.
+
 - Current exact `32x32` descriptor-view row-plan probe, 2026-04-16 01:04 UTC:
   temporarily adding a 32-row `ld/st` query plan and preferring it for exact
   f32 `32x32` subviews is not a support answer. The probe moved the identity
@@ -18,8 +34,8 @@
   reshaping an active TMEM descriptor view no longer requires the active shape
   to cover the full backing allocation image. The reshape/query inference path
   now strips leading unit dimensions whenever the descriptor rank exceeds the
-  layout rank, then removes only trailing zero row/column/block bases until the
-  inferred layout's input cardinality matches the active view element count.
+  layout rank. The original zero-basis cardinality trim from this checkpoint
+  was removed at 01:29 because it erased semantic scales support axes.
   This fixes the identity multidim-slice chain from `[1,32,1,32] -> [32,32]`:
   it now builds a clean `32x32` view type and fails later at the real
   direct-ISA row-anchor boundary instead of reporting `failed to infer

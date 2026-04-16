@@ -1,3 +1,53 @@
+## 2026-04-16 01:29 UTC: preserve reshape zero-basis support axes
+
+- Removed `trimTrailingZeroBasesToElementCount(...)` from TMEM reshape/query
+  inference.
+- Root cause:
+  - the 00:57 active-shape cleanup was correct to strip leading unit
+    descriptor dimensions, but wrong to force the reshaped layout input
+    cardinality to equal the active element count;
+  - zero row/column/block bases are semantic TMEM broadcast/support axes;
+  - scales descriptor-view `ld/st` uses those zero bases to materialize the
+    standard direct row-anchor plan, even when the active view type has fewer
+    unique logical elements.
+- Result:
+  - single-CTA and two-CTA scales descriptor-view `ld/st` positives are green
+    again;
+  - the scales descriptor-view copy test reaches the intended copy-planner
+    clean-negative diagnostic instead of failing at `get_reg_layout`;
+  - the exact `32x32` identity descriptor-view row remains a later clean
+    direct-ISA boundary, so preserving zero bases does not undo the reshape
+    inference cleanup.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-scales-desc-cleanfix
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_roundtrip or
+    ldst_scales_descriptor_view_cga_roundtrip'`
+    (`6 passed, 10982 deselected`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-ldst-multidim-cleanfix
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slice_identity or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_reports_clean_unsupported or
+    ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout or
+    ldst_descriptor_higher_rank_half_rows'`
+    (`38 passed, 1 skipped, 10949 deselected`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-copy-scales-desc-cleanfix
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported`
+    (`1 passed`);
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-16 00:04 UTC: invalid.mlir copy diagnostic refresh
 
 - Updated `test/TritonNvidiaGPU/invalid.mlir` expected notes for:
