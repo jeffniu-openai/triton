@@ -20149,3 +20149,51 @@ Open after this slice:
     modeling tasks;
   - do not spend more time on direct-seed parameter tuning or frontend layout
     fallbacks for these shapes.
+
+## 2026-04-16 16:24 UTC: expanded TMEM family compile-time profile
+
+- Starting point: `codex/tmem` at `9214f32fd`.
+- Request: expand compile-time profiling to include one representative from
+  each TMEM instruction family modified during the initiative and implement
+  remaining compile-time improvements without reducing functionality.
+- Representative direct listener matrix before the small pure-index cleanup:
+  - `ldst_x1_subword_twocta_chain`: total `3.604s`
+    (`ttgir 1.440s`, `llir 1.263s`);
+  - `ld_red_descriptor_chain_rowcol_n256_splitn`: total `2.256s`
+    (`ttgir 0.599s`, `llir 0.711s`);
+  - `copy_no_scales_twocta_linear_indexed`: total `1.128s`
+    (`ttgir 0.277s`, `llir 0.253s`);
+  - `copy_scales_warpx4_twocta_direct`: total `0.559s`;
+  - `mma_twocta_indexed_acc_linear_f16`: total `1.965s`;
+  - `mma_scaled_copy_twocta_linear_mxfp8`: total `1.137s`.
+- Finding: all families were already within the 3-4s cold-compile target, but
+  pure outer descriptor-index views still paid duplicate query analysis in the
+  shared `ld/st` row-plan path.
+- Change:
+  - `getTMemLdStRowPlanForQuery(...)` now computes
+    `isPureOuterTMemIndexView(...)` once, infers the raw standalone query
+    layout once, and reuses that layout for both the backing-row-plan decision
+    and the concrete layout-row-plan decision;
+  - `isUnsupportedDirectTMemLdStDescriptorView(...)` now returns early for
+    pure outer descriptor indexes, avoiding support-query construction for
+    views that only peel non-layout prefix dimensions and preserve the
+    trailing TMEM tile.
+- Representative direct listener matrix after the cleanup:
+  - `ldst_x1_subword_twocta_chain`: total `3.582s`
+    (`ttgir 1.431s`, `llir 1.257s`);
+  - `ld_red_descriptor_chain_rowcol_n256_splitn`: total `2.220s`
+    (`ttgir 0.591s`, `llir 0.702s`);
+  - `copy_no_scales_twocta_linear_indexed`: total `0.924s`
+    (`ttgir 0.180s`, `llir 0.176s`);
+  - `copy_scales_warpx4_twocta_direct`: total `0.547s`;
+  - `mma_twocta_indexed_acc_linear_f16`: total `1.933s`;
+  - `mma_scaled_copy_twocta_linear_mxfp8`: total `1.112s`.
+- Validation:
+  - `make -j8`;
+  - exact representative pytest nodeids passed (`6 passed in 11.23s`);
+  - previous focused nonpreexisting guard set passed (`8 passed in 8.52s`);
+  - `git diff --check`.
+- Remaining compile-time note: the slowest row remains the x1 subword two-CTA
+  descriptor chain. `MLIR_ENABLE_TIMING=1` shows the remaining time distributed
+  over normal `ttgir`/`llir` lowering passes, not concentrated in a new single
+  TMEM verifier hotspot.

@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 16:24 UTC: expanded the compile-time profile from the original
+  `ld.red`/`ld/st` rows to representative `ld/st`, `ld.red`, no-scales copy,
+  scales copy, MMA, and scaled-MMA cases. All cold compiles are now within the
+  3-4s target; after a pure-outer-index row-plan cleanup the matrix is:
+  `ld/st 3.582s`, `ld.red 2.220s`, no-scales copy `0.924s`, scales copy
+  `0.547s`, MMA `1.933s`, and scaled-MMA+copy `1.112s`. The code change
+  avoids recomputing standalone raw-query layouts in
+  `getTMemLdStRowPlanForQuery(...)` and avoids support-query construction for
+  pure outer descriptor indexes that preserve the trailing TMEM tile. Exact
+  profile representatives passed (`6 passed`) and the previous nonpreexisting
+  guard set passed (`8 passed`).
 - 2026-04-16 15:59 UTC: continued compile-time optimization on the TMEM
   verifier paths added during this initiative. A second representative
   hotspot,

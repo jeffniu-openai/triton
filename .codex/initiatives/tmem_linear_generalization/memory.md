@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Current expanded compile-profile checkpoint, 2026-04-16 16:24 UTC:
+  profiled one representative from each TMEM instruction family touched by
+  this initiative with direct `triton.knobs.compilation.listener` cold-cache
+  runs on GPU 0:
+  `ld/st` x1 subword two-CTA descriptor chain `3.604s -> 3.582s`,
+  `ld.red` descriptor-chain row/col N256 split-N `2.256s -> 2.220s`,
+  no-scales `tcgen05.cp` two-CTA linear indexed view `1.128s -> 0.924s`,
+  scales `tcgen05.cp.warpx4` two-CTA direct copy `0.559s -> 0.547s`,
+  two-CTA linear indexed `tcgen05.mma` `1.965s -> 1.933s`, and two-CTA
+  linear scaled-MMA+copy `1.137s -> 1.112s`. The only material compile-time
+  improvement was a low-risk pure-outer-index cleanup in
+  `getTMemLdStRowPlanForQuery(...)` / `isUnsupportedDirectTMemLdStDescriptorView(...)`:
+  reuse the raw query layout instead of recomputing it and skip support-plan
+  construction for descriptor indexes that only peel non-layout prefix dims.
+  The slowest family remains `ld/st`, but the MLIR pass timing shows its
+  remaining `ttgir`/`llir` time is spread across normal lowering passes rather
+  than a new single project-added hotspot.
+
 - Current verifier compile-time optimization checkpoint, 2026-04-16 15:59 UTC:
   a second compile profile found
   `test_tmem_runtime_matrix_ldst_x1_subword_twocta_descriptor_chain_roundtrip[auto-i8-torch_dtype3-4]`

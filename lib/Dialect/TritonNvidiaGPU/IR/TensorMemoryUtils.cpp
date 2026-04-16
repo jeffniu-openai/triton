@@ -2801,10 +2801,10 @@ static bool shouldPreferDirectHalfRowsSubviewRowPlan(
 static bool shouldPreferBackingRowPlanForPureOuterIndexView(
     Value memDesc, MemDescType queryTy,
     std::optional<TMemLdStRowPlan> queryPlan,
-    std::optional<TMemLdStRowPlan> backingPlan) {
+    std::optional<TMemLdStRowPlan> backingPlan,
+    const LinearLayout &rawLayout) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy || queryTy != memTy || !queryPlan || !backingPlan ||
-      !isPureOuterTMemIndexView(memDesc) ||
       backingPlan->rowSpan <= queryPlan->rowSpan || queryTy.getRank() != 2 ||
       queryTy.getShape()[1] != 32) {
     return false;
@@ -2814,15 +2814,6 @@ static bool shouldPreferBackingRowPlanForPureOuterIndexView(
   // When that tile is rooted in a producer-owned larger row-plan contract
   // (for example MMAv5 accumulator roots), keep the backing plan as long as
   // the unchanged raw TMEM view can still materialize those anchors.
-  auto rawLayout = [&]() {
-    std::string queryError;
-    if (auto maybeQueryLayout = inferStandaloneTMemLdStQueryLayoutImpl(
-            memDesc, /*preserveNonCanonicalView=*/true, &queryError);
-        succeeded(maybeQueryLayout)) {
-      return maybeQueryLayout->layout;
-    }
-    return toLinearLayout(queryTy);
-  }();
   return getLogicalRowAnchorBasis(rawLayout, backingPlan->warpRow0) &&
          getLogicalRowAnchorBasis(rawLayout, backingPlan->warpRow1);
 }
@@ -2843,20 +2834,25 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
   if (shouldPreferDirectHalfRowsSubviewRowPlan(memDesc, queryTy, queryPlan,
                                                backingPlan))
     return queryPlan;
-  if (shouldPreferBackingRowPlanForPureOuterIndexView(memDesc, queryTy,
-                                                      queryPlan, backingPlan))
-    return backingPlan;
-  if (isPureOuterTMemIndexView(memDesc)) {
+
+  bool pureOuterIndexView = isPureOuterTMemIndexView(memDesc);
+  if (pureOuterIndexView) {
     std::string queryError;
-    if (auto maybeQueryLayout = inferStandaloneTMemLdStQueryLayoutImpl(
-            memDesc, /*preserveNonCanonicalView=*/true, &queryError);
-        succeeded(maybeQueryLayout)) {
-      if (auto layoutPlan = getTMemLdStRowPlan(maybeQueryLayout->layout)) {
+    auto maybeQueryLayout = inferStandaloneTMemLdStQueryLayoutImpl(
+        memDesc, /*preserveNonCanonicalView=*/true, &queryError);
+    LinearLayout rawLayout =
+        succeeded(maybeQueryLayout) ? maybeQueryLayout->layout
+                                    : toLinearLayout(queryTy);
+    if (shouldPreferBackingRowPlanForPureOuterIndexView(
+            memDesc, queryTy, queryPlan, backingPlan, rawLayout))
+      return backingPlan;
+    if (succeeded(maybeQueryLayout)) {
+      if (auto layoutPlan = getTMemLdStRowPlan(rawLayout)) {
         // Pure outer indexes use the concrete query layout's row plan. Keep the
         // wider type/family plan only when the query layout itself still carries
         // the MMAv5 family block dimension.
         auto kBlock = StringAttr::get(memDesc.getContext(), "block");
-        bool hasFamilyBlockDim = maybeQueryLayout->layout.hasInDim(kBlock);
+        bool hasFamilyBlockDim = rawLayout.hasInDim(kBlock);
         if (layoutPlan->rowSpan >= queryPlan->rowSpan || !hasFamilyBlockDim)
           return layoutPlan;
       }
@@ -3933,6 +3929,9 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
         "Use tcgen05_copy from shared memory for this refresh image, or access "
         "a directly supported 128-row physical layout.");
   }
+
+  if (isPureOuterTMemIndexView(memDesc))
+    return false;
 
   std::string supportError;
   if (getTMemLdStSupportQueryPlan(memDesc, &supportError)) {
