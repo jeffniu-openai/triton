@@ -7389,10 +7389,15 @@ def test_tmem_runtime_matrix_ld_red_m64_explicit_splitn_variants(
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-def test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_uses_splitn():
+@pytest.mark.parametrize(
+    "row_perm_kind,col_perm_kind,N,expected_shape,expected_offsets",
+    LD_RED_M64_ROWCOL_PERMUTED_DEFAULT_CASES,
+)
+def test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn(
+    row_perm_kind, col_perm_kind, N, expected_shape, expected_offsets
+):
     M = 64
-    N = 32
-    layout = _make_tmem_linear_layout_m64_permuted(N, "reverse", "identity")
+    layout = _make_tmem_linear_layout_m64_permuted(N, row_perm_kind, col_perm_kind)
     inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
     out = torch.empty_like(inp)
     red = torch.empty(M, dtype=torch.float32, device="cuda")
@@ -7405,11 +7410,11 @@ def test_tmem_runtime_matrix_ld_red_m64_row_permuted_explicit_32x32b_uses_splitn
     _assert_ld_red_opcode_pairs(
         compiled,
         N,
-        "16x32bx2.x8",
+        expected_shape,
         "min",
         False,
         tl.PropagateNan.NONE,
-        expected_offsets=(0, 16),
+        expected_offsets=expected_offsets,
     )
 
 

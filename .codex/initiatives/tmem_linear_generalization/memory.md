@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Current backend-routed M64 reduction-layout follow-up, 2026-04-16
+  07:58 UTC: the explicit-`32x32b` M64 reduction override now asks the backend
+  `compute_tmem_reduce_reg_layout_from_memdesc(...)` helper for the
+  reduction-compatible register layout before falling back to the frontend
+  split-N helper. The promoted positive coverage now spans the existing M64
+  row/column-permuted default cases (`reverse/identity,N=32`,
+  `rotate1/even_odd,N=128`, and `identity/reverse,N=32`). Validation:
+  py-compile, `make -j8`, M64 `ld.red` selector (`73 passed, 11059
+  deselected`), and `git diff --check`.
+
 - Current M64 explicit-`32x32b` reduction checkpoint, 2026-04-16 07:56 UTC:
   row-permuted M64 `tcgen05.ld.red` now reuses the existing handle-aware
   split-N planner when the user passes the exact explicit `32x32b` layout that

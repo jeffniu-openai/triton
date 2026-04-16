@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 07:58 UTC: the M64 explicit-`32x32b` reduction override now
+  asks the backend `compute_tmem_reduce_reg_layout_from_memdesc(...)` helper
+  before using the frontend split-N fallback, and the positive coverage spans
+  the existing row/column-permuted default M64 reduction cases. Validation:
+  py-compile, `make -j8`, M64 `ld.red` selector (`73 passed`), and
+  `git diff --check`.
 - 2026-04-16 07:56 UTC: M64 row-permuted `tcgen05.ld.red` with an explicit
   `instr_variant="32x32b"` is now positive instead of falling into the
   scalar `.x1` reduction guard. The reduction API keeps normal

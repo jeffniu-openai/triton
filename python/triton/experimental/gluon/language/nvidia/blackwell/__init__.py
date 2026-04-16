@@ -292,6 +292,11 @@ def _try_m64_reduction_layout_for_explicit_32x32b(desc, layout, num_warps):
     )
     if direct_32x32b_layout is None or layout != direct_32x32b_layout:
         return None
+    reduction_layout = gluon_ir.compute_tmem_reduce_reg_layout_from_memdesc(
+        desc.handle, num_warps
+    )
+    if reduction_layout is not None:
+        return reduction_layout
     return _try_handle_aware_m64_splitn_auto_layout(desc, num_warps)
 
 

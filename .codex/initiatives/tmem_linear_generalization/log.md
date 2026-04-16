@@ -19448,3 +19448,28 @@ Open after this slice:
   - continue reducing frontend-mediated layout selection in Phase 4 by moving
     reduction-compatible message planning into backend physical-query support,
     or switch to the next copy support frontier.
+
+## 2026-04-16 07:58 UTC: M64 explicit ld.red uses backend reduction helper
+
+- Starting point: `codex/tmem` at `189aae8dc`.
+- Change:
+  - the M64 explicit-`32x32b` reduction override now asks
+    `compute_tmem_reduce_reg_layout_from_memdesc(...)` before falling back to
+    the frontend handle-aware split-N helper;
+  - the positive explicit-`32x32b` row/column-permuted coverage now reuses the
+    existing M64 default-case matrix instead of pinning only one row.
+- Validation:
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-m64-backend-reduction-layout
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`73 passed, 11059 deselected`);
+  - `git diff --check`.
+- Next:
+  - continue replacing frontend-mediated reduction choices with backend
+    physical-query/message-planner decisions, or move to the next bounded copy
+    frontier.

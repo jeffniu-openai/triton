@@ -951,6 +951,12 @@ Progress:
   stable while eliminating a frontend spelling gap for an already
   ISA-realizable M64 physical query. Long-term cleanup is still to move this
   decision into a backend reduction message planner.
+- 2026-04-16 07:58 UTC: tightened the previous M64 explicit-`32x32b`
+  reduction promotion so `_load_red` first asks the backend
+  `compute_tmem_reduce_reg_layout_from_memdesc(...)` helper for the
+  reduction-compatible layout. The frontend split-N helper remains only a
+  fallback. Positive coverage now spans the existing M64 row/column-permuted
+  default-case matrix.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:
