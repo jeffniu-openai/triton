@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 02:35 UTC: `MemDescSubsliceOp::fold` now recomputes the inferred
+  return type after combining chained subslice offsets and updates the folded
+  op result type to match the original source view. This fixes the
+  active-view type mismatch exposed by the exact canonical `32x32`
+  descriptor-view probe without pretending that identity `32x32` direct
+  `tcgen05.ld/st` is supported: the identity row remains a clean row-window /
+  rematerialization boundary, while the mixed descriptor-view positive stays
+  green. Validation: `make -j8`, focused descriptor-view slice selector
+  (`3 passed`), and `git diff --check`.
 - 2026-04-16 01:59 UTC: packed-lane copy failures now produce a typed
   `TMemCopyPackedLaneRequirement` and a dedicated instruction-schedule proof.
   The planner records the low lane bits, lanes per 32-bit shared-memory word,

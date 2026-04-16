@@ -18503,3 +18503,34 @@ Open after this slice:
   - `PYTHONPATH=./python python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-16 02:35 UTC: chained subslice fold type repair
+
+- Kept the real finding from the exact canonical `32x32` descriptor-view
+  `ld/st` probe and removed the invalid support experiment:
+  - identity `32x32` direct `ld/st` still cannot be promoted by only changing
+    support-query shape, because the emitted packet schedule updates a full
+    row window without a load predicate/rematerialization model;
+  - the intermediate `memdesc_subslice` verifier mismatch was independent of
+    that unsupported direct-ISA path.
+- Fixed `MemDescSubsliceOp::fold`:
+  - after combining offsets from a nested subslice, it calls
+    `inferReturnType(...)` against the original source memdesc;
+  - it updates the folded result type to the newly inferred active-view type.
+- Source state after cleanup:
+  - no frontend support-query probe remains;
+  - the identity multidimensional descriptor-view row is back in the clean
+    negative bucket;
+  - the mixed multidimensional descriptor-view positive remains the supported
+    path.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-cleanup
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_reports_clean_unsupported'`
+    (`3 passed, 10985 deselected in 17.31s`);
+  - `git diff --check`.

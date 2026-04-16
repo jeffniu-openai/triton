@@ -10568,3 +10568,36 @@ rejection, not rescue
   - commit and push this checkpoint;
   - return to the hard copy/scales frontier or continue Phase 4 by replacing
     more frontend spelling decisions with backend message-planner decisions.
+
+## Latest: 2026-04-16 02:35 UTC chained subslice fold type repair
+
+- `MemDescSubsliceOp::fold` now recomputes the inferred return type from the
+  original source memdesc after combining offsets from a nested
+  `memdesc_subslice` chain.
+- The fold updates the folded op's result type to the inferred type before
+  returning, so chained tensor-memory subviews can carry the active encoding
+  that is valid for the original source view instead of retaining the
+  pre-fold intermediate type.
+- Root-cause context:
+  - a temporary exact canonical `32x32` descriptor-view `ld/st` support probe
+    exposed a verifier mismatch in the intermediate subslice chain;
+  - the type repair is real and support-agnostic, but the probe's support path
+    was removed because direct identity `32x32` `tcgen05.ld/st` still writes a
+    full 128-row window without a proven load rematerialization/predicate
+    model.
+- Current boundary:
+  - identity multidimensional descriptor-view `ld/st` remains a clean
+    row-window / row-anchor rematerialization boundary;
+  - the existing mixed multidimensional descriptor-view positive remains the
+    supported row.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-cleanup
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_reports_clean_unsupported'`
+    (`3 passed, 10985 deselected`);
+  - `git diff --check`.

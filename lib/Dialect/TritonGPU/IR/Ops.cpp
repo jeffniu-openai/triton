@@ -1289,10 +1289,21 @@ OpFoldResult MemDescSubsliceOp::fold(FoldAdaptor adaptor) {
       combinedOffsets.push_back(srcOffsets[i] + currOffsets[i]);
     }
 
+    MemDescType inferredReturnType;
+    if (failed(inferReturnType(getContext(), getLoc(),
+                               cast<MemDescType>(srcSubslice.getSrc().getType()),
+                               getType().getShape(), combinedOffsets,
+                               inferredReturnType))) {
+      return {};
+    }
+
     // Update this operation to point directly to the original source with
-    // combined offsets
+    // combined offsets, and keep the result type consistent with the new
+    // source view. Tensor-memory subviews can carry different but valid active
+    // encodings before and after this fold.
     setOperand(srcSubslice.getSrc());
     setOffsetsAttr(DenseI32ArrayAttr::get(getContext(), combinedOffsets));
+    getResult().setType(inferredReturnType);
     return getResult();
   }
 

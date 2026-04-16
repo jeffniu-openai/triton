@@ -878,6 +878,14 @@ Progress:
   or reject their equivalence classes instead of reshape inference deleting
   them. The scales descriptor-view positives and the identity descriptor-view
   clean-negative are green together with this simpler rule.
+- 2026-04-16 02:35 UTC: fixed chained `memdesc_subslice` folding so combined
+  offsets are re-inferred against the original source memdesc and the folded
+  result type is updated accordingly. This keeps active tensor-memory view
+  types consistent after canonicalization. The exact identity `32x32`
+  descriptor-view `ld/st` support probe that exposed the mismatch remains
+  unsupported for ISA reasons: without a load predicate/rematerialization
+  model, the public packet schedule updates a wider row window than the
+  logical view.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate
