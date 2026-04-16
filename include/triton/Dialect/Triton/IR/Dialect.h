@@ -108,6 +108,9 @@ public:
 };
 
 // Descriptor gather and scatter have restrictions on the tile sizes.
+LogicalResult verifyGatherScatterResultType(Operation *op,
+                                            ShapedType resultType,
+                                            ShapedType indicesType);
 LogicalResult verifyGatherScatterOp(Operation *op, ShapedType blockType,
                                     ShapedType resultType,
                                     ShapedType indicesType);
