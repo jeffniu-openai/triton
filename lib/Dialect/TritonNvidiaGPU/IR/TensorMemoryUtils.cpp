@@ -3865,6 +3865,8 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
       isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding())) {
     return false;
   }
+  if (isTMemCopy4x256RefreshLayout(queryTy))
+    return unsupported(getTMemCopy4x256RefreshLdStUnsupportedMessage());
   if (isDirectHalfRowsSubview(memDesc) ||
       isHigherRankHalfRowsSubview(memDesc)) {
     return unsupported(getUnsupportedDirectTMemLdStHalfRowsReason());

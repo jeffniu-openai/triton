@@ -19849,3 +19849,48 @@ Open after this slice:
     remain copy source-message scheduling, destination masks, the no-scales
     two-CTA `warpx2::02_13` descriptor/address schedule, and exact
     packet-order equivalence for broader reduction overrides.
+
+## 2026-04-16 10:43 UTC: 4x256b refresh direct-ld/st reason centralized in backend
+
+- Starting point: `codex/tmem` at `65b96783a`.
+- Probe:
+  - removed descriptor-level Python guards for the `tcgen05.copy.4x256b`
+    refresh image and reran the `ldst_4x256b_refresh` selector;
+  - the raw physical bitcast already reported through the backend helper, but
+    the root refresh layout fell back to a generic `TMEM layout 'auto'
+    unsupported` message.
+- Change:
+  - added root refresh-layout recognition to
+    `isUnsupportedDirectTMemLdStDescriptorView(...)`;
+  - removed the duplicate `isTMemCopy4x256RefreshLayout(...)` branch from
+    `verifyTMEMOperand(...)`;
+  - deleted descriptor-level Python prefilters from
+    `tensor_memory_descriptor.get_reg_layout`, `load`, `_load_red`, and
+    `store`;
+  - adjusted the runtime-matrix clean-negative assertions to the backend-owned
+    wording.
+- Boundary:
+  - this does not promote direct `ld/st` for the refresh image. The clean
+    unsupported boundary remains a real packet-footprint/row-anchor issue;
+  - type-only `tensor_memory_descriptor_type.get_reg_layout` keeps its Python
+    guard for now because it has no memdesc value to ask the backend.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-ldst-backend-reason2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_4x256b_refresh'` (`2 passed, 11131 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-backend-reason-full
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k '4x256b'`
+    (`5 passed, 11128 deselected`);
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push this backend-layering checkpoint;
+  - continue support-bearing copy work, especially the two-CTA
+    `warpx2::02_13` source/address schedule and scales copy message splitting.

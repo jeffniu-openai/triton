@@ -773,6 +773,11 @@ Progress:
   not a stale guard; direct ld/st would need a new row-anchor rematerialization
   model, while copy opcode support is already positive for the ISA refresh
   image.
+- 2026-04-16 10:43 UTC: descriptor-level direct `ld/st` rejection for the
+  4x256b refresh image is now centralized in the shared backend
+  `isUnsupportedDirectTMemLdStDescriptorView(...)` helper. Python descriptor
+  methods no longer duplicate that physical-image recognizer; the type-only
+  Python guard remains only because no memdesc handle is available there.
 
 Exit criteria:
 - Copy support decisions can be explained by a planner trace instead of by a

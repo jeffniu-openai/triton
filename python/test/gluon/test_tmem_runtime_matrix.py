@@ -8256,11 +8256,11 @@ def test_tmem_runtime_matrix_ldst_4x256b_refresh_layout_reports_clean_unsupporte
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "direct TMEM auto register layout query is unsupported" in text
-    assert "tcgen05.copy.4x256b refresh-shaped TensorMemoryLinearLayout" in text
+    assert "TMEM layout 'auto' unsupported for descriptor view" in text
+    assert "tcgen05.copy.4x256b refresh-shaped tensor memory layout" in text
     assert "row anchors to be materializable as warp bases" in text
     assert "logical row bits in TMEM columns" in text
-    assert "low logical column bits in sparse TMEM rows 32/64" in text
+    assert "low logical column bits in TMEM rows 32/64" in text
     assert "directly supported 128-row physical layout" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
@@ -8280,10 +8280,10 @@ def test_tmem_runtime_matrix_ldst_4x256b_refresh_raw_bitcast_reports_clean_unsup
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert "direct TMEM auto register layout query is unsupported" in text
-    assert "tcgen05.copy.4x256b refresh-shaped TensorMemoryLinearLayout or its raw physical bitcast" in text
+    assert "TMEM layout 'auto' unsupported for descriptor view" in text
+    assert "raw physical bitcast of a tcgen05.copy.4x256b refresh image" in text
     assert "read whole row footprints" in text
-    assert "sparse TMEM rows 32/64 without a lane mask" in text
+    assert "do not provide a lane mask for this refresh image" in text
     assert "directly supported 128-row physical layout" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

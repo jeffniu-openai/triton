@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current backend-owned 4x256b direct-ld/st diagnostic checkpoint, 2026-04-16
+  10:43 UTC: descriptor-level direct `ld/st` and register-layout queries for
+  the `tcgen05.copy.4x256b` refresh image now get their unsupported reason
+  from `isUnsupportedDirectTMemLdStDescriptorView(...)`. The root refresh
+  layout is recognized beside the existing raw physical bitcast case in
+  `TensorMemoryUtils`, and `TMEMLoadOp`/`TMEMStoreOp` no longer carry a
+  duplicate 4x256b verifier branch. Python `tensor_memory_descriptor`
+  `get_reg_layout`, `load`, `load_min/load_max`, and `store` no longer have
+  descriptor-level 4x256b prefilters; type-level `get_reg_layout` still keeps
+  its Python guard because it has no memdesc handle to query. Validation:
+  `make -j8`, exact `ldst_4x256b_refresh` selector (`2 passed`), full
+  `4x256b` selector (`5 passed`), py-compile, and `git diff --check`.
+
 - Current backend-owned explicit-M64 reduction checkpoint, 2026-04-16
   10:38 UTC: the noncanonical M64 explicit-`32x32b` reduction rescue is now in
   `compute_tmem_reduce_reg_layout_from_memdesc(...)`, not in the Python

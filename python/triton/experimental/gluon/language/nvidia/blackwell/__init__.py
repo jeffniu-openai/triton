@@ -626,8 +626,6 @@ class tensor_memory_descriptor(base_value):
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
         self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
-        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
-            _raise_unsupported_4x256b_refresh_tmem_ldst(f"{requested_variant} register layout query")
         splitn_direct_fallback = requested_variant in ("32x32b_splitn", "16x32bx2")
         prefer_type_only_m64_splitn = (
             num_warps == 4
@@ -718,8 +716,6 @@ class tensor_memory_descriptor(base_value):
             tensor: A distributed tensor containing the loaded data.
         """
         self._require_rank2_tmem_ldst("load")
-        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
-            _raise_unsupported_4x256b_refresh_tmem_ldst("load")
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
             layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
@@ -740,8 +736,6 @@ class tensor_memory_descriptor(base_value):
         #   abs (bool): If True, reduce absolute values.
         #   propagate_nan (NONE): If ALL, propagate NaN in specified reduction operation.
         self._require_rank2_tmem_ldst("reduction load")
-        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
-            _raise_unsupported_4x256b_refresh_tmem_ldst("reduction load")
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
         if layout is None:
@@ -828,8 +822,6 @@ class tensor_memory_descriptor(base_value):
             pred (bool): Scalar predicate. Operation is skipped if predicate is False. Defaults to True.
         """
         self._require_rank2_tmem_ldst("store")
-        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(self.layout, self.dtype.primitive_bitwidth, self.shape):
-            _raise_unsupported_4x256b_refresh_tmem_ldst("store")
         pred = _unwrap_if_constexpr(pred)
         pred = _semantic.to_tensor(pred)
         assert value.shape == self.shape, f"source shape {value.shape} does not match destination shape {self.shape}"

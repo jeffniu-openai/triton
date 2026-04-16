@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 10:43 UTC: descriptor-level direct `ld/st` rejection for the
+  `tcgen05.copy.4x256b` refresh image is now backend-owned. The shared
+  `isUnsupportedDirectTMemLdStDescriptorView(...)` helper reports the root
+  refresh-layout reason, the `TMEMLoadOp`/`TMEMStoreOp` verifier no longer has
+  a duplicate branch, and the Python `tensor_memory_descriptor` load/store/
+  reduction/get-reg-layout methods no longer prefilter this descriptor shape.
+  Type-only layout queries still keep their Python guard because they have no
+  memdesc handle. Validation: `make -j8`, full `4x256b` selector (`5 passed`),
+  py-compile, and `git diff --check`.
 - 2026-04-16 10:38 UTC: the explicit-`32x32b` M64 reduction fallback has been
   moved into the C++ memdesc reduction bridge. When the raw exact query is an
   M64 f32 non-scales view with noncanonical row bases, the bridge now derives
