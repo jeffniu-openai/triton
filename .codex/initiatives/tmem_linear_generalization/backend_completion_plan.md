@@ -367,6 +367,11 @@ Progress:
   descriptor-space coordinates, not plain logical source-tile coordinates, so
   non-dense families need a descriptor-space source proof rather than a tensor
   bounds check.
+- 2026-04-15 23:59 UTC: made that distinction explicit in the plan carrier.
+  `TMemCopySourceFootprint` now records logical shared-tile,
+  descriptor-loader, or direct-seed-immediate coordinate space, and the dense
+  bounds proof consumes that tag. This is the next seam for descriptor-space
+  source proofs and packed-lane state.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

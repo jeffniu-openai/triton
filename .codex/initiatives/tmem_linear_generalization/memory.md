@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current copy source-coordinate-space checkpoint, 2026-04-15 23:59 UTC:
+  `TMemCopySourceFootprint` now records whether its row/column live in logical
+  shared-tile space, descriptor-loader space, or a direct-seed immediate. Dense
+  source-bounds checking consumes that coordinate-space tag instead of
+  hard-coding family checks. This preserves the 23:57 dense bounds proof while
+  making the non-dense/scales path explicit: scales `warpx4` positives carry
+  descriptor-loader coordinates and need a descriptor-space proof, not a
+  tensor-bounds proof. Validation passed: `make -j8`, py-compile of
+  `test_tmem_runtime_matrix.py`, `git diff --check`, and 15 targeted rows
+  covering single/two-CTA `4x256b` refresh, ordinary `4x256b` clean-negative,
+  single-CTA `warpx2::02_13`, two-CTA `warpx2::01_23`, scales `warpx4`, scales
+  shared-subslice and descriptor-view clean negatives, and legacy packed
+  subword diagnostics.
+
 - Current dense source-footprint bounds checkpoint, 2026-04-15 23:57 UTC:
   dense copy plan realization now validates that every descriptor-loaded
   scheduled source footprint stays within the rank-2 shared-memory source

@@ -8231,11 +8231,19 @@ getTMemCopySourceFootprint(const TMemCopyScheduledMessage &message,
     return std::nullopt;
   }
   unsigned columns = *footprintColumns;
+  TMemCopySourceCoordinateSpace coordinateSpace =
+      TMemCopySourceCoordinateSpace::DescriptorLoader;
+  if (plan.useDirectSeedDescriptor) {
+    coordinateSpace = TMemCopySourceCoordinateSpace::DirectSeedImmediate;
+  } else if (isDenseTMemCopyFamily(getTMemCopyFamily(plan.atom))) {
+    coordinateSpace = TMemCopySourceCoordinateSpace::LogicalSharedTile;
+  }
   return TMemCopySourceFootprint{
       /*row=*/static_cast<int32_t>(sourceRow),
       /*col=*/static_cast<int32_t>(sourceCol),
       /*rows=*/plan.instrShape[0],
-      /*columns=*/columns};
+      /*columns=*/columns,
+      /*coordinateSpace=*/coordinateSpace};
 }
 
 static std::optional<TMemCopyDestinationFootprint>
@@ -8343,14 +8351,7 @@ static bool intervalsOverlap(int64_t lhsBegin, int64_t lhsEnd,
 
 static TMemCopySupportResult getTMemCopySourceFootprintSupport(
     MemDescType srcTy, TMemCopyFamily family,
-    ArrayRef<TMemCopyScheduledMessage> messages,
     ArrayRef<TMemCopyScheduledInstruction> instructions) {
-  if (!isDenseTMemCopyFamily(family)) {
-    // Non-dense and multicast copy families currently record descriptor-loader
-    // coordinates, which are not always plain logical shared-tile coordinates.
-    // Their source bounds need a descriptor-space proof instead.
-    return getSupportedTMemCopyResult();
-  }
   if (srcTy.getRank() != 2) {
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery,
@@ -8361,19 +8362,14 @@ static TMemCopySupportResult getTMemCopySourceFootprintSupport(
   int64_t sourceRows = srcTy.getShape()[0];
   int64_t sourceCols = srcTy.getShape()[1];
   for (const TMemCopyScheduledInstruction &instruction : instructions) {
-    if (instruction.messageIndex >= messages.size()) {
-      return getUnsupportedTMemCopyResult(
-          TMemCopySupportFailureLayer::InstructionSchedule,
-          "tcgen05.copy instruction schedule references an unknown source "
-          "message.");
-    }
-    if (messages[instruction.messageIndex].directSeedDescriptorImm) {
-      // Direct-seed descriptors encode the source base address as an immediate,
-      // so row/column descriptor-loader bounds are not the right proof.
+    const TMemCopySourceFootprint &source = instruction.source;
+    if (source.coordinateSpace !=
+        TMemCopySourceCoordinateSpace::LogicalSharedTile) {
+      // Descriptor-loader coordinates and direct-seed immediates need
+      // coordinate-space-specific proofs instead of logical tensor bounds.
       continue;
     }
 
-    const TMemCopySourceFootprint &source = instruction.source;
     int64_t rowEnd = static_cast<int64_t>(source.row) + source.rows;
     int64_t colEnd = static_cast<int64_t>(source.col) + source.columns;
     if (source.row < 0 || source.col < 0 || rowEnd > sourceRows ||
@@ -8675,7 +8671,7 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                     : instructionScheduleError)};
   }
   auto sourceFootprintSupport = getTMemCopySourceFootprintSupport(
-      srcTy, executablePlan->family, executablePlan->messages, *instructions);
+      srcTy, executablePlan->family, *instructions);
   if (!sourceFootprintSupport)
     return {std::nullopt, sourceFootprintSupport};
   auto destinationFootprintSupport = getTMemCopyDestinationFootprintSupport(

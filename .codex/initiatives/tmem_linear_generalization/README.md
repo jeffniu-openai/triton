@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-15 23:59 UTC: scheduled copy source footprints now carry an explicit
+  coordinate space: logical shared tile, descriptor-loader coordinates, or
+  direct-seed immediate. Dense source-bounds checking now keys off that carrier
+  instead of assuming every `instruction.source` row/column is a logical
+  tensor coordinate. This is the abstraction needed before descriptor-space
+  bounds and scales split scheduling can be made general. Validation:
+  `make -j8`, py-compile of `test_tmem_runtime_matrix.py`,
+  `git diff --check`, and 15 targeted rows covering dense `4x256b`,
+  single/two-CTA `warpx2`, scales `warpx4`, scales clean negatives, and legacy
+  packed subword diagnostics.
 - 2026-04-15 23:57 UTC: dense copy schedules now get a source-footprint bounds
   proof after instruction scheduling. The check rejects descriptor-loaded dense
   schedules that would read outside the rank-2 shared source tile, while

@@ -1,3 +1,30 @@
+## 2026-04-15 23:59 UTC: copy source coordinate-space carrier
+
+- Added `TMemCopySourceCoordinateSpace`.
+- `TMemCopySourceFootprint` now distinguishes logical shared-tile coordinates,
+  descriptor-loader coordinates, and direct-seed immediate source addressing.
+- Dense source-bounds checking now uses the coordinate-space tag. This removes
+  the family-level assumption from the bounds proof and records why non-dense
+  copy families are not yet checked by logical tensor bounds.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-source-space
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_refresh_twocta_layout_codegen
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_4x256b_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_candidate_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_warpx4
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupported
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
+    (`15 passed in 15.35s`).
+
 ## 2026-04-15 23:57 UTC: dense copy source-footprint bounds proof
 
 - Added `getTMemCopySourceFootprintSupport(...)`.
