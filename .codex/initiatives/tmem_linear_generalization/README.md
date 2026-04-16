@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 04:09 UTC: copy source-row projection failures now have a typed
+  `TMemCopySourceRowProjectionFailure` carrier, matching the existing typed
+  instruction-column failure path. The two-CTA `warpx2::02_13` known-gap
+  diagnostic now consumes the failed row-bit projection facts instead of
+  recomputing them from the conversion layout, keeping the boundary attached
+  to the planner layer that proved it. Validation: `make -j8`, affected
+  `cp_no_scales_warpx2_02_13_twocta` rows (`14 passed`), neighboring
+  `cp_no_scales_warpx2` rows excluding that bucket (`64 passed`), and direct
+  `invalid.mlir` verifier.
 - 2026-04-16 03:45 UTC: `tcgen05.copy` direct-seed message plans now fail
   when the immediate seed descriptor cannot be synthesized instead of falling
   through to descriptor-loader lowering while still carrying direct-seed source

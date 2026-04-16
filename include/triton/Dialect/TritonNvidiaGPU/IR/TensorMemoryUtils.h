@@ -176,6 +176,22 @@ struct TMemCopySourceRowProjection {
   llvm::SmallVector<TMemCopySourceRowProjectionStep, 2> steps;
 };
 
+enum class TMemCopySourceRowProjectionFailureKind {
+  None,
+  MissingDimensions,
+  MissingStride,
+  NonAffineRowBit,
+};
+
+struct TMemCopySourceRowProjectionFailure {
+  TMemCopySourceRowProjectionFailureKind kind =
+      TMemCopySourceRowProjectionFailureKind::None;
+  unsigned logicalRowBit = 0;
+  int32_t actualOffset = 0;
+  int32_t expectedOffset = 0;
+  int32_t sourceRowStride = 0;
+};
+
 struct TMemCopyInstructionColumnProjectionStep {
   unsigned logicalColBit;
   int32_t sourceOffset;
@@ -548,7 +564,9 @@ getTMemCopyPlanSupport(gpu::MemDescType srcTy,
 std::optional<TMemCopySourceRowProjection>
 getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
                                    const TMemCopyMessagePlan &message,
-                                   std::string *error = nullptr);
+                                   std::string *error = nullptr,
+                                   TMemCopySourceRowProjectionFailure
+                                       *failure = nullptr);
 
 std::optional<TMemCopyInstructionColumnProjection>
 getTMemCopyInstructionColumnProjectionPlan(const LinearLayout &cvt,

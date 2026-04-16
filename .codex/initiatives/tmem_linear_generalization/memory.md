@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current copy source-row failure carrier checkpoint, 2026-04-16 04:09 UTC:
+  `getTMemCopySourceRowProjectionPlan(...)` now optionally reports a typed
+  `TMemCopySourceRowProjectionFailure`, including missing dimension/stride
+  cases and non-affine row-bit facts (`logicalRowBit`, actual source offset,
+  expected affine offset, and source-row stride). The two-CTA
+  `warpx2::02_13` clean-negative diagnostic now consumes this failure object
+  instead of recomputing the offending row-32 source offset from the conversion
+  layout. This preserves behavior while keeping the known gap on the
+  source-row projection proof layer: the descriptor path fails because row bit
+  5 is a one-dword source offset instead of an affine 8-row stride, and the
+  already-probed direct-seed `cta_group::2` path duplicates the low source
+  columns. Validation passed: `make -j8`, direct `invalid.mlir` verifier,
+  `cp_no_scales_warpx2_02_13_twocta` selector (`14 passed, 10992
+  deselected`), and neighboring `cp_no_scales_warpx2 and not 02_13_twocta`
+  selector (`64 passed, 10942 deselected`).
+
 - Current warpx2 source-layout checkpoint, 2026-04-16 03:45 UTC:
   `tcgen05.copy` direct-seed message plans now fail immediately when the
   source shared layout cannot be encoded as the immediate seed descriptor

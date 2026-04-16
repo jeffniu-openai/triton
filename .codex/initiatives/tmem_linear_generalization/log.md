@@ -18677,3 +18677,26 @@ Open after this slice:
     (`6 passed, 11000 deselected in 8.70s`);
   - full `cp_no_scales_warpx2` selector
     (`78 passed, 10928 deselected in 201.12s`).
+
+## 2026-04-16 04:09 UTC: typed copy source-row projection failures
+
+- Added `TMemCopySourceRowProjectionFailure` beside the existing
+  `TMemCopyInstructionColumnProjectionFailure`, so row-projection misses now
+  preserve structured scheduler facts instead of only a diagnostic string.
+- `getTMemCopySourceRowProjectionPlan(...)` records missing row/offset
+  dimensions, missing 8-row stride, and non-affine row-bit projections with
+  the logical row bit, actual source offset, expected affine offset, and
+  source-row stride.
+- The known two-CTA `warpx2::02_13` schedule-gap diagnostic now consumes that
+  failure object. It still reports the same public clean-negative boundary,
+  but it is now attached to the source-row proof that showed logical row bit
+  5 maps to a one-dword source offset rather than a supported affine 8-row
+  stride.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - affected `cp_no_scales_warpx2_02_13_twocta` selector
+    (`14 passed, 10992 deselected in 7.59s`);
+  - neighboring `cp_no_scales_warpx2 and not 02_13_twocta` selector
+    (`64 passed, 10942 deselected in 197.89s`).

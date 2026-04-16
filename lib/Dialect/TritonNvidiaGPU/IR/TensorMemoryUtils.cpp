@@ -8819,7 +8819,9 @@ getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
                                        const LinearLayout &cvt,
                                        const TMemCopyPlan &plan,
                                        const TMemCopyMessagePlan &message,
-                                       int bitwidth) {
+                                       int bitwidth,
+                                       const TMemCopySourceRowProjectionFailure
+                                           &failure) {
   if (plan.family != TMemCopyFamily::Warpx2_02_13_64x128b)
     return std::nullopt;
   if (message.useDirectSeedDescriptor)
@@ -8835,13 +8837,13 @@ getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
   if (!cvt.hasInDim(kRow) || !cvt.hasOutDim(kOffset) ||
       !cvt.hasInDim(kBlock) || cvt.getInDimSize(kBlock) != 2)
     return std::nullopt;
-  if (cvt.getInDimSizeLog2(kRow) <= llvm::Log2_32(32))
+  if (failure.kind !=
+          TMemCopySourceRowProjectionFailureKind::NonAffineRowBit ||
+      failure.logicalRowBit != llvm::Log2_32(32) ||
+      failure.actualOffset != 1)
     return std::nullopt;
-  int32_t sourceRowStride =
-      cvt.getBasis(kRow, llvm::Log2_32(8), kOffset);
-  int32_t row32Offset = cvt.getBasis(kRow, llvm::Log2_32(32), kOffset);
-  if (sourceRowStride <= 0 || row32Offset != 1 ||
-      row32Offset == sourceRowStride * (32 / 8))
+  if (failure.sourceRowStride <= 0 ||
+      failure.actualOffset == failure.expectedOffset)
     return std::nullopt;
 
   return getUnsupportedTMemCopyResult(
@@ -8863,7 +8865,8 @@ getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
 std::optional<TMemCopySourceRowProjection>
 getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
                                    const TMemCopyMessagePlan &message,
-                                   std::string *error) {
+                                   std::string *error,
+                                   TMemCopySourceRowProjectionFailure *failure) {
   TMemCopySourceRowProjection projection;
   const TMemCopyAtom &atom = message.atom;
   if (message.useDirectSeedDescriptor || atom.nRow == 4)
@@ -8879,6 +8882,8 @@ getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
   auto kRow = StringAttr::get(ctx, "row");
   auto kOffset = StringAttr::get(ctx, "offset");
   if (!cvt.hasInDim(kRow) || !cvt.hasOutDim(kOffset)) {
+    if (failure)
+      failure->kind = TMemCopySourceRowProjectionFailureKind::MissingDimensions;
     if (error) {
       *error =
         "tcgen05.copy source row projection requires row and offset "
@@ -8889,6 +8894,8 @@ getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
 
   unsigned strideBit = llvm::Log2_32(8);
   if (strideBit >= cvt.getInDimSizeLog2(kRow)) {
+    if (failure)
+      failure->kind = TMemCopySourceRowProjectionFailureKind::MissingStride;
     if (error) {
       *error = "tcgen05.copy source row projection requires the 8-row source "
                "stride to be explicit in the row dimension.";
@@ -8899,9 +8906,20 @@ getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
 
   auto appendAffineRowStep = [&](unsigned rowBit, int32_t expectedMultiplier,
                                  StringRef message) -> bool {
-    if (rowBit >= cvt.getInDimSizeLog2(kRow) ||
-        cvt.getBasis(kRow, rowBit, kOffset) !=
-            projection.sourceRowStride * expectedMultiplier) {
+    int32_t expectedOffset = projection.sourceRowStride * expectedMultiplier;
+    int32_t actualOffset = 0;
+    bool hasRowBit = rowBit < cvt.getInDimSizeLog2(kRow);
+    if (hasRowBit)
+      actualOffset = cvt.getBasis(kRow, rowBit, kOffset);
+    if (!hasRowBit || actualOffset != expectedOffset) {
+      if (failure) {
+        failure->kind =
+            TMemCopySourceRowProjectionFailureKind::NonAffineRowBit;
+        failure->logicalRowBit = rowBit;
+        failure->actualOffset = actualOffset;
+        failure->expectedOffset = expectedOffset;
+        failure->sourceRowStride = projection.sourceRowStride;
+      }
       if (error)
         *error = message.str();
       return false;
@@ -9824,11 +9842,13 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
     if (!sourceFormatSupport)
       return {std::nullopt, sourceFormatSupport};
     std::string rowProjectionError;
+    TMemCopySourceRowProjectionFailure rowProjectionFailure;
     auto rowProjection =
-        getTMemCopySourceRowProjectionPlan(cvt, message, &rowProjectionError);
+        getTMemCopySourceRowProjectionPlan(cvt, message, &rowProjectionError,
+                                           &rowProjectionFailure);
     if (!rowProjection) {
       if (auto knownGap = getKnownTMemCopySourceRowProjectionGap(
-              srcTy, cvt, plan, message, bitwidth))
+              srcTy, cvt, plan, message, bitwidth, rowProjectionFailure))
         return {std::nullopt, *knownGap};
       return {std::nullopt,
               getUnsupportedTMemCopyResult(
