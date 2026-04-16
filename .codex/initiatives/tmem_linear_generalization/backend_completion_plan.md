@@ -377,6 +377,9 @@ Progress:
   descriptor-loader footprints against the selected descriptor layout bounds,
   so scales `warpx4` has a real source legality proof instead of an exemption
   from source-bounds checking.
+- 2026-04-16 00:04 UTC: refreshed compiler-only invalid diagnostics for the
+  current copy planner wording, keeping the lit/direct-verifier oracle aligned
+  with the source legality and no-mask diagnostics.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

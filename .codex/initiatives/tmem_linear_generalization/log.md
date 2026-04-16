@@ -1,3 +1,18 @@
+## 2026-04-16 00:04 UTC: invalid.mlir copy diagnostic refresh
+
+- Updated `test/TritonNvidiaGPU/invalid.mlir` expected notes for:
+  - scales `warpx4` descriptor-row-stride copy failures, now using the public
+    `tcgen05.copy` one-address/one-descriptor/no-mask wording;
+  - two-CTA `warpx2::02_13`, now using the expanded descriptor/direct-seed
+    schedule-gap evidence.
+- Validation:
+  - `BUILD_DIR=$(PYTHONPATH="./python" python3 -c 'from build_helpers import
+    get_cmake_dir; print(get_cmake_dir())'); "$BUILD_DIR/bin/triton-opt"
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics` -> passed.
+- Note: `lit` and `python3 -m lit` are not available in this shell, so the
+  direct `triton-opt` verifier path was used.
+
 ## 2026-04-16 00:02 UTC: descriptor-loader source bounds
 
 - Extended `getTMemCopySourceFootprintSupport(...)` to handle

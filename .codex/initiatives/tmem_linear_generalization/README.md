@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:04 UTC: refreshed stale `test/TritonNvidiaGPU/invalid.mlir`
+  verifier expectations for the newer copy diagnostics: the public
+  `tcgen05.copy` no-mask wording for scales descriptor-row-stride failures and
+  the expanded two-CTA `warpx2::02_13` schedule-gap evidence. Direct verifier
+  validation with `triton-opt --split-input-file --verify-diagnostics` passes;
+  `lit` itself is not installed on PATH in this shell.
 - 2026-04-16 00:02 UTC: source-footprint support now proves descriptor-loader
   coordinates against the selected descriptor layout's row/column extent, while
   logical shared-tile coordinates are still checked against the shared tensor

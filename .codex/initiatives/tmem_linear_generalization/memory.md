@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Current compiler-only diagnostic checkpoint, 2026-04-16 00:04 UTC:
+  `test/TritonNvidiaGPU/invalid.mlir` now matches the current copy planner
+  diagnostics for scales descriptor-row-stride failures and two-CTA
+  `warpx2::02_13` schedule gaps. The stale expectations predated the public
+  no-mask wording and expanded direct-seed/delta evidence. Validation passed:
+  direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+  --verify-diagnostics`. `lit` is not installed on PATH in this environment,
+  so the direct verifier invocation is the local substitute.
+
 - Current descriptor-loader source-bounds checkpoint, 2026-04-16 00:02 UTC:
   `getTMemCopySourceFootprintSupport(...)` now validates descriptor-loader
   source footprints against the selected descriptor layout's row/column
