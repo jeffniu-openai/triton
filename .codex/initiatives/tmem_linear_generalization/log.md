@@ -19246,3 +19246,37 @@ Open after this slice:
 - Cleanup:
   - removed the temporary source edits and restored the clean row-anchor
     guard.
+
+## 2026-04-16 07:05 UTC: packed-lane warpx2 footprint relaxation rejected
+
+- Starting point: `codex/tmem` at `fd5d393fe`.
+- Probe:
+  - temporarily added an explicit effective source/destination footprint width
+    for subword `tcgen05.copy.warpx2` so support checking used physical
+    32-bit dword columns instead of logical element columns;
+  - temporarily allowed the `warpx2::01_23` 32-row core descriptor to cover
+    the 64-row packed-lane expansion for subword source tiles.
+- Result:
+  - single-CTA f16/bf16/i16 `warpx2::01_23` compiled and emitted
+    `tcgen05.cp.cta_group::1.warpx2::01_23.64x128b`;
+  - runtime output remained wrong: the schedule filled all destination columns
+    from source columns 0/1, e.g. f16 rows started as
+    `[0,128,1,129]`, `[4,132,5,133]`, ...;
+  - the f16 oracle still had `504 / 512` mismatches because source columns
+    2/3 were never selected.
+- Conclusion:
+  - subword `warpx2` cannot be promoted by footprint shrinking or by accepting
+    the core descriptor row expansion alone;
+  - the missing abstraction is lane-aware source storage carried through
+    descriptor synthesis and the instruction schedule, or a proven
+    multi-message schedule that writes complementary lane/column subsets
+    without overwriting the full destination footprint.
+- Cleanup and validation:
+  - removed the temporary source edits;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-restored
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'warpx2_subword_dtypes'`
+    (`14 passed, 11075 deselected`).

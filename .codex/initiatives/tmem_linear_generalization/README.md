@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 07:05 UTC: a no-code packed-lane `warpx2::01_23` probe was
+  completed and reverted. Treating subword copy footprints as physical dword
+  columns and allowing the 32-row core descriptor to cover the packed-lane row
+  expansion compiled f16/bf16/i16 single-CTA rows, but runtime output copied
+  only source columns 0/1 into every destination column pair. The first f16
+  row pattern was `[0,128,1,129]`, `[4,132,5,133]`, ... instead of the intended
+  mapping that also uses source columns 2/3, leaving `504 / 512` mismatches.
+  The next valid `warpx2` subword support step is a lane-aware descriptor /
+  instruction schedule, not another footprint-only relaxation.
 - 2026-04-16 06:54 UTC: a no-code identity `32x32` descriptor-view
   row-origin probe was completed and reverted. With the row-anchor guard
   lifted, the high-quadrant identity view computes the right raw origin

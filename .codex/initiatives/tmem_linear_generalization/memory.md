@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current packed-lane `warpx2::01_23` footprint-relaxation probe,
+  2026-04-16 07:05 UTC: a temporary planner edit treated subword `warpx2`
+  source/destination footprints as physical 32-bit dword columns and allowed
+  the known 32-row core descriptor to cover the packed-lane row expansion.
+  This compiled single-CTA f16/bf16/i16 `warpx2::01_23`, but runtime output
+  proved the model unsound: rows were filled from source columns 0/1 only
+  (`out[0] = [0,128,1,129]`, `out[1] = [4,132,5,133]`, ...), never from
+  source columns 2/3. The f16 oracle still had `504 / 512` mismatches against
+  the intended mapping. Conclusion: shrinking footprints is not enough. A
+  valid support path must carry packed-lane selection through descriptor
+  synthesis and instruction scheduling, or use a proven multi-message schedule
+  that writes complementary lane/column subsets without overwriting the full
+  destination footprint. The temporary source edit was removed and the clean
+  negative selector is green again.
+
 - Current identity `32x32` descriptor-view row-origin probe, 2026-04-16
   06:54 UTC: temporarily lifting the direct `ld/st` row-anchor guard for the
   canonical identity high-quadrant view confirmed the exact coordinate-frame
