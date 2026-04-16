@@ -12,7 +12,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 // CHECK-LABEL: @tma_gather_simple
 // CHECK-SAME: i32 [[Y0:%3]]
-tt.func public @tma_gather_simple(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked}>>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
+tt.func @tma_gather_simple(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked}>>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
   // There are 32 indices distributed to 4 warps, so each warp as 8 indices.
 
   // CHECK: [[BAR:%.*]] = extractvalue {{.*}} %1, 0
@@ -87,7 +87,7 @@ tt.func public @tma_gather_simple(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %
 }
 
 // CHECK-LABEL: @tma_gather_8_consecutive_indices
-tt.func public @tma_gather_8_consecutive_indices(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked1}>>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
+tt.func @tma_gather_8_consecutive_indices(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked1}>>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
   // Due to the `sizePerThread = [1, 8]`, each warp now handles 8 consecutive
   // rows, where each row is divided into 2 segments for a total of 4 gather4s.
   //
@@ -118,7 +118,7 @@ tt.func public @tma_gather_8_consecutive_indices(%arg0: !tt.tensordesc<1x128xbf1
 }
 
 // CHECK-LABEL: @tma_gather_redundant_indices
-tt.func public @tma_gather_redundant_indices(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #linear>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
+tt.func @tma_gather_redundant_indices(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #linear>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
   // Codegen for this case is actually incorrect due to linear layouts
   // incorrectly handling register broadcasting, but the test outcome is nonetheless
   // the same.
@@ -130,7 +130,7 @@ tt.func public @tma_gather_redundant_indices(%arg0: !tt.tensordesc<1x128xbf16, #
 }
 
 // CHECK-LABEL: @tma_gather_redundant_warps
-tt.func public @tma_gather_redundant_warps(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked2}>>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
+tt.func @tma_gather_redundant_warps(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: !ttg.memdesc<1xi64, #shared, #smem, mutable>, %arg2: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked2}>>, %arg3: i32, %arg4: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>, %arg5: i1) {
   // CHECK: [[WARP_ID:%.*]] = tail call i32 @llvm.nvvm.shfl.sync.idx.i32
   // CHECK: [[WARP_SELECT:%.*]] = and i32 [[WARP_ID]], 2
   // CHECK: [[WARP_PRED:%.*]] = icmp eq i32 [[WARP_SELECT]], 0
@@ -147,7 +147,7 @@ tt.func public @tma_gather_redundant_warps(%arg0: !tt.tensordesc<1x128xbf16, #sh
 }
 
 // CHECK-LABEL: @tma_scatter
-tt.func public @tma_scatter(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked}>>, %arg2: i32, %arg3: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>) {
+tt.func @tma_scatter(%arg0: !tt.tensordesc<1x128xbf16, #shared1>, %arg1: tensor<32xi32, #ttg.slice<{dim = 0, parent = #blocked}>>, %arg2: i32, %arg3: !ttg.memdesc<32x128xbf16, #shared1, #smem, mutable>) {
   // The lowering for `async_tma_scatter` shares practically all of its logic
   // with `async_tma_gather`, so we don't need to re-test the indexing logic.
 
