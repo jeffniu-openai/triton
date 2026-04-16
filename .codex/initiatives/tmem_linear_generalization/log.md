@@ -19216,3 +19216,33 @@ Open after this slice:
     PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported`
     (`2 passed`).
+
+## 2026-04-16 06:54 UTC: identity descriptor-view row-origin probe rejected
+
+- Starting point: `codex/tmem` at `7005549b3`.
+- Probe:
+  - temporarily lifted the direct `tcgen05.ld/st` row-anchor guard for the
+    identity `128x128 -> 32x32` high-quadrant descriptor view;
+  - added temporary trace around raw-query base adjustment;
+  - tried moving the residual post-subview origin into the packet-immediate
+    stream for the selected `16x32bx2.x32` path.
+- Findings:
+  - exact query arithmetic computes the intended raw origin:
+    `baseOffset = 4194368` (`64<<16 | 64`);
+  - `getAlreadyAdjustedTMemSubviewBaseOffset(...)` returns `66` for the same
+    descriptor chain because the lowered `memdesc_subslice` pointer is in the
+    folded support frame;
+  - subtracting gives `4194302` (`0x3ffffe`), and the compiled runtime updates
+    rows `0..31`, columns `64..95`;
+  - forcing `4194302` into `packetOffsets` emits
+    `tcgen05.ld/st.sync.aligned.16x32bx2.x32.b32` with immediate `4194302`,
+    but the runtime still updates rows `0..31`, columns `64..95`.
+- Conclusion:
+  - the remaining identity high-quadrant `ld/st` gap is not a small
+    base-offset subtraction bug;
+  - support requires a first-class row-origin / packet-footprint
+    rematerialization model for the selected public atom, or a proof that this
+    view is not directly realizable by public `tcgen05.ld/st`.
+- Cleanup:
+  - removed the temporary source edits and restored the clean row-anchor
+    guard.

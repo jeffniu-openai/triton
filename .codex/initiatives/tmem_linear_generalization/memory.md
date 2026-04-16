@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current identity `32x32` descriptor-view row-origin probe, 2026-04-16
+  06:54 UTC: temporarily lifting the direct `ld/st` row-anchor guard for the
+  canonical identity high-quadrant view confirmed the exact coordinate-frame
+  mismatch. The raw query computes `baseOffset = 64<<16 | 64`; the lowered
+  `memdesc_subslice` pointer has already advanced by the folded support-frame
+  offset `66`, so normal subtraction leaves `0x3ffffe`. The compiled
+  `16x32bx2.x32` path still updates rows `0..31`, columns `64..95`, not the
+  desired rows `64..95`. Moving that residual offset into the packet immediate
+  changes the emitted immediate to `4194302` but leaves the same wrong rows.
+  Conclusion: this bucket is not a simple subtract-versus-immediate bug. The
+  direct path needs a real row-origin rematerialization/packet-footprint model
+  that can make the selected public `ld/st` atom address the high row window,
+  or it remains a clean unsupported ISA boundary. The temporary source edits
+  were removed after the probe.
+
 - Current scales source-format probe checkpoint, 2026-04-16 06:45 UTC:
   a temporary planner probe forced the dormant `tcgen05.cp` source-format
   suffixes `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` onto the int8 scales

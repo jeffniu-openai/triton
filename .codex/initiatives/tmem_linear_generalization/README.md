@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:54 UTC: a no-code identity `32x32` descriptor-view
+  row-origin probe was completed and reverted. With the row-anchor guard
+  lifted, the high-quadrant identity view computes the right raw origin
+  (`64<<16 | 64`), but the lowered subview pointer has already advanced by the
+  folded support-frame offset `66`. The resulting `16x32bx2.x32` direct path
+  updates rows `0..31`, columns `64..95`. Moving the residual `0x3ffffe`
+  origin from dynamic base adjustment to the packet immediate changes the
+  emitted immediate but not the wrong rows. Treat this as a real
+  row-origin/packet-footprint rematerialization gap, not a local base-offset
+  bookkeeping issue.
 - 2026-04-16 06:45 UTC: a no-code scales source-format probe was completed
   and reverted. Forcing `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64` onto the
   int8 scales `warpx4.32x128b` descriptor-view/shared-subslice frontier did
