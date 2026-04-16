@@ -8035,6 +8035,12 @@ static bool needsDenseTMemCopyPhysicalColumnTileOffsets(
     return false;
 
   unsigned instructionCols = getDenseTMemCopyColumnStride(family, bitwidth);
+  // Bases below instructionCols select columns inside one copy atom; support
+  // checking separately proves those columns are physically contiguous. Pure
+  // column bases at or above instructionCols select which atom-width tile is
+  // addressed, so non-canonical selector order requires physical tile
+  // offsets. Row-touching column bases are folded-row selectors carried by
+  // the descriptor/source projection, not destination column tile selectors.
   bool sawColumnTileSelector = false;
   int32_t previousColumnTileSelector = 0;
   for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
