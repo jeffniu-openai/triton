@@ -1022,6 +1022,13 @@ Progress:
   validates it before returning it to `_load_red`. The explicit Python helper
   no longer falls back to the frontend split-N planner. A canonical-row guard
   preserves the existing column-only M64 path and its packet offsets.
+- 2026-04-16 11:07 UTC: re-probed deleting the broader handle-aware M64
+  split-N Python fallback and rejected the deletion. Backend-only
+  `32x32b_splitn` selection still fails row/column-permuted M64 auto opcode
+  checks and M64 reduction output for noncanonical views. The reduction bridge
+  cleanup above is valid, but generic M64 split-N auto selection still needs a
+  backend physical-query/packet-equivalence proof before the Python fallback
+  can be removed.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

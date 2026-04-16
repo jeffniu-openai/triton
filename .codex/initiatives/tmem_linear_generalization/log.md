@@ -19929,3 +19929,36 @@ Open after this slice:
     two-CTA gap;
   - a valid support attempt needs a different descriptor/address schedule, a
     source-message split with proven non-overlap, or new ISA semantics.
+
+## 2026-04-16 11:07 UTC: M64 split-N backend-only fallback deletion rejected
+
+- Starting point: `codex/tmem` at `1c0c46403`.
+- Probe:
+  - temporarily changed `_try_handle_aware_m64_splitn_auto_layout(...)` to
+    return only `compute_tmem_reg_layout_from_memdesc(..., "32x32b_splitn")`;
+  - removed the Python canonical M64 split-N layout fallback and the final
+    type-based `_compute_tmem_reg_layout(..., "auto")` fallback.
+- Finding:
+  - the cleanup is not valid yet;
+  - row/column-permuted M64 auto split-N load/store cases no longer selected
+    only `16x32bx2` opcodes for representative rotate/reverse cases;
+  - default M64 reductions for row-reverse `N=32` and row-rotate/
+    col-even-odd `N=128` produced wrong output;
+  - explicit-`32x32b` M64 reduction rows for the same families also produced
+    wrong output.
+- Cleanup / validation:
+  - restored the Python fallback stack;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-m64-fallback-restored-narrow
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'splitn_rowcol_permuted_auto_selects_16x32bx2 or
+    ld_red_m64_rowcol_permuted_default_layout or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn'`
+    (`15 passed, 11118 deselected`).
+- Next:
+  - keep `_try_handle_aware_m64_splitn_auto_layout(...)` intact for now;
+  - a future deletion must first teach the backend bridge to prove exact
+    physical-query and packet-equivalence for noncanonical M64 split-N auto
+    layouts, not just derive a candidate layout spelling.

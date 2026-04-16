@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current M64 split-N Python fallback boundary, 2026-04-16 11:07 UTC:
+  deleting the remaining fallback tail of
+  `_try_handle_aware_m64_splitn_auto_layout(...)` is still invalid. A
+  temporary edit made it return only
+  `compute_tmem_reg_layout_from_memdesc(..., "32x32b_splitn")`; the broad
+  `splitn or ld_red_m64` selector then failed row/column-permuted M64 auto
+  split-N opcode assertions and produced wrong output for M64 row-reverse and
+  row-rotate/col-even-odd default/explicit reductions. Restoring the Python
+  fallback stack made the exact affected selector green again (`15 passed`).
+  Keep this as the remaining M64 backend gap: the backend bridge can handle
+  the reduction-specific explicit fallback added at 10:38, but generic M64
+  split-N auto selection still needs the Python canonical/type fallback until
+  the backend proves physical-query/packet equivalence for these noncanonical
+  views.
+
 - Current two-CTA `warpx2::02_13` direct-seed probe checkpoint, 2026-04-16
   10:50 UTC: a temporary env-controlled C++ probe allowed the two-CTA
   no-scales `warpx2::02_13` path to use the single-CTA direct-seed descriptor

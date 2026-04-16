@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 11:07 UTC: a deletion probe for the remaining handle-aware M64
+  split-N Python fallback was rejected and restored. Returning only
+  `compute_tmem_reg_layout_from_memdesc(..., "32x32b_splitn")` broke
+  row/column-permuted M64 auto split-N opcode selection and produced wrong
+  default/explicit M64 reduction output for row-reverse and
+  row-rotate/col-even-odd cases. After restoring the fallback stack,
+  `make -j8` and the exact affected selector passed (`15 passed`). The next
+  real cleanup needs backend physical-query/packet-equivalence for these
+  noncanonical M64 split-N views, not fallback deletion.
 - 2026-04-16 10:50 UTC: a temporary env-controlled direct-seed probe for
   two-CTA no-scales `warpx2::02_13` was completed and removed. Source
   offsets `0,16,32,48,64` with `dword_delta=0` all emitted the
