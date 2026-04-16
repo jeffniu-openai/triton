@@ -10602,11 +10602,12 @@ rejection, not rescue
     (`3 passed, 10985 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-16 02:46 UTC dense copy physical tile offsets
+## Superseded: 2026-04-16 02:46 UTC dense copy physical tile offsets
 
-- Dense `tcgen05.copy` destination scheduling now derives the emitted TMEM
+- Dense `tcgen05.copy` destination scheduling briefly derived the emitted TMEM
   destination offset from the exact physical coordinate of each logical copy
-  tile for all dense families.
+  tile for all dense families. Broad `cp_` validation found this was too broad
+  for M256 folded-row layouts; see the 03:05 UTC latest entry below.
 - Removed the old macro-tile-only heuristic that assumed low descriptor-macro
   column permutations were carried by the TMEM layout. That assumption was
   wrong for 4-column tile permutations: the copy wrote correct contiguous
@@ -10639,3 +10640,35 @@ rejection, not rescue
   - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
     --verify-diagnostics`;
   - `git diff --check`.
+
+## Latest: 2026-04-16 03:05 UTC dense copy folded-row offset repair
+
+- Dense copy destination offsets now distinguish two column-address effects:
+  - pure column tile selectors that are permuted at or above the selected copy
+    instruction width need exact physical tile offsets;
+  - row-touching column bases in M256 folded-row layouts are source/descriptor
+    projection selectors and must keep the logical destination column schedule.
+- Implementation:
+  - `needsDenseTMemCopyPhysicalColumnTileOffsets(...)` is back as a layout
+    predicate, but it is keyed to `getDenseTMemCopyColumnStride(family,
+    bitwidth)` instead of the old 128-byte descriptor macro-tile;
+  - the predicate ignores column bases that touch rows, preserving the known
+    green folded-row M256 dense copy schedules;
+  - tile-permuted `tile_n=4` rows remain positive because their pure column
+    tile selectors are out of order at the `128x128b` / `128x256b`
+    instruction-tile granularity.
+- Validation:
+  - `make -j8`;
+  - representative M256 dense copy rows (`4 passed`);
+  - focused `cp_no_scales_linear_tile_permuted` selector
+    (`18 passed, 10984 deselected`);
+  - split-4 `cp_` runtime sweep:
+    group 1 `174 passed, 10 skipped`, group 2 `184 passed`, group 3
+    `184 passed`, group 4 `183 passed`.
+- Current copy frontier:
+  - row-basis dense copy permutations still need a real source-row /
+    rematerialized schedule;
+  - sub-instruction column permutations (`tile_n in {1,2}`) stay clean
+    unsupported;
+  - packed-lane legacy subword copy and scales descriptor-view/subslice copy
+    still require separate planner work rather than tile-offset heuristics.

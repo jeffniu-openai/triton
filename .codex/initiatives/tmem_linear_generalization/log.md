@@ -18574,3 +18574,39 @@ Open after this slice:
   - neighboring copy selector (`19 passed, 10983 deselected`);
   - direct `invalid.mlir` verifier;
   - `git diff --check`.
+
+## 2026-04-16 03:05 UTC: folded-row dense copy regression repair
+
+- Broad split-4 `cp_` validation after the 02:46 checkpoint caught a dense
+  M256 regression:
+  - group 1 failed 69 rows, all in M256 no-scales dense copy families;
+  - representative diagnostics reported overlapping destination footprints for
+    `tcgen05.copy.128x256b` / `128x128b`;
+  - the other split groups were green, isolating the issue to folded-row dense
+    schedules rather than the newly promoted tile-permuted rows.
+- Root cause:
+  - the all-dense exact physical-offset rule was too broad;
+  - M256 layouts fold high logical row selection into the copy column address
+    space (`col=16 -> row=128, col=0` in the exact query);
+  - those row-touching column bases are descriptor/source projection
+    selectors, not destination row-offset requests for the public dense copy
+    atom.
+- Implementation:
+  - reintroduced `needsDenseTMemCopyPhysicalColumnTileOffsets(...)`, but keyed
+    it to the selected copy instruction width rather than the old 128-byte
+    descriptor macro-tile;
+  - the predicate ignores column bases that touch rows, preserving folded-row
+    logical destination scheduling;
+  - pure column tile selectors that are permuted at or above the instruction
+    tile width still use exact physical tile coordinates, preserving the
+    `tile_n=4` positives.
+- Validation:
+  - `make -j8`;
+  - representative M256 dense copy rows
+    (`256x16` and `256x128`, f32/i32; `4 passed`);
+  - focused tile-permutation selector (`18 passed, 10984 deselected`);
+  - split-4 broad copy sweep:
+    - group 1: `174 passed, 10 skipped, 10818 deselected`;
+    - group 2: `184 passed, 10818 deselected`;
+    - group 3: `184 passed, 10818 deselected`;
+    - group 4: `183 passed, 10819 deselected`.

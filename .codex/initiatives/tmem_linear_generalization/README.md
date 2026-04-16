@@ -2712,6 +2712,18 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-16 03:05 UTC: refined dense copy destination scheduling after broad
+  `cp_` validation caught a regression in M256 folded-row copies. Physical
+  tile offsets are now used only when pure column tile selectors are permuted
+  at or above the selected copy instruction width; folded high-row selectors
+  stored in the column address space keep the logical destination schedule.
+  Validation: `make -j8`, representative M256 copy rows, tile-permutation
+  selector (`18` rows), and the split-4 `cp_` runtime sweep
+  (`174 passed / 10 skipped`, `184 passed`, `184 passed`, `183 passed`).
+- 2026-04-16 02:46 UTC: no-scales dense copy tile-permuted `tile_n=4` rows
+  were promoted via exact physical tile-coordinate support for pure column
+  tile permutations. This was refined at 03:05 UTC to preserve folded-row M256
+  logical scheduling.
 - 2026-04-16 01:55 UTC: descriptor-row split requirements now feed a
   schedule-proof failure. For scales descriptor-view/subslice copy, the
   planner proves that separate descriptor-row messages would overwrite the

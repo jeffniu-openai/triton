@@ -8027,6 +8027,36 @@ getDenseTMemCopyDestinationTileCoord(const LinearLayout &layout,
   return std::pair<int32_t, int32_t>{row, col};
 }
 
+static bool needsDenseTMemCopyPhysicalColumnTileOffsets(
+    const LinearLayout &ll, MLIRContext *ctx, TMemCopyFamily family,
+    unsigned bitwidth) {
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!ll.hasInDim(kCol))
+    return false;
+
+  unsigned instructionCols = getDenseTMemCopyColumnStride(family, bitwidth);
+  bool sawColumnTileSelector = false;
+  int32_t previousColumnTileSelector = 0;
+  for (ArrayRef<int32_t> basis : ll.getBases().lookup(kCol)) {
+    bool touchesRow = basis[0] != 0;
+    bool touchesCol = basis[1] != 0;
+    if (!touchesCol || touchesRow)
+      continue;
+
+    int32_t colBasis = std::abs(basis[1]);
+    if (colBasis >= static_cast<int32_t>(instructionCols)) {
+      if (sawColumnTileSelector && colBasis <= previousColumnTileSelector)
+        return true;
+      sawColumnTileSelector = true;
+      previousColumnTileSelector = colBasis;
+      continue;
+    }
+    if (sawColumnTileSelector)
+      return true;
+  }
+  return false;
+}
+
 std::optional<uint32_t>
 getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
                                  TMemCopyFamily family, int32_t logicalCol) {
@@ -8038,6 +8068,10 @@ getTMemCopyDestinationTileOffset(const TMemPhysicalQuery &query,
     return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
 
   auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(query.layout);
+  if (!needsDenseTMemCopyPhysicalColumnTileOffsets(
+          ll, query.memTy.getContext(), family, query.elementBitWidth))
+    return static_cast<uint32_t>(logicalCol) * query.elementBitWidth / 32;
+
   auto coord = getDenseTMemCopyDestinationTileCoord(
       ll, query.memTy.getContext(), logicalCol);
   if (!coord)
@@ -8057,7 +8091,10 @@ getTMemCopyDestinationFootprint(const TMemPhysicalQuery &query,
       isTMemCopy4x256RefreshLayout(query.layout, query.memTy.getContext(),
                                    query.elementBitWidth)) {
     physicalCol = 0;
-  } else if (isDenseTMemCopyFamily(family)) {
+  } else if (isDenseTMemCopyFamily(family) &&
+             needsDenseTMemCopyPhysicalColumnTileOffsets(
+                 ll, query.memTy.getContext(), family,
+                 query.elementBitWidth)) {
     auto coord = getDenseTMemCopyDestinationTileCoord(
         ll, query.memTy.getContext(), logicalCol);
     if (!coord)

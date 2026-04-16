@@ -430,13 +430,17 @@ Progress:
   direct-seed immediates. This keeps the source-footprint carrier aligned with
   the actual public `tcgen05.copy` operand model before the next scheduler
   work.
-- 2026-04-16 02:46 UTC: dense copy destination scheduling now uses exact
-  physical tile coordinates for every dense copy tile. This removed a
+- 2026-04-16 02:46 UTC: dense copy destination scheduling was first moved to
+  exact physical tile coordinates for every dense copy tile. This removed a
   macro-tile-only offset heuristic that let 4-column tile permutations compile
-  with wrong logical tile addresses. The repaired planner promotes no-scales
-  `tile_n=4` column-tile permutations via the `128x128b` fallback, keeps wider
-  tile permutations green, and keeps `tile_n in {1,2}` as clean
-  instruction-footprint negatives.
+  with wrong logical tile addresses. The all-dense form was refined at
+  03:05 UTC after broad copy validation exposed M256 folded-row regressions.
+- 2026-04-16 03:05 UTC: dense copy destination scheduling now uses exact
+  physical tile coordinates only when pure column tile selectors are permuted
+  at or above the selected copy instruction width. Row-touching column bases
+  are treated as folded-row source/descriptor selectors and keep logical
+  destination column offsets. This preserves the promoted `tile_n=4`
+  no-scales positives while restoring the broad M256 dense copy matrix.
 - 2026-04-16 00:25 UTC: added explicit source byte-range legality for
   direct-seed copy messages. Direct-seed messages still do not have a selected
   descriptor layout, but they now prove the immediate source offset and
