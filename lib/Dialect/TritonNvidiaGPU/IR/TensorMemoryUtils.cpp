@@ -9950,6 +9950,38 @@ static std::optional<std::string> getTMemCopyInstructionColumnProjectionNote(
   return std::nullopt;
 }
 
+static std::optional<std::string>
+getTMemCopySubwordSourceStorageNote(const LinearLayout &cvt,
+                                    const TMemCopyMessagePlan &message,
+                                    int bitwidth) {
+  if (bitwidth >= 32 || message.instrShape.size() < 2)
+    return std::nullopt;
+  auto inDims = cvt.getInDimNames();
+  if (inDims.empty())
+    return std::nullopt;
+  auto *ctx = inDims.begin()->getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!cvt.hasInDim(kCol))
+    return std::nullopt;
+  auto footprintColumns = getTMemCopyEffectiveInstructionColumns(message);
+  if (!footprintColumns)
+    return std::nullopt;
+  int64_t logicalSourceColumns = cvt.getInDimSize(kCol);
+  if (*footprintColumns <= static_cast<uint64_t>(logicalSourceColumns))
+    return std::nullopt;
+
+  std::string note;
+  llvm::raw_string_ostream os(note);
+  os << "The subword tcgen05.copy instruction source footprint spans "
+     << *footprintColumns << " logical element columns, but the linear source "
+     << "view exposes only " << logicalSourceColumns
+     << " column(s). The extra sub-dword lanes must be represented by a "
+        "packed source-storage or descriptor semantic-equivalence model before "
+        "this schedule can be lowered safely; descriptor footprint coverage "
+        "alone is not a correctness proof.";
+  return os.str();
+}
+
 std::optional<TMemCopyDescriptorLayoutSelection>
 selectTMemCopyDescriptorLayout(gpu::MemDescType srcTy,
                                const LinearLayout &shmemLl,
@@ -10148,6 +10180,9 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
     if (auto projectionNote =
             getTMemCopyInstructionColumnProjectionNote(cvt, message, bitwidth))
       os << " " << *projectionNote;
+    if (auto storageNote =
+            getTMemCopySubwordSourceStorageNote(cvt, message, bitwidth))
+      os << " " << *storageNote;
     return {std::nullopt,
             getUnsupportedTMemCopyResult(
                 TMemCopySupportFailureLayer::DescriptorSynthesis, os.str())};

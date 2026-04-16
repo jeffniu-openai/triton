@@ -8966,6 +8966,10 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_err
     if "has no representable MMAv5 shared-memory descriptor" in text:
         assert "descriptor shape" in text
         assert "instruction shape" in text
+    if "01_23" in case_name:
+        assert "subword tcgen05.copy instruction source footprint spans" in text
+        assert "descriptor semantic-equivalence model" in text
+        assert "descriptor footprint coverage alone is not a correctness proof" in text
     assert "warpx2 tcgen05.copy currently requires 32-bit shared elements" not in text
     assert "cleanly unsupported" in text
     assert "error encountered during parsing" in str(excinfo.value)

@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:37 UTC: live diagnostics now carry the 06:30 subword
+  `warpx2::01_23` finding. Descriptor-synthesis failures append a generic
+  source-storage note when a subword copy instruction spans more logical
+  element columns than the source linear view exposes, stating that packed
+  source-storage or descriptor semantic-equivalence modeling is required and
+  descriptor footprint coverage alone is not a correctness proof. Validation:
+  `make -j8`, py-compile, subword warpx2 selector (`14 passed`), neighboring
+  non-subword warpx2 selector (`64 passed`), and `git diff --check`.
 - 2026-04-16 06:30 UTC: a no-code `warpx2::01_23` subword support probe was
   completed and reverted. Making descriptor selection skip candidates whose
   coordinate image could not cover the instruction footprint compiled six

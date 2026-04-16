@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current warpx2 subword source-storage diagnostic checkpoint,
+  2026-04-16 06:37 UTC: descriptor-synthesis failures now append a generic
+  subword source-storage note when the copy instruction footprint spans more
+  logical element columns than the source linear view exposes. This pins the
+  06:30 probe into live diagnostics: extra sub-dword lanes require a packed
+  source-storage or descriptor semantic-equivalence model, and descriptor
+  footprint coverage alone is not a correctness proof. The subword warpx2
+  clean-negative test now asserts that note for `01_23`. Validation:
+  `make -j8`, py-compile, subword warpx2 selector (`14 passed`), neighboring
+  non-subword warpx2 selector (`64 passed`), and `git diff --check`.
+
 - Current warpx2 subword semantic-equivalence probe, 2026-04-16 06:30 UTC:
   a temporary planner edit made descriptor selection skip MMAv5 descriptors
   whose coordinate image could not cover the instruction source footprint.

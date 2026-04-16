@@ -705,6 +705,11 @@ Progress:
   wrong output. Phase 2 needs descriptor semantic-equivalence checking against
   each copy atom's internal row/column mapping before descriptor variants can
   be treated as executable schedules.
+- 2026-04-16 06:37 UTC: the subword source-storage / semantic-equivalence
+  boundary is now part of live descriptor-synthesis diagnostics. When an
+  instruction footprint spans more logical element columns than the source
+  layout exposes, failures state that the extra sub-dword lanes need packed
+  source-storage or descriptor semantic-equivalence modeling before lowering.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent

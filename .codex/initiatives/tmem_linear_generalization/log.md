@@ -19155,3 +19155,32 @@ Open after this slice:
   - rebuilt with `make -j8`;
   - reran the subword selector, which returned to `14 passed, 11075
     deselected`.
+
+## 2026-04-16 06:37 UTC: warpx2 subword source-storage diagnostic
+
+- Starting point: `codex/tmem` at `eb5ba167d`.
+- Implementation:
+  - added a generic descriptor-synthesis note for subword copy messages where
+    the effective instruction source footprint spans more logical element
+    columns than the source `LinearLayout` exposes;
+  - the note records that the extra sub-dword lanes require a packed
+    source-storage or descriptor semantic-equivalence model and that descriptor
+    footprint coverage alone is not a correctness proof;
+  - pinned this note in the `warpx2::01_23` subword clean-negative test.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-subword-storage-note-test
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2_subword_dtypes'`
+    (`14 passed, 11075 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-storage-note-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2 and not subword_dtypes'`
+    (`64 passed, 11025 deselected`);
+  - `git diff --check`.
