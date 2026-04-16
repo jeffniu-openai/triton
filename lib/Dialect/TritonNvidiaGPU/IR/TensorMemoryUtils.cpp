@@ -9382,6 +9382,32 @@ static StringRef stringifyTMemCopyInstructionColumnProjectionFailureKind(
   llvm_unreachable("unknown tcgen05.copy instruction-column failure kind");
 }
 
+static std::optional<TMemCopyDescriptorRowSplitRequirement>
+getTMemCopyDescriptorRowSplitRequirement(
+    const TMemCopyInstructionColumnProjectionFailure &failure) {
+  if (failure.kind != TMemCopyInstructionColumnProjectionFailureKind::
+                          DescriptorRowStrideSelection ||
+      !failure.descriptorRowStride || !failure.descriptorRowDelta ||
+      *failure.descriptorRowStride == 0)
+    return std::nullopt;
+  if (failure.logicalColBit >= std::numeric_limits<unsigned>::digits - 1)
+    return std::nullopt;
+
+  TMemCopyDescriptorRowSplitRequirement requirement;
+  requirement.instructionRows = failure.instructionRows;
+  requirement.instructionColumns = failure.instructionColumns;
+  requirement.logicalColBit = failure.logicalColBit;
+  requirement.selectedColumnRun = 1u << failure.logicalColBit;
+  requirement.columnSelectionPeriod = 1u << (failure.logicalColBit + 1);
+  requirement.actualOffset = failure.actualOffset;
+  requirement.expectedOffset = failure.expectedOffset;
+  requirement.descriptorRowStride = *failure.descriptorRowStride;
+  requirement.descriptorRowDelta = *failure.descriptorRowDelta;
+  requirement.spansInstructionRows =
+      failure.descriptorRowDeltaSpansInstructionRows;
+  return requirement;
+}
+
 static std::string formatTMemCopyInstructionColumnProjectionFailure(
     const TMemCopyInstructionColumnProjectionFailure &failure) {
   std::string note;
@@ -9422,21 +9448,25 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
     os << "shared offset " << failure.actualOffset;
   if (failure.hasNonOffsetContribution)
     os << " plus a non-offset component";
-  if (failure.descriptorRowStride && failure.actualOffset > 0 &&
-      failure.actualOffset % *failure.descriptorRowStride == 0 &&
-      failure.actualOffset != failure.expectedOffset) {
-    int32_t descriptorRowDelta =
-        failure.descriptorRowDelta
-            ? *failure.descriptorRowDelta
-            : failure.actualOffset / *failure.descriptorRowStride;
-    os << " (" << descriptorRowDelta
+  if (auto splitRequirement =
+          getTMemCopyDescriptorRowSplitRequirement(failure)) {
+    os << " (" << splitRequirement->descriptorRowDelta
        << " descriptor-row stride"
-       << (failure.actualOffset == *failure.descriptorRowStride ? "" : "s")
-       << "), which would require this column bit to select a different "
-          "descriptor row within the same instruction footprint";
-    if (failure.descriptorRowDeltaSpansInstructionRows)
-      os << " (an entire " << failure.instructionColumns
-         << "-column instruction row footprint)";
+       << (splitRequirement->descriptorRowDelta == 1 ? "" : "s")
+       << "), which would require this column bit to select descriptor row +"
+       << splitRequirement->descriptorRowDelta << " for "
+       << splitRequirement->selectedColumnRun
+       << "-column destination runs every "
+       << splitRequirement->columnSelectionPeriod
+       << " columns within the same " << failure.instructionColumns
+       << "-column instruction";
+    if (splitRequirement->spansInstructionRows) {
+      os << "; that row delta spans a "
+         << splitRequirement->instructionRows
+         << "-row source footprint";
+      if (splitRequirement->instructionRows > 0)
+        os << ", which is an entire tcgen05.copy instruction row footprint";
+    }
   }
   os << " instead of contiguous shared offset " << failure.expectedOffset
      << ". Public tcgen05.copy takes one tensor-memory address and one shared "
@@ -9533,6 +9563,8 @@ getTMemCopyInstructionColumnProjectionPlan(
     TMemCopyInstructionColumnProjectionFailure failureInfo;
     failureInfo.kind =
         TMemCopyInstructionColumnProjectionFailureKind::PackedLaneState;
+    failureInfo.instructionRows =
+        message.instrShape.empty() ? 0 : message.instrShape[0];
     failureInfo.instructionColumns = instrCols;
     failureInfo.logicalColBit = 0;
     failureInfo.actualOffset = 0;
@@ -9581,6 +9613,8 @@ getTMemCopyInstructionColumnProjectionPlan(
     }
 
     TMemCopyInstructionColumnProjectionFailure failureInfo;
+    failureInfo.instructionRows =
+        message.instrShape.empty() ? 0 : message.instrShape[0];
     failureInfo.instructionColumns = instrCols;
     failureInfo.logicalColBit = bit;
     failureInfo.actualOffset = actualOffset;

@@ -326,6 +326,16 @@ Progress:
   one shared descriptor per instruction, with no per-column destination mask.
   This pushes the next support attempt toward physical-footprint scheduling
   instead of another descriptor enumeration.
+- 2026-04-16 01:49 UTC: descriptor-row-stride failures now derive an explicit
+  `TMemCopyDescriptorRowSplitRequirement`, not just scalar row-delta fields.
+  The requirement spells out the column mask shape the scheduler would need:
+  selected destination-column run, selection period, descriptor-row delta, and
+  whether the row delta is a full instruction-row footprint. The scales
+  descriptor-view case is now pinned as descriptor row `+32` for 4-column runs
+  every 8 columns inside a 16-column instruction, spanning a full 32-row
+  source footprint. This is the right input to a split/mask schedule proof;
+  the public atom still remains clean unsupported until a non-overlapping
+  destination schedule or different ISA format is proven.
 - 2026-04-15 23:08 UTC: factored copy destination-to-source conversion into
   `getTMemCopySourceConversion(...)` and routed both `TMEMCopyOp::verify()`
   and `TensorMemoryToLLVM.cpp` through it. This does not change support, but

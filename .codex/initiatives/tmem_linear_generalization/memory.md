@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current descriptor-row split requirement checkpoint, 2026-04-16 01:49 UTC:
+  scales descriptor-view/subslice copy still remains a true Phase 2 copy
+  scheduler gap, but the planner now derives a first-class
+  `TMemCopyDescriptorRowSplitRequirement` from descriptor-row-stride
+  instruction-column failures. The requirement records the instruction row
+  footprint, instruction columns, offending logical column bit, selected
+  destination-column run, column-selection period, descriptor-row stride, and
+  descriptor-row delta. Diagnostics now report the exact mask-shaped fact:
+  for the scales descriptor-view repro, logical source column bit 2 selects
+  descriptor row `+32` for 4-column destination runs every 8 columns inside
+  one 16-column `warpx4.32x128b` instruction, spanning a full 32-row source
+  footprint. This is not a support promotion; it removes the last prose-only
+  piece of the split/mask proof so the next scheduler attempt can consume a
+  typed requirement. Validation passed: `make -j8`, direct `invalid.mlir`
+  verifier, focused scales copy selector (`9 passed, 10979 deselected`),
+  py-compile, debug descriptor-view repro, and `git diff --check`.
+
 - Current derived two-CTA `warpx2::02_13` row-projection gap, 2026-04-16
   01:41 UTC: removed the blanket early `getKnownTMemCopyScheduleGap(...)`
   return from shared descriptor plan realization. The long two-CTA

@@ -2682,6 +2682,15 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-16 01:49 UTC: descriptor-row-stride copy failures now derive an
+  explicit `TMemCopyDescriptorRowSplitRequirement`. The scales
+  descriptor-view row still remains clean unsupported, but the planner now
+  records the exact split/mask requirement: source column bit 2 selects
+  descriptor row `+32` for 4-column destination runs every 8 columns inside a
+  16-column `warpx4` instruction, spanning the full 32-row source footprint.
+  Validation: `make -j8`, direct invalid verifier, focused scales copy
+  selector (`9` rows), py-compile, descriptor-view debug repro, and
+  `git diff --check`.
 - 2026-04-15 21:45 UTC: single-CTA canonical block-row
   `TensorMemoryLinearLayout` forms are now folded into equivalent row bases
   before TMEM `ld/st` and `ld.red` planning. This promotes the former

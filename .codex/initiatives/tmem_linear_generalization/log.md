@@ -18390,3 +18390,41 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'ldst_descriptor_multidim_slice_identity'`
     (`1 passed, 10987 deselected`).
+
+## 2026-04-16 01:49 UTC: descriptor-row split requirement carrier
+
+- Added `TMemCopyDescriptorRowSplitRequirement` and derived it from
+  descriptor-row-stride instruction-column failures.
+- The carrier records:
+  - instruction rows and columns;
+  - offending logical source-column bit;
+  - selected destination-column run and selection period;
+  - actual/expected source offset;
+  - descriptor-row stride and descriptor-row delta;
+  - whether that delta spans a full copy instruction row footprint.
+- Updated descriptor-row diagnostics and pinned tests:
+  - invalid MLIR now says the smaller repro requires descriptor row `+2` for
+    2-column runs every 4 columns inside a 16-column instruction;
+  - the scales descriptor-view runtime repro now asserts the full mask-shaped
+    fact: descriptor row `+32` for 4-column runs every 8 columns, spanning a
+    32-row source footprint.
+- This does not promote scales descriptor-view/subslice copy. It makes the
+  current no-mask boundary a structured planner requirement for the next real
+  schedule attempt.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-descriptor-row-split-req2
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_scales_tmem_descriptor_view or cp_scales_shared_subslice_layout or
+    cp_scales_layout_probe'`
+    (`9 passed, 10979 deselected in 3.58s`);
+  - descriptor-view debug repro confirmed
+    `descriptor-row-stride-selection bit=2 actual=256 expected=4
+    descriptorRowDelta=32 spansInstructionRows=1`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

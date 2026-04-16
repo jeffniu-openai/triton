@@ -7911,7 +7911,9 @@ def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupp
     assert "descriptor message 0 has an unsupported instruction-column projection" in text
     assert "source column bit 2 maps to shared offset 256" in text
     assert "no per-column destination mask" in text
-    assert "entire 16-column instruction row footprint" in text
+    assert "4-column destination runs every 8 columns" in text
+    assert "32-row source footprint" in text
+    assert "entire tcgen05.copy instruction row footprint" in text
     assert "needs a destination-row / source-message schedule" in text
     assert "Source element type should be 32-bit" not in text
     assert "PassManager::run failed" not in text

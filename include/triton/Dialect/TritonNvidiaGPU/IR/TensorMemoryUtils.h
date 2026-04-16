@@ -188,6 +188,19 @@ struct TMemCopyPackedLaneProjection {
   llvm::SmallVector<TMemCopyInstructionColumnProjectionStep, 4> physicalSteps;
 };
 
+struct TMemCopyDescriptorRowSplitRequirement {
+  unsigned instructionRows = 0;
+  unsigned instructionColumns = 0;
+  unsigned logicalColBit = 0;
+  unsigned selectedColumnRun = 0;
+  unsigned columnSelectionPeriod = 0;
+  int32_t actualOffset = 0;
+  int32_t expectedOffset = 0;
+  int32_t descriptorRowStride = 0;
+  int32_t descriptorRowDelta = 0;
+  bool spansInstructionRows = false;
+};
+
 enum class TMemCopyInstructionColumnProjectionFailureKind {
   None,
   PackedLaneState,
@@ -199,6 +212,7 @@ enum class TMemCopyInstructionColumnProjectionFailureKind {
 struct TMemCopyInstructionColumnProjectionFailure {
   TMemCopyInstructionColumnProjectionFailureKind kind =
       TMemCopyInstructionColumnProjectionFailureKind::None;
+  unsigned instructionRows = 0;
   unsigned instructionColumns = 0;
   unsigned logicalColBit = 0;
   int32_t actualOffset = 0;
