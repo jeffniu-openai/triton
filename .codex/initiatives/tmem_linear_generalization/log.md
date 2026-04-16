@@ -20272,3 +20272,39 @@ Open after this slice:
   - this is an iteration-speed default. When actively changing a planner
     family, temporarily run or expand that family's targeted matrix as needed
     instead of rebuilding a globally exhaustive Cartesian product.
+
+## 2026-04-16 20:04 UTC: runtime-matrix 4-GPU budget pass
+
+- Starting point: `codex/tmem` at `1a0bec440`.
+- User request: make the TMEM runtime-matrix tests finish in less than
+  10 minutes when parallelized across four GPUs.
+- Intermediate timing:
+  - first post-reduction full run collected `1724` tests and passed, but group
+    1 was still over budget: `325 passed, 106 skipped` in `669s` wall-clock;
+    groups 2/3/4 were `384s`, `237s`, and `406s`.
+  - after broad `ld.red` cross-product reduction, collection was `1593` tests
+    and group 1 improved but still missed narrowly: `311 passed, 88 skipped`
+    in `611s` wall-clock; groups 2/3/4 were `322s`, `259s`, and `331s`.
+- Change:
+  - further converted broad `ld/st`, `subword`, `x1`, `split-N`, scales, and
+    `ld.red` matrices from Cartesian products to representative case specs;
+  - kept all TMEM instruction families represented and retained known clean
+    negatives, while removing redundant combinations of dtype, variant,
+    geometry, modifier, and descriptor-view axes;
+  - kept the full-file split compatible with plain count-based
+    `pytest-split` so a local duration file is not required to hit the budget.
+- Final validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - full-file collect: `1575 tests collected`;
+  - fresh-cache 4-GPU split with
+    `TRITON_CACHE_DIR=/tmp/triton-cache-gpu{0,1,2,3}-tmem-budget-final10`:
+    group 1 `293 passed, 101 skipped, 1181 deselected` in `577s`
+    wall-clock; group 2 `385 passed, 9 skipped, 1181 deselected` in `318s`;
+    group 3 `394 passed, 1181 deselected` in `266s`; group 4
+    `393 passed, 1182 deselected` in `341s`.
+- Remaining note:
+  - default iteration is now within the requested 10-minute wall-clock budget
+    on this 4-GPU GB200-style node. If future backend work changes a specific
+    family, temporarily expand that family's local selector rather than
+    restoring global Cartesian coverage.

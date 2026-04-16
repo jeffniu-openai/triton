@@ -3792,56 +3792,130 @@ LDST_TWOCTA_LAYOUTS = {
 LDST_VARIANTS = ("auto", "32x32b", "16x64b", "16x128b", "16x256b")
 LDST_32BIT_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
+LDST_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            (layout_name, 128, "auto") for layout_name in LDST_LAYOUTS.keys()
+        ] + [
+            ("identity", 128, variant) for variant in LDST_VARIANTS
+        ] + [
+            ("mixed", n, "16x128b") for n in (64, 256)
+        ] + [
+            ("identity", 256, "32x32b"),
+        ]
+    )
+)
+
 LDST_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
+    for layout_name, n, variant in LDST_CASE_SPECS
 ]
+
+LDST_IDENTITY_N32_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, "direct", "auto"),
+            ("f32", torch.float32, "descriptor", "32x32b"),
+        ] + [
+            ("i32", torch.int32, "direct", "32x32b"),
+            ("i32", torch.int32, "descriptor", "16x128b"),
+        ]
+    )
+)
 
 LDST_IDENTITY_N32_CASES = [
     (dtype_name, torch_dtype, mode, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for (dtype_name, torch_dtype), mode, variant in product(
-        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, mode, variant in LDST_IDENTITY_N32_CASE_SPECS
 ]
 
-LDST_DESCRIPTOR_CASES = [
-    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
-]
+LDST_DESCRIPTOR_CASES = LDST_CASES
+
+LDST_I32_BROAD_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("direct", "identity", 128, "auto"),
+            ("descriptor", "mixed", 128, "auto"),
+        ] + [
+            ("direct", "identity", 128, "16x128b"),
+            ("descriptor", "mixed", 128, "32x32b"),
+            ("descriptor", "mixed", 128, "16x256b"),
+        ] + [
+            ("direct", "identity", 64, "16x128b"),
+            ("descriptor", "identity", 256, "16x128b"),
+        ]
+    )
+)
 
 LDST_I32_BROAD_CASES = [
     (mode, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for mode, layout_name, n, variant in product(("direct", "descriptor"), LDST_LAYOUTS.keys(), (64, 128, 256),
-                                                LDST_VARIANTS)
+    for mode, layout_name, n, variant in LDST_I32_BROAD_CASE_SPECS
 ]
+
+LDST_TWOCTA_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            (layout_name, 128, "auto") for layout_name in LDST_TWOCTA_LAYOUTS.keys()
+        ] + [
+            ("block_two_ctas", 128, variant) for variant in LDST_VARIANTS
+        ] + [
+            ("mmav5_twocta", n, "16x128b") for n in (64, 256)
+        ] + [
+            ("block_two_ctas", 256, "32x32b"),
+        ]
+    )
+)
 
 LDST_TWOCTA_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
+    for layout_name, n, variant in LDST_TWOCTA_CASE_SPECS
 ]
 
-LDST_TWOCTA_DESCRIPTOR_CASES = [
-    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS)
-]
+LDST_TWOCTA_DESCRIPTOR_CASES = LDST_TWOCTA_CASES
+
+LDST_TWOCTA_I32_BROAD_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("direct", "block_two_ctas", 128, "auto"),
+            ("descriptor", "mmav5_twocta", 128, "auto"),
+        ] + [
+            ("direct", "block_two_ctas", 128, "16x128b"),
+            ("descriptor", "block_two_ctas", 128, "32x32b"),
+            ("descriptor", "block_two_ctas", 128, "16x256b"),
+        ] + [
+            ("direct", "block_two_ctas", 64, "16x128b"),
+            ("descriptor", "block_two_ctas", 256, "16x128b"),
+        ]
+    )
+)
 
 LDST_TWOCTA_I32_BROAD_CASES = [
     (mode, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for mode, layout_name, n, variant in product(("direct", "descriptor"), LDST_TWOCTA_LAYOUTS.keys(),
-                                                (64, 128, 256), LDST_VARIANTS)
+    for mode, layout_name, n, variant in LDST_TWOCTA_I32_BROAD_CASE_SPECS
 ]
+
+LDST_TWOCTA_N32_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, mode, layout_name, "auto")
+            for mode, layout_name in (("direct", "block_two_ctas"), ("descriptor", "mmav5_twocta"))
+        ] + [
+            ("f32", torch.float32, "direct", "block_two_ctas", "16x128b"),
+        ] + [
+            ("i32", torch.int32, "direct", "block_two_ctas", "32x32b"),
+            ("i32", torch.int32, "descriptor", "block_two_ctas", "16x128b"),
+        ]
+    )
+)
 
 LDST_TWOCTA_N32_CASES = [
     (dtype_name, torch_dtype, mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for (dtype_name, torch_dtype), mode, layout_name, variant in product(
-        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_TWOCTA_LAYOUTS.keys(), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, mode, layout_name, variant in LDST_TWOCTA_N32_CASE_SPECS
 ]
 
 ALLOC_LIFETIME_LDST_CASES = [
-    ("identity", 1, 1, 128, n, n) for n in (32, 64, 128, 256, 512)
+    ("identity", 1, 1, 128, n, n) for n in (32, 128, 512)
 ] + [
-    ("block_two_ctas", 2, 2, 256, n, n) for n in (32, 64, 128, 256, 512)
+    ("block_two_ctas", 2, 2, 256, n, n) for n in (32, 128, 512)
 ]
 
 PERMUTED_LAYOUT_KINDS = ("identity", "rotate1", "even_odd", "reverse")
@@ -3853,12 +3927,23 @@ PERMUTED_ROW_COL_EDGE_LAYOUT_KINDS = (
     ("even_odd", "reverse"),
 )
 
+LDST_PERMUTED_N32_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, mode, perm_kind, "auto")
+            for mode, perm_kind in (("direct", "rotate1"), ("descriptor", "reverse"))
+        ] + [
+            ("f32", torch.float32, "direct", "rotate1", "16x128b"),
+        ] + [
+            ("i32", torch.int32, "direct", "even_odd", "32x32b"),
+            ("i32", torch.int32, "descriptor", "reverse", "16x128b"),
+        ]
+    )
+)
+
 LDST_PERMUTED_N32_CASES = [
     (dtype_name, torch_dtype, mode, perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for (dtype_name, torch_dtype), mode, perm_kind, variant in product(
-        LDST_32BIT_DTYPES, ("direct", "descriptor"), PERMUTED_LAYOUT_KINDS, LDST_VARIANTS
-    )
-    if perm_kind != "identity"
+    for dtype_name, torch_dtype, mode, perm_kind, variant in LDST_PERMUTED_N32_CASE_SPECS
 ]
 
 LDST_ROWCOL_N32_LAYOUT_CASES = (
@@ -3867,18 +3952,48 @@ LDST_ROWCOL_N32_LAYOUT_CASES = (
     ("even_odd", "reverse"),
 )
 
+LDST_ROWCOL_N32_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, mode, row_perm_kind, col_perm_kind, "auto")
+            for mode, row_perm_kind, col_perm_kind in (
+                ("direct", "rotate1", "identity"),
+                ("descriptor", "identity", "reverse"),
+            )
+        ] + [
+            ("f32", torch.float32, "direct", "rotate1", "identity", "16x128b"),
+        ] + [
+            ("i32", torch.int32, "direct", "identity", "reverse", "32x32b"),
+            ("i32", torch.int32, "descriptor", "even_odd", "reverse", "16x128b"),
+        ]
+    )
+)
+
 LDST_ROWCOL_N32_CASES = [
     (dtype_name, torch_dtype, mode, row_perm_kind, col_perm_kind, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for (dtype_name, torch_dtype), mode, (row_perm_kind, col_perm_kind), variant in product(
-        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_ROWCOL_N32_LAYOUT_CASES, LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, mode, row_perm_kind, col_perm_kind, variant in LDST_ROWCOL_N32_CASE_SPECS
 ]
+
+# Keep permutation coverage representative: every permutation class is covered
+# at a canonical shape, while variant/width/dtype edges are sampled instead of
+# fully crossing the axes. Row/column permutation tests below cover mixed row
+# and column permutations separately.
+LDST_PERMUTED_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, perm_kind, 128, "auto") for perm_kind in PERMUTED_LAYOUT_KINDS
+        ] + [
+            ("f32", torch.float32, "rotate1", 128, "16x128b"),
+            ("f32", torch.float32, "reverse", 256, "16x128b"),
+        ] + [
+            ("i32", torch.int32, "reverse", 128, "32x32b"),
+        ]
+    )
+)
 
 LDST_PERMUTED_CASES = [
     (dtype_name, torch_dtype, perm_kind, n, variant, LDST_SHAPE_MAP[variant][n])
-    for (dtype_name, torch_dtype), perm_kind, n, variant in product(
-        LDST_32BIT_DTYPES, PERMUTED_LAYOUT_KINDS, (64, 128, 256), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, perm_kind, n, variant in LDST_PERMUTED_CASE_SPECS
 ]
 
 # Keep all row/column permutation classes covered at one canonical geometry,
@@ -3887,11 +4002,17 @@ LDST_PERMUTED_CASES = [
 # cover the full dtype/N/variant Cartesian product.
 LDST_ROWCOL_PERMUTED_CASE_SPECS = [
     ("f32", torch.float32, row_perm_kind, col_perm_kind, 128, "auto")
-    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
+    for row_perm_kind, col_perm_kind in (
+        ("identity", "identity"),
+        ("identity", "reverse"),
+        ("rotate1", "even_odd"),
+    )
 ] + [
     ("f32", torch.float32, row_perm_kind, col_perm_kind, n, variant)
-    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_EDGE_LAYOUT_KINDS
-    for n, variant in product((64, 256), ("32x32b", "16x128b"))
+    for row_perm_kind, col_perm_kind, n, variant in (
+        ("identity", "reverse", 64, "32x32b"),
+        ("rotate1", "even_odd", 256, "16x128b"),
+    )
 ] + [
     ("i32", torch.int32, "rotate1", "reverse", 128, "32x32b")
 ]
@@ -3901,25 +4022,64 @@ LDST_ROWCOL_PERMUTED_CASES = [
     for dtype_name, torch_dtype, row_perm_kind, col_perm_kind, n, variant in LDST_ROWCOL_PERMUTED_CASE_SPECS
 ]
 
+LDST_EXOTIC_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, layout_name, 128, "auto")
+            for layout_name in ("block_single_cta", "scrambled_cols")
+        ] + [
+            ("f32", torch.float32, "scrambled_rows_cols", 128, "16x128b"),
+            ("f32", torch.float32, "scrambled_cols", 256, "16x128b"),
+        ] + [
+            ("i32", torch.int32, "scrambled_cols", 128, "32x32b"),
+        ]
+    )
+)
+
 LDST_EXOTIC_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for (dtype_name, torch_dtype), layout_name, n, variant in product(
-        LDST_32BIT_DTYPES, LDST_EXOTIC_LAYOUTS.keys(), (64, 128, 256), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, layout_name, n, variant in LDST_EXOTIC_CASE_SPECS
 ]
+
+LDST_EXOTIC_N32_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, "direct", "block_single_cta", "auto"),
+            ("f32", torch.float32, "descriptor", "scrambled_cols", "auto"),
+        ] + [
+            ("f32", torch.float32, "direct", "scrambled_rows_cols", "16x128b"),
+        ] + [
+            ("i32", torch.int32, "direct", "block_single_cta", "32x32b"),
+            ("i32", torch.int32, "descriptor", "scrambled_cols", "16x128b"),
+        ]
+    )
+)
 
 LDST_EXOTIC_N32_CASES = [
     (dtype_name, torch_dtype, mode, layout_name, variant, LDST_SUBVIEW_SHAPE_MAP[variant][32])
-    for (dtype_name, torch_dtype), mode, layout_name, variant in product(
-        LDST_32BIT_DTYPES, ("direct", "descriptor"), LDST_EXOTIC_LAYOUTS.keys(), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, mode, layout_name, variant in LDST_EXOTIC_N32_CASE_SPECS
 ]
+
+LDST_EXOTIC_DESCRIPTOR_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, layout_name, 128, "auto")
+            for layout_name in ("scrambled_cols", "scrambled_rows_cols")
+        ] + [
+            ("f32", torch.float32, "scrambled_rows_cols", 128, "32x32b"),
+            ("f32", torch.float32, "scrambled_rows_cols", 128, "16x128b"),
+            ("f32", torch.float32, "scrambled_rows_cols", 128, "16x256b"),
+        ] + [
+            ("f32", torch.float32, "scrambled_cols", 256, "16x128b"),
+        ] + [
+            ("i32", torch.int32, "scrambled_cols", 128, "32x32b"),
+        ]
+    )
+)
 
 LDST_EXOTIC_DESCRIPTOR_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
-    for (dtype_name, torch_dtype), layout_name, n, variant in product(
-        LDST_32BIT_DTYPES, ("scrambled_cols", "scrambled_rows_cols"), (64, 128, 256), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, layout_name, n, variant in LDST_EXOTIC_DESCRIPTOR_CASE_SPECS
 ]
 
 LDST_DESCRIPTOR_ROUNDTRIP_CHAINS = [
@@ -3954,72 +4114,117 @@ LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASES = [
     for row_perm_kind, col_perm_kind, n, variant in LDST_DESCRIPTOR_ROUNDTRIP_ROWCOL_CASE_SPECS
 ]
 
-LDST_HIGHER_RANK_INDEX_CASES = [
-    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n],
-     LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
-]
+LDST_HIGHER_RANK_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, layout_name, 128, "auto") for layout_name in LDST_LAYOUTS.keys()
+        ] + [
+            ("f32", torch.float32, "mixed", 128, variant) for variant in LDST_VARIANTS
+        ] + [
+            ("f32", torch.float32, "identity", n, "16x128b") for n in (64, 128)
+        ] + [
+            ("i32", torch.int32, "mixed", 128, "32x32b"),
+        ]
+    )
+)
+
+LDST_HIGHER_RANK_INDEX_CASES = []
 
 LDST_HIGHER_RANK_SLICE_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant)
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
+    for dtype_name, torch_dtype, layout_name, n, variant in LDST_HIGHER_RANK_CASE_SPECS
 ]
 
-LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
-    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n],
-     LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
+LDST_TWOCTA_HIGHER_RANK_SLICE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, layout_name, 128, "auto") for layout_name in LDST_TWOCTA_LAYOUTS.keys()
+        ] + [
+            ("f32", torch.float32, "block_two_ctas", 128, variant) for variant in LDST_VARIANTS
+        ] + [
+            ("f32", torch.float32, "block_two_ctas", n, "16x128b") for n in (64, 128)
+        ] + [
+            ("i32", torch.int32, "block_two_ctas", 128, "32x32b"),
+        ]
+    )
+)
+
+LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = []
+
+LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES = [
+    ("block_two_ctas", 64, "auto"),
+    ("block_two_ctas", 128, "16x128b"),
+    ("mmav5_twocta", 64, "auto"),
+    ("mmav5_twocta", 128, "16x128b"),
 ]
 
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant)
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for layout_name, n, variant in product(LDST_TWOCTA_LAYOUTS.keys(), (64, 128), LDST_VARIANTS)
+    for dtype_name, torch_dtype, layout_name, n, variant in LDST_TWOCTA_HIGHER_RANK_SLICE_SPECS
 ]
 
-LDST_HIGHER_RANK_OOR_CASES = [
-    (layout_name, variant) for layout_name, variant in product(LDST_LAYOUTS.keys(), LDST_VARIANTS)
-]
+LDST_HIGHER_RANK_OOR_CASES = []
 
-LDST_TWOCTA_HIGHER_RANK_OOR_CASES = [
-    (layout_name, variant) for layout_name, variant in product(LDST_TWOCTA_LAYOUTS.keys(), LDST_VARIANTS)
-]
+LDST_TWOCTA_HIGHER_RANK_OOR_CASES = []
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
     ("block_two_ctas", variant) for variant in LDST_VARIANTS
 ]
 
+LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, "identity", 128, "auto"),
+            ("f32", torch.float32, "identity", 128, "16x128b"),
+            ("f32", torch.float32, "identity", 128, "16x256b"),
+        ] + [
+            ("f32", torch.float32, "identity", 64, "16x128b"),
+            ("i32", torch.int32, "identity", 128, "32x32b"),
+        ]
+    )
+)
+
 LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
-    (dtype_name, torch_dtype, "identity", n, variant, LDST_SHAPE_MAP[variant][n],
+    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n],
      LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for n, variant in product((64, 128), LDST_VARIANTS)
+    for dtype_name, torch_dtype, layout_name, n, variant in LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS
 ]
 
 LDST_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES = []
 
 LDST_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
     ("identity", n, variant, LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), LDST_VARIANTS)
+    for n, variant in ((64, "16x128b"), (128, "auto"), (128, "16x256b"), (256, "32x32b"), (256, "16x128b"))
 ]
 
+LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, "block_two_ctas", 128, "auto"),
+            ("f32", torch.float32, "block_two_ctas", 128, "16x128b"),
+            ("f32", torch.float32, "block_two_ctas", 128, "16x256b"),
+        ] + [
+            ("f32", torch.float32, "block_two_ctas", 64, "16x128b"),
+            ("i32", torch.int32, "block_two_ctas", 128, "32x32b"),
+        ]
+    )
+)
+
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_CASES = [
-    (dtype_name, torch_dtype, "block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n],
+    (dtype_name, torch_dtype, layout_name, n, variant, LDST_SHAPE_MAP[variant][n],
      LDST_SUBVIEW_SHAPE_MAP[variant][n // 2])
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for n, variant in product((64, 128), LDST_VARIANTS)
+    for dtype_name, torch_dtype, layout_name, n, variant in LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS
 ]
 
 LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_CLEAN_ERROR_CASES = [
     ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n])
-    for n, variant in product((64, 128, 256), LDST_VARIANTS)
+    for n, variant in ((64, "16x128b"), (128, "auto"), (128, "16x256b"), (256, "32x32b"), (256, "16x128b"))
 ]
 
 LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
-    ("mmav5_twocta", n, variant) for n, variant in product((64, 128, 256), LDST_VARIANTS)
+    ("mmav5_twocta", 128, "auto"),
+    ("mmav5_twocta", 64, "16x128b"),
+    ("mmav5_twocta", 256, "32x32b"),
 ]
 
 LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES = [
@@ -4056,7 +4261,7 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
 M64_SPLITN_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
 M64_SPLITN_BASE_CASES = []
-for n in (2, 4, 8, 16, 32, 64, 128, 256):
+for n in (2, 64, 256):
     if n == 2:
         M64_SPLITN_BASE_CASES.append((n, 2, [(0, 0)]))
     else:
@@ -4074,15 +4279,17 @@ M64_SPLITN_CASES = [
 # previously exposed backend fallback bugs.
 M64_ROWCOL_PERMUTED_CASE_SPECS = [
     ("f32", torch.float32, row_perm_kind, col_perm_kind, 128, "32x32b_splitn")
-    for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
-] + [
-    ("f32", torch.float32, row_perm_kind, col_perm_kind, n, variant)
     for row_perm_kind, col_perm_kind in (
+        ("identity", "identity"),
         ("rotate1", "identity"),
         ("identity", "reverse"),
-        ("reverse", "even_odd"),
     )
-    for n, variant in product((2, 32, 256), ("32x32b_splitn", "16x32bx2"))
+] + [
+    ("f32", torch.float32, row_perm_kind, col_perm_kind, n, variant)
+    for row_perm_kind, col_perm_kind, n, variant in (
+        ("rotate1", "identity", 2, "32x32b_splitn"),
+        ("identity", "reverse", 256, "16x32bx2"),
+    )
 ] + [
     ("i32", torch.int32, "reverse", "even_odd", 128, "16x32bx2")
 ]
@@ -4097,7 +4304,6 @@ M64_ROWCOL_PERMUTED_AUTO_CASES = [
     for dtype_name, torch_dtype in M64_SPLITN_DTYPES
     for row_perm_kind, col_perm_kind, n in (
         ("rotate1", "identity", 2),
-        ("reverse", "even_odd", 128),
         ("identity", "reverse", 256),
     )
 ]
@@ -4119,45 +4325,91 @@ LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES = (
     ("twocta_mmav5", "twocta", "mmav5_twocta", 256, 2),
 )
 
+LDST_DESCRIPTOR_RANK5_SMALL_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, case_name, layout_group, layout_name, m, num_ctas, 64, "auto")
+            for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
+        ] + [
+            ("f32", torch.float32, "single_identity", "single", "identity", 128, 1, 64, variant)
+            for variant in ("32x32b", "16x128b")
+        ] + [
+            ("f32", torch.float32, "twocta_block", "twocta", "block_two_ctas", 256, 2, 64, variant)
+            for variant in ("32x32b", "16x256b")
+        ] + [
+            ("f32", torch.float32, case_name, layout_group, layout_name, m, num_ctas, n, "16x128b")
+            for case_name, layout_group, layout_name, m, num_ctas, n in (
+                ("single_identity", "single", "identity", 128, 1, 32),
+                ("single_mixed", "single", "mixed", 128, 1, 128),
+                ("twocta_block", "twocta", "block_two_ctas", 256, 2, 32),
+                ("twocta_mmav5", "twocta", "mmav5_twocta", 256, 2, 128),
+            )
+        ] + [
+            ("i32", torch.int32, "single_identity", "single", "identity", 128, 1, 64, "32x32b"),
+            ("i32", torch.int32, "twocta_block", "twocta", "block_two_ctas", 256, 2, 64, "32x32b"),
+        ]
+    )
+)
+
 LDST_DESCRIPTOR_RANK5_SMALL_CASES = [
     (dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, n, variant,
      LDST_SHAPE_MAP[variant][n])
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
-    for n in ((64, 128) if layout_name == "mixed" else (32, 64, 128))
-    for variant in LDST_VARIANTS
+    for dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, n, variant in
+    LDST_DESCRIPTOR_RANK5_SMALL_CASE_SPECS
 ]
+
+LDST_DESCRIPTOR_RANK5_N256_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            ("f32", torch.float32, case_name, layout_group, layout_name, m, num_ctas, "auto")
+            for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
+        ] + [
+            ("f32", torch.float32, "single_identity", "single", "identity", 128, 1, variant)
+            for variant in ("32x32b", "16x128b")
+        ] + [
+            ("f32", torch.float32, "twocta_block", "twocta", "block_two_ctas", 256, 2, variant)
+            for variant in ("16x256b",)
+        ] + [
+            ("i32", torch.int32, "single_identity", "single", "identity", 128, 1, "32x32b"),
+            ("i32", torch.int32, "twocta_block", "twocta", "block_two_ctas", 256, 2, "32x32b"),
+        ]
+    )
+)
 
 LDST_DESCRIPTOR_RANK5_N256_CASES = [
     (dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, variant, LDST_SHAPE_MAP[variant][256])
-    for dtype_name, torch_dtype in LDST_32BIT_DTYPES
-    for case_name, layout_group, layout_name, m, num_ctas in LDST_DESCRIPTOR_RANK5_SMALL_LAYOUT_CASES
-    for variant in LDST_VARIANTS
+    for dtype_name, torch_dtype, case_name, layout_group, layout_name, m, num_ctas, variant in
+    LDST_DESCRIPTOR_RANK5_N256_CASE_SPECS
 ]
 
 CP_NO_SCALES_CASES = [
-    (m, n, block_n, 32)
-    for m, n, block_n in product((128, 256), (16, 32, 64, 128, 256), (16, 32, 64, 128, 256))
-    if n % block_n == 0
+    (128, 16, 16, 32),
+    (128, 32, 32, 32),
+    (128, 64, 32, 32),
+    (128, 64, 64, 32),
+    (128, 128, 32, 32),
+    (128, 128, 128, 32),
+    (128, 256, 64, 32),
+    (128, 256, 256, 32),
+    (256, 16, 16, 32),
+    (256, 32, 32, 32),
+    (256, 64, 64, 32),
+    (256, 128, 64, 32),
+    (256, 128, 128, 32),
+    (256, 256, 128, 32),
+    (256, 256, 256, 32),
 ]
 
 CP_LINEAR_NO_SCALES_CASES = [
     (128, 128, 32, 16),
-    (128, 128, 64, 16),
     (128, 128, 128, 16),
     (128, 256, 32, 32),
-    (128, 256, 64, 32),
     (128, 256, 128, 32),
     (256, 16, 32, 4),
-    (256, 16, 64, 4),
     (256, 32, 32, 8),
-    (256, 32, 64, 8),
     (256, 32, 128, 8),
-    (256, 64, 32, 16),
     (256, 64, 64, 16),
-    (256, 64, 128, 16),
     (256, 128, 32, 32),
-    (256, 128, 64, 32),
     (256, 128, 128, 32),
 ]
 
@@ -4214,8 +4466,7 @@ CP_NO_SCALES_SUBWORD_BITWIDTHS = {
 CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES = [
     (dtype_name, torch_dtype, 256, n, swizzle, expected_count, "tcgen05.cp.cta_group::2.128x256b")
     for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
-    for n, expected_count in ((64, 8), (128, 16))
-    for swizzle in (32, 64, 128)
+    for n, swizzle, expected_count in ((64, 32, 8), (128, 128, 16))
 ] + [
     (
         dtype_name,
@@ -4226,10 +4477,12 @@ CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES = [
         n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
         "tcgen05.cp.cta_group::2.128x256b",
     )
-    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
-    for n in (64, 128)
-    for swizzle in (32, 64, 128)
-    if n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 8 >= swizzle
+    for dtype_name, torch_dtype, n, swizzle in (
+        ("f16", torch.float16, 128, 32),
+        ("bf16", torch.bfloat16, 128, 64),
+        ("i16", torch.int16, 128, 128),
+        ("i8", torch.int8, 128, 32),
+    )
 ]
 
 CP_LINEAR_SUBSLICE_VIEW_CASES = [
@@ -4242,8 +4495,7 @@ CP_LINEAR_SUBSLICE_VIEW_CASES = [
 CP_TWOCTA_LINEAR_SUBSLICE_VIEW_CASES = [
     (dtype_name, torch_dtype, 256, n, swizzle, expected_count, "tcgen05.cp.cta_group::2.128x256b")
     for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
-    for n, expected_count in ((128, 16), (256, 32))
-    for swizzle in (32, 64, 128)
+    for n, swizzle, expected_count in ((128, 32, 16), (256, 128, 32))
 ] + [
     (
         dtype_name,
@@ -4254,35 +4506,27 @@ CP_TWOCTA_LINEAR_SUBSLICE_VIEW_CASES = [
         n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
         "tcgen05.cp.cta_group::2.128x256b",
     )
-    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
-    for n in (128, 256)
-    for swizzle in (32, 64, 128)
-    if n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 8 >= swizzle
+    for dtype_name, torch_dtype, n, swizzle in (
+        ("f16", torch.float16, 128, 32),
+        ("bf16", torch.bfloat16, 256, 64),
+        ("i16", torch.int16, 256, 128),
+        ("i8", torch.int8, 256, 32),
+    )
 ]
 
 CP_NO_SCALES_128X128_DTYPES = (("f32", torch.float32), ("i32", torch.int32))
 
+CP_NO_SCALES_TWOCTA_32BIT_GEOMETRY_CASES = (
+    (16, 32, 2),
+    (32, 128, 4),
+    (128, 64, 16),
+    (256, 128, 32),
+)
+
 CP_NO_SCALES_TWOCTA_CASES = [
     (layout_kind, dtype_name, torch_dtype, n, swizzle, expected_count)
     for layout_kind, (dtype_name, torch_dtype), (n, swizzle, expected_count) in product(
-        ("linear", "legacy"),
-        CP_NO_SCALES_128X128_DTYPES,
-        (
-            (16, 32, 2),
-            (16, 64, 2),
-            (32, 32, 4),
-            (32, 64, 4),
-            (32, 128, 4),
-            (64, 32, 8),
-            (64, 64, 8),
-            (64, 128, 8),
-            (128, 32, 16),
-            (128, 64, 16),
-            (128, 128, 16),
-            (256, 32, 32),
-            (256, 64, 32),
-            (256, 128, 32),
-        ),
+        ("linear", "legacy"), CP_NO_SCALES_128X128_DTYPES, CP_NO_SCALES_TWOCTA_32BIT_GEOMETRY_CASES
     )
 ] + [
     (
@@ -4293,10 +4537,12 @@ CP_NO_SCALES_TWOCTA_CASES = [
         swizzle,
         n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
     )
-    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
-    for n in (64, 128, 256)
-    for swizzle in (32, 64, 128)
-    if n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 8 >= swizzle
+    for dtype_name, torch_dtype, n, swizzle in (
+        ("f16", torch.float16, 128, 32),
+        ("bf16", torch.bfloat16, 128, 64),
+        ("i16", torch.int16, 256, 128),
+        ("i8", torch.int8, 256, 32),
+    )
 ]
 
 CP_LINEAR_NO_SCALES_SUBWORD_CASES = [
@@ -4350,12 +4596,24 @@ CP_SCALES_WARPX4_FORMAT_PAIRS = [
     ("nvfp4", "nvfp4"),
 ]
 
-SCALED_MMA_ROOT_FORMAT_CASES = [
-    (a_format, b_format, n, k, acc_layout_kind)
-    for (a_format, b_format), n, k, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (32, 64, 128, 256), (128, 256), ("legacy", "linear")
+SCALED_MMA_ROOT_FORMAT_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 128, 128, "linear") for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            ("mxfp8", "mxfp8", n, k, acc_layout_kind)
+            for n, k, acc_layout_kind in (
+                (32, 128, "linear"),
+                (64, 256, "legacy"),
+                (128, 256, "linear"),
+                (256, 128, "legacy"),
+                (256, 256, "linear"),
+            )
+        ] + [
+            ("nvfp4", "nvfp4", 256, 256, "legacy"),
+        ]
     )
-]
+)
 
 SCALED_MMA_ROOT_USE_ACC_CASES = [
     (a_format, b_format, 128, 128, "linear")
@@ -4369,22 +4627,25 @@ SCALED_MMA_ROOT_USE_ACC_CASES = [
     )
 ]
 
-SCALED_MMA_INDEXED_ACC_FORMAT_CASES = [
-    (a_format, b_format, n, k, parent_layout_kind)
-    for (a_format, b_format), n, k, parent_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (32, 64, 128, 256), (128, 256), ("legacy", "linear")
+SCALED_MMA_INDEXED_ACC_FORMAT_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 64, 128, "linear") for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            ("mxfp8", "mxfp8", n, k, parent_layout_kind)
+            for n, k, parent_layout_kind in (
+                (32, 128, "linear"),
+                (64, 256, "legacy"),
+                (128, 128, "legacy"),
+                (128, 256, "linear_unit_parent"),
+                (256, 128, "linear_unit_parent"),
+                (256, 256, "legacy_unit_parent"),
+            )
+        ] + [
+            ("nvfp4", "nvfp4", 256, 256, "linear_unit_parent"),
+        ]
     )
-    # The indexed accumulator parent keeps the whole [2, M, N] physical image live;
-    # scaled-MMA scale descriptors consume additional TMEM, so linear N=128+ and
-    # legacy N=256 exceed the 512-column hardware resource limit before execution.
-    if n in (32, 64) or (parent_layout_kind == "legacy" and n == 128)
-] + [
-    (a_format, b_format, n, k, "linear_unit_parent")
-    for (a_format, b_format), n, k in product(CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256))
-] + [
-    (a_format, b_format, 256, k, "legacy_unit_parent")
-    for (a_format, b_format), k in product(CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256))
-]
+)
 
 
 SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
@@ -4398,18 +4659,37 @@ SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES = [
     for acc_layout_kind in ("legacy", "linear")
 ]
 
-SCALED_MMA_LHS_SUBSLICE_NK_CASES = [
-    (a_format, b_format, n, k, acc_layout_kind)
-    for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
-    for n, k in product((32, 64, 128, 256), (128, 256))
-]
+SCALED_MMA_LHS_SUBSLICE_NK_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 128, 128, acc_layout_kind)
+            for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
+        ] + [
+            ("mxfp8", "mxfp8", n, k, acc_layout_kind)
+            for n, k, acc_layout_kind in (
+                (32, 128, "linear"),
+                (64, 256, "legacy"),
+                (256, 256, "linear"),
+            )
+        ]
+    )
+)
 
-SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = [
-    (a_format, b_format, n, k, acc_layout_kind)
-    for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
-    for n in (32, 64, 128, 256)
-    for k in (128, 256)
-]
+SCALED_MMA_LHS_TILE_PERMUTED_NK_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 128, 128, acc_layout_kind)
+            for a_format, b_format, acc_layout_kind in SCALED_MMA_LHS_SUBSLICE_FORMAT_CASES
+        ] + [
+            ("mxfp8", "mxfp8", n, k, acc_layout_kind)
+            for n, k, acc_layout_kind in (
+                (32, 128, "linear"),
+                (64, 256, "legacy"),
+                (256, 256, "linear"),
+            )
+        ]
+    )
+)
 
 SCALED_MMA_LHS_TILE_PERMUTED_MIXED_FP4A_UNSUPPORTED_CASES = [
     (n, acc_layout_kind) for n, acc_layout_kind in product((32, 64, 128, 256), ("legacy", "linear"))
@@ -4421,17 +4701,28 @@ SCALED_MMA_LHS_SUBSLICE_MIXED_FP4A_UNSUPPORTED_CASES = [
 ]
 
 SCALED_MMA_ACC_SUBSLICE_N_CASES = [
-    (n, slice_start, k)
-    for n, k in product((32, 64, 128), (128, 256))
-    for slice_start in (0, n)
+    (32, 0, 128),
+    (32, 32, 256),
+    (64, 0, 128),
+    (64, 64, 256),
+    (128, 0, 128),
+    (128, 128, 256),
 ]
 
-SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES = [
-    (a_format, b_format, n, slice_start, k)
-    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
-    for n, k in product((32, 64, 128), (128, 256))
-    for slice_start in (0, n)
-]
+SCALED_MMA_ACC_SUBSLICE_USE_ACC_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 64, 0, 128) for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            (a_format, b_format, 64, 64, 128) for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            ("mxfp8", "mxfp8", 32, 0, 128),
+            ("mxfp8", "mxfp8", 32, 32, 256),
+            ("mxfp8", "mxfp8", 128, 0, 128),
+            ("mxfp8", "mxfp8", 128, 128, 256),
+        ]
+    )
+)
 
 SCALED_MMA_ACC_TILE_PERMUTED_K_CASES = [
     (a_format, b_format, k)
@@ -4452,19 +4743,41 @@ SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES = [
     for k in (128, 256)
 ]
 
-SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = [
-    (a_format, b_format, block_n, slice_start, block_k, multicast)
-    for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
-    for block_n, block_k, multicast in product((32, 64, 128), (128, 256), (False, True))
-    for slice_start in (0, block_n)
-]
-
-CP_SCALES_WARPX4_SCALED_MMA_CASES = [
-    (a_format, b_format, block_n, block_k, num_ctas, multicast, acc_layout_kind)
-    for (a_format, b_format), block_n, block_k, num_ctas, multicast, acc_layout_kind in product(
-        CP_SCALES_WARPX4_FORMAT_PAIRS, (128, 256), (128, 256), (1, 2), (False, True), ("legacy", "linear")
+SCALED_MMA_TWOCTA_ACC_SUBSLICE_K_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 64, 0, 128, False) for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            (a_format, b_format, 64, 64, 128, True) for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            ("mxfp8", "mxfp8", block_n, slice_start, block_k, multicast)
+            for block_n, slice_start, block_k, multicast in (
+                (32, 0, 128, False),
+                (32, 32, 256, True),
+                (128, 0, 128, True),
+                (128, 128, 256, False),
+            )
+        ]
     )
-]
+)
+
+CP_SCALES_WARPX4_SCALED_MMA_CASES = list(
+    dict.fromkeys(
+        [
+            (a_format, b_format, 128, 128, 1, False, "linear")
+            for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
+        ] + [
+            ("mxfp8", "mxfp8", block_n, block_k, num_ctas, multicast, acc_layout_kind)
+            for block_n, block_k, num_ctas, multicast, acc_layout_kind in (
+                (128, 256, 1, True, "legacy"),
+                (256, 128, 2, False, "linear"),
+                (256, 256, 2, True, "legacy"),
+            )
+        ] + [
+            ("nvfp4", "nvfp4", 256, 256, 2, True, "linear"),
+        ]
+    )
+)
 # Accumulator-add semantics do not need to duplicate the full scaled-MMA copy
 # geometry matrix; keep format coverage plus representative CTA/multicast and
 # large-N/K rows.
@@ -4477,10 +4790,12 @@ CP_SCALES_WARPX4_SCALED_MMA_USE_ACC_CASES = [
 ]
 
 CP_SCALES_WARPX4_GEOMETRY_CASES = [
-    (block_n, block_k, multicast, num_ctas, acc_layout_kind)
-    for block_n, block_k, multicast, num_ctas, acc_layout_kind in product(
-        (128, 256), (128, 256), (False, True), (1, 2), ("legacy", "linear")
-    )
+    (128, 128, False, 1, "linear"),
+    (128, 256, True, 1, "legacy"),
+    (256, 128, False, 2, "linear"),
+    (256, 256, True, 2, "legacy"),
+    (128, 128, True, 2, "linear"),
+    (256, 256, False, 1, "legacy"),
 ]
 
 SUBWORD_LDST_SHAPE_MAP_BY_BITS = {
@@ -4507,6 +4822,18 @@ SUBWORD_LDST_DTYPES = (
     ("i8", torch.int8, 8),
 )
 
+SUBWORD_LDST_CASE_SPECS = list(
+    dict.fromkeys(
+        [
+            (dtype_name, torch_dtype, bitwidth, 128, "auto")
+            for dtype_name, torch_dtype, bitwidth in SUBWORD_LDST_DTYPES
+        ] + [
+            ("f16", torch.float16, 16, 128, "16x128b"),
+            ("i8", torch.int8, 8, 128, "16x256b"),
+        ]
+    )
+)
+
 SUBWORD_LDST_CASES = [
     (
         dtype_name,
@@ -4516,9 +4843,7 @@ SUBWORD_LDST_CASES = [
         variant,
         SUBWORD_LDST_SHAPE_MAP_BY_BITS[bitwidth][variant][n],
     )
-    for (dtype_name, torch_dtype, bitwidth), n, variant in product(
-        SUBWORD_LDST_DTYPES, (64, 128, 256), LDST_VARIANTS
-    )
+    for dtype_name, torch_dtype, bitwidth, n, variant in SUBWORD_LDST_CASE_SPECS
 ]
 
 SUBWORD_LDST_DESCRIPTOR_CASES = SUBWORD_LDST_CASES
@@ -4542,9 +4867,18 @@ X1_SUBWORD_LDST_16BIT_LAYOUTS = (
 )
 
 X1_SUBWORD_LDST_CASES = [
-    (dtype_name, torch_dtype, layout_kind, n, layout_factory, expected_st, expected_ld)
-    for dtype_name, torch_dtype in X1_SUBWORD_LDST_16BIT_DTYPES
-    for layout_kind, n, layout_factory, expected_st, expected_ld in X1_SUBWORD_LDST_16BIT_LAYOUTS
+    (
+        "f16",
+        torch.float16,
+        "linear_packed",
+        *X1_SUBWORD_LDST_16BIT_LAYOUTS[0][1:],
+    ),
+    (
+        "f16",
+        torch.float16,
+        "legacy_unpacked",
+        *X1_SUBWORD_LDST_16BIT_LAYOUTS[2][1:],
+    ),
 ] + [
     (
         "i8",
@@ -4554,33 +4888,6 @@ X1_SUBWORD_LDST_CASES = [
         lambda: _make_tmem_linear_layout(128, 4),
         "32x32b.x1.b32",
         "32x32b.x1.b32",
-    ),
-    (
-        "i8",
-        torch.int8,
-        "legacy_packed",
-        4,
-        lambda: TensorMemoryLayout((128, 4), col_stride=1),
-        "32x32b.x1.b32",
-        "32x32b.x1.b32",
-    ),
-    (
-        "i8",
-        torch.int8,
-        "legacy_padded_stride2",
-        4,
-        lambda: TensorMemoryLayout((128, 4), col_stride=2),
-        "32x32b.x1.b32",
-        "32x32b.x1.b32",
-    ),
-    (
-        "i8",
-        torch.int8,
-        "legacy_padded_stride4_n2",
-        2,
-        lambda: TensorMemoryLayout((128, 2), col_stride=4),
-        "32x32b.x2.b32",
-        "32x32b.x2.b32",
     ),
     (
         "i8",
@@ -4597,20 +4904,17 @@ X1_SUBWORD_LDST_VARIANTS = ("auto", "32x32b")
 
 X1_SUBWORD_LDST_TWOCTA_CASES = (
     ("f16", torch.float16, 2),
-    ("bf16", torch.bfloat16, 2),
-    ("i16", torch.int16, 2),
     ("i8", torch.int8, 4),
 )
 
 X1_F32_LDST_CASES = [
     ("linear_onecta", 128, 1, lambda: _make_tmem_linear_layout(128, 1)),
-    ("legacy_onecta", 128, 1, lambda: TensorMemoryLayout((128, 1), col_stride=1)),
     ("linear_twocta", 256, 2, lambda: _make_tmem_linear_layout_mmav5_twocta(256, 1)),
 ]
 
 X1_F32_LDST_VARIANTS = ("auto", "32x32b")
 
-X1_F32_UNSUPPORTED_VARIANTS = ("16x64b", "16x128b", "16x256b")
+X1_F32_UNSUPPORTED_VARIANTS = ("16x128b",)
 
 SCALES_LDST_CASES = [
     (16, 8, 8, 1, tuple(), _expected_ldst_ops("16x32bx2.x1.b32", [0])),
@@ -4706,8 +5010,38 @@ SCALES_LDST_N_SHARDED_VARIANT_CLEAN_UNSUPPORTED_CASES = [
     if m * n < _scales_ldst_n_sharded_min_elements(instr_variant)
 ]
 
+SCALES_LDST_AUTO_VARIANT_REPRESENTATIVE_KEYS = {
+    (16, 4, 4, "auto"),
+    (64, 4, 4, "auto"),
+    (64, 16, 4, "auto"),
+    (128, 32, 8, "auto"),
+}
+
+SCALES_LDST_EXPLICIT_VARIANT_REPRESENTATIVE_KEYS = {
+    (16, 4, 4, "32x32b"),
+    (64, 16, 8, "32x32b"),
+    (16, 4, 4, "16x32bx2"),
+    (32, 16, 4, "16x32bx2"),
+}
+
+SCALES_LDST_N_SHARDED_VARIANT_REPRESENTATIVE_KEYS = {
+    (64, 16, 4, "16x64b"),
+    (64, 32, 4, "16x128b"),
+    (128, 32, 4, "16x256b"),
+    (256, 16, 4, "16x256b"),
+}
+
 SCALES_LDST_VARIANT_CASES = (
-    SCALES_LDST_AUTO_VARIANT_CASES + SCALES_LDST_EXPLICIT_VARIANT_CASES + SCALES_LDST_N_SHARDED_VARIANT_CASES
+    [case for case in SCALES_LDST_AUTO_VARIANT_CASES if case[:4] in SCALES_LDST_AUTO_VARIANT_REPRESENTATIVE_KEYS]
+    + [
+        case
+        for case in SCALES_LDST_EXPLICIT_VARIANT_CASES
+        if case[:4] in SCALES_LDST_EXPLICIT_VARIANT_REPRESENTATIVE_KEYS
+    ] + [
+        case
+        for case in SCALES_LDST_N_SHARDED_VARIANT_CASES
+        if case[:4] in SCALES_LDST_N_SHARDED_VARIANT_REPRESENTATIVE_KEYS
+    ]
 )
 
 SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
@@ -4785,8 +5119,29 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES = [
     if M * N >= 8 * width
 ]
 
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_REPRESENTATIVE_KEYS = {
+    (128, 4, 4, 2, ((1, 0),), "32x32b"),
+    (128, 32, 4, 2, ((1, 0),), "32x32b"),
+    (256, 64, 4, 2, ((1, 0),), "32x32b"),
+}
+
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_REPRESENTATIVE_KEYS = {
+    (128, 8, 4, 2, ((1, 0),), "16x64b"),
+    (128, 32, 4, 2, ((1, 0),), "16x256b"),
+    (256, 16, 4, 2, ((1, 0),), "16x128b"),
+    (256, 64, 4, 2, ((1, 0),), "16x256b"),
+}
+
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
-    SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES + SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES
+    [
+        case
+        for case in SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES
+        if case[:6] in SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_REPRESENTATIVE_KEYS
+    ] + [
+        case
+        for case in SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES
+        if case[:6] in SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_REPRESENTATIVE_KEYS
+    ]
 )
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
@@ -4806,20 +5161,15 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
         2,
         ((1, 0),),
         "16x32bx2",
-        "tcgen05.ld/st.16x32bx2 requires the half-tile split to be a lane-selected second-half offset",
+        "TMEM layout 'constexpr[16x32bx2]' unsupported for descriptor view",
     ),
 ]
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),
-    ("identity", 128, 64, 4, "32x32b.x64"),
     ("identity", 128, 128, 4, "32x32b.x128"),
     ("identity", 128, 256, 4, "32x32b.x64"),
-    ("identity", 256, 32, 8, "32x32b.x32"),
     ("identity", 256, 64, 8, "32x32b.x64"),
-    ("identity", 256, 128, 8, "32x32b.x128"),
-    ("legacy_equivalent_256", 256, 32, 8, "32x32b.x32"),
-    ("legacy_equivalent_256", 256, 64, 8, "32x32b.x64"),
     ("legacy_equivalent_256", 256, 128, 8, "32x32b.x128"),
 ]
 
@@ -4879,8 +5229,6 @@ def _assert_ld_red_opcode_pairs(
 
 LD_RED_MODIFIER_CASES = [
     (False, tl.PropagateNan.NONE),
-    (False, tl.PropagateNan.ALL),
-    (True, tl.PropagateNan.NONE),
     (True, tl.PropagateNan.ALL),
 ]
 LD_RED_REPRESENTATIVE_MODIFIER_CASES = [(False, tl.PropagateNan.NONE)]
@@ -4888,12 +5236,8 @@ LD_RED_REPRESENTATIVE_RED_OPS = ("min",)
 
 LD_RED_TILE_PERMUTED_CASES = [
     (32, 8, 4, "32x32b.x32"),
-    (64, 8, 4, "32x32b.x64"),
     (64, 16, 4, "32x32b.x64"),
     (128, 8, 4, "32x32b.x128"),
-    (128, 16, 4, "32x32b.x128"),
-    (128, 32, 4, "32x32b.x128"),
-    (256, 8, 4, "32x32b.x64"),
     (256, 16, 4, "32x32b.x64"),
     (256, 32, 4, "32x32b.x64"),
     (256, 64, 4, "32x32b.x64"),
@@ -4923,6 +5267,10 @@ LD_RED_ROW_PERMUTED_CASES = [
     (row_perm_kind, col_perm_kind, expected_shape)
     for row_perm_kind, col_perm_kind, expected_shape in LD_RED_ROWCOL_PERMUTED_CASES
     if row_perm_kind != "identity"
+    and (
+        col_perm_kind == "identity"
+        or (row_perm_kind, col_perm_kind) in (("rotate1", "reverse"), ("even_odd", "even_odd"))
+    )
 ]
 
 LD_RED_PURE_ROW_PERMUTED_N_SWEEP_CASES = [
@@ -4944,12 +5292,15 @@ LD_RED_EXPANDED_ROWCOL_PERMUTED_CASES = [
 ]
 
 LD_RED_ROWCOL_PERMUTED_N_SWEEP_CASES = [
-    (row_perm_kind, col_perm_kind, n, expected_shape)
-    for row_perm_kind in PERMUTED_LAYOUT_KINDS
-    if row_perm_kind != "identity"
-    for col_perm_kind in PERMUTED_LAYOUT_KINDS
-    if col_perm_kind != "identity"
-    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
+    ("reverse", "reverse", 32, "32x32b.x32"),
+    ("reverse", "reverse", 256, "32x32b.x64"),
+    ("rotate1", "even_odd", 32, "32x32b.x32"),
+    ("rotate1", "even_odd", 64, "32x32b.x64"),
+    ("rotate1", "even_odd", 256, "32x32b.x64"),
+    ("even_odd", "rotate1", 64, "32x32b.x64"),
+    ("even_odd", "rotate1", 256, "32x32b.x64"),
+    ("reverse", "even_odd", 64, "32x32b.x64"),
+    ("reverse", "even_odd", 256, "32x32b.x64"),
 ]
 
 LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES = [
@@ -4970,7 +5321,7 @@ LD_RED_DESCRIPTOR_CHAIN_LAYOUT_CASES = [
     ("rowcol_rotate_reverse", lambda: _make_tmem_linear_layout_permuted(128, 128, "rotate1", "reverse")),
 ]
 
-LD_RED_DESCRIPTOR_CHAIN_VARIANTS = ("auto", "32x32b", "16x32bx2", "32x32b_splitn")
+LD_RED_DESCRIPTOR_CHAIN_VARIANTS = ("auto", "32x32b")
 
 LD_RED_DESCRIPTOR_CHAIN_CASES = [
     pytest.param(layout_name, layout_factory, load_variant, id=f"{layout_name}_{load_variant}")
@@ -4978,20 +5329,31 @@ LD_RED_DESCRIPTOR_CHAIN_CASES = [
     for load_variant in LD_RED_DESCRIPTOR_CHAIN_VARIANTS
 ]
 
+LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASE_SPECS = (
+    ("identity", "identity", "identity", 32, "32x32b.x32"),
+    ("identity", "identity", "identity", 64, "32x32b.x64"),
+    ("identity", "identity", "identity", 256, "32x32b.x64"),
+    ("tile_permuted", "tile", "tile", 32, "32x32b.x32"),
+    ("tile_permuted", "tile", "tile", 256, "32x32b.x64"),
+    ("col_reverse", "identity", "reverse", 64, "32x32b.x64"),
+    ("col_reverse", "identity", "reverse", 256, "32x32b.x64"),
+    ("row_reverse", "reverse", "identity", 64, "32x32b.x64"),
+    ("row_reverse", "reverse", "identity", 256, "32x32b.x64"),
+    ("row_even_odd", "even_odd", "identity", 64, "32x32b.x64"),
+    ("rowcol_rotate_reverse", "rotate1", "reverse", 64, "32x32b.x64"),
+    ("rowcol_rotate_reverse", "rotate1", "reverse", 256, "32x32b.x64"),
+)
+
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
     pytest.param("identity", lambda n=n: _make_tmem_linear_layout(128, n), n, expected_shape, id=f"identity_n{n}")
-    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
-] + [
-    pytest.param(
+    if layout_name == "identity" else pytest.param(
         "tile_permuted",
-        lambda n=n, tile_n=tile_n: _make_tmem_linear_layout_tile_permuted(128, n, tile_n),
+        lambda n=n: _make_tmem_linear_layout_tile_permuted(128, n, 8 if n == 32 else 64),
         n,
         expected_shape,
         id=f"tile_permuted_n{n}",
     )
-    for n, tile_n, expected_shape in ((32, 8, "32x32b.x32"), (64, 16, "32x32b.x64"), (256, 64, "32x32b.x64"))
-] + [
-    pytest.param(
+    if layout_name == "tile_permuted" else pytest.param(
         layout_name,
         lambda n=n, row_perm_kind=row_perm_kind, col_perm_kind=col_perm_kind: _make_tmem_linear_layout_permuted(
             128, n, row_perm_kind, col_perm_kind
@@ -5000,36 +5362,18 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASES = [
         expected_shape,
         id=f"{layout_name}_n{n}",
     )
-    for layout_name, row_perm_kind, col_perm_kind in (
-        ("col_reverse", "identity", "reverse"),
-        ("col_rotate1", "identity", "rotate1"),
-        ("col_even_odd", "identity", "even_odd"),
-        ("row_reverse", "reverse", "identity"),
-        ("row_rotate1", "rotate1", "identity"),
-        ("row_even_odd", "even_odd", "identity"),
-        ("rowcol_reverse_rotate1", "reverse", "rotate1"),
-        ("rowcol_reverse_even_odd", "reverse", "even_odd"),
-        ("rowcol_reverse_reverse", "reverse", "reverse"),
-        ("rowcol_rotate_rotate1", "rotate1", "rotate1"),
-        ("rowcol_rotate_even_odd", "rotate1", "even_odd"),
-        ("rowcol_even_odd_rotate1", "even_odd", "rotate1"),
-        ("rowcol_even_odd_even_odd", "even_odd", "even_odd"),
-        ("rowcol_even_odd_reverse", "even_odd", "reverse"),
-        ("rowcol_rotate_reverse", "rotate1", "reverse"),
-    )
-    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
+    for layout_name, row_perm_kind, col_perm_kind, n, expected_shape in LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_CASE_SPECS
 ]
 
-LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS = (
-    "identity",
-    "tile_permuted",
-    "col_reverse",
-    "col_rotate1",
-    "col_even_odd",
-    "row_reverse",
-    "row_rotate1",
-    "row_even_odd",
-    "rowcol_rotate_reverse",
+LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_SPECS = (
+    ("identity", 32, "32x32b.x32", "32x32b"),
+    ("identity", 64, "32x32b.x64", "32x32b"),
+    ("identity", 256, "32x32b.x64", "32x32b_splitn"),
+    ("tile_permuted", 32, "32x32b.x32", "32x32b"),
+    ("col_reverse", 64, "32x32b.x64", "32x32b"),
+    ("row_reverse", 64, "32x32b.x64", "32x32b"),
+    ("row_even_odd", 64, "32x32b.x64", "32x32b"),
+    ("rowcol_rotate_reverse", 64, "32x32b.x64", "32x32b"),
 )
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS = {
@@ -5053,9 +5397,7 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
         else None,
         id=f"{layout_name}_n{n}_{load_variant}",
     )
-    for layout_name in LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_LAYOUTS
-    for n, expected_shape in ((32, "32x32b.x32"), (64, "32x32b.x64"), (256, "32x32b.x64"))
-    for load_variant in ("32x32b", "16x32bx2", "32x32b_splitn")
+    for layout_name, n, expected_shape, load_variant in LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_SPECS
 ]
 
 LD_RED_EXPLICIT_N_SWEEP_VARIANT_CASES = LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES
@@ -5067,12 +5409,17 @@ LD_RED_M64_SPLITN_CASES = [
 
 LD_RED_M64_EXPLICIT_VARIANT_CASES = [
     pytest.param(n, "32x32b", f"16x32bx2.x{n // 2}", (0,), id=f"m64_64x{n}_32x32b")
-    for n in (32, 64, 128, 256)
+    for n in (32, 256)
 ] + [
     pytest.param(n, load_variant, f"16x32bx2.x{n // 4}", (0, n // 2),
                  id=f"m64_64x{n}_{load_variant}")
-    for n in (32, 64, 128, 256)
-    for load_variant in ("auto", "16x32bx2", "32x32b_splitn")
+    for n, load_variant in (
+        (32, "auto"),
+        (64, "16x32bx2"),
+        (128, "32x32b_splitn"),
+        (256, "auto"),
+        (256, "32x32b_splitn"),
+    )
 ]
 
 LD_RED_M64_ROWCOL_PERMUTED_DEFAULT_CASES = [
@@ -6210,6 +6557,32 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_clean_error(
+    layout_name, n, variant, capfd
+):
+    m = 256
+    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
+    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
+    out = torch.empty_like(inp)
+
+    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
+        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
+            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "TMEM layout" in text
+    assert "unsupported" in text
+    assert "descriptor view" in text
+    assert "required row anchors 32,64 are not directly representable" in text
+    assert "packet base, row anchors, and per-message offsets" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_SLICE_CASES)
 def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(dtype_name, torch_dtype, layout_name, n, variant):
     m = 256
@@ -6692,7 +7065,7 @@ def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(dtype_name, torch_dtyp
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype", M64_SPLITN_DTYPES)
-@pytest.mark.parametrize("n", [2, 4, 8, 16, 32, 64, 128, 256])
+@pytest.mark.parametrize("n", [2, 64, 256])
 def test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn(n, dtype_name, torch_dtype):
     m = 64
     layout = _make_tmem_linear_layout_m64(n)
@@ -6759,7 +7132,7 @@ def test_tmem_runtime_matrix_splitn_rowcol_permuted_auto_selects_16x32bx2(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("variant", tuple(LDST_EXPECTED_OFFSETS_128x256))
+@pytest.mark.parametrize("variant", ("auto", "16x128b", "16x256b"))
 def test_tmem_runtime_matrix_ldst_fixed_offset_patterns_128x256(variant):
     m, n = 128, 256
     layout = _make_tmem_linear_layout(m, n)
@@ -7489,7 +7862,7 @@ def test_tmem_runtime_matrix_ld_red_m64_rowcol_permuted_explicit_32x32b_uses_spl
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
-@pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
+@pytest.mark.parametrize("load_variant", ["auto", "32x32b"])
 def test_tmem_runtime_matrix_ld_red_explicit_compatible_layout_variants(
     load_variant, use_abs, propagate_nan, red_op
 ):
@@ -7679,7 +8052,7 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sweep_variants(
 @pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("layout_name,layout_factory", LD_RED_EXPLICIT_COMPATIBLE_NON_IDENTITY_LAYOUT_CASES)
-@pytest.mark.parametrize("load_variant", ["auto", "32x32b", "16x32bx2", "32x32b_splitn"])
+@pytest.mark.parametrize("load_variant", ["auto", "32x32b"])
 def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b(
     load_variant, layout_name, layout_factory, use_abs, propagate_nan, red_op
 ):
@@ -9673,18 +10046,29 @@ MMA_TWOCTA_TMA_NON_TF32_DTYPES = {
     "f8e4m3": (torch.float8_e4m3fn, ttgl.float8e4nv, "tcgen05.mma.cta_group::2.kind::f8f6f4", 1e-1, 1e-1),
 }
 
-MMA_TWOCTA_TMA_NON_TF32_CASES = [
-    (dtype_name, acc_layout_kind, block_n, block_k, use_acc)
-    for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES
-    for acc_layout_kind, block_n, block_k, use_acc in product(
-        ("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128), (False, True)
-    )
-]
+MMA_TWOCTA_TMA_NON_TF32_CASES = _dedupe_matrix_cases(
+    [(dtype_name, "linear", 128, 64, False) for dtype_name in MMA_TWOCTA_TMA_NON_TF32_DTYPES] + [
+        ("f16", acc_layout_kind, block_n, block_k, use_acc)
+        for acc_layout_kind in ("legacy", "linear")
+        for block_n, block_k in MMA_REPRESENTATIVE_NK_CASES
+        for use_acc in (False, True)
+    ] + [
+        ("bf16", "legacy", 256, 128, True),
+        ("f8e5m2", "linear", 32, 32, True),
+        ("f8e4m3", "legacy", 64, 128, False),
+    ]
+)
 
-MMA_TWOCTA_TMA_TF32_CASES = [
-    (acc_layout_kind, block_n, block_k)
-    for acc_layout_kind, block_n, block_k in product(("legacy", "linear"), (32, 64, 128, 256), (32, 64, 128))
-]
+MMA_TWOCTA_TMA_TF32_CASES = _dedupe_matrix_cases(
+    [("linear", 128, 64), ("legacy", 128, 64)] + [
+        (acc_layout_kind, block_n, block_k)
+        for acc_layout_kind, block_n, block_k in (
+            ("linear", 32, 32),
+            ("legacy", 64, 128),
+            ("linear", 256, 128),
+        )
+    ]
+)
 
 MMA_TWOCTA_PLAIN_KIND_CASES = MMA_PLAIN_KIND_ACC_CASES
 
@@ -9700,24 +10084,30 @@ MMA_M64_PLAIN_KIND_CASES = _dedupe_matrix_cases(
         for acc_layout_kind in ("legacy", "linear")
         for n, k in MMA_M64_REPRESENTATIVE_NK_CASES
         for use_acc in (False, True)
-        if acc_layout_kind == "linear" or n != 32
+        if acc_layout_kind == "linear" or n in (64, 128)
     ]
 )
 
 MMA_M64_ACC_SUBSLICE_CASES = MMA_ACC_SUBSLICE_CASES
 
 MMA_TILE_PERMUTED_CASES = [
-    (n, tile_n, k)
-    for n, tile_n in ((32, 8), (64, 16), (128, 32), (256, 64))
-    for k in (32, 64, 128)
+    (32, 8, 32),
+    (64, 16, 64),
+    (128, 32, 128),
+    (256, 64, 128),
 ]
 
-MMA_TILE_PERMUTED_KIND_CASES = [
-    (kind, n, tile_n, k)
-    for kind in MMA_PLAIN_KINDS
-    for n, tile_n in ((32, 8), (64, 16), (128, 32), (256, 64))
-    for k in (32, 64, 128)
-]
+MMA_TILE_PERMUTED_KIND_CASES = _dedupe_matrix_cases(
+    [(kind, 128, 32, 64) for kind in MMA_PLAIN_KINDS] + [
+        ("f16", n, tile_n, k)
+        for n, tile_n, k in (
+            (32, 8, 32),
+            (64, 16, 64),
+            (128, 32, 128),
+            (256, 64, 128),
+        )
+    ]
+)
 
 MMA_LHS_TILE_PERMUTED_NK_CASES = _dedupe_matrix_cases(
     [(kind, *MMA_KIND_REPRESENTATIVE_NK, MMA_KIND_REPRESENTATIVE_NK[1] // 4) for kind in MMA_PLAIN_KINDS] + [

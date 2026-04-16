@@ -11403,3 +11403,32 @@ rejection, not rescue
   - focused post-fix selector covering the failed broad-probe rows and M64
     (`121 passed, 11011 deselected`);
   - `git diff --check`.
+
+## Latest: 2026-04-16 20:04 UTC runtime-matrix budget checkpoint
+
+- The default TMEM runtime matrix is now small enough to run under the
+  requested 10-minute 4-GPU wall-clock budget with plain count-based
+  `pytest-split`.
+- Current default collect:
+  - `python/test/gluon/test_tmem_runtime_matrix.py`: `1575` tests.
+- Fresh-cache validation command shape:
+  - run `make -j8` first;
+  - then launch four outer pytest processes with
+    `CUDA_VISIBLE_DEVICES=<gpu>`,
+    `TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-tmem-budget-final10`,
+    `PYTHONPATH=./python:./python/test/gluon`, and
+    `pytest -s --tb=short --splits 4 --group <1..4>
+    python/test/gluon/test_tmem_runtime_matrix.py`.
+- Final timing:
+  - group 1: `293 passed, 101 skipped, 1181 deselected`,
+    `SHARD_SECONDS=577`;
+  - group 2: `385 passed, 9 skipped, 1181 deselected`,
+    `SHARD_SECONDS=318`;
+  - group 3: `394 passed, 1181 deselected`, `SHARD_SECONDS=266`;
+  - group 4: `393 passed, 1182 deselected`, `SHARD_SECONDS=341`.
+- Coverage policy:
+  - do not restore global Cartesian products for routine validation;
+  - keep every TMEM instruction family represented by default;
+  - when changing a particular planner family, temporarily run or add a
+    family-expanded selector for that family and then collapse it back to
+    representative coverage once the bug is fixed.

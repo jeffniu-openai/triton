@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 20:04 UTC: tightened the reduced TMEM runtime matrix again to
+  make the default full-file 4-GPU split finish under the 10-minute iteration
+  target with count-based `pytest-split`. Collection is now `1575` tests
+  (down from the `5019` reduced checkpoint and the original `11133`
+  exhaustive surface). The kept surface remains representative across all
+  TMEM instruction families while sampling independent layout/view axes:
+  `ld/st`, descriptor chains, subword/x1, split-N, tensor-memory scales,
+  `ld.red`, no-scales copy, scales copy, MMA, and scaled-MMA. Fresh per-GPU
+  cache validation: group 1 `293 passed, 101 skipped` in `577s`, group 2
+  `385 passed, 9 skipped` in `318s`, group 3 `394 passed` in `266s`, and
+  group 4 `393 passed` in `341s`.
 - 2026-04-16 18:12 UTC: reduced the TMEM runtime-matrix collection from
   `11133` to `5019` tests to improve iteration speed without dropping any
   instruction family or known hard-frontier diagnostic. The new policy keeps
