@@ -932,6 +932,12 @@ Progress:
   packets that over-cover all rows for the target columns. This keeps the row
   as a Phase 4 packet-footprint/rematerialization task, not a type fallback or
   row-plan lookup task.
+- 2026-04-16 06:15 UTC: frontend descriptor-view register-layout failures now
+  surface the backend's direct-`ld/st` unsupported reason. The row-anchor
+  diagnostic explicitly points to the Phase 4 packet-footprint abstraction
+  that is still missing, so the expanded runtime matrix no longer collapses
+  the identity high-quadrant gap into a generic frontend "auto unsupported"
+  message.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

@@ -2420,6 +2420,20 @@ void init_gluon_ir(py::module &&m) {
       });
 
   m.def(
+      "get_tmem_ldst_unsupported_reason_from_memdesc",
+      [](Value memDesc) -> py::object {
+        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+        if (!memDescTy)
+          throw std::invalid_argument("expected a memdesc value");
+        std::string reason;
+        if (ttng::isUnsupportedDirectTMemLdStDescriptorView(memDesc, &reason) &&
+            !reason.empty()) {
+          return py::str(reason);
+        }
+        return py::none();
+      });
+
+  m.def(
       "compute_tmem_reduce_reg_layout_from_memdesc",
       [](Value memDesc, unsigned numWarps) -> py::object {
         auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());

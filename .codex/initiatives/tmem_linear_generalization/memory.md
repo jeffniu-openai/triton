@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Current descriptor-view `ld/st` diagnostic propagation checkpoint,
+  2026-04-16 06:15 UTC: frontend `get_reg_layout()` now appends the backend
+  direct-`ld/st` unsupported reason when descriptor-view layout selection
+  returns no register layout. The row-anchor diagnostic names the
+  packet-footprint boundary from the identity high-quadrant probe: public
+  packets over-cover the available support image unless the backend can
+  decompose the row origin into packet base, row anchors, and per-message
+  offsets, or use an explicit read/modify/write footprint model. Validation:
+  `make -j8`, py-compile, exact identity clean-negative row (`1 passed`),
+  half-row/identity diagnostic selector (`31 passed`), and `git diff --check`.
+
 - Current exact `32x32` identity descriptor-view high-quadrant probe,
   2026-04-16 06:11 UTC: the exact descriptor-chain arithmetic is now known to
   be right for the `origin=(64,64)` high quadrant. Debugging the failing

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:15 UTC: descriptor-view `get_reg_layout()` failures now
+  surface the backend's direct `ld/st` unsupported reason instead of dropping
+  it behind the generic frontend fallback. The row-anchor diagnostic was
+  sharpened to name the packet-footprint/rematerialization boundary exposed by
+  the 06:11 identity probe: public packets over-cover the available support
+  image unless the row origin is decomposed into packet base, row anchors, and
+  per-message offsets, or a read/modify/write footprint model is introduced.
+  Validation: `make -j8`, py-compile, exact identity clean-negative row, and
+  neighboring half-row clean-negative selector (`31 passed`).
 - 2026-04-16 06:11 UTC: a no-code exact `32x32` identity descriptor-view
   `ld/st` high-quadrant probe refined the direct-packet boundary. Exact
   value-level view arithmetic preserved the final `origin=(64,64)` and the

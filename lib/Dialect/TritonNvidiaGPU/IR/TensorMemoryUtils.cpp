@@ -3822,8 +3822,12 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
              "required row anchors ") +
          std::to_string(rowPlan->warpRow0) + "," +
          std::to_string(rowPlan->warpRow1) +
-         " are not directly representable in the descriptor view. Access the "
-         "full backing tile or reshape/copy so the TMEM row anchors stay "
+         " are not directly representable in the descriptor view. Public "
+         "tcgen05.ld/st packets for the available support image read or write "
+         "a wider row footprint; support needs the view row origin "
+         "decomposed into packet base, row anchors, and per-message offsets, "
+         "or an explicit read/modify/write footprint model. Access the full "
+         "backing tile or reshape/copy so the TMEM row anchors stay "
          "materializable.";
 }
 

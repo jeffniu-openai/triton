@@ -19057,3 +19057,33 @@ Open after this slice:
     packet/rematerialization or support-footprint read/modify/write model, or
     the row should stay a clean direct-ISA negative with a diagnostic tied to
     that packet-footprint proof.
+
+## 2026-04-16 06:15 UTC: descriptor-view ld/st unsupported reason propagation
+
+- Starting point: `codex/tmem` at `70b03cce2`.
+- Implementation:
+  - added a Gluon IR binding that asks the backend for the direct
+    `tcgen05.ld/st` descriptor-view unsupported reason;
+  - changed frontend `get_reg_layout()` to append that reason when memdesc
+    register-layout selection returns no layout;
+  - sharpened the backend row-anchor reason to name the packet-footprint
+    boundary and the required future packet/rematerialization or
+    read/modify/write model;
+  - pinned the identity high-quadrant clean-negative row to the sharper text.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-identity-packet-diag
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-diag-sanity
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slice_identity_reports_clean_error or higher_rank_half_rows_reports_clean_error_lifted_layout'`
+    (`31 passed, 11058 deselected`);
+  - `git diff --check`.
