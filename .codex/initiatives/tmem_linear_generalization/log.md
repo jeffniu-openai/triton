@@ -19551,3 +19551,47 @@ Open after this slice:
   - commit and push this cleanup checkpoint;
   - continue with reduction-selector equivalence or the next copy planner
     frontier, keeping known false-support probes out of the tree.
+
+## 2026-04-16 09:18 UTC: safe backend query for default ld.red layout selection
+
+- Starting point: `codex/tmem` at `805732b49`.
+- Change:
+  - `load_min/load_max(layout=None)` now asks
+    `compute_tmem_reduce_reg_layout_from_memdesc(...)` before falling back to
+    the direct `get_reg_layout(instr_variant="32x32b")` path for f32
+    non-scales TMEM;
+  - the backend helper refuses to return an override if direct `32x32b` is
+    already reduction-compatible for the same query, so direct-compatible
+    non-M64 row/column permutations retain their existing packet order;
+  - the helper still rescues M64 direct layouts that would otherwise lower as
+    scalar `.x1` reduction packets.
+- Failed intermediate probe:
+  - allowing the helper to return when its candidate compared equal to a
+    direct-compatible `32x32b` layout was still unsafe for column-permuted
+    `N=256`: the opcodes changed from offsets `[0, 64, 128, 192]` to
+    `[0, 128, 64, 192]`;
+  - the final contract therefore treats any compatible direct `32x32b` layout
+    as a no-override case until a fuller packet-order equivalence proof exists.
+- Validation:
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-safe-default-helper-v2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    '(ld_red_row_permuted_linear_layout and rotate1 and identity) or
+    (ld_red_col_permuted_linear_layout and 256) or
+    ld_red_m64_rowcol_permuted_default_layout or
+    (ld_red_m64_splitn_linear_layout and m64_64x32)'`
+    (`46 passed, 11086 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-safe-default-helper-m64
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`73 passed, 11059 deselected`);
+  - `git diff --check`.
+- Next:
+  - commit and push this selector checkpoint;
+  - continue to copy planner/scales frontiers or to a true packet-order
+    equivalence proof for direct-compatible reduction overrides.

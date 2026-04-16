@@ -973,6 +973,14 @@ Progress:
   `32x32b.x128` packets while returning row-permuted output, so the next
   support-bearing reduction step needs an equivalence proof over physical row
   order and packet origins, not only message legality.
+- 2026-04-16 09:18 UTC: default reductions now use the backend reduction
+  helper as a safe first query for f32 non-scales TMEM. The helper's contract
+  is intentionally conservative: it returns no override whenever direct
+  `32x32b` already satisfies the reduction predicate, preserving the existing
+  direct path's exact packet order for non-M64 row/column permutations. It
+  still returns the split-N rescue layout for M64 scalarized direct
+  reductions, so the special case is backend-routed without reopening the
+  rejected broad-route failures.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:

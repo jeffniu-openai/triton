@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current safe backend default-reduction query checkpoint, 2026-04-16
+  09:18 UTC: `tensor_memory_descriptor._load_red(layout=None)` now asks the
+  backend reduction-layout helper first for f32 non-scales TMEM. The helper is
+  safe to call globally because it refuses to override a direct `32x32b`
+  register layout that is already reduction-compatible; those cases fall back
+  to the existing frontend direct path and keep packet order stable. This
+  preserves the M64 scalarized-direct rescue while preventing the previously
+  observed non-M64 row/column-permutation false-support paths. Validation:
+  py-compile of `blackwell/__init__.py`, `make -j8`, targeted unsafe selector
+  (`46 passed, 11086 deselected`), full `ld_red_m64` selector (`73 passed,
+  11059 deselected`), and `git diff --check`.
+
 - Current reduction predicate cleanup checkpoint, 2026-04-16 09:07 UTC: the
   hardware-reduction message predicate is now one shared backend helper in
   `TensorMemoryUtils`. `getTmemLoadReductionLayout(...)`, the `tmem_load`

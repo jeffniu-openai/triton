@@ -2528,33 +2528,55 @@ void init_gluon_ir(py::module &&m) {
                   return false;
                 return ttng::isTMemLdStReductionCompatible(*info);
               };
+          auto layoutIsReductionCompatible =
+              [&](ttg::DistributedEncodingTrait layout) {
+                auto regTy =
+                    RankedTensorType::get(shape, elementType, layout);
+                if (!ttng::isReductionFriendlyTmemLoadLayout(
+                        tensorTy, ttg::toLinearLayout(regTy)))
+                  return false;
+                auto queryRowPlan =
+                    ttng::getTMemLdStRowPlanForQuery(memDesc, queryTy);
+                if (!queryRowPlan)
+                  queryRowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
+
+                if (rawQueryLayout &&
+                    isReductionCompatible(ttng::computeTMemLdStEncodingInfo(
+                        regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
+                        /*emitError=*/{}, rawRowPlan))) {
+                  return true;
+                }
+                if (rawQueryLayout && isViewLikeMemDesc)
+                  return false;
+                return isReductionCompatible(ttng::computeTMemLdStEncodingInfo(
+                    regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
+                    queryRowPlan));
+              };
+
           auto maybeLayout =
               ttng::getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);
           if (!maybeLayout)
             return py::none();
 
-          auto queryRowPlan = ttng::getTMemLdStRowPlanForQuery(memDesc, queryTy);
-          if (!queryRowPlan)
-            queryRowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
+          if (!layoutIsReductionCompatible(*maybeLayout))
+            return py::none();
 
-          auto regTy = RankedTensorType::get(shape, elementType, *maybeLayout);
-          if (!ttng::isReductionFriendlyTmemLoadLayout(
-                  tensorTy, ttg::toLinearLayout(regTy)))
-            return py::none();
-          if (rawQueryLayout &&
-              isReductionCompatible(ttng::computeTMemLdStEncodingInfo(
-                  regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
-                  /*emitError=*/{}, rawRowPlan))) {
-            return layoutToGluon(*maybeLayout);
+          // Message legality is not a sufficient proof that a backend-selected
+          // reduction layout preserves the exact logical row/column order or
+          // packet order. If the direct 32x32b layout is already
+          // reduction-compatible, keep the frontend's existing direct choice.
+          // This lets the helper rescue scalarized M64 direct layouts while
+          // avoiding the non-M64 row/column permutation false-support paths
+          // discovered by the broad default-routing probes.
+          if (auto directLayout = ttng::getDistributedLayoutForTmemLdSt(
+                  queryTy, ttng::TMemAccessAtom::I32x32b, numWarps)) {
+            auto directAttr =
+                ttg::LinearEncodingAttr::get(ctx, *directLayout);
+            if (layoutIsReductionCompatible(directAttr)) {
+              return py::none();
+            }
           }
-          if (rawQueryLayout && isViewLikeMemDesc)
-            return py::none();
-          if (isReductionCompatible(ttng::computeTMemLdStEncodingInfo(
-                  regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
-                  queryRowPlan))) {
-            return layoutToGluon(*maybeLayout);
-          }
-          return py::none();
+          return layoutToGluon(*maybeLayout);
         };
 
         for (ttg::MemDescType queryTy : ttng::getTMemLdStQueryTypes(memDesc)) {

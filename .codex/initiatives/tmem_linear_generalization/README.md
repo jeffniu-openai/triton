@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 09:18 UTC: default `load_min/load_max(layout=None)` now asks
+  the backend reduction-layout helper first for f32 non-scales TMEM, but the
+  helper is conservative: if direct `32x32b` is already reduction-compatible
+  it returns `None` and lets the existing direct path preserve exact packet
+  order. This moves the M64 scalarization rescue into a globally safe backend
+  query without reintroducing the rejected non-M64 row/column-permutation
+  broad-route bugs. Validation: py-compile, `make -j8`, targeted unsafe
+  selector (`46 passed`), full M64 selector (`73 passed`), and `git diff
+  --check`.
 - 2026-04-16 09:07 UTC: the reduction message-compatibility predicate is now
   centralized in `TensorMemoryUtils` as
   `isTMemLdStReductionCompatible(...)` / `getTMemLdStReductionRepeats(...)`
