@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Current descriptor-backed source-coordinate checkpoint, 2026-04-16 00:14
+  UTC: all non-immediate `tcgen05.copy` source footprints now validate in the
+  selected descriptor-loader coordinate space. The prior 00:02 split between
+  dense "logical shared-tile" footprints and non-dense descriptor-loader
+  footprints was too narrow: a broad copy shard exposed 69 false rejections for
+  256-row no-scales positives because exact TMEM query selection folds the
+  high logical row selector into the copy column schedule, so `sourceCol=16`
+  is a descriptor coordinate, not logical source column 16. Direct-seed
+  immediates remain skipped because there is no selected descriptor layout to
+  bound. Validation passed: `make -j8`, direct `triton-opt
+  --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`,
+  py-compile of `test_tmem_runtime_matrix.py`, `git diff --check`, the
+  minimal repro
+  `test_tmem_runtime_matrix_cp_no_scales_linear[256-16-32-4]`, and the
+  repaired group-1 copy shard (`171 passed, 10 skipped, 10807 deselected in
+  143.31s`). Pre-fix evidence: the same group-1 shard failed 69 cases, all in
+  256-row no-scales copy buckets, while groups 2/3/4 passed.
+
 - Current compiler-only diagnostic checkpoint, 2026-04-16 00:04 UTC:
   `test/TritonNvidiaGPU/invalid.mlir` now matches the current copy planner
   diagnostics for scales descriptor-row-stride failures and two-CTA

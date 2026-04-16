@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:14 UTC: descriptor-backed copy source footprints now use
+  descriptor-loader bounds consistently, including dense no-scales copies. A
+  broad copy shard showed that the previous dense/logical-source split falsely
+  rejected 256-row positives: exact query selection can encode the high row
+  selector in the copy column dimension, so scheduled source columns past the
+  logical `N` extent are valid descriptor coordinates. Direct-seed immediates
+  still skip source bounds. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, py-compile, `git diff --check`, minimal 256x16 repro, and repaired
+  group-1 copy shard (`171 passed, 10 skipped, 10807 deselected`).
 - 2026-04-16 00:04 UTC: refreshed stale `test/TritonNvidiaGPU/invalid.mlir`
   verifier expectations for the newer copy diagnostics: the public
   `tcgen05.copy` no-mask wording for scales descriptor-row-stride failures and

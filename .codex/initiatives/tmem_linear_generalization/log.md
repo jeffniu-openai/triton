@@ -18008,6 +18008,39 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-16 00:14 UTC: descriptor-backed source coordinate correction
+
+- Broad copy validation found a regression from the 00:02 source-bounds
+  checkpoint:
+  - split group 1 failed 69 rows, all in 256-row no-scales copy buckets;
+  - split groups 2, 3, and 4 passed on the pre-fix build.
+- Debugging the minimal failing row
+  `test_tmem_runtime_matrix_cp_no_scales_linear[256-16-32-4]` with
+  `TRITON_DEBUG_TMEM_QUERY=1` showed exact query selection folding logical
+  row bit 128 into the copy column dimension (`col=16 -> (128, 0)` in the
+  exact TMEM layout), and the destination-to-source conversion therefore
+  scheduled descriptor columns beyond the logical source `N=16` extent.
+- Fixed the model by treating all descriptor-backed copy source footprints as
+  descriptor-loader coordinates. Direct-seed immediate descriptors remain
+  skipped because they have no selected descriptor layout to bound.
+- Validation:
+  - `make -j8`;
+  - direct verifier:
+    `BUILD_DIR=$(PYTHONPATH="./python" python3 -c 'from build_helpers import get_cmake_dir; print(get_cmake_dir())'); "$BUILD_DIR/bin/triton-opt" --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cp-debug PYTHONPATH=./python
+    pytest -s --tb=short -q
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_linear[256-16-32-4]'`
+    (`1 passed in 2.90s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cp-broad PYTHONPATH=./python
+    pytest -s --tb=short --splits 4 --group 1 -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_'`
+    (`171 passed, 10 skipped, 10807 deselected in 143.31s`).
+
 ## 2026-04-15 23:08 UTC: shared copy source-conversion helper
 
 - Added `getTMemCopySourceConversion(...)` beside physical query selection in

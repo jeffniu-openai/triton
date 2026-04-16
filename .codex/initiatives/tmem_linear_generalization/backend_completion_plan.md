@@ -380,6 +380,13 @@ Progress:
 - 2026-04-16 00:04 UTC: refreshed compiler-only invalid diagnostics for the
   current copy planner wording, keeping the lit/direct-verifier oracle aligned
   with the source legality and no-mask diagnostics.
+- 2026-04-16 00:14 UTC: corrected the source-footprint coordinate model after
+  broad copy validation exposed the dense half of the model was still assuming
+  logical source columns. Descriptor-backed dense copies can also schedule in
+  descriptor-loader coordinates when exact TMEM queries fold high logical row
+  selectors into the copy column dimension. Source-footprint bounds now check
+  every non-direct-seed copy message against its selected descriptor layout,
+  while direct-seed immediates remain skipped.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

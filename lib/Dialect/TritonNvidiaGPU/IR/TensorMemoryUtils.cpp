@@ -8233,11 +8233,8 @@ getTMemCopySourceFootprint(const TMemCopyScheduledMessage &message,
   unsigned columns = *footprintColumns;
   TMemCopySourceCoordinateSpace coordinateSpace =
       TMemCopySourceCoordinateSpace::DescriptorLoader;
-  if (plan.useDirectSeedDescriptor) {
+  if (plan.useDirectSeedDescriptor)
     coordinateSpace = TMemCopySourceCoordinateSpace::DirectSeedImmediate;
-  } else if (isDenseTMemCopyFamily(getTMemCopyFamily(plan.atom))) {
-    coordinateSpace = TMemCopySourceCoordinateSpace::LogicalSharedTile;
-  }
   return TMemCopySourceFootprint{
       /*row=*/static_cast<int32_t>(sourceRow),
       /*col=*/static_cast<int32_t>(sourceCol),
