@@ -4732,7 +4732,17 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
     SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES + SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_CASES
 )
 
-SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = []
+SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
+    (
+        128,
+        64,
+        4,
+        2,
+        ((1, 0),),
+        "16x32bx2",
+        "tcgen05.ld/st.16x32bx2 requires the half-tile split to be a lane-selected second-half offset",
+    ),
+]
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),

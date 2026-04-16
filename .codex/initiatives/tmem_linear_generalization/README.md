@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 07:51 UTC: the explicit two-CTA scales descriptor-view
+  `16x32bx2` frontier is now pinned as a precise clean unsupported boundary
+  instead of a generic frontend fallback. A temporary support probe showed the
+  transposed scales view has an exact physical query that is directly
+  realizable by `32x32b` and by the wider n-sharded scale atoms, but the
+  native `16x32bx2` half-tile split appears as register/message repetition
+  rather than the lane-selected second-half offset required by the ISA atom.
+  The frontend now asks the backend for a handle-aware requested-variant
+  reason before raising the split-N fallback error, and the runtime matrix
+  pins this row as a clean diagnostic. Validation: `make -j8`, py-compile,
+  clean-negative node (`1 passed`), expanded positive CGA descriptor-view
+  selector (`44 passed`), adjacent non-CGA descriptor-view node (`3 passed`),
+  and `git diff --check`.
 - 2026-04-16 07:32 UTC: two-CTA tensor-memory-scales descriptor-view
   `tcgen05.ld/st` now supports explicit `16x64b`, `16x128b`, and `16x256b`
   view register layouts. The backend constructs the pre-packed physical

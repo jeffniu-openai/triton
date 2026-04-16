@@ -19364,3 +19364,48 @@ Open after this slice:
 - Remaining boundary:
   - explicit two-CTA descriptor-view `16x32bx2` is not covered by this
     n-sharded atom lift; it needs a separate split-N/second-half-offset proof.
+
+## 2026-04-16 07:51 UTC: scales descriptor-view 16x32bx2 clean boundary pinned
+
+- Starting point: `codex/tmem` at `27f94e1b3`.
+- Probe result:
+  - a temporary support promotion showed the exact transposed two-CTA scales
+    descriptor-view query can be accepted by `32x32b`;
+  - the same exact physical candidate is not a valid `16x32bx2` layout because
+    the half-tile split lands in register/message repetition instead of the
+    lane-selected second-half offset required by that atom;
+  - the wider n-sharded scale atoms remain exact positives from the 07:32
+    checkpoint.
+- Change:
+  - added a handle-aware backend query for requested direct `ld/st` variant
+    unsupported reasons;
+  - routed the frontend split-N fallback through that query before replacing a
+    descriptor-view failure with the generic type-only layout error;
+  - pinned the two-CTA scales descriptor-view `16x32bx2` row as a clean
+    unsupported diagnostic in the runtime matrix.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-view-16x32-clean
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_reports_clean_unsupported`
+    (`1 passed`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-view-cga-after-diagnostic
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_cga_roundtrip'`
+    (`44 passed, 11086 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-view-noncga-after-diagnostic
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip`
+    (`3 passed`);
+  - `git diff --check`.
+- Next:
+  - continue with a support-bearing backend slice: packed-lane source-storage
+    scheduling, two-CTA `warpx2::02_13` source-row projection, scales copy
+    split/mask scheduling, or sparse `4x256b` direct readback.

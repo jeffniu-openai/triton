@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Current scales descriptor-view `16x32bx2` diagnostic checkpoint,
+  2026-04-16 07:51 UTC: explicit two-CTA scales descriptor-view
+  `get_reg_layout("16x32bx2")` has been probed and is now recorded as a clean
+  unsupported atom-semantic boundary, not a generic linear-layout failure. The
+  exact transposed view query exists and remains directly realizable by
+  `32x32b` and by the wider n-sharded scale atoms. The native `16x32bx2`
+  candidate fails because its half-tile split would have to be a
+  lane-selected second-half offset, while this descriptor view places that
+  split in register/message repetition. The frontend split-N fallback now asks
+  the backend for a handle-aware requested-variant reason and reports this
+  specific boundary. Validation: `make -j8`, py-compile of
+  `__init__.py` and `test_tmem_runtime_matrix.py`, clean-negative node
+  (`1 passed`), expanded positive CGA descriptor-view selector (`44 passed,
+  11086 deselected`), non-CGA descriptor-view node (`3 passed`), and
+  `git diff --check`. Remaining nearby support work should not promote
+  `16x32bx2` by footprint tricks; it needs a real second-half
+  rematerialization/split schedule if the ISA can realize one.
+
 - Current scales descriptor-view explicit-atom checkpoint, 2026-04-16
   07:32 UTC: two-CTA tensor-memory-scales descriptor-view `ld/st` now has an
   algebraic register-layout builder for explicit `16x64b`, `16x128b`, and

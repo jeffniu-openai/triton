@@ -647,6 +647,13 @@ class tensor_memory_descriptor(base_value):
                     list(self.shape), num_warps, self.layout
                 )
                 if layout is None:
+                    reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(
+                        self.handle, num_warps, requested_variant
+                    )
+                    if reason is not None:
+                        raise ValueError(
+                            f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}. {reason}"
+                        ) from e
                     raise ValueError(str(e)) from e
         if layout is not None and requested_variant in ("32x32b_splitn", "16x32bx2"):
             layout = _finalize_splitn_tmem_reg_layout(

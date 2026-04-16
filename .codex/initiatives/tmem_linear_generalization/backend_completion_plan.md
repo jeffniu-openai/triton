@@ -936,6 +936,14 @@ Progress:
   rewrite. The exact encoding-info validator remains the support proof. The
   expanded runtime matrix covers all realizable power-of-two `N=4..128` rows
   for `M in {128,256}` and pins the explicit two-offset packet schedule.
+- 2026-04-16 07:51 UTC: pinned the adjacent explicit two-CTA scales
+  descriptor-view `16x32bx2` row as an atom-semantic clean negative. The exact
+  physical query is valid and remains realizable by `32x32b` and by wider
+  n-sharded scale atoms, but `16x32bx2` specifically requires its half-tile
+  split to be a lane-selected second-half offset. In this descriptor view that
+  split is represented by register/message repetition, so footprint or shape
+  promotion would be a false support claim. The frontend split-N fallback now
+  preserves the backend requested-variant reason for this row.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:
