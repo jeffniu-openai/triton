@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 04:53 UTC: physical TMEM bitcast reinterpret inference now
+  preserves source physical row/column coordinate units when the source view is
+  non-injective only because of inactive zero support bases, and scales TMEM
+  column coordinates by source/destination element bitwidth when bitcasting
+  across element sizes. The concrete 4x256b refresh probe now infers the
+  correct raw `32x4xi8` physical image with row zero bases and byte-lane column
+  bases; direct readback remains a separate sparse-lane gather boundary rather
+  than a bitcast arithmetic bug. Validation: `make -j8`, focused frontend
+  bitcast regression, neighboring frontend bitcast selector (`4 passed`),
+  existing GPU physical-bitcast selector (`3 passed`), 4x256b runtime-matrix
+  selector (`4 passed`), direct `invalid.mlir` verifier, py-compile, and
+  `git diff --check`.
 - 2026-04-16 04:38 UTC: broadcasted TMEM load expansion now uses the exact
   inverse of the `ColumnAction` that removed broadcasted register columns,
   instead of inferring the reload count from packed message repetitions. This

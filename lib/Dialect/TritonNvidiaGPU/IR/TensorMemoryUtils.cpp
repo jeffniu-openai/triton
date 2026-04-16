@@ -1584,12 +1584,14 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
         llvm::equal(normalized.getOutDimSizes(), layoutSrcShape) &&
         static_cast<int64_t>(normalized.getTotalInDimSize()) ==
             product<int64_t>(layoutSrcShape)) {
-      workingQuery = TMemLdStQueryLayout{
-          normalized, srcQuery.twoCTAs,
-          remapTMemLdStQueryOrigin(srcQuery, normalized,
-                                   /*deltaCoords=*/{})};
-      ll = normalized;
-      maybeSrcInv = std::move(normalizedInv);
+      // Keep the original physical TMEM coordinate system for physical
+      // bitcasts. The normalized layout proves that the logical image is
+      // injective after inactive support bases are removed, but compacting the
+      // source layout here would also compact hardware row anchors such as
+      // rows 32/64 into rows 1/2. Use the original pseudoinverse so the
+      // selected preimage keeps zero support bits at zero while preserving the
+      // public TMEM row/column coordinate units.
+      maybeSrcInv = ll.pseudoinvert();
       if (error)
         error->clear();
     } else {
@@ -1648,13 +1650,18 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
     }
     return coords;
   };
+  struct ReinterpretPoint {
+    SmallVector<int32_t> srcPoint;
+    int64_t subElementBitOffset = 0;
+  };
   bool usesSubElementDst = false;
   auto mapPoint = [&](ArrayRef<int32_t> dstPoint)
-      -> FailureOr<SmallVector<int32_t>> {
+      -> FailureOr<ReinterpretPoint> {
     auto linearDst = linearizeRowMajorCoordsLocal(layoutDstShape, dstPoint);
     if (failed(linearDst))
       return failure();
     int64_t srcBitOffset = *linearDst * static_cast<int64_t>(dstBitwidth);
+    int64_t subElementBitOffset = srcBitOffset % srcBitwidth;
     if (srcBitOffset % srcBitwidth != 0) {
       if (dstBitwidth >= srcBitwidth || srcBitwidth % dstBitwidth != 0) {
         if (error)
@@ -1664,7 +1671,10 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
       usesSubElementDst = true;
     }
     int64_t linearSrc = srcBitOffset / srcBitwidth;
-    return unravelRowMajorCoordsLocal(layoutSrcShape, linearSrc);
+    auto srcPoint = unravelRowMajorCoordsLocal(layoutSrcShape, linearSrc);
+    if (failed(srcPoint))
+      return failure();
+    return ReinterpretPoint{std::move(*srcPoint), subElementBitOffset};
   };
   auto remapOriginPoint = [&](ArrayRef<int32_t> srcPoint)
       -> FailureOr<SmallVector<int32_t>> {
@@ -1693,8 +1703,46 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
   auto basePoint = mapPoint(zeroPoint);
   if (failed(basePoint))
     return failure();
-  auto baseCoords = maybeSrcInv->apply(makeLogicalCoords(*basePoint));
   auto physOutDimNames = llvm::to_vector(maybeSrcInv->getOutDimNames());
+  auto convertPhysicalCoordsForDstElement =
+      [&](SmallVector<std::pair<StringAttr, int32_t>> coords,
+          int64_t subElementBitOffset)
+      -> FailureOr<SmallVector<std::pair<StringAttr, int32_t>>> {
+    if (srcBitwidth == dstBitwidth)
+      return coords;
+    auto kCol = StringAttr::get(ctx, "col");
+    auto colIt = llvm::find_if(coords, [&](const auto &coord) {
+      return coord.first == kCol;
+    });
+    if (colIt == coords.end())
+      return coords;
+    int64_t colBits =
+        static_cast<int64_t>(colIt->second) * srcBitwidth +
+        subElementBitOffset;
+    if (colBits % dstBitwidth != 0) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return failure();
+    }
+    int64_t dstCol = colBits / dstBitwidth;
+    if (dstCol < 0 || dstCol > std::numeric_limits<int32_t>::max()) {
+      if (error)
+        *error = "unsupported tensor memory memdesc_reinterpret view";
+      return failure();
+    }
+    colIt->second = static_cast<int32_t>(dstCol);
+    return coords;
+  };
+  auto makePhysicalCoordsForDstPoint =
+      [&](const ReinterpretPoint &point)
+      -> FailureOr<SmallVector<std::pair<StringAttr, int32_t>>> {
+    auto srcCoords = maybeSrcInv->apply(makeLogicalCoords(point.srcPoint));
+    return convertPhysicalCoordsForDstElement(
+        std::move(srcCoords), point.subElementBitOffset);
+  };
+  auto baseCoords = makePhysicalCoordsForDstPoint(*basePoint);
+  if (failed(baseCoords))
+    return failure();
 
   LinearLayout::BasesT dstInvBases;
   for (int64_t dim = 0; dim < static_cast<int64_t>(layoutDstShape.size());
@@ -1707,12 +1755,14 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
       auto srcPoint = mapPoint(dstPoint);
       if (failed(srcPoint))
         return failure();
-      auto pointCoords = maybeSrcInv->apply(makeLogicalCoords(*srcPoint));
+      auto pointCoords = makePhysicalCoordsForDstPoint(*srcPoint);
+      if (failed(pointCoords))
+        return failure();
       std::vector<int32_t> basis;
       basis.reserve(physOutDimNames.size());
       for (auto physDim : physOutDimNames) {
-        int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
-                        lookupLinearLayoutCoord(baseCoords, physDim);
+        int32_t delta = lookupLinearLayoutCoord(*pointCoords, physDim) -
+                        lookupLinearLayoutCoord(*baseCoords, physDim);
         if (delta < 0) {
           if (error)
             *error = "unsupported tensor memory memdesc_reinterpret view";
@@ -1726,8 +1776,21 @@ inferTMemReinterpretQueryLayout(ArrayRef<int64_t> srcShape, int srcBitwidth,
 
   SmallVector<std::pair<StringAttr, int32_t>> activePhysOutDims;
   activePhysOutDims.reserve(physOutDimNames.size());
-  for (auto physDim : physOutDimNames)
-    activePhysOutDims.push_back({physDim, maybeSrcInv->getOutDimSize(physDim)});
+  for (auto physDim : physOutDimNames) {
+    int64_t dimSize = maybeSrcInv->getOutDimSize(physDim);
+    if (physDim == StringAttr::get(ctx, "col") &&
+        srcBitwidth != dstBitwidth) {
+      int64_t dimBits = dimSize * static_cast<int64_t>(srcBitwidth);
+      if (dimBits % dstBitwidth != 0 ||
+          dimBits / dstBitwidth > std::numeric_limits<int32_t>::max()) {
+        if (error)
+          *error = "unsupported tensor memory memdesc_reinterpret view";
+        return failure();
+      }
+      dimSize = dimBits / dstBitwidth;
+    }
+    activePhysOutDims.push_back({physDim, static_cast<int32_t>(dimSize)});
+  }
 
   auto dstInv = LinearLayout::tryCreate(std::move(dstInvBases),
                                         activePhysOutDims,

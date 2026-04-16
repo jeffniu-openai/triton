@@ -18794,3 +18794,65 @@ Open after this slice:
   - `PYTHONPATH=./python python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-16 04:53 UTC: physical bitcast width scaling and support-basis preservation
+
+- Root cause:
+  - probing `tcgen05.copy.4x256b` refresh readback through
+    `tmem_physical_bitcast` showed bitcast inference was doing row-major
+    source/destination element arithmetic but leaving the resulting TMEM
+    physical column coordinates in the source element width;
+  - for `i32 -> i8`, that dropped the two byte-lane column bases from the raw
+    `32x4xi8` view, so direct load/store planning saw the logical byte
+    columns as outside the descriptor image;
+  - the non-injective source refresh layout also normalized away inactive row
+    support bases, compacting public TMEM row anchors 32/64 into 1/2 and
+    hiding the real hardware row-coordinate system from later planners.
+- Implementation:
+  - `inferTMemReinterpretQueryLayout(...)` now tracks the subelement bit
+    offset of each destination point;
+  - physical TMEM column coordinates are converted as
+    `(sourceCol * sourceBitwidth + subElementBitOffset) / dstBitwidth`;
+  - the active physical column extent is scaled by the same bitwidth ratio;
+  - when the original source layout is non-injective only because zero support
+    bases were removed by normalization, physical bitcast inference now uses
+    the original layout's pseudoinverse instead of the compacted normalized
+    inverse, preserving row anchors and selected zero support bits.
+- Coverage:
+  - added a frontend parser regression for bitcasting the 4x256b refresh image
+    from `4x8xi32` to raw `32x4xi8`;
+  - the test asserts the inferred layout keeps row zero bases and byte-lane
+    column bases:
+    `row = [[0,0] x5, [1,0], [2,0]]` and
+    `col = [[0,1], [0,2], [8,0], [16,0], [4,0]]`.
+- Current boundary:
+  - this fixes exact physical bitcast arithmetic, but direct refresh readback
+    still needs a separate sparse-lane gather/rematerialization plan: the
+    4x256b refresh image places useful dwords on sparse row lanes and physical
+    columns, while public `tcgen05.ld` packets read whole row footprints
+    without a lane mask.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_subword_refresh_preserves_physical_coords`
+    (`1 passed`);
+  - `PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_frontend.py -k 'tensor_memory_bitcast'`
+    (`4 passed, 205 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-physical-bitcast-regression
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k 'tmem_physical_bitcast'`
+    (`3 passed, 17963 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-existing-after-bitcast
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k '4x256b'`
+    (`4 passed, 11084 deselected`);
+  - direct `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_frontend.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

@@ -10786,3 +10786,36 @@ rejection, not rescue
   - `make -j8`;
   - py-compile;
   - combined tile-permutation selector (`22 passed, 10984 deselected`).
+
+## Latest: 2026-04-16 04:53 UTC physical bitcast coordinate preservation
+
+- Physical TMEM bitcast reinterpret inference now keeps exact physical
+  coordinate units across element-width changes:
+  - destination TMEM column coordinates are computed from source column bits
+    plus subelement bit offsets, so `i32 -> i8` bitcasts expose byte-lane
+    column bases instead of dropping them;
+  - active physical column extents are scaled by the source/destination
+    bitwidth ratio;
+  - when a source view is non-injective only because inactive zero support
+    bases are present, inference uses the original layout pseudoinverse rather
+    than the compacted normalized inverse. This keeps row anchors such as
+    32/64 in the physical coordinate system instead of compacting them to
+    1/2.
+- Concrete 4x256b refresh finding:
+  - the raw bitcast from the refresh-shaped `4x8xi32` image to `32x4xi8`
+    now infers:
+    `row = [[0,0], [0,0], [0,0], [0,0], [0,0], [1,0], [2,0]]`;
+    `col = [[0,1], [0,2], [8,0], [16,0], [4,0]]`;
+  - direct readback is still not promoted because public `tcgen05.ld` packets
+    read full row footprints, while the refresh image needs a sparse-lane
+    gather/rematerialization plan to select useful rows/columns without
+    consuming unwritten lanes.
+- Validation:
+  - `make -j8`;
+  - focused frontend bitcast regression (`1 passed`);
+  - neighboring frontend bitcast selector (`4 passed`);
+  - existing GPU physical-bitcast selector (`3 passed`);
+  - 4x256b runtime-matrix selector (`4 passed`);
+  - direct `invalid.mlir` verifier;
+  - py-compile of touched Python tests;
+  - `git diff --check`.

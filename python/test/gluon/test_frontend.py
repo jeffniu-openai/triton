@@ -346,6 +346,12 @@ def tensor_memory_bitcast_bad_size_kernel(linear_layout: ttgl.constexpr):
     _ = view.bitcast(ttgl.float16, (128, 64))
 
 
+@gluon.jit
+def tensor_memory_bitcast_subword_refresh_kernel(linear_layout: ttgl.constexpr):
+    mem = ttgl.nvidia.blackwell.allocate_tensor_memory(ttgl.int32, [4, 8], linear_layout)
+    _ = mem.bitcast(ttgl.int8, (32, 4))
+
+
 def _make_tmem_linear_layout(m, n):
     return TensorMemoryLinearLayout(
         rows=[[1 << i, 0] for i in range(m.bit_length() - 1)],
@@ -360,6 +366,14 @@ def _make_tmem_linear_layout_identity(m, n):
 
 def _make_tmem_linear_layout_128_identity():
     return _make_tmem_linear_layout_identity(128, 128)
+
+
+def _make_tmem_copy_4x256b_refresh_layout():
+    return TensorMemoryLinearLayout(
+        rows=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1], [0, 2]],
+        cols=[[1, 0], [2, 0], [0, 4]],
+        shape=[4, 8],
+    )
 
 
 def _make_tmem_linear_layout_128_mixed():
@@ -542,6 +556,19 @@ def test_tensor_memory_bitcast_size_mismatch_reports_clean_error():
             *make_args(_make_tmem_linear_layout_128_identity(), num_warps=2),
             target=BLACKWELL_TARGET,
         )
+
+
+def test_tensor_memory_bitcast_subword_refresh_preserves_physical_coords():
+    mod = run_parser(
+        tensor_memory_bitcast_subword_refresh_kernel,
+        *make_args(_make_tmem_copy_4x256b_refresh_layout(), num_warps=4),
+        target=BLACKWELL_TARGET,
+    )
+    ir = anonymize_ir(mod.str_nodebug())
+    assert "tmem_physical_bitcast" in ir
+    assert "32x4xi8" in ir
+    assert "row = [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0], [2, 0]]" in ir
+    assert "col = [[0, 1], [0, 2], [8, 0], [16, 0], [4, 0]]" in ir
 
 
 @gluon.jit
