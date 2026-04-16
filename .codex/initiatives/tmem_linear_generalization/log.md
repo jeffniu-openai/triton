@@ -1,3 +1,43 @@
+## 2026-04-16 14:34 UTC: runtime-matrix compile-time profiling checkpoint
+
+- Interrupted TMEM backend feature work to profile the slow runtime-matrix
+  tests called out by the user.
+- Representative profiled node:
+  `python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep_explicit_variants[rowcol_rotate_reverse_n256_32x32b_splitn-False-propagate_nan0-min]`.
+- Change:
+  - `getTMemLdStRowPlanForType(...)` now only asks the expensive MMAv5 family
+    query planner for nontrivial block-backed TMEM layouts;
+  - `getBackingTMemLdStRowPlan(...)` stops walking descriptor producers after
+    finding a maximal 128-row row plan;
+  - `verifyTMEMOperand(...)` tries query-type/raw-query proofs before support
+    and `TMEMLoadOp::verify()` lets `ld.red` use the reduction verifier as the
+    first full direct-layout proof;
+  - the memdesc register-layout bridge owns explicit non-M64
+    `32x32b_splitn` selection by querying `I32x32b` before the Python split-N
+    finalizer, allowing the value-level fallback to be removed.
+- Profile evidence:
+  - direct compile listener with fresh cache:
+    total compile `2.252s` (`ir_initialization 0.638s`, `ttgir 0.605s`,
+    `llir 0.707s`, `ptx 0.051s`, `cubin 0.250s`);
+  - cold synchronized call `2.256s`, assertion/oracle `0.150s`;
+  - warm synchronized call `0.0002s`, warm assertion `0.0006s`;
+  - exact pytest node: `1 passed in 5.05s`, process wall `7.09s`.
+- Validation:
+  - `make -j8`;
+  - direct Python compile-listener profile above;
+  - exact pytest representative above;
+  - focused guard set excluding the known preexisting MMAv5 higher-rank row:
+    `8 passed in 8.80s`;
+  - clean `origin/codex/tmem` check of the excluded MMAv5 row reproduced the
+    same failure, so it is not introduced by the profiling patch;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - if broader split-4 sweeps are still slow after this patch, profile pytest
+    collection/import and shard balance before reducing coverage.
+
 ## 2026-04-16 01:29 UTC: preserve reshape zero-basis support axes
 
 - Removed `trimTrailingZeroBasesToElementCount(...)` from TMEM reshape/query

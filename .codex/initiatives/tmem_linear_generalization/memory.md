@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Current profiling checkpoint, 2026-04-16 14:34 UTC: interrupted TMEM backend
+  feature work to address runtime-matrix throughput. The worst representative
+  row profiled here is
+  `test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep_explicit_variants[rowcol_rotate_reverse_n256_32x32b_splitn-False-propagate_nan0-min]`.
+  Direct compile-listener timing with a fresh cache on GPU 0 is now
+  `2.252s` total compile (`ir_initialization 0.638s`, `ttgir 0.605s`,
+  `llir 0.707s`, `ptx 0.051s`, `cubin 0.250s`), `2.256s` cold synchronized
+  call, `0.150s` assertion/oracle, and `0.0002s` warm synchronized call. Exact
+  pytest still reports `1 passed in 5.05s` with process wall `7.09s`, so the
+  remaining per-node cost is mostly pytest process/collection/import overhead
+  plus one cold compile, not kernel execution. The performance fix is to keep
+  MMAv5-family row-plan probing only for nontrivial block-backed TMEM layouts,
+  stop descriptor-chain backing-plan walks after the maximum 128-row plan, and
+  avoid duplicate generic `ld/st` verifier proof before `ld.red` proof.
+  Focused non-preexisting guards passed `8 passed in 8.80s`. The MMAv5
+  two-CTA higher-rank index row
+  `test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index[...]`
+  was verified to fail identically on clean `origin/codex/tmem`; keep it
+  classified as preexisting, not caused by this profiling slice.
+
 - Current copy-scheduler frontier reprobe, 2026-04-16 12:04 UTC:
   rehydrated `codex/tmem` at `cb0a8811f` and reran the exact two-CTA
   no-scales `warpx2::02_13` failure with `TRITON_DEBUG_TMEM_QUERY=1`. The

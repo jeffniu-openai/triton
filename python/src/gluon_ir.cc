@@ -2494,11 +2494,6 @@ void init_gluon_ir(py::module &&m) {
                 .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
                 .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
                 .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
-                // The type-based split-N path reuses the 16x32bx2 direct family
-                // and then applies split-N register-basis adjustments in Python.
-                // The handle-aware memdesc query returns the final reg layout
-                // directly, so it must resolve split-N through the same direct
-                // family instead of probing the 32x32b atom.
                 .Case("32x32b_splitn", ttng::TMemAccessAtom::I16x32bx2)
                 .Default(std::nullopt);
         if (atomName != "auto" && !maybeAtom)
@@ -2506,6 +2501,18 @@ void init_gluon_ir(py::module &&m) {
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
+        if (atomName == "32x32b_splitn" &&
+            !(numWarps == 4 && memDescTy.getRank() == 2 &&
+              memDescTy.getShape()[0] == 64 &&
+              memDescTy.getElementTypeBitWidth() == 32 &&
+              !isa<ttng::TensorMemoryScalesEncodingAttr>(
+                  memDescTy.getEncoding()))) {
+          // M64 split-N uses the hardware 16x32bx2 family directly. Other
+          // split-N queries mirror the type-only path: infer an I32x32b
+          // register layout for the descriptor view, then let the frontend
+          // split-N finalizer move the N/2 basis into the register dimension.
+          maybeAtom = ttng::TMemAccessAtom::I32x32b;
+        }
 
         if (atomName == "auto" &&
             isa<ttng::TensorMemoryEncodingAttr>(memDescTy.getEncoding()) &&

@@ -29,6 +29,11 @@ The central conclusion to preserve is:
 - Preserve exact PTX/LLIR opcode checks and runtime oracles.
 - Keep clean negatives only when the final planner can explain why no supported
   ISA schedule realizes the physical projection.
+- 2026-04-16 profiling note: do not respond to slow runtime-matrix sweeps by
+  trimming rows. The profiled `ld.red` representative is now within target
+  (`2.252s` cold compile, sub-millisecond warm execution); if broad sweeps are
+  still too slow, fix shard balance, duration-cache use, pytest
+  collection/import overhead, or new compiler hot spots.
 
 ## Design Invariants
 

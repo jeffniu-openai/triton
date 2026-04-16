@@ -573,7 +573,6 @@ class tensor_memory_descriptor(base_value):
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
         self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
-        splitn_direct_fallback = requested_variant in ("32x32b_splitn", "16x32bx2")
         prefer_type_only_m64_splitn = (
             num_warps == 4
             and requested_variant in ("auto", "32x32b_splitn", "16x32bx2")
@@ -596,33 +595,12 @@ class tensor_memory_descriptor(base_value):
         )
         if requested_variant == "auto" and splitn_auto_layout is not None:
             return splitn_auto_layout
-        layout = None
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
                 self.handle, num_warps, requested_variant
             )
         except Exception as e:
-            if not splitn_direct_fallback:
-                raise ValueError(str(e)) from e
-        if layout is None and splitn_direct_fallback:
-            try:
-                layout = _compute_tmem_reg_layout(
-                    self.dtype,
-                    self.shape,
-                    self.type.alloc_shape,
-                    self.layout,
-                    num_warps,
-                    requested_variant,
-                )
-            except ValueError as e:
-                reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(
-                    self.handle, num_warps, requested_variant
-                )
-                if reason is not None:
-                    raise ValueError(
-                        f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}. {reason}"
-                    ) from e
-                raise ValueError(str(e)) from e
+            raise ValueError(str(e)) from e
         if layout is not None and requested_variant in ("32x32b_splitn", "16x32bx2"):
             layout = _finalize_splitn_tmem_reg_layout(
                 layout,

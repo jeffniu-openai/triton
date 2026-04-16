@@ -1123,9 +1123,10 @@ void TCGen5MMAScaledOp::build(OpBuilder &builder, OperationState &state,
 
 bool TCGen5MMAScaledOp::isAsync() { return getIsAsync(); }
 
-static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
-                                       MemDescType memdesc, Value memdescValue,
-                                       StringRef regName) {
+static LogicalResult
+verifyTMEMOperandPreconditions(Operation *op, RankedTensorType type,
+                               MemDescType memdesc, Value memdescValue,
+                               StringRef regName) {
   if (type.getRank() != 2)
     return op->emitOpError(regName) << " must be a 2D tensor";
   if (!type.getEncoding())
@@ -1147,6 +1148,16 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       diag.attachNote() << unsupportedDescriptorViewError;
     return diag;
   }
+  return success();
+}
+
+static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
+                                       MemDescType memdesc, Value memdescValue,
+                                       StringRef regName) {
+  if (failed(verifyTMEMOperandPreconditions(op, type, memdesc, memdescValue,
+                                            regName)))
+    return failure();
+
   auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
     if (!layout.hasInDim(dim))
       return false;
@@ -1185,6 +1196,29 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   }();
 
   auto maxnreg = getContextualMaxNReg(op);
+  auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
+  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
+    for (MemDescType queryTy : queryTypes) {
+      auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
+      if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
+                                                /*emitError=*/{}, rowPlan))) {
+        return success();
+      }
+    }
+  }
+  std::string rawQueryError;
+  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+          memdescValue, /*preserveNonCanonicalView=*/true, &rawQueryError);
+      succeeded(rawQuery)) {
+    auto rowPlan =
+        getTMemLdStRowPlanForQueryLayout(memdescValue, memdesc, *rawQuery);
+    if (!rowPlan)
+      rowPlan = getBackingTMemLdStRowPlan(memdescValue);
+    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
+                                              /*emitError=*/{}, rowPlan))) {
+      return success();
+    }
+  }
   std::string supportQueryError;
   auto trySupportQuery = [&](const TMemLdStQueryLayout &supportQuery,
                              std::optional<TMemLdStRowPlan> rowPlan) {
@@ -1201,28 +1235,6 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
           getTMemLdStSupportQueryPlan(memdescValue, &supportQueryError)) {
     if (trySupportQuery(supportPlan->query, supportPlan->rowPlan))
       return success();
-  }
-  std::string rawQueryError;
-  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
-          memdescValue, /*preserveNonCanonicalView=*/true, &rawQueryError);
-      succeeded(rawQuery)) {
-    auto rowPlan =
-        getTMemLdStRowPlanForQueryLayout(memdescValue, memdesc, *rawQuery);
-    if (!rowPlan)
-      rowPlan = getBackingTMemLdStRowPlan(memdescValue);
-    if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, *rawQuery, maxnreg,
-                                              /*emitError=*/{}, rowPlan))) {
-      return success();
-    }
-  }
-  auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
-  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret)
-    for (MemDescType queryTy : queryTypes) {
-    auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
-    if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
-                                              /*emitError=*/{}, rowPlan))) {
-      return success();
-    }
   }
 
   std::string standaloneError;
@@ -1333,9 +1345,25 @@ LogicalResult TMEMLoadOp::verify() {
     return emitOpError("source must be a tensor memory buffer.");
   if (!isTensorMemoryEncoding(getSrc().getType().getEncoding()))
     return emitOpError("should use tensor memory encoding.");
-  if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(), getSrc(),
-                               "result")))
+
+  // Validate reduction-related attributes early so reduction loads can use the
+  // reduction verifier as their single direct-layout proof instead of paying
+  // for the generic load/store proof and then recomputing the same TMEM
+  // encoding info for tcgen05.ld.red.
+  auto redOp = getRedOp();
+  bool hasRed = getRed() != nullptr;
+  bool useAbs = getAbs().value_or(false);
+  bool useNaN = getNaN().value_or(false);
+
+  if (redOp) {
+    if (failed(verifyTMEMOperandPreconditions(
+            *this, getType(), getSrc().getType(), getSrc(), "result")))
+      return failure();
+  } else if (failed(verifyTMEMOperand(*this, getType(), getSrc().getType(),
+                                      getSrc(), "result"))) {
     return failure();
+  }
+
   if (isa<TensorMemoryScalesEncodingAttr>(getSrc().getType().getEncoding()) &&
       getSrc().getType().getElementTypeBitWidth() < 32) {
     auto kReg = StringAttr::get(getContext(), "register");
@@ -1346,12 +1374,6 @@ LogicalResult TMEMLoadOp::verify() {
                          "or reshape/permute so TMEM columns stay contiguous");
     }
   }
-
-  // Validate reduction-related attributes
-  auto redOp = getRedOp();
-  bool hasRed = getRed() != nullptr;
-  bool useAbs = getAbs().value_or(false);
-  bool useNaN = getNaN().value_or(false);
 
   // redOp and red result must be consistent
   if (redOp && !hasRed)
@@ -1393,6 +1415,19 @@ LogicalResult TMEMLoadOp::verify() {
       llvm::raw_string_ostream os(encodingDetails);
       ScopedDiagnosticHandler handler(getContext(),
                                       [&](Diagnostic &diag) { diag.print(os); });
+      for (MemDescType queryTy : queryTypes) {
+        auto rowPlan = getTMemLdStRowPlanForQuery(getSrc(), queryTy);
+        if (auto maybeInfo = computeTMemLdStEncodingInfo(
+                regTy, queryTy, maxnreg,
+                [&]() { return mlir::emitError(getOperation()->getLoc()); },
+                rowPlan);
+            succeeded(maybeInfo) &&
+            isTMemLdStReductionCompatible(*maybeInfo)) {
+          return maybeInfo;
+        }
+        if (!encodingDetails.empty())
+          break;
+      }
       std::string supportError;
       if (auto supportPlan = getTMemLdStSupportQueryPlan(getSrc(),
                                                          &supportError)) {

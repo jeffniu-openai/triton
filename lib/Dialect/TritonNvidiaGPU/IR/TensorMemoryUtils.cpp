@@ -2064,6 +2064,12 @@ getFullShapeMMAv5FamilyQueryLayout(MemDescType memTy) {
   return std::nullopt;
 }
 
+static bool hasNonTrivialTMemBlockDim(MemDescType memTy) {
+  auto layout = toLinearLayout(memTy);
+  auto kBlock = StringAttr::get(memTy.getContext(), "block");
+  return layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) > 1;
+}
+
 static FailureOr<TMemLdStQueryLayout>
 inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
                                        bool preserveNonCanonicalView,
@@ -2506,9 +2512,10 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   }
   if (auto rootPlan = getFullShapeM64TMemRowPlan(memTy))
     return rootPlan;
-  if (auto familyQuery = getFullShapeMMAv5FamilyQueryLayout(memTy))
-    if (auto familyPlan = getTMemLdStRowPlan(familyQuery->layout))
-      return familyPlan;
+  if (hasNonTrivialTMemBlockDim(memTy))
+    if (auto familyQuery = getFullShapeMMAv5FamilyQueryLayout(memTy))
+      if (auto familyPlan = getTMemLdStRowPlan(familyQuery->layout))
+        return familyPlan;
 
   std::string error;
   auto maybeLayout =
@@ -2611,6 +2618,8 @@ std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc) {
   Value cur = memDesc;
   while (cur) {
     consider(cur);
+    if (best && best->rowSpan >= largestTmemLoadStore)
+      break;
     if (auto forwarded = getTMemForwardingSource(cur)) {
       cur = forwarded;
       continue;
@@ -2821,10 +2830,9 @@ static bool shouldPreferBackingRowPlanForPureOuterIndexView(
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
                                                           MemDescType queryTy) {
   auto queryPlan = getTMemLdStRowPlanForType(queryTy);
-  auto backingPlan = memDesc ? getBackingTMemLdStRowPlan(memDesc)
-                             : std::optional<TMemLdStRowPlan>{};
   if (!memDesc)
     return queryPlan;
+  auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
   if (!queryPlan)
     return backingPlan;
 

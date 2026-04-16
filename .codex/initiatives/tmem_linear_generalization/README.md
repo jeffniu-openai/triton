@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 14:34 UTC: interrupted backend-completeness work to profile the
+  slow `ld.red` runtime-matrix tests. The representative
+  `rowcol_rotate_reverse_n256_32x32b_splitn` cold compile is now compiler-bound
+  but within target: direct compile listener reports total compile `2.252s`
+  (`ir_initialization 0.638s`, `ttgir 0.605s`, `llir 0.707s`, `ptx 0.051s`,
+  `cubin 0.250s`), cold synchronized call `2.256s`, assertion `0.150s`, and
+  warm call `0.0002s`. Pytest exact-node overhead remains visible
+  (`1 passed in 5.05s`, process wall `7.09s`). The optimization removes the
+  expensive non-block MMAv5-family row-plan probe from arbitrary linear
+  `ld.red` views, stops backing-plan walks after a maximal 128-row plan, and
+  avoids duplicate generic/reduction verifier proofs. A focused guard set
+  excluding one preexisting MMAv5 higher-rank red row passed `8` cases; the
+  excluded MMAv5 row fails the same way on clean `origin/codex/tmem`.
 - 2026-04-16 12:04 UTC: rehydrated the copy frontiers after the M64 backend
   checkpoint. Two-CTA no-scales `warpx2::02_13` still fails because row bit 32
   is a high source-column selector (`source offset 1`) that current row
