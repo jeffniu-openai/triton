@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Current repeated-N32 scaled-MMAv5 checkpoint, 2026-04-16 09:49 UTC: a
+  temporary probe removed the direct block-scaled MMAv5 repeated-`N=32`
+  guard from both `TCGen5MMAScaledOp::verify()` and `convertScaledMMA(...)`.
+  The representative mxfp8/mxfp8 `M=N=128,K=128,tile_n=32` case then
+  compiled and emitted 16 scaled MMAv5 instructions, but the runtime oracle
+  was wrong (`12274 / 16384` mismatches, max absolute difference about
+  `603.866`). The source edits were reverted and the repeated-N32
+  clean-negative selector passed (`10 passed, 11123 deselected`). Treat this
+  as a real matrix-B scale-fragment addressing boundary, not a stale verifier
+  floor, until the backend has a principled sub-64-column B-scale fragment
+  schedule.
+
 - Current scales-copy scheduler probe checkpoint, 2026-04-16 09:43 UTC:
   source-column preflight relaxation and transposed descriptor orientation are
   not viable support paths for the remaining scales `tcgen05.copy.warpx4`

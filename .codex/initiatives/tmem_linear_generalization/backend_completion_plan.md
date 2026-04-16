@@ -1139,6 +1139,11 @@ Progress:
   layout can be forced to compile, but representative scaled format pairs all
   produce wrong output. Keep this as a true matrix-B scale-fragment addressing
   gap until the scale descriptor model can express sub-64-column B fragments.
+- 2026-04-16 09:49 UTC: the repeated-`N=32` probe was repeated on the current
+  backend by bypassing both live guard sites. The mxfp8/mxfp8 representative
+  still compiled but returned wrong results (`12274 / 16384` mismatches),
+  while the restored clean-negative selector passed (`10 passed`). This
+  boundary remains current after the copy/reduction cleanups.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 09:49 UTC: repeated-`N=32` direct block-scaled MMAv5 was
+  re-probed by temporarily removing both verifier and lowering guards. The
+  mxfp8/mxfp8 `M=N=128,K=128,tile_n=32` representative compiled and emitted
+  16 `tcgen05.mma...block_scale` instructions, but runtime output was wrong
+  (`12274 / 16384` mismatched elements, max absolute difference about
+  `603.866`). Restoring the guard and rerunning the full repeated-N32
+  clean-negative selector passed (`10 passed`). Keep this as a true
+  matrix-B scale-fragment addressing boundary unless a future design adds a
+  sub-64-column B-scale fragment schedule.
 - 2026-04-16 09:43 UTC: two no-code scales-copy support probes were
   completed and reverted. Relaxing only the non-contiguous source-column
   preflight did not promote the scales `warpx2`-like probe family: one case

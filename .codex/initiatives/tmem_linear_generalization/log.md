@@ -19658,3 +19658,38 @@ Open after this slice:
   - checkpoint this durable finding;
   - continue with a support-bearing planner slice outside descriptor
     orientation / preflight relaxation.
+
+## 2026-04-16 09:49 UTC: repeated-N32 scaled MMAv5 guard reprobe
+
+- Starting point: `codex/tmem` at `796e59b9e`.
+- Probe:
+  - temporarily bypassed
+    `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)` in both
+    `TCGen5MMAScaledOp::verify()` and `convertScaledMMA(...)`;
+  - rebuilt with `make -j8`;
+  - ran a direct mxfp8/mxfp8 `M=N=128,K=128,tile_n=32` runtime probe through
+    `tmem_mma_scaled_layout_format_kernel`.
+- Finding:
+  - with both guards bypassed the kernel compiled and emitted 16
+    `tcgen05.mma.cta_group::1.kind::mxf8f6f4.block_scale.scale_vec::1X`
+    instructions;
+  - runtime output did not match `a_ref @ b_ref.T`
+    (`12274 / 16384` mismatched elements, max absolute difference about
+    `603.866`);
+  - the current diagnostic is therefore guarding a true matrix-B
+    scale-fragment addressing boundary, not just stale compile-time coverage.
+- Cleanup / validation:
+  - reverted both temporary source edits;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-n32-clean-after-probe
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_acc_tile_permuted_32_repeated_n32'`
+    (`10 passed, 11123 deselected`).
+- Next:
+  - do not remove the repeated-N32 guard again without a new sub-64-column
+    matrix-B scale-fragment scheduling design;
+  - continue on a support-bearing backend frontier such as reduction
+    packet-order equivalence, copy source-message scheduling, destination
+    masks, or `tcgen05.cp.4x256b` ISA coverage.
