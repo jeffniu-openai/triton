@@ -1306,6 +1306,36 @@ inferTMemIndexQueryLayout(ArrayRef<int64_t> srcShape, ArrayRef<int64_t> dstShape
         remapTMemLdStQueryOrigin(srcQuery, ll, /*deltaCoords=*/{})};
   }
 
+  if (static_cast<size_t>(layoutRank) == srcShape.size() &&
+      dstShape.size() + 1 == srcShape.size() &&
+      srcShape.drop_front() == dstShape) {
+    // A leading index over a dimension that is explicitly present in the TMEM
+    // linear layout is also materialized by MemDescIndexOpConversion as a base
+    // advance.  The query layout should therefore project away that indexed
+    // logical dimension and erase the physical bases that only selected among
+    // the outer buffers, without adding the constant index to the query origin.
+    SmallVector<int64_t> unitDstShape(srcShape.begin(), srcShape.end());
+    unitDstShape.front() = 1;
+    SmallVector<int32_t> zeroOffsets(srcShape.size(), 0);
+    std::string localError;
+    if (auto leadingUnit = tryMakeLeadingUnitSubviewLayout(
+            ll, srcShape, unitDstShape, zeroOffsets, srcQuery.origin,
+            &localError)) {
+      auto outDimNames =
+          standardOutDimNames(ctx, leadingUnit->layout.getNumOutDims());
+      SmallVector<std::pair<StringAttr, int32_t>> outDims;
+      outDims.reserve(leadingUnit->layout.getNumOutDims());
+      for (auto [idx, size] :
+           llvm::enumerate(leadingUnit->layout.getOutDimSizes())) {
+        outDims.emplace_back(outDimNames[idx], static_cast<int32_t>(size));
+      }
+      return TMemLdStQueryLayout{
+          LinearLayout(leadingUnit->layout.getBases(), std::move(outDims),
+                       leadingUnit->layout.isSurjective()),
+          srcQuery.twoCTAs, std::move(leadingUnit->origin)};
+    }
+  }
+
   if (layoutRank == 0) {
     if (error)
       *error = "tensor memory layout rank must be greater than zero";
@@ -2590,7 +2620,12 @@ static bool isPureOuterTMemIndexView(Value memDesc) {
         cast<LayoutEncodingTrait>(curTy.getEncoding()).getRank());
     auto srcLayoutRank = static_cast<size_t>(
         cast<LayoutEncodingTrait>(srcTy.getEncoding()).getRank());
-    if (curLayoutRank != layoutRank || srcLayoutRank != layoutRank ||
+    int64_t indexedRankDelta = srcTy.getRank() - curTy.getRank();
+    bool srcLayoutRankCompatible =
+        srcLayoutRank == curLayoutRank ||
+        (indexedRankDelta > 0 &&
+         srcLayoutRank == curLayoutRank + static_cast<size_t>(indexedRankDelta));
+    if (curLayoutRank != layoutRank || !srcLayoutRankCompatible ||
         srcTy.getRank() <= static_cast<int64_t>(layoutRank) ||
         !llvm::equal(srcTy.getShape().take_back(layoutRank),
                      curTy.getShape().take_back(layoutRank))) {

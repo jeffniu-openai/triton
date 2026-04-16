@@ -18700,3 +18700,52 @@ Open after this slice:
     (`14 passed, 10992 deselected in 7.59s`);
   - neighboring `cp_no_scales_warpx2 and not 02_13_twocta` selector
     (`64 passed, 10942 deselected in 197.89s`).
+
+## 2026-04-16 04:27 UTC: two-CTA subword copy and leading-index projection
+
+- Broadened no-scales two-CTA copy coverage to subword linear layouts:
+  - dense two-CTA copy rows now include f16/bf16/i16/i8 for valid swizzle byte
+    spans;
+  - leading-indexed two-CTA descriptor-view rows now include the same subword
+    dtype family for `N in {64,128}`;
+  - the copy kernels construct `NVMMASharedLayout` with the actual input
+    element bitwidth instead of hard-coded 32-bit shared elements.
+- Fixed the backend query inference that blocked i8 leading-indexed views:
+  - `inferTMemIndexQueryLayout(...)` recognizes an exact leading-index
+    projection when the source layout rank includes the indexed outer
+    dimension and the destination shape is the source shape without that
+    leading dimension;
+  - it builds a leading-unit subview layout, projects away the indexed logical
+    dimension, renames output dimensions back to standard `dim*`, and leaves
+    the constant TMEM base advance to `MemDescIndexOpConversion`;
+  - `isPureOuterTMemIndexView(...)` accepts the corresponding source layout
+    rank delta instead of requiring source and current layout ranks to match.
+- Probe result:
+  - temporarily adding subword two-CTA subslice/column-slice rows showed the
+    copy planner reaches the expected `tcgen05.cp.cta_group::2.128x256b`
+    schedule, but readback fails later at `view.load(reg_layout)`;
+  - the exact failing class reports `unsupported broadcasted TMEM lowering for
+    this view`, so the remaining gap is load/support-query materialization for
+    the column-slice descriptor view, not the copy atom itself.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-twocta-subword-root3
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_codegen`
+    (`91 passed in 92.32s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-twocta-subword-index6
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_linear_indexed_view`
+    (`35 passed in 28.77s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-twocta-subslice-existing
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_linear_subslice_view`
+    (`12 passed in 14.44s`);
+  - direct `triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `git diff --check`.

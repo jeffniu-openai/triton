@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 04:27 UTC: no-scales two-CTA subword dense and leading-indexed
+  descriptor-view copy coverage is now enabled for linear layouts using the
+  actual shared element bitwidth. Leading TMEM index query inference now has an
+  exact projection path for layouts whose explicit outer dimension is consumed
+  by `MemDescIndexOpConversion`, and pure outer index recognition accepts the
+  corresponding source layout rank delta. Validation: `make -j8`, py-compile,
+  two-CTA dense subword copy (`91 passed`), two-CTA indexed subword copy
+  (`35 passed`), existing two-CTA subslice copy (`12 passed`), direct
+  `invalid.mlir` verifier, and `git diff --check`. Parked next gap: subword
+  two-CTA column-slice/subslice copy reaches the copy atom but readback still
+  fails in broadcasted `tmem_load` lowering, so the next backend slice is the
+  exact load/support-query model for that descriptor view.
 - 2026-04-16 04:09 UTC: copy source-row projection failures now have a typed
   `TMemCopySourceRowProjectionFailure` carrier, matching the existing typed
   instruction-column failure path. The two-CTA `warpx2::02_13` known-gap

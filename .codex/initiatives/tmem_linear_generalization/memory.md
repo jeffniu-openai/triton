@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Current two-CTA subword copy/index projection checkpoint, 2026-04-16 04:27
+  UTC: no-scales two-CTA dense and leading-indexed descriptor-view copy now use
+  the actual input element bitwidth when constructing the shared-memory
+  descriptor layout, allowing f16/bf16/i16/i8 linear rows to participate in the
+  same `tcgen05.cp.cta_group::2.128x256b` planner path as f32/i32 when the
+  shared swizzle span is physically valid. `inferTMemIndexQueryLayout(...)`
+  also has an exact leading-index projection path for the case where the source
+  TMEM linear layout explicitly includes the indexed outer dimension:
+  `MemDescIndexOpConversion` advances the base pointer for the selected
+  buffer, while the query layout projects away that logical dimension and
+  erases its physical bases. `isPureOuterTMemIndexView(...)` now accepts the
+  matching source-layout-rank delta instead of rejecting these rank-complete
+  source layouts before the exact projection can run. Validation passed:
+  `make -j8`, py-compile of `test_tmem_runtime_matrix.py`, dense two-CTA
+  subword copy (`91 passed`), leading-indexed two-CTA subword copy
+  (`35 passed`), existing two-CTA subslice copy (`12 passed`), direct
+  `invalid.mlir` verifier, and `git diff --check`. Important parked gap:
+  adding subword two-CTA column-slice/subslice rows reaches the correct copy
+  atom but fails at `view.load(reg_layout)` with the broadcasted TMEM load
+  diagnostic; do not classify that as a copy failure. The next support-bearing
+  work should make load/support-query lowering exact for that descriptor view
+  rather than adding a value-selection workaround.
+
 - Current copy source-row failure carrier checkpoint, 2026-04-16 04:09 UTC:
   `getTMemCopySourceRowProjectionPlan(...)` now optionally reports a typed
   `TMemCopySourceRowProjectionFailure`, including missing dimension/stride

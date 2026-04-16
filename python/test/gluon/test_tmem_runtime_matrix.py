@@ -1577,7 +1577,7 @@ def tmem_copy_no_scales_twocta_linear_indexed_view_kernel(
 
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
         swizzle_byte_width=swizzle,
-        element_bitwidth=32,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
         rank=2,
         cga_layout=cga_layout,
     )
@@ -1663,7 +1663,9 @@ def tmem_copy_no_scales_linear_subslice_view_kernel(in_ptr, out_ptr, parent_layo
     value = ttgl.load(in_ptr + offs)
 
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
-        swizzle_byte_width=swizzle, element_bitwidth=32, rank=2
+        swizzle_byte_width=swizzle,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
+        rank=2,
     )
     smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
 
@@ -1694,7 +1696,7 @@ def tmem_copy_no_scales_twocta_linear_subslice_view_kernel(in_ptr, out_ptr, pare
 
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
         swizzle_byte_width=swizzle,
-        element_bitwidth=32,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
         rank=2,
         cga_layout=cga_layout,
     )
@@ -2288,7 +2290,7 @@ def tmem_copy_no_scales_twocta_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, c
 
     smem_layout: ttgl.constexpr = ttgl.NVMMASharedLayout(
         swizzle_byte_width=swizzle,
-        element_bitwidth=32,
+        element_bitwidth=in_ptr.dtype.element_ty.primitive_bitwidth,
         rank=2,
         cga_layout=cga_layout,
     )
@@ -4139,11 +4141,39 @@ CP_LINEAR_INDEXED_VIEW_CASES = [
     ],
 ]
 
+CP_NO_SCALES_SUBWORD_DTYPES = (
+    ("f16", torch.float16),
+    ("bf16", torch.bfloat16),
+    ("i16", torch.int16),
+    ("i8", torch.int8),
+)
+
+CP_NO_SCALES_SUBWORD_BITWIDTHS = {
+    "f16": 16,
+    "bf16": 16,
+    "i16": 16,
+    "i8": 8,
+}
+
 CP_TWOCTA_LINEAR_INDEXED_VIEW_CASES = [
     (dtype_name, torch_dtype, 256, n, swizzle, expected_count, "tcgen05.cp.cta_group::2.128x256b")
     for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
     for n, expected_count in ((64, 8), (128, 16))
     for swizzle in (32, 64, 128)
+] + [
+    (
+        dtype_name,
+        torch_dtype,
+        256,
+        n,
+        swizzle,
+        n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
+        "tcgen05.cp.cta_group::2.128x256b",
+    )
+    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
+    for n in (64, 128)
+    for swizzle in (32, 64, 128)
+    if n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 8 >= swizzle
 ]
 
 CP_LINEAR_SUBSLICE_VIEW_CASES = [
@@ -4184,21 +4214,20 @@ CP_NO_SCALES_TWOCTA_CASES = [
             (256, 128, 32),
         ),
     )
+] + [
+    (
+        "linear",
+        dtype_name,
+        torch_dtype,
+        n,
+        swizzle,
+        n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
+    )
+    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
+    for n in (64, 128, 256)
+    for swizzle in (32, 64, 128)
+    if n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 8 >= swizzle
 ]
-
-CP_NO_SCALES_SUBWORD_DTYPES = (
-    ("f16", torch.float16),
-    ("bf16", torch.bfloat16),
-    ("i16", torch.int16),
-    ("i8", torch.int8),
-)
-
-CP_NO_SCALES_SUBWORD_BITWIDTHS = {
-    "f16": 16,
-    "bf16": 16,
-    "i16": 16,
-    "i8": 8,
-}
 
 CP_LINEAR_NO_SCALES_SUBWORD_CASES = [
     (
