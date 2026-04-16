@@ -9182,6 +9182,19 @@ getTMemCopySourceRowSplitRequirement(
   return requirement;
 }
 
+std::optional<TMemCopyDestinationMaskRequirement>
+getTMemCopyDestinationMaskRequirement(
+    const TMemCopySourceRowSplitRequirement &requirement) {
+  if (requirement.selectedRowRun == 0 || requirement.rowSelectionPeriod == 0)
+    return std::nullopt;
+  return TMemCopyDestinationMaskRequirement{
+      /*axis=*/TMemCopyDestinationMaskAxis::Row,
+      /*instructionRows=*/requirement.instructionRows,
+      /*instructionColumns=*/requirement.instructionColumns,
+      /*selectedRun=*/requirement.selectedRowRun,
+      /*selectionPeriod=*/requirement.rowSelectionPeriod};
+}
+
 static std::optional<TMemCopySupportResult>
 getTMemCopySourceRowSplitScheduleSupport(
     MemDescType srcTy, const LinearLayout &cvt, const TMemCopyPlan &plan,
@@ -9192,6 +9205,8 @@ getTMemCopySourceRowSplitScheduleSupport(
       getTMemCopySourceRowSplitRequirement(failure, message);
   if (!splitRequirement)
     return std::nullopt;
+  auto maskRequirement =
+      getTMemCopyDestinationMaskRequirement(*splitRequirement);
 
   std::string reason;
   llvm::raw_string_ostream os(reason);
@@ -9203,13 +9218,18 @@ getTMemCopySourceRowSplitScheduleSupport(
         "logical row bit "
      << splitRequirement->logicalRowBit << " to select shared offset "
      << splitRequirement->actualOffset << " instead of affine row-stride "
-     << splitRequirement->expectedOffset << " for "
-     << splitRequirement->selectedRowRun
-     << "-row destination runs every "
-     << splitRequirement->rowSelectionPeriod << " rows";
-  if (splitRequirement->instructionRows > 0) {
+     << splitRequirement->expectedOffset << " for ";
+  if (maskRequirement) {
+    os << maskRequirement->selectedRun << "-row destination runs every "
+       << maskRequirement->selectionPeriod << " rows";
+  } else {
+    os << splitRequirement->selectedRowRun
+       << "-row destination runs every "
+       << splitRequirement->rowSelectionPeriod << " rows";
+  }
+  if (maskRequirement && maskRequirement->instructionRows > 0) {
     os << " within the "
-       << splitRequirement->instructionRows
+       << maskRequirement->instructionRows
        << "-row copy-instruction footprint";
   }
   os << ". Current tcgen05.copy scheduling can change the shared descriptor "
@@ -9800,6 +9820,20 @@ getTMemCopyDescriptorRowSplitRequirement(
   return requirement;
 }
 
+std::optional<TMemCopyDestinationMaskRequirement>
+getTMemCopyDestinationMaskRequirement(
+    const TMemCopyDescriptorRowSplitRequirement &requirement) {
+  if (requirement.selectedColumnRun == 0 ||
+      requirement.columnSelectionPeriod == 0)
+    return std::nullopt;
+  return TMemCopyDestinationMaskRequirement{
+      /*axis=*/TMemCopyDestinationMaskAxis::Column,
+      /*instructionRows=*/requirement.instructionRows,
+      /*instructionColumns=*/requirement.instructionColumns,
+      /*selectedRun=*/requirement.selectedColumnRun,
+      /*selectionPeriod=*/requirement.columnSelectionPeriod};
+}
+
 std::optional<TMemCopyPackedLaneRequirement> getTMemCopyPackedLaneRequirement(
     const TMemCopyInstructionColumnProjectionFailure &failure) {
   if (failure.kind !=
@@ -9913,14 +9947,16 @@ getTMemCopyDescriptorRowSplitScheduleSupport(
      << " descriptor message " << messageIdx
      << " has an unsupported instruction-column projection. "
      << instructionProjectionError;
-  if (splitRequirement->selectedColumnRun > 0 &&
-      splitRequirement->selectedColumnRun <
-          splitRequirement->instructionColumns) {
+  auto maskRequirement =
+      getTMemCopyDestinationMaskRequirement(*splitRequirement);
+  if (maskRequirement &&
+      maskRequirement->axis == TMemCopyDestinationMaskAxis::Column &&
+      maskRequirement->selectedRun < maskRequirement->instructionColumns) {
     os << " The derived descriptor-row split would need to update only "
-       << splitRequirement->selectedColumnRun << " of every "
-       << splitRequirement->columnSelectionPeriod
+       << maskRequirement->selectedRun << " of every "
+       << maskRequirement->selectionPeriod
        << " destination columns, but this copy atom writes the full "
-       << splitRequirement->instructionColumns
+       << maskRequirement->instructionColumns
        << "-column destination footprint for each descriptor row. A schedule "
           "with separate descriptor rows for the split would therefore "
           "overwrite columns owned by the complementary descriptor row unless "

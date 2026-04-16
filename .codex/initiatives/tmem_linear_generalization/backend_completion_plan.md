@@ -271,6 +271,13 @@ Progress:
   instruction-schedule requirement plus the existing direct-seed probe
   evidence, so future support work can consume structured schedule data
   instead of a known-gap string.
+- 2026-04-16 21:58 UTC: added `TMemCopyDestinationMaskRequirement` as the
+  shared scheduler consequence of those split requirements. Descriptor-row
+  splits now derive a column-mask requirement, and source-row splits derive a
+  row-mask requirement. This keeps the scales `warpx4` descriptor-view gap and
+  no-scales `warpx2` row-selected source-offset gap on one planner concept:
+  the current public atom writes a full destination footprint while the split
+  only owns selected rows or columns.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

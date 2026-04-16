@@ -20333,3 +20333,22 @@ Open after this slice:
   - this is not a support promotion. Two-CTA `warpx2::02_13` still needs a
     proved cta-group::2 row-selected source-offset schedule or a true ISA mask
     / partitioned atom before it can become positive.
+
+## 2026-04-16 21:58 UTC: copy destination-mask requirement
+
+- Starting point: `codex/tmem` at `ba0a4c017`.
+- Change:
+  - added `TMemCopyDestinationMaskRequirement` as a shared scheduler carrier
+    for split schedules that need row or column destination masking;
+  - connected descriptor-row split requirements to column-mask requirements;
+  - connected source-row split requirements to row-mask requirements.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file ... --verify-diagnostics` on
+    `test/TritonNvidiaGPU/invalid.mlir`;
+  - focused source-row/scales split selector passed
+    (`15 passed, 1560 deselected in 6.15s`);
+  - `git diff --check`.
+- Remaining note:
+  - support still requires a non-overwriting destination schedule, narrower
+    atom, source format with matching semantics, or explicit destination mask.

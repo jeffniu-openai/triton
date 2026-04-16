@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 21:58 UTC: factored the common scheduler consequence of the
+  scales descriptor-row split and no-scales source-row split into
+  `TMemCopyDestinationMaskRequirement`. Descriptor-row column splits derive a
+  column-mask requirement; source-row selected-offset splits derive a row-mask
+  requirement. This is behavior-preserving but gives the next copy scheduler
+  one carrier for "the public atom writes more destination rows/columns than
+  this split is allowed to update." Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused source-row/scales split selector
+  (`15 passed, 1560 deselected`), and `git diff --check`.
 - 2026-04-16 21:52 UTC: resumed Phase 2 copy-planner generalization after the
   runtime-matrix budget work. The two-CTA no-scales `warpx2::02_13` row-bit-5
   failure is now represented as a typed

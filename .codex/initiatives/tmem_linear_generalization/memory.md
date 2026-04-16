@@ -11464,3 +11464,21 @@ rejection, not rescue
     'cp_no_scales_warpx2_02_13_twocta or cp_no_scales_warpx2_subword or
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
+
+## Latest: 2026-04-16 21:58 UTC copy destination-mask requirement checkpoint
+
+- Follow-up Phase 2 planner cleanup:
+  - introduced `TMemCopyDestinationMaskRequirement` with row/column mask axes;
+  - descriptor-row split requirements now derive a column-mask requirement;
+  - source-row split requirements now derive a row-mask requirement.
+- This does not promote support. It makes the common scheduler blocker explicit:
+  the public `tcgen05.copy` atom writes a full destination footprint, while
+  both hard split classes need to update only selected rows or columns inside
+  that footprint.
+- Validation:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - focused selector:
+    `cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta` (`15 passed, 1560 deselected`);
+  - `git diff --check`.
