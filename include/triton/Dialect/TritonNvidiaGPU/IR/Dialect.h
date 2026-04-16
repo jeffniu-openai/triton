@@ -223,6 +223,13 @@ struct MMAv5AccumulatorLayoutInfo {
   bool interleavedM64;
 };
 
+struct MMAv5ScaledRepeatedN32ScaleFragmentRequirement {
+  Attribute accumulatorEncoding;
+  unsigned instrSizeN;
+  unsigned ctaColumns;
+  unsigned nInstructionCount;
+};
+
 std::optional<MMAv5LhsLayoutInfo>
 getMMAv5LhsLayoutInfo(gpu::MemDescType memDescType);
 
@@ -231,6 +238,10 @@ getMMAv5AccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
 std::optional<MMAv5AccumulatorLayoutInfo>
 getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
+
+std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
+getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
+    gpu::MemDescType memDescType);
 
 std::optional<std::string>
 getMMAv5ScaledRepeatedN32ScaleFragmentError(gpu::MemDescType memDescType);

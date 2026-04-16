@@ -20397,3 +20397,25 @@ Open after this slice:
   - support still requires real row-anchor rematerialization, packet-base /
     per-message offset decomposition, or explicit read/modify/write or mask
     semantics. This checkpoint only aligns the requirement layer.
+
+## 2026-04-16 23:59 UTC: typed scaled-MMAv5 repeated-N32 requirement
+
+- Starting point: `codex/tmem` at `7ed88f08d`.
+- Change:
+  - introduced `MMAv5ScaledRepeatedN32ScaleFragmentRequirement`;
+  - refactored `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)` to format the
+    typed requirement while keeping verifier/lowering behavior unchanged;
+  - exposed the accumulator encoding, selected N instruction size, CTA N
+    columns, and repeated-N instruction count for future scale-fragment support
+    work.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file ... --verify-diagnostics` on
+    `test/TritonNvidiaGPU/invalid.mlir`;
+  - focused scaled-MMAv5 selector passed
+    (`21 passed, 1554 deselected in 5.44s`);
+  - `git diff --check`.
+- Remaining note:
+  - this still does not promote repeated-`N=32` scaled MMAv5. Public
+    tensor-memory scales expose matrix-B scale fragments at 64-column alignment,
+    so support needs a real B-scale fragment representation.

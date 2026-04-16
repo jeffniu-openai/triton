@@ -1241,8 +1241,8 @@ getMMAv5ScaledAccumulatorLayoutInfo(MemDescType memDescType) {
                                            planMMAv5ScaledAccumulatorFamily);
 }
 
-std::optional<std::string>
-getMMAv5ScaledRepeatedN32ScaleFragmentError(MemDescType memDescType) {
+std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
+getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
   auto info = getMMAv5ScaledAccumulatorLayoutInfo(memDescType);
   if (!info)
     return std::nullopt;
@@ -1259,16 +1259,35 @@ getMMAv5ScaledRepeatedN32ScaleFragmentError(MemDescType memDescType) {
     return std::nullopt;
   }
 
+  return MMAv5ScaledRepeatedN32ScaleFragmentRequirement{
+      /*accumulatorEncoding=*/memDescType.getEncoding(),
+      /*instrSizeN=*/instrSizeN,
+      /*ctaColumns=*/static_cast<unsigned>(ctaShape[1]),
+      /*nInstructionCount=*/static_cast<unsigned>(
+          (ctaShape[1] + instrSizeN - 1) / instrSizeN)};
+}
+
+static std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
   std::string message;
   llvm::raw_string_ostream os(message);
   os << "direct block-scaled MMAv5 does not support repeated N=32 "
         "instructions along N for "
-     << memDescType.getEncoding()
+     << requirement.accumulatorEncoding
      << ". The public tensor-memory scales layout only exposes matrix-B scale "
         "fragments at 64-column alignment, so layouts that would need "
         "multiple N=32 scaled instructions must be reshaped to a larger "
         "directly supported MMAv5 tile.";
   return os.str();
+}
+
+std::optional<std::string>
+getMMAv5ScaledRepeatedN32ScaleFragmentError(MemDescType memDescType) {
+  auto requirement =
+      getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(memDescType);
+  if (!requirement)
+    return std::nullopt;
+  return getMMAv5ScaledRepeatedN32ScaleFragmentError(*requirement);
 }
 
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,

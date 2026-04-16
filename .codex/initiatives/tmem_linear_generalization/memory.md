@@ -11465,7 +11465,32 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-16 23:56 UTC ld/st packet-footprint requirement checkpoint
+## Latest: 2026-04-16 23:59 UTC scaled-MMAv5 repeated-N32 requirement checkpoint
+
+- Phase 5 scaled-MMAv5 cleanup:
+  - added `MMAv5ScaledRepeatedN32ScaleFragmentRequirement` as a typed carrier
+    for the repeated-`N=32` matrix-B scale-fragment boundary;
+  - the existing `getMMAv5ScaledRepeatedN32ScaleFragmentError(...)` wrapper now
+    formats that requirement, preserving verifier and lowering behavior;
+  - the requirement records the accumulator encoding, selected instruction
+    `N=32`, CTA N column count, and repeated-N instruction count.
+- Behavior/support boundary is unchanged:
+  - repeated `N=32` scaled-MMAv5 remains clean unsupported because the current
+    public tensor-memory scales layout exposes matrix-B scale fragments at
+    64-column alignment;
+  - future support must add a real B-scale fragment planner/storage contract,
+    not another verifier guard lift or address-formula tweak.
+- Validation:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - focused selector:
+    `mma_scaled_minimal or
+    mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+    mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported`
+    (`21 passed, 1554 deselected`);
+  - `git diff --check`.
+
+## Previous: 2026-04-16 23:56 UTC ld/st packet-footprint requirement checkpoint
 
 - Phase 4 load/store cleanup:
   - added `TMemLdStPacketFootprintRequirement` and a shared formatter for

@@ -1256,6 +1256,12 @@ Progress:
   still compiled but returned wrong results (`12274 / 16384` mismatches),
   while the restored clean-negative selector passed (`10 passed`). This
   boundary remains current after the copy/reduction cleanups.
+- 2026-04-16 23:59 UTC: the repeated-`N=32` scaled-MMAv5 boundary is now a
+  typed `MMAv5ScaledRepeatedN32ScaleFragmentRequirement` instead of only a
+  diagnostic string. Verifier and lowering still consume the existing error
+  wrapper, but future support work can use the structured accumulator encoding,
+  selected N instruction size, CTA N columns, and repeated-N instruction count
+  when building a real B-scale fragment planner.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

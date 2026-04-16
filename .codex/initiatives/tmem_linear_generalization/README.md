@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 23:59 UTC: moved the scaled-MMAv5 repeated-`N=32`
+  matrix-B scale-fragment boundary from a string-only helper to a typed
+  `MMAv5ScaledRepeatedN32ScaleFragmentRequirement`. Verifier and lowering still
+  consume the existing diagnostic wrapper, so support is unchanged, but future
+  support work can now reason about accumulator encoding, selected N
+  instruction size, CTA N columns, and repeated-N instruction count directly.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, focused
+  scaled-MMAv5 repeated-N32 plus positive selector
+  (`21 passed, 1554 deselected`), and `git diff --check`.
 - 2026-04-16 23:56 UTC: started the adjacent Phase 4 `ld/st`
   packet-footprint cleanup. The direct load/store clean negatives for missing
   descriptor-view row anchors, lifted row-half origins, raw 4x256b refresh
