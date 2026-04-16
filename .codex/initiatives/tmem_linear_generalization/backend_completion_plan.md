@@ -262,6 +262,15 @@ Progress:
   formats and do not provide a destination-column mask. Treat both as
   source-message / destination-footprint modeling tasks, not frontend fallback
   cleanup.
+- 2026-04-16 21:52 UTC: added the source-row counterpart to the typed schedule
+  requirements. `TMemCopySourceRowSplitRequirement` now derives row-selected
+  source-offset facts from non-affine source-row projection failures:
+  selected row run, row selection period, actual shared offset, expected
+  affine offset, source row stride, and instruction footprint. The two-CTA
+  no-scales `warpx2::02_13` gap is now reported as this generic
+  instruction-schedule requirement plus the existing direct-seed probe
+  evidence, so future support work can consume structured schedule data
+  instead of a known-gap string.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

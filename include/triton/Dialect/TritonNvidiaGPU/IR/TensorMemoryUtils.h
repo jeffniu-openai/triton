@@ -192,6 +192,17 @@ struct TMemCopySourceRowProjectionFailure {
   int32_t sourceRowStride = 0;
 };
 
+struct TMemCopySourceRowSplitRequirement {
+  unsigned instructionRows = 0;
+  unsigned instructionColumns = 0;
+  unsigned logicalRowBit = 0;
+  unsigned selectedRowRun = 0;
+  unsigned rowSelectionPeriod = 0;
+  int32_t actualOffset = 0;
+  int32_t expectedOffset = 0;
+  int32_t sourceRowStride = 0;
+};
+
 struct TMemCopyInstructionColumnProjectionStep {
   unsigned logicalColBit;
   int32_t sourceOffset;
@@ -253,6 +264,11 @@ struct TMemCopyInstructionColumnProjectionFailure {
 std::optional<TMemCopyDescriptorRowSplitRequirement>
 getTMemCopyDescriptorRowSplitRequirement(
     const TMemCopyInstructionColumnProjectionFailure &failure);
+
+std::optional<TMemCopySourceRowSplitRequirement>
+getTMemCopySourceRowSplitRequirement(
+    const TMemCopySourceRowProjectionFailure &failure,
+    const TMemCopyMessagePlan &message);
 
 std::optional<TMemCopyPackedLaneRequirement>
 getTMemCopyPackedLaneRequirement(

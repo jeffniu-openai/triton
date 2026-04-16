@@ -9114,14 +9114,11 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   return seedImm;
 }
 
-static std::optional<TMemCopySupportResult>
-getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
-                                       const LinearLayout &cvt,
-                                       const TMemCopyPlan &plan,
-                                       const TMemCopyMessagePlan &message,
-                                       int bitwidth,
-                                       const TMemCopySourceRowProjectionFailure
-                                           &failure) {
+static std::optional<std::string>
+getKnownTMemCopySourceRowSplitProbeEvidence(
+    MemDescType srcTy, const LinearLayout &cvt, const TMemCopyPlan &plan,
+    const TMemCopyMessagePlan &message, int bitwidth,
+    const TMemCopySourceRowProjectionFailure &failure) {
   if (plan.family != TMemCopyFamily::Warpx2_02_13_64x128b)
     return std::nullopt;
   if (message.useDirectSeedDescriptor)
@@ -9146,8 +9143,7 @@ getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
       failure.actualOffset == failure.expectedOffset)
     return std::nullopt;
 
-  return getUnsupportedTMemCopyResult(
-      TMemCopySupportFailureLayer::InstructionSchedule,
+  return std::string(
       "The two-CTA warpx2::02_13 path remains unsupported until Triton can "
       "synthesize a cta_group::2 descriptor/address schedule that preserves "
       "the high source-column bit. The descriptor path fails because logical "
@@ -9160,6 +9156,73 @@ getKnownTMemCopySourceRowProjectionGap(MemDescType srcTy,
       "under cta_group::2. Decomposing this tensor-memory view into "
       "cta_group::1 copies is not valid because two-CTA TMEM allocation uses "
       "cta_group::2 granularity.");
+}
+
+std::optional<TMemCopySourceRowSplitRequirement>
+getTMemCopySourceRowSplitRequirement(
+    const TMemCopySourceRowProjectionFailure &failure,
+    const TMemCopyMessagePlan &message) {
+  if (failure.kind != TMemCopySourceRowProjectionFailureKind::NonAffineRowBit ||
+      failure.sourceRowStride == 0 ||
+      failure.actualOffset == failure.expectedOffset ||
+      failure.logicalRowBit >= std::numeric_limits<unsigned>::digits - 1)
+    return std::nullopt;
+
+  TMemCopySourceRowSplitRequirement requirement;
+  requirement.instructionRows =
+      message.instrShape.empty() ? 0 : message.instrShape[0];
+  requirement.instructionColumns =
+      message.instrShape.size() < 2 ? 0 : message.instrShape[1];
+  requirement.logicalRowBit = failure.logicalRowBit;
+  requirement.selectedRowRun = 1u << failure.logicalRowBit;
+  requirement.rowSelectionPeriod = 1u << (failure.logicalRowBit + 1);
+  requirement.actualOffset = failure.actualOffset;
+  requirement.expectedOffset = failure.expectedOffset;
+  requirement.sourceRowStride = failure.sourceRowStride;
+  return requirement;
+}
+
+static std::optional<TMemCopySupportResult>
+getTMemCopySourceRowSplitScheduleSupport(
+    MemDescType srcTy, const LinearLayout &cvt, const TMemCopyPlan &plan,
+    unsigned messageIdx, const TMemCopyMessagePlan &message, int bitwidth,
+    const TMemCopySourceRowProjectionFailure &failure,
+    StringRef rowProjectionError) {
+  auto splitRequirement =
+      getTMemCopySourceRowSplitRequirement(failure, message);
+  if (!splitRequirement)
+    return std::nullopt;
+
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)
+     << " descriptor message " << messageIdx
+     << " has an unsupported source-row projection. "
+     << rowProjectionError
+     << " The derived row-selected source-offset requirement would need "
+        "logical row bit "
+     << splitRequirement->logicalRowBit << " to select shared offset "
+     << splitRequirement->actualOffset << " instead of affine row-stride "
+     << splitRequirement->expectedOffset << " for "
+     << splitRequirement->selectedRowRun
+     << "-row destination runs every "
+     << splitRequirement->rowSelectionPeriod << " rows";
+  if (splitRequirement->instructionRows > 0) {
+    os << " within the "
+       << splitRequirement->instructionRows
+       << "-row copy-instruction footprint";
+  }
+  os << ". Current tcgen05.copy scheduling can change the shared descriptor "
+        "or source address per emitted instruction, but it has no proved "
+        "row-selected source-offset schedule that preserves the complementary "
+        "destination rows without overwriting or aliasing them.";
+
+  if (auto knownGap = getKnownTMemCopySourceRowSplitProbeEvidence(
+          srcTy, cvt, plan, message, bitwidth, failure))
+    os << " " << *knownGap;
+
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
 
 std::optional<TMemCopySourceRowProjection>
@@ -10183,9 +10246,10 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         getTMemCopySourceRowProjectionPlan(cvt, message, &rowProjectionError,
                                            &rowProjectionFailure);
     if (!rowProjection) {
-      if (auto knownGap = getKnownTMemCopySourceRowProjectionGap(
-              srcTy, cvt, plan, message, bitwidth, rowProjectionFailure))
-        return {std::nullopt, *knownGap};
+      if (auto splitSupport = getTMemCopySourceRowSplitScheduleSupport(
+              srcTy, cvt, plan, messageIdx, message, bitwidth,
+              rowProjectionFailure, rowProjectionError))
+        return {std::nullopt, *splitSupport};
       return {std::nullopt,
               getUnsupportedTMemCopyResult(
                   TMemCopySupportFailureLayer::InstructionSchedule,

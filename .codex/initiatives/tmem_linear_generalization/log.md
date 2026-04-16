@@ -20308,3 +20308,28 @@ Open after this slice:
     on this 4-GPU GB200-style node. If future backend work changes a specific
     family, temporarily expand that family's local selector rather than
     restoring global Cartesian coverage.
+
+## 2026-04-16 21:52 UTC: copy source-row split requirement
+
+- Starting point: `codex/tmem` at `b60607126`.
+- User request: resume the generalization plan after the runtime-matrix budget
+  checkpoint.
+- Change:
+  - added `TMemCopySourceRowSplitRequirement` to carry row-selected
+    source-offset schedule facts from source-row projection failures;
+  - routed non-affine row-bit copy failures through a schedule-level support
+    helper before falling back to generic projection diagnostics;
+  - preserved the two-CTA `warpx2::02_13` direct-seed probe evidence as an
+    appended schedule-boundary note rather than a standalone family-shaped
+    early return.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file ... --verify-diagnostics` on
+    `test/TritonNvidiaGPU/invalid.mlir`;
+  - focused `warpx2` runtime selector passed
+    (`32 passed, 1543 deselected in 7.79s`);
+  - `git diff --check`.
+- Remaining note:
+  - this is not a support promotion. Two-CTA `warpx2::02_13` still needs a
+    proved cta-group::2 row-selected source-offset schedule or a true ISA mask
+    / partitioned atom before it can become positive.

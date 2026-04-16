@@ -11432,3 +11432,35 @@ rejection, not rescue
   - when changing a particular planner family, temporarily run or add a
     family-expanded selector for that family and then collapse it back to
     representative coverage once the bug is fixed.
+
+## Latest: 2026-04-16 21:52 UTC copy source-row split requirement checkpoint
+
+- Resumed the backend-completeness plan on the Phase 2 copy scheduler frontier.
+- Change:
+  - added `TMemCopySourceRowSplitRequirement` as the source-row counterpart to
+    descriptor-row split and packed-lane requirements;
+  - row-projection failures where a logical row bit maps to a non-affine shared
+    offset now derive selected row run, selection period, actual offset,
+    expected affine offset, and instruction footprint shape;
+  - the two-CTA no-scales `warpx2::02_13` clean negative now reports through
+    this generic schedule requirement before appending the existing direct-seed
+    probe evidence.
+- Current hard fact:
+  - for the canonical two-CTA `warpx2::02_13` exact conversion, logical row
+    bit 5 selects shared offset `1` for 32-row destination runs every 64 rows,
+    while the current affine source-row projection would need offset `256`;
+  - this remains a schedule gap, not a descriptor-enumeration gap. A support
+    path must prove a row-selected source-offset schedule or a row/destination
+    mask/partitioned atom that preserves complementary destination rows.
+- Validation:
+  - `make -j8`;
+  - direct verifier: `./bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - focused runtime selector:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-row-split
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2_02_13_twocta or cp_no_scales_warpx2_subword or
+    cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
+  - `git diff --check`.

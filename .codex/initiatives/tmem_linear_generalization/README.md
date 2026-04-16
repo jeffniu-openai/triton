@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 21:52 UTC: resumed Phase 2 copy-planner generalization after the
+  runtime-matrix budget work. The two-CTA no-scales `warpx2::02_13` row-bit-5
+  failure is now represented as a typed
+  `TMemCopySourceRowSplitRequirement`: logical row bit 5 selects shared
+  offset `1` for 32-row runs every 64 rows, instead of the affine row-stride
+  offset `256` required by the current row projection. The clean negative now
+  comes from the instruction-schedule layer with both the derived row-selected
+  source-offset requirement and the existing direct-seed probe evidence.
+  Validation: `make -j8`, direct `triton-opt --split-input-file
+  --verify-diagnostics` for `invalid.mlir`, focused `warpx2` runtime selector
+  (`32 passed, 1543 deselected`), and `git diff --check`.
 - 2026-04-16 20:04 UTC: tightened the reduced TMEM runtime matrix again to
   make the default full-file 4-GPU split finish under the 10-minute iteration
   target with count-based `pytest-split`. Collection is now `1575` tests
