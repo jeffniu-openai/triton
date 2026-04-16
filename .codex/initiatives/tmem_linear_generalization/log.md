@@ -19769,3 +19769,36 @@ Open after this slice:
   - move to the next support-bearing TMEM backend frontier: packet-order
     equivalence for broader reduction overrides, copy source-message
     scheduling, destination masks, or a proven ISA-coverage gap.
+
+## 2026-04-16 10:12 UTC: explicit M64 fallback still required
+
+- Starting point: `codex/tmem` at `74ac02dfc`.
+- Probe:
+  - temporarily changed
+    `_try_m64_reduction_layout_for_explicit_32x32b(...)` to return `None`
+    instead of falling back to `_try_handle_aware_m64_splitn_auto_layout(...)`
+    when `compute_tmem_reduce_reg_layout_from_memdesc(...)` returns `None`;
+  - removed an unused `shape` local from `_load_red(...)`.
+- Finding:
+  - the explicit fallback removal is invalid today;
+  - full `ld_red_m64` failed six cases:
+    row-reverse `N=32` default min/max, row-rotate/col-even-odd `N=128`
+    default min/max, and the corresponding explicit-`32x32b` rows;
+  - each failure selected the direct scalar `.x1` reduction packet and hit the
+    verifier's `.ld.red` minimum-repeat diagnostic;
+  - therefore the 10:08 cleanup only removed the duplicate immediate retry in
+    `_load_red(layout=None)`. It did not make the C++ backend bridge complete
+    for all noncanonical M64 row/column permutations.
+- Cleanup / validation:
+  - restored the explicit-`32x32b` fallback;
+  - kept the unused `_load_red` `shape` local removal;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-explicit-fallback-restored
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`73 passed, 11060 deselected`).
+- Next:
+  - finish hygiene, commit, and push this small correction checkpoint;
+  - a true follow-up must move the noncanonical M64 split-N derivation into
+    the backend helper rather than deleting the fallback prematurely.

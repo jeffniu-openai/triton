@@ -1,12 +1,25 @@
 # TMEM Linear Generalization
 
+- Current explicit-M64 reduction fallback boundary, 2026-04-16 10:12 UTC:
+  a follow-up probe removed the explicit-`32x32b` M64 fallback from
+  `_try_m64_reduction_layout_for_explicit_32x32b(...)`; full `ld_red_m64`
+  immediately failed six row/column-permuted cases with scalar `.x1`
+  reduction packets. The fallback was restored. This sharpens the 10:08
+  cleanup: only the duplicate retry immediately after the default backend
+  query was removed; the explicit-layout helper is still required until the
+  backend reduction planner can derive split-N layouts for noncanonical M64
+  row/column permutations. Code cleanup kept only the now-unused `_load_red`
+  `shape` local removal. Validation after restore: `make -j8` and full
+  `ld_red_m64` selector (`73 passed, 11060 deselected`).
+
 - Current Python default-reduction cleanup checkpoint, 2026-04-16 10:08 UTC:
-  `_load_red(layout=None)` no longer has a Python-side M64 split-N rescue
-  after the backend reduction-layout query. With the 09:59 backend
-  no-override contract in place, the default M64 reduction path is now fully
-  selected by `compute_tmem_reduce_reg_layout_from_memdesc(...)`; the
-  frontend fallback remains only in the explicit-`32x32b` helper path, where
-  it is still a last resort if the backend cannot return a reduction layout.
+  `_load_red(layout=None)` no longer has a Python-side M64 split-N retry
+  immediately after the backend reduction-layout query. With the 09:59 backend
+  no-override contract in place, the default path asks the backend first and
+  then falls through to the ordinary `get_reg_layout()` / explicit-layout
+  handling if the backend cannot return a layout. The frontend fallback remains
+  in the explicit-`32x32b` helper path, where it is still a last resort if the
+  backend cannot return a reduction layout.
   Validation: `make -j8`, full `ld_red_m64` selector (`73 passed, 11060
   deselected`), targeted unsafe selector (`46 passed, 11087 deselected`), and
   `git diff --check`.

@@ -748,7 +748,6 @@ class tensor_memory_descriptor(base_value):
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
-            shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(self.shape)]
             raw_layout = _unwrap_if_constexpr(self.layout)
             if self.dtype.primitive_bitwidth == 32 and not isinstance(raw_layout, TensorMemoryScalesLayout):
                 layout = gluon_ir.compute_tmem_reduce_reg_layout_from_memdesc(

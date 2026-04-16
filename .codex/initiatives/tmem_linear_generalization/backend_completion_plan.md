@@ -998,6 +998,12 @@ Progress:
   on the backend bridge for M64 split-N selection after the helper's
   no-override contract, while the explicit-`32x32b` helper fallback remains as
   a distinct user-provided-layout escape path.
+- 2026-04-16 10:12 UTC: re-probed deleting that explicit-`32x32b` M64 helper
+  fallback and rejected the deletion. Noncanonical M64 row/column permutations
+  still need the frontend handle-aware split-N fallback when the backend bridge
+  returns no layout; otherwise they select scalar `.x1` reduction packets.
+  This pins the next Phase 4 cleanup target: teach the backend reduction
+  helper to derive those noncanonical M64 split-N layouts directly.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required
