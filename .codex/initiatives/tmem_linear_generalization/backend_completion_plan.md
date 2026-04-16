@@ -989,6 +989,10 @@ Progress:
   still returns the split-N rescue layout for M64 scalarized direct
   reductions, so the special case is backend-routed without reopening the
   rejected broad-route failures.
+- 2026-04-16 09:59 UTC: moved that direct-compatible `32x32b` no-override
+  rule into C++ `getTmemLoadReductionLayout(...)`, so the backend helper owns
+  the safe selector contract and the Python binding no longer duplicates the
+  packet-order guard.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

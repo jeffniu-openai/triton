@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Current reduction helper ownership checkpoint, 2026-04-16 09:59 UTC:
+  `getTmemLoadReductionLayout(...)` now implements the direct-compatible
+  `32x32b` no-override rule in C++ instead of relying on the Python binding to
+  filter backend-selected layouts. The helper still rescues scalarized M64
+  direct layouts, but if direct `32x32b` already lowers as a legal
+  `tcgen05.ld.red` message it returns no override so packet order remains the
+  frontend direct path's responsibility. Validation: `make -j8`, targeted
+  unsafe selector (`46 passed, 11087 deselected`), full `ld_red_m64` selector
+  (`73 passed, 11060 deselected`), and `git diff --check`.
+
 - Current repeated-N32 scaled-MMAv5 checkpoint, 2026-04-16 09:49 UTC: a
   temporary probe removed the direct block-scaled MMAv5 repeated-`N=32`
   guard from both `TCGen5MMAScaledOp::verify()` and `convertScaledMMA(...)`.

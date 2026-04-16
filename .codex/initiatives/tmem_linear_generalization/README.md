@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 09:59 UTC: the reduction-layout helper now owns the safe
+  no-override rule for direct-compatible `32x32b` reductions. C++
+  `getTmemLoadReductionLayout(...)` returns no override when direct
+  `32x32b` is already reduction-compatible, so Python no longer repeats that
+  packet-order guard. This preserves the M64 backend rescue while keeping the
+  known non-M64 row/column permutation packet-order cases on their direct
+  path. Validation: `make -j8`, targeted unsafe selector (`46 passed`), full
+  `ld_red_m64` selector (`73 passed`), and `git diff --check`.
 - 2026-04-16 09:49 UTC: repeated-`N=32` direct block-scaled MMAv5 was
   re-probed by temporarily removing both verifier and lowering guards. The
   mxfp8/mxfp8 `M=N=128,K=128,tile_n=32` representative compiled and emitted

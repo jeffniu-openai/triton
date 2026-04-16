@@ -2502,7 +2502,6 @@ void init_gluon_ir(py::module &&m) {
                             ttg::MemDescReinterpretOp>(
                 memDesc.getDefiningOp());
 
-        auto ctx = memDesc.getContext();
         auto shape = llvm::to_vector(memDescTy.getShape());
         auto elementType = memDescTy.getElementType();
         auto tensorTy = RankedTensorType::get(shape, elementType);
@@ -2561,21 +2560,6 @@ void init_gluon_ir(py::module &&m) {
           if (!layoutIsReductionCompatible(*maybeLayout))
             return py::none();
 
-          // Message legality is not a sufficient proof that a backend-selected
-          // reduction layout preserves the exact logical row/column order or
-          // packet order. If the direct 32x32b layout is already
-          // reduction-compatible, keep the frontend's existing direct choice.
-          // This lets the helper rescue scalarized M64 direct layouts while
-          // avoiding the non-M64 row/column permutation false-support paths
-          // discovered by the broad default-routing probes.
-          if (auto directLayout = ttng::getDistributedLayoutForTmemLdSt(
-                  queryTy, ttng::TMemAccessAtom::I32x32b, numWarps)) {
-            auto directAttr =
-                ttg::LinearEncodingAttr::get(ctx, *directLayout);
-            if (layoutIsReductionCompatible(directAttr)) {
-              return py::none();
-            }
-          }
           return layoutToGluon(*maybeLayout);
         };
 

@@ -3220,6 +3220,20 @@ getTmemLoadReductionLayout(RankedTensorType tensorType, MemDescType memType,
     return validateReductionLayout(ret);
   };
 
+  // Message legality is not a sufficient proof that a backend-selected
+  // reduction layout preserves the exact logical row/column order or packet
+  // order. If the direct 32x32b layout is already reduction-compatible, keep
+  // the caller's existing direct choice. This lets the helper rescue
+  // scalarized M64 direct layouts while avoiding the non-M64 row/column
+  // permutation false-support paths discovered by broad default-routing
+  // probes.
+  if (std::optional<LinearLayout> directLayout =
+          getDistributedLayoutForTmemLdSt(memType, TMemAccessAtom::I32x32b,
+                                          numWarps)) {
+    if (validateReductionLayout(*directLayout))
+      return std::nullopt;
+  }
+
   if (auto attr = tryReductionLayout(TMemAccessAtom::I32x32b))
     return attr;
   if (auto attr = tryReductionLayout(TMemAccessAtom::I16x32bx2))

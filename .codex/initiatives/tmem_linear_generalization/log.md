@@ -19693,3 +19693,42 @@ Open after this slice:
   - continue on a support-bearing backend frontier such as reduction
     packet-order equivalence, copy source-message scheduling, destination
     masks, or `tcgen05.cp.4x256b` ISA coverage.
+
+## 2026-04-16 09:59 UTC: reduction helper owns direct-compatible no-override
+
+- Starting point: `codex/tmem` at `ac219b47e`.
+- Change:
+  - moved the direct-compatible `32x32b` no-override rule from the Python
+    `compute_tmem_reduce_reg_layout_from_memdesc` binding into C++
+    `getTmemLoadReductionLayout(...)`;
+  - removed the duplicate Python-side direct-layout filter and the now-unused
+    context variable.
+- Rationale:
+  - the backend helper already validates message legality, but legality alone
+    is not a proof of exact packet order;
+  - the no-override rule is part of the reduction-layout selector contract, so
+    it belongs with the helper that chooses candidate layouts rather than in a
+    frontend binding wrapper;
+  - M64 scalarized-direct layouts still flow through the helper because direct
+    `32x32b` is not reduction-compatible there.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-backend-nooverride
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    '(ld_red_row_permuted_linear_layout and rotate1 and identity) or
+    (ld_red_col_permuted_linear_layout and 256) or
+    ld_red_m64_rowcol_permuted_default_layout or
+    (ld_red_m64_splitn_linear_layout and m64_64x32)'`
+    (`46 passed, 11087 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-backend-nooverride-m64
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k 'ld_red_m64'`
+    (`73 passed, 11060 deselected`);
+  - `git diff --check`.
+- Next:
+  - commit and push this layering checkpoint;
+  - continue reducing Python-mediated TMEM layout selection or return to the
+    copy scheduler frontiers.
