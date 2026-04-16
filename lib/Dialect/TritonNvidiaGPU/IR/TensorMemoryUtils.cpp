@@ -9416,6 +9416,14 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
     if (failure.packedLaneBits > 0)
       os << " (" << failure.packedLaneBits << " lane bit"
          << (failure.packedLaneBits == 1 ? "" : "s") << ")";
+    if (failure.packedLaneProjection) {
+      os << "; after those lane bits, the physical dword-column projection is "
+            "contiguous over "
+         << failure.packedLaneProjection->physicalInstructionColumns
+         << " column"
+         << (failure.packedLaneProjection->physicalInstructionColumns == 1 ? ""
+                                                                          : "s");
+    }
     os << ". Current copy scheduling cannot synthesize packed-lane tcgen05.copy "
           "descriptors or tile extents from that projection; the planner needs "
           "a lane-aware physical query that separates physical dword columns "
@@ -9458,6 +9466,55 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
         "proven multi-message schedule that avoids overwriting unrelated "
         "destination columns before it can be supported.";
   return os.str();
+}
+
+static std::optional<TMemCopyPackedLaneProjection>
+getTMemCopyPackedLaneProjectionPlan(const LinearLayout &descriptorCvt,
+                                    StringAttr colDim, StringAttr offsetDim,
+                                    unsigned instrCols, int bitwidth) {
+  if (bitwidth <= 0 || bitwidth >= 32 || 32 % bitwidth != 0 ||
+      !descriptorCvt.hasInDim(colDim) || !descriptorCvt.hasOutDim(offsetDim) ||
+      !llvm::isPowerOf2_32(instrCols) || instrCols == 0)
+    return std::nullopt;
+
+  unsigned laneBits = llvm::Log2_32(32 / bitwidth);
+  unsigned instrColBits = llvm::Log2_32(instrCols);
+  if (laneBits == 0 || laneBits >= instrColBits)
+    return std::nullopt;
+
+  auto colBases = descriptorCvt.getBases().lookup(colDim);
+  if (colBases.size() < instrColBits)
+    return std::nullopt;
+
+  auto isAllZero = [](ArrayRef<int32_t> basis) {
+    return llvm::all_of(basis, [](int32_t value) { return value == 0; });
+  };
+  unsigned offsetDimIndex = descriptorCvt.getOutDimIndex(offsetDim);
+  auto isPureOffset = [&](ArrayRef<int32_t> basis, int32_t expectedOffset) {
+    for (auto [idx, value] : llvm::enumerate(basis)) {
+      int32_t expected = idx == offsetDimIndex ? expectedOffset : 0;
+      if (value != expected)
+        return false;
+    }
+    return true;
+  };
+
+  TMemCopyPackedLaneProjection projection;
+  projection.laneBits = laneBits;
+  projection.lanesPerDword = 1u << laneBits;
+  projection.physicalInstructionColumns = instrCols >> laneBits;
+  for (unsigned bit = 0; bit < laneBits; ++bit) {
+    if (!isAllZero(descriptorCvt.getBasis(colDim, bit)))
+      return std::nullopt;
+  }
+  for (unsigned bit = laneBits; bit < instrColBits; ++bit) {
+    int32_t expectedOffset = 1 << (bit - laneBits);
+    if (!isPureOffset(descriptorCvt.getBasis(colDim, bit), expectedOffset))
+      return std::nullopt;
+    projection.physicalSteps.push_back(
+        TMemCopyInstructionColumnProjectionStep{bit, expectedOffset});
+  }
+  return projection;
 }
 
 std::optional<TMemCopyInstructionColumnProjection>
@@ -9503,6 +9560,11 @@ getTMemCopyInstructionColumnProjectionPlan(
     failureInfo.expectedOffset = 1;
     if (bitwidth > 0 && bitwidth < 32 && 32 % bitwidth == 0)
       failureInfo.packedLaneBits = llvm::Log2_32(32 / bitwidth);
+    failureInfo.packedLaneProjection = getTMemCopyPackedLaneProjectionPlan(
+        descriptorCvt, kCol, kOffset, instrCols, bitwidth);
+    if (failureInfo.packedLaneProjection)
+      failureInfo.packedLaneBits =
+          failureInfo.packedLaneProjection->laneBits;
     if (failure)
       *failure = failureInfo;
     if (error)
@@ -9687,6 +9749,10 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         if (instructionProjectionFailure.packedLaneBits > 0)
           llvm::errs() << " packedLaneBits="
                        << instructionProjectionFailure.packedLaneBits;
+        if (instructionProjectionFailure.packedLaneProjection)
+          llvm::errs() << " physicalColumns="
+                       << instructionProjectionFailure.packedLaneProjection
+                              ->physicalInstructionColumns;
         llvm::errs() << "\n";
       }
       std::string reason;

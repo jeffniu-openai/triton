@@ -398,6 +398,13 @@ Progress:
   descriptor layout, but they now prove the immediate source offset and
   scheduled footprint stay inside the shared source tile instead of bypassing
   source bounds.
+- 2026-04-16 00:32 UTC: packed-lane instruction-column failures now carry a
+  `TMemCopyPackedLaneProjection` when the hidden sub-dword lane bits are
+  followed by a contiguous physical dword-column stream. The support status is
+  unchanged, but the planner now preserves the exact lane-aware schedule input
+  (`laneBits`, `lanesPerDword`, `physicalInstructionColumns`, and physical
+  offset steps) instead of reducing legacy subword copy to a diagnostic-only
+  zero-offset column bit.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths

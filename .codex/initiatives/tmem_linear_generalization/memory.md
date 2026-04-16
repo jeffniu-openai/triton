@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current packed-lane projection checkpoint, 2026-04-16 00:32 UTC:
+  legacy subword `tcgen05.copy` still remains a clean unsupported schedule
+  boundary, but the planner now preserves the support-relevant fact instead of
+  only recording "source column bit 0 maps to no offset." A
+  `TMemCopyPackedLaneProjection` records the number of hidden sub-dword lane
+  bits, lanes per dword, physical instruction-column count, and contiguous
+  high-column offset steps when the projection is lane-packed but otherwise
+  physically contiguous. Debug output now reports `physicalColumns=8` for the
+  dense legacy f16 row, and the runtime-matrix clean-negative assertion pins
+  the same phrase. This does not promote support: the missing layer is still a
+  lane-aware descriptor/tile schedule that carries packed lane state through
+  MMAShared descriptor synthesis and destination footprint planning. Validation
+  passed: `make -j8`, direct `invalid.mlir` verifier, py-compile,
+  `git diff --check`, the legacy subword clean-negative pytest row (`4
+  passed`), and a `TRITON_DEBUG_TMEM_QUERY=1` probe confirming
+  `packedLaneBits=1 physicalColumns=8`.
+
 - Current direct-seed source-bounds checkpoint, 2026-04-16 00:25 UTC:
   direct-seed `tcgen05.copy` messages no longer skip source-footprint
   legality entirely. The scheduler now verifies that the direct seed source

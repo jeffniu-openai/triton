@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:32 UTC: packed subword copy failures now carry a structured
+  physical dword-column projection. Legacy subword `TensorMemoryLayout`
+  copies still remain clean unsupported, but the instruction-column planner
+  proves when the hidden lane bits are followed by a contiguous physical
+  dword-column stream (`physicalColumns=8` for the dense f16/i16/i8 rows).
+  This records the exact next scheduler requirement instead of collapsing the
+  case to a generic zero-offset column-bit failure. Validation: `make -j8`,
+  direct `invalid.mlir` verifier, py-compile, `git diff --check`, the legacy
+  subword clean-negative pytest row (`4 passed`), and a debug probe confirming
+  `packedLaneBits=1 physicalColumns=8`.
 - 2026-04-16 00:25 UTC: direct-seed `tcgen05.copy` messages now get explicit
   source bit-range bounds instead of being an unchecked skip. The planner
   checks rank, direct-seed row representability, 128-bit source-offset

@@ -18008,6 +18008,33 @@ Open after this slice:
   - query-debug probes for the descriptor-row and packed-lane fields;
   - `git diff --check`.
 
+## 2026-04-16 00:32 UTC: packed-lane physical projection carrier
+
+- Added `TMemCopyPackedLaneProjection` and attached it to packed-lane
+  instruction-column failures.
+- The planner now proves whether zero-offset packed lane bits are followed by
+  contiguous physical dword-column offset steps. Legacy dense f16 reports
+  `packedLaneBits=1 physicalColumns=8` under `TRITON_DEBUG_TMEM_QUERY=1`.
+- The legacy subword clean-negative runtime test now asserts that physical
+  projection fact, keeping the case structured for the future lane-aware copy
+  scheduler.
+- This is not a support promotion. The remaining support requirement is still
+  descriptor/tile scheduling that preserves lane state instead of dropping it
+  from the descriptor projection.
+- Validation:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-packed-projection-test
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
+    (`4 passed in 3.89s`);
+  - `TRITON_DEBUG_TMEM_QUERY=1` probe of the legacy f16 row confirmed
+    `packedLaneBits=1 physicalColumns=8`;
+  - `git diff --check`.
+
 ## 2026-04-16 00:25 UTC: direct-seed copy source bounds
 
 - Added source range validation for `DirectSeedImmediate` copy messages.

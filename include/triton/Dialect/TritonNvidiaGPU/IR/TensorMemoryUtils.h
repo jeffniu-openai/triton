@@ -181,6 +181,13 @@ struct TMemCopyInstructionColumnProjectionStep {
   int32_t sourceOffset;
 };
 
+struct TMemCopyPackedLaneProjection {
+  unsigned laneBits = 0;
+  unsigned lanesPerDword = 1;
+  unsigned physicalInstructionColumns = 0;
+  llvm::SmallVector<TMemCopyInstructionColumnProjectionStep, 4> physicalSteps;
+};
+
 enum class TMemCopyInstructionColumnProjectionFailureKind {
   None,
   PackedLaneState,
@@ -200,6 +207,7 @@ struct TMemCopyInstructionColumnProjectionFailure {
   std::optional<int32_t> descriptorRowDelta;
   bool descriptorRowDeltaSpansInstructionRows = false;
   unsigned packedLaneBits = 0;
+  std::optional<TMemCopyPackedLaneProjection> packedLaneProjection;
   bool hasNonOffsetContribution = false;
 };
 
