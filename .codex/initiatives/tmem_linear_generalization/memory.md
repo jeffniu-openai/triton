@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Current descriptor-loader source-bounds checkpoint, 2026-04-16 00:02 UTC:
+  `getTMemCopySourceFootprintSupport(...)` now validates descriptor-loader
+  source footprints against the selected descriptor layout's row/column
+  coordinate extent. Logical shared-tile footprints still use the shared tensor
+  shape, and direct-seed immediate footprints remain skipped. This makes the
+  non-dense/scales source proof real for currently selected descriptors: the
+  positive scales `warpx4` schedule has a `[row 0, 32) x [col 16, 32)`
+  descriptor-loader footprint, which is valid against the selected
+  descriptor-layout bounds even though it would be out of bounds in the
+  logical `[64, 16]` source tensor. Validation passed: `make -j8`,
+  py-compile of `test_tmem_runtime_matrix.py`, `git diff --check`, and 15
+  targeted rows covering single/two-CTA `4x256b` refresh, ordinary `4x256b`
+  clean-negative, single-CTA `warpx2::02_13`, two-CTA `warpx2::01_23`, scales
+  `warpx4`, scales shared-subslice and descriptor-view clean negatives, and
+  legacy packed subword diagnostics.
+
 - Current copy source-coordinate-space checkpoint, 2026-04-15 23:59 UTC:
   `TMemCopySourceFootprint` now records whether its row/column live in logical
   shared-tile space, descriptor-loader space, or a direct-seed immediate. Dense

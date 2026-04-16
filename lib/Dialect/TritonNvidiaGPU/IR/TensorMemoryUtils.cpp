@@ -8351,23 +8351,60 @@ static bool intervalsOverlap(int64_t lhsBegin, int64_t lhsEnd,
 
 static TMemCopySupportResult getTMemCopySourceFootprintSupport(
     MemDescType srcTy, TMemCopyFamily family,
+    ArrayRef<TMemCopyScheduledMessage> messages,
     ArrayRef<TMemCopyScheduledInstruction> instructions) {
-  if (srcTy.getRank() != 2) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
-        "tcgen05.copy source-footprint bounds checking requires a rank-2 "
-        "shared-memory source tile.");
-  }
-
-  int64_t sourceRows = srcTy.getShape()[0];
-  int64_t sourceCols = srcTy.getShape()[1];
   for (const TMemCopyScheduledInstruction &instruction : instructions) {
     const TMemCopySourceFootprint &source = instruction.source;
+    int64_t sourceRows = 0;
+    int64_t sourceCols = 0;
+    StringRef coordinateSpace;
     if (source.coordinateSpace !=
         TMemCopySourceCoordinateSpace::LogicalSharedTile) {
-      // Descriptor-loader coordinates and direct-seed immediates need
-      // coordinate-space-specific proofs instead of logical tensor bounds.
-      continue;
+      if (source.coordinateSpace ==
+          TMemCopySourceCoordinateSpace::DirectSeedImmediate) {
+        continue;
+      }
+
+      assert(source.coordinateSpace ==
+                 TMemCopySourceCoordinateSpace::DescriptorLoader &&
+             "unknown tcgen05.copy source coordinate space");
+      if (instruction.messageIndex >= messages.size()) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            "tcgen05.copy instruction schedule references an unknown source "
+            "message.");
+      }
+      const auto &message = messages[instruction.messageIndex];
+      if (!message.descriptorLayout) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            "tcgen05.copy descriptor-loader source footprint has no selected "
+            "descriptor layout.");
+      }
+      const LinearLayout &descriptorLayout = message.descriptorLayout->layout;
+      auto *ctx = srcTy.getContext();
+      auto kRow = StringAttr::get(ctx, "row");
+      auto kCol = StringAttr::get(ctx, "col");
+      if (!descriptorLayout.hasInDim(kRow) ||
+          !descriptorLayout.hasInDim(kCol)) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::InstructionSchedule,
+            "tcgen05.copy descriptor-loader source footprint requires a "
+            "selected descriptor layout with row and column dimensions.");
+      }
+      sourceRows = descriptorLayout.getInDimSize(kRow);
+      sourceCols = descriptorLayout.getInDimSize(kCol);
+      coordinateSpace = "descriptor-loader";
+    } else {
+      if (srcTy.getRank() != 2) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::PhysicalQuery,
+            "tcgen05.copy source-footprint bounds checking requires a rank-2 "
+            "shared-memory source tile.");
+      }
+      sourceRows = srcTy.getShape()[0];
+      sourceCols = srcTy.getShape()[1];
+      coordinateSpace = "logical shared-tile";
     }
 
     int64_t rowEnd = static_cast<int64_t>(source.row) + source.rows;
@@ -8377,10 +8414,11 @@ static TMemCopySupportResult getTMemCopySourceFootprintSupport(
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::InstructionSchedule,
           Twine("tcgen05.copy.") + stringifyTMemCopyFamily(family) +
-              " instruction schedule reads source footprint [row " +
+              " instruction schedule reads " + coordinateSpace +
+              " source footprint [row " +
               Twine(source.row) + ", " + Twine(rowEnd) + ") x [col " +
               Twine(source.col) + ", " + Twine(colEnd) +
-              ") outside shared-memory tile shape [" + Twine(sourceRows) +
+              ") outside source coordinate bounds [" + Twine(sourceRows) +
               ", " + Twine(sourceCols) + "].");
     }
   }
@@ -8671,7 +8709,7 @@ getTMemCopyPlanRealization(MemDescType srcTy,
                     : instructionScheduleError)};
   }
   auto sourceFootprintSupport = getTMemCopySourceFootprintSupport(
-      srcTy, executablePlan->family, *instructions);
+      srcTy, executablePlan->family, executablePlan->messages, *instructions);
   if (!sourceFootprintSupport)
     return {std::nullopt, sourceFootprintSupport};
   auto destinationFootprintSupport = getTMemCopyDestinationFootprintSupport(

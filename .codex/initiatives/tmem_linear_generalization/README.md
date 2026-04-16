@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 00:02 UTC: source-footprint support now proves descriptor-loader
+  coordinates against the selected descriptor layout's row/column extent, while
+  logical shared-tile coordinates are still checked against the shared tensor
+  shape and direct-seed immediates are skipped. This makes scales `warpx4`
+  participate in source-footprint legality without misclassifying its second
+  descriptor tile as an out-of-bounds logical source column. Validation:
+  `make -j8`, py-compile of `test_tmem_runtime_matrix.py`,
+  `git diff --check`, and 15 targeted rows covering dense `4x256b`,
+  single/two-CTA `warpx2`, scales `warpx4`, scales clean negatives, and legacy
+  packed subword diagnostics.
 - 2026-04-15 23:59 UTC: scheduled copy source footprints now carry an explicit
   coordinate space: logical shared tile, descriptor-loader coordinates, or
   direct-seed immediate. Dense source-bounds checking now keys off that carrier

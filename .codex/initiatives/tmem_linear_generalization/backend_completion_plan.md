@@ -372,6 +372,11 @@ Progress:
   descriptor-loader, or direct-seed-immediate coordinate space, and the dense
   bounds proof consumes that tag. This is the next seam for descriptor-space
   source proofs and packed-lane state.
+- 2026-04-16 00:02 UTC: completed the descriptor-space source proof for
+  selected descriptor-loader coordinates. Source-footprint support now checks
+  descriptor-loader footprints against the selected descriptor layout bounds,
+  so scales `warpx4` has a real source legality proof instead of an exemption
+  from source-bounds checking.
 - 2026-04-15 20:44 UTC: direct `ld/st` verification now has a backend-level
   clean diagnostic for the `tcgen05.copy.4x256b` refresh-shaped layout. This
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
