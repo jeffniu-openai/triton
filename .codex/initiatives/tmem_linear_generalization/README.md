@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:30 UTC: a no-code `warpx2::01_23` subword support probe was
+  completed and reverted. Making descriptor selection skip candidates whose
+  coordinate image could not cover the instruction footprint compiled six
+  formerly negative f16/bf16/i16 rows, but the first f16 runtime oracle was
+  wrong (`504 / 512` mismatches). The selected representable descriptor used
+  row unit offset 8 and produced source rows `0,4,8,...`, while the correct
+  subword mapping requires `0,2,4,...`. Conclusion: footprint coverage and
+  descriptor representability are not enough; support needs semantic
+  equivalence between the selected MMAv5 descriptor and the copy atom's
+  internal row/column mapping, or a new source-storage schedule. The source
+  edit was removed; validation after cleanup: `make -j8` and subword warpx2
+  selector (`14 passed`).
 - 2026-04-16 06:24 UTC: no-scales `tcgen05.copy.warpx2` subword rows now
   route through the shared copy planner instead of stopping at the old
   32-bit-shared-element runtime guard. A bounded subword-only

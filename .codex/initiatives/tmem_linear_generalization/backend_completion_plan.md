@@ -698,6 +698,13 @@ Progress:
   storage and descriptor scheduling, while `warpx2::02_13` still fails the
   source-row projection proof for logical row bit 5. Keep this as a Phase 2
   support frontier rather than restoring the family-level guard.
+- 2026-04-16 06:30 UTC: a temporary footprint-aware descriptor-selection probe
+  showed that subword `warpx2::01_23` cannot be promoted by descriptor bounds
+  alone. The probe compiled f16/bf16/i16 rows but selected a descriptor whose
+  row unit offset skipped every other required subword source row, producing
+  wrong output. Phase 2 needs descriptor semantic-equivalence checking against
+  each copy atom's internal row/column mapping before descriptor variants can
+  be treated as executable schedules.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent

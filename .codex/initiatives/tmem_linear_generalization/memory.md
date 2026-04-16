@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Current warpx2 subword semantic-equivalence probe, 2026-04-16 06:30 UTC:
+  a temporary planner edit made descriptor selection skip MMAv5 descriptors
+  whose coordinate image could not cover the instruction source footprint.
+  That moved f16/bf16/i16 `warpx2::01_23` single-CTA and two-CTA rows from
+  clean negatives to compiled kernels, but the first f16 runtime oracle was
+  wrong (`504 / 512` mismatches). The emitted `warpx2::01_23` schedule used a
+  representable 64-row descriptor with row unit offset 8 and produced rows
+  `0,4,8,...` where the correct subword pattern needs `0,2,4,...`.
+  Conclusion: footprint coverage and descriptor representability are still
+  insufficient. The missing abstraction is a semantic-equivalence proof
+  between the selected descriptor layout and the copy atom's internal
+  row/column mapping. The temporary source edit was removed; validation after
+  cleanup: `make -j8` and the subword warpx2 selector (`14 passed`).
+
 - Current warpx2 subword planner cleanup checkpoint, 2026-04-16 06:24 UTC:
   no-scales `tcgen05.copy.warpx2` subword rows no longer stop at the blanket
   "requires 32-bit shared elements" runtime-support guard. Removing that guard

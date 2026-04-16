@@ -19124,3 +19124,34 @@ Open after this slice:
   - `PYTHONPATH=./python python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-16 06:30 UTC: warpx2 subword footprint-only promotion rejected
+
+- Starting point: clean `codex/tmem` at `fb87e6d87`.
+- Probe:
+  - temporarily changed descriptor selection to skip representable MMAv5
+    shared descriptors whose coordinate image could not cover the selected
+    instruction source footprint;
+  - rebuilt with `make -j8`;
+  - reran the subword `cp_no_scales_warpx2_subword_dtypes` selector.
+- Result:
+  - six `warpx2::01_23` subword rows stopped raising: single-CTA and two-CTA
+    f16/bf16/i16;
+  - the first f16 row emitted `tcgen05.cp...warpx2::01_23`, but runtime output
+    was wrong: `504 / 512` elements mismatched the existing expected-output
+    oracle;
+  - the selected descriptor row basis had row unit offset 8, producing source
+    rows `0,4,8,...` for the first output rows, while the correct subword
+    `01_23` mapping needs `0,2,4,...`.
+- Conclusion:
+  - descriptor coordinate footprint coverage is necessary but not sufficient;
+  - `warpx2` subword support needs a semantic-equivalence proof between the
+    selected descriptor layout and the copy atom's internal row/column mapping,
+    or a new descriptor/source-storage schedule that represents the correct
+    subword row step;
+  - do not promote by only filtering descriptor layouts by footprint size.
+- Cleanup:
+  - removed the temporary source edit;
+  - rebuilt with `make -j8`;
+  - reran the subword selector, which returned to `14 passed, 11075
+    deselected`.
