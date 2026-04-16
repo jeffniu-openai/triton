@@ -695,18 +695,7 @@ lowerTMemLdStFromInfo(Location loc, ConversionPatternRewriter &rewriter,
       return failure();
     auto [outVals, redvalVals] = *outOr;
     if (!isStore) {
-      auto kReg = *info.reps.getInDimNames().begin();
-      uint32_t broadcastMask = info.reps.getFreeVariableMasks().lookup(kReg);
-      size_t expectedSize =
-          info.reps.getInDimSize(kReg) / (1 << llvm::popcount(broadcastMask));
-      if (expectedSize != outVals.size()) {
-        emitError(loc)
-            << "unsupported broadcasted TMEM lowering for this view; "
-               "reshape or permute so TMEM columns stay contiguous, or use a "
-               "different TMEM register layout";
-        return failure();
-      }
-      outVals = broadcastAs(outVals, info.reps);
+      outVals = removeBroadcast.applyInverseWithBroadcast(outVals);
     }
     return std::make_pair(std::move(outVals), std::move(redvalVals));
   }

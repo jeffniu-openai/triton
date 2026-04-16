@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 04:38 UTC: broadcasted TMEM load expansion now uses the exact
+  inverse of the `ColumnAction` that removed broadcasted register columns,
+  instead of inferring the reload count from packed message repetitions. This
+  makes subword load/store lowering symmetric with store reduction after f16
+  unpacking and promotes the parked no-scales two-CTA subword
+  column-slice/subslice copy rows. Validation: `make -j8`,
+  two-CTA subslice copy (`36 passed`), dense two-CTA copy (`91 passed`),
+  indexed two-CTA copy (`35 passed`), single-CTA subword copy (`8 passed`),
+  subword `ld/st` selector (`76 passed`), LinearLayout unit tests (`70
+  passed`), direct `invalid.mlir` verifier, py-compile, and
+  `git diff --check`.
 - 2026-04-16 04:27 UTC: no-scales two-CTA subword dense and leading-indexed
   descriptor-view copy coverage is now enabled for linear layouts using the
   actual shared element bitwidth. Leading TMEM index query inference now has an

@@ -4188,6 +4188,20 @@ CP_TWOCTA_LINEAR_SUBSLICE_VIEW_CASES = [
     for dtype_name, torch_dtype in (("f32", torch.float32), ("i32", torch.int32))
     for n, expected_count in ((128, 16), (256, 32))
     for swizzle in (32, 64, 128)
+] + [
+    (
+        dtype_name,
+        torch_dtype,
+        256,
+        n,
+        swizzle,
+        n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 256,
+        "tcgen05.cp.cta_group::2.128x256b",
+    )
+    for dtype_name, torch_dtype in CP_NO_SCALES_SUBWORD_DTYPES
+    for n in (128, 256)
+    for swizzle in (32, 64, 128)
+    if n * CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name] // 8 >= swizzle
 ]
 
 CP_NO_SCALES_128X128_DTYPES = (("f32", torch.float32), ("i32", torch.int32))

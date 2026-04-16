@@ -872,6 +872,11 @@ public:
   //    [x[0], x[4], x[1], x[5], x[2], x[6], x[3], x[7]]
   SmallVector<Value> apply(ValueRange values) const;
 
+  // Inverse of apply(ValueRange) for actions that may have removed broadcasted
+  // register columns. Dropped original columns are expanded by reusing the
+  // reduced value selected by the remaining action columns.
+  SmallVector<Value> applyInverseWithBroadcast(ValueRange values) const;
+
   // Inverse of the action
   ColumnAction inverse() const;
 

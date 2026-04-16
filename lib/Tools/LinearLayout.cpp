@@ -1376,6 +1376,29 @@ SmallVector<Value> ColumnAction::apply(ValueRange values) const {
   return ret;
 }
 
+SmallVector<Value>
+ColumnAction::applyInverseWithBroadcast(ValueRange values) const {
+  assert(values.size() == (1ULL << action.size()) &&
+         "Values have a different size than the reduced ColumnAction");
+  assert(inDim.str() == "register" && "Values are in registers, so we can only "
+                                      "apply ColumnAction to registers");
+  if (m_isIdentity) {
+    return values;
+  }
+
+  SmallVector<Value> ret;
+  ret.reserve(1 << inSizeLog2);
+  for (size_t dstIdx = 0; dstIdx < (1ULL << inSizeLog2); ++dstIdx) {
+    size_t srcIdx = 0;
+    for (auto [reducedBit, originalBit] : llvm::enumerate(action)) {
+      if ((dstIdx >> originalBit) & 1ULL)
+        srcIdx |= 1ULL << reducedBit;
+    }
+    ret.push_back(values[srcIdx]);
+  }
+  return ret;
+}
+
 ColumnAction ColumnAction::leftCompose(const ColumnAction &other) const {
   assert(inDim == other.inDim);
   assert(inSizeLog2 == other.inSizeLog2);

@@ -18749,3 +18749,48 @@ Open after this slice:
   - direct `triton-opt --split-input-file
     test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
   - `git diff --check`.
+
+## 2026-04-16 04:38 UTC: broadcasted TMEM load expansion for subword slices
+
+- Root cause:
+  - the no-scales two-CTA subword subslice repro reached the correct
+    `tcgen05.cp.cta_group::2.128x256b` copy schedule;
+  - failure happened at `view.load(reg_layout)` for the sliced f16 TMEM view;
+  - the register layout had a broadcasted register column after subword
+    packing, so `lowerTMemLdSt(...)` reduced the register domain with
+    `actionRemoveBroadcastedRegs(...)`;
+  - the load path recursively loaded and unpacked the reduced f16 values, then
+    tried to re-broadcast them by comparing against `info.reps` hardware
+    message cardinality. That count is in packed message-register space, not
+    in the original logical register space after subword unpacking.
+- Implementation:
+  - added `ColumnAction::applyInverseWithBroadcast(ValueRange)`;
+  - the helper maps each original register index back to the reduced index
+    selected by the action columns and reuses that value for dropped
+    broadcasted columns;
+  - broadcasted TMEM load lowering now uses this exact inverse of the same
+    action that stores use to reduce input values, removing the packed/unpacked
+    cardinality mismatch and keeping the semantics tied to the actual
+    register-column transformation.
+- Coverage promoted:
+  - subword rows were added to
+    `CP_TWOCTA_LINEAR_SUBSLICE_VIEW_CASES` for f16/bf16/i16/i8 at valid
+    swizzle byte spans;
+  - the full two-CTA subslice copy node now passes with the new rows.
+- Validation:
+  - `make -j8`;
+  - exact original f16 failing row (`1 passed`);
+  - full two-CTA subslice copy node (`36 passed in 34.50s`);
+  - dense two-CTA copy node (`91 passed in 94.28s`);
+  - leading-indexed two-CTA copy node (`35 passed in 27.87s`);
+  - existing single-CTA subslice copy node (`12 passed in 13.56s`);
+  - single-CTA subword copy node (`8 passed in 10.92s`);
+  - subword `ld/st` selector
+    (`76 passed, 11012 deselected in 143.81s`);
+  - `build/cmake.linux-aarch64-cpython-3.12/unittest/Tools/LinearLayout`
+    (`70 passed`);
+  - direct `triton-opt --split-input-file
+    test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

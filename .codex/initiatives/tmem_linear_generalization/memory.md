@@ -1,5 +1,26 @@
 # TMEM Linear Generalization
 
+- Current broadcasted load expansion checkpoint, 2026-04-16 04:38 UTC:
+  the parked no-scales two-CTA subword column-slice/subslice rows are now
+  supported. The root cause was not copy planning: `tcgen05.cp.cta_group::2`
+  already selected the correct `128x256b` schedule. The failure was the
+  generic `tmem_load` path after `actionRemoveBroadcastedRegs(...)` reduced
+  the register domain. Loads recursively materialized the reduced unique f16
+  values, unpacked them, and then tried to validate/re-expand using
+  message-repetition layout cardinality, which still counted packed hardware
+  registers rather than the original logical register domain. `ColumnAction`
+  now exposes `applyInverseWithBroadcast(...)`, the exact inverse of
+  `apply(ValueRange)` for actions that may have dropped broadcasted columns,
+  and broadcasted TMEM load lowering uses that instead of the old
+  `broadcastAs(info.reps)` path. This makes store reduction and load expansion
+  symmetric over the same action and removes the subword-specific cardinality
+  mismatch. Validation passed: `make -j8`, full two-CTA subslice copy
+  (`36 passed`), dense two-CTA copy (`91 passed`), leading-indexed two-CTA
+  copy (`35 passed`), existing single-CTA subslice copy (`12 passed`),
+  single-CTA subword copy (`8 passed`), subword `ld/st` selector
+  (`76 passed`), LinearLayout unit tests (`70 passed`), direct `invalid.mlir`
+  verifier, py-compile, and `git diff --check`.
+
 - Current two-CTA subword copy/index projection checkpoint, 2026-04-16 04:27
   UTC: no-scales two-CTA dense and leading-indexed descriptor-view copy now use
   the actual input element bitwidth when constructing the shared-memory
