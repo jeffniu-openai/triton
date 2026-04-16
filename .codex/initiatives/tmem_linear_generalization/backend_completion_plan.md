@@ -916,6 +916,14 @@ Progress:
   unsupported for ISA reasons: without a load predicate/rematerialization
   model, the public packet schedule updates a wider row window than the
   logical view.
+- 2026-04-16 05:42 UTC: re-probed lifted row-half direct `ld/st` after the
+  diagnostic checkpoint. Dimension-aware already-adjusted-base subtraction can
+  preserve the outer leading-buffer column offset and make the selected half
+  visible through the right full-view tile, but the public packet footprint
+  still updates the complementary row half. Forcing a logical 64-row row plan
+  into the 128-row support image does not avoid that over-update. This keeps
+  lifted half-row support as a true packet/warp rematerialization or predicate
+  model task, not a base-offset or row-plan override cleanup.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

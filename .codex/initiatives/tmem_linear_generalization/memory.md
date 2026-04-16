@@ -6,6 +6,23 @@
   the schedule proof more concrete by exposing the row/rematerialization fact
   a future row-mask, row-partition, or smaller-footprint planner would need.
 
+- Current lifted row-half support probe, 2026-04-16 05:42 UTC:
+  a temporary source edit removed the row-half verifier guard again and then
+  tried the two most direct lowering repairs. First, support-query base
+  adjustment was made dimension-aware: for the `origin=(row=64,col=0)`
+  support query it subtracted only the already-applied row component, leaving
+  the outer leading-buffer column offset intact. This moved the write from the
+  wrong outer tile to the selected full-view tile, and the intended second
+  half became correct, but the complementary first half was also incremented.
+  Second, forcing the support query to carry a logical 64-row row plan
+  (`16,32` anchors) through the 128-row support image did not change the
+  emitted public packet footprint enough to avoid that over-update. Conclusion:
+  lifted row-half `ld/st` cannot be promoted by base-offset masking or by
+  swapping in the logical row plan; it needs a first-class packet/warp
+  rematerialization or predicate model that maps the 64-row logical view onto
+  only the selected half of the 128-row backing tile. The temporary source
+  edits were removed before this checkpoint.
+
 - Current lifted row-half diagnostic checkpoint, 2026-04-16 05:27 UTC:
   `isUnsupportedDirectTMemLdStDescriptorView(...)` now uses one shared
   backend diagnostic for lifted row-half direct `ld/st` views. The wording is

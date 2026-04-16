@@ -18998,3 +18998,37 @@ Open after this slice:
   - restored all temporary source/test edits;
   - rebuilt with `make -j8`;
   - working tree was clean before this docs checkpoint.
+
+## 2026-04-16 05:42 UTC: lifted row-half support decomposition probe
+
+- Starting point: clean `codex/tmem` at `02014c1ac`.
+- Probe:
+  - temporarily removed the lifted row-half direct `ld/st` clean-negative
+    guard;
+  - rebuilt with `make -j8`;
+  - ran the single-CTA `identity,N=64,16x128b` half-row kernel directly and
+    compared against the expected second-half-only update.
+- Result 1:
+  - the unguarded support query compiled but wrote no values visible through
+    the selected full view because support-query base adjustment subtracted the
+    whole already-adjusted subview pointer, including the outer leading-buffer
+    column offset;
+  - a temporary dimension-aware adjustment that subtracted only already-applied
+    row components preserved that outer column offset and made the intended
+    second half correct.
+- Result 2:
+  - after that base fix, the same public packet footprint also incremented the
+    complementary first half (`4096` mismatches, all `+13` in the untouched
+    first half);
+  - forcing a logical 64-row row plan (`16,32` anchors) through the 128-row
+    support image did not avoid the over-update. The emitted direct packet
+    footprint still touched both halves.
+- Conclusion:
+  - lifted row-half support needs a real packet/warp rematerialization or
+    predicate model that maps the logical half-row view onto only the selected
+    half of the backing tile;
+  - do not promote this bucket by only masking base-offset subtraction, by
+    preserving the outer prefix offset, or by forcing the logical row plan.
+- Cleanup:
+  - all temporary source edits were removed;
+  - the working tree was clean before this docs checkpoint.

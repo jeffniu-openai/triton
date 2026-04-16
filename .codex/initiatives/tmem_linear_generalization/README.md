@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 05:42 UTC: a no-code lifted row-half `ld/st` support probe
+  refined the 05:23 boundary. Temporarily preserving the outer leading-buffer
+  column offset while subtracting only the already-applied row component made
+  the selected half land in the right outer tile, but the direct packet
+  footprint then updated both row halves. Forcing a logical 64-row row plan
+  through the support image did not change the public `tcgen05.ld/st`
+  footprint enough to prevent the complementary half from being touched. The
+  source tree was restored clean; future support needs a real packet/warp
+  rematerialization or predicate model, not just base-offset masking or a
+  query-row-plan override.
 - 2026-04-16 05:30 UTC: dense copy row-order clean negatives now report the
   first row or row-repetition basis that breaks ascending physical row order.
   This keeps the unsupported decision at the instruction-schedule layer while
