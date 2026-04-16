@@ -11086,3 +11086,29 @@ rejection, not rescue
   - direct `invalid.mlir` verifier;
   - py-compile of touched Python tests;
   - `git diff --check`.
+
+## Latest: 2026-04-16 08:46 UTC reduction helper legality checkpoint
+
+- Backend reduction layout inference now checks actual `tcgen05.ld.red`
+  message legality before returning a layout: selected plans must be packed
+  and have at least `.x2` reduction repeats.
+- The helper can consider `16x32bx2` after `32x32b`, which keeps the M64
+  split-N positive moving toward backend-owned message planning.
+- Important rejected probe:
+  - globally routing default `load_min/load_max(layout=None)` through
+    `compute_tmem_reduce_reg_layout_from_memdesc(...)` is unsafe today;
+  - a split-4 `ld_red` probe produced non-M64 column-permuted `N=256`
+    packet-order changes and a real row-permuted runtime mismatch;
+  - message legality is necessary but not sufficient. A global reduction
+    selector must also prove exact physical-query equivalence, including
+    packet order/origin and row/column permutation effects.
+- Current bounded behavior:
+  - Python uses the backend helper only for the known M64 noncanonical
+    direct-`32x32b` scalarization boundary;
+  - non-M64 default reduction selection remains on the previous safe path.
+- Validation:
+  - py-compile of `blackwell/__init__.py`;
+  - `make -j8`;
+  - focused post-fix selector covering the failed broad-probe rows and M64
+    (`121 passed, 11011 deselected`);
+  - `git diff --check`.

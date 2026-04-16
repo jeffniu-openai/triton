@@ -19473,3 +19473,48 @@ Open after this slice:
   - continue replacing frontend-mediated reduction choices with backend
     physical-query/message-planner decisions, or move to the next bounded copy
     frontier.
+
+## 2026-04-16 08:46 UTC: reduction helper legality tightened, broad default probe rejected
+
+- Starting point: `codex/tmem` at `acef1258a`.
+- Change:
+  - `getTmemLoadReductionLayout(...)` now validates the lowered
+    `TMemLdStEncodingInfo` as a real hardware-reduction message schedule
+    before returning it: the selected plan must be packed and have at least
+    two reduction repeats, matching the `tcgen05.ld.red` `.x2` lower bound;
+  - the helper can now consider the `16x32bx2` family after `32x32b`, which
+    lets M64 split-N reductions be described as backend message legality
+    instead of only as a frontend variant spelling;
+  - the Python default reduction path still uses the helper only for the
+    existing M64 noncanonical direct-`32x32b` scalarization boundary, falling
+    back to the handle-aware split-N helper only if the backend returns
+    `None`.
+- Rejected probe:
+  - temporarily routing every `layout=None` reduction through
+    `compute_tmem_reduce_reg_layout_from_memdesc(...)` was not safe;
+  - the broad split-4 `ld_red` probe produced opcode-order changes for
+    column-permuted `N=256` rows and a real runtime mismatch for a non-M64
+    row-permuted root;
+  - conclusion: message legality is necessary but not sufficient for a global
+    backend-owned default reduction selector. The next cleanup must prove the
+    selected layout is semantically equivalent to the exact TMEM physical
+    query, including packet order/origin and row permutation effects.
+- Validation:
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-backend-narrow-fix
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    '(ld_red_col_permuted_linear_layout and 256) or
+    (ld_red_row_permuted_linear_layout and rotate1 and identity) or
+    (ld_red_explicit_n_sweep_variants and col_reverse_n256_32x32b) or
+    ld_red_m64'`
+    (`121 passed, 11011 deselected`);
+  - `git diff --check`.
+- Next:
+  - keep the M64 helper path as the bounded positive;
+  - do not globally route default reductions through the helper until the
+    backend reduction planner carries exact physical-query equivalence, not
+    just legal message shape.

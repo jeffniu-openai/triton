@@ -957,6 +957,14 @@ Progress:
   reduction-compatible layout. The frontend split-N helper remains only a
   fallback. Positive coverage now spans the existing M64 row/column-permuted
   default-case matrix.
+- 2026-04-16 08:46 UTC: tightened the backend reduction helper itself so it
+  validates actual hardware-reduction message legality (`packed`, at least
+  `.x2` reduction repeats) and can consider `16x32bx2` after `32x32b`.
+  A deliberately broad default-routing probe was rejected: message legality
+  alone caused non-M64 column-permuted packet-order changes and a row-permuted
+  runtime mismatch. Keep the helper scoped to the M64 scalarization boundary
+  until the backend reduction planner proves exact physical-query equivalence,
+  including packet order, row origins, and row/column permutation effects.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:

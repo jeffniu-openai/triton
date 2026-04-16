@@ -2522,10 +2522,16 @@ void init_gluon_ir(py::module &&m) {
         }
 
         auto tryReductionLayout = [&](ttg::MemDescType queryTy) -> py::object {
-          auto directMatches = [&](FailureOr<ttng::TMemLdStEncodingInfo> info) {
-            return succeeded(info) &&
-                   info->atom == ttng::TMemAccessAtom::I32x32b;
-          };
+          auto isReductionCompatible =
+              [&](FailureOr<ttng::TMemLdStEncodingInfo> info) {
+                if (failed(info) || info->unpacked)
+                  return false;
+                unsigned elementsPerThread =
+                    ttng::getElementsPerThread(info->atom);
+                unsigned reductionRepeats =
+                    info->numRegsPerMessage / elementsPerThread;
+                return reductionRepeats >= 2;
+              };
           auto maybeLayout =
               ttng::getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);
           if (!maybeLayout)
@@ -2540,14 +2546,14 @@ void init_gluon_ir(py::module &&m) {
                   tensorTy, ttg::toLinearLayout(regTy)))
             return py::none();
           if (rawQueryLayout &&
-              directMatches(ttng::computeTMemLdStEncodingInfo(
+              isReductionCompatible(ttng::computeTMemLdStEncodingInfo(
                   regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
                   /*emitError=*/{}, rawRowPlan))) {
             return layoutToGluon(*maybeLayout);
           }
           if (rawQueryLayout && isViewLikeMemDesc)
             return py::none();
-          if (directMatches(ttng::computeTMemLdStEncodingInfo(
+          if (isReductionCompatible(ttng::computeTMemLdStEncodingInfo(
                   regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
                   queryRowPlan))) {
             return layoutToGluon(*maybeLayout);

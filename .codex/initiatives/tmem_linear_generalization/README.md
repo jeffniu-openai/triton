@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 08:46 UTC: the backend reduction-layout helper now validates
+  actual `tcgen05.ld.red` message legality (`packed`, reduction repeats at
+  least `.x2`) instead of treating `I32x32b` atom spelling as sufficient, and
+  it may return a `16x32bx2` layout for M64 split-N reductions. The frontend
+  uses this helper only for the known M64 direct-`32x32b` scalarization
+  boundary. A broad probe that routed all default reductions through the
+  helper found wrong output for non-M64 row-permuted roots, so do not make it
+  the global default selector until the backend can prove full physical-query
+  equivalence, not only reduction-message legality. Validation: py-compile,
+  `make -j8`, focused post-fix selector (`121 passed`), and `git diff
+  --check`.
 - 2026-04-16 07:58 UTC: the M64 explicit-`32x32b` reduction override now
   asks the backend `compute_tmem_reduce_reg_layout_from_memdesc(...)` helper
   before using the frontend split-N fallback, and the positive coverage spans

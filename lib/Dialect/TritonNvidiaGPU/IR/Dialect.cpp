@@ -3140,10 +3140,12 @@ bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {
 std::optional<DistributedEncodingTrait>
 getTmemLoadReductionLayout(RankedTensorType tensorType, MemDescType memType,
                            int numWarps) {
-  // Reduction layout inference should follow the same direct I32x32b query
-  // path as ordinary TMEM load/store. Larger warp counts are legal when the
-  // resulting register layout keeps N fully in registers and leaves M
-  // unsharded, e.g. 256x128 with 8 warps.
+  // Reduction layout inference follows the direct TMEM load/store planner but
+  // validates the resulting message shape against tcgen05.ld.red. Larger warp
+  // counts are legal when the resulting register layout keeps N fully in
+  // registers and leaves M unsharded, e.g. 256x128 with 8 warps. M64 split-N
+  // layouts may lower through the 16x32bx2 family when that is the first
+  // reduction-compatible message schedule.
   if (memType.getRank() != 2 ||
       isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) ||
       memType.getElementTypeBitWidth() != 32) {
@@ -3152,64 +3154,81 @@ getTmemLoadReductionLayout(RankedTensorType tensorType, MemDescType memType,
   if (!isReductionFriendlyTmemSourceLayout(memType))
     return std::nullopt;
 
-  std::optional<LinearLayout> layout = getDistributedLayoutForTmemLdSt(
-      memType, TMemAccessAtom::I32x32b, numWarps);
-  if (!layout)
-    return std::nullopt;
-  auto ret = std::move(*layout);
-  if (isReductionFriendlyTmemLoadLayout(tensorType, ret))
-    return LinearEncodingAttr::get(tensorType.getContext(), ret);
-
   auto *ctx = tensorType.getContext();
-  auto kReg = StringAttr::get(ctx, "register");
-  auto kWarp = StringAttr::get(ctx, "warp");
-  if (!ret.hasInDim(kReg) || !ret.hasInDim(kWarp))
-    return std::nullopt;
-
-  auto basisTouchesOnlyDim = [&](StringAttr inDim, unsigned idx,
-                                 unsigned dim) -> bool {
-    auto dims = to_vector(ret.getOutDimNames());
-    if (dim >= dims.size())
-      return false;
-    bool touchesTarget = ret.getBasis(inDim, idx, dims[dim]) != 0;
-    bool touchesOther = false;
-    for (auto [otherIdx, otherDim] : llvm::enumerate(dims)) {
-      if (otherIdx == dim)
-        continue;
-      touchesOther |= ret.getBasis(inDim, idx, otherDim) != 0;
-    }
-    return touchesTarget && !touchesOther;
+  auto validateReductionLayout =
+      [&](const LinearLayout &layout) -> std::optional<DistributedEncodingTrait> {
+    if (!isReductionFriendlyTmemLoadLayout(tensorType, layout))
+      return std::nullopt;
+    auto attr = LinearEncodingAttr::get(ctx, layout);
+    auto regTy = tensorType.cloneWithEncoding(attr);
+    auto info = computeTMemLdStEncodingInfo(regTy, memType, /*maxnreg=*/256);
+    if (failed(info) || info->unpacked)
+      return std::nullopt;
+    unsigned elementsPerThread = getElementsPerThread(info->atom);
+    unsigned reductionRepeats = info->numRegsPerMessage / elementsPerThread;
+    if (reductionRepeats < 2)
+      return std::nullopt;
+    return attr;
   };
 
-  SmallVector<unsigned> regMIndices;
-  for (unsigned idx = 0; idx < ret.getInDimSizeLog2(kReg); ++idx) {
-    if (basisTouchesOnlyDim(kReg, idx, /*dim=*/0))
-      regMIndices.push_back(idx);
-  }
-  SmallVector<unsigned> warpNIndices;
-  for (unsigned idx = 0; idx < ret.getInDimSizeLog2(kWarp); ++idx) {
-    if (basisTouchesOnlyDim(kWarp, idx, /*dim=*/1))
-      warpNIndices.push_back(idx);
-  }
-  if (regMIndices.empty() || warpNIndices.empty() ||
-      regMIndices.size() != warpNIndices.size()) {
-    return std::nullopt;
-  }
+  auto tryReductionLayout =
+      [&](TMemAccessAtom atom) -> std::optional<DistributedEncodingTrait> {
+    std::optional<LinearLayout> layout =
+        getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
+    if (!layout)
+      return std::nullopt;
+    auto ret = std::move(*layout);
+    if (auto attr = validateReductionLayout(ret))
+      return attr;
 
-  auto bases = ret.getBases();
-  for (auto [regIdx, warpIdx] : llvm::zip_equal(regMIndices, warpNIndices))
-    std::swap(bases[kReg][regIdx], bases[kWarp][warpIdx]);
-  ret = LinearLayout(std::move(bases), ret.getOutDims(), ret.isSurjective());
+    auto kReg = StringAttr::get(ctx, "register");
+    auto kWarp = StringAttr::get(ctx, "warp");
+    if (!ret.hasInDim(kReg) || !ret.hasInDim(kWarp))
+      return std::nullopt;
 
-  if (!isReductionFriendlyTmemLoadLayout(tensorType, ret))
-    return std::nullopt;
-  auto attr = LinearEncodingAttr::get(ctx, ret);
-  if (failed(computeTMemLdStEncodingInfo(tensorType.cloneWithEncoding(attr),
-                                         memType,
-                                         /*maxnreg=*/256))) {
-    return std::nullopt;
-  }
-  return attr;
+    auto basisTouchesOnlyDim = [&](StringAttr inDim, unsigned idx,
+                                   unsigned dim) -> bool {
+      auto dims = to_vector(ret.getOutDimNames());
+      if (dim >= dims.size())
+        return false;
+      bool touchesTarget = ret.getBasis(inDim, idx, dims[dim]) != 0;
+      bool touchesOther = false;
+      for (auto [otherIdx, otherDim] : llvm::enumerate(dims)) {
+        if (otherIdx == dim)
+          continue;
+        touchesOther |= ret.getBasis(inDim, idx, otherDim) != 0;
+      }
+      return touchesTarget && !touchesOther;
+    };
+
+    SmallVector<unsigned> regMIndices;
+    for (unsigned idx = 0; idx < ret.getInDimSizeLog2(kReg); ++idx) {
+      if (basisTouchesOnlyDim(kReg, idx, /*dim=*/0))
+        regMIndices.push_back(idx);
+    }
+    SmallVector<unsigned> warpNIndices;
+    for (unsigned idx = 0; idx < ret.getInDimSizeLog2(kWarp); ++idx) {
+      if (basisTouchesOnlyDim(kWarp, idx, /*dim=*/1))
+        warpNIndices.push_back(idx);
+    }
+    if (regMIndices.empty() || warpNIndices.empty() ||
+        regMIndices.size() != warpNIndices.size()) {
+      return std::nullopt;
+    }
+
+    auto bases = ret.getBases();
+    for (auto [regIdx, warpIdx] : llvm::zip_equal(regMIndices, warpNIndices))
+      std::swap(bases[kReg][regIdx], bases[kWarp][warpIdx]);
+    ret = LinearLayout(std::move(bases), ret.getOutDims(), ret.isSurjective());
+
+    return validateReductionLayout(ret);
+  };
+
+  if (auto attr = tryReductionLayout(TMemAccessAtom::I32x32b))
+    return attr;
+  if (auto attr = tryReductionLayout(TMemAccessAtom::I16x32bx2))
+    return attr;
+  return std::nullopt;
 }
 
 SmallVector<DistributedEncodingTrait>
