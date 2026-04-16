@@ -19087,3 +19087,40 @@ Open after this slice:
     'ldst_descriptor_multidim_slice_identity_reports_clean_error or higher_rank_half_rows_reports_clean_error_lifted_layout'`
     (`31 passed, 11058 deselected`);
   - `git diff --check`.
+
+## 2026-04-16 06:24 UTC: routed warpx2 subword copy through planner layers
+
+- Starting point: `codex/tmem` at `c67b5867b`.
+- Implementation:
+  - removed the old `warpx2 tcgen05.copy currently requires 32-bit shared
+    elements` shared-runtime support guard;
+  - added a bounded subword-only `warpx2::01_23` copy-plan candidate using a
+    64-row descriptor image and two source warp groups;
+  - updated the subword `warpx2` clean-negative test to require the structured
+    planner reasons that now surface instead of the removed family-level
+    bitwidth guard.
+- Result:
+  - f16/bf16/i16/i8 `warpx2` rows still remain clean negatives, but the
+    reason now comes from the real planner layer: descriptor-loader source
+    footprint bounds, MMAv5 shared descriptor representability, direct-seed
+    source layout encoding, or the `warpx2::02_13` row-bit-5 projection proof;
+  - this narrows the remaining support gap to packed/subword source-storage
+    and descriptor-schedule semantics rather than a coarse shared-element
+    bitwidth preflight.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-subword-planner2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2_subword_dtypes'`
+    (`14 passed, 11075 deselected`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-after-subword-planner
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_warpx2 and not subword_dtypes'`
+    (`64 passed, 11025 deselected`);
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

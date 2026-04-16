@@ -8957,7 +8957,16 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_err
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "could not synthesize a compatible shared-memory descriptor plan" in text
-    assert "warpx2 tcgen05.copy currently requires 32-bit shared elements" in text
+    assert (
+        "instruction schedule reads descriptor-loader source footprint" in text
+        or "has no representable MMAv5 shared-memory descriptor" in text
+        or "direct-seed descriptor plan requires a shared-memory source layout" in text
+        or "source row projection requires logical row bit 5" in text
+    )
+    if "has no representable MMAv5 shared-memory descriptor" in text:
+        assert "descriptor shape" in text
+        assert "instruction shape" in text
+    assert "warpx2 tcgen05.copy currently requires 32-bit shared elements" not in text
     assert "cleanly unsupported" in text
     assert "error encountered during parsing" in str(excinfo.value)
     assert "PassManager::run failed" not in text

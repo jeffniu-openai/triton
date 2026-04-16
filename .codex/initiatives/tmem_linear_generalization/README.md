@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 06:24 UTC: no-scales `tcgen05.copy.warpx2` subword rows now
+  route through the shared copy planner instead of stopping at the old
+  32-bit-shared-element runtime guard. A bounded subword-only
+  `warpx2::01_23` 64-row descriptor candidate was added, and the clean
+  negatives now assert planner-layer reasons: source-footprint bounds,
+  non-representable MMAv5 shared descriptors, direct-seed source-layout
+  encoding, or the known `warpx2::02_13` row-bit-5 projection failure. This
+  is still unsupported, but the remaining gap is now attached to
+  packed/subword source-storage descriptor scheduling rather than a coarse
+  family guard. Validation: `make -j8`, subword warpx2 selector (`14
+  passed`), neighboring non-subword warpx2 selector (`64 passed`),
+  py-compile, and `git diff --check`.
 - 2026-04-16 06:15 UTC: descriptor-view `get_reg_layout()` failures now
   surface the backend's direct `ld/st` unsupported reason instead of dropping
   it behind the generic frontend fallback. The row-anchor diagnostic was

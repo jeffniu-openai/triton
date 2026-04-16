@@ -691,6 +691,13 @@ Progress:
   `source-row projection schedule` diagnostic in focused runtime-matrix
   coverage. This is a contract/diagnostic checkpoint; support remains blocked
   on a real row/source projection or row-group atomization plan.
+- 2026-04-16 06:24 UTC: no-scales `warpx2` subword copy was moved past the old
+  shared-element-bitwidth preflight and into the shared planner. The added
+  subword `warpx2::01_23` 64-row descriptor candidate does not promote support:
+  it proves the current boundary is representable packed/subword source
+  storage and descriptor scheduling, while `warpx2::02_13` still fails the
+  source-row projection proof for logical row bit 5. Keep this as a Phase 2
+  support frontier rather than restoring the family-level guard.
 - 2026-04-15 12:25 UTC: scales descriptor-view row interleaving was re-probed
   with temporary source-only experiments. Existing message fields do not
   provide the needed even/odd row partition: `smemRow=64` is not an independent

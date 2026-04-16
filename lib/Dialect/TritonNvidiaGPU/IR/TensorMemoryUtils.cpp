@@ -7915,9 +7915,6 @@ getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
                     "tile, or a 256x4 two-CTA shared tile with the canonical "
                     "CTA block basis.");
   }
-  if (srcTy.getElementType().getIntOrFloatBitWidth() != 32)
-    return setError("warpx2 tcgen05.copy currently requires 32-bit shared "
-                    "elements.");
   if (!isa<triton::gpu::SharedLinearEncodingAttr>(srcTy.getEncoding())) {
     return setError("warpx2 tcgen05.copy currently requires the canonical "
                     "shared-linear source layout.");
@@ -9181,6 +9178,10 @@ llvm::SmallVector<TMemCopyPlan, 4> getTMemCopyPlans(const LinearLayout &cvt,
     appendWarpx2Plan(/*descriptorRows=*/32u, /*sourceWarpGroups=*/4u,
                      /*directSeed=*/false, /*tmemDwordDelta=*/0,
                      /*directSourceOffsetB128=*/0);
+    if (bitwidth < 32)
+      appendWarpx2Plan(/*descriptorRows=*/64u, /*sourceWarpGroups=*/2u,
+                       /*directSeed=*/false, /*tmemDwordDelta=*/0,
+                       /*directSourceOffsetB128=*/0);
     return plans;
   }
   if (atom->multicast == 2) {

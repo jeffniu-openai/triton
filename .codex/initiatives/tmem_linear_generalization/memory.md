@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Current warpx2 subword planner cleanup checkpoint, 2026-04-16 06:24 UTC:
+  no-scales `tcgen05.copy.warpx2` subword rows no longer stop at the blanket
+  "requires 32-bit shared elements" runtime-support guard. Removing that guard
+  lets f16/bf16/i16/i8 rows reach the same layered copy planner as 32-bit
+  rows. The planner now tries an additional subword-only 64-row descriptor
+  candidate for `warpx2::01_23`, which proves the next boundary precisely:
+  either the instruction schedule reads a source footprint beyond the current
+  descriptor-loader source image, the 64-row by 8-column subword descriptor has
+  no representable MMAv5 shared-memory descriptor, direct-seed source layout
+  encoding is impossible, or `warpx2::02_13` still fails the affine source-row
+  projection because logical row bit 5 maps to a one-dword offset instead of
+  the required 8-row stride. This is not a positive support change; it removes
+  a family-level workaround and keeps the remaining gap attached to packed
+  source-storage / descriptor-schedule semantics. Validation: `make -j8`,
+  subword warpx2 selector (`14 passed`), neighboring non-subword warpx2
+  selector (`64 passed`), py-compile, and `git diff --check`.
+
 - Current descriptor-view `ld/st` diagnostic propagation checkpoint,
   2026-04-16 06:15 UTC: frontend `get_reg_layout()` now appends the backend
   direct-`ld/st` unsupported reason when descriptor-view layout selection
