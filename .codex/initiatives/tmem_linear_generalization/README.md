@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 12:00 UTC: the remaining explicit M64
+  requested-variant `16x32bx2` Python canonical fallback has been deleted.
+  The same C++ raw-query recognizer now covers both `32x32b_splitn` and
+  `16x32bx2`, so row/column-permuted M64 split-N register layout selection is
+  backend-owned for auto/default and explicit split-N requests. Validation:
+  `make -j8`, py-compile, traced explicit row confirming
+  `canonicalM64SplitNRawQuery atomName=16x32bx2 recognized`,
+  `splitn_rowcol_permuted` (`518 passed`), full `ld_red_m64` (`73 passed`),
+  and `git diff --check`.
 - 2026-04-16 11:54 UTC: the handle-aware M64 `32x32b_splitn`
   auto-layout fallback is now backend-owned for simple noncanonical split-N
   physical images. `compute_tmem_reg_layout_from_memdesc(...)` recognizes the

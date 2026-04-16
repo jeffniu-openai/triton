@@ -2269,7 +2269,9 @@ void init_gluon_ir(py::module &&m) {
           auto tryCanonicalM64SplitNRawQuery =
               [&](const ttng::TMemLdStQueryLayout &rawQueryLayout)
               -> py::object {
-            if (atomName != "32x32b_splitn" || numWarps != 4 ||
+            bool requestedM64SplitN =
+                atomName == "32x32b_splitn" || atomName == "16x32bx2";
+            if (!requestedM64SplitN || numWarps != 4 ||
                 !desiredAtom ||
                 *desiredAtom != ttng::TMemAccessAtom::I16x32bx2 ||
                 queryMemDescTy.getRank() != 2 ||

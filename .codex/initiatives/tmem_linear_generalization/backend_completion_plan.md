@@ -1038,6 +1038,11 @@ Progress:
   separate explicit-`16x32bx2` requested-variant path still needs its Python
   canonical fallback; keep that as the next cleanup target rather than
   treating all M64 split-N fallback deletion as complete.
+- 2026-04-16 12:00 UTC: completed the adjacent explicit-`16x32bx2` cleanup.
+  The same C++ raw-query recognizer now handles both `32x32b_splitn` and
+  `16x32bx2`, and the Python canonical M64 split-N constructor/fallback has
+  been removed. The M64 row/column-permuted split-N register-layout family is
+  now backend-owned for auto/default and explicit split-N requests.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

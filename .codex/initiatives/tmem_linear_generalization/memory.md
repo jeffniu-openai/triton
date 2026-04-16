@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current explicit M64 split-N backend checkpoint, 2026-04-16 12:00 UTC:
+  the explicit requested-variant `16x32bx2` M64 row/column-permuted path is
+  now covered by the same C++ raw-query recognizer as `32x32b_splitn`.
+  The Python `_canonical_m64_splitn_reg_layout(...)` constructor and its
+  explicit-layout fallback have been removed. Trace validation on a
+  representative explicit row showed both
+  `canonicalM64SplitNRawQuery atomName=32x32b_splitn recognized` and
+  `canonicalM64SplitNRawQuery atomName=16x32bx2 recognized`. Runtime
+  validation: `splitn_rowcol_permuted` (`518 passed`) and full `ld_red_m64`
+  (`73 passed`). This closes the M64 split-N frontend-rescue bucket recorded
+  at 11:54; remaining M64 work should move to broader backend equivalence or
+  other TMEM surfaces rather than this fallback.
+
 - Current backend-owned M64 split-N auto checkpoint, 2026-04-16 11:54 UTC:
   the C++ memdesc register-layout bridge now handles the simple noncanonical
   M64 `32x32b_splitn` raw-query image that the 11:07 deletion probe exposed.

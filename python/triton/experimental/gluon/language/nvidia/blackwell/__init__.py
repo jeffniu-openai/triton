@@ -89,10 +89,6 @@ def _strip_zero_reg_bases_from_layout(layout):
     )
 
 
-def _is_power_of_two(value):
-    return isinstance(value, int) and value > 0 and (value & (value - 1)) == 0
-
-
 def _is_simple_m64_splitn_tmem_layout(layout, n):
     if not isinstance(layout, TensorMemoryLinearLayout):
         return False
@@ -204,31 +200,6 @@ def _fold_canonical_single_cta_block_rows(rows, block_bases, shape, two_ctas):
         if list(basis) != expected:
             return rows, block_bases
     return folded_rows, []
-
-
-def _canonical_m64_splitn_reg_layout(shape, num_warps, layout):
-    if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
-        return None
-    n = shape[1]
-    if n < 2 or not _is_power_of_two(n):
-        return None
-    if not _is_simple_m64_splitn_tmem_layout(layout, n):
-        return None
-
-    lane_split_col = n // 4 if n >= 4 else 0
-    reg_bases = []
-    col = 1
-    while col < n:
-        if col != lane_split_col:
-            reg_bases.append([0, col])
-        col *= 2
-    return DistributedLinearLayout(
-        reg_bases=reg_bases,
-        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [0, lane_split_col]],
-        warp_bases=[[16, 0], [32, 0]],
-        block_bases=[],
-        shape=[64, n],
-    )
 
 
 def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
@@ -644,18 +615,14 @@ class tensor_memory_descriptor(base_value):
                     requested_variant,
                 )
             except ValueError as e:
-                layout = _canonical_m64_splitn_reg_layout(
-                    list(self.shape), num_warps, self.layout
+                reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(
+                    self.handle, num_warps, requested_variant
                 )
-                if layout is None:
-                    reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(
-                        self.handle, num_warps, requested_variant
-                    )
-                    if reason is not None:
-                        raise ValueError(
-                            f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}. {reason}"
-                        ) from e
-                    raise ValueError(str(e)) from e
+                if reason is not None:
+                    raise ValueError(
+                        f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}. {reason}"
+                    ) from e
+                raise ValueError(str(e)) from e
         if layout is not None and requested_variant in ("32x32b_splitn", "16x32bx2"):
             layout = _finalize_splitn_tmem_reg_layout(
                 layout,

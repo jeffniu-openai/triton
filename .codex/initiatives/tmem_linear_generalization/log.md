@@ -20005,3 +20005,31 @@ Open after this slice:
   - commit and push this checkpoint;
   - continue with the explicit-`16x32bx2` M64 requested-variant backend gap,
     or switch back to the copy scheduler/scales message-planning frontiers.
+
+## 2026-04-16 12:00 UTC: backend-owned explicit M64 16x32bx2 selection
+
+- Starting point: `codex/tmem` at `12731a640`.
+- Change:
+  - extended the simple M64 split-N raw-query recognizer in
+    `compute_tmem_reg_layout_from_memdesc(...)` from `32x32b_splitn` to both
+    `32x32b_splitn` and explicit requested-variant `16x32bx2`;
+  - removed `_canonical_m64_splitn_reg_layout(...)` and the explicit
+    Python canonical fallback from `tensor_memory_descriptor.get_reg_layout`.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `splitn_rowcol_permuted` selector passed (`518 passed, 10615
+    deselected`);
+  - full `ld_red_m64` selector passed (`73 passed, 11060 deselected`);
+  - representative explicit row passed and traced both backend recognizer
+    paths:
+    `canonicalM64SplitNRawQuery atomName=32x32b_splitn recognized` and
+    `canonicalM64SplitNRawQuery atomName=16x32bx2 recognized`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - with the M64 split-N frontend rescue removed, continue to another
+    backend-completeness frontier: two-CTA `warpx2::02_13` copy scheduling,
+    scales copy source-message/destination-mask planning, or broader
+    physical-query equivalence cleanup.
