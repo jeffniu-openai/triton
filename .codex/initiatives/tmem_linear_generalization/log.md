@@ -20352,3 +20352,25 @@ Open after this slice:
 - Remaining note:
   - support still requires a non-overwriting destination schedule, narrower
     atom, source format with matching semantics, or explicit destination mask.
+
+## 2026-04-16 23:52 UTC: shared copy destination-mask support gap
+
+- Starting point: `codex/tmem` at `e586fa71b`.
+- Change:
+  - added one shared destination-mask schedule-gap helper for copy planner
+    diagnostics;
+  - routed descriptor-row split and source-row selected-offset clean negatives
+    through the same row/column mask footprint proof;
+  - kept support unchanged while replacing duplicated family-shaped no-mask
+    wording with a single axis-aware helper.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file ... --verify-diagnostics` on
+    `test/TritonNvidiaGPU/invalid.mlir`;
+  - focused source-row/scales split selector passed
+    (`15 passed, 1560 deselected in 6.20s`);
+  - `git diff --check`.
+- Remaining note:
+  - this still does not prove a positive schedule. The next support-bearing
+    slice must either discover a narrower/masked public copy atom or represent
+    a non-overwriting multi-message schedule over exact destination footprints.

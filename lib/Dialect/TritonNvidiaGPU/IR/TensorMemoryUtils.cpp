@@ -9195,6 +9195,54 @@ getTMemCopyDestinationMaskRequirement(
       /*selectionPeriod=*/requirement.rowSelectionPeriod};
 }
 
+static StringRef stringifyTMemCopyDestinationMaskAxis(
+    TMemCopyDestinationMaskAxis axis) {
+  switch (axis) {
+  case TMemCopyDestinationMaskAxis::Row:
+    return "row";
+  case TMemCopyDestinationMaskAxis::Column:
+    return "column";
+  }
+  llvm_unreachable("unknown TMEM copy destination mask axis");
+}
+
+static unsigned getTMemCopyDestinationMaskInstructionFootprint(
+    const TMemCopyDestinationMaskRequirement &requirement) {
+  switch (requirement.axis) {
+  case TMemCopyDestinationMaskAxis::Row:
+    return requirement.instructionRows;
+  case TMemCopyDestinationMaskAxis::Column:
+    return requirement.instructionColumns;
+  }
+  llvm_unreachable("unknown TMEM copy destination mask axis");
+}
+
+static void appendTMemCopyDestinationMaskScheduleGap(
+    llvm::raw_ostream &os,
+    const TMemCopyDestinationMaskRequirement &requirement,
+    StringRef requirementName, StringRef footprintScope) {
+  unsigned instructionFootprint =
+      getTMemCopyDestinationMaskInstructionFootprint(requirement);
+  if (requirement.selectedRun == 0 || requirement.selectionPeriod == 0 ||
+      instructionFootprint == 0 ||
+      requirement.selectedRun >= instructionFootprint)
+    return;
+
+  StringRef axis = stringifyTMemCopyDestinationMaskAxis(requirement.axis);
+  os << " The derived " << requirementName
+     << " would need to update only " << requirement.selectedRun
+     << " of every " << requirement.selectionPeriod << " destination " << axis
+     << "s, but this copy atom writes the full " << instructionFootprint << "-"
+     << axis << " destination footprint";
+  if (!footprintScope.empty())
+    os << " " << footprintScope;
+  os << ". A multi-message schedule for this split would therefore overwrite "
+     << axis
+     << "s owned by the complementary split unless the ISA provides a narrower "
+        "atom, source format, or destination "
+     << axis << " mask.";
+}
+
 static std::optional<TMemCopySupportResult>
 getTMemCopySourceRowSplitScheduleSupport(
     MemDescType srcTy, const LinearLayout &cvt, const TMemCopyPlan &plan,
@@ -9234,8 +9282,12 @@ getTMemCopySourceRowSplitScheduleSupport(
   }
   os << ". Current tcgen05.copy scheduling can change the shared descriptor "
         "or source address per emitted instruction, but it has no proved "
-        "row-selected source-offset schedule that preserves the complementary "
-        "destination rows without overwriting or aliasing them.";
+        "row-selected source-offset schedule.";
+  if (maskRequirement) {
+    appendTMemCopyDestinationMaskScheduleGap(
+        os, *maskRequirement, "row-selected source-offset requirement",
+        "for each emitted instruction");
+  }
 
   if (auto knownGap = getKnownTMemCopySourceRowSplitProbeEvidence(
           srcTy, cvt, plan, message, bitwidth, failure))
@@ -9949,20 +10001,10 @@ getTMemCopyDescriptorRowSplitScheduleSupport(
      << instructionProjectionError;
   auto maskRequirement =
       getTMemCopyDestinationMaskRequirement(*splitRequirement);
-  if (maskRequirement &&
-      maskRequirement->axis == TMemCopyDestinationMaskAxis::Column &&
-      maskRequirement->selectedRun < maskRequirement->instructionColumns) {
-    os << " The derived descriptor-row split would need to update only "
-       << maskRequirement->selectedRun << " of every "
-       << maskRequirement->selectionPeriod
-       << " destination columns, but this copy atom writes the full "
-       << maskRequirement->instructionColumns
-       << "-column destination footprint for each descriptor row. A schedule "
-          "with separate descriptor rows for the split would therefore "
-          "overwrite columns owned by the complementary descriptor row unless "
-          "the ISA provides a narrower atom, source format, or destination "
-          "column mask.";
-  }
+  if (maskRequirement)
+    appendTMemCopyDestinationMaskScheduleGap(
+        os, *maskRequirement, "descriptor-row split",
+        "for each descriptor row");
   return getUnsupportedTMemCopyResult(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }

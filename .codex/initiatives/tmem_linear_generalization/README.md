@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 23:52 UTC: made `TMemCopyDestinationMaskRequirement`
+  operational in the copy scheduler diagnostics. Descriptor-row column splits
+  and source-row selected-offset splits now use one shared helper to prove the
+  same no-mask boundary: the public `tcgen05.copy` atom writes the full
+  destination row/column footprint while the derived split only owns selected
+  rows or columns. This remains a clean unsupported boundary, but the planner
+  no longer carries separate family-shaped wording for the shared schedule
+  consequence. Validation: `make -j8`, direct `invalid.mlir` verifier,
+  focused scales/two-CTA `warpx2` selector (`15 passed, 1560 deselected`), and
+  `git diff --check`.
 - 2026-04-16 21:58 UTC: factored the common scheduler consequence of the
   scales descriptor-row split and no-scales source-row split into
   `TMemCopyDestinationMaskRequirement`. Descriptor-row column splits derive a

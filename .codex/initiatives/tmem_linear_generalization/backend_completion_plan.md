@@ -278,6 +278,13 @@ Progress:
   no-scales `warpx2` row-selected source-offset gap on one planner concept:
   the current public atom writes a full destination footprint while the split
   only owns selected rows or columns.
+- 2026-04-16 23:52 UTC: promoted that mask requirement into a shared
+  schedule-gap helper. Both descriptor-row splits and source-row selected-offset
+  splits now report the no-mask proof through the same axis-aware code path:
+  selected runs smaller than the instruction footprint require a destination
+  row/column mask, narrower atom/source format, or a proved non-overwriting
+  multi-message schedule. This is still a clean unsupported boundary, but it
+  removes duplicated family-shaped no-mask reasoning from the copy planner.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

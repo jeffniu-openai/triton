@@ -11465,7 +11465,33 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-16 21:58 UTC copy destination-mask requirement checkpoint
+## Latest: 2026-04-16 23:52 UTC copy destination-mask support helper checkpoint
+
+- Phase 2 copy scheduler cleanup:
+  - `TMemCopyDestinationMaskRequirement` now feeds a shared
+    destination-footprint support helper instead of only being a data carrier;
+  - descriptor-row split diagnostics and source-row selected-offset diagnostics
+    use the same helper for the no-mask proof;
+  - the helper derives the written instruction footprint from the mask axis
+    (`instructionColumns` for column splits, `instructionRows` for row splits)
+    and appends the same narrow-run-vs-full-footprint explanation for both
+    families.
+- Behavior/support boundary is unchanged:
+  - scales descriptor-view copies still need a non-overwriting descriptor-row /
+    destination-column schedule, narrower atom, source format with matching
+    semantics, or destination-column mask;
+  - no-scales two-CTA `warpx2::02_13` still needs a cta-group::2
+    row-selected source-offset schedule, smaller row footprint, source format
+    with matching semantics, or destination-row mask.
+- Validation:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - focused selector:
+    `cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta` (`15 passed, 1560 deselected`);
+  - `git diff --check`.
+
+## Previous: 2026-04-16 21:58 UTC copy destination-mask requirement checkpoint
 
 - Follow-up Phase 2 planner cleanup:
   - introduced `TMemCopyDestinationMaskRequirement` with row/column mask axes;
