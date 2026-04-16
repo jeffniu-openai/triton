@@ -9033,6 +9033,8 @@ def test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_err
     assert "source column bit 0 maps to no shared offset" in text
     assert "sub-32-bit packed lane state" in text
     assert "physical dword-column projection is contiguous over 8 columns" in text
+    assert "packed-lane source-storage requirement" in text
+    assert "logical source columns per 32-bit shared-memory word" in text
     assert "unpacked TensorMemoryLinearLayout" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text

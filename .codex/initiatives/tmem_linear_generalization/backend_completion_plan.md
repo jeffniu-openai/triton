@@ -348,6 +348,14 @@ Progress:
   descriptor row. This classifies the scales descriptor-view/subslice copy
   gap as a masked/narrow-atom/source-format ISA boundary under current public
   `warpx4.32x128b`, not a descriptor synthesis gap.
+- 2026-04-16 01:59 UTC: packed-lane source-storage failures now feed a
+  `TMemCopyPackedLaneRequirement` and a dedicated schedule-proof diagnostic.
+  The planner preserves the physical dword-column projection but rejects
+  schedules that drop the low lane bases, because that aliases sub-dword
+  lanes inside each 32-bit shared-memory word. Support now requires an
+  explicit packed source-storage model through descriptor synthesis, source
+  footprint planning, and instruction scheduling; the dense unpacked
+  `TensorMemoryLinearLayout` subword path remains the supported layout form.
 - 2026-04-15 23:08 UTC: factored copy destination-to-source conversion into
   `getTMemCopySourceConversion(...)` and routed both `TMEMCopyOp::verify()`
   and `TensorMemoryToLLVM.cpp` through it. This does not change support, but

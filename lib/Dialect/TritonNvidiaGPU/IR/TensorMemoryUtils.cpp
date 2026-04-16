@@ -9408,6 +9408,31 @@ getTMemCopyDescriptorRowSplitRequirement(
   return requirement;
 }
 
+std::optional<TMemCopyPackedLaneRequirement> getTMemCopyPackedLaneRequirement(
+    const TMemCopyInstructionColumnProjectionFailure &failure) {
+  if (failure.kind !=
+          TMemCopyInstructionColumnProjectionFailureKind::PackedLaneState ||
+      failure.packedLaneBits == 0 ||
+      failure.packedLaneBits >= std::numeric_limits<unsigned>::digits)
+    return std::nullopt;
+
+  TMemCopyPackedLaneRequirement requirement;
+  requirement.instructionRows = failure.instructionRows;
+  requirement.instructionColumns = failure.instructionColumns;
+  requirement.laneBits = failure.packedLaneBits;
+  requirement.lanesPerDword = 1u << failure.packedLaneBits;
+  requirement.physicalInstructionColumns =
+      failure.instructionColumns / requirement.lanesPerDword;
+  if (failure.packedLaneProjection) {
+    requirement.hasPhysicalProjection = true;
+    requirement.laneBits = failure.packedLaneProjection->laneBits;
+    requirement.lanesPerDword = failure.packedLaneProjection->lanesPerDword;
+    requirement.physicalInstructionColumns =
+        failure.packedLaneProjection->physicalInstructionColumns;
+  }
+  return requirement;
+}
+
 static std::string formatTMemCopyInstructionColumnProjectionFailure(
     const TMemCopyInstructionColumnProjectionFailure &failure) {
   std::string note;
@@ -9418,9 +9443,13 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
        << "-column tcgen05.copy instruction, source column bit 0 maps to no "
           "shared offset. This projection carries sub-32-bit packed lane "
           "state outside the LinearLayout offset dimension";
-    if (failure.packedLaneBits > 0)
-      os << " (" << failure.packedLaneBits << " lane bit"
-         << (failure.packedLaneBits == 1 ? "" : "s") << ")";
+    if (auto packedLaneRequirement =
+            getTMemCopyPackedLaneRequirement(failure)) {
+      os << " (" << packedLaneRequirement->laneBits << " lane bit"
+         << (packedLaneRequirement->laneBits == 1 ? "" : "s") << "; "
+         << packedLaneRequirement->lanesPerDword
+         << " logical source columns per 32-bit shared-memory word)";
+    }
     if (failure.packedLaneProjection) {
       os << "; after those lane bits, the physical dword-column projection is "
             "contiguous over "
@@ -9506,6 +9535,45 @@ getTMemCopyDescriptorRowSplitScheduleSupport(
           "the ISA provides a narrower atom, source format, or destination "
           "column mask.";
   }
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
+}
+
+static std::optional<TMemCopySupportResult>
+getTMemCopyPackedLaneScheduleSupport(
+    TMemCopyFamily family, unsigned messageIdx,
+    const TMemCopyInstructionColumnProjectionFailure &failure,
+    StringRef instructionProjectionError) {
+  auto packedLaneRequirement = getTMemCopyPackedLaneRequirement(failure);
+  if (!packedLaneRequirement)
+    return std::nullopt;
+
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "tcgen05.copy." << stringifyTMemCopyFamily(family)
+     << " descriptor message " << messageIdx
+     << " has an unsupported instruction-column projection. "
+     << instructionProjectionError;
+  os << " The derived packed-lane source-storage requirement has "
+     << packedLaneRequirement->laneBits << " lane bit"
+     << (packedLaneRequirement->laneBits == 1 ? "" : "s") << " and "
+     << packedLaneRequirement->lanesPerDword
+     << " logical source columns per 32-bit shared-memory word.";
+  if (packedLaneRequirement->hasPhysicalProjection) {
+    os << " The high column bits form a contiguous physical dword-column "
+          "stream over "
+       << packedLaneRequirement->physicalInstructionColumns << " dword column"
+       << (packedLaneRequirement->physicalInstructionColumns == 1 ? ""
+                                                                  : "s")
+       << " for the " << packedLaneRequirement->instructionColumns
+       << "-column logical instruction.";
+  }
+  os << " A descriptor/tile schedule that drops those lane bits can address "
+        "the dword stream but aliases the packed lanes, so it would copy only "
+        "one lane from each packed source word instead of all logical source "
+        "columns. Support needs an explicit packed source-storage model that "
+        "carries lane selection through MMAShared descriptor synthesis, source "
+        "footprint planning, and the tcgen05.copy instruction schedule.";
   return getUnsupportedTMemCopyResult(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
@@ -9800,9 +9868,13 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
                        << " columnSelectionPeriod="
                        << splitRequirement->columnSelectionPeriod;
         }
-        if (instructionProjectionFailure.packedLaneBits > 0)
+        if (auto packedLaneRequirement = getTMemCopyPackedLaneRequirement(
+                instructionProjectionFailure)) {
           llvm::errs() << " packedLaneBits="
-                       << instructionProjectionFailure.packedLaneBits;
+                       << packedLaneRequirement->laneBits
+                       << " lanesPerDword="
+                       << packedLaneRequirement->lanesPerDword;
+        }
         if (instructionProjectionFailure.packedLaneProjection)
           llvm::errs() << " physicalColumns="
                        << instructionProjectionFailure.packedLaneProjection
@@ -9813,6 +9885,10 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
               plan.family, messageIdx, instructionProjectionFailure,
               instructionProjectionError))
         return {std::nullopt, *splitSupport};
+      if (auto packedLaneSupport = getTMemCopyPackedLaneScheduleSupport(
+              plan.family, messageIdx, instructionProjectionFailure,
+              instructionProjectionError))
+        return {std::nullopt, *packedLaneSupport};
       std::string reason;
       llvm::raw_string_ostream os(reason);
       os << "tcgen05.copy." << stringifyTMemCopyFamily(plan.family)

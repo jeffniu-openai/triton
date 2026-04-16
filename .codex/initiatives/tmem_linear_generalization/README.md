@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 01:59 UTC: packed-lane copy failures now produce a typed
+  `TMemCopyPackedLaneRequirement` and a dedicated instruction-schedule proof.
+  The planner records the low lane bits, lanes per 32-bit shared-memory word,
+  and contiguous physical dword-column projection, then rejects dword-only
+  descriptor/tile schedules because dropping lane bits aliases packed source
+  lanes and copies only one lane group. Legacy subword `TensorMemoryLayout`
+  copy remains a clean source-storage boundary; dense subword copy through an
+  unpacked `TensorMemoryLinearLayout` remains the supported path. Validation:
+  `make -j8`, the exact legacy subword clean-negative row (`4 passed`),
+  py-compile, and `git diff --check`.
 - 2026-04-16 01:41 UTC: moved the two-CTA no-scales
   `warpx2::02_13` clean-negative from a shape-only early schedule-gap guard
   into the source-row projection planner. A bounded bypass confirmed the

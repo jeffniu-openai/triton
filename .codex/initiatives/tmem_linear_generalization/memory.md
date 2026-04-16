@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Current packed-lane source-storage proof, 2026-04-16 01:59 UTC:
+  legacy subword `tcgen05.copy` failures now derive a first-class
+  `TMemCopyPackedLaneRequirement` from the packed-lane instruction-column
+  failure. The requirement records the instruction footprint, low lane bits,
+  lanes per 32-bit shared-memory word, whether the high column bits form a
+  contiguous physical dword-column stream, and that stream width. The support
+  path now returns a dedicated instruction-schedule failure explaining why the
+  already-probed "drop lane bases and use a raw dword descriptor" schedule is
+  invalid: it can address the physical dword stream but aliases the hidden
+  packed lanes, so it copies only one lane group instead of all logical source
+  columns. This keeps packed-lane legacy subword copy classified as a source
+  storage model boundary, not a generic projection miss. Validation passed:
+  `make -j8`, the exact legacy subword clean-negative row (`4 passed`),
+  py-compile, and `git diff --check`.
+
 - Current descriptor-row split schedule proof, 2026-04-16 01:55 UTC:
   the copy planner now consumes the typed descriptor-row split requirement
   when instruction-column projection fails. If the selected destination-column

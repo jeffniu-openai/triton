@@ -98,6 +98,31 @@
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
 
+## 2026-04-16 01:59 UTC: packed-lane source-storage requirement proof
+
+- Added `TMemCopyPackedLaneRequirement` as the typed copy-planner artifact for
+  packed-lane instruction-column failures.
+- The requirement records the instruction footprint, number of low lane bits,
+  logical source columns per 32-bit shared-memory word, and the contiguous
+  physical dword-column stream when that stream exists.
+- Added a dedicated instruction-schedule failure for packed-lane source
+  storage. The message now explains that a schedule which drops lane bases can
+  address the physical dword stream but aliases packed lanes, so it would copy
+  only one lane group from each packed source word.
+- The legacy subword `TensorMemoryLayout` copy rows remain clean unsupported;
+  dense subword copies through unpacked `TensorMemoryLinearLayout` remain
+  positive.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-packed-lane-requirement
+    PYTHONPATH=./python pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_legacy_subword_dtypes_report_clean_error`
+    (`4 passed`);
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-16 00:04 UTC: invalid.mlir copy diagnostic refresh
 
 - Updated `test/TritonNvidiaGPU/invalid.mlir` expected notes for:

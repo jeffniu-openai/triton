@@ -188,6 +188,15 @@ struct TMemCopyPackedLaneProjection {
   llvm::SmallVector<TMemCopyInstructionColumnProjectionStep, 4> physicalSteps;
 };
 
+struct TMemCopyPackedLaneRequirement {
+  unsigned instructionRows = 0;
+  unsigned instructionColumns = 0;
+  unsigned laneBits = 0;
+  unsigned lanesPerDword = 1;
+  unsigned physicalInstructionColumns = 0;
+  bool hasPhysicalProjection = false;
+};
+
 struct TMemCopyDescriptorRowSplitRequirement {
   unsigned instructionRows = 0;
   unsigned instructionColumns = 0;
@@ -227,6 +236,10 @@ struct TMemCopyInstructionColumnProjectionFailure {
 
 std::optional<TMemCopyDescriptorRowSplitRequirement>
 getTMemCopyDescriptorRowSplitRequirement(
+    const TMemCopyInstructionColumnProjectionFailure &failure);
+
+std::optional<TMemCopyPackedLaneRequirement>
+getTMemCopyPackedLaneRequirement(
     const TMemCopyInstructionColumnProjectionFailure &failure);
 
 struct TMemCopyInstructionColumnProjection {
