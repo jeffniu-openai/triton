@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Current reduction predicate cleanup checkpoint, 2026-04-16 09:07 UTC: the
+  hardware-reduction message predicate is now one shared backend helper in
+  `TensorMemoryUtils`. `getTmemLoadReductionLayout(...)`, the `tmem_load`
+  verifier, and `compute_tmem_reduce_reg_layout_from_memdesc(...)` all use
+  the same definition: packed message format and at least two reduction
+  repeats. This preserves behavior while removing the duplicated arithmetic
+  that previously made the M64 helper cleanup easy to drift. Validation:
+  `make -j8`, focused reduction selector (`121 passed, 11011 deselected`),
+  and `git diff --check`. A forced-helper probe also sharpened the broad
+  selector boundary: legal non-M64 row-permuted `32x32b.x128` packets can
+  still return permuted rows, so the next selector must prove row-order /
+  physical-query equivalence before defaulting through the helper.
+
 - Current backend-routed M64 reduction-layout follow-up, 2026-04-16
   07:58 UTC: the explicit-`32x32b` M64 reduction override now asks the backend
   `compute_tmem_reduce_reg_layout_from_memdesc(...)` helper for the

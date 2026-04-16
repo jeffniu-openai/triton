@@ -2487,6 +2487,15 @@ inferStandaloneTMemLdStQueryLayoutImpl(Value memDesc,
 }
 } // namespace
 
+unsigned getTMemLdStReductionRepeats(const TMemLdStEncodingInfo &info) {
+  unsigned elementsPerThread = getElementsPerThread(info.atom);
+  return info.numRegsPerMessage / elementsPerThread;
+}
+
+bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info) {
+  return !info.unpacked && getTMemLdStReductionRepeats(info) >= 2;
+}
+
 std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
   if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     // TMEM scales use logical broadcast row bases in their linear layout, but

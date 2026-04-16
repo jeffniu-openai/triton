@@ -965,6 +965,14 @@ Progress:
   runtime mismatch. Keep the helper scoped to the M64 scalarization boundary
   until the backend reduction planner proves exact physical-query equivalence,
   including packet order, row origins, and row/column permutation effects.
+- 2026-04-16 09:07 UTC: factored that `.ld.red` message predicate into shared
+  `TensorMemoryUtils` helpers and routed the reduction layout helper,
+  verifier, and Python bridge through the same check. This is a cleanup
+  checkpoint for Phase 4 rather than a support promotion. A forced-helper
+  probe showed the unsafe broad default path can emit legal
+  `32x32b.x128` packets while returning row-permuted output, so the next
+  support-bearing reduction step needs an equivalence proof over physical row
+  order and packet origins, not only message legality.
 - 2026-04-16 01:29 UTC: removed the reshape zero-basis cardinality trim from
   the 00:57 cleanup after it regressed scales descriptor-view `ld/st`.
   Preserving zero row/column/block bases is the correct Phase 4 invariant:

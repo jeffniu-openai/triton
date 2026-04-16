@@ -2524,13 +2524,9 @@ void init_gluon_ir(py::module &&m) {
         auto tryReductionLayout = [&](ttg::MemDescType queryTy) -> py::object {
           auto isReductionCompatible =
               [&](FailureOr<ttng::TMemLdStEncodingInfo> info) {
-                if (failed(info) || info->unpacked)
+                if (failed(info))
                   return false;
-                unsigned elementsPerThread =
-                    ttng::getElementsPerThread(info->atom);
-                unsigned reductionRepeats =
-                    info->numRegsPerMessage / elementsPerThread;
-                return reductionRepeats >= 2;
+                return ttng::isTMemLdStReductionCompatible(*info);
               };
           auto maybeLayout =
               ttng::getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);

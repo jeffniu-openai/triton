@@ -449,6 +449,10 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             std::optional<TMemLdStRowPlan> rowPlanOverride =
                                 std::nullopt);
 
+unsigned getTMemLdStReductionRepeats(const TMemLdStEncodingInfo &info);
+
+bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info);
+
 std::optional<TMemLdStPhysicalSupportPlan>
 getTMemLdStPhysicalSupportPlan(gpu::MemDescType memTy, unsigned numWarps,
                                int maxnreg);

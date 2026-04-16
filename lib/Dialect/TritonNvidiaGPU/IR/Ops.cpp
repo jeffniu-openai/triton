@@ -1460,9 +1460,7 @@ LogicalResult TMEMLoadOp::verify() {
     if (encodingInfoOr->unpacked)
       return emitOpError(
           "tmem_load reduction requires packed format (unpacked=false)");
-    unsigned elementsPerThread = getElementsPerThread(encodingInfoOr->atom);
-    unsigned reductionRepeats =
-        encodingInfoOr->numRegsPerMessage / elementsPerThread;
+    unsigned reductionRepeats = getTMemLdStReductionRepeats(*encodingInfoOr);
     if (reductionRepeats < 2) {
       InFlightDiagnostic diag = emitOpError(
           "tmem_load reduction selected a scalar tcgen05.ld.red message, "

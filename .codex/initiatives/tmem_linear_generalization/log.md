@@ -19518,3 +19518,36 @@ Open after this slice:
   - do not globally route default reductions through the helper until the
     backend reduction planner carries exact physical-query equivalence, not
     just legal message shape.
+
+## 2026-04-16 09:07 UTC: shared ld.red message predicate cleanup
+
+- Starting point: `codex/tmem` at `bc2370dbd`.
+- Change:
+  - added shared `getTMemLdStReductionRepeats(...)` and
+    `isTMemLdStReductionCompatible(...)` helpers in `TensorMemoryUtils`;
+  - routed `getTmemLoadReductionLayout(...)`, `TMEMLoadOp::verify()`, and the
+    Python `compute_tmem_reduce_reg_layout_from_memdesc(...)` bridge through
+    the same predicate instead of duplicating packed/`.x2` arithmetic.
+- Probe finding:
+  - a forced-helper runtime probe confirmed why the previous broad default
+    route remains unsafe: a non-M64 row-permuted case can emit legal
+    `tcgen05.ld.red.sync.aligned.32x32b.x128` packets and still return rows in
+    the wrong order;
+  - the next global selector step therefore needs an exact physical-query / row
+    order equivalence proof, not a looser message-legality predicate.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduce-predicate-cleanup
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    '(ld_red_col_permuted_linear_layout and 256) or
+    (ld_red_row_permuted_linear_layout and rotate1 and identity) or
+    (ld_red_explicit_n_sweep_variants and col_reverse_n256_32x32b) or
+    ld_red_m64'`
+    (`121 passed, 11011 deselected`);
+  - `git diff --check`.
+- Next:
+  - commit and push this cleanup checkpoint;
+  - continue with reduction-selector equivalence or the next copy planner
+    frontier, keeping known false-support probes out of the tree.

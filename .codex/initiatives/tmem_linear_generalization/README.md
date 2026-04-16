@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 09:07 UTC: the reduction message-compatibility predicate is now
+  centralized in `TensorMemoryUtils` as
+  `isTMemLdStReductionCompatible(...)` / `getTMemLdStReductionRepeats(...)`
+  and is shared by the reduction layout helper, verifier, and Python bridge.
+  This is behavior-preserving, but it removes duplicated `.ld.red` legality
+  arithmetic before the next selector-equivalence work. A forced-helper probe
+  confirmed the rejected broad route is specifically a row-permutation
+  semantic-equivalence problem: one non-M64 row-permuted case emitted legal
+  `32x32b.x128` packets but returned permuted rows. Validation: `make -j8`,
+  focused reduction selector (`121 passed`), and `git diff --check`.
 - 2026-04-16 08:46 UTC: the backend reduction-layout helper now validates
   actual `tcgen05.ld.red` message legality (`packed`, reduction repeats at
   least `.x2`) instead of treating `I32x32b` atom spelling as sufficient, and

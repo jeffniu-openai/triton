@@ -3162,11 +3162,7 @@ getTmemLoadReductionLayout(RankedTensorType tensorType, MemDescType memType,
     auto attr = LinearEncodingAttr::get(ctx, layout);
     auto regTy = tensorType.cloneWithEncoding(attr);
     auto info = computeTMemLdStEncodingInfo(regTy, memType, /*maxnreg=*/256);
-    if (failed(info) || info->unpacked)
-      return std::nullopt;
-    unsigned elementsPerThread = getElementsPerThread(info->atom);
-    unsigned reductionRepeats = info->numRegsPerMessage / elementsPerThread;
-    if (reductionRepeats < 2)
+    if (failed(info) || !isTMemLdStReductionCompatible(*info))
       return std::nullopt;
     return attr;
   };
