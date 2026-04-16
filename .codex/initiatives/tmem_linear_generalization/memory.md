@@ -10692,3 +10692,22 @@ rejection, not rescue
   - removed the stale `128-byte descriptor macro-tile` allowance from the
     row/column-permuted copy clean-negative assertion so the test contract
     stays aligned with instruction-width tile addressing.
+
+## Latest: 2026-04-16 03:34 UTC dense copy tile-selector permutations
+
+- The dense no-scales copy planner is now pinned by runtime coverage for
+  non-adjacent pure column tile-selector permutations, not just the adjacent
+  `_make_tmem_linear_layout_tile_permuted(...)` swap cases.
+- New helper/test shape:
+  - preserve low column bits inside the selected copy instruction footprint;
+  - permute only the higher tile-selector bits with `reverse` or `even_odd`;
+  - assert runtime equality plus exact PTX/LLIR copy opcode streams.
+- Important finding:
+  - `N=128,tile_n=4,even_odd` remains on `128x256b` because the 8-column
+    footprint is still contiguous;
+  - `N=64,tile_n=4,reverse` uses `128x128b` because the wider footprint would
+    cross the selector permutation.
+- Validation:
+  - `make -j8`;
+  - py-compile;
+  - combined tile-permutation selector (`22 passed, 10984 deselected`).

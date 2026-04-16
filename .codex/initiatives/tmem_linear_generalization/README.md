@@ -2712,6 +2712,13 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-16 03:34 UTC: dense no-scales copy tile-permutation coverage now
+  includes non-adjacent pure tile-selector permutations (`reverse` and
+  `even_odd`) where low instruction columns remain contiguous. This pins the
+  current planner as instruction-tile general rather than adjacent-swap-only:
+  some layouts use `128x128b`, while selector permutations that preserve the
+  8-column footprint stay on `128x256b`. Validation: `make -j8`,
+  py-compile, and the combined tile-permutation selector (`22 passed`).
 - 2026-04-16 03:18 UTC: dense row-permutation reprobes confirm the remaining
   source-row copy frontier is not another destination column offset bug.
   `rotate1` and high-row-tile-only row permutations still need a

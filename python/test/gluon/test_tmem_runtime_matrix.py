@@ -99,6 +99,22 @@ def _make_tmem_linear_layout_tile_permuted(m, n, tile_n):
     )
 
 
+def _make_tmem_linear_layout_tile_selector_permuted(m, n, tile_n, kind):
+    assert m >= 1 and (m & (m - 1)) == 0
+    assert n >= 1 and (n & (n - 1)) == 0
+    assert tile_n >= 1 and (tile_n & (tile_n - 1)) == 0
+    assert n >= 2 * tile_n, "tile-selector permutation requires at least two tiles"
+
+    tile_bits = int(math.log2(tile_n))
+    col_bits = [1 << i for i in range(int(math.log2(n)))]
+    col_bits = col_bits[:tile_bits] + _permute_pow2_bases_by_kind(col_bits[tile_bits:], kind)
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(int(math.log2(m)))],
+        cols=[[0, bit] for bit in col_bits],
+        shape=[m, n],
+    )
+
+
 def _permute_pow2_bases(bits):
     even = list(range(0, len(bits), 2))
     odd = list(range(1, len(bits), 2))
@@ -5288,6 +5304,13 @@ CP_LINEAR_TILE_PERMUTED_UNSUPPORTED_CASES = (
     (256, 2),
 )
 
+CP_LINEAR_TILE_SELECTOR_PERMUTED_CASES = (
+    (64, 4, "reverse", 16, "tcgen05.cp.cta_group::1.128x128b"),
+    (128, 4, "even_odd", 16, "tcgen05.cp.cta_group::1.128x256b"),
+    (128, 8, "reverse", 16, "tcgen05.cp.cta_group::1.128x256b"),
+    (256, 8, "reverse", 32, "tcgen05.cp.cta_group::1.128x256b"),
+)
+
 CP_LINEAR_PERMUTED_UNSUPPORTED_CASES = [
     (row_perm_kind, col_perm_kind)
     for row_perm_kind, col_perm_kind in PERMUTED_ROW_COL_LAYOUT_KINDS
@@ -9085,6 +9108,22 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted(n, tile_n, expect
     inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
     out = torch.empty_like(inp)
     layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
+
+    compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
+
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode] * expected_count)
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("n,tile_n,perm_kind,expected_count,expected_opcode", CP_LINEAR_TILE_SELECTOR_PERMUTED_CASES)
+def test_tmem_runtime_matrix_cp_no_scales_linear_tile_selector_permuted(
+    n, tile_n, perm_kind, expected_count, expected_opcode
+):
+    m = 128
+    inp = torch.arange(m * n, device="cuda", dtype=torch.float32).reshape(m, n)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout_tile_selector_permuted(m, n, tile_n, perm_kind)
 
     compiled = tmem_copy_no_scales_linear_kernel[(1, )](inp, out, layout, m, n, 32, num_warps=4)
 

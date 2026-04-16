@@ -441,6 +441,11 @@ Progress:
   are treated as folded-row source/descriptor selectors and keep logical
   destination column offsets. This preserves the promoted `tile_n=4`
   no-scales positives while restoring the broad M256 dense copy matrix.
+- 2026-04-16 03:34 UTC: added runtime coverage for non-adjacent pure
+  column tile-selector permutations. The planner now has regression coverage
+  that proves it is instruction-footprint general for selector permutations,
+  choosing `128x128b` only when the wider footprint would cross a selector
+  boundary and otherwise staying on `128x256b`.
 - 2026-04-16 00:25 UTC: added explicit source byte-range legality for
   direct-seed copy messages. Direct-seed messages still do not have a selected
   descriptor layout, but they now prove the immediate source offset and

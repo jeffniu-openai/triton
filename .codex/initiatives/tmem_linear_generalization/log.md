@@ -18626,3 +18626,23 @@ Open after this slice:
   `128-byte descriptor macro-tile` diagnostic allowance. The current contract
   is instruction-width physical tile alignment/contiguity plus source-row
   schedule diagnostics.
+
+## 2026-04-16 03:34 UTC: dense copy tile-selector permutation saturation
+
+- Probed a non-adjacent pure column tile-selector permutation with low
+  instruction columns preserved:
+  - layout: `M=128,N=256`, column bases
+    `1,2,4,128,64,32,16,8`;
+  - result: runtime passed with 32 `tcgen05.cp.128x256b` instructions.
+- Added bounded runtime rows for tile-selector permutations:
+  - `N=64,tile_n=4,reverse` uses `128x128b`;
+  - `N=128,tile_n=4,even_odd` keeps the 8-column instruction footprint
+    contiguous and uses `128x256b`;
+  - `N=128,tile_n=8,reverse` and `N=256,tile_n=8,reverse` use `128x256b`.
+- This pins the current dense copy planner as general over pure tile-selector
+  permutations, not only over adjacent tile-bit swaps.
+- Validation:
+  - `make -j8`;
+  - py-compile of `test_tmem_runtime_matrix.py`;
+  - combined existing/new tile-permutation selector
+    (`22 passed, 10984 deselected`).
