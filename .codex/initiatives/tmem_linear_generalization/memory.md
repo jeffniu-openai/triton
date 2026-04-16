@@ -11465,7 +11465,32 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-16 23:52 UTC copy destination-mask support helper checkpoint
+## Latest: 2026-04-16 23:56 UTC ld/st packet-footprint requirement checkpoint
+
+- Phase 4 load/store cleanup:
+  - added `TMemLdStPacketFootprintRequirement` and a shared formatter for
+    direct `tcgen05.ld/st` descriptor-view packet-footprint boundaries;
+  - routed descriptor-view row-anchor misses, lifted row-half origins, raw
+    4x256b refresh physical bitcasts, and M64 two-CTA scales broadcast row
+    anchors through the same requirement layer.
+- Behavior/support boundary is unchanged:
+  - these rows still remain clean unsupported until the backend can decompose
+    view row origins into packet bases, materializable row anchors, and
+    per-message offsets, or model an explicit read/modify/write or mask
+    footprint;
+  - 4x256b refresh copies remain positive for the exact refresh view, while
+    direct load/store on that refresh image remains a row-anchor / sparse
+    packet-footprint contract gap.
+- Validation:
+  - `make -j8`;
+  - direct `invalid.mlir` verifier;
+  - focused selector:
+    `ldst_4x256b_refresh or
+    ldst_scales_descriptor_view_cga_reports_clean_unsupported`
+    (`4 passed, 1571 deselected`);
+  - `git diff --check`.
+
+## Previous: 2026-04-16 23:52 UTC copy destination-mask support helper checkpoint
 
 - Phase 2 copy scheduler cleanup:
   - `TMemCopyDestinationMaskRequirement` now feeds a shared

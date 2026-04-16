@@ -1145,6 +1145,14 @@ Progress:
   validation. Runtime coverage now spans the full promoted CGA range with
   `16x32bx2` root packets and `32x32b` descriptor-view packets. `M=64`
   remains a row-anchor/packet-footprint boundary.
+- 2026-04-16 23:56 UTC: direct `ld/st` packet-footprint clean negatives now
+  share a typed requirement layer. Missing descriptor-view row anchors,
+  translated row-half origins, raw 4x256b refresh physical bitcasts, and M64
+  two-CTA scales broadcast row anchors all route through
+  `TMemLdStPacketFootprintRequirement`. This is not a support promotion; it
+  aligns the current clean negatives under the same missing abstraction:
+  packet-base and row-anchor rematerialization plus per-message offsets, or an
+  explicit read/modify/write or mask footprint model.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

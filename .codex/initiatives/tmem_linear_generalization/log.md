@@ -20374,3 +20374,26 @@ Open after this slice:
   - this still does not prove a positive schedule. The next support-bearing
     slice must either discover a narrower/masked public copy atom or represent
     a non-overwriting multi-message schedule over exact destination footprints.
+
+## 2026-04-16 23:56 UTC: shared ld/st packet-footprint requirement
+
+- Starting point: `codex/tmem` at `4e8c37ac9`.
+- Change:
+  - introduced `TMemLdStPacketFootprintRequirement` for direct
+    `tcgen05.ld/st` descriptor-view clean negatives;
+  - routed missing row anchors, translated row-half origins, raw 4x256b refresh
+    physical bitcasts, and M64 scales broadcast row-anchor failures through one
+    formatter;
+  - kept emitted diagnostics semantically stable while replacing duplicated
+    one-off strings with a shared packet-footprint abstraction.
+- Validation:
+  - `make -j8`;
+  - direct `triton-opt --split-input-file ... --verify-diagnostics` on
+    `test/TritonNvidiaGPU/invalid.mlir`;
+  - focused 4x256/M64 scales selector passed
+    (`4 passed, 1571 deselected in 3.08s`);
+  - `git diff --check`.
+- Remaining note:
+  - support still requires real row-anchor rematerialization, packet-base /
+    per-message offset decomposition, or explicit read/modify/write or mask
+    semantics. This checkpoint only aligns the requirement layer.

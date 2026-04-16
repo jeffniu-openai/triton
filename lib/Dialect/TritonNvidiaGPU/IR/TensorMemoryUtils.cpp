@@ -3781,8 +3781,65 @@ getHalfRowsTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
   return result;
 }
 
-static std::optional<std::string>
-getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
+enum class TMemLdStPacketFootprintRequirementKind {
+  DescriptorViewRowAnchors,
+  TranslatedRowOrigin,
+  SparseRefreshPhysicalBitcast,
+  M64ScalesBroadcastRowAnchor,
+};
+
+struct TMemLdStPacketFootprintRequirement {
+  TMemLdStPacketFootprintRequirementKind kind;
+  std::optional<TMemLdStRowPlan> rowPlan;
+};
+
+static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
+    const TMemLdStPacketFootprintRequirement &requirement) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "unsupported tensor memory descriptor view for direct tcgen05.ld/st: ";
+  switch (requirement.kind) {
+  case TMemLdStPacketFootprintRequirementKind::DescriptorViewRowAnchors:
+    assert(requirement.rowPlan && "row-anchor requirement needs a row plan");
+    os << "required row anchors " << requirement.rowPlan->warpRow0 << ","
+       << requirement.rowPlan->warpRow1
+       << " are not directly representable in the descriptor view. Public "
+          "tcgen05.ld/st packets for the available support image read or write "
+          "a wider row footprint; support needs the view row origin decomposed "
+          "into packet base, row anchors, and per-message offsets, or an "
+          "explicit read/modify/write footprint model. Access the full backing "
+          "tile or reshape/copy so the TMEM row anchors stay materializable.";
+    break;
+  case TMemLdStPacketFootprintRequirementKind::TranslatedRowOrigin:
+    os << "lifted row-half TMEM views translate the TMEM row origin. The "
+          "support-query planner can derive a register layout for some of these "
+          "views, but correct direct lowering still needs the row origin "
+          "decomposed into packet base, row anchors, and per-message offsets. "
+          "Without that decomposition, tcgen05.ld/st packets address the wrong "
+          "half of the backing tile or an invalid TMEM row. Access the full "
+          "backing tile or reshape/copy so the TMEM rows stay materializable.";
+    break;
+  case TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast:
+    os << "the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a "
+          "sparse row/column projection. tcgen05.ld/st packets read whole row "
+          "footprints and do not provide a lane mask for this refresh image. "
+          "Use tcgen05_copy from shared memory for this refresh image, or access "
+          "a directly supported 128-row physical layout.";
+    break;
+  case TMemLdStPacketFootprintRequirementKind::M64ScalesBroadcastRowAnchor:
+    os << "this M=64 two-CTA tensor-memory-scales view carries the second "
+          "32-row warp anchor as broadcast/support state instead of a "
+          "materializable TMEM row basis. Current tcgen05.ld/st scales lowering "
+          "requires row anchors 32 and 64; supporting this view needs a "
+          "row-anchor rematerialization or packet-footprint model for M64 "
+          "scales views.";
+    break;
+  }
+  return os.str();
+}
+
+static std::optional<TMemLdStPacketFootprintRequirement>
+getUnsupportedTMemLdStDescriptorViewRowAnchorRequirement(
     Value memDesc, MemDescType memTy, std::optional<TMemLdStRowPlan> rowPlan) {
   if (!memTy || !rowPlan)
     return std::nullopt;
@@ -3837,29 +3894,16 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorReason(
       getLogicalRowAnchorBasis(*maybeMemLayout, rowPlan->warpRow1))
     return std::nullopt;
 
-  return std::string(
-             "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
-             "required row anchors ") +
-         std::to_string(rowPlan->warpRow0) + "," +
-         std::to_string(rowPlan->warpRow1) +
-         " are not directly representable in the descriptor view. Public "
-         "tcgen05.ld/st packets for the available support image read or write "
-         "a wider row footprint; support needs the view row origin "
-         "decomposed into packet base, row anchors, and per-message offsets, "
-         "or an explicit read/modify/write footprint model. Access the full "
-         "backing tile or reshape/copy so the TMEM row anchors stay "
-         "materializable.";
+  return TMemLdStPacketFootprintRequirement{
+      TMemLdStPacketFootprintRequirementKind::DescriptorViewRowAnchors,
+      rowPlan};
 }
 
-static StringRef getUnsupportedDirectTMemLdStHalfRowsReason() {
-  return "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
-         "lifted row-half TMEM views translate the TMEM row origin. The "
-         "support-query planner can derive a register layout for some of "
-         "these views, but correct direct lowering still needs the row origin "
-         "decomposed into packet base, row anchors, and per-message offsets. "
-         "Without that decomposition, tcgen05.ld/st packets address the wrong "
-         "half of the backing tile or an invalid TMEM row. Access the full "
-         "backing tile or reshape/copy so the TMEM rows stay materializable.";
+static std::string getUnsupportedDirectTMemLdStHalfRowsReason() {
+  return formatUnsupportedTMemLdStPacketFootprintRequirement(
+      TMemLdStPacketFootprintRequirement{
+          TMemLdStPacketFootprintRequirementKind::TranslatedRowOrigin,
+          std::nullopt});
 }
 
 bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
@@ -3921,13 +3965,10 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
            isBasis(layout.getBasis(kCol, 4), 4, 0);
   };
   if (is4x256RefreshPhysicalBitcastView()) {
-    return unsupported(
-        "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
-        "the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a "
-        "sparse row/column projection. tcgen05.ld/st packets read whole row "
-        "footprints and do not provide a lane mask for this refresh image. "
-        "Use tcgen05_copy from shared memory for this refresh image, or access "
-        "a directly supported 128-row physical layout.");
+    return unsupported(formatUnsupportedTMemLdStPacketFootprintRequirement(
+        TMemLdStPacketFootprintRequirement{
+            TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast,
+            std::nullopt}));
   }
 
   if (isPureOuterTMemIndexView(memDesc))
@@ -3987,14 +4028,10 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
               hasZeroBasisAlong(typeLayout, kCol));
     }();
     if (isM64ScalesDescriptorViewRowAnchorBoundary) {
-      return unsupported(
-          "unsupported tensor memory descriptor view for direct tcgen05.ld/st: "
-          "this M=64 two-CTA tensor-memory-scales view carries the second "
-          "32-row warp anchor as broadcast/support state instead of a "
-          "materializable TMEM row basis. Current tcgen05.ld/st scales "
-          "lowering requires row anchors 32 and 64; supporting this view "
-          "needs a row-anchor rematerialization or packet-footprint model for "
-          "M64 scales views.");
+      return unsupported(formatUnsupportedTMemLdStPacketFootprintRequirement(
+          TMemLdStPacketFootprintRequirement{
+              TMemLdStPacketFootprintRequirementKind::M64ScalesBroadcastRowAnchor,
+              std::nullopt}));
     }
     if (failed(rawQuery) ||
         (hasNonTrivialBlock && (hasZeroBasisAlong(typeLayout, kRow) ||
@@ -4019,10 +4056,12 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
   auto rowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
   if (!rowPlan)
     rowPlan = backingPlan;
-  if (auto anchorReason =
-          getUnsupportedTMemLdStDescriptorViewRowAnchorReason(memDesc, queryTy,
-                                                              rowPlan)) {
-    return unsupported(*anchorReason);
+  if (auto anchorRequirement =
+          getUnsupportedTMemLdStDescriptorViewRowAnchorRequirement(memDesc,
+                                                                   queryTy,
+                                                                   rowPlan)) {
+    return unsupported(formatUnsupportedTMemLdStPacketFootprintRequirement(
+        *anchorRequirement));
   }
 
   auto rejectHalfRowsView = [&](MemDescType srcTy) {

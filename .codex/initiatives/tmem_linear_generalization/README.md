@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-16 23:56 UTC: started the adjacent Phase 4 `ld/st`
+  packet-footprint cleanup. The direct load/store clean negatives for missing
+  descriptor-view row anchors, lifted row-half origins, raw 4x256b refresh
+  physical bitcasts, and M64 two-CTA scales broadcast row anchors now route
+  through a shared `TMemLdStPacketFootprintRequirement` formatter. Support is
+  unchanged, but these cases now live under one backend concept: direct
+  `tcgen05.ld/st` needs materializable packet row anchors or an explicit
+  packet/rematerialization/mask model. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused `ldst_4x256b_refresh` plus M64 scales
+  clean-negative selector (`4 passed, 1571 deselected`), and
+  `git diff --check`.
 - 2026-04-16 23:52 UTC: made `TMemCopyDestinationMaskRequirement`
   operational in the copy scheduler diagnostics. Descriptor-row column splits
   and source-row selected-offset splits now use one shared helper to prove the
