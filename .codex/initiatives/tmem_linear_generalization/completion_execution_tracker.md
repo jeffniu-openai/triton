@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:36 UTC
+Last updated: 2026-04-17 17:40 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -107,3 +107,17 @@ target is not to widen descriptor enumeration; it is to determine whether the
 existing scheduled-instruction carrier can express a legal non-overwriting
 row/source projection. If not, promote the proof into a clearer typed
 requirement and move to the next reachable support slice.
+
+## Progress
+
+- 2026-04-17 17:40 UTC: converted the `warpx2` shared-source runtime preflight
+  in `TensorMemoryUtils.cpp` from inline string checks into a typed internal
+  `TMemCopyWarpx2SharedSourceRequirement`. Behavior is intentionally unchanged:
+  noncanonical `warpx2` dense/shared-source rows still fail cleanly with the
+  same user-facing diagnostics. This advances Phase B/F cleanup by moving one
+  more copy-family boundary onto requirement data instead of ad hoc verifier
+  text. Validation: `make -j8`; split-4 focused selector for
+  `cp_no_scales_warpx2_dense_shared_reports_clean_unsupported`,
+  `cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported`, and
+  `cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+  passed as `3/3/3/1`; `git diff --check`.

@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:40 UTC Phase B/F copy-planner cleanup: converted the
+  `warpx2` shared-source runtime support preflight from inline string-shaped
+  checks into a typed internal `TMemCopyWarpx2SharedSourceRequirement` in
+  `TensorMemoryUtils.cpp`. Support is unchanged. The dense/noncanonical
+  `warpx2` rows still fail with the same canonical shared-linear source-layout
+  diagnostics, but the boundary is now represented as requirement data that
+  can be extended by future source-rematerialization work. Validation:
+  `make -j8`; split-4 focused `warpx2` clean-negative selector
+  (`3/3/3/1` passed); `git diff --check`.
+
 - Latest: 2026-04-17 17:36 UTC created
   `completion_execution_tracker.md` as the active progress board for finishing
   the TMEM completion plan, added the matching `AGENTS.md` instruction, and

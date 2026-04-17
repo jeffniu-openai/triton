@@ -9341,27 +9341,42 @@ static bool hasCanonicalWarpx2SharedSourceOffsetBases(
   return true;
 }
 
-TMemCopySupportResult
-getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
-                                      TMemCopyFamily family) {
-  if (family != TMemCopyFamily::Warpx2_01_23_64x128b &&
-      family != TMemCopyFamily::Warpx2_02_13_64x128b)
-    return getSupportedTMemCopyResult();
+enum class TMemCopyWarpx2SharedSourceRequirementKind {
+  None,
+  RankAndShape,
+  Encoding,
+  OffsetDimension,
+  ExtraDimensions,
+  OffsetBasisOrder,
+  SingleCtaBlockBasis,
+  TwoCtaBlockBasis,
+};
 
-  auto setError = [&](Twine msg) {
-    return getUnsupportedTMemCopyResult(TMemCopySupportFailureLayer::SharedLayout,
-                                        msg);
+struct TMemCopyWarpx2SharedSourceRequirement {
+  TMemCopyWarpx2SharedSourceRequirementKind kind =
+      TMemCopyWarpx2SharedSourceRequirementKind::None;
+  TMemCopyFamily family = TMemCopyFamily::Warpx2_01_23_64x128b;
+};
+
+static std::optional<TMemCopyWarpx2SharedSourceRequirement>
+getTMemCopyWarpx2SharedSourceRequirement(MemDescType srcTy,
+                                         TMemCopyFamily family) {
+  assert((family == TMemCopyFamily::Warpx2_01_23_64x128b ||
+          family == TMemCopyFamily::Warpx2_02_13_64x128b) &&
+         "warpx2 shared-source requirement only applies to warpx2 copies");
+
+  auto makeRequirement = [&](TMemCopyWarpx2SharedSourceRequirementKind kind) {
+    return TMemCopyWarpx2SharedSourceRequirement{/*kind=*/kind,
+                                                /*family=*/family};
   };
 
   if (srcTy.getRank() != 2 || srcTy.getShape()[1] != 4 ||
       (srcTy.getShape()[0] != 128 && srcTy.getShape()[0] != 256)) {
-    return setError("warpx2 tcgen05.copy currently requires a 128x4 shared "
-                    "tile, or a 256x4 two-CTA shared tile with the canonical "
-                    "CTA block basis.");
+    return makeRequirement(
+        TMemCopyWarpx2SharedSourceRequirementKind::RankAndShape);
   }
   if (!isa<triton::gpu::SharedLinearEncodingAttr>(srcTy.getEncoding())) {
-    return setError("warpx2 tcgen05.copy currently requires the canonical "
-                    "shared-linear source layout.");
+    return makeRequirement(TMemCopyWarpx2SharedSourceRequirementKind::Encoding);
   }
 
   auto shmemLl = toLinearLayout(srcTy);
@@ -9369,10 +9384,11 @@ getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
   auto kOffset = StringAttr::get(ctx, "offset");
   auto kBlock = StringAttr::get(ctx, "block");
   if (!shmemLl.hasInDim(kOffset))
-    return setError("warpx2 tcgen05.copy shared layout has no offset dimension.");
+    return makeRequirement(
+        TMemCopyWarpx2SharedSourceRequirementKind::OffsetDimension);
   if (!hasOnlyWarpx2SharedSourceDims(shmemLl, kOffset, kBlock))
-    return setError("warpx2 tcgen05.copy shared layout may only use offset "
-                    "and block dimensions.");
+    return makeRequirement(
+        TMemCopyWarpx2SharedSourceRequirementKind::ExtraDimensions);
 
   // This is stronger than a descriptor-representability precheck. Local
   // probes showed noncanonical dense/near-canonical shared layouts can either
@@ -9381,24 +9397,69 @@ getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
   // source-layout contract until warpx2 planning carries the full source
   // rematerialization schedule instead of only an MMAShared descriptor.
   if (!hasCanonicalWarpx2SharedSourceOffsetBases(shmemLl, kOffset))
-    return setError("warpx2 tcgen05.copy currently supports only the "
-                    "canonical 128x4 shared-linear offset basis order.");
+    return makeRequirement(
+        TMemCopyWarpx2SharedSourceRequirementKind::OffsetBasisOrder);
 
   auto blockBases = shmemLl.getBases().lookup(kBlock);
   if (srcTy.getShape()[0] == 128) {
     if (!llvm::all_of(blockBases, [](ArrayRef<int32_t> basis) {
           return llvm::all_of(basis, [](int32_t v) { return v == 0; });
         })) {
-      return setError("single-CTA warpx2 tcgen05.copy does not support a "
-                      "non-zero shared block basis.");
+      return makeRequirement(
+          TMemCopyWarpx2SharedSourceRequirementKind::SingleCtaBlockBasis);
     }
-    return getSupportedTMemCopyResult();
+    return std::nullopt;
   }
 
   if (blockBases.size() != 1 ||
       !llvm::equal(blockBases.front(), ArrayRef<int32_t>{128, 0})) {
-    return setError("two-CTA warpx2 tcgen05.copy requires the canonical "
-                    "shared block basis [[128, 0]].");
+    return makeRequirement(
+        TMemCopyWarpx2SharedSourceRequirementKind::TwoCtaBlockBasis);
+  }
+  return std::nullopt;
+}
+
+static std::string getTMemCopyWarpx2SharedSourceRequirementError(
+    const TMemCopyWarpx2SharedSourceRequirement &requirement) {
+  switch (requirement.kind) {
+  case TMemCopyWarpx2SharedSourceRequirementKind::None:
+    return "";
+  case TMemCopyWarpx2SharedSourceRequirementKind::RankAndShape:
+    return "warpx2 tcgen05.copy currently requires a 128x4 shared tile, or a "
+           "256x4 two-CTA shared tile with the canonical CTA block basis.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::Encoding:
+    return "warpx2 tcgen05.copy currently requires the canonical "
+           "shared-linear source layout.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::OffsetDimension:
+    return "warpx2 tcgen05.copy shared layout has no offset dimension.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::ExtraDimensions:
+    return "warpx2 tcgen05.copy shared layout may only use offset and block "
+           "dimensions.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::OffsetBasisOrder:
+    return "warpx2 tcgen05.copy currently supports only the canonical 128x4 "
+           "shared-linear offset basis order.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::SingleCtaBlockBasis:
+    return "single-CTA warpx2 tcgen05.copy does not support a non-zero shared "
+           "block basis.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::TwoCtaBlockBasis:
+    return "two-CTA warpx2 tcgen05.copy requires the canonical shared block "
+           "basis [[128, 0]].";
+  }
+  llvm_unreachable("unknown warpx2 shared-source requirement kind");
+}
+
+TMemCopySupportResult
+getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
+                                      TMemCopyFamily family) {
+  if (family != TMemCopyFamily::Warpx2_01_23_64x128b &&
+      family != TMemCopyFamily::Warpx2_02_13_64x128b)
+    return getSupportedTMemCopyResult();
+
+  if (auto requirement =
+          getTMemCopyWarpx2SharedSourceRequirement(srcTy, family)) {
+    return getUnsupportedTMemCopyResult(TMemCopySupportFailureLayer::SharedLayout,
+                                        getTMemCopyWarpx2SharedSourceRequirementError(
+                                            *requirement));
   }
   return getSupportedTMemCopyResult();
 }

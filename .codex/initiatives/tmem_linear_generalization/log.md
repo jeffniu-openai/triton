@@ -1,3 +1,29 @@
+## 2026-04-17 17:40 UTC: typed warpx2 shared-source requirement
+
+- Change:
+  - converted the `warpx2` shared-source runtime support checks in
+    `TensorMemoryUtils.cpp` into a typed internal
+    `TMemCopyWarpx2SharedSourceRequirement`;
+  - preserved the existing user-facing diagnostics for rank/shape,
+    shared-linear encoding, offset dimension, extra dimensions, canonical
+    offset basis order, and CTA block-basis failures.
+- Boundary:
+  - support is unchanged;
+  - this keeps the current noncanonical `warpx2` clean negatives parked on a
+    source-rematerialization/schedule model, but removes another string-shaped
+    preflight from the copy planner.
+- Validation:
+  - `make -j8`;
+  - split-4 focused selector:
+    `cp_no_scales_warpx2_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported`
+    passed as `3/3/3/1`;
+  - `git diff --check`.
+- Next:
+  - commit and push this cleanup checkpoint;
+  - continue Phase 2 support-bearing copy-planner work.
+
 ## 2026-04-17 17:36 UTC: completion execution tracker and clean-negative rebaseline
 
 - Starting point:
