@@ -24550,3 +24550,24 @@ Open after this slice:
     combined clean-negative/error is `161/1592`;
   - Python byte-compile for changed Python files;
   - `git diff --check`.
+
+## 2026-04-17 20:52 UTC: copy-planner boundary audit
+
+- Starting point: `codex/tmem` at pushed `43137136f`.
+- Scope:
+  - scales descriptor-view copy;
+  - ordinary-view `4x256b` and refresh readback-related copy boundaries;
+  - two-CTA `warpx2::02_13` candidate, subslice, indexed, slice/index, and
+    dense-source rows;
+  - row-permuted `warpx2`, two-CTA noncanonical block ownership, linear
+    exotic/mixed layouts, sub-instruction tile permutations, and row/column
+    permutations.
+- Result:
+  - no stale diagnostic was found in the audited copy surface;
+  - the remaining rows are classified as true schedule/storage/API boundaries
+    requiring packed-lane storage, high source-column preservation,
+    row/column destination masks or smaller atoms, refresh-image
+    remap/readback, scales descriptor-view masks, or canonical CTA ownership.
+- Validation:
+  - `make -j8`;
+  - focused copy boundary selector passed `44/44` in `8.35s`.

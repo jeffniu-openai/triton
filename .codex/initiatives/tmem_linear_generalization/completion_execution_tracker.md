@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 20:48 UTC
+Last updated: 2026-04-17 20:52 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -304,15 +304,38 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Continue with residual-boundary cleanup and final validation. The next
-concrete slice is a copy-planner boundary audit: mark the remaining `warpx2`
-subword rows, `warpx2::02_13` two-CTA rows, row/column permutation rows,
-ordinary-view `4x256b`, and two-CTA noncanonical-block rows as either true
-ISA/storage/API boundaries or stale diagnostics. Do not promote any row unless
-there is a real packed-lane, source-column, row/column-mask, refresh-remap, or
-CTA-ownership schedule.
+The copy-planner boundary audit is complete as of 2026-04-17 20:52 UTC. The
+remaining representative copy negatives are clean and correspond to real
+schedule/storage/API boundaries: `warpx2::02_13` two-CTA source-column
+preservation, subword packed lanes, row/column masks or smaller atom
+footprints, ordinary-view `4x256b` refresh-remap/readback, scales
+descriptor-view masks, and noncanonical CTA ownership.
+
+Next concrete slice: run staged broad validation and cleanup audit. Start with
+the corrected runtime-matrix runner, then inspect remaining frontend/lowering
+compatibility shims against the backend-owned helper list. Do not delete a shim
+unless its behavior is already represented by a tested backend query/support
+object.
 
 ## Progress
+
+- 2026-04-17 20:52 UTC: completed the copy-planner boundary audit for the
+  remaining representative clean negatives. Validation command:
+  `make -j8 && CUDA_VISIBLE_DEVICES=0
+  TRITON_CACHE_DIR=/tmp/triton-cache-copy-boundary-audit
+  PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -k
+  'cp_scales_tmem_descriptor_view_reports_clean_unsupported or
+  cp_no_scales_4x256b_reports_clean_unsupported or
+  cp_no_scales_warpx2_02_13_twocta or
+  cp_no_scales_warpx2_row_permuted_destination_reports_clean_unsupported or
+  cp_no_scales_twocta_noncanonical_block_reports_clean_unsupported or
+  cp_no_scales_linear_exotic_reports_clean_unsupported or
+  cp_no_scales_linear_tile_permuted_subinstruction_reports_clean_unsupported
+  or cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported'
+  python/test/gluon/test_tmem_runtime_matrix.py`, which passed `44/44`. No
+  support rows were promoted because the diagnostics still point to true
+  packed-lane, source-column, row/column-mask, refresh-remap, scales-mask, or
+  CTA-ownership requirements.
 
 - 2026-04-17 20:24 UTC: fixed the legacy M64 split-N physical-subview
   mismatch exposed by `test_core.py::test_block_m_64_mma[legacy]`. The failure

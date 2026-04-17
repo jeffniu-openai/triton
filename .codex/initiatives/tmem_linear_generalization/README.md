@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 20:52 UTC: completed the copy-planner boundary audit for the
+  remaining representative clean negatives. The focused copy selector covering
+  scales descriptor-view masks, ordinary-view `4x256b`, two-CTA
+  `warpx2::02_13`, row/column permutations, sub-instruction tile
+  permutations, and noncanonical CTA ownership passed `44/44` after `make -j8`.
+  No rows were promoted: the current diagnostics still point to true
+  packed-lane, high source-column, row/column mask, refresh-remap/readback,
+  scales-mask, or CTA-ownership requirements rather than stale generic
+  linear-layout arithmetic.
 - 2026-04-17 20:48 UTC: integer `ld.red` requests with
   `propagate_nan=ALL` are now supported through the existing software
   reduction path. The frontend treats NaN propagation as `NONE` for

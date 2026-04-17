@@ -13204,3 +13204,27 @@ rejection, not rescue
   - checkpoint and push;
   - continue Phase C copy work, focusing on true schedule gaps rather than the
     now-removed integer NaN semantic guard.
+
+## Current: 2026-04-17 20:52 UTC copy boundary audit
+
+- Audit result:
+  - representative residual copy clean negatives passed as clean diagnostics:
+    `44/44` selected rows;
+  - covered scales descriptor-view, ordinary-view `4x256b`, two-CTA
+    `warpx2::02_13`, row-permuted `warpx2`, two-CTA noncanonical block,
+    linear exotic/mixed layouts, sub-instruction tile permutations, and
+    row/column permutations.
+- Classification:
+  - no rows were promoted;
+  - current messages still point to true schedule/storage/API requirements:
+    packed-lane source/destination storage, high source-column preservation
+    under `cta_group::2`, row/column destination masks or smaller atoms,
+    refresh-image remap/readback contract, scales descriptor-view column
+    masks, or canonical CTA ownership.
+- Validation:
+  - `make -j8`;
+  - focused copy boundary selector passed `44/44` in `8.35s`.
+- Next:
+  - checkpoint this documentation audit;
+  - move to staged broad validation and a cleanup audit for remaining
+    compatibility shims that may now be backend-owned.
