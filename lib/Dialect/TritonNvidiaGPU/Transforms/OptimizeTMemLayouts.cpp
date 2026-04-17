@@ -257,25 +257,12 @@ matchLeadingSliceView(Value memDesc) {
 
 static std::optional<std::pair<unsigned, bool>>
 matchReplayableHalfSlice(ttg::MemDescSubsliceOp subslice) {
-  auto srcTy = dyn_cast<ttg::MemDescType>(subslice.getSrc().getType());
   auto dstTy = dyn_cast<ttg::MemDescType>(subslice.getType());
-  if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank())
+  auto dim = getTMemLdStReplayableHalfSliceDim(subslice);
+  if (!dstTy || !dim)
     return std::nullopt;
-  if (subslice.getOffsets().size() != static_cast<size_t>(srcTy.getRank()))
-    return std::nullopt;
-
-  std::optional<std::pair<unsigned, bool>> changed;
-  for (auto [dim, srcSize] : llvm::enumerate(srcTy.getShape())) {
-    int64_t dstSize = dstTy.getShape()[dim];
-    int32_t offset = subslice.getOffsets()[dim];
-    if (dstSize == srcSize && offset == 0)
-      continue;
-    if (changed || srcSize <= 1 || srcSize % 2 != 0 ||
-        dstSize != srcSize / 2 || (offset != 0 && offset != dstSize))
-      return std::nullopt;
-    changed = std::make_pair(static_cast<unsigned>(dim), offset == dstSize);
-  }
-  return changed;
+  return std::make_pair(*dim, subslice.getOffsets()[*dim] ==
+                                  dstTy.getShape()[*dim]);
 }
 
 static std::optional<TMemReplayHalfSliceViewMatch>

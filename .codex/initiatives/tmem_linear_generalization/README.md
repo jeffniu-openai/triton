@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:08 UTC: finished the current Phase F
+  `OptimizeTMemLayouts` shim audit by exposing the backend half-slice replay
+  predicate as `getTMemLdStReplayableHalfSliceDim`. The transform now reuses
+  that backend predicate and only computes the rewrite-local selected-half
+  value. Validation: `make -j8`; focused split-4 half-slice replay selector
+  passed `5/5`, `5/5`, `5/5`, and `3/3`; `git diff --check`. No remaining
+  transform-local replay predicate currently duplicates a backend helper with
+  enough information to delete safely; next work returns to the Phase C/Phase E
+  support frontier.
 - 2026-04-17 21:05 UTC: continued Phase F by moving the direct `ld/st`
   replay/support register-layout search out of `OptimizeTMemLayouts` and into
   backend `TensorMemoryUtils` as `getTMemLdStDirectSupportTensorType`. The

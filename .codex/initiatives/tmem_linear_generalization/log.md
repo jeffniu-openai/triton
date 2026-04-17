@@ -24636,3 +24636,21 @@ Open after this slice:
     replay, two-CTA replay, and direct higher-rank get-reg-layout rows passed
     as `6/6`, `6/6`, `6/6`, and `4/4`;
   - `git diff --check`.
+
+## 2026-04-17 21:08 UTC: half-slice replay predicate moved to backend utility
+
+- Starting point: `codex/tmem` at pushed `831bcf2a8`.
+- Change:
+  - exposed the backend half-slice replay predicate as
+    `getTMemLdStReplayableHalfSliceDim`;
+  - updated `OptimizeTMemLayouts` to reuse that helper and keep only the
+    rewrite-local selected-half calculation.
+- Audit result:
+  - the remaining replay structs and step builders in `OptimizeTMemLayouts`
+    describe rewrite construction, not backend support policy, so they should
+    stay in the transform until a deeper rewrite-planner abstraction exists.
+- Validation:
+  - `make -j8`;
+  - focused half-slice replay selector split across four GPUs passed `5/5`,
+    `5/5`, `5/5`, and `3/3`;
+  - `git diff --check`.

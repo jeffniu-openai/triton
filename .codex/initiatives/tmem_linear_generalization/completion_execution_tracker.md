@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:05 UTC
+Last updated: 2026-04-17 21:08 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -234,11 +234,27 @@ Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
     passed `6/6`, `6/6`, `6/6`, and `4/4`;
   - `git diff --check`.
 
+2026-04-17 21:08 UTC:
+
+- Exposed the half-slice replay predicate as backend utility
+  `getTMemLdStReplayableHalfSliceDim`.
+- `OptimizeTMemLayouts` now consumes that helper and computes only the
+  rewrite-local selected-half bit.
+- Audit result: remaining replay structs/step builders are transform-local
+  rewrite construction, not duplicated backend support policy.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory was changed.
+- Validation:
+  - `make -j8`;
+  - focused half-slice replay selector split across four GPUs passed `5/5`,
+    `5/5`, `5/5`, and `3/3`;
+  - `git diff --check`.
+
 ## Immediate Execution Order
 
-1. Finish the Phase F shim audit in `OptimizeTMemLayouts` shape-match replay
-   plumbing. Delete only behavior already represented by backend query/support
-   helpers; otherwise move back to the support-bearing frontier.
+1. Return to the support-bearing frontier: start with the highest-value
+   remaining Phase C/Phase E bucket whose probes suggest a real implementation
+   path rather than a true ISA/storage/API boundary.
 2. Classify each clean-negative bucket in code comments/tests/docs as stale,
    missing planner schedule, missing storage representation, or true boundary.
 3. Take the next support-bearing slice from `tcgen05.copy` because it has the

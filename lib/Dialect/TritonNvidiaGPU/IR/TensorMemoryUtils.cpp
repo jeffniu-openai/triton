@@ -407,8 +407,8 @@ getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps) {
   return std::nullopt;
 }
 
-static std::optional<unsigned>
-matchReplayableTMemHalfSliceDim(gpu::MemDescSubsliceOp subslice) {
+std::optional<unsigned>
+getTMemLdStReplayableHalfSliceDim(gpu::MemDescSubsliceOp subslice) {
   auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
   auto dstTy = dyn_cast<MemDescType>(subslice.getType());
   if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank())
@@ -434,7 +434,7 @@ matchReplayableTMemHalfSliceDim(gpu::MemDescSubsliceOp subslice) {
 }
 
 static bool isReplayableTMemHalfSlice(gpu::MemDescSubsliceOp subslice) {
-  return matchReplayableTMemHalfSliceDim(subslice).has_value();
+  return getTMemLdStReplayableHalfSliceDim(subslice).has_value();
 }
 
 static std::optional<Value>
@@ -510,7 +510,7 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
       break;
     }
     if (auto subslice = cur.getDefiningOp<gpu::MemDescSubsliceOp>()) {
-      auto halfSliceDim = matchReplayableTMemHalfSliceDim(subslice);
+      auto halfSliceDim = getTMemLdStReplayableHalfSliceDim(subslice);
       if (!halfSliceDim)
         return false;
       pureHalfSliceDim = *halfSliceDim;

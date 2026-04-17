@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:08 UTC Phase F half-slice predicate cleanup:
+  `getTMemLdStReplayableHalfSliceDim` is now a backend utility and
+  `OptimizeTMemLayouts` uses it instead of rechecking the half-slice replay
+  shape locally. The transform still owns the rewrite-step construction and
+  selected-half projection because that is rewrite-local plumbing, not backend
+  support policy. Validation: `make -j8`, split-4 half-slice replay selector
+  passed `5/5`, `5/5`, `5/5`, and `3/3`, and `git diff --check`. Next:
+  return to support-bearing Phase C/Phase E work unless a new duplicated
+  backend policy surface is found.
+
 - Latest: 2026-04-17 21:05 UTC Phase F direct-support helper cleanup:
   `OptimizeTMemLayouts` no longer owns the direct `ld/st` support
   register-layout search used by leading-slice and replay rewrites. The logic
