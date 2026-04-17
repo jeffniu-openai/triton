@@ -1667,6 +1667,17 @@ Tasks:
 - Keep public migration paths for descriptor view APIs.
 - Re-run broad compiler and runtime validation.
 
+Progress:
+- 2026-04-17 13:47 UTC: removed the split-long-M reduction layout side path
+  from TMEM compatible-layout enumeration by introducing a shared
+  append-and-validate helper for both `LinearLayout` candidates and
+  precomputed distributed encodings. The split-long-M candidate is still
+  available, but now as a normal validated compatibility candidate rather
+  than a separately checked `isDistributedLayoutTMemCompatible` workaround.
+  Validation: `make -j8`, collect for `ld_red_m64 or
+  ldst_direct_higher_rank_load_red` (`40` cases), split-4 runtime selector
+  (`10/10/10/10` passed), and `git diff --check`.
+
 Exit criteria:
 - TMEM backend decisions flow through the shared physical-query/planner stack.
 - Compatibility code that hides layout bugs is gone or explicitly quarantined.

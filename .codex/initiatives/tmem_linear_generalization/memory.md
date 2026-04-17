@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:47 UTC TMEM compatible-layout enumeration now uses a
+  shared append-and-validate helper for `LinearLayout` and already-materialized
+  `DistributedEncodingTrait` candidates. This removes the split-long-M
+  reduction layout's standalone compatibility side path and routes it through
+  the same `computeTMemLdStEncodingInfo` proof as atom-generated candidates.
+  Support should be unchanged; the immediate value is a cleaner backend layer
+  before further load/store and reduction generalization. Validation:
+  `make -j8`; collect for `ld_red_m64 or
+  ldst_direct_higher_rank_load_red` (`40` cases); split-4 runtime selector
+  (`10/10/10/10` passed); `git diff --check`.
+
 - Latest: 2026-04-17 13:43 UTC type-only
   `tensor_memory_descriptor_type.get_reg_layout()` now follows the same
   flatten/unflatten contract as handle-aware higher-rank descriptors for

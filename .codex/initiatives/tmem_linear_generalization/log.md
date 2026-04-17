@@ -1,3 +1,37 @@
+## 2026-04-17 13:47 UTC: compatible-layout candidate validation cleanup
+
+- Starting point: `codex/tmem` at `65dc1963c`.
+- Change:
+  - added a shared TMEM compatible-layout append helper that accepts either a
+    `LinearLayout` or an already-built `DistributedEncodingTrait`, validates
+    the resulting candidate with `computeTMemLdStEncodingInfo`, and applies
+    uniqueness only at call sites that already required it;
+  - routed the default load/store atom enumeration through the shared helper;
+  - routed the 8-warp split-long-M reduction layout through the same helper,
+    removing the previous side path marked as an
+    `isDistributedLayoutTMemCompatible` generalization hack.
+- Boundary:
+  - this is intended as support-preserving backend layering cleanup; the
+    split-long-M candidate remains available, but is now treated as a normal
+    compatibility candidate.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest --collect-only -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ld_red_m64 or ldst_direct_higher_rank_load_red'` (`40` tests collected);
+  - split-4 runtime selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-compat-candidate
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py
+    -k 'ld_red_m64 or ldst_direct_higher_rank_load_red'`
+    (`10/10/10/10` passed);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by the current repo instruction requiring `Mogball`
+    while `gh auth status -h github.com` reports active account
+    `jeffniu-openai`.
+
 ## 2026-04-17 11:05 UTC: shared repeated-N32 B-scale view helper
 
 - Starting point: `codex/tmem` at `77ac6204c`.

@@ -3211,13 +3211,77 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
 static bool isTMemCompatibleCandidate(Operation *op, RankedTensorType tensorType,
                                       gpu::MemDescType memType,
                                       const LinearLayout &layout) {
-  auto candidateEncoding = tryGetLinearEncodingAttr(tensorType.getContext(), layout);
+  auto candidateEncoding =
+      tryGetLinearEncodingAttr(tensorType.getContext(), layout);
   if (!candidateEncoding)
     return false;
   auto candidateType = tensorType.cloneWithEncoding(*candidateEncoding);
   auto maxnreg = getContextualMaxNReg(op);
   return succeeded(
       computeTMemLdStEncodingInfo(candidateType, memType, maxnreg));
+}
+
+static bool appendTMemCompatibleEncodingCandidate(
+    SmallVectorImpl<DistributedEncodingTrait> &layouts,
+    RankedTensorType tensorType, gpu::MemDescType memType,
+    DistributedEncodingTrait candidateEncoding, unsigned maxnreg,
+    bool requireUnique = false) {
+  if (requireUnique && llvm::is_contained(layouts, candidateEncoding))
+    return false;
+  auto candidateType = tensorType.cloneWithEncoding(candidateEncoding);
+  if (failed(computeTMemLdStEncodingInfo(candidateType, memType, maxnreg)))
+    return false;
+  layouts.push_back(candidateEncoding);
+  return true;
+}
+
+static bool
+appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts,
+                              RankedTensorType tensorType,
+                              gpu::MemDescType memType,
+                              const LinearLayout &layout, unsigned maxnreg,
+                              bool requireUnique = false) {
+  auto candidateEncoding =
+      tryGetLinearEncodingAttr(tensorType.getContext(), layout);
+  if (!candidateEncoding)
+    return false;
+  return appendTMemCompatibleEncodingCandidate(
+      layouts, tensorType, memType, *candidateEncoding, maxnreg,
+      requireUnique);
+}
+
+static bool
+appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts,
+                              RankedTensorType tensorType,
+                              gpu::MemDescType memType,
+                              DistributedEncodingTrait candidateEncoding,
+                              unsigned maxnreg,
+                              bool requireUnique = false) {
+  return appendTMemCompatibleEncodingCandidate(
+      layouts, tensorType, memType, candidateEncoding, maxnreg, requireUnique);
+}
+
+static bool
+appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts,
+                              Operation *op, RankedTensorType tensorType,
+                              gpu::MemDescType memType,
+                              const LinearLayout &layout,
+                              bool requireUnique = false) {
+  return appendTMemCompatibleCandidate(layouts, tensorType, memType, layout,
+                                       getContextualMaxNReg(op),
+                                       requireUnique);
+}
+
+static bool
+appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts,
+                              Operation *op, RankedTensorType tensorType,
+                              gpu::MemDescType memType,
+                              DistributedEncodingTrait candidateEncoding,
+                              bool requireUnique = false) {
+  return appendTMemCompatibleCandidate(layouts, tensorType, memType,
+                                       candidateEncoding,
+                                       getContextualMaxNReg(op),
+                                       requireUnique);
 }
 
 static std::optional<LinearLayout>
@@ -3838,18 +3902,8 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
   auto tensorTy =
       RankedTensorType::get(memType.getShape(), memType.getElementType());
   auto tryPushUniqueLayout = [&](const LinearLayout &layout) {
-    auto candidateEncoding =
-        tryGetLinearEncodingAttr(memType.getContext(), layout);
-    if (!candidateEncoding)
-      return;
-    if (llvm::is_contained(layouts, *candidateEncoding))
-      return;
-    auto candidateType = tensorTy.cloneWithEncoding(*candidateEncoding);
-    if (succeeded(
-            computeTMemLdStEncodingInfo(candidateType, memType,
-                                        /*maxnreg=*/256))) {
-      layouts.push_back(*candidateEncoding);
-    }
+    appendTMemCompatibleCandidate(layouts, tensorTy, memType, layout,
+                                  /*maxnreg=*/256, /*requireUnique=*/true);
   };
   if (!isScales && memType.getElementTypeBitWidth() == 32 &&
       memType.getRank() == 2 && memType.getShape() == memType.getAllocShape() &&
@@ -3879,14 +3933,6 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
       tryPushUniqueLayout(*expanded);
   }
 
-  auto isCompatible = [&](const LinearLayout &layout) {
-    auto candidateEncoding = tryGetLinearEncodingAttr(memType.getContext(), layout);
-    if (!candidateEncoding)
-      return false;
-    auto candidateType = tensorTy.cloneWithEncoding(*candidateEncoding);
-    return succeeded(
-        computeTMemLdStEncodingInfo(candidateType, memType, /*maxnreg=*/256));
-  };
   int bitwidth = memType.getElementTypeBitWidth();
   bool prefer16x256 =
       triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
@@ -3923,31 +3969,23 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
     }
     if (ll) {
       auto candidateEncoding =
-          tryGetLinearEncodingAttr(memType.getContext(), std::move(*ll));
+          tryGetLinearEncodingAttr(memType.getContext(), *ll);
       if (debugCompatLayouts && !candidateEncoding)
         llvm::errs() << "[tmem-compat] reject: invalid linear attr\n";
-      if (candidateEncoding) {
-        auto candidateType = tensorTy.cloneWithEncoding(*candidateEncoding);
-        auto ok = succeeded(computeTMemLdStEncodingInfo(candidateType, memType,
-                                                        /*maxnreg=*/256));
-        if (debugCompatLayouts)
-          llvm::errs() << "[tmem-compat] ldst=" << (ok ? "ok" : "fail")
-                       << "\n";
-        if (ok) {
-          layouts.push_back(*candidateEncoding);
-        }
-      }
+      bool inserted =
+          candidateEncoding &&
+          appendTMemCompatibleCandidate(layouts, tensorTy, memType,
+                                        *candidateEncoding, /*maxnreg=*/256);
+      if (debugCompatLayouts)
+        llvm::errs() << "[tmem-compat] ldst=" << (inserted ? "ok" : "fail")
+                     << "\n";
     }
   }
 
   if (auto splitLongM = getTmemLoadLayoutSplitLongM(tensorTy, memType,
-                                                    numWarps);
-      splitLongM &&
-      succeeded(computeTMemLdStEncodingInfo(
-          tensorTy.cloneWithEncoding(splitLongM.value()), memType,
-          /*maxnreg=*/256))) {
-    layouts.push_back(splitLongM.value());
-  }
+                                                    numWarps))
+    appendTMemCompatibleCandidate(layouts, tensorTy, memType, splitLongM.value(),
+                                  /*maxnreg=*/256);
   return layouts;
 }
 
@@ -4035,25 +4073,13 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
     } else {
       ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
     }
-    if (ll) {
-      auto candidateEncoding =
-          tryGetLinearEncodingAttr(tensorType.getContext(), std::move(*ll));
-      if (candidateEncoding) {
-        auto candidateType = tensorType.cloneWithEncoding(*candidateEncoding);
-        if (succeeded(computeTMemLdStEncodingInfo(
-                candidateType, memType, getContextualMaxNReg(op)))) {
-          layouts.push_back(*candidateEncoding);
-        }
-      }
-    }
+    if (ll)
+      appendTMemCompatibleCandidate(layouts, op, tensorType, memType, *ll);
   }
-  // Small hack until we generalise isDistributedLayoutTMemCompatible
-  auto ll = getTmemLoadLayoutSplitLongM(tensorType, memType, numWarps);
-  if (ll && succeeded(computeTMemLdStEncodingInfo(
-                tensorType.cloneWithEncoding(ll.value()), memType,
-                getContextualMaxNReg(op)))) {
-    layouts.push_back(ll.value());
-  }
+  if (auto splitLongM = getTmemLoadLayoutSplitLongM(tensorType, memType,
+                                                    numWarps))
+    appendTMemCompatibleCandidate(layouts, op, tensorType, memType,
+                                  splitLongM.value());
   return layouts;
 }
 

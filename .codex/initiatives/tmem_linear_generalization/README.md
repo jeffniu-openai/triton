@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:47 UTC: factored TMEM load/store compatible-layout
+  validation in `TritonNvidiaGPU` dialect code. Atom candidates, unique
+  special candidates, and the 8-warp split-long-M reduction layout now all
+  flow through one append-and-validate helper, removing the old split-long-M
+  side path marked as an `isDistributedLayoutTMemCompatible` generalization
+  hack. Support is intended to be unchanged. Validation: `make -j8`, collect
+  for `ld_red_m64 or ldst_direct_higher_rank_load_red` (`40` cases), split-4
+  runtime selector (`10/10/10/10` passed), and `git diff --check`.
 - 2026-04-17 13:43 UTC: aligned type-only
   `tensor_memory_descriptor_type.get_reg_layout()` with the handle-aware
   higher-rank replay path. Type-only TMEM-linear higher-rank layouts now
