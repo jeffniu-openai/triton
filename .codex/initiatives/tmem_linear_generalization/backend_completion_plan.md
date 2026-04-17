@@ -158,6 +158,13 @@ Progress:
   retry the canonical split-N layout, and whether legacy `TensorMemoryLayout`
   auto queries should prefer `32x32b` first. Support is unchanged, but the
   Gluon bridge has fewer TMEM-specific shape-family decisions left.
+- 2026-04-17 08:01 UTC: moved the direct `ld/st` atom search order used by
+  Gluon register-layout selection into `TensorMemoryUtils`. Raw-query,
+  support-query, and compatible-layout enumeration now ask
+  `getTMemLdStAtomSearchOrder(...)` instead of spelling the fallback atom
+  sequence in the pybind bridge. Support is unchanged; this keeps another
+  direct-lowering policy in the backend layer before packet-footprint and
+  reduction-schedule work continues.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

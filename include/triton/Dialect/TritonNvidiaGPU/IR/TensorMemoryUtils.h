@@ -449,6 +449,9 @@ bool isTMemAccessAtomCompatibleWithRequest(
     gpu::MemDescType queryTy, std::optional<TMemAccessAtom> desiredAtom,
     TMemAccessAtom actualAtom);
 
+llvm::SmallVector<TMemAccessAtom>
+getTMemLdStAtomSearchOrder(std::optional<TMemAccessAtom> desiredAtom);
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
 

@@ -1607,11 +1607,7 @@ void init_gluon_ir(py::module &&m) {
                 useExactViewLinearPlannerForM64DirectView
                     ? std::optional<tt::LinearLayout>(ttg::toLinearLayout(queryTy))
                     : std::nullopt;
-            for (auto atom : {ttng::TMemAccessAtom::I32x32b,
-                              ttng::TMemAccessAtom::I16x256b,
-                              ttng::TMemAccessAtom::I16x128b,
-                              ttng::TMemAccessAtom::I16x64b,
-                              ttng::TMemAccessAtom::I16x32bx2}) {
+            for (auto atom : ttng::getTMemLdStAtomSearchOrder(std::nullopt)) {
               std::optional<tt::LinearLayout> maybeLayout;
               if (exactViewLayout &&
                   (atom == ttng::TMemAccessAtom::I32x32b ||
@@ -1941,18 +1937,7 @@ void init_gluon_ir(py::module &&m) {
             return py::none();
           };
 
-          SmallVector<ttng::TMemAccessAtom> atomOrder;
-          if (desiredAtom)
-            atomOrder.push_back(*desiredAtom);
-          for (auto atom : {ttng::TMemAccessAtom::I32x32b,
-                            ttng::TMemAccessAtom::I16x256b,
-                            ttng::TMemAccessAtom::I16x128b,
-                            ttng::TMemAccessAtom::I16x64b,
-                            ttng::TMemAccessAtom::I16x32bx2}) {
-            if (!desiredAtom || atom != *desiredAtom)
-              atomOrder.push_back(atom);
-          }
-          for (auto atom : atomOrder) {
+          for (auto atom : ttng::getTMemLdStAtomSearchOrder(desiredAtom)) {
             py::object layout = tryAtom(atom);
             if (!layout.is_none())
               return layout;
@@ -2106,19 +2091,8 @@ void init_gluon_ir(py::module &&m) {
               }
               return py::none();
             };
-            SmallVector<ttng::TMemAccessAtom> atomOrder;
-            if (desiredAtom)
-              atomOrder.push_back(*desiredAtom);
-            for (auto atom : {ttng::TMemAccessAtom::I32x32b,
-                              ttng::TMemAccessAtom::I16x256b,
-                              ttng::TMemAccessAtom::I16x128b,
-                              ttng::TMemAccessAtom::I16x64b,
-                              ttng::TMemAccessAtom::I16x32bx2}) {
-              if (!desiredAtom || atom != *desiredAtom)
-                atomOrder.push_back(atom);
-            }
             py::object layout = py::none();
-            for (auto atom : atomOrder) {
+            for (auto atom : ttng::getTMemLdStAtomSearchOrder(desiredAtom)) {
               layout = trySupportAtom(atom);
               if (!layout.is_none())
                 break;

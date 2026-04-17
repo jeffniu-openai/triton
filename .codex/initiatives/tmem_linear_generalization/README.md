@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:01 UTC: moved the direct `ld/st` atom search order out of
+  the Gluon pybind bridge and into `TensorMemoryUtils` as
+  `getTMemLdStAtomSearchOrder(...)`. The bridge still tries the same atom
+  sequence, including the desired-atom priority, but the ordering is now a
+  backend-owned policy shared by raw-query and support-query layout selection.
+  Support is unchanged. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile for the affected Gluon tests, focused
+  M64/direct-layout runtime selector (`64 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
 - 2026-04-17 07:56 UTC: sharpened the `tcgen05.ld.red` unsupported-layout
   diagnostic. The primary verifier error now says the reduction register
   layout is not directly supported by `tcgen05.ld.red` lowering instead of

@@ -21652,3 +21652,44 @@ Open after this slice:
     ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b"`
     (`59 passed, 1519 deselected in 26.23s`);
   - `git diff --check`.
+
+## 2026-04-17 08:01 UTC: moved direct ld/st atom search ordering to backend
+
+- Starting point: `codex/tmem` at `29a68e41f`.
+- Change:
+  - added `getTMemLdStAtomSearchOrder(...)` to `TensorMemoryUtils`;
+  - replaced the duplicated direct atom order in `python/src/gluon_ir.cc` for
+    compatible layout enumeration, raw-query layout selection, and
+    support-query layout selection;
+  - preserved the current order exactly: requested atom first when present,
+    then `32x32b`, `16x256b`, `16x128b`, `16x64b`, and `16x32bx2`.
+- Boundary:
+  - this is support-neutral. It removes another frontend-owned TMEM lowering
+    policy before the next packet-footprint, copy schedule, or reduction
+    schedule slice.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-atom-order-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga"` (`64 passed, 1 skipped,
+    1513 deselected in 45.58s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-atom-order-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.74s`);
+  - `git diff --check`.

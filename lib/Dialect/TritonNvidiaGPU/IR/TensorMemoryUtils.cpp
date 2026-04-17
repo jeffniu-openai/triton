@@ -183,6 +183,22 @@ bool isTMemAccessAtomCompatibleWithRequest(
          actualAtom == TMemAccessAtom::I16x32bx2;
 }
 
+SmallVector<TMemAccessAtom>
+getTMemLdStAtomSearchOrder(std::optional<TMemAccessAtom> desiredAtom) {
+  SmallVector<TMemAccessAtom> atomOrder;
+  if (desiredAtom)
+    atomOrder.push_back(*desiredAtom);
+  for (TMemAccessAtom atom : {TMemAccessAtom::I32x32b,
+                              TMemAccessAtom::I16x256b,
+                              TMemAccessAtom::I16x128b,
+                              TMemAccessAtom::I16x64b,
+                              TMemAccessAtom::I16x32bx2}) {
+    if (!desiredAtom || atom != *desiredAtom)
+      atomOrder.push_back(atom);
+  }
+  return atomOrder;
+}
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
                                                       unsigned numWarps,
                                                       TMemAccessAtom atom) {

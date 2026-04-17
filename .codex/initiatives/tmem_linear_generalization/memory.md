@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:01 UTC direct `ld/st` atom search ordering is
+  backend-owned. `TensorMemoryUtils` now exposes
+  `getTMemLdStAtomSearchOrder(...)`, and `python/src/gluon_ir.cc` uses it for
+  direct raw-query layout search, support-query layout search, and compatible
+  layout enumeration. The ordering is unchanged (`desiredAtom` first when
+  present, then `32x32b`, `16x256b`, `16x128b`, `16x64b`, `16x32bx2`), but
+  another TMEM lowering policy no longer lives only in the pybind bridge.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, Python compile for
+  `test_tmem_runtime_matrix.py` and `test_core.py`, focused
+  M64/direct-layout runtime selector (`64 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 07:56 UTC `tcgen05.ld.red` unsupported-layout
   diagnostics now report the failed reduction-layout proof instead of
   classifying every unsupported layout as N sharding. The primary error is
