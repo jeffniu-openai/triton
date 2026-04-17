@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:41 UTC Gluon-local M64 direct-view
+  register-layout predicates moved into `TensorMemoryUtils`. The backend now
+  owns `shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(...)`,
+  `shouldUseExactTMemLdStViewLayoutForM64DirectView(...)`, and
+  `disallowTMemLdStRawQueryRowPlanOverride(...)`. This preserves current
+  support but removes another Python-side interpretation of descriptor-view
+  shape, allocation-shape, and requested-atom semantics. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, Python compile for
+  `test_tmem_runtime_matrix.py` and `test_core.py`,
+  `test_tmem_runtime_matrix.py -k "m64_splitn or ld_red_m64 or
+  ldst_descriptor_multidim_slice_identity_reports_clean_error or
+  ldst_descriptor_multidim_slice_positive or
+  ldst_descriptor_higher_rank_half_rows or
+  ldst_twocta_descriptor_higher_rank_half_rows or
+  ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+  ldst_scales_descriptor_view_cga"` (`64 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 07:33 UTC repeated-N32 scaled-MMAv5 was re-probed from
   the matrix-B scale-fragment side. Bypassing the guard and forcing a
   one-column B-scale fragment stride still faults with a misaligned scale

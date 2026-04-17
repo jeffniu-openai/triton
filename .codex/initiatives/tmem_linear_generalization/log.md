@@ -21478,3 +21478,41 @@ Open after this slice:
   - `make -j8` after each C++ probe;
   - exact manual runtime probes for the identity high-quadrant kernel;
   - final tree returned to clean `git status`.
+
+## 2026-04-17 07:41 UTC: moved M64 direct-view selection predicates to backend
+
+- Starting point: `codex/tmem` at `52c2890fa`.
+- Change:
+  - added backend predicates for canonical M64 split-N compatible-layout
+    deferral, exact M64 descriptor-view linear-planner selection, and raw
+    query row-plan override refusal for `32x32` descriptor views;
+  - replaced the corresponding Gluon bridge shape/view checks with calls to
+    `TensorMemoryUtils`;
+  - preserved support and opcode behavior. This is a layering cleanup before
+    continuing packet-footprint or split-N planner work.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-predicate-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga"` (`64 passed, 1 skipped,
+    1513 deselected in 46.12s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-ldst-predicate-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.86s`);
+  - `git diff --check`.

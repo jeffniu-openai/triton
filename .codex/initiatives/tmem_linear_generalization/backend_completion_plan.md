@@ -146,6 +146,13 @@ Progress:
 - 2026-04-17 06:51 UTC: moved the row-zero lifted reinterpret query-type
   rescue guard from LLVM lowering into `TensorMemoryUtils` as
   `disallowTMemLdStQueryTypeRescue(...)`.
+- 2026-04-17 07:41 UTC: moved three remaining Gluon-local
+  register-layout selection predicates into `TensorMemoryUtils`: the M64
+  direct-view canonical split-N deferral, the exact M64 descriptor-view linear
+  planner condition, and the `32x32` descriptor-view raw-query row-plan
+  override refusal. Support is unchanged; this keeps another set of
+  descriptor-view/M64 fallback decisions backend-owned before packet-footprint
+  or split-N cleanup continues.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

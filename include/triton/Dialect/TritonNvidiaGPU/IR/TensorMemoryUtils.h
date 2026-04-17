@@ -419,6 +419,14 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
 bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
     Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom);
 
+bool shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
+    Value memDesc, gpu::MemDescType queryTy, StringRef atomName);
+
+bool shouldUseExactTMemLdStViewLayoutForM64DirectView(
+    Value memDesc, gpu::MemDescType queryTy, StringRef atomName);
+
+bool disallowTMemLdStRawQueryRowPlanOverride(Value memDesc);
+
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 

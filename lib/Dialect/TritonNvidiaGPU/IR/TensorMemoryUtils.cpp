@@ -2844,6 +2844,41 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
            activeLayout.getInDimSize(kRow) == memTy.getShape()[0]);
 }
 
+static bool isExplicitTMemLdStViewProducer(Value memDesc) {
+  return isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
+                         gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
+                         gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(
+      memDesc.getDefiningOp());
+}
+
+bool shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
+    Value memDesc, MemDescType queryTy, StringRef atomName) {
+  if (atomName != "32x32b" || !isExplicitTMemLdStViewProducer(memDesc) ||
+      !queryTy || queryTy.getRank() != 2 ||
+      queryTy.getElementTypeBitWidth() != 32 ||
+      queryTy.getShape()[0] != 64 ||
+      isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding())) {
+    return false;
+  }
+  return llvm::equal(queryTy.getAllocShape(), queryTy.getShape());
+}
+
+bool shouldUseExactTMemLdStViewLayoutForM64DirectView(Value memDesc,
+                                                      MemDescType queryTy,
+                                                      StringRef atomName) {
+  return atomName == "32x32b" && isExplicitTMemLdStViewProducer(memDesc) &&
+         queryTy && queryTy.getRank() == 2 &&
+         queryTy.getElementTypeBitWidth() == 32 && queryTy.getShape()[0] == 64 &&
+         llvm::equal(queryTy.getAllocShape(), queryTy.getShape());
+}
+
+bool disallowTMemLdStRawQueryRowPlanOverride(Value memDesc) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  return memTy && isExplicitTMemLdStViewProducer(memDesc) &&
+         memTy.getRank() == 2 && memTy.getShape()[0] == 32 &&
+         memTy.getShape()[1] == 32;
+}
+
 RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    Value memDesc,
                                                    unsigned numWarps) {

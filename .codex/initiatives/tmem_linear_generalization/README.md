@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:41 UTC: moved the remaining Gluon-local M64 direct-view
+  register-layout selection predicates into `TensorMemoryUtils`. The backend
+  now owns when to defer the canonical M64 split-N compatible layout, when to
+  use the exact descriptor-view linear planner for direct M64 views, and when
+  raw-query row-plan overrides are disallowed for `32x32` descriptor views.
+  Support is unchanged. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, focused M64/descriptor-view runtime selector (`64 passed, 1
+  skipped`), `test_core.py -k tmem_linear_m64` (`21 passed`), Python
+  compile for the affected test files, and `git diff --check`.
 - 2026-04-17 07:33 UTC: repeated-N32 scaled-MMAv5 support was re-probed from
   the B-scale fragment side. A one-column fragment stride still faults with a
   misaligned scale address; exact scale-layout algebra identifies logical

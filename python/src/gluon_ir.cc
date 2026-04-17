@@ -1571,12 +1571,8 @@ void init_gluon_ir(py::module &&m) {
                               ttg::MemDescTransOp, ttg::MemDescReinterpretOp>(
                   queryMemDesc.getDefiningOp());
           bool deferCanonicalM64SplitNCompatibleLayout =
-              atomName == "32x32b" && explicitViewProducer &&
-              queryTy.getRank() == 2 &&
-              queryTy.getElementTypeBitWidth() == 32 &&
-              queryTy.getShape()[0] == 64 &&
-              queryTy.getAllocShape() == queryTy.getShape() &&
-              !isa<ttng::TensorMemoryScalesEncodingAttr>(queryTy.getEncoding());
+              ttng::shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
+                  queryMemDesc, queryTy, atomName);
           auto addGenericCompatibleLayouts = [&]() {
             std::optional<ttg::DistributedEncodingTrait> deferredLayout;
             std::optional<ttg::LinearEncodingAttr> canonicalSplitNAttr;
@@ -1609,11 +1605,8 @@ void init_gluon_ir(py::module &&m) {
 
           if (rowPlan) {
             bool useExactViewLinearPlannerForM64DirectView =
-                atomName == "32x32b" && explicitViewProducer &&
-                queryTy.getRank() == 2 &&
-                queryTy.getElementTypeBitWidth() == 32 &&
-                queryTy.getShape()[0] == 64 &&
-                queryTy.getAllocShape() == queryTy.getShape();
+                ttng::shouldUseExactTMemLdStViewLayoutForM64DirectView(
+                    queryMemDesc, queryTy, atomName);
             auto exactViewLayout =
                 useExactViewLinearPlannerForM64DirectView
                     ? std::optional<tt::LinearLayout>(ttg::toLinearLayout(queryTy))
@@ -1865,12 +1858,7 @@ void init_gluon_ir(py::module &&m) {
                     std::nullopt) -> py::object {
           auto queryTy = cast<ttg::MemDescType>(queryMemDesc.getType());
           bool disableRawRowPlanOverride =
-              isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
-                              ttg::MemDescReshapeOp, ttg::MemDescTransOp,
-                              ttg::MemDescReinterpretOp>(
-                  queryMemDesc.getDefiningOp()) &&
-              queryTy.getRank() == 2 && queryTy.getShape()[0] == 32 &&
-              queryTy.getShape()[1] == 32;
+              ttng::disallowTMemLdStRawQueryRowPlanOverride(queryMemDesc);
           std::optional<ttng::TMemLdStRowPlan> rowPlan = rowPlanOverride;
           if (!rowPlan && !disableRawRowPlanOverride) {
             rowPlan = ttng::getTMemLdStRowPlanForQueryLayout(queryMemDesc,
