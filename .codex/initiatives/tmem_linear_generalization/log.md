@@ -1,3 +1,45 @@
+## 2026-04-17 10:57 UTC: repeated-N32 B-scale view rematerialization
+
+- Starting point: `codex/tmem` at `73cedf347`.
+- Change:
+  - taught `TCGen5MMAScaledOp` verification to recover a
+    `TensorMemoryScalesLayout` storage root through memdesc-view chains when
+    proving repeated-N32 B-scale rematerializability;
+  - updated `RematerializeRepeatedN32BScale` to use the recovered scale-storage
+    encoding when the MMA operand is a view-backed compact B-scale descriptor,
+    so the rewrite still creates a padded scales allocation before LLVM
+    lowering;
+  - added a focused runtime-matrix kernel/test that stores compact matrix-B
+    scales through a descriptor view and feeds that same view to a
+    tile-permuted repeated-N32 scaled MMA.
+- Boundary:
+  - this does not make arbitrary non-scales B-scale descriptor views legal;
+    the verifier only accepts view chains backed by a scales allocation and the
+    allocation pass still requires one compact store before the MMA;
+  - narrow-N scaled-MMAv5 remains a clean public-layout/ISA unsupported case.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_descriptor_view`
+    (`1 passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_32"` (`11 passed, 1580 deselected`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported"` (`20
+    passed, 1571 deselected`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=3
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_64"` (`20 passed, 1571 deselected`);
+  - `git diff --check`.
+
 ## 2026-04-17 10:46 UTC: repeated-N32 scaled-MMAv5 B-scale rematerialization
 
 - Starting point: `codex/tmem` at `27fff2e39`.

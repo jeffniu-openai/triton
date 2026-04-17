@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 10:57 UTC repeated-`N=32` scaled-MMAv5 B-scale
+  rematerialization now covers descriptor-view B-scale operands backed by a
+  `TensorMemoryScalesLayout` allocation. The verifier walks memdesc-view chains
+  to recover the scale-storage root type for the repeated-N32 rematerialization
+  proof, while preserving clean rejection for non-scale-backed views. The
+  tensor-memory allocation pass uses the same storage-root encoding to rewrite
+  a compact view-backed B-scale store into a fresh padded scales allocation
+  before lowering. Added a focused runtime-matrix case that stores compact
+  B-scale rows through a scales descriptor view and feeds that same view to the
+  tile-permuted repeated-N32 MMA. Validation: `make -j8`; exact B-scale view
+  runtime test (`1 passed`); repeated-N32 tile-permuted selector (`11
+  passed`); N64 tile-permuted neighbor (`20 passed`); narrow-N clean-negative
+  selector (`20 passed`); Python compile; and `git diff --check`.
+
 - Latest: 2026-04-17 10:46 UTC scaled-MMAv5 repeated-`N=32`
   tile-permuted accumulator layouts are now supported by backend-owned
   matrix-B scale rematerialization. The verifier now distinguishes already

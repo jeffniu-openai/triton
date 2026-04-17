@@ -31,6 +31,7 @@
 #include "triton/Dialect/Triton/IR/Utility.h"
 #include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
+#include "triton/Dialect/TritonGPU/IR/Traits.h"
 #include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
@@ -884,6 +885,37 @@ static Type getScaledMMAOperandType(Type elementType,
   llvm_unreachable("Unsupported type.");
 };
 
+static std::optional<MemDescType>
+getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
+  auto bScaleType = dyn_cast<MemDescType>(bScale.getType());
+  if (!bScaleType)
+    return std::nullopt;
+  if (isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return bScaleType;
+
+  Value current = bScale;
+  while (Operation *defOp = current.getDefiningOp()) {
+    if (!defOp->hasTrait<OpTrait::MemDescViewTrait>() ||
+        defOp->getNumOperands() == 0)
+      return std::nullopt;
+
+    current = defOp->getOperand(0);
+    auto currentType = dyn_cast<MemDescType>(current.getType());
+    if (!currentType)
+      return std::nullopt;
+    if (!isa<TensorMemoryScalesEncodingAttr>(currentType.getEncoding()))
+      continue;
+    if (currentType.getElementType() != bScaleType.getElementType() ||
+        currentType.getMemorySpace() != bScaleType.getMemorySpace())
+      return std::nullopt;
+    return MemDescType::get(bScaleType.getShape(), bScaleType.getElementType(),
+                            currentType.getEncoding(),
+                            bScaleType.getMemorySpace(),
+                            bScaleType.getMutableMemory());
+  }
+  return std::nullopt;
+}
+
 LogicalResult TCGen5MMAScaledOp::verify() {
   if (!getIsAsync() && !getBarriers().empty()) {
     return emitOpError("The op is synchronous but a barrier is present.");
@@ -947,12 +979,16 @@ LogicalResult TCGen5MMAScaledOp::verify() {
       getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
                      getD().getType().getShape());
   auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
+  auto bScaleStorageType =
+      getMMAv5ScaledBScaleStorageTypeThroughViews(getBScale());
+  MemDescType bScaleTypeForRepeatedN32 =
+      bScaleStorageType.value_or(getBScale().getType());
   if (accSupport.repeatedN32ScaleFragmentRequirement &&
       !isMMAv5ScaledRepeatedN32BScaleStorageSupported(
-          getBScale().getType(),
+          bScaleTypeForRepeatedN32,
           *accSupport.repeatedN32ScaleFragmentRequirement) &&
       !getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
-          getBScale().getType(),
+          bScaleTypeForRepeatedN32,
           *accSupport.repeatedN32ScaleFragmentRequirement)) {
     return emitOpError() << getMMAv5ScaledRepeatedN32ScaleFragmentError(
                *accSupport.repeatedN32ScaleFragmentRequirement);

@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 10:57 UTC: extended repeated-`N=32` scaled-MMAv5 B-scale
+  rematerialization through descriptor-view chains backed by
+  `TensorMemoryScalesLayout`. The verifier now recognizes compact B-scale
+  operands whose immediate type is a memdesc view but whose storage root is a
+  scales allocation, and the tensor-memory allocation pass rematerializes that
+  view-backed compact store into a fresh padded scales allocation before LLVM
+  lowering. Added a focused runtime-matrix case that stores compact B scales
+  through a descriptor view and consumes the same view in the tile-permuted
+  repeated-N32 MMA. Validation: `make -j8`, exact B-scale subslice/view test
+  (`1 passed`), repeated-N32 tile-permuted selector (`11 passed`), N64
+  tile-permuted neighbor (`20 passed`), narrow-N clean-negative selector (`20
+  passed`), Python compile, and `git diff --check`.
 - 2026-04-17 10:46 UTC: promoted repeated-`N=32` scaled-MMAv5
   tile-permuted accumulator layouts to positive support by rematerializing
   compact matrix-B scale storage into 64-row-aligned public scale-fragment

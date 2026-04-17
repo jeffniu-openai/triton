@@ -288,18 +288,34 @@ public:
         *accSupport.repeatedN32ScaleFragmentRequirement;
     Value bScale = mmaOp.getBScale();
     auto bScaleType = cast<ttg::MemDescType>(bScale.getType());
-    if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(bScaleType,
+
+    SmallVector<Operation *> allocs = getAlloc(bScale);
+    if (allocs.size() != 1)
+      return failure();
+    auto allocOp = dyn_cast<TMEMAllocOp>(allocs.front());
+    if (!allocOp || allocOp.getSrc())
+      return failure();
+    auto allocType = cast<ttg::MemDescType>(allocOp.getType());
+    if (allocType.getElementType() != bScaleType.getElementType() ||
+        allocType.getMemorySpace() != bScaleType.getMemorySpace())
+      return failure();
+
+    ttg::MemDescType bScaleStorageType = bScaleType;
+    if (!isa<TensorMemoryScalesEncodingAttr>(bScaleStorageType.getEncoding()) &&
+        isa<TensorMemoryScalesEncodingAttr>(allocType.getEncoding())) {
+      bScaleStorageType = ttg::MemDescType::get(
+          bScaleType.getShape(), bScaleType.getElementType(),
+          allocType.getEncoding(), bScaleType.getMemorySpace(),
+          bScaleType.getMutableMemory());
+    }
+    if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(bScaleStorageType,
                                                        requirement))
       return failure();
 
     std::optional<SmallVector<int64_t>> rematerializedShape =
-        getMMAv5ScaledRepeatedN32BScaleRematerializedShape(bScaleType,
+        getMMAv5ScaledRepeatedN32BScaleRematerializedShape(bScaleStorageType,
                                                           requirement);
     if (!rematerializedShape)
-      return failure();
-
-    auto allocOp = bScale.getDefiningOp<TMEMAllocOp>();
-    if (!allocOp || allocOp.getSrc())
       return failure();
 
     TMEMStoreOp storeOp;
@@ -358,9 +374,9 @@ public:
         /*allowReorder=*/false);
 
     auto rematerializedType = ttg::MemDescType::get(
-        *rematerializedShape, bScaleType.getElementType(),
-        bScaleType.getEncoding(), bScaleType.getMemorySpace(),
-        bScaleType.getMutableMemory());
+        *rematerializedShape, bScaleStorageType.getElementType(),
+        bScaleStorageType.getEncoding(), bScaleStorageType.getMemorySpace(),
+        bScaleStorageType.getMutableMemory());
     auto rematerializedTensorType =
         cast<RankedTensorType>(rematerialized.getType());
     if (!isDistributedLayoutTMemCompatible(storeOp.getOperation(),
@@ -387,6 +403,14 @@ public:
       mmaOp.getBScaleMutable().assign(rematerializedAlloc.getResult());
     });
     rewriter.eraseOp(storeOp);
+    Value unusedView = bScale;
+    while (Operation *defOp = unusedView.getDefiningOp()) {
+      if (defOp == allocOp.getOperation() || !defOp->use_empty() ||
+          !defOp->hasTrait<OpTrait::MemDescViewTrait>())
+        break;
+      unusedView = defOp->getOperand(0);
+      rewriter.eraseOp(defOp);
+    }
     if (allocOp->use_empty())
       rewriter.eraseOp(allocOp);
     return success();
