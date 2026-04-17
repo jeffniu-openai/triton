@@ -48,6 +48,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 17:55 UTC: strengthened the initiative execution contract. The
+  active `completion_execution_tracker.md` now carries a phase-by-phase
+  remaining-work board from rebaseline/classification through final validation,
+  and `AGENTS.md` now requires writing/refreshing the plan in initiative docs,
+  tracking progress steadily against it, and continuing execution until the
+  tracked plan is complete unless interrupted or concretely blocked.
 - 2026-04-17 17:53 UTC: scaled-MMAv5 narrow-N accumulator rejection now records
   `minimumAddressableBScaleFragmentN` in
   `MMAv5ScaledNarrowNScaleFragmentRequirement`, making the 64-column B-scale

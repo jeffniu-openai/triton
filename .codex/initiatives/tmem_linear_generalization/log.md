@@ -1,3 +1,24 @@
+## 2026-04-17 17:55 UTC: execution tracker contract and remaining-work board
+
+- Change:
+  - strengthened `AGENTS.md` with an explicit TMEM plan-execution instruction:
+    write or refresh the initiative plan before relying on it, track progress
+    steadily after meaningful slices, and continue execution until the tracked
+    plan is complete unless interrupted or concretely blocked;
+  - expanded `completion_execution_tracker.md` with an execution contract and
+    a phase-by-phase remaining-work board covering classification, shared
+    physical-query work, `tcgen05.copy`, `ld/st`, `ld.red`, MMAv5/scaled-MMAv5,
+    cleanup, performance, and final validation;
+  - mirrored the checkpoint in `README.md` and `memory.md`.
+- Boundary:
+  - documentation-only checkpoint; no compiler behavior changed.
+- Validation:
+  - `git diff --check`.
+- Next:
+  - commit and push this recoverability checkpoint;
+  - resume the next active support slice from the tracker, starting with
+    `4x256b` refresh/view semantics.
+
 ## 2026-04-17 17:53 UTC: structured scaled-MMAv5 narrow-N scale boundary
 
 - Change:

@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:55 UTC the initiative execution contract is now
+  explicit in both `AGENTS.md` and `completion_execution_tracker.md`. The
+  tracker contains the phase-by-phase remaining-work board for finishing TMEM
+  backend completion and must be refreshed before/after meaningful slices so
+  progress is recoverable after interruption. Continue executing against that
+  board until the tracked plan is complete unless interrupted or blocked.
+
 - Latest: 2026-04-17 17:53 UTC Phase E/F scaled-MMAv5 cleanup: the
   `MMAv5ScaledNarrowNScaleFragmentRequirement` now carries the
   `minimumAddressableBScaleFragmentN` field explicitly. The verifier error is

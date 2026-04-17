@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:53 UTC
+Last updated: 2026-04-17 17:55 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -21,6 +21,21 @@ The project is complete when:
 - the TMEM-focused runtime matrix remains practical for iteration, with
   representative cold compile near the 3-4 second target and split-4 runtime
   validation kept duration-aware.
+
+## Execution Contract
+
+- Keep this file as the live progress board for the completion plan. Update it
+  before and after meaningful implementation slices so the plan remains usable
+  after an outage, context rollover, or branch handoff.
+- Execute the highest-priority unblocked support-bearing slice first. Use
+  cleanup-only slices when they remove family-specific policy or sharpen a true
+  ISA boundary for the next support slice.
+- Do not treat a green focused selector as completion. A slice is complete only
+  after the relevant initiative docs record the new state, validation evidence,
+  residual boundary, commit SHA, and pushed remote state.
+- Continue execution against this board until all phases below are complete,
+  unless the user interrupts or a concrete external blocker prevents further
+  progress.
 
 ## Active Phase Board
 
@@ -99,6 +114,94 @@ Current buckets:
    and `handoff_2026-04-09.md`; commit with a detailed message and push to
    `origin/codex/tmem`.
 
+## Remaining Work Plan
+
+Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
+
+### Phase A: Rebaseline And Classify
+
+- `done`: collect the current clean-negative surface after a green build and
+  record the bucket inventory.
+- `active`: for each bucket, classify it as stale guard, missing planner
+  schedule, missing storage representation, missing ISA-family coverage, or
+  true hardware/API boundary.
+- `active`: keep compile/runtime-duration expectations attached to validation
+  commands so broad matrix work remains practical on four GPUs.
+
+### Phase B: Shared Physical Query And Requirement Model
+
+- `active`: move remaining frontend/lowering-only TMEM decisions into backend
+  physical-query helpers or typed requirement structs.
+- `active`: make diagnostics consume structured requirement data rather than
+  ad hoc strings, especially for clean negatives that are likely to remain
+  hardware boundaries.
+- `pending`: remove compatibility shims once copy, load/store, reduction, MMA,
+  and scaled-MMA all consume the shared query/support APIs directly.
+
+### Phase C: `tcgen05.copy` Completion
+
+- `active`: finish direct no-scales dense/multicast planner boundaries:
+  row-order, mixed-basis, sub-instruction column masks, and destination/source
+  ownership.
+- `active`: decide and encode the correct `4x256b` contract: refresh-image
+  positive support, ordinary-view remapping, direct readback limitations, and
+  clean typed diagnostics for nonmaterializable refresh images.
+- `pending`: complete scales copy support or prove boundaries for
+  descriptor-row split/mask schedules, source-message formats, and
+  destination-column partitions.
+- `pending`: complete or prove the no-scales two-CTA `warpx2::02_13`
+  schedule, including preservation of the high source-column bit.
+- `pending`: handle dense/noncanonical `warpx2` shared-source layouts and
+  subword/packed-lane copies through source rematerialization or typed
+  non-support proofs.
+- `pending`: delete copy-specific rescue stacks that duplicate the shared
+  planner once their behavior is represented by query/support objects.
+
+### Phase D: Direct `ld/st` And `ld.red`
+
+- `active`: keep packet-footprint limitations represented as structured
+  atom-footprint requirements rather than layout-name failures.
+- `pending`: complete scales direct `ld/st` descriptor-view support where the
+  ISA can realize the requested atom, and leave only true scale-half-tile or
+  too-narrow atom boundaries.
+- `pending`: decide whether `4x256b` refresh images can be read back through a
+  rematerialized public load/store view; otherwise keep a precise row-anchor
+  diagnostic.
+- `pending`: finish `ld.red` non-f32/NaN semantics either with a correct
+  software fallback or a typed semantic-boundary diagnostic.
+
+### Phase E: Plain And Scaled MMAv5
+
+- `active`: keep plain MMAv5 accumulator layout failures tied to instruction
+  tile row/column ordering or a real tile-splitting schedule gap.
+- `pending`: implement or prove the scaled-MMAv5 mixed fp4A TMEM-LHS storage
+  representation boundary.
+- `pending`: implement or prove the scaled-MMAv5 narrow-N B-scale fragment
+  schedule and accumulator permutation boundary.
+- `pending`: expand opcode/runtime positives only when a new backend schedule
+  is real, not when a frontend spelling happens to compile.
+
+### Phase F: Cleanup And Redesign Deletion
+
+- `active`: delete stale frontend guards and lowering-local type-only fallback
+  policy as backend helpers subsume them.
+- `pending`: consolidate repeated layout arithmetic into shared helpers with
+  exact `LinearLayout` compose/invert/pseudoinvert proofs.
+- `pending`: keep only durable abstractions; quarantine or remove temporary
+  row/column rewrite smells after each family is represented in the planner.
+
+### Phase G: Saturation, Performance, And Final Validation
+
+- `pending`: run staged validation: `make`, targeted lit/compiler checks,
+  focused four-GPU runtime selectors, then duration-aware broad sweeps.
+- `pending`: profile any representative compile above the 3-4 second target or
+  execution above the 1-2 second target before accepting the regression.
+- `pending`: refresh GB200/NVIDIA manifests after broad validation and mark
+  stale pre-fix counts explicitly.
+- `pending`: final state requires no unexplained clean negatives, no stale
+  family-specific policy, practical split-4 runtime-matrix iteration, and an
+  updated handoff summarizing every residual true ISA boundary.
+
 ## Next Concrete Slice
 
 Investigate `tcgen05.copy` no-scales row/column permutation and `warpx2`
@@ -109,6 +212,12 @@ row/source projection. If not, promote the proof into a clearer typed
 requirement and move to the next reachable support slice.
 
 ## Progress
+
+- 2026-04-17 17:55 UTC: strengthened the execution contract in this tracker
+  and in `AGENTS.md`. The remaining work is now tracked as a phase-by-phase
+  board from rebaseline through final validation, with explicit instructions
+  to keep this file current and continue executing until the tracked plan is
+  complete unless interrupted or blocked.
 
 - 2026-04-17 17:53 UTC: made the scaled-MMAv5 narrow-N accumulator
   requirement carry `minimumAddressableBScaleFragmentN` explicitly instead of
