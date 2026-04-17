@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:01 UTC: moved Gluon's value-aware reduction register-layout
+  selection into `TensorMemoryUtils`. The new
+  `getTMemLoadReductionLayoutForMemDesc(...)` backend API owns raw-query
+  reduction compatibility checks, descriptor-view exact-query refusal,
+  row-plan selection, and the M64 split-N fallback; `python/src/gluon_ir.cc`
+  now acts as a thin bridge from backend encoding to Gluon layout. Support is
+  unchanged. A pre-edit probe confirmed explicit `32x32b_splitn` already
+  works for representative noncanonical `N=256` `ld.red` layouts; explicit
+  N-sharded `ld.red` variants remain true reduction-contract boundaries rather
+  than stale pybind logic. Validation: `make -j8`, focused `ld.red`
+  descriptor-chain/explicit/M64 selector (`55 passed, 1523 deselected`),
+  py-compile, and `git diff --check`.
 - 2026-04-17 05:53 UTC: moved the simple M64 split-N raw-query proof out of
   `python/src/gluon_ir.cc` and into `TensorMemoryUtils`. The backend now owns
   `hasCanonicalM64SplitNRows(...)` and

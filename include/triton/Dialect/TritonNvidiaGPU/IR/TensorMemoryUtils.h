@@ -411,6 +411,9 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
     gpu::MemDescType memTy, const TMemLdStQueryLayout &rawQueryLayout,
     unsigned numWarps, bool allow16Bit = false);
 
+std::optional<gpu::DistributedEncodingTrait>
+getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
+
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
 
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);

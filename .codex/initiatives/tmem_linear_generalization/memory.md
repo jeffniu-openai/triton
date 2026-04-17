@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:01 UTC reduction register-layout selection backend
+  cleanup: moved the value-aware `ld.red` register-layout selector used by
+  Gluon descriptor handles into `TensorMemoryUtils` as
+  `getTMemLoadReductionLayoutForMemDesc(...)`. The backend helper now owns
+  the raw-query validation, descriptor-view fallback refusal, selected query
+  row plan, and M64 split-N rescue path; `python/src/gluon_ir.cc` only checks
+  arguments and converts the selected backend encoding to a Gluon layout.
+  Support is unchanged. A pre-edit probe showed explicit `32x32b_splitn`
+  already works for representative noncanonical `N=256` reductions, while
+  explicit N-sharded variants still remain real reduction-contract boundaries
+  requiring cross-thread/warp combine semantics. Validation: `make -j8`,
+  `test_tmem_runtime_matrix.py -k "ld_red_descriptor_chain_n_sweep_explicit_variants
+  or ld_red_explicit_n_sweep_variants or ld_red_m64"` (`55 passed, 1523
+  deselected`), py-compile, and `git diff --check`.
+
 - Latest: 2026-04-17 05:53 UTC M64 split-N raw-query proof backend cleanup:
   moved the simple M64 split-N raw-query recognizer out of the pybind layer and
   into `TensorMemoryUtils`. `python/src/gluon_ir.cc` now asks the backend for

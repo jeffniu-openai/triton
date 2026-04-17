@@ -21054,3 +21054,46 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.95s`);
   - `git diff --check`.
+
+## 2026-04-17 06:01 UTC: moved reduction layout selection to TensorMemoryUtils
+
+- Starting point: `codex/tmem` at `2149f1ace`.
+- Probe before the edit:
+  - direct Python checked explicit `32x32b_splitn` for representative
+    noncanonical `N=256` `ld.red` layouts (`col_reverse`, `col_rotate1`,
+    `col_even_odd`, `row_reverse`, `row_even_odd`,
+    `rowcol_rotate_reverse`);
+  - all probed rows compiled and produced correct reduction/runtime output,
+    so the narrow gap there is only missing coverage, not missing backend
+    behavior;
+  - explicit N-sharded `ld.red` variants remain a separate reduction-contract
+    boundary that needs cross-thread/warp combine semantics, not a pybind
+    layout fallback.
+- Change:
+  - added `getTMemLoadReductionLayoutForMemDesc(...)` to
+    `TensorMemoryUtils`;
+  - moved the Gluon descriptor-handle reduction register-layout selection
+    into that backend helper, including raw-query compatibility checks,
+    descriptor-view exact-query refusal, row-plan selection, and the M64
+    split-N rescue path;
+  - reduced `python/src/gluon_ir.cc` to argument validation plus converting
+    the selected backend encoding to a Gluon layout.
+- Support boundary:
+  - no support surface changed. This is a layering checkpoint toward a shared
+    backend reduction planner.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-probes
+    PYTHONPATH=./python:./python/test/gluon python3 - <<'PY' ...`
+    explicit noncanonical `32x32b_splitn` probe passed all six rows;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-red-layout-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_descriptor_chain_n_sweep_explicit_variants or
+    ld_red_explicit_n_sweep_variants or ld_red_m64"`
+    (`55 passed, 1523 deselected in 35.33s`);
+  - py-compile for `blackwell/__init__.py` and
+    `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

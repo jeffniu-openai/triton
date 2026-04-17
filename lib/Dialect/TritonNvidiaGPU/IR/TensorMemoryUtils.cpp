@@ -2744,6 +2744,102 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
   return getCanonicalM64SplitNLayout(memTy.getContext(), n, numWarps);
 }
 
+std::optional<gpu::DistributedEncodingTrait>
+getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
+  auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (!memDescTy || numWarps < 4 || !llvm::isPowerOf2_32(numWarps) ||
+      !isReductionFriendlyTmemSourceLayout(memDescTy))
+    return std::nullopt;
+
+  bool isViewLikeMemDesc =
+      isa_and_nonnull<gpu::MemDescIndexOp, gpu::MemDescSubsliceOp,
+                      gpu::MemDescReshapeOp, gpu::MemDescTransOp,
+                      gpu::MemDescReinterpretOp>(memDesc.getDefiningOp());
+
+  auto shape = llvm::to_vector(memDescTy.getShape());
+  auto elementType = memDescTy.getElementType();
+  auto tensorTy = RankedTensorType::get(shape, elementType);
+  auto *ctx = memDesc.getContext();
+
+  std::optional<TMemLdStQueryLayout> rawQueryLayout;
+  std::optional<TMemLdStRowPlan> rawRowPlan;
+  std::string rawError;
+  if (auto maybeRawQuery = inferStandaloneTMemLdStQueryLayout(
+          memDesc, /*preserveNonCanonicalView=*/true, &rawError);
+      succeeded(maybeRawQuery)) {
+    rawQueryLayout = *maybeRawQuery;
+    rawRowPlan =
+        getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy, *rawQueryLayout);
+    if (!rawRowPlan)
+      rawRowPlan = getBackingTMemLdStRowPlan(memDesc);
+  }
+
+  auto tryRawQueryCompatibleM64Layout =
+      [&]() -> std::optional<gpu::DistributedEncodingTrait> {
+    if (!rawQueryLayout || memDescTy.getRank() != 2 ||
+        memDescTy.getShape()[0] != 64 ||
+        memDescTy.getElementTypeBitWidth() != 32 ||
+        isa<TensorMemoryScalesEncodingAttr>(memDescTy.getEncoding()))
+      return std::nullopt;
+    if (hasCanonicalM64SplitNRows(rawQueryLayout->layout))
+      return std::nullopt;
+
+    auto canonical =
+        getCanonicalM64SplitNLayoutForRawQuery(memDescTy, *rawQueryLayout,
+                                               numWarps);
+    if (!canonical)
+      return std::nullopt;
+    auto attr = LinearEncodingAttr::get(ctx, std::move(*canonical));
+    auto regTy = RankedTensorType::get(shape, elementType, attr);
+    if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
+      return std::nullopt;
+    return attr;
+  };
+
+  auto isReductionCompatible =
+      [](FailureOr<TMemLdStEncodingInfo> info) -> bool {
+    if (failed(info))
+      return false;
+    return isTMemLdStReductionCompatible(*info);
+  };
+
+  auto tryReductionLayout =
+      [&](MemDescType queryTy) -> std::optional<gpu::DistributedEncodingTrait> {
+    auto maybeLayout = getTmemLoadReductionLayout(tensorTy, queryTy, numWarps);
+    if (!maybeLayout)
+      return tryRawQueryCompatibleM64Layout();
+
+    auto regTy = RankedTensorType::get(shape, elementType, *maybeLayout);
+    if (!isReductionFriendlyTmemLoadLayout(tensorTy, toLinearLayout(regTy)))
+      return std::nullopt;
+
+    auto queryRowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
+    if (!queryRowPlan)
+      queryRowPlan = getBackingTMemLdStRowPlan(memDesc);
+
+    if (rawQueryLayout &&
+        isReductionCompatible(computeTMemLdStEncodingInfo(
+            regTy, memDescTy, *rawQueryLayout, /*maxnreg=*/256,
+            /*emitError=*/{}, rawRowPlan))) {
+      return *maybeLayout;
+    }
+    if (rawQueryLayout && isViewLikeMemDesc)
+      return std::nullopt;
+    if (isReductionCompatible(computeTMemLdStEncodingInfo(
+            regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
+            queryRowPlan))) {
+      return *maybeLayout;
+    }
+    return std::nullopt;
+  };
+
+  for (MemDescType queryTy : getTMemLdStQueryTypes(memDesc)) {
+    if (auto layout = tryReductionLayout(queryTy))
+      return layout;
+  }
+  return std::nullopt;
+}
+
 bool preferBackingTMemLdStQueryTypes(Value memDesc) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy)

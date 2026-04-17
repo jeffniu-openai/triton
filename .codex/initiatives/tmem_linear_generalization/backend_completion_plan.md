@@ -1137,6 +1137,13 @@ Progress:
   marshals the result to Gluon layouts, but the row/column-basis recognizer and
   canonical split-N layout derivation are now shared backend utilities used by
   both handle-aware `get_reg_layout()` and M64 `ld.red` canonicalization.
+- 2026-04-17 06:01 UTC: moved the broader value-aware reduction
+  register-layout selector out of `python/src/gluon_ir.cc` and into
+  `TensorMemoryUtils` as `getTMemLoadReductionLayoutForMemDesc(...)`. That
+  backend API now owns raw-query reduction compatibility, descriptor-view
+  exact-query refusal, row-plan selection, and the M64 split-N rescue path.
+  Support is unchanged, but reduction layout selection is now another step
+  closer to the shared backend planner instead of pybind-local layout logic.
 - 2026-04-17 05:00 UTC: re-probed ordinary contiguous `tcgen05.copy.4x256b` by
   bypassing the refresh-only support and lowering guards. The ISA opcode
   emitted, but the output copied the refresh physical pattern into the ordinary
