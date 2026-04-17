@@ -41,9 +41,24 @@ When resuming the initiative:
   completion roadmap: exact physical TMEM query model, atomized copy planning,
   scales unification, load/store/reduction cleanup, MMA/scaled-MMA unification,
   broad fuzzing, and compatibility deletion.
+- use `completion_execution_tracker.md` for the active progress board against
+  the completion plan, including the current clean-negative inventory,
+  remaining buckets, completed checkpoints, and next concrete implementation
+  slice.
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 17:36 UTC: created the active completion execution tracker and
+  rebaselined the current clean-negative inventory after `make -j8`.
+  `pytest -q --collect-only python/test/gluon/test_tmem_runtime_matrix.py -k
+  'reports_clean_unsupported'` collected `124/1592` tests in `3.02s`. The
+  tracker records the current buckets: scales `ld/st` atom-footprint
+  boundaries, non-f32 NaN reduction semantics, scales copy split/mask
+  schedules, `4x256b` refresh readback boundaries, no-scales two-CTA
+  `warpx2::02_13`, dense/noncanonical `warpx2` source rematerialization,
+  copy row/column permutation schedules, plain MMAv5 instruction-tile
+  permutations, mixed fp4A TMEM-LHS storage, and scaled narrow-N accumulator
+  fragments.
 - 2026-04-17 14:34 UTC: fixed a core `LinearLayout` division contract bug
   exposed by the no-scales two-CTA `warpx2::02_13` copy clean-negative rows.
   `divideLeft` and `divideRight` now use `LinearLayout::tryCreate` for the

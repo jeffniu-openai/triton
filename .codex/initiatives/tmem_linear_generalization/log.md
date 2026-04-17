@@ -1,3 +1,37 @@
+## 2026-04-17 17:36 UTC: completion execution tracker and clean-negative rebaseline
+
+- Starting point:
+  - branch `codex/tmem` at pushed `f2b6b9102`;
+  - worktree clean before edits;
+  - `gh auth status -h github.com` reports active account `jeffniu-openai`;
+  - `origin` fetch/push is `https://github.com/jeffniu-openai/triton`.
+- Added execution tracking:
+  - created `completion_execution_tracker.md` as the active phase board for
+    completing the TMEM linear-layout generalization plan;
+  - updated `README.md` to make the tracker a source-of-truth entry point;
+  - updated `AGENTS.md` so future sessions keep the tracker current and do not
+    end execution while unblocked plan work remains.
+- Rebaseline:
+  - `make -j8` completed with `ninja: no work to do`;
+  - clean-negative collection command:
+    `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'reports_clean_unsupported'`;
+  - result: `124/1592` tests collected, `1468` deselected, in `3.02s`.
+- Current classification summary:
+  - largest remaining support frontier is `tcgen05.copy`, especially scales
+    split/mask schedules, no-scales two-CTA `warpx2::02_13`, dense/noncanonical
+    `warpx2` source rematerialization, subword packed lanes, and row/column
+    footprint permutations;
+  - `ld/st` remaining negatives are mostly atom-footprint or 4x256b refresh
+    row-anchor/readback boundaries;
+  - scaled-MMAv5 remaining negatives are storage/fragment representation
+    boundaries, not stale guard lifts.
+- Next:
+  - commit and push this tracker checkpoint;
+  - resume Phase 2 copy-planner implementation from the shared schedule and
+    footprint proof layer.
+
 ## 2026-04-17 14:27 UTC: 256-row store-join split replay coverage
 
 - Starting point: `codex/tmem` at `d7f4596c1`.

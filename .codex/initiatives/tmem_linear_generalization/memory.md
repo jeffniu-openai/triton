@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:36 UTC created
+  `completion_execution_tracker.md` as the active progress board for finishing
+  the TMEM completion plan, added the matching `AGENTS.md` instruction, and
+  rebaselined current clean negatives. Starting branch was `codex/tmem` at
+  pushed `f2b6b9102`; `gh auth status -h github.com` reports active
+  `jeffniu-openai`, and `origin` points to
+  `https://github.com/jeffniu-openai/triton`. Validation/inventory:
+  `make -j8` (`ninja: no work to do`) followed by
+  `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only
+  python/test/gluon/test_tmem_runtime_matrix.py -k
+  'reports_clean_unsupported'`, which collected `124/1592` tests in `3.02s`.
+  Current buckets are scales `ld/st` atom-footprint boundaries, non-f32
+  `ld.red` NaN semantics, scales copy split/mask schedules, `4x256b` refresh
+  view/readback boundaries, no-scales two-CTA `warpx2::02_13`, dense and
+  noncanonical `warpx2` source rematerialization, copy row/column permutation
+  schedules, plain MMAv5 tile-order boundaries, mixed fp4A TMEM-LHS storage,
+  and scaled narrow-N accumulator fragments. Next concrete slice: continue
+  Phase 2 copy-planner work from the shared scheduled-instruction and
+  footprint proof layer.
+
 - Latest: 2026-04-17 14:34 UTC the no-scales two-CTA
   `warpx2::02_13` clean-negative bucket no longer aborts in
   `compute_tmem_reg_layout_from_memdesc`. The root cause was not a copy-family
