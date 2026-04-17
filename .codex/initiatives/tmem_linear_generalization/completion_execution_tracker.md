@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:59 UTC
+Last updated: 2026-04-17 19:07 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -66,6 +66,16 @@ PYTHONPATH=.:./python:./python/test/gluon \
 
 Result: `123/1592 tests collected (1469 deselected) in 2.97s`.
 
+Additional combined clean-negative/clean-error rebaseline:
+
+```bash
+PYTHONPATH=.:./python:./python/test/gluon \
+  pytest -q --collect-only python/test/gluon/test_tmem_runtime_matrix.py \
+  -k 'reports_clean_unsupported or reports_clean_error'
+```
+
+Result: `174/1592 tests collected (1418 deselected) in 3.08s`.
+
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
   too-narrow n-sharded scale atoms. The n-sharded rows now report a structured
@@ -100,8 +110,17 @@ Current buckets:
   remaining support needs source rematerialization, packed-lane storage, and
   descriptor semantic-equivalence proofs.
 - Copy row/column permutation and sub-instruction tile permutation rows:
-  require row/column partitioning, smaller footprints, masks, or explicit
-  proof that the full-footprint public atom cannot realize the projection.
+  now have representative probe evidence that descriptor representability is
+  not enough. The public copy atoms update full row/column footprints; the
+  failing rows need row/column partitioning, smaller footprints, masks, or a
+  different source format before they can be positive.
+- Plain MMAv5 direct i8 clean-error rows: a guard-lift probe emitted
+  `tcgen05.mma.cta_group::1.kind::i8`, but `ptxas-blackwell` rejects
+  `.kind::i8` on `sm_103a`. Keep the frontend guard and classify this as an
+  external PTXAS/ISA boundary, not a linear-layout backend gap.
+- Frontend/API contract clean-error rows: block-layout TMEM descriptors and
+  copy source-contract failures still require explicit API redesign before
+  they can become backend support work.
 - Plain MMAv5 exotic/row-column-permuted accumulators: now reported through a
   typed instruction-tile order requirement. Public atoms require canonical
   row/column basis order within each 64x8-or-larger instruction tile unless a
@@ -221,13 +240,28 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Continue the `tcgen05.copy` scheduler frontier. The next highest-value rows
-are sub-instruction row/column permutations where descriptor representability
-is not enough and a semantic-equivalence proof, source-format change,
-row/column partition, or destination-mask schedule must be proved before
-support can lift.
+Continue the support-bearing `tcgen05.copy` frontier, but do not spend the next
+slice on the already-probed sub-instruction row/column permutations unless a
+new row/column-mask mechanism is introduced. The next concrete implementation
+probe is the no-scales `tcgen05.copy.4x256b` ordinary-view/remap contract:
+either promote an ISA-realizable rematerialized schedule or keep the existing
+refresh-only support as a typed true boundary. If that closes without support,
+move to `ld.red` non-f32/NaN semantics.
 
 ## Progress
+
+- 2026-04-17 19:07 UTC: classified two remaining buckets and refreshed the
+  execution contract. Representative direct Python probes with
+  `TRITON_DEBUG_TMEM_QUERY=1` show sub-instruction copy tile permutations and
+  row/column permutations need partial row/column updates inside public
+  full-footprint copy atoms; this is a mask/smaller-atom/source-format
+  boundary, not a stale descriptor recognizer. A temporary direct-MMAv5 i8
+  guard lift reached PTX emission, but `ptxas-blackwell` rejected
+  `.kind::i8` for `sm_103a`; the guard was restored and the i8 bucket is now
+  classified as an external PTXAS/ISA boundary. `AGENTS.md` now explicitly
+  says the initiative docs, not chat context, are the active checklist for the
+  no-stop execution rule. Validation/probes: `make -j8` before runtime probes;
+  combined clean-negative/clean-error collect-only is `174/1592`.
 
 - 2026-04-17 18:59 UTC: promoted the two-CTA scales descriptor-view
   `16x32bx2` direct `ld/st` row from clean-negative to positive support. The

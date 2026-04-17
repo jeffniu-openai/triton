@@ -24291,3 +24291,35 @@ Open after this slice:
   - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 19:07 UTC: classify copy permutation and direct i8 boundaries
+
+- Starting point: `codex/tmem` at pushed `01c604e3e`.
+- Copy probes:
+  - direct `TRITON_DEBUG_TMEM_QUERY=1` probes on the no-scales
+    sub-instruction tile-permutation and row/column-permutation copy rows show
+    the requested layouts need partial row/column updates inside full-footprint
+    public copy atoms;
+  - representative failures need 2-of-4 destination columns, 1-of-2
+    destination columns, or 64-of-128 destination rows, while the public
+    `tcgen05.copy` instructions write the whole footprint.
+- Direct i8 MMAv5 probe:
+  - temporarily lifted the frontend guard in
+    `python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - the backend emitted `tcgen05.mma.cta_group::1.kind::i8`, but
+    `ptxas-blackwell` rejected `.kind::i8` for `sm_103a`;
+  - restored the frontend guard before this checkpoint.
+- Documentation:
+  - `AGENTS.md` now explicitly states that initiative documents, not chat
+    context, are the active checklist for the no-stop execution rule;
+  - `completion_execution_tracker.md` records the combined
+    clean-negative/clean-error collect-only result and points the next
+    support-bearing probe at no-scales `tcgen05.copy.4x256b`
+    ordinary-view/remap support.
+- Validation/probes:
+  - `make -j8` before runtime probes;
+  - combined collect-only:
+    `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'reports_clean_unsupported or reports_clean_error'` collected
+    `174/1592` tests in `3.08s`.

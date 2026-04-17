@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 19:07 UTC Phase A/C/E classification checkpoint:
+  sub-instruction `tcgen05.copy` tile permutations and row/column permutations
+  were probed directly with `TRITON_DEBUG_TMEM_QUERY=1`. The failures are
+  full-footprint public-atom boundaries: examples need only 2 of every 4
+  columns, 1 of every 2 columns, or 64 of every 128 rows updated, while the
+  public copy instructions write the whole row/column footprint. A separate
+  guard-lift probe for direct MMAv5 i8 reached PTX emission but
+  `ptxas-blackwell` rejected `.kind::i8` on `sm_103a`, so the frontend guard
+  stays and this bucket is an external PTXAS/ISA boundary rather than a
+  linear-layout backend gap. `completion_execution_tracker.md` now points the
+  next support-bearing slice at no-scales `tcgen05.copy.4x256b`
+  ordinary-view/remap support before falling back to `ld.red` semantics.
+
 - Latest: 2026-04-17 18:59 UTC Phase D support-bearing scales
   descriptor-view slice: the two-CTA `16x32bx2` direct `ld/st` view is now
   positive. `getTwoCTAScalesDescriptorViewTMemLdStLayout` handles

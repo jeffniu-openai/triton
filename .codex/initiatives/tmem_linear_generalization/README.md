@@ -48,6 +48,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 19:07 UTC: classification checkpoint after the scales
+  descriptor-view promotion. Direct probes classify sub-instruction
+  `tcgen05.copy` tile permutations and row/column permutations as public
+  full-footprint atom boundaries needing row/column masks, smaller atoms,
+  row/column partitioning, or a different source format. A temporary direct
+  MMAv5 i8 guard lift emitted `.kind::i8` PTX, but `ptxas-blackwell` rejects
+  that feature on `sm_103a`, so the existing frontend guard remains and the i8
+  bucket is an external PTXAS/ISA boundary. `AGENTS.md` now explicitly makes
+  the initiative docs the active checklist for no-stop execution; the tracker
+  points the next implementation probe at no-scales `tcgen05.copy.4x256b`
+  ordinary-view/remap support.
 - 2026-04-17 18:59 UTC: the two-CTA scales descriptor-view
   `16x32bx2` direct `ld/st` case is now supported. The backend lifts the
   physical packet layout through the exact descriptor-view query, keeps the
