@@ -2111,14 +2111,6 @@ void init_gluon_ir(py::module &&m) {
             if (!layout.is_none())
               return layout;
           }
-          if (ttng::isTMemLdStHalfRowsDescriptorView(queryMemDesc)) {
-            if (traceToFile)
-              appendTrace("findDirectLayoutForMemDesc halfRows exact-lowering-required");
-            if (debug) {
-              debugLog << "[tmem-reg-layout] half-rows descriptor view requires exact support/raw-query lowering; refusing type-only fallback\n";
-            }
-            return py::none();
-          }
           if (disableTypeOnlyFallback && isViewLikeMemDesc) {
             return py::none();
           }
@@ -2133,7 +2125,7 @@ void init_gluon_ir(py::module &&m) {
                   queryMemDesc, &typeOnlyFallbackReason)) {
             if (traceToFile)
               appendTrace(
-                  "findDirectLayoutForMemDesc twoCTA-int8 exact-query-required");
+                  "findDirectLayoutForMemDesc type-only-fallback-disallowed");
             if (debug) {
               debugLog << "[tmem-reg-layout] " << typeOnlyFallbackReason
                        << "; refusing type-only fallback\n";

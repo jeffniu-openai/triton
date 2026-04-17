@@ -44,7 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
-- 2026-04-17 10:09 UTC: reprobed the pure rank-2 two-CTA row-half frontier
+- 2026-04-17 10:03 UTC: moved the half-row descriptor-view type-only fallback
+  refusal out of the Gluon pybind bridge and into the backend-owned
+  `disallowTMemLdStTypeOnlyFallback(...)` policy. Support is unchanged, but
+  register-layout selection now has one shared backend reason path for
+  exact-lowering-required views instead of a half-row-specific bridge guard.
+  Validation: `make -j8`, direct half-row selectors (`7 passed`), lifted
+  half-row selectors (`6 passed`), x1 fallback-boundary selector (`6 passed`),
+  and `git diff --check`.
+- 2026-04-17 10:00 UTC: reprobed the pure rank-2 two-CTA row-half frontier
   after the single-CTA direct replay checkpoint and reverted the probe edits.
   The full support load for `block_two_ctas` carries row `128` in the CTA
   `block` basis, so ordinary tensor `reshape`/`split` works inside each CTA

@@ -1,6 +1,16 @@
 # TMEM Linear Generalization
 
-- Latest probe: 2026-04-17 10:09 UTC pure rank-2 two-CTA row-half replay is a
+- Latest: 2026-04-17 10:03 UTC half-row descriptor-view type-only fallback
+  refusal is backend-owned. `disallowTMemLdStTypeOnlyFallback(...)` now covers
+  half-row descriptor views that require exact support/raw-query lowering, and
+  the Gluon pybind bridge no longer carries a separate half-row fallback guard.
+  Support is unchanged; this keeps another register-layout selection boundary
+  in `TensorMemoryUtils` instead of bridge-local policy. Validation: `make
+  -j8`, direct half-row selectors (`7 passed`), lifted half-row selectors (`6
+  passed`), x1 fallback-boundary selector (`6 passed`), and `git diff
+  --check`.
+
+- Latest probe: 2026-04-17 10:00 UTC pure rank-2 two-CTA row-half replay is a
   CTA-block selection problem, not a split-shape problem. A speculative
   inner-factor split for `block_two_ctas` changed the wrong-row pattern from
   odd rows (`1,3,...,255`) to bit-1 groups (`2,3,6,7,...`) but still did not

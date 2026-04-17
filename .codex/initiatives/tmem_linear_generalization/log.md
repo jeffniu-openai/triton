@@ -22497,7 +22497,7 @@ Open after this slice:
     (`21 passed, 17945 deselected in 5.85s`);
   - `git diff --check`.
 
-## 2026-04-17 10:09 UTC: two-CTA direct row-half split probe
+## 2026-04-17 10:00 UTC: two-CTA direct row-half split probe
 
 - Starting point: `codex/tmem` at `140d597b9`.
 - Probe-only edits were applied and reverted:
@@ -22523,3 +22523,40 @@ Open after this slice:
     split variants;
   - all probe source edits were reverted and `git status --short --branch`
     returned a clean worktree at `140d597b9` before recording this note.
+
+## 2026-04-17 10:03 UTC: backend-owned half-row fallback refusal
+
+- Starting point: `codex/tmem` at `7d1e729c7`.
+- Change:
+  - moved the half-row descriptor-view type-only fallback refusal into
+    `disallowTMemLdStTypeOnlyFallback(...)`;
+  - removed the corresponding half-row special case from `python/src/gluon_ir.cc`;
+  - kept the existing two-CTA int8 descriptor-view fallback refusal on the same
+    backend helper and generalized the bridge trace string to
+    `type-only-fallback-disallowed`.
+- Boundary:
+  - support is unchanged; this is a layering cleanup so exact-lowering-required
+    TMEM views are refused by backend policy rather than bridge-local family
+    checks.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-typefallback-halfrows
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_direct_half_rows_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported`
+    (`7 passed in 8.59s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-typefallback-lifted
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lifted_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_positive_lifted_layout`
+    (`6 passed in 14.36s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-typefallback-x1
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ldst_x1_i32_descriptor_chain_roundtrip or
+    ldst_x1_i32_unsupported_variants_report_clean_unsupported"`
+    (`6 passed, 1584 deselected in 5.74s`);
+  - `git diff --check`.

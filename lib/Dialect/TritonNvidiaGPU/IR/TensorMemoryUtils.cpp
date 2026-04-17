@@ -3396,6 +3396,14 @@ bool isTMemLdStHalfRowsDescriptorView(Value memDesc) {
 }
 
 bool disallowTMemLdStTypeOnlyFallback(Value memDesc, std::string *reason) {
+  if (isTMemLdStHalfRowsDescriptorView(memDesc)) {
+    if (reason) {
+      *reason = "half-rows descriptor view requires exact support/raw-query "
+                "lowering";
+    }
+    return true;
+  }
+
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy)
     return false;
