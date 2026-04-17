@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:40 UTC
+Last updated: 2026-04-17 17:45 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -109,6 +109,19 @@ row/source projection. If not, promote the proof into a clearer typed
 requirement and move to the next reachable support slice.
 
 ## Progress
+
+- 2026-04-17 17:45 UTC: promoted copy destination row-order rejection into a
+  shared typed `TMemCopyDestinationRowOrderRequirement` in
+  `TensorMemoryUtils.cpp`. Dense and multicast row-permuted copy layouts now
+  carry the offending row-basis sequence, instruction footprint, and derived
+  destination-row mask/schedule gap instead of formatting the boundary from two
+  separate ad hoc string builders. Support is intentionally unchanged: these
+  rows still require a future row-selected source projection, row-partitioned
+  atom, or destination-row mask before becoming positive. Validation:
+  `make -j8`; split-4 focused selector for
+  `cp_no_scales_warpx2_row_permuted_destination_reports_clean_unsupported` and
+  `cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported` passed
+  `4/4/4/4`; `git diff --check`.
 
 - 2026-04-17 17:40 UTC: converted the `warpx2` shared-source runtime preflight
   in `TensorMemoryUtils.cpp` from inline string checks into a typed internal

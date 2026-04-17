@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:45 UTC Phase B/F copy-planner cleanup: converted the
+  dense and multicast destination row-order rejection paths into a shared
+  typed `TMemCopyDestinationRowOrderRequirement`. The backend now records the
+  row-basis sequence, copy instruction footprint, first non-ascending basis,
+  and derived destination-row mask/schedule gap before returning clean
+  unsupported for row-permuted copy destinations. Support is unchanged: these
+  rows still need a real row-selected source projection, row-partitioned atom,
+  or destination-row mask schedule to become positive. Validation: `make -j8`;
+  split-4 focused row-order selector (`4/4/4/4` passed); `git diff --check`.
+
 - Latest: 2026-04-17 17:40 UTC Phase B/F copy-planner cleanup: converted the
   `warpx2` shared-source runtime support preflight from inline string-shaped
   checks into a typed internal `TMemCopyWarpx2SharedSourceRequirement` in

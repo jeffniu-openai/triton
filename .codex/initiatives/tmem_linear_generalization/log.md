@@ -1,3 +1,31 @@
+## 2026-04-17 17:45 UTC: typed copy destination row-order requirement
+
+- Change:
+  - added a shared internal `TMemCopyDestinationRowOrderRequirement` for dense
+    and multicast `tcgen05.copy` destination row-order failures;
+  - the requirement records the family, instruction footprint, row-basis
+    sequence, and first non-ascending physical-row basis;
+  - diagnostics now append the derived destination-row mask/schedule gap when
+    the row bit can be mapped to a row-selected footprint, while preserving the
+    existing clean-negative substrings.
+- Boundary:
+  - support is unchanged;
+  - row-permuted copy destinations still require a real row-selected
+    source-projection schedule, row-partitioned atom, or destination-row mask
+    before promotion.
+- Validation:
+  - `make -j8`;
+  - split-4 focused selector:
+    `cp_no_scales_warpx2_row_permuted_destination_reports_clean_unsupported or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported`
+    passed as `4/4/4/4`;
+  - `git diff --check`.
+- Next:
+  - commit and push this cleanup checkpoint;
+  - continue Phase 2 copy-planner work, especially deciding which row/column
+    permutation boundaries can become legal multi-message schedules and which
+    are true ISA mask/atom-footprint gaps.
+
 ## 2026-04-17 17:40 UTC: typed warpx2 shared-source requirement
 
 - Change:

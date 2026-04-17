@@ -9818,6 +9818,8 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_row_permuted_destination_report
     assert "maps to tcgen05.copy.warpx2::01_23.64x128b" in text
     assert "non-broadcast TMEM row bases" in text
     assert "source-row projection schedule" in text
+    assert "destination-row order requirement" in text
+    assert "destination rows" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
@@ -10121,6 +10123,8 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
         assert "source-row projection schedule" in text
         assert "first non-ascending basis" in text
         assert "full physical row footprint" in text
+        assert "destination-row order requirement" in text
+        assert "destination rows" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

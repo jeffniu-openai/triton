@@ -10082,13 +10082,30 @@ static void appendTMemCopyDestinationMaskScheduleGap(
     const TMemCopyDestinationMaskRequirement &requirement,
     StringRef requirementName, StringRef footprintScope);
 
-struct DenseTMemCopyRowBasisStep {
+static unsigned getDenseTMemCopyInstructionRows(TMemCopyFamily family);
+
+enum class TMemCopyDestinationRowOrderRequirementKind {
+  DenseRowBases,
+  DenseRowRepetitionBases,
+  MulticastNonBroadcastRowBases,
+};
+
+struct TMemCopyRowBasisStep {
   unsigned bit = 0;
   int32_t physicalRow = 0;
 };
 
+struct TMemCopyDestinationRowOrderRequirement {
+  TMemCopyDestinationRowOrderRequirementKind kind =
+      TMemCopyDestinationRowOrderRequirementKind::DenseRowBases;
+  TMemCopyFamily family = TMemCopyFamily::Dense128x128b;
+  unsigned instructionRows = 0;
+  unsigned instructionColumns = 0;
+  llvm::SmallVector<TMemCopyRowBasisStep, 8> steps;
+};
+
 static std::optional<unsigned> findFirstNonAscendingRowBasis(
-    ArrayRef<DenseTMemCopyRowBasisStep> steps) {
+    ArrayRef<TMemCopyRowBasisStep> steps) {
   if (steps.size() < 2)
     return std::nullopt;
   for (unsigned idx = 1; idx < steps.size(); ++idx) {
@@ -10098,18 +10115,55 @@ static std::optional<unsigned> findFirstNonAscendingRowBasis(
   return std::nullopt;
 }
 
+static std::optional<TMemCopyDestinationMaskRequirement>
+getTMemCopyDestinationMaskRequirement(
+    const TMemCopyDestinationRowOrderRequirement &requirement) {
+  if (requirement.kind ==
+      TMemCopyDestinationRowOrderRequirementKind::DenseRowRepetitionBases)
+    return std::nullopt;
+
+  auto offendingIdx = findFirstNonAscendingRowBasis(requirement.steps);
+  if (!offendingIdx)
+    return std::nullopt;
+  unsigned logicalRowBit = requirement.steps[*offendingIdx].bit;
+  if (logicalRowBit >= std::numeric_limits<unsigned>::digits - 1)
+    return std::nullopt;
+
+  return TMemCopyDestinationMaskRequirement{
+      /*axis=*/TMemCopyDestinationMaskAxis::Row,
+      /*instructionRows=*/requirement.instructionRows,
+      /*instructionColumns=*/requirement.instructionColumns,
+      /*selectedRun=*/1u << logicalRowBit,
+      /*selectionPeriod=*/1u << (logicalRowBit + 1)};
+}
+
+static StringRef stringifyTMemCopyDestinationRowOrderBasis(
+    TMemCopyDestinationRowOrderRequirementKind kind) {
+  switch (kind) {
+  case TMemCopyDestinationRowOrderRequirementKind::DenseRowBases:
+    return "row bases";
+  case TMemCopyDestinationRowOrderRequirementKind::DenseRowRepetitionBases:
+    return "row-repetition bases stored in the column address space";
+  case TMemCopyDestinationRowOrderRequirementKind::MulticastNonBroadcastRowBases:
+    return "non-broadcast TMEM row bases";
+  }
+  llvm_unreachable("unknown tcgen05.copy row-order requirement kind");
+}
+
 static TMemCopySupportResult getDenseTMemCopyRowOrderFailure(
-    ArrayRef<DenseTMemCopyRowBasisStep> steps, StringRef basisKind) {
+    const TMemCopyDestinationRowOrderRequirement &requirement) {
   std::string reason;
   llvm::raw_string_ostream os(reason);
+  StringRef basisKind =
+      stringifyTMemCopyDestinationRowOrderBasis(requirement.kind);
   os << "direct tcgen05.copy requires TMEM " << basisKind
      << " to stay in ascending physical row order until the planner can "
         "derive an explicit source-row projection schedule with a "
         "destination-row mask, row-partitioned atom, or equivalent smaller "
         "copy footprint for row-permuted destinations.";
-  if (auto offendingIdx = findFirstNonAscendingRowBasis(steps)) {
-    const auto &previous = steps[*offendingIdx - 1];
-    const auto &current = steps[*offendingIdx];
+  if (auto offendingIdx = findFirstNonAscendingRowBasis(requirement.steps)) {
+    const auto &previous = requirement.steps[*offendingIdx - 1];
+    const auto &current = requirement.steps[*offendingIdx];
     os << " The first non-ascending basis is bit " << current.bit
        << " mapping to physical row " << current.physicalRow
        << " after bit " << previous.bit << " mapped to physical row "
@@ -10117,16 +10171,25 @@ static TMemCopySupportResult getDenseTMemCopyRowOrderFailure(
   }
   os << " Current dense copy atoms write the full physical row footprint in "
         "basis order.";
+  if (auto maskRequirement = getTMemCopyDestinationMaskRequirement(requirement))
+    appendTMemCopyDestinationMaskScheduleGap(
+        os, *maskRequirement, "destination-row order requirement",
+        "for each emitted instruction");
   return getUnsupportedTMemCopyResult(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
 
 static TMemCopySupportResult
-getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
+getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx,
+                                     TMemCopyFamily family,
+                                     unsigned bitwidth) {
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
 
-  SmallVector<DenseTMemCopyRowBasisStep> rowBasisValues;
+  unsigned instructionRows = getDenseTMemCopyInstructionRows(family);
+  unsigned instructionColumns = getDenseTMemCopyColumnStride(family, bitwidth);
+
+  SmallVector<TMemCopyRowBasisStep> rowBasisValues;
   for (auto [idx, basis] : llvm::enumerate(ll.getBases().lookup(kRow))) {
     if (basis[0] == 0 || basis[1] != 0) {
       return getUnsupportedTMemCopyResult(
@@ -10135,13 +10198,20 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
           "and column contributions.");
     }
     rowBasisValues.push_back(
-        DenseTMemCopyRowBasisStep{static_cast<unsigned>(idx),
-                                  std::abs(basis[0])});
+        TMemCopyRowBasisStep{static_cast<unsigned>(idx), std::abs(basis[0])});
   }
-  if (findFirstNonAscendingRowBasis(rowBasisValues))
-    return getDenseTMemCopyRowOrderFailure(rowBasisValues, "row bases");
+  if (findFirstNonAscendingRowBasis(rowBasisValues)) {
+    TMemCopyDestinationRowOrderRequirement requirement;
+    requirement.kind =
+        TMemCopyDestinationRowOrderRequirementKind::DenseRowBases;
+    requirement.family = family;
+    requirement.instructionRows = instructionRows;
+    requirement.instructionColumns = instructionColumns;
+    requirement.steps = std::move(rowBasisValues);
+    return getDenseTMemCopyRowOrderFailure(requirement);
+  }
 
-  SmallVector<DenseTMemCopyRowBasisStep> rowRepetitionBasisValues;
+  SmallVector<TMemCopyRowBasisStep> rowRepetitionBasisValues;
   for (auto [idx, basis] : llvm::enumerate(ll.getBases().lookup(kCol))) {
     bool touchesRow = basis[0] != 0;
     bool touchesCol = basis[1] != 0;
@@ -10153,13 +10223,19 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
     }
     if (touchesRow && !touchesCol)
       rowRepetitionBasisValues.push_back(
-          DenseTMemCopyRowBasisStep{static_cast<unsigned>(idx),
-                                    std::abs(basis[0])});
+          TMemCopyRowBasisStep{static_cast<unsigned>(idx),
+                               std::abs(basis[0])});
   }
-  if (findFirstNonAscendingRowBasis(rowRepetitionBasisValues))
-    return getDenseTMemCopyRowOrderFailure(
-        rowRepetitionBasisValues,
-        "row-repetition bases stored in the column address space");
+  if (findFirstNonAscendingRowBasis(rowRepetitionBasisValues)) {
+    TMemCopyDestinationRowOrderRequirement requirement;
+    requirement.kind =
+        TMemCopyDestinationRowOrderRequirementKind::DenseRowRepetitionBases;
+    requirement.family = family;
+    requirement.instructionRows = instructionRows;
+    requirement.instructionColumns = instructionColumns;
+    requirement.steps = std::move(rowRepetitionBasisValues);
+    return getDenseTMemCopyRowOrderFailure(requirement);
+  }
   return getSupportedTMemCopyResult();
 }
 
@@ -10295,23 +10371,27 @@ static LinearLayout canonicalizeTMemCopyLayoutDimsForAnalysis(
 }
 
 static TMemCopySupportResult getTMemCopyMulticastDestinationRowOrderFailure(
-    ArrayRef<DenseTMemCopyRowBasisStep> steps, TMemCopyFamily family) {
+    const TMemCopyDestinationRowOrderRequirement &requirement) {
   std::string reason;
   llvm::raw_string_ostream os(reason);
-  os << "direct tcgen05.copy." << stringifyTMemCopyFamily(family)
+  os << "direct tcgen05.copy." << stringifyTMemCopyFamily(requirement.family)
      << " requires non-broadcast TMEM row bases to stay in ascending physical "
         "row order. Public multicast copy atoms write a fixed physical row "
         "footprint for each instruction, so row-permuted destinations need an "
         "explicit source-row projection schedule with a destination-row mask, "
         "row-partitioned atom, or equivalent smaller copy footprint.";
-  if (auto offendingIdx = findFirstNonAscendingRowBasis(steps)) {
-    const auto &previous = steps[*offendingIdx - 1];
-    const auto &current = steps[*offendingIdx];
+  if (auto offendingIdx = findFirstNonAscendingRowBasis(requirement.steps)) {
+    const auto &previous = requirement.steps[*offendingIdx - 1];
+    const auto &current = requirement.steps[*offendingIdx];
     os << " The first non-ascending non-broadcast basis is bit "
        << current.bit << " mapping to physical row " << current.physicalRow
        << " after bit " << previous.bit << " mapped to physical row "
        << previous.physicalRow << ".";
   }
+  if (auto maskRequirement = getTMemCopyDestinationMaskRequirement(requirement))
+    appendTMemCopyDestinationMaskScheduleGap(
+        os, *maskRequirement, "destination-row order requirement",
+        "for each emitted instruction");
   return getUnsupportedTMemCopyResult(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
@@ -10350,7 +10430,7 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
         "rank-2 TMEM view with explicit row/col bases.");
   }
 
-  SmallVector<DenseTMemCopyRowBasisStep> nonBroadcastRowBases;
+  SmallVector<TMemCopyRowBasisStep> nonBroadcastRowBases;
   auto rowBases = ll.getBases().lookup(kRow);
   constexpr unsigned kRow32Bit = 5;
   constexpr unsigned kRow64Bit = 6;
@@ -10376,12 +10456,19 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
               "TMEM rows.");
     }
     nonBroadcastRowBases.push_back(
-        DenseTMemCopyRowBasisStep{static_cast<unsigned>(idx),
-                                  std::abs(basis[0])});
+        TMemCopyRowBasisStep{static_cast<unsigned>(idx), std::abs(basis[0])});
   }
-  if (findFirstNonAscendingRowBasis(nonBroadcastRowBases))
-    return getTMemCopyMulticastDestinationRowOrderFailure(
-        nonBroadcastRowBases, family);
+  if (findFirstNonAscendingRowBasis(nonBroadcastRowBases)) {
+    TMemCopyDestinationRowOrderRequirement requirement;
+    requirement.kind =
+        TMemCopyDestinationRowOrderRequirementKind::MulticastNonBroadcastRowBases;
+    requirement.family = family;
+    requirement.instructionRows =
+        family == TMemCopyFamily::Warpx4_32x128b ? 32 : 64;
+    requirement.instructionColumns = bitwidth == 0 ? 0 : 128 / bitwidth;
+    requirement.steps = std::move(nonBroadcastRowBases);
+    return getTMemCopyMulticastDestinationRowOrderFailure(requirement);
+  }
 
   if (bitwidth == 0 || 128 % bitwidth != 0) {
     return getUnsupportedTMemCopyResult(
@@ -10498,7 +10585,8 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
   if (!blockOwnershipSupport)
     return blockOwnershipSupport;
 
-  auto rowProjectionSupport = getDenseTMemCopyRowProjectionSupport(ll, ctx);
+  auto rowProjectionSupport =
+      getDenseTMemCopyRowProjectionSupport(ll, ctx, family, bitwidth);
   if (!rowProjectionSupport)
     return rowProjectionSupport;
 

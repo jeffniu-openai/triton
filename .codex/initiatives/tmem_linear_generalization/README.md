@@ -48,6 +48,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 17:45 UTC: the copy planner now represents row-permuted
+  destination rejection with a shared typed
+  `TMemCopyDestinationRowOrderRequirement`. Dense and multicast paths both
+  preserve the old diagnostics while also recording the derived
+  destination-row mask/schedule gap that future row-projection support must
+  solve. Validation: `make -j8`, split-4 focused row-order clean-negative
+  selector (`4/4/4/4` passed), and `git diff --check`.
 - 2026-04-17 17:36 UTC: created the active completion execution tracker and
   rebaselined the current clean-negative inventory after `make -j8`.
   `pytest -q --collect-only python/test/gluon/test_tmem_runtime_matrix.py -k
