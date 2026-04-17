@@ -13228,3 +13228,21 @@ rejection, not rescue
   - checkpoint this documentation audit;
   - move to staged broad validation and a cleanup audit for remaining
     compatibility shims that may now be backend-owned.
+
+## Current: 2026-04-17 20:57 UTC full runtime-matrix validation
+
+- Corrected full runtime-matrix runner passed after the integer `ld.red` NaN
+  promotion and copy boundary audit.
+- Bucket evidence:
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` collected cases.
+- Logs:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_205257/`
+- Next:
+  - checkpoint validation evidence;
+  - audit remaining frontend/lowering compatibility shims and delete only
+    behavior already represented by backend query/support helpers.

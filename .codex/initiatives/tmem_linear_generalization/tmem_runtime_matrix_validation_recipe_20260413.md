@@ -66,7 +66,7 @@ It does not delete caches by default.
 ## Measured Profile
 
 Latest full corrected bucket evidence after the 2026-04-17 M64 physical-subview
-fix and runner audit:
+fix, integer `ld.red` NaN promotion, and runner audit:
 
 - `cp`: `312 passed, 4 skipped` across four groups.
 - `mma`: `601 passed` across four groups.
@@ -74,6 +74,9 @@ fix and runner audit:
 - `ld_red`: `247 passed` across 16 groups.
 - `ldst`: `295 passed, 98 skipped` across 16 groups.
 - aggregate: `1490 passed, 102 skipped` across all `1592` collected cases.
+
+The latest full-runner log directory is
+`.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_205257/`.
 
 The first 2026-04-17 runner attempt failed at collection because the runner
 removed inherited `PYTHONPATH` and imported site-packages `triton`, which did

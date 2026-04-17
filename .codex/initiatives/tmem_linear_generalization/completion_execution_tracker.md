@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 20:52 UTC
+Last updated: 2026-04-17 20:57 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -311,13 +311,20 @@ preservation, subword packed lanes, row/column masks or smaller atom
 footprints, ordinary-view `4x256b` refresh-remap/readback, scales
 descriptor-view masks, and noncanonical CTA ownership.
 
-Next concrete slice: run staged broad validation and cleanup audit. Start with
-the corrected runtime-matrix runner, then inspect remaining frontend/lowering
-compatibility shims against the backend-owned helper list. Do not delete a shim
-unless its behavior is already represented by a tested backend query/support
-object.
+The corrected full runtime-matrix runner passed at 2026-04-17 20:57 UTC.
+
+Next concrete slice: inspect remaining frontend/lowering compatibility shims
+against the backend-owned helper list. Do not delete a shim unless its behavior
+is already represented by a tested backend query/support object.
 
 ## Progress
+
+- 2026-04-17 20:57 UTC: ran the corrected full runtime-matrix runner. All
+  buckets passed with complete `1592/1592` coverage: `cp` `312 passed, 4
+  skipped`; `mma` `601 passed`; `splitn` `35 passed`; `ld_red` `247 passed`;
+  `ldst` `295 passed, 98 skipped`; aggregate `1490 passed, 102 skipped`.
+  Per-shard logs are in
+  `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_205257/`.
 
 - 2026-04-17 20:52 UTC: completed the copy-planner boundary audit for the
   remaining representative clean negatives. Validation command:

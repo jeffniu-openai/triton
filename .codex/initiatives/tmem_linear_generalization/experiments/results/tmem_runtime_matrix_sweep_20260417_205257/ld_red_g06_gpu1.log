@@ -1,0 +1,25 @@
+cwd: /root/code/triton
+CUDA_VISIBLE_DEVICES=1
+PYTHONPATH=/root/code/triton:/root/code/triton/python:/root/code/triton/python/test/gluon
+TRITON_CACHE_DIR=/tmp/triton-cache-tmem-runtime-matrix-gpu1
+command: pytest -s --tb=short --splits 16 --group 6 -q -n 4 python/test/gluon/test_tmem_runtime_matrix.py -k ld_red
+
+
+[pytest-split] No test durations found. Pytest-split will split tests evenly when no durations are found. 
+[pytest-split] You can expect better results in consequent runs, when test timings have been documented.
+
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+bringing up nodes...
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+bringing up nodes...
+
+................
+16 passed in 12.91s

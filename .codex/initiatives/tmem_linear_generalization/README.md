@@ -48,6 +48,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 20:57 UTC: the corrected full runtime-matrix runner passed with
+  complete `1592/1592` bucket coverage. Aggregate evidence: `cp`
+  `312 passed, 4 skipped`; `mma` `601 passed`; `splitn` `35 passed`;
+  `ld_red` `247 passed`; `ldst` `295 passed, 98 skipped`; total `1490
+  passed, 102 skipped`. Logs are under
+  `experiments/results/tmem_runtime_matrix_sweep_20260417_205257/`.
 - 2026-04-17 20:52 UTC: completed the copy-planner boundary audit for the
   remaining representative clean negatives. The focused copy selector covering
   scales descriptor-view masks, ordinary-view `4x256b`, two-CTA

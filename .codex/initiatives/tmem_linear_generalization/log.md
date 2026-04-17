@@ -24571,3 +24571,19 @@ Open after this slice:
 - Validation:
   - `make -j8`;
   - focused copy boundary selector passed `44/44` in `8.35s`.
+
+## 2026-04-17 20:57 UTC: full runtime-matrix runner green
+
+- Starting point: `codex/tmem` at pushed `2fb97cefb`.
+- Command:
+  - `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`
+- Result:
+  - all buckets passed under the corrected checkout-local `PYTHONPATH` runner;
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` cases.
+- Logs:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_205257/`
