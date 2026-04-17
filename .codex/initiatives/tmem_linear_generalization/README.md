@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:33 UTC: repeated-N32 scaled-MMAv5 support was re-probed from
+  the B-scale fragment side. A one-column fragment stride still faults with a
+  misaligned scale address; exact scale-layout algebra identifies logical
+  N32/N64/N96 rows as physical scale columns 4/8/12, but using the corresponding
+  aligned offsets still leaves only the first N32 instruction correct and the
+  remaining N instructions numerically wrong. The clean negative is preserved,
+  and `MMAv5ScaledRepeatedN32ScaleFragmentRequirement` now records the public
+  matrix-B scale fragment's minimum addressable N span so the diagnostic points
+  at the missing scale-fragment storage/rematerialization contract. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, focused scaled-MMAv5 selector
+  (`50 passed`).
 - 2026-04-17 07:18 UTC: `tcgen05.ld.red` reduction-layout support now returns
   a structured support object carrying the supported lane-split mask or an
   exact unsupported sharding reason. This preserves current functionality but

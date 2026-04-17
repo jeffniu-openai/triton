@@ -228,6 +228,7 @@ struct MMAv5ScaledRepeatedN32ScaleFragmentRequirement {
   unsigned instrSizeN;
   unsigned ctaColumns;
   unsigned nInstructionCount;
+  unsigned minimumAddressableBScaleFragmentN;
 };
 
 struct MMAv5ScaledNarrowNScaleFragmentRequirement {

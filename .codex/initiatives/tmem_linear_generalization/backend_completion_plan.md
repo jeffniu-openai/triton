@@ -1415,6 +1415,13 @@ Progress:
   columns-per-scale-block, and K-word index are now one backend object. This
   is support-neutral and prepares the real B-scale fragment representation
   task without another lowering-only formula.
+- 2026-04-17 07:33 UTC: repeated-N32 scaled-MMAv5 was re-probed using exact
+  `TensorMemoryScalesLayout` algebra. Logical N32/N64/N96 B-scale rows do map
+  to physical scale columns 4/8/12, but aligned address variants still leave
+  only the first N32 instruction correct, and one-column fragments still
+  misalign. The requirement now records the public matrix-B scale fragment's
+  minimum addressable N span (`64`). Future support needs a real alternative
+  B-scale storage/rematerialization contract, not another stride tweak.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

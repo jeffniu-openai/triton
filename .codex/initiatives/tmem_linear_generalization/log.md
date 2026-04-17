@@ -1,3 +1,34 @@
+## 2026-04-17 07:33 UTC: tightened repeated-N32 scaled-MMAv5 B-scale requirement
+
+- Starting point: `codex/tmem` at `dd3a47396`.
+- Probe:
+  - temporarily bypassed the repeated-N32 scaled-MMAv5 guard and varied the
+    matrix-B scale fragment stride;
+  - a one-column stride still faulted with CUDA misaligned-address;
+  - aligned strides made the kernel execute, but only the first N32 instruction
+    was exact while later N tiles remained numerically wrong;
+  - an exact `TensorMemoryScalesLayout` trace mapped logical N32/N64/N96 scale
+    rows to physical scale columns 4/8/12, so the remaining issue is not a
+    missing simple linear-layout offset.
+- Change:
+  - kept support unchanged;
+  - extended `MMAv5ScaledRepeatedN32ScaleFragmentRequirement` with the minimum
+    public matrix-B scale-fragment N span and used it in the diagnostic.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-fragment-req
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+    mma_scaled_acc_tile_permuted_64_format_matrix or
+    mma_scaled_acc_tile_permuted_64_format_use_acc or
+    mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported"`
+    (`50 passed, 1528 deselected in 33.15s`).
+
 ## 2026-04-17 07:18 UTC: structured reduction-layout support diagnostics
 
 - Starting point: `codex/tmem` at `bee6ebfb7`.

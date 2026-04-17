@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:33 UTC repeated-N32 scaled-MMAv5 was re-probed from
+  the matrix-B scale-fragment side. Bypassing the guard and forcing a
+  one-column B-scale fragment stride still faults with a misaligned scale
+  address. The exact `TensorMemoryScalesLayout` algebra maps logical
+  N32/N64/N96 scale rows to physical scale columns 4/8/12, but using the
+  corresponding aligned offsets still leaves only the first N32 instruction
+  correct; later N instructions are numerically wrong. Keep the clean negative.
+  The durable code change is support-neutral: `MMAv5ScaledRepeatedN32ScaleFragmentRequirement`
+  now records the minimum addressable public matrix-B scale-fragment N span
+  (`64`) and formats the diagnostic as a scale-fragment storage/rematerialization
+  boundary. Validation: `make -j8`, direct `invalid.mlir` verifier,
+  `test_tmem_runtime_matrix.py -k "mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported
+  or mma_scaled_acc_tile_permuted_64_format_matrix or
+  mma_scaled_acc_tile_permuted_64_format_use_acc or
+  mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported"`
+  (`50 passed`).
+
 - Latest: 2026-04-17 07:18 UTC reduction-layout support now has a structured
   support object instead of only a nullable lane-split mask. The new
   `TMemLoadReductionLayoutSupport` preserves the existing supported cases

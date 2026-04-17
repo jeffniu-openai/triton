@@ -1261,7 +1261,8 @@ getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
       /*instrSizeN=*/instrSizeN,
       /*ctaColumns=*/static_cast<unsigned>(ctaShape[1]),
       /*nInstructionCount=*/static_cast<unsigned>(
-          (ctaShape[1] + instrSizeN - 1) / instrSizeN)};
+          (ctaShape[1] + instrSizeN - 1) / instrSizeN),
+      /*minimumAddressableBScaleFragmentN=*/64};
 }
 
 MMAv5ScaledAccumulatorSupport
@@ -1350,9 +1351,13 @@ std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
         "instructions along N for "
      << requirement.accumulatorEncoding
      << ". The public tensor-memory scales layout only exposes matrix-B scale "
-        "fragments at 64-column alignment, so layouts that would need "
-        "multiple N=32 scaled instructions must be reshaped to a larger "
-        "directly supported MMAv5 tile.";
+        "fragments at "
+     << requirement.minimumAddressableBScaleFragmentN
+     << "-column alignment, so layouts that would need "
+     << requirement.nInstructionCount
+     << " separate N=" << requirement.instrSizeN
+     << " scaled instructions must be reshaped to a larger directly supported "
+        "MMAv5 tile or rematerialize the matrix-B scale fragment storage.";
   return os.str();
 }
 
