@@ -48,6 +48,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 18:10 UTC: no-scales two-CTA `warpx2::02_13` source-column
+  preservation now has a typed requirement formatter derived from the
+  source-row split requirement. The bucket remains unsupported because public
+  `cta_group::2` schedules either duplicate the low source-column pair into the
+  high columns or read zeros when trying to complete the single-CTA schedule.
+  Validation: `make -j8`, split-4 focused `warpx2::02_13`/neighbor selector
+  (`8/8/8/6` passed), built `triton-opt` verify-diagnostics, Python
+  byte-compile, and `git diff --check`.
 - 2026-04-17 18:04 UTC: scales `tcgen05.copy` descriptor-view failures now
   have a structured exact-view schedule note. The note records that the first
   differing physical-query field is the physical layout for the active

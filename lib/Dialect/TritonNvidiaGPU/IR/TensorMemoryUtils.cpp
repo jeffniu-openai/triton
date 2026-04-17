@@ -10979,6 +10979,36 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   return seedImm;
 }
 
+struct TMemCopyWarpx2TwoCTASourceColumnRequirement {
+  TMemCopySourceRowSplitRequirement rowSplit;
+  unsigned affineSourceRowStrideRows = 8;
+  unsigned directSeedSourceOffsetB128 = 32;
+};
+
+static std::string getTMemCopyWarpx2TwoCTASourceColumnRequirementNote(
+    const TMemCopyWarpx2TwoCTASourceColumnRequirement &requirement) {
+  std::string note;
+  llvm::raw_string_ostream os(note);
+  os << "The two-CTA warpx2::02_13 source-column preservation requirement "
+        "remains unsupported until Triton can synthesize a cta_group::2 "
+        "descriptor/address schedule that preserves the high source-column "
+        "bit. The descriptor path fails because logical row bit "
+     << requirement.rowSplit.logicalRowBit
+     << " maps to a one-dword source offset rather than an affine "
+     << requirement.affineSourceRowStrideRows
+     << "-row source stride; the direct-seed cta_group::2 path with source "
+        "offset "
+     << requirement.directSeedSourceOffsetB128
+     << " emits the opcode and writes the correct low destination columns, "
+        "but duplicates that low source-column pair into the high destination "
+        "columns. Non-zero subaligned destination dword deltas fault, and "
+        "aligned deltas that complete the single-CTA schedule read zeros under "
+        "cta_group::2. Decomposing this tensor-memory view into cta_group::1 "
+        "copies is not valid because two-CTA TMEM allocation uses cta_group::2 "
+        "granularity.";
+  return os.str();
+}
+
 static std::optional<std::string>
 getKnownTMemCopySourceRowSplitProbeEvidence(
     MemDescType srcTy, const LinearLayout &cvt, const TMemCopyPlan &plan,
@@ -11008,19 +11038,13 @@ getKnownTMemCopySourceRowSplitProbeEvidence(
       failure.actualOffset == failure.expectedOffset)
     return std::nullopt;
 
-  return std::string(
-      "The two-CTA warpx2::02_13 path remains unsupported until Triton can "
-      "synthesize a cta_group::2 descriptor/address schedule that preserves "
-      "the high source-column bit. The descriptor path fails because logical "
-      "row bit 5 maps to a one-dword source offset rather than an affine "
-      "8-row source stride; the direct-seed cta_group::2 path with source "
-      "offset 32 emits the opcode and writes the correct low destination "
-      "columns, but duplicates that low source-column pair into the high "
-      "destination columns. Non-zero subaligned destination dword deltas fault, "
-      "and aligned deltas that complete the single-CTA schedule read zeros "
-      "under cta_group::2. Decomposing this tensor-memory view into "
-      "cta_group::1 copies is not valid because two-CTA TMEM allocation uses "
-      "cta_group::2 granularity.");
+  auto splitRequirement =
+      getTMemCopySourceRowSplitRequirement(failure, message);
+  if (!splitRequirement)
+    return std::nullopt;
+  TMemCopyWarpx2TwoCTASourceColumnRequirement requirement;
+  requirement.rowSplit = *splitRequirement;
+  return getTMemCopyWarpx2TwoCTASourceColumnRequirementNote(requirement);
 }
 
 std::optional<TMemCopySourceRowSplitRequirement>

@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 18:10 UTC Phase C no-scales copy classification:
+  two-CTA `warpx2::02_13` now reports its high source-column-bit gap through
+  `TMemCopyWarpx2TwoCTASourceColumnRequirement`, derived from the source-row
+  split requirement. Support is unchanged: logical row bit 5 needs a
+  one-dword source offset for 32-of-64 destination rows, but public
+  `cta_group::2` schedules either duplicate low source columns into high
+  columns or read zeros when trying to complete the single-CTA schedule.
+  Validation: `make -j8`, split-4 focused selector (`8/8/8/6`), built
+  `triton-opt` verify-diagnostics, Python compile, and `git diff --check`.
+
 - Latest: 2026-04-17 18:04 UTC Phase C scales-copy classification:
   `getTMemCopyExactViewScheduleNote` now formats from a structured
   `TMemCopyExactViewScheduleRequirement` with the first differing physical

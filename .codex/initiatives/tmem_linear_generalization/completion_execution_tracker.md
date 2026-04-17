@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:04 UTC
+Last updated: 2026-04-17 18:10 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -88,7 +88,9 @@ Current buckets:
   the copy diagnostic.
 - No-scales two-CTA `warpx2::02_13`: current public `cta_group::2`
   direct-seed schedules either duplicate low source columns or read zeros; a
-  valid schedule must preserve the high source-column bit.
+  valid schedule must preserve the high source-column bit. This is now reported
+  through a typed source-column preservation requirement derived from the
+  source-row split requirement.
 - `warpx2` dense/noncanonical shared-source layouts and subword copies:
   descriptor representability is not sufficient; support needs source
   rematerialization, packed-lane storage, and descriptor semantic-equivalence
@@ -208,15 +210,27 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Resume support-bearing `tcgen05.copy` work from the shared scheduled-message
-planner. The next highest-value bucket is the no-scales two-CTA
-`warpx2::02_13` schedule: determine whether a legal schedule can preserve the
-high source-column bit for the second CTA without duplicating low columns or
-reading zeros. If the public atom cannot encode that projection, promote the
-proof into a typed source-message/CTA-ownership requirement and move to the
-next reachable support slice.
+Move to the next non-copy support frontier: plain MMAv5 row/column-permuted
+accumulator layouts. Determine whether any remaining rows can be realized by a
+tile-splitting or masked accumulator writeback schedule; if the public MMAv5
+atoms require canonical in-tile row/column basis order, promote the proof into
+a typed accumulator tile-order requirement and keep only true boundaries.
 
 ## Progress
+
+- 2026-04-17 18:10 UTC: promoted the no-scales two-CTA
+  `warpx2::02_13` probe evidence into a typed
+  `TMemCopyWarpx2TwoCTASourceColumnRequirement`. The diagnostic still reports
+  the same ISA facts, but it now formats from the source-row split requirement:
+  logical row bit 5 would need to select a one-dword source offset for
+  32-of-64 destination rows, while `cta_group::2` direct-seed probes either
+  duplicate the low source-column pair or read zeros when trying to complete
+  the single-CTA schedule. Support is unchanged and remains a true source
+  column / destination-row mask boundary. Validation: `make -j8`; split-4
+  focused `warpx2::02_13`/neighbor selector passed as `8/8/8/6`; built
+  `triton-opt test/TritonNvidiaGPU/invalid.mlir --split-input-file
+  --verify-diagnostics`; Python byte-compile for `test_tmem_runtime_matrix.py`;
+  `git diff --check`.
 
 - 2026-04-17 18:04 UTC: classified the scales `tcgen05.copy`
   descriptor-view/shared-subslice split as a true full-footprint schedule

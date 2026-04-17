@@ -1,3 +1,32 @@
+## 2026-04-17 18:10 UTC: typed two-CTA warpx2::02_13 source-column boundary
+
+- Change:
+  - replaced the remaining hardcoded two-CTA `warpx2::02_13` probe-evidence
+    string with `TMemCopyWarpx2TwoCTASourceColumnRequirement`;
+  - the note now formats from the existing source-row split requirement and
+    records the direct-seed source offset that was probed;
+  - runtime-matrix and `invalid.mlir` diagnostics now assert the
+    source-column preservation requirement wording.
+- Boundary:
+  - support is unchanged;
+  - logical row bit 5 would need to select a one-dword source offset for
+    32-of-64 destination rows, but the public `cta_group::2` schedules probed
+    so far either duplicate the low source-column pair into high destination
+    columns or read zeros;
+  - decomposing into `cta_group::1` copies remains invalid because the
+    allocation is two-CTA granular.
+- Validation:
+  - `make -j8`;
+  - split-4 focused `warpx2::02_13`/neighbor selector passed as `8/8/8/6`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - Python byte-compile for `python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - continue with plain MMAv5 row/column-permuted accumulator layouts.
+
 ## 2026-04-17 18:04 UTC: structured scales copy exact-view schedule boundary
 
 - Change:
