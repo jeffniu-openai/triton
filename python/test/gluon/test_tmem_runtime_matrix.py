@@ -9759,37 +9759,44 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_err
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
 @pytest.mark.parametrize(
-    "family,tmem_layout",
+    "family,tmem_layout,expected_fn,expected_opcode",
     [
-        ("warpx2::01_23.64x128b", _make_tmem_copy_warpx2_tmem_layout()),
-        ("warpx2::02_13.64x128b", _make_tmem_copy_warpx2_tmem_layout_02_13()),
+        (
+            "warpx2::01_23.64x128b",
+            _make_tmem_copy_warpx2_tmem_layout(),
+            _expected_tmem_copy_warpx2_01_23_output,
+            "tcgen05.cp.cta_group::1.warpx2::01_23.64x128b",
+        ),
+        (
+            "warpx2::02_13.64x128b",
+            _make_tmem_copy_warpx2_tmem_layout_02_13(),
+            _expected_tmem_copy_warpx2_02_13_output,
+            "tcgen05.cp.cta_group::1.warpx2::02_13.64x128b",
+        ),
     ],
 )
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsupported(
-    family, tmem_layout, dtype_name, torch_dtype, capfd
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_rematerializes(
+    family, tmem_layout, expected_fn, expected_opcode, dtype_name, torch_dtype
 ):
     M = 128
     N = 4
     shared_layout = _make_tmem_copy_128x128_shared_layout()
     inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
-    out = torch.empty((1, ), device="cuda", dtype=torch.int32)
+    out = torch.empty_like(inp)
 
-    with pytest.raises(RuntimeError) as excinfo:
-        tmem_copy_no_scales_warpx2_codegen_kernel[(1, )](
-            inp, out, shared_layout, tmem_layout, num_warps=4
-        )
+    compiled = tmem_copy_no_scales_warpx2_candidate_kernel[(1, )](
+        inp, out, shared_layout, tmem_layout, num_warps=4
+    )
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert f"maps to tcgen05.copy.{family}" in text
-    assert "canonical 128x4 shared-linear offset basis order" in text
-    assert "first mismatch is offset basis 0" in text
-    assert "got [0, 1] but expected [32, 0]" in text
-    assert "source rematerialization boundary" in text
-    assert "descriptor representability alone is not enough" in text
-    assert "cleanly unsupported" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    expected = expected_fn(inp)
+    assert not torch.equal(out, inp)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    assert family in expected_opcode
+    _assert_exact_cp_ptx_llir_match(compiled, [expected_opcode])
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(1)])
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_copy" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

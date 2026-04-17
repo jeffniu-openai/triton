@@ -24358,3 +24358,39 @@ Open after this slice:
   - `git diff --check`;
   - collect-only rebaseline: `reports_clean_unsupported` is `121/1592`;
     combined `reports_clean_unsupported or reports_clean_error` is `171/1592`.
+
+## 2026-04-17 19:21 UTC: promote single-CTA warpx2 dense-source rematerialization
+
+- Starting point: `codex/tmem` at pushed `bfdf88876`.
+- Change:
+  - added a Gluon `tcgen05_copy` source-rematerialization path for single-CTA
+    no-scales `warpx2` copies whose source is a noncanonical 128x4
+    `SharedLinearLayout`;
+  - the builtin recognizes TensorMemoryLinear destinations matching public
+    `warpx2::01_23` or `warpx2::02_13`, loads the source through logical
+    128x4 coordinates, stores it into the canonical `warpx2` shared-linear
+    source layout, fences the new shared writes, and emits the existing
+    backend copy op;
+  - the same fresh-fence rule now applies to the scales rematerialization path
+    because the caller's pre-copy fence does not cover the rematerialized
+    shared store.
+- Result:
+  - the former single-CTA dense/noncanonical `warpx2` source-layout clean
+    negatives now roundtrip for f32/i32 and assert the expected public
+    `warpx2::01_23` or `warpx2::02_13` opcode;
+  - two-CTA dense-source rows remain negative, with `02_13` still classified
+    by the high source-column preservation requirement;
+  - clean-negative inventory rebaselines from `121/1592` to `117/1592`, and
+    combined clean-negative/error inventory from `171/1592` to `167/1592`.
+- Validation:
+  - `make -j8`;
+  - exact promoted selector
+    `cp_no_scales_warpx2_dense_shared_rematerializes` passed `4/4`;
+  - neighboring negative plus scales selector passed `41/41`;
+  - full `cp_no_scales_warpx2` selector passed `79/79` on one GPU in
+    `65.00s`;
+  - split-4 `cp_no_scales_warpx2` groups passed `20/20/20/19`;
+  - Python byte-compile for changed Python files;
+  - collect-only rebaseline:
+    `reports_clean_unsupported` is `117/1592`; combined
+    `reports_clean_unsupported or reports_clean_error` is `167/1592`.

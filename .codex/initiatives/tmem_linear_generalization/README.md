@@ -48,6 +48,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 19:21 UTC: no-scales `tcgen05.copy.warpx2` now supports
+  source rematerialization for single-CTA dense/noncanonical 128x4
+  shared-linear sources. The Gluon builtin recognizes TensorMemoryLinear
+  destinations that map to public `warpx2::01_23` or `warpx2::02_13`,
+  reloads the noncanonical source through logical coordinates, stores it into
+  the canonical 128x4 `warpx2` shared source, fences the new shared writes,
+  and emits the existing backend copy. The former single-CTA dense-source
+  clean negatives are now positive runtime/opcode coverage. Two-CTA dense
+  sources and `02_13` high source-column preservation remain the next copy
+  frontier/boundary. Validation: `make -j8`, exact promoted selector
+  (`4 passed`), neighbor/scales selector (`41 passed`), full
+  `cp_no_scales_warpx2` (`79 passed`), split-4 `cp_no_scales_warpx2`
+  (`20/20/20/19` passed), Python byte-compile, and collect-only rebaseline
+  (`117/1592`, combined `167/1592`).
 - 2026-04-17 19:14 UTC: TensorMemoryScales `tcgen05.copy` now supports
   source rematerialization for noncanonical 64x16 shared-linear sources. The
   Gluon builtin copies those source views into the canonical warpx4 shared

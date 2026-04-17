@@ -935,6 +935,46 @@ def _get_scales_copy_canonical_shared_layout(shape, cga_layout):
     return SharedLinearLayout(**kwargs)
 
 
+def _get_warpx2_copy_canonical_shared_layout(shape, tmem_layout):
+    shape = _unwrap_if_constexpr(shape)
+    if not isinstance(tmem_layout, TensorMemoryLinearLayout):
+        return None
+    rows = _unwrap_if_constexpr(tmem_layout.rows)
+    cols = _unwrap_if_constexpr(tmem_layout.cols)
+    block_bases = _unwrap_if_constexpr(tmem_layout.block_bases)
+    tmem_shape = _unwrap_if_constexpr(tmem_layout.shape)
+    if (
+        shape != [128, 4]
+        or tmem_shape != [128, 4]
+        or tmem_layout.two_ctas
+        or block_bases
+        or cols != [[0, 1], [0, 2]]
+    ):
+        return None
+    warpx2_01_23_rows = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]]
+    warpx2_02_13_rows = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]]
+    if rows not in (warpx2_01_23_rows, warpx2_02_13_rows):
+        return None
+
+    return SharedLinearLayout(
+        offset_bases=[[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]],
+        alignment=16,
+    )
+
+
+def _get_warpx2_copy_source_load_layout(shape):
+    shape = _unwrap_if_constexpr(shape)
+    if shape != [128, 4]:
+        return None
+    return DistributedLinearLayout(
+        reg_bases=[[0, 1], [0, 2]],
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
+        warp_bases=[[32, 0], [64, 0]],
+        block_bases=[],
+        shape=shape,
+    )
+
+
 def _is_same_shared_linear_layout(lhs, rhs):
     return (
         isinstance(lhs, SharedLinearLayout)
@@ -960,6 +1000,24 @@ def _maybe_rematerialize_scales_copy_source(src, dst, _semantic):
     value = src.load(load_layout, _semantic=_semantic)
     canonical = ttgl.allocate_shared_memory(src.dtype, src.shape, canonical_layout, _semantic=_semantic)
     canonical.store(value, _semantic=_semantic)
+    fence_async_shared(_semantic=_semantic)
+    return canonical
+
+
+def _maybe_rematerialize_warpx2_copy_source(src, dst, _semantic):
+    if not isinstance(src.layout, SharedLinearLayout):
+        return src
+    canonical_layout = _get_warpx2_copy_canonical_shared_layout(src.shape, dst.layout)
+    if canonical_layout is None or _is_same_shared_linear_layout(src.layout, canonical_layout):
+        return src
+
+    load_layout = _get_warpx2_copy_source_load_layout(src.shape)
+    if load_layout is None:
+        return src
+    value = src.load(load_layout, _semantic=_semantic)
+    canonical = ttgl.allocate_shared_memory(src.dtype, src.shape, canonical_layout, _semantic=_semantic)
+    canonical.store(value, _semantic=_semantic)
+    fence_async_shared(_semantic=_semantic)
     return canonical
 
 
@@ -975,6 +1033,7 @@ def tcgen05_copy(src, dst, _semantic=None):
     assert isinstance(src, ttgl.shared_memory_descriptor), "source must be a shared memory descriptor"
     assert isinstance(dst, tensor_memory_descriptor), "destination must be a tensor memory descriptor"
     src = _maybe_rematerialize_scales_copy_source(src, dst, _semantic)
+    src = _maybe_rematerialize_warpx2_copy_source(src, dst, _semantic)
     _semantic.builder.create_tmem_copy(src.handle, dst.handle)
 
 

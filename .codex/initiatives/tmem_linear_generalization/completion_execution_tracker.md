@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 19:14 UTC
+Last updated: 2026-04-17 19:21 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -64,8 +64,8 @@ PYTHONPATH=.:./python:./python/test/gluon \
   -k 'reports_clean_unsupported'
 ```
 
-Result after the 19:14 scales-copy rematerialization slice: `121/1592 tests
-collected (1471 deselected) in 3.22s`.
+Result after the 19:21 `warpx2` source-rematerialization slice: `117/1592`
+tests collected (1475 deselected) in 2.13s.
 
 Additional combined clean-negative/clean-error rebaseline:
 
@@ -75,8 +75,8 @@ PYTHONPATH=.:./python:./python/test/gluon \
   -k 'reports_clean_unsupported or reports_clean_error'
 ```
 
-Result after the 19:14 scales-copy rematerialization slice: `171/1592 tests
-collected (1421 deselected) in 3.22s`.
+Result after the 19:21 `warpx2` source-rematerialization slice: `167/1592`
+tests collected (1425 deselected) in 2.06s.
 
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
@@ -108,12 +108,14 @@ Current buckets:
   through a typed source-column preservation requirement derived from the
   source-row split requirement.
 - `warpx2` dense/noncanonical shared-source layouts and subword copies:
-  dense/noncanonical shared-source rows now report the first offset-basis
-  mismatch as structured source-rematerialization requirement data, and
-  subword rows now report a structured destination-column footprint
-  requirement with required logical column bits and packed-lane facts;
-  remaining support needs source rematerialization, packed-lane storage, and
-  descriptor semantic-equivalence proofs.
+  single-CTA dense/noncanonical 128x4 shared sources now rematerialize into
+  the canonical `warpx2` shared source and are positive for both `01_23` and
+  `02_13`. Remaining `warpx2` source work is two-CTA dense-source support,
+  where `01_23` may be a source-rematerialization slice but `02_13` is still
+  constrained by the high source-column preservation boundary. Subword rows
+  still report a structured destination-column footprint requirement with
+  required logical column bits and packed-lane facts; they need packed-lane
+  storage and descriptor semantic-equivalence proofs.
 - Copy row/column permutation and sub-instruction tile permutation rows:
   now have representative probe evidence that descriptor representability is
   not enough. The public copy atoms update full row/column footprints; the
@@ -248,15 +250,28 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 Continue the support-bearing `tcgen05.copy` frontier, but do not spend the next
 slice on the already-probed sub-instruction row/column permutations unless a
 new row/column-mask mechanism is introduced. The next concrete implementation
-probe is non-scales `warpx2` shared-source rematerialization: start with the
-single-CTA dense/noncanonical shared-source rows, preserve the existing
-two-CTA/source-column boundaries unless a schedule can prove CTA ownership and
-high source-column preservation, and only promote rows where rematerializing a
-canonical shared source preserves the requested footprint. If that closes
-without support, continue with copy-specific cleanup of the typed boundaries
-already proved by probes.
+probe is two-CTA `warpx2` dense-source rematerialization: first test whether
+`01_23` can rematerialize a canonical 256x4 shared source with the correct
+CTA block basis and cluster fence, keep `02_13` negative unless the source-
+column preservation requirement is actually solved, and then rebaseline the
+remaining copy clean negatives.
 
 ## Progress
+
+- 2026-04-17 19:21 UTC: promoted single-CTA no-scales `warpx2` dense-source
+  rematerialization. `tcgen05_copy` now recognizes 128x4 TensorMemoryLinear
+  destinations that map to public `warpx2::01_23` or `warpx2::02_13` copy
+  families, reloads noncanonical `SharedLinearLayout` sources through the
+  logical source coordinates, stores them into the canonical 128x4 `warpx2`
+  shared-linear source layout, issues a fresh async-shared fence, and emits
+  the existing backend copy op. The former single-CTA dense-source clean
+  negatives now check runtime output and opcode coverage; two-CTA dense-source
+  rows and the `02_13` source-column boundary remain negative. Validation:
+  `make -j8`; exact promoted selector passed `4`; neighboring negative plus
+  `cp_scales` selector passed `41`; full `cp_no_scales_warpx2` passed `79`;
+  split-4 `cp_no_scales_warpx2` groups passed `20/20/20/19`; Python
+  byte-compile; collect-only rebaseline is `117/1592` clean negatives and
+  `167/1592` clean negatives/errors.
 
 - 2026-04-17 19:14 UTC: promoted TensorMemoryScales 64x16 source
   rematerialization for `tcgen05.copy`. The Gluon `tcgen05_copy` builtin now
