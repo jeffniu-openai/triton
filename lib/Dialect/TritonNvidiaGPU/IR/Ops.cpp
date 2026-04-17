@@ -931,13 +931,15 @@ LogicalResult TCGen5MMAScaledOp::verify() {
       return emitOpError() << getMMAv5ScaledNarrowNScaleFragmentError(
                  *accSupport.narrowNScaleFragmentRequirement);
     }
-    return emitOpError()
-           << "expected accumulator layout to be directly supported MMAv5 "
-              "block-scaled tensor memory, but got "
-           << getD().getType().getEncoding()
-           << ". Block-scaled tcgen05.mma currently requires a directly "
-              "supported MMAv5 tensor-memory linear layout; tile-permuted "
-              "accumulator layouts are not directly representable.";
+    if (auto requirement = getMMAv5TMemInstructionTileRequirement(
+            getD().getType(), MMAv5TMemOperandKind::ScaledAccumulator)) {
+      InFlightDiagnostic diag =
+          emitOpError() << getMMAv5TMemInstructionTileRequirementError(
+              *requirement);
+      diag.attachNote()
+          << getMMAv5TMemInstructionTileRequirementNote(*requirement);
+      return diag;
+    }
   }
   if (info->mmaSizeM != 128)
     return emitOpError("only supports instruction shape blockM=128");

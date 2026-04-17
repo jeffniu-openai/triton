@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:58 UTC scaled-MMAv5 accumulator fallback now uses
+  `MMAv5TMemInstructionTileRequirement` as well. Added the
+  `ScaledAccumulator` operand kind, preserved the old block-scaled diagnostic
+  wording, and routed the generic scaled accumulator unsupported path through
+  the shared formatter after the narrower `N<32` requirement check. While
+  validating this, `test_fpsan.py` exposed a stale negative row:
+  block-backed `128x128` scaled accumulators are supported, so that layout was
+  moved into the positive fpsan scaled-MMA matrix and the unsupported fpsan
+  row now covers only the genuinely mixed physical layout. Validation:
+  `make -j8`; split-4 scaled clean-negative runtime-matrix selector
+  (`11/11/11/11`); fpsan scaled block/unsupported selector (`6 passed`);
+  Python compile for `test_fpsan.py`; `git diff --check`.
+
 - Latest: 2026-04-17 12:53 UTC plain MMAv5 tensor-memory layout
   incompatibility is now represented by a typed backend requirement instead of
   an op-local verifier lambda. Added `MMAv5TMemInstructionTileRequirement` with

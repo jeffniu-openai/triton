@@ -226,6 +226,7 @@ struct MMAv5AccumulatorLayoutInfo {
 enum class MMAv5TMemOperandKind {
   LHS,
   Accumulator,
+  ScaledAccumulator,
 };
 
 struct MMAv5TMemInstructionTileRequirement {

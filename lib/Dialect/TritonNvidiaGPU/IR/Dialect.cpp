@@ -1258,6 +1258,10 @@ getMMAv5TMemInstructionTileRequirement(MemDescType memDescType,
     if (getMMAv5AccumulatorLayoutInfo(memDescType))
       return std::nullopt;
     break;
+  case MMAv5TMemOperandKind::ScaledAccumulator:
+    if (getMMAv5ScaledAccumulatorLayoutInfo(memDescType))
+      return std::nullopt;
+    break;
   }
 
   return MMAv5TMemInstructionTileRequirement{
@@ -1272,6 +1276,8 @@ static StringRef stringifyMMAv5TMemOperandKind(
     return "LHS operand";
   case MMAv5TMemOperandKind::Accumulator:
     return "return operand";
+  case MMAv5TMemOperandKind::ScaledAccumulator:
+    return "block-scaled accumulator operand";
   }
   llvm_unreachable("unknown MMAv5 tensor-memory operand kind");
 }
@@ -1280,6 +1286,15 @@ std::string getMMAv5TMemInstructionTileRequirementError(
     const MMAv5TMemInstructionTileRequirement &requirement) {
   std::string message;
   llvm::raw_string_ostream os(message);
+  if (requirement.operandKind == MMAv5TMemOperandKind::ScaledAccumulator) {
+    os << "expected accumulator layout to be directly supported MMAv5 "
+          "block-scaled tensor memory, but got "
+       << requirement.operandEncoding
+       << ". Block-scaled tcgen05.mma currently requires a directly supported "
+          "MMAv5 tensor-memory linear layout; tile-permuted accumulator "
+          "layouts are not directly representable.";
+    return os.str();
+  }
   os << stringifyMMAv5TMemOperandKind(requirement.operandKind)
      << " must have a MMAv5-compatible tensor memory layout, but got "
      << requirement.operandEncoding

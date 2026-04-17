@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 12:58 UTC: scaled-MMAv5 accumulator layout fallback now shares
+  `MMAv5TMemInstructionTileRequirement` via a `ScaledAccumulator` role, while
+  keeping the narrow-N scale-fragment requirement as the more specific
+  diagnostic. Validation also found and fixed stale fpsan coverage: the
+  block-backed `128x128` scaled accumulator is supported and now lives in the
+  positive scaled-MMA matrix. Validation: `make -j8`, split-4 scaled
+  clean-negative runtime-matrix selector (`11/11/11/11` passed), fpsan
+  scaled block/unsupported selector (`6 passed`), Python compile, and
+  `git diff --check`.
 - 2026-04-17 12:53 UTC: plain MMAv5 tensor-memory layout
   incompatibility is now represented by `MMAv5TMemInstructionTileRequirement`
   in the backend dialect API. Plain `tcgen05.mma` LHS/accumulator diagnostics

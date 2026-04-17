@@ -23238,3 +23238,44 @@ Open after this slice:
     `jeffniu-openai`;
   - checkpoint push remains blocked by the current repo instruction requiring
     `Mogball` for Triton GitHub operations.
+
+## 2026-04-17 12:58 UTC: scaled accumulator tile requirement cleanup
+
+- Starting point: `codex/tmem` at `38750e84b`.
+- Change:
+  - extended `MMAv5TMemInstructionTileRequirement` with a
+    `ScaledAccumulator` operand kind;
+  - routed the generic scaled-MMAv5 accumulator unsupported fallback through
+    the shared requirement/formatter after the explicit narrow-`N` requirement
+    check;
+  - kept the previous block-scaled diagnostic wording for tests and users;
+  - updated `test_fpsan.py` so block-backed `128x128` scaled accumulators are
+    positive coverage instead of a stale unsupported row.
+- Finding:
+  - `_make_tmem_linear_layout_block(128, 128)` is now a supported scaled-MMAv5
+    accumulator layout. The fpsan unsupported test was stale: it did not fail
+    because of the new requirement fallback; the planner already returned valid
+    scaled accumulator layout info for that row.
+- Validation:
+  - `make -j8`;
+  - split-4 runtime-matrix selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-mmav5-scaled-req
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short --splits 4
+    --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+    mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported or
+    mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported'`
+    (groups: `11/11/11/11` passed);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_fpsan.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-fpsan-scaled-block
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_fpsan.py -k 'tcgen05_mma_scaled and
+    (linear_block or unsupported_linear_layout)'`
+    (`6 passed, 84 deselected`);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by the current repo instruction requiring `Mogball`
+    while this shell is authenticated as `jeffniu-openai`.

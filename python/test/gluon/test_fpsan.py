@@ -1175,6 +1175,7 @@ MMA_UNSUPPORTED_LAYOUT_CASES = [
 MMA_SCALED_ACC_LAYOUT_CASES = [
     ("legacy", TensorMemoryLayout((128, 128), col_stride=1)),
     ("linear_identity", _make_tmem_linear_layout(128, 128)),
+    ("linear_block", _make_tmem_linear_layout_block(128, 128)),
 ]
 
 MMA_SCALED_TYPE_CASES = [
@@ -1609,7 +1610,7 @@ def test_tcgen05_mma_scaled(device, elem_type_a, elem_type_b, layout_name, acc_l
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(
     "acc_layout",
-    [_make_tmem_linear_layout_mixed_128x128(), _make_tmem_linear_layout_block(128, 128)],
+    [_make_tmem_linear_layout_mixed_128x128()],
 )
 def test_tcgen05_mma_scaled_unsupported_linear_layout_reports_clean_error(device, acc_layout, fresh_knobs, capfd):
     _require_cuda_backend(device)
