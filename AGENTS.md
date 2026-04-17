@@ -1,5 +1,9 @@
 # Working on Triton
 
+## GitHub Account and Remote
+- For this Triton checkout and ongoing TMEM work on `codex/tmem`, use the `jeffniu-openai` GitHub account and credentials for all GitHub operations, including pushes, PR updates, comments, and related `gh` actions.
+- Push checkpoint commits to `origin` at `github.com/jeffniu-openai/triton` unless explicitly instructed otherwise.
+
 ## Build and Testing Guidelines
 - Before running any tests, run `make` in the triton directory to rebuild triton.
 - For compiler changes, add tests in `python/test/` (pytest) or test (lit). Keep GPU-only tests in `python/test/unit/` or `python/test/gluon/`, name them `test_<feature>_<condition>`, and avoid creating new test files unless requested.
