@@ -80,12 +80,15 @@ bool encodingsMayVary(Operation *op) {
              triton::TransOp>(op);
 }
 
-LogicalResult
-updateEncoding(ArrayRef<Value> values, LayoutInfo info, FuncOp *func,
-               llvm::MapVector<Value, LayoutInfo> &valueToEncoding,
-               llvm::PriorityWorklist<Value> &worklist,
-               llvm::MapVector<Attribute, uint64_t> &hashMemo) {
+LogicalResult updateEncoding(
+    ArrayRef<Value> values, LayoutInfo info, FuncOp *func,
+    llvm::function_ref<bool(Type)> typeCheck,
+    llvm::MapVector<Value, LayoutInfo> &valueToEncoding,
+    llvm::PriorityWorklist<Value> &worklist,
+    llvm::MapVector<Attribute, uint64_t> &hashMemo) {
   for (auto value : values) {
+    if (!typeCheck(value.getType()))
+      continue;
     auto [it, inserted] = valueToEncoding.insert({value, info});
     if (!inserted) {
       auto defOp = value.getDefiningOp();
@@ -129,6 +132,7 @@ LogicalResult inferLayout(
   llvm::MapVector<Attribute, uint64_t> hashMemo;
   for (auto &[value, encoding] : seedEncodings) {
     if (failed(updateEncoding({value}, LayoutInfo{encoding, false}, &func,
+                              typeCheck,
                               valueToEncoding, worklist, hashMemo)))
       return failure();
   }
@@ -145,23 +149,23 @@ LogicalResult inferLayout(
       if (isa<scf::ForOp, scf::WhileOp>(op)) {
         auto offset = 3 * isa<scf::ForOp>(op);
         auto tiedArgs = getTiedArgs(op, use.getOperandNumber() - offset);
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
       } else if (isa<scf::YieldOp>(op)) {
         auto parentOp = op->getParentOp();
         auto tiedArgs = getTiedArgs(parentOp, use.getOperandNumber());
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
       } else {
         auto dstEnc = inferDstEncoding(op, info.encoding);
         if (dstEnc) {
           bool mayVary = info.mayVary || encodingsMayVary(op);
           LayoutInfo dstInfo{dstEnc, mayVary};
-          if (failed(updateEncoding(llvm::to_vector_of<Value>(op->getResults()),
-                                    dstInfo, &func, valueToEncoding, worklist,
-                                    hashMemo)))
+          if (failed(updateEncoding(
+                  llvm::to_vector_of<Value>(op->getResults()), dstInfo, &func,
+                  typeCheck, valueToEncoding, worklist, hashMemo)))
             return failure();
         }
       }
@@ -172,8 +176,8 @@ LogicalResult inferLayout(
       auto definingOp = opResult.getOwner();
       if (isa<scf::ForOp, scf::WhileOp, scf::IfOp>(definingOp)) {
         auto tiedArgs = getTiedArgs(definingOp, opResult.getResultNumber());
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
       } else {
         auto srcEncoding = inferSrcEncoding(definingOp, info.encoding);
@@ -185,7 +189,7 @@ LogicalResult inferLayout(
             if (isa<RankedTensorType>(operand.getType()))
               tensorOperands.push_back(operand);
 
-          if (failed(updateEncoding(tensorOperands, srcInfo, &func,
+          if (failed(updateEncoding(tensorOperands, srcInfo, &func, typeCheck,
                                     valueToEncoding, worklist, hashMemo)))
             return failure();
         }
@@ -195,8 +199,8 @@ LogicalResult inferLayout(
       if (isa<scf::ForOp, scf::WhileOp>(parentOp)) {
         auto offset = isa<scf::ForOp>(parentOp);
         auto tiedArgs = getTiedArgs(parentOp, blockArg.getArgNumber() - offset);
-        if (failed(updateEncoding(tiedArgs, info, &func, valueToEncoding,
-                                  worklist, hashMemo)))
+        if (failed(updateEncoding(tiedArgs, info, &func, typeCheck,
+                                  valueToEncoding, worklist, hashMemo)))
           return failure();
       }
     }

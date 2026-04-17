@@ -32,3 +32,25 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 
 // -----
+
+#tmem_root = #ttng.tensor_memory_linear<{row = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]], col = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16], [0, 32], [0, 64]]}>
+#tmem_reshape = #ttng.tensor_memory_linear<{row = [[0, 1, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0], [0, 8, 0, 0], [0, 16, 0, 0], [0, 32, 0, 0], [1, 0, 0, 0]], col = [[0, 0, 0, 1], [0, 0, 0, 2], [0, 0, 0, 4], [0, 0, 0, 8], [0, 0, 0, 16], [0, 0, 0, 32], [0, 0, 1, 0]]}>
+#tmem_squeezed = #ttng.tensor_memory_linear<{row = [[1, 0, 0], [2, 0, 0], [4, 0, 0], [8, 0, 0], [16, 0, 0], [32, 0, 0]], col = [[0, 0, 1], [0, 0, 2], [0, 0, 4], [0, 0, 8], [0, 0, 16], [0, 0, 32], [0, 1, 0]]}>
+
+module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:103", "ttg.threads-per-warp" = 32 : i32} {
+  // CHECK-LABEL: @preserve_tmem_subslice_active_encoding
+  tt.func public @preserve_tmem_subslice_active_encoding() {
+    // CHECK: %[[ROOT:.+]] = ttng.tmem_alloc
+    // CHECK: %[[RESHAPE:.+]] = ttg.memdesc_reshape %[[ROOT]]
+    // CHECK: %[[FIRST:.+]] = ttg.memdesc_subslice %[[RESHAPE]][1, 0, 0, 0]
+    // CHECK-SAME: -> !ttg.memdesc<1x64x2x64xf32, [[SQUEEZED:#[a-zA-Z0-9_]+]]
+    // CHECK: ttg.memdesc_subslice %[[FIRST]][0, 0, 0, 0]
+    // CHECK-SAME: : !ttg.memdesc<1x64x2x64xf32, [[SQUEEZED]]
+    // CHECK-SAME: -> !ttg.memdesc<1x32x2x64xf32, [[SQUEEZED]]
+    %root = ttng.tmem_alloc : () -> !ttg.memdesc<128x128xf32, #tmem_root, #ttng.tensor_memory, mutable>
+    %reshape = ttg.memdesc_reshape %root : !ttg.memdesc<128x128xf32, #tmem_root, #ttng.tensor_memory, mutable> -> !ttg.memdesc<2x64x2x64xf32, #tmem_reshape, #ttng.tensor_memory, mutable>
+    %first = ttg.memdesc_subslice %reshape[1, 0, 0, 0] : !ttg.memdesc<2x64x2x64xf32, #tmem_reshape, #ttng.tensor_memory, mutable> -> !ttg.memdesc<1x64x2x64xf32, #tmem_squeezed, #ttng.tensor_memory, mutable, 2x64x2x64>
+    %second = ttg.memdesc_subslice %first[0, 0, 0, 0] : !ttg.memdesc<1x64x2x64xf32, #tmem_squeezed, #ttng.tensor_memory, mutable, 2x64x2x64> -> !ttg.memdesc<1x32x2x64xf32, #tmem_squeezed, #ttng.tensor_memory, mutable, 2x64x2x64>
+    tt.return
+  }
+}

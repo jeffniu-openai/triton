@@ -1,3 +1,45 @@
+## 2026-04-17 00:50 UTC: nested TMEM subslice fold hardening
+
+- Starting point: `codex/tmem` at `ca0ca3161`.
+- Probe:
+  - temporarily bypassed the direct `ld/st` descriptor-view row-anchor guard to
+    expose the next blocker in the single-CTA identity multidim slice;
+  - the bypass first produced verifier-invalid IR: a nested
+    `ttg.memdesc_subslice` result was rewritten from the active squeezed TMEM
+    encoding back to the stale full-rank reshape encoding;
+  - pass-boundary diagnostics isolated the mutation to
+    `ModuleAxisInfoAnalysis` construction, where the data-flow solver may query
+    op fold hooks;
+  - after disabling the unsafe fold, the same bypass compiled but produced
+    incorrect output (`2048` mismatches, first observed around `(0, 64)`), so
+    the identity slice remains a real row-anchor / packet-offset support gap.
+- Change:
+  - disabled `MemDescSubsliceOp::fold` for tensor-memory memdesc values because
+    the existing fold mutates the op in place and TMEM subviews can carry
+    different active encodings through a descriptor-view chain;
+  - kept AxisInfo from recording memdesc SSA values as tensor index facts;
+  - made Gluon layout propagation skip values outside the caller-provided
+    tensor type domain before adding them to the propagation worklist;
+  - added a regression to `test/Gluon/infer_coalesced_encoding.mlir` that keeps
+    the active squeezed TMEM encoding across a nested subslice chain while the
+    coalesced-layout pass constructs AxisInfo.
+- Validation:
+  - `make -j8`;
+  - direct pass regression because local `lit` and `FileCheck` are not
+    installed:
+    `./bin/triton-opt --split-input-file
+    /root/code/triton/test/Gluon/infer_coalesced_encoding.mlir
+    --gluon-infer-coalesced-encodings`;
+  - identity multidim `ld/st` selector:
+    `2 passed, 1573 deselected in 4.99s`;
+  - promoted two-CTA plus adjacent unsupported selector:
+    `5 passed, 2 skipped, 1568 deselected in 32.50s`;
+  - `git diff --check`.
+- Remaining note:
+  - this is infrastructure cleanup, not a support promotion. It removes a
+    false invalid-IR blocker so future packet-base/per-message-offset work can
+    reason over the correct active encodings.
+
 ## 2026-04-17 00:12 UTC: two-CTA higher-rank index ld/st promotion
 
 - Starting point: `codex/tmem` at `a41d65c74`.

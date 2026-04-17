@@ -1278,6 +1278,12 @@ ParseResult MemDescSubsliceOp::parse(OpAsmParser &parser,
 }
 
 OpFoldResult MemDescSubsliceOp::fold(FoldAdaptor adaptor) {
+  // TMEM subviews can carry different active encodings through a nested
+  // descriptor-view chain. Folding by mutating this op in place is unsafe when
+  // analyses query fold results without running a canonicalization rewrite.
+  if (triton::nvidia_gpu::isTensorMemoryEncoding(getType().getEncoding()))
+    return {};
+
   // Fold subslice(subslice(x, off1), off2) -> subslice(x, off1 + off2)
   if (auto srcSubslice = getSrc().getDefiningOp<MemDescSubsliceOp>()) {
     auto srcOffsets = srcSubslice.getOffsets();

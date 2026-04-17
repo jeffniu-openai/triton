@@ -20,6 +20,10 @@ namespace {
 
 constexpr int64_t kMaxDivisor = highestPowOf2Divisor<int64_t>(0);
 
+bool isAxisInfoValue(Value value) {
+  return !isa<triton::gpu::MemDescType>(value.getType());
+}
+
 template <typename... Args> int64_t gcd(int64_t a, int64_t b, Args... args) {
   if (a == 0)
     return b;
@@ -1245,9 +1249,13 @@ LogicalResult AxisInfoAnalysis::visitOperation(
                                   &newConstancy);
   curr = AxisInfo(newContiguity, newDivisibility, newConstancy,
                   curr.getConstantValue());
-  // join all lattice elements
-  for (auto *result : results)
+  // Join all lattice elements. Memdesc SSA values carry memory-view metadata,
+  // not tensor index values, and should not participate in AxisInfo.
+  for (auto [idx, result] : llvm::enumerate(results)) {
+    if (!isAxisInfoValue(op->getResult(idx)))
+      continue;
     propagateIfChanged(result, result->join(curr));
+  }
   return success();
 }
 
@@ -1467,6 +1475,8 @@ void ModuleAxisInfoAnalysis::initialize(
 
   auto *axisInfoMap = getFuncData(funcOp);
   auto updateAxisInfoMap = [&](Value value) {
+    if (!isAxisInfoValue(value))
+      return;
     auto axisInfo = analysis->getLatticeElement(value)->getValue();
     // If we could not determine the AxisInfo for this value, assume the
     // pessimistic state.

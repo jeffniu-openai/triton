@@ -1,5 +1,27 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 00:50 UTC nested TMEM subslice fold hardening:
+  the outage-resume probe found a real invalid-IR blocker below the direct
+  `ld/st` row-anchor frontier. With the row-anchor guard temporarily bypassed,
+  the single-CTA identity multidim slice failed verification because
+  `ModuleAxisInfoAnalysis` asked the data-flow solver for fold results and
+  `MemDescSubsliceOp::fold` mutated a nested TMEM subslice in place, replacing
+  the active squeezed descriptor-view encoding with the stale full-rank reshape
+  encoding. The durable fix disables that in-place fold for tensor-memory
+  memdesc values, keeps AxisInfo from tracking memdesc SSA values as tensor
+  index facts, and makes Gluon layout propagation skip values outside the
+  requested tensor type domain. Added a lit regression in
+  `test/Gluon/infer_coalesced_encoding.mlir` that preserves the active encoding
+  through the nested subview chain. Important negative probe: bypassing the
+  row-anchor guard for the identity multidim load/store made the kernel compile
+  but produced wrong output (`2048` mismatches, first observed around
+  `(0, 64)`), so the single-CTA identity row-anchor/packet-offset boundary is
+  still real and must stay guarded until packet-base/per-message-offset
+  arithmetic is implemented. Validation: `make -j8`, direct coalesced-pass
+  regression check because local `lit`/`FileCheck` are unavailable, identity
+  selector (`2 passed`), promoted two-CTA/adjacent selector
+  (`5 passed, 2 skipped`), and `git diff --check`.
+
 - Latest: 2026-04-17 00:12 UTC two-CTA higher-rank index `ld/st` promotion:
   the previous clean-negative row-anchor guard was too conservative for
   two-CTA linear descriptor views whose nontrivial block dimension carries

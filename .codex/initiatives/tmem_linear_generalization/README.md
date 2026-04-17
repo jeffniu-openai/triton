@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 00:50 UTC: fixed an analysis-time invalid-IR blocker in nested
+  TMEM descriptor-view chains. `ModuleAxisInfoAnalysis` can ask MLIR for fold
+  results while building coalescing information; `MemDescSubsliceOp::fold`
+  previously mutated nested subslices in place, which is unsafe for tensor
+  memory because each subview can carry a different active linear encoding.
+  The fold is now disabled for TMEM subviews, AxisInfo skips memdesc SSA values,
+  and Gluon layout propagation ignores values outside its requested tensor type
+  domain. Added a lit regression in `test/Gluon/infer_coalesced_encoding.mlir`
+  for the exact nested active-encoding preservation. Validation: `make -j8`,
+  direct `triton-opt --split-input-file ... --gluon-infer-coalesced-encodings`
+  regression check (`lit`/`FileCheck` unavailable locally), identity
+  multidim `ld/st` boundary selector (`2 passed`), two-CTA promoted/adjacent
+  selector (`5 passed, 2 skipped`), and `git diff --check`.
 - 2026-04-17 00:12 UTC: promoted the two-CTA higher-rank index
   direct `ld/st` bucket that had been blocked by the generic row-anchor
   diagnostic. The row-anchor check now defers two-CTA linear views with a
