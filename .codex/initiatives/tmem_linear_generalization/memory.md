@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:59 UTC pruned one more stale fpsan negative:
+  plain MMAv5 with the block-backed `128x128` accumulator no longer belongs in
+  `MMA_UNSUPPORTED_LAYOUT_CASES`. A focused run showed that row compiles while
+  the remaining unsupported rows still reject cleanly. The broad fpsan positive
+  matrix was not expanded with this row because it also tests an accumulator
+  descriptor-view parent shape that is invalid for the block-backed layout;
+  runtime-matrix coverage already covers block-backed TMEM paths. Validation:
+  Python compile for `test_fpsan.py`; exact plain-MMAv5 unsupported fpsan
+  selector (`4 passed`); `git diff --check`.
+
 - Latest: 2026-04-17 12:58 UTC scaled-MMAv5 accumulator fallback now uses
   `MMAv5TMemInstructionTileRequirement` as well. Added the
   `ScaledAccumulator` operand kind, preserved the old block-scaled diagnostic

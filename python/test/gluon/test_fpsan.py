@@ -1168,7 +1168,6 @@ MMA_UNSUPPORTED_LAYOUT_CASES = [
     ("linear_identity_64", _make_tmem_linear_layout(64, 64), 1),
     ("linear_block_64", _make_tmem_linear_layout_block(64, 64), 1),
     ("mixed", _make_tmem_linear_layout_mixed_128x128(), 1),
-    ("block", _make_tmem_linear_layout_block(128, 128), 1),
     ("block_two_ctas", _make_tmem_linear_layout_block(128, 128, two_ctas=True), 2),
 ]
 

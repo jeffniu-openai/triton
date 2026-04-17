@@ -23279,3 +23279,30 @@ Open after this slice:
 - GitHub state:
   - push remains blocked by the current repo instruction requiring `Mogball`
     while this shell is authenticated as `jeffniu-openai`.
+
+## 2026-04-17 12:59 UTC: prune stale plain-MMAv5 fpsan negative
+
+- Starting point: `codex/tmem` at `16c126c0b`.
+- Change:
+  - removed the block-backed `128x128` accumulator row from
+    `MMA_UNSUPPORTED_LAYOUT_CASES` in `python/test/gluon/test_fpsan.py`.
+- Finding:
+  - the row now compiles at current head and was a stale unsupported
+    expectation, matching the scaled-MMAv5 stale row found immediately before
+    this checkpoint;
+  - the remaining unsupported fpsan rows still reject cleanly;
+  - the broad fpsan positive matrix was not expanded with this row because it
+    also exercises an accumulator descriptor-view parent shape that is invalid
+    for the block-backed layout.
+- Validation:
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_fpsan.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-fpsan-plain-unsupported2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_fpsan.py::test_tcgen05_mma_unsupported_linear_layout_reports_clean_error`
+    (`4 passed`);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by the current repo instruction requiring `Mogball`
+    while this shell is authenticated as `jeffniu-openai`.

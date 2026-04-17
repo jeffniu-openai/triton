@@ -44,6 +44,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 12:59 UTC: pruned a stale plain-MMAv5 fpsan negative. The
+  block-backed `128x128` accumulator row now compiles at current head and was
+  removed from `MMA_UNSUPPORTED_LAYOUT_CASES`; the remaining plain-MMAv5
+  unsupported fpsan selector still passes (`4 passed`). The broad positive
+  fpsan matrix was not expanded because it also exercises an invalid
+  block-backed descriptor-view parent shape.
 - 2026-04-17 12:58 UTC: scaled-MMAv5 accumulator layout fallback now shares
   `MMAv5TMemInstructionTileRequirement` via a `ScaledAccumulator` role, while
   keeping the narrow-N scale-fragment requirement as the more specific
