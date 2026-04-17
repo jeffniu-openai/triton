@@ -12,6 +12,18 @@
   row-half selector (`6 passed`), core `test_core.py -k tmem_linear_m64` (`21
   passed`), Python compile, and `git diff --check`.
 
+- Latest probe: 2026-04-17 10:19 UTC pure rank-2 two-CTA row-half replay is
+  still blocked after layout-normalization probes. Temporarily allowing the
+  recognizer and trying to normalize the loaded support image before the
+  `reshape -> trans -> split` replay did not make the split select rows
+  `128..255`; the replay load still selected the CTA-local odd/even partition
+  (`1,3,5,...,255`) or produced wider corruption when converting through
+  candidate full-tile layouts. The generated TTGIR stayed on the same
+  support-load shape path. All source edits were reverted, `make -j8` was
+  rerun, and the current clean-negative selector passed (`3 passed`). Future
+  support must add an explicit CTA-block selection/reconstruction model rather
+  than another tensor-layout conversion around the same split.
+
 - Latest: 2026-04-17 10:03 UTC half-row descriptor-view type-only fallback
   refusal is backend-owned. `disallowTMemLdStTypeOnlyFallback(...)` now covers
   half-row descriptor views that require exact support/raw-query lowering, and

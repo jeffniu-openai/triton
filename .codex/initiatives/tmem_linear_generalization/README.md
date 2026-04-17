@@ -54,6 +54,15 @@ When resuming the initiative:
   `make -j8`, direct row-half/x1 fallback selector (`13 passed`), lifted
   row-half selector (`6 passed`), core `test_core.py -k tmem_linear_m64` (`21
   passed`), Python compile, and `git diff --check`.
+- 2026-04-17 10:19 UTC: reprobed pure rank-2 two-CTA row-half replay and
+  reverted the probe edits. Normalizing the loaded full support image before
+  the existing tensor `reshape -> trans -> split` replay is not sufficient:
+  the replay load still selected the CTA-local odd/even partition
+  (`1,3,5,...,255`), and candidate full-tile layout conversions either did not
+  change the generated split path or corrupted more rows. Keep this frontier as
+  requiring explicit CTA-block selection/reconstruction, not another layout
+  conversion around the current split. Validation after revert: `make -j8` and
+  the current clean-negative selector (`3 passed`).
 - 2026-04-17 10:03 UTC: moved the half-row descriptor-view type-only fallback
   refusal out of the Gluon pybind bridge and into the backend-owned
   `disallowTMemLdStTypeOnlyFallback(...)` policy. Support is unchanged, but

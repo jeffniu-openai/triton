@@ -35,6 +35,37 @@
   - `PYTHONPATH=./python python -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py && git diff --check`.
 
+## 2026-04-17 10:19 UTC: two-CTA direct row-half layout-normalization probe
+
+- Starting point: `codex/tmem` at `e11337cb4`.
+- Probe-only changes, all reverted:
+  - allowed pure rank-2 two-CTA half-slice replay through
+    `isTMemLdStReplayableHalfSliceView(...)`;
+  - tried normalizing the loaded full backing/support image before
+    `splitTensorHalfAlongDim(...)`;
+  - tried converting the replay support image through candidate full-tile
+    layouts derived from the selected hardware atom.
+- Results:
+  - the replay load still selected rows `1,3,5,...,255` instead of
+    `128..255` when using the same `reshape -> trans -> split` replay shape;
+  - candidate full-tile conversions did not produce a valid high-half
+    selection and could corrupt nearly the full tile;
+  - the generated TTGIR remained based on the full support load followed by
+    the same tensor reshape/trans/split path, so this is not solved by placing
+    another `convert_layout` around that split.
+- Boundary:
+  - keep the current clean negative;
+  - future support must model the CTA `block` basis explicitly, for example by
+    selecting/predicating the CTA block or reconstructing the support image
+    with block-aware algebra before replay.
+- Validation after reverting probe edits:
+  - `make -j8`;
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-rowhalf-revert pytest -s
+    --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported`
+    (`3 passed`).
+
 ## 2026-04-17 09:29 UTC: copy/scaled hard-frontier reprobes
 
 - Starting point: `codex/tmem` at `c546fc41e`.
