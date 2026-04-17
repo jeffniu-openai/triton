@@ -9827,19 +9827,41 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_row_permuted_destination_report
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
-@pytest.mark.parametrize(
-    "family,tmem_layout",
-    [
-        ("warpx2::01_23.64x128b", _make_tmem_copy_warpx2_tmem_layout_twocta()),
-        ("warpx2::02_13.64x128b", _make_tmem_copy_warpx2_tmem_layout_02_13_twocta()),
-    ],
-)
-def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported(
-    family, tmem_layout, dtype_name, torch_dtype, capfd
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_01_23_twocta_dense_shared_rematerializes(dtype_name, torch_dtype):
+    M = 256
+    N = 4
+    shared_layout = _make_tmem_copy_128x128_shared_layout_twocta()
+    tmem_layout = _make_tmem_copy_warpx2_tmem_layout_twocta()
+    inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_copy_no_scales_warpx2_twocta_kernel[(1, )](
+        inp, out, shared_layout, tmem_layout, num_warps=4, num_ctas=2
+    )
+
+    expected = _expected_tmem_copy_warpx2_01_23_twocta_output(inp)
+    assert not torch.equal(out, inp)
+    torch.testing.assert_close(out, expected, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::2.warpx2::01_23.64x128b"])
+    _assert_exact_commit_ptx_llir_match(compiled, [_expected_commit_opcode(2)])
+    ptx = compiled.asm["ptx"]
+    assert "tcgen05.cp.cta_group::1" not in ptx
+    assert "tcgen05.cp.cta_group::2.warpx2::02_13" not in ptx
+    assert ptx.count("fence.proxy.async.shared::cluster") == 2
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttng.tmem_copy" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype", CP_NO_SCALES_WARPX2_DTYPES)
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_dense_shared_reports_clean_unsupported(
+    dtype_name, torch_dtype, capfd
 ):
     M = 256
     N = 4
     shared_layout = _make_tmem_copy_128x128_shared_layout_twocta()
+    tmem_layout = _make_tmem_copy_warpx2_tmem_layout_02_13_twocta()
     inp = torch.arange(M * N, device="cuda", dtype=torch.int32).reshape(M, N).to(torch_dtype)
     out = torch.empty_like(inp)
 
@@ -9850,12 +9872,16 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_cle
 
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
-    assert f"maps to tcgen05.copy.{family}" in text
-    assert "canonical 128x4 shared-linear offset basis order" in text
-    assert "first mismatch is offset basis 0" in text
-    assert "got [0, 1] but expected [32, 0]" in text
-    assert "source rematerialization boundary" in text
-    assert "descriptor representability alone is not enough" in text
+    assert "maps to tcgen05.copy.warpx2::02_13.64x128b" in text
+    assert "could not synthesize a compatible shared-memory descriptor plan" in text
+    assert "preserves the high source-column bit" in text
+    assert "source-column preservation requirement" in text
+    assert "logical row bit 5 maps to a one-dword source offset" in text
+    assert "source offset 32 emits the opcode and writes the correct low destination columns" in text
+    assert "duplicates that low source-column pair into the high destination columns" in text
+    assert "Non-zero subaligned destination dword deltas fault" in text
+    assert "aligned deltas that complete the single-CTA schedule read zeros under cta_group::2" in text
+    assert "cta_group::1 copies is not valid" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

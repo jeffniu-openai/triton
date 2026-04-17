@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 19:25 UTC Phase C support-bearing no-scales two-CTA
+  `warpx2::01_23` source rematerialization: the `tcgen05_copy` helper now
+  rematerializes 256x4 dense/noncanonical `SharedLinearLayout` sources into
+  the canonical `warpx2` source layout with shared block basis `[[128, 0]]`
+  and emits a cluster async-shared fence before the backend copy. The former
+  two-CTA `01_23` dense-source clean negatives now pass runtime/opcode
+  coverage for f32/i32. Dense two-CTA `02_13` rematerializes far enough to hit
+  the true high source-column preservation diagnostic and remains negative.
+  Validation: `make -j8`, focused two-CTA dense selector (`4 passed`), full
+  `cp_no_scales_warpx2` (`79 passed`), split-4 groups (`20/20/20/19`
+  passed), Python compile. Rebaseline: `reports_clean_unsupported`
+  `115/1592`; combined clean-negative/error `165/1592`. Next concrete slice:
+  investigate `warpx2` subword/packed-lane copies or keep them as typed
+  storage boundaries if no exact packed-lane staging schedule exists.
+
 - Latest: 2026-04-17 19:21 UTC Phase C support-bearing no-scales `warpx2`
   source rematerialization: `tcgen05_copy` now rematerializes single-CTA
   dense/noncanonical 128x4 `SharedLinearLayout` sources into the canonical

@@ -24394,3 +24394,32 @@ Open after this slice:
   - collect-only rebaseline:
     `reports_clean_unsupported` is `117/1592`; combined
     `reports_clean_unsupported or reports_clean_error` is `167/1592`.
+
+## 2026-04-17 19:25 UTC: promote two-CTA warpx2::01_23 dense-source rematerialization
+
+- Starting point: `codex/tmem` at pushed `bde3c8dc4`.
+- Change:
+  - extended the Gluon `tcgen05_copy` `warpx2` rematerialization helper from
+    128x4 single-CTA sources to 256x4 two-CTA sources;
+  - canonical two-CTA sources use the same `warpx2` offset basis plus shared
+    block basis `[[128, 0]]`;
+  - the helper loads through the two-CTA logical source layout, stores the
+    canonical shared source, and emits `fence.proxy.async.shared::cluster`
+    before the backend copy.
+- Result:
+  - two-CTA dense/noncanonical `warpx2::01_23` source rows now roundtrip for
+    f32/i32 and emit `tcgen05.cp.cta_group::2.warpx2::01_23.64x128b`;
+  - dense `warpx2::02_13` rows now rematerialize the source far enough to
+    report the existing high source-column preservation diagnostic instead of
+    the older source-layout mismatch;
+  - clean-negative inventory rebaselines from `117/1592` to `115/1592`, and
+    combined clean-negative/error inventory from `167/1592` to `165/1592`.
+- Validation:
+  - `make -j8`;
+  - focused two-CTA dense selector passed `4/4`;
+  - full `cp_no_scales_warpx2` selector passed `79/79`;
+  - split-4 `cp_no_scales_warpx2` groups passed `20/20/20/19`;
+  - Python byte-compile for changed Python files;
+  - collect-only rebaseline:
+    `reports_clean_unsupported` is `115/1592`; combined
+    `reports_clean_unsupported or reports_clean_error` is `165/1592`.

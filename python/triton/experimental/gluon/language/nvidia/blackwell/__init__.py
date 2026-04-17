@@ -943,13 +943,9 @@ def _get_warpx2_copy_canonical_shared_layout(shape, tmem_layout):
     cols = _unwrap_if_constexpr(tmem_layout.cols)
     block_bases = _unwrap_if_constexpr(tmem_layout.block_bases)
     tmem_shape = _unwrap_if_constexpr(tmem_layout.shape)
-    if (
-        shape != [128, 4]
-        or tmem_shape != [128, 4]
-        or tmem_layout.two_ctas
-        or block_bases
-        or cols != [[0, 1], [0, 2]]
-    ):
+    is_single_cta = shape == [128, 4] and tmem_shape == [128, 4] and not tmem_layout.two_ctas and not block_bases
+    is_two_cta = shape == [256, 4] and tmem_shape == [256, 4] and tmem_layout.two_ctas and block_bases == [[128, 0]]
+    if (not is_single_cta and not is_two_cta) or cols != [[0, 1], [0, 2]]:
         return None
     warpx2_01_23_rows = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]]
     warpx2_02_13_rows = [[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [0, 0]]
@@ -958,19 +954,20 @@ def _get_warpx2_copy_canonical_shared_layout(shape, tmem_layout):
 
     return SharedLinearLayout(
         offset_bases=[[32, 0], [0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [64, 0]],
+        block_bases=[[128, 0]] if is_two_cta else [],
         alignment=16,
     )
 
 
 def _get_warpx2_copy_source_load_layout(shape):
     shape = _unwrap_if_constexpr(shape)
-    if shape != [128, 4]:
+    if shape not in ([128, 4], [256, 4]):
         return None
     return DistributedLinearLayout(
         reg_bases=[[0, 1], [0, 2]],
         lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
         warp_bases=[[32, 0], [64, 0]],
-        block_bases=[],
+        block_bases=[[128, 0]] if shape == [256, 4] else [],
         shape=shape,
     )
 
@@ -1017,7 +1014,7 @@ def _maybe_rematerialize_warpx2_copy_source(src, dst, _semantic):
     value = src.load(load_layout, _semantic=_semantic)
     canonical = ttgl.allocate_shared_memory(src.dtype, src.shape, canonical_layout, _semantic=_semantic)
     canonical.store(value, _semantic=_semantic)
-    fence_async_shared(_semantic=_semantic)
+    fence_async_shared(cluster=src.shape == [256, 4], _semantic=_semantic)
     return canonical
 
 
