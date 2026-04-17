@@ -6027,26 +6027,26 @@ LDST_EXPECTED_OFFSETS_128x256 = {
 
 CP_SCALES_LAYOUT_PROBE_CASES = [
     ("warpx4", _make_scales_shared_layout_warpx4(), "PASS"),
-    ("warpx2_candidate", _make_scales_shared_layout_warpx2_candidate(), "CLEAN_UNSUPPORTED"),
+    ("warpx2_candidate", _make_scales_shared_layout_warpx2_candidate(), "PASS"),
     (
         "warpx2_no_scales_like_column_tail",
         _make_scales_shared_layout_warpx2_no_scales_like_column_tail(),
-        "CLEAN_UNSUPPORTED",
+        "PASS",
     ),
     (
         "warpx2_row32_after_columns",
         _make_scales_shared_layout_warpx2_row32_after_columns(),
-        "CLEAN_UNSUPPORTED",
+        "PASS",
     ),
     (
         "warpx2_row32_after_low_rows",
         _make_scales_shared_layout_warpx2_row32_after_low_rows(),
-        "CLEAN_UNSUPPORTED",
+        "PASS",
     ),
     (
         "warpx2_column_first_row_tail",
         _make_scales_shared_layout_warpx2_column_first_row_tail(),
-        "CLEAN_UNSUPPORTED",
+        "PASS",
     ),
 ]
 
@@ -8721,50 +8721,33 @@ def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_cp_scales_unsupported_layout_reports_clean_error(capfd):
+def test_tmem_runtime_matrix_cp_scales_noncanonical_layout_rematerializes():
     smem_h, smem_w = 64, 16
-    num_rows = 128
-    num_cols = smem_h * smem_w // 32
     inp = torch.randint(size=(smem_h, smem_w), low=-100, high=100, dtype=torch.int8, device="cuda")
-    out = torch.zeros(size=(num_rows, num_cols), dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
     smem_layout = _make_scales_shared_layout_warpx2_candidate()
 
-    with pytest.raises(Exception) as excinfo:
-        tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
+    compiled = tmem_copy_scales_layout_probe_kernel[(1, )](inp, out, smem_layout)
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "maps to tcgen05.copy." in text
-    assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
-    assert "Use a shared layout that lowers to tcgen05.copy." in text
-    assert "same descriptor family" in text
-    assert "late LLVM lowering" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("start_row", (0, 64))
-def test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_reports_clean_unsupported(start_row, capfd):
+def test_tmem_runtime_matrix_cp_scales_shared_subslice_layout_rematerializes(start_row):
     out = torch.empty((1, ), dtype=torch.int32, device="cuda")
     parent_layout = _make_scales_shared_layout_parent_row_subslice_probe()
 
-    with pytest.raises(Exception) as excinfo:
-        tmem_copy_scales_shared_subslice_layout_probe_kernel[(1, )](
-            out,
-            parent_layout,
-            start_row,
-            num_warps=4,
-        )
+    compiled = tmem_copy_scales_shared_subslice_layout_probe_kernel[(1, )](
+        out,
+        parent_layout,
+        start_row,
+        num_warps=4,
+    )
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "maps to tcgen05.copy.warpx4.32x128b" in text
-    assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
-    assert "Use a shared layout that lowers to tcgen05.copy.warpx4.32x128b" in text
-    assert "This is reported as cleanly unsupported" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    torch.cuda.synchronize()
+    _assert_exact_cp_ptx_llir_match(compiled, ["tcgen05.cp.cta_group::1.warpx4.32x128b"] * 2)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

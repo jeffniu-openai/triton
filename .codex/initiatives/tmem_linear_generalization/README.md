@@ -48,6 +48,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 19:14 UTC: TensorMemoryScales `tcgen05.copy` now supports
+  source rematerialization for noncanonical 64x16 shared-linear sources. The
+  Gluon builtin copies those source views into the canonical warpx4 shared
+  layout before emitting `ttng.tmem_copy`, which promotes the historical
+  warpx2-shaped source-layout probes and shared-subslice source probes to
+  positive coverage. The scaled-MMA scale descriptor path is preserved, and
+  the remaining scales descriptor-view negative is still a destination mask/
+  split boundary. Validation: `make -j8`, focused 10-test selector, broader
+  `-k 'cp_scales'` (`34 passed`), split-4 `cp_scales` (`9/9/9/7` passed),
+  Python byte-compile, and `git diff --check`.
 - 2026-04-17 19:07 UTC: classification checkpoint after the scales
   descriptor-view promotion. Direct probes classify sub-instruction
   `tcgen05.copy` tile permutations and row/column permutations as public

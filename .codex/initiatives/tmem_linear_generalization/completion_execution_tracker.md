@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 19:07 UTC
+Last updated: 2026-04-17 19:14 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -64,7 +64,8 @@ PYTHONPATH=.:./python:./python/test/gluon \
   -k 'reports_clean_unsupported'
 ```
 
-Result: `123/1592 tests collected (1469 deselected) in 2.97s`.
+Result after the 19:14 scales-copy rematerialization slice: `121/1592 tests
+collected (1471 deselected) in 3.22s`.
 
 Additional combined clean-negative/clean-error rebaseline:
 
@@ -74,7 +75,8 @@ PYTHONPATH=.:./python:./python/test/gluon \
   -k 'reports_clean_unsupported or reports_clean_error'
 ```
 
-Result: `174/1592 tests collected (1418 deselected) in 3.08s`.
+Result after the 19:14 scales-copy rematerialization slice: `171/1592 tests
+collected (1421 deselected) in 3.22s`.
 
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
@@ -84,12 +86,15 @@ Current buckets:
 - `ld.red` non-f32 NaN-propagating cases: software fallback exists for many
   non-f32 reductions, but these rows remain true semantic boundaries unless a
   correct fallback can preserve the requested NaN contract.
-- `tcgen05.copy` scales shared-subslice/descriptor-view rows: source column bit
-  2 selects descriptor row `+32` inside a `warpx4` instruction, requiring a
-  source-message/destination-column split, narrower atom, valid source format,
-  or destination mask. Current probes show the public `warpx4.32x128b` atom
-  writes the full 16-column destination footprint, so the requested 4-of-8
-  column split is a true mask/source-format schedule boundary.
+- `tcgen05.copy` scales descriptor-view rows: ordinary noncanonical 64x16
+  shared-linear sources and 64x16 shared subslices now rematerialize into the
+  canonical warpx4 shared source before copy. The remaining descriptor-view row
+  is a destination-view boundary: source column bit 2 selects descriptor row
+  `+32` inside a `warpx4` instruction, requiring a source-message/destination-
+  column split, narrower atom, valid source format, or destination mask.
+  Current probes show the public `warpx4.32x128b` atom writes the full
+  16-column destination footprint, so the requested 4-of-8 column split is a
+  true mask/source-format schedule boundary.
 - `tcgen05.copy` no-scales ordinary contiguous `4x256b`: copy support is
   positive for refresh-shaped layouts only; ordinary view exposure needs a
   first-class refresh remap/readback contract or stays negative.
@@ -243,12 +248,31 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 Continue the support-bearing `tcgen05.copy` frontier, but do not spend the next
 slice on the already-probed sub-instruction row/column permutations unless a
 new row/column-mask mechanism is introduced. The next concrete implementation
-probe is the no-scales `tcgen05.copy.4x256b` ordinary-view/remap contract:
-either promote an ISA-realizable rematerialized schedule or keep the existing
-refresh-only support as a typed true boundary. If that closes without support,
-move to `ld.red` non-f32/NaN semantics.
+probe is non-scales `warpx2` shared-source rematerialization: start with the
+single-CTA dense/noncanonical shared-source rows, preserve the existing
+two-CTA/source-column boundaries unless a schedule can prove CTA ownership and
+high source-column preservation, and only promote rows where rematerializing a
+canonical shared source preserves the requested footprint. If that closes
+without support, continue with copy-specific cleanup of the typed boundaries
+already proved by probes.
 
 ## Progress
+
+- 2026-04-17 19:14 UTC: promoted TensorMemoryScales 64x16 source
+  rematerialization for `tcgen05.copy`. The Gluon `tcgen05_copy` builtin now
+  rematerializes noncanonical 64x16 `SharedLinearLayout` scales sources into
+  the canonical warpx4 shared-linear source before emitting the backend copy
+  op. This makes the historical warpx2-shaped scales layout probes and
+  shared-subslice source probes positive while preserving the scaled-MMA scale
+  descriptor path and keeping the 128x32 descriptor-view destination boundary
+  negative. Validation: `make -j8`; focused selector
+  `cp_scales_layout_probe or cp_scales_noncanonical_layout_rematerializes or
+  cp_scales_shared_subslice_layout_rematerializes or
+  cp_scales_tmem_descriptor_view_reports_clean_unsupported` passed `10`;
+  broader `-k 'cp_scales'` passed `34`; split-4 `cp_scales` groups passed
+  `9/9/9/7`; Python byte-compile; `git diff --check`. Rebaseline:
+  `reports_clean_unsupported` is `121/1592`; combined clean-negative/error is
+  `171/1592`.
 
 - 2026-04-17 19:07 UTC: classified two remaining buckets and refreshed the
   execution contract. Representative direct Python probes with

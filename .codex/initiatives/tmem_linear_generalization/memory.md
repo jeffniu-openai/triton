@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 19:14 UTC Phase C support-bearing scales-copy source
+  rematerialization: `tcgen05_copy` now rematerializes noncanonical 64x16
+  `SharedLinearLayout` TensorMemoryScales sources into the canonical warpx4
+  shared-linear source before creating `ttng.tmem_copy`. This promotes the
+  historical warpx2-shaped source-layout probes and the 64x16 shared-subslice
+  source probes to positive coverage while leaving scaled-MMA scale descriptor
+  sources untouched and keeping the 128x32 scales descriptor-view destination
+  boundary negative. Validation: `make -j8`, focused 10-test selector,
+  broader `-k 'cp_scales'` (`34 passed`), split-4 `cp_scales` groups
+  (`9/9/9/7` passed), Python compile, `git diff --check`. Rebaseline:
+  `reports_clean_unsupported` `121/1592`; combined clean-negative/error
+  `171/1592`.
+
 - Latest: 2026-04-17 19:07 UTC Phase A/C/E classification checkpoint:
   sub-instruction `tcgen05.copy` tile permutations and row/column permutations
   were probed directly with `TRITON_DEBUG_TMEM_QUERY=1`. The failures are

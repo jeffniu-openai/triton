@@ -24323,3 +24323,38 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'reports_clean_unsupported or reports_clean_error'` collected
     `174/1592` tests in `3.08s`.
+
+## 2026-04-17 19:14 UTC: promote scales-copy source rematerialization
+
+- Starting point: `codex/tmem` at pushed `4febe1d51`.
+- Change:
+  - added a narrow Gluon `tcgen05_copy` source-rematerialization path for
+    TensorMemoryScales copies whose source is a noncanonical 64x16
+    `SharedLinearLayout`;
+  - the builtin loads the source through a blocked register layout, stores it
+    into the canonical warpx4 shared-linear layout, and emits the existing
+    backend `ttng.tmem_copy` from that canonical source;
+  - restricted the rematerialization to 64x16 shared-linear sources so scaled
+    MMA scale descriptors and two-CTA scale descriptor paths keep their
+    existing descriptor contracts.
+- Result:
+  - historical warpx2-shaped scales source-layout probes now roundtrip and
+    emit two `tcgen05.cp.cta_group::1.warpx4.32x128b` instructions;
+  - 64x16 shared-subslice scales sources now compile through the same canonical
+    source rematerialization;
+  - the 128x32 TensorMemoryScales descriptor-view copy remains clean
+    unsupported because it is a destination-view split/mask boundary, not a
+    source descriptor boundary.
+- Validation:
+  - `make -j8`;
+  - focused selector:
+    `cp_scales_layout_probe or cp_scales_noncanonical_layout_rematerializes or
+    cp_scales_shared_subslice_layout_rematerializes or
+    cp_scales_tmem_descriptor_view_reports_clean_unsupported` passed
+    `10/10`;
+  - broader `-k 'cp_scales'` passed `34/34`;
+  - split-4 `cp_scales` groups passed `9/9/9/7`;
+  - Python byte-compile for the changed files;
+  - `git diff --check`;
+  - collect-only rebaseline: `reports_clean_unsupported` is `121/1592`;
+    combined `reports_clean_unsupported or reports_clean_error` is `171/1592`.

@@ -7,7 +7,7 @@ from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
 from triton.experimental.gluon.language import _math as ttgl_math
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
-from triton.experimental.gluon.language._layouts import DistributedLinearLayout
+from triton.experimental.gluon.language._layouts import BlockedLayout, DistributedLinearLayout, SharedLinearLayout
 from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout, _finalize_splitn_tmem_reg_layout
 
 from . import tma
@@ -923,6 +923,46 @@ def allocate_tensor_memory(element_ty, shape, layout, value=None, _semantic=None
     return tensor_memory_descriptor(handle, element_ty, shape, layout, alloc_shape)
 
 
+def _get_scales_copy_canonical_shared_layout(shape, cga_layout):
+    shape = _unwrap_if_constexpr(shape)
+    cga_layout = _unwrap_if_constexpr(cga_layout)
+    if len(shape) != 2 or shape[0] != 64 or shape[1] != 16 or cga_layout:
+        return None
+
+    kwargs = dict(
+        offset_bases=[[0, 1], [0, 2], [32, 0], [0, 4], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 8]]
+    )
+    return SharedLinearLayout(**kwargs)
+
+
+def _is_same_shared_linear_layout(lhs, rhs):
+    return (
+        isinstance(lhs, SharedLinearLayout)
+        and lhs.offset_bases == rhs.offset_bases
+        and lhs.block_bases == rhs.block_bases
+        and lhs.alignment == rhs.alignment
+    )
+
+
+def _maybe_rematerialize_scales_copy_source(src, dst, _semantic):
+    if not isinstance(dst.layout, TensorMemoryScalesLayout):
+        return src
+    if not isinstance(src.layout, SharedLinearLayout):
+        return src
+    canonical_layout = _get_scales_copy_canonical_shared_layout(src.shape, dst.layout.cga_layout)
+    if canonical_layout is None or _is_same_shared_linear_layout(src.layout, canonical_layout):
+        return src
+
+    load_layout_kwargs = {}
+    if dst.layout.cga_layout:
+        load_layout_kwargs["cga_layout"] = dst.layout.cga_layout
+    load_layout = BlockedLayout([1, 4], [32, 1], [4, 1], [1, 0], **load_layout_kwargs)
+    value = src.load(load_layout, _semantic=_semantic)
+    canonical = ttgl.allocate_shared_memory(src.dtype, src.shape, canonical_layout, _semantic=_semantic)
+    canonical.store(value, _semantic=_semantic)
+    return canonical
+
+
 @builtin
 def tcgen05_copy(src, dst, _semantic=None):
     """
@@ -934,6 +974,7 @@ def tcgen05_copy(src, dst, _semantic=None):
     """
     assert isinstance(src, ttgl.shared_memory_descriptor), "source must be a shared memory descriptor"
     assert isinstance(dst, tensor_memory_descriptor), "destination must be a tensor memory descriptor"
+    src = _maybe_rematerialize_scales_copy_source(src, dst, _semantic)
     _semantic.builder.create_tmem_copy(src.handle, dst.handle)
 
 
