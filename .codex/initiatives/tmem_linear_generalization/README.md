@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:10 UTC: re-probed the single-CTA identity `32x32`
+  multidim-slice descriptor-view `ld/st` boundary with a base-relative support
+  query. Two variants were rejected: the first selected `16x32bx2.x32` and
+  updated the top-right quadrant, while the row-origin-adjusted version
+  selected scalar `32x32b.x1` packets but emitted offsets `0..31` and still
+  updated the wrong footprint (`3072` mismatches). The temporary source edit
+  was removed, `make -j8` rebuilt the restored tree, and the exact clean
+  negative remains green (`1 passed`). This row is still a real
+  packet-footprint/rematerialization gap, not a support-layout lookup gap.
 - 2026-04-17 06:01 UTC: moved Gluon's value-aware reduction register-layout
   selection into `TensorMemoryUtils`. The new
   `getTMemLoadReductionLayoutForMemDesc(...)` backend API owns raw-query

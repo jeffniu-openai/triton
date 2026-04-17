@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:10 UTC identity `32x32` descriptor-view `ld/st`
+  support reprobe rejected: a base-relative support query for the single-CTA
+  high-quadrant multidim slice compiled but was wrong. The initial support
+  shape selected `16x32bx2.x32` and updated the top-right quadrant; changing
+  the support origin to row 64 and the row span to 32 selected scalar
+  `32x32b.x1` packets, but lowering emitted offsets `0..31` and produced
+  `3072` mismatches. The experimental source edit was removed and the exact
+  clean-negative test is green after rebuilding. Treat this as a packet
+  footprint / per-message offset / rematerialization problem, not a stale
+  row-plan or support-layout guard.
+
 - Latest: 2026-04-17 06:01 UTC reduction register-layout selection backend
   cleanup: moved the value-aware `ld.red` register-layout selector used by
   Gluon descriptor handles into `TensorMemoryUtils` as

@@ -1232,6 +1232,14 @@ Progress:
   register-layout selection plus `TMEMLoad/Store` verification. The runtime
   matrix now makes the four representative two-CTA index rows positive while
   preserving the lifted half-row and single-CTA multidim row-anchor negatives.
+- 2026-04-17 06:10 UTC: re-probed the remaining single-CTA identity `32x32`
+  multidim-slice descriptor-view `ld/st` boundary with a base-relative support
+  query. The support image can make the compiler choose a scalar `32x32b.x1`
+  atom, but the resulting packet schedule still updates the wrong physical
+  footprint because the high-row/high-column subview origin is not represented
+  as a proven packet-base plus per-message offset schedule. Keep this as a
+  Phase 4 packet-rematerialization or mask/read-modify-write task; do not
+  retry it as another support-layout fallback.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

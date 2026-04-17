@@ -1,3 +1,30 @@
+## 2026-04-17 06:10 UTC: rejected base-relative identity 32x32 ld/st support probe
+
+- Starting point: `codex/tmem` at `4870094e9`.
+- Probe:
+  - added a temporary base-relative support query for the single-CTA
+    identity `32x32` multidim-slice descriptor view;
+  - the first variant selected `16x32bx2.x32` and produced wrong output in
+    the top-right quadrant;
+  - the row-origin-adjusted variant selected scalar `32x32b.x1` packets, but
+    lowering emitted offsets `0..31` and still wrote the wrong footprint,
+    producing `3072` mismatches.
+- Cleanup:
+  - removed the temporary source edit;
+  - kept the existing clean negative for this row.
+- Validation:
+  - `make -j8`;
+  - direct Python probe with TMEM query/layout traces for the rejected support
+    path;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-packet
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error[identity-<lambda>]'`
+    (`1 passed in 2.73s`).
+- Remaining note:
+  - this is a real packet-footprint / per-message-offset rematerialization
+    boundary. A support layout alone can make atom selection look plausible
+    while still losing the high-row/high-column packet schedule.
+
 ## 2026-04-17 00:50 UTC: nested TMEM subslice fold hardening
 
 - Starting point: `codex/tmem` at `ca0ca3161`.
