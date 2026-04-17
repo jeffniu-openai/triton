@@ -1,3 +1,27 @@
+## 2026-04-17 06:16 UTC: moved TMEM atom request semantics into TensorMemoryUtils
+
+- Starting point: `codex/tmem` at `6c597ce69`.
+- Change:
+  - added backend helpers for TMEM access-atom spelling, M64 split-N
+    descriptor-type classification, descriptor-handle split-N request mapping,
+    and requested-vs-realized atom compatibility;
+  - deleted the duplicated `StringSwitch` atom parsers and the local M64
+    `32x32b`/`16x32bx2` compatibility predicate from `python/src/gluon_ir.cc`.
+- Support boundary:
+  - behavior is unchanged. This is a backend-layering checkpoint so pybind no
+    longer owns part of the direct `ld/st` planner contract.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py`;
+  - `test_tmem_runtime_matrix.py -k "ld_red_m64 or m64_splitn or
+    ldst_scales_variant_reports_clean_unsupported"` (`44 passed`);
+  - `test_core.py -k tmem_linear_m64` (`21 passed`);
+  - `test_tmem_runtime_matrix.py -k "ldst_x1_i32_unsupported_variants or
+    ldst_x1_f32_unsupported_variants or ldst_scales_descriptor_view_cga"`
+    (`13 passed`).
+
 ## 2026-04-17 06:10 UTC: rejected base-relative identity 32x32 ld/st support probe
 
 - Starting point: `codex/tmem` at `4870094e9`.

@@ -1240,6 +1240,13 @@ Progress:
   as a proven packet-base plus per-message offset schedule. Keep this as a
   Phase 4 packet-rematerialization or mask/read-modify-write task; do not
   retry it as another support-layout fallback.
+- 2026-04-17 06:16 UTC: removed the pybind-local TMEM atom request
+  interpretation. Access-atom spelling, split-N alias mapping for descriptor
+  handles, the M64 split-N descriptor-type predicate, and M64
+  requested-vs-realized atom compatibility now live in `TensorMemoryUtils`.
+  This is a layering cleanup toward one backend planner contract: support did
+  not change, but frontend code no longer carries a separate copy of the
+  split-N/M64 atom semantics.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

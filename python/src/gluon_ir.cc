@@ -25,7 +25,6 @@
 #include "triton/Tools/GenericSwizzling.h"
 #include "triton/Tools/LayoutUtils.h"
 #include "triton/Tools/LinearLayout.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -77,23 +76,6 @@ static void printDiagStr(llvm::raw_ostream &os, const Diagnostic &diag) {
   os << "\n";
   for (const Diagnostic &note : diag.getNotes())
     printDiagStr(os, note);
-}
-
-static bool matchesRequestedTMemAtom(
-    ttg::MemDescType queryTy, std::optional<ttng::TMemAccessAtom> desiredAtom,
-    ttng::TMemAccessAtom actualAtom) {
-  if (!desiredAtom || actualAtom == *desiredAtom)
-    return true;
-  // On rank-2 M64 f32 TMEM descriptor views, the user-facing `32x32b` request
-  // names the logical direct family, not a promise that the final direct
-  // realization must stay on the scalar I32x32b atom. The packed 16x32bx2
-  // family is the direct realizable form for these layouts and should satisfy
-  // the same request when the planner finds it.
-  return queryTy && queryTy.getRank() == 2 && queryTy.getShape()[0] == 64 &&
-         queryTy.getElementTypeBitWidth() == 32 &&
-         !isa<ttng::TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()) &&
-         *desiredAtom == ttng::TMemAccessAtom::I32x32b &&
-         actualAtom == ttng::TMemAccessAtom::I16x32bx2;
 }
 
 struct GluonOpBuilder : public TritonOpBuilder {
@@ -1328,7 +1310,8 @@ void init_gluon_ir(py::module &&m) {
             [&](ttg::MemDescType queryTy,
                 std::optional<ttng::TMemAccessAtom> desiredAtom,
                 ttng::TMemAccessAtom actualAtom) {
-              return matchesRequestedTMemAtom(queryTy, desiredAtom, actualAtom);
+              return ttng::isTMemAccessAtomCompatibleWithRequest(
+                  queryTy, desiredAtom, actualAtom);
             };
         auto firstLegalLayoutForType =
             [&](ttg::MemDescType queryTy,
@@ -1430,20 +1413,11 @@ void init_gluon_ir(py::module &&m) {
           return physicalSupportLayout(memDescTy, /*desiredAtom=*/std::nullopt);
         }
 
-        auto maybeAtom =
-            llvm::StringSwitch<std::optional<ttng::TMemAccessAtom>>(atomName)
-                .Case("32x32b", ttng::TMemAccessAtom::I32x32b)
-                .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
-                .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
-                .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
-                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
-                // split-N variants are inferred from the 32x32b layout and
-                // then adjusted in frontend semantic checks.
-                .Case("32x32b_splitn", ttng::TMemAccessAtom::I32x32b)
-                .Default(std::nullopt);
-        if (!maybeAtom)
+        auto maybeAtomOr = ttng::parseTMemAccessAtomName(
+            atomName, /*allowAuto=*/false, /*splitNAsPacked=*/false);
+        if (failed(maybeAtomOr) || !maybeAtomOr->has_value())
           throw std::invalid_argument("unknown TMEM access atom: " + atomName);
-        auto atom = *maybeAtom;
+        auto atom = **maybeAtomOr;
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
@@ -1577,7 +1551,8 @@ void init_gluon_ir(py::module &&m) {
             [&](ttg::MemDescType queryTy,
                 std::optional<ttng::TMemAccessAtom> desiredAtom,
                 ttng::TMemAccessAtom actualAtom) {
-              return matchesRequestedTMemAtom(queryTy, desiredAtom, actualAtom);
+              return ttng::isTMemAccessAtomCompatibleWithRequest(
+                  queryTy, desiredAtom, actualAtom);
             };
         auto normalizeRegLayoutForAttr =
             [&](tt::LinearLayout layout) -> std::optional<tt::LinearLayout> {
@@ -2473,35 +2448,14 @@ void init_gluon_ir(py::module &&m) {
           return py::none();
         };
 
-        auto maybeAtom =
-            llvm::StringSwitch<std::optional<ttng::TMemAccessAtom>>(atomName)
-                .Case("auto", std::nullopt)
-                .Case("32x32b", ttng::TMemAccessAtom::I32x32b)
-                .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
-                .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
-                .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
-                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
-                .Case("32x32b_splitn", ttng::TMemAccessAtom::I16x32bx2)
-                .Default(std::nullopt);
-        if (atomName != "auto" && !maybeAtom)
+        auto maybeAtomOr = ttng::getTMemLdStRequestedAtomForMemDesc(
+            memDescTy, atomName, numWarps);
+        if (failed(maybeAtomOr))
           throw std::invalid_argument("unknown TMEM access atom: " + atomName);
+        auto maybeAtom = *maybeAtomOr;
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
-        bool isM64SplitNDescriptor =
-            numWarps == 4 && memDescTy.getRank() == 2 &&
-            memDescTy.getShape()[0] == 64 &&
-            (memDescTy.getElementTypeBitWidth() == 16 ||
-             memDescTy.getElementTypeBitWidth() == 32) &&
-            !isa<ttng::TensorMemoryScalesEncodingAttr>(
-                memDescTy.getEncoding());
-        if (atomName == "32x32b_splitn" && !isM64SplitNDescriptor) {
-          // M64 split-N uses the hardware 16x32bx2 family directly. Other
-          // split-N queries mirror the type-only path: infer an I32x32b
-          // register layout for the descriptor view, then let the frontend
-          // split-N finalizer move the N/2 basis into the register dimension.
-          maybeAtom = ttng::TMemAccessAtom::I32x32b;
-        }
 
         if (atomName == "auto" &&
             isa<ttng::TensorMemoryEncodingAttr>(memDescTy.getEncoding()) &&
@@ -2552,18 +2506,11 @@ void init_gluon_ir(py::module &&m) {
           return py::str(reason);
         }
 
-        auto maybeAtom =
-            llvm::StringSwitch<std::optional<ttng::TMemAccessAtom>>(atomName)
-                .Case("32x32b", ttng::TMemAccessAtom::I32x32b)
-                .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
-                .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
-                .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
-                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
-                .Case("32x32b_splitn", ttng::TMemAccessAtom::I16x32bx2)
-                .Default(std::nullopt);
-        if (maybeAtom) {
+        auto maybeAtom = ttng::parseTMemAccessAtomName(
+            atomName, /*allowAuto=*/false, /*splitNAsPacked=*/true);
+        if (succeeded(maybeAtom) && maybeAtom->has_value()) {
           if (auto atomReason = ttng::getUnsupportedDirectTMemLdStVariantReason(
-                  memDesc, *maybeAtom, numWarps)) {
+                  memDesc, **maybeAtom, numWarps)) {
             return py::str(*atomReason);
           }
         }

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:16 UTC: moved TMEM `ld/st` access-atom parsing,
+  descriptor-handle split-N request mapping, M64 split-N descriptor-type
+  classification, and requested-vs-realized atom compatibility from
+  `python/src/gluon_ir.cc` into `TensorMemoryUtils`. This is behavior
+  preserving but removes another pybind-local interpretation of the backend
+  planner contract. Validation: `make -j8`, py-compile for the Python runtime
+  files, focused M64/split-N plus scales-variant selector (`44 passed`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and x1/scales
+  descriptor-view variant diagnostics (`13 passed`).
 - 2026-04-17 06:10 UTC: re-probed the single-CTA identity `32x32`
   multidim-slice descriptor-view `ld/st` boundary with a base-relative support
   query. Two variants were rejected: the first selected `16x32bx2.x32` and

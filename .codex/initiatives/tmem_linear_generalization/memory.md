@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:16 UTC TMEM atom request semantics are now
+  backend-owned: `TensorMemoryUtils` exposes the access-atom name parser, M64
+  split-N descriptor-type predicate, descriptor-handle split-N request mapping,
+  and requested-vs-realized atom compatibility. `python/src/gluon_ir.cc` no
+  longer has its own `StringSwitch` copies or M64 `32x32b`/`16x32bx2`
+  compatibility predicate. Support is unchanged; this removes another
+  frontend interpretation of the backend planner contract. Validation:
+  `make -j8`, py-compile for Python runtime files, `test_tmem_runtime_matrix.py
+  -k "ld_red_m64 or m64_splitn or ldst_scales_variant_reports_clean_unsupported"`
+  (`44 passed`), `test_core.py -k tmem_linear_m64` (`21 passed`), and
+  `test_tmem_runtime_matrix.py -k "ldst_x1_i32_unsupported_variants or
+  ldst_x1_f32_unsupported_variants or ldst_scales_descriptor_view_cga"`
+  (`13 passed`).
+
 - Latest: 2026-04-17 06:10 UTC identity `32x32` descriptor-view `ld/st`
   support reprobe rejected: a base-relative support query for the single-CTA
   high-quadrant multidim slice compiled but was wrong. The initial support

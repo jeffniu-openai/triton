@@ -7,6 +7,7 @@
 #include "triton/Tools/Sys/GetEnv.hpp"
 #include "triton/Tools/LayoutUtils.h"
 #include "third_party/f2reduce/f2reduce.h"
+#include "llvm/ADT/StringSwitch.h"
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -120,6 +121,66 @@ getTMemScalesRootEncoding(Value memDesc) {
     break;
   }
   return std::nullopt;
+}
+
+FailureOr<std::optional<TMemAccessAtom>>
+parseTMemAccessAtomName(StringRef atomName, bool allowAuto,
+                        bool splitNAsPacked) {
+  if (allowAuto && atomName == "auto")
+    return std::optional<TMemAccessAtom>{};
+
+  std::optional<TMemAccessAtom> splitNAtom =
+      splitNAsPacked ? TMemAccessAtom::I16x32bx2 : TMemAccessAtom::I32x32b;
+  auto atom =
+      llvm::StringSwitch<std::optional<TMemAccessAtom>>(atomName)
+          .Case("32x32b", TMemAccessAtom::I32x32b)
+          .Case("16x64b", TMemAccessAtom::I16x64b)
+          .Case("16x128b", TMemAccessAtom::I16x128b)
+          .Case("16x256b", TMemAccessAtom::I16x256b)
+          .Case("16x32bx2", TMemAccessAtom::I16x32bx2)
+          .Case("32x32b_splitn", splitNAtom)
+          .Default(std::nullopt);
+  if (!atom)
+    return failure();
+  return atom;
+}
+
+bool isM64SplitNDescriptorType(MemDescType memTy, unsigned numWarps,
+                               bool allow16Bit) {
+  if (!memTy || numWarps != 4 || memTy.getRank() != 2 ||
+      memTy.getShape()[0] != 64 ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
+    return false;
+  unsigned bitwidth = memTy.getElementTypeBitWidth();
+  return bitwidth == 32 || (allow16Bit && bitwidth == 16);
+}
+
+FailureOr<std::optional<TMemAccessAtom>>
+getTMemLdStRequestedAtomForMemDesc(MemDescType memTy, StringRef atomName,
+                                   unsigned numWarps) {
+  auto maybeAtom = parseTMemAccessAtomName(atomName, /*allowAuto=*/true,
+                                           /*splitNAsPacked=*/true);
+  if (failed(maybeAtom))
+    return failure();
+  if (atomName == "32x32b_splitn" &&
+      !isM64SplitNDescriptorType(memTy, numWarps, /*allow16Bit=*/true))
+    return std::optional<TMemAccessAtom>{TMemAccessAtom::I32x32b};
+  return *maybeAtom;
+}
+
+bool isTMemAccessAtomCompatibleWithRequest(
+    MemDescType queryTy, std::optional<TMemAccessAtom> desiredAtom,
+    TMemAccessAtom actualAtom) {
+  if (!desiredAtom || actualAtom == *desiredAtom)
+    return true;
+  // On rank-2 M64 f32 TMEM descriptor views, the user-facing `32x32b` request
+  // names the logical direct family, not a promise that the final direct
+  // realization must stay on the scalar I32x32b atom. The packed 16x32bx2
+  // family is the direct realizable form for these layouts and should satisfy
+  // the same request when the planner finds it.
+  return isM64SplitNDescriptorType(queryTy, /*numWarps=*/4) &&
+         *desiredAtom == TMemAccessAtom::I32x32b &&
+         actualAtom == TMemAccessAtom::I16x32bx2;
 }
 
 namespace {
