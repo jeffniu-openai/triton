@@ -9737,6 +9737,8 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_tile_permuted_subinstruction_re
     text = str(excinfo.value) + captured.err + captured.out
     assert "maps to tcgen05.copy.128x256b" in text
     assert "contiguous in physical TMEM column order" in text
+    assert "destination-column permutation requirement" in text
+    assert "copy atom writes the full" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

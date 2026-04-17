@@ -20635,3 +20635,32 @@ Open after this slice:
   - `make -j8` on probe builds;
   - custom single-kernel identity probes;
   - `git diff --check` after removing probes.
+
+## 2026-04-17 03:19 UTC: typed copy sub-instruction column permutation
+
+- Starting point: `codex/tmem` at `3a4cea70c`.
+- Change:
+  - introduced `TMemCopyInstructionColumnPermutationRequirement`;
+  - direct dense copy layout support now reports sub-instruction destination
+    column permutations through that typed requirement and the shared
+    destination-mask schedule-gap proof;
+  - shared-descriptor `NonContiguousOffset` instruction-column projection
+    failures now derive the same requirement and return a schedule-layer
+    support result before the generic fallback.
+- Behavior/support boundary is unchanged:
+  - dense tile_n=1/2 no-scales copies still require selected destination-column
+    runs inside an atom that writes the full 4- or 8-column footprint;
+  - support still needs a narrower atom, destination-column mask, or a proven
+    non-overwriting multi-message schedule.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics` from
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12`;
+  - exact sub-instruction selector passed (`6 passed in 3.52s`);
+  - adjacent copy selector passed
+    (`36 passed, 1539 deselected in 11.34s`);
+  - `git diff --check`.

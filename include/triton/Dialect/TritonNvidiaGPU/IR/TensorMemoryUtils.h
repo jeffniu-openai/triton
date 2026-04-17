@@ -237,6 +237,16 @@ struct TMemCopyDescriptorRowSplitRequirement {
   bool spansInstructionRows = false;
 };
 
+struct TMemCopyInstructionColumnPermutationRequirement {
+  unsigned instructionRows = 0;
+  unsigned instructionColumns = 0;
+  unsigned logicalColBit = 0;
+  unsigned selectedColumnRun = 0;
+  unsigned columnSelectionPeriod = 0;
+  int32_t actualOffset = 0;
+  int32_t expectedOffset = 0;
+};
+
 enum class TMemCopyDestinationMaskAxis {
   Row,
   Column,
@@ -278,6 +288,10 @@ std::optional<TMemCopyDescriptorRowSplitRequirement>
 getTMemCopyDescriptorRowSplitRequirement(
     const TMemCopyInstructionColumnProjectionFailure &failure);
 
+std::optional<TMemCopyInstructionColumnPermutationRequirement>
+getTMemCopyInstructionColumnPermutationRequirement(
+    const TMemCopyInstructionColumnProjectionFailure &failure);
+
 std::optional<TMemCopySourceRowSplitRequirement>
 getTMemCopySourceRowSplitRequirement(
     const TMemCopySourceRowProjectionFailure &failure,
@@ -286,6 +300,10 @@ getTMemCopySourceRowSplitRequirement(
 std::optional<TMemCopyDestinationMaskRequirement>
 getTMemCopyDestinationMaskRequirement(
     const TMemCopyDescriptorRowSplitRequirement &requirement);
+
+std::optional<TMemCopyDestinationMaskRequirement>
+getTMemCopyDestinationMaskRequirement(
+    const TMemCopyInstructionColumnPermutationRequirement &requirement);
 
 std::optional<TMemCopyDestinationMaskRequirement>
 getTMemCopyDestinationMaskRequirement(

@@ -44,6 +44,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 03:19 UTC: moved the no-scales dense copy sub-instruction
+  column-permutation boundary into the shared typed requirement layer. Dense
+  direct-destination column-tile failures now derive a
+  `TMemCopyInstructionColumnPermutationRequirement` and route it through the
+  existing destination-mask proof, so tile_n=1/2 layouts report that a public
+  copy atom writes the full instruction-column footprint while the permutation
+  would need only selected destination-column runs. The same requirement now
+  also covers shared-descriptor `NonContiguousOffset` instruction-column
+  failures. Support is unchanged: these layouts still need a narrower atom,
+  destination-column mask, or a proven non-overwriting multi-message schedule.
+  Validation: `make -j8`, py-compile for `test_tmem_runtime_matrix.py`, direct
+  `invalid.mlir` verifier from the build dir, focused tile-permuted
+  sub-instruction selector (`6 passed`), adjacent copy clean-negative selector
+  (`36 passed, 1539 deselected`), and `git diff --check`.
 - 2026-04-17 02:55 UTC: re-probed the single-CTA identity 32x32
   multidim-slice `ld/st` boundary after the stale offset-special deletion. No
   source probe was kept. Findings: borrowing the 128x128 root support query

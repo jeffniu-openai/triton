@@ -11548,7 +11548,38 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-17 02:55 UTC identity 32x32 direct ld/st boundary reprobe
+## Latest: 2026-04-17 03:19 UTC copy sub-instruction column permutation requirement
+
+- Continued Phase 2 copy scheduler cleanup from the dense no-scales tile_n=1/2
+  boundary.
+- Change:
+  - added `TMemCopyInstructionColumnPermutationRequirement` as the typed
+    carrier for sub-instruction column bits that map to a non-contiguous
+    source or destination offset inside one public `tcgen05.copy` atom;
+  - dense direct-destination tile-contiguity failures now derive that
+    requirement and reuse `TMemCopyDestinationMaskRequirement` to explain why a
+    multi-message decomposition would overwrite complementary destination
+    columns without a narrower atom or destination-column mask;
+  - shared-descriptor `NonContiguousOffset` instruction-column failures now
+    route through the same requirement before the generic unsupported fallback.
+- Current hard fact:
+  - tile_n=1/2 dense no-scales copies are not descriptor-search misses. They
+    require selected destination-column runs inside a 4- or 8-column public
+    copy atom, while the ISA writes the full instruction-column footprint.
+    Support needs a real narrower-footprint atom, destination-column mask, or
+    proven non-overwriting schedule.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics` from the CMake build dir;
+  - exact sub-instruction selector (`6 passed`);
+  - adjacent copy selector (`36 passed, 1539 deselected`);
+  - `git diff --check`.
+
+## Previous: 2026-04-17 02:55 UTC identity 32x32 direct ld/st boundary reprobe
 
 - Re-probed the single-CTA identity 32x32 multidim-slice `ld/st` boundary after
   deleting the stale subview-offset special. All probes were removed before

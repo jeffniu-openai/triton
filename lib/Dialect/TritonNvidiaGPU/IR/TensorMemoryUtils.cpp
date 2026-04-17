@@ -8831,6 +8831,19 @@ static TMemCopySupportResult getTMemCopyDestinationFootprintSupport(
   return getSupportedTMemCopyResult();
 }
 
+static std::optional<std::pair<unsigned, unsigned>>
+getTMemCopyColumnSelectionRunAndPeriod(unsigned logicalColBit) {
+  if (logicalColBit >= std::numeric_limits<unsigned>::digits - 1)
+    return std::nullopt;
+  return std::pair<unsigned, unsigned>{1u << logicalColBit,
+                                       1u << (logicalColBit + 1)};
+}
+
+static void appendTMemCopyDestinationMaskScheduleGap(
+    llvm::raw_ostream &os,
+    const TMemCopyDestinationMaskRequirement &requirement,
+    StringRef requirementName, StringRef footprintScope);
+
 struct DenseTMemCopyRowBasisStep {
   unsigned bit = 0;
   int32_t physicalRow = 0;
@@ -8912,6 +8925,91 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx) {
   return getSupportedTMemCopyResult();
 }
 
+static unsigned getDenseTMemCopyInstructionRows(TMemCopyFamily family) {
+  switch (family) {
+  case TMemCopyFamily::Dense4x256b:
+    return 4;
+  case TMemCopyFamily::Dense128x128b:
+  case TMemCopyFamily::Dense128x256b:
+    return 128;
+  case TMemCopyFamily::Warpx2_01_23_64x128b:
+  case TMemCopyFamily::Warpx2_02_13_64x128b:
+  case TMemCopyFamily::Warpx4_32x128b:
+    llvm_unreachable("non-dense copy family");
+  }
+  llvm_unreachable("unknown dense copy family");
+}
+
+static std::optional<TMemCopyInstructionColumnPermutationRequirement>
+getDenseTMemCopyDestinationColumnPermutationRequirement(
+    const LinearLayout &ll, MLIRContext *ctx, TMemCopyFamily family,
+    unsigned bitwidth) {
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!ll.hasInDim(kCol))
+    return std::nullopt;
+
+  unsigned instructionColumns =
+      getDenseTMemCopyColumnStride(family, bitwidth);
+  if (!llvm::isPowerOf2_32(instructionColumns) || instructionColumns <= 1)
+    return std::nullopt;
+
+  unsigned instructionColumnBits = llvm::Log2_32(instructionColumns);
+  auto colBases = ll.getBases().lookup(kCol);
+  if (colBases.size() < instructionColumnBits)
+    return std::nullopt;
+
+  for (unsigned bit = 0; bit < instructionColumnBits; ++bit) {
+    ArrayRef<int32_t> basis = colBases[bit];
+    if (basis.size() < 2)
+      return std::nullopt;
+    int32_t actualPhysicalRowDelta = basis[0];
+    int32_t actualPhysicalColumnDelta = basis[1];
+    int32_t expectedPhysicalColumnDelta = 1 << bit;
+    if (actualPhysicalRowDelta == 0 &&
+        actualPhysicalColumnDelta == expectedPhysicalColumnDelta)
+      continue;
+    if (actualPhysicalRowDelta != 0)
+      return std::nullopt;
+    auto runAndPeriod = getTMemCopyColumnSelectionRunAndPeriod(bit);
+    if (!runAndPeriod)
+      return std::nullopt;
+    TMemCopyInstructionColumnPermutationRequirement requirement;
+    requirement.instructionRows = getDenseTMemCopyInstructionRows(family);
+    requirement.instructionColumns = instructionColumns;
+    requirement.logicalColBit = bit;
+    requirement.selectedColumnRun = runAndPeriod->first;
+    requirement.columnSelectionPeriod = runAndPeriod->second;
+    requirement.actualOffset = actualPhysicalColumnDelta;
+    requirement.expectedOffset = expectedPhysicalColumnDelta;
+    return requirement;
+  }
+  return std::nullopt;
+}
+
+static TMemCopySupportResult getDenseTMemCopyColumnPermutationFailure(
+    TMemCopyFamily family,
+    const TMemCopyInstructionColumnPermutationRequirement &requirement) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "direct tcgen05.copy." << stringifyTMemCopyFamily(family)
+     << " requires each logical column tile to remain contiguous in physical "
+        "TMEM column order. Within one "
+     << requirement.instructionColumns
+     << "-column copy instruction, destination column bit "
+     << requirement.logicalColBit << " maps to physical column delta "
+     << requirement.actualOffset << " instead of contiguous physical column "
+        "delta "
+     << requirement.expectedOffset << ".";
+  if (auto maskRequirement =
+          getTMemCopyDestinationMaskRequirement(requirement)) {
+    appendTMemCopyDestinationMaskScheduleGap(
+        os, *maskRequirement, "destination-column permutation requirement",
+        "for each emitted instruction");
+  }
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
+}
+
 static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
@@ -8976,6 +9074,11 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
           getDenseTMemCopyDestinationTileCoord(ll, ctx, logicalCol + i);
       if (!tileCoord || tileCoord->first != tileOrigin->first ||
           tileCoord->second != tileOrigin->second + static_cast<int32_t>(i)) {
+        if (auto permutationRequirement =
+                getDenseTMemCopyDestinationColumnPermutationRequirement(
+                    ll, ctx, family, bitwidth))
+          return getDenseTMemCopyColumnPermutationFailure(
+              family, *permutationRequirement);
         return getUnsupportedTMemCopyResult(
             TMemCopySupportFailureLayer::PhysicalQuery,
             "direct tcgen05.copy requires each logical column tile to remain "
@@ -9986,9 +10089,46 @@ getTMemCopyDescriptorRowSplitRequirement(
   return requirement;
 }
 
+std::optional<TMemCopyInstructionColumnPermutationRequirement>
+getTMemCopyInstructionColumnPermutationRequirement(
+    const TMemCopyInstructionColumnProjectionFailure &failure) {
+  if (failure.kind !=
+          TMemCopyInstructionColumnProjectionFailureKind::NonContiguousOffset ||
+      failure.actualOffset == failure.expectedOffset)
+    return std::nullopt;
+  auto runAndPeriod =
+      getTMemCopyColumnSelectionRunAndPeriod(failure.logicalColBit);
+  if (!runAndPeriod)
+    return std::nullopt;
+
+  TMemCopyInstructionColumnPermutationRequirement requirement;
+  requirement.instructionRows = failure.instructionRows;
+  requirement.instructionColumns = failure.instructionColumns;
+  requirement.logicalColBit = failure.logicalColBit;
+  requirement.selectedColumnRun = runAndPeriod->first;
+  requirement.columnSelectionPeriod = runAndPeriod->second;
+  requirement.actualOffset = failure.actualOffset;
+  requirement.expectedOffset = failure.expectedOffset;
+  return requirement;
+}
+
 std::optional<TMemCopyDestinationMaskRequirement>
 getTMemCopyDestinationMaskRequirement(
     const TMemCopyDescriptorRowSplitRequirement &requirement) {
+  if (requirement.selectedColumnRun == 0 ||
+      requirement.columnSelectionPeriod == 0)
+    return std::nullopt;
+  return TMemCopyDestinationMaskRequirement{
+      /*axis=*/TMemCopyDestinationMaskAxis::Column,
+      /*instructionRows=*/requirement.instructionRows,
+      /*instructionColumns=*/requirement.instructionColumns,
+      /*selectedRun=*/requirement.selectedColumnRun,
+      /*selectionPeriod=*/requirement.columnSelectionPeriod};
+}
+
+std::optional<TMemCopyDestinationMaskRequirement>
+getTMemCopyDestinationMaskRequirement(
+    const TMemCopyInstructionColumnPermutationRequirement &requirement) {
   if (requirement.selectedColumnRun == 0 ||
       requirement.columnSelectionPeriod == 0)
     return std::nullopt;
@@ -10089,6 +10229,17 @@ static std::string formatTMemCopyInstructionColumnProjectionFailure(
         os << ", which is an entire tcgen05.copy instruction row footprint";
     }
   }
+  if (auto permutationRequirement =
+          getTMemCopyInstructionColumnPermutationRequirement(failure)) {
+    os << ", which would require this source-column bit to select shared "
+          "offset "
+       << permutationRequirement->actualOffset << " for "
+       << permutationRequirement->selectedColumnRun
+       << "-column destination runs every "
+       << permutationRequirement->columnSelectionPeriod
+       << " columns within the same " << failure.instructionColumns
+       << "-column instruction";
+  }
   os << " instead of contiguous shared offset " << failure.expectedOffset
      << ". Public tcgen05.copy takes one tensor-memory address and one shared "
         "descriptor per instruction and has no per-column destination mask, "
@@ -10119,6 +10270,47 @@ getTMemCopyDescriptorRowSplitScheduleSupport(
     appendTMemCopyDestinationMaskScheduleGap(
         os, *maskRequirement, "descriptor-row split",
         "for each descriptor row");
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
+}
+
+static std::optional<TMemCopySupportResult>
+getTMemCopyInstructionColumnPermutationScheduleSupport(
+    TMemCopyFamily family, unsigned messageIdx,
+    const TMemCopyInstructionColumnProjectionFailure &failure,
+    StringRef instructionProjectionError) {
+  auto permutationRequirement =
+      getTMemCopyInstructionColumnPermutationRequirement(failure);
+  if (!permutationRequirement)
+    return std::nullopt;
+
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "tcgen05.copy." << stringifyTMemCopyFamily(family)
+     << " descriptor message " << messageIdx
+     << " has an unsupported instruction-column projection. "
+     << instructionProjectionError;
+  os << " The derived source-column permutation requirement would need "
+        "logical column bit "
+     << permutationRequirement->logicalColBit << " to select shared offset "
+     << permutationRequirement->actualOffset
+     << " instead of contiguous shared offset "
+     << permutationRequirement->expectedOffset << " for "
+     << permutationRequirement->selectedColumnRun
+     << "-column destination runs every "
+     << permutationRequirement->columnSelectionPeriod
+     << " columns within the "
+     << permutationRequirement->instructionColumns
+     << "-column copy-instruction footprint. Current tcgen05.copy scheduling "
+        "can change the shared descriptor or source address per emitted "
+        "instruction, but it has no proved source-column-selected source-offset "
+        "schedule inside one instruction.";
+  if (auto maskRequirement =
+          getTMemCopyDestinationMaskRequirement(*permutationRequirement)) {
+    appendTMemCopyDestinationMaskScheduleGap(
+        os, *maskRequirement, "source-column permutation requirement",
+        "for each emitted instruction");
+  }
   return getUnsupportedTMemCopyResult(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
@@ -10513,6 +10705,11 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
               plan.family, messageIdx, instructionProjectionFailure,
               instructionProjectionError))
         return {std::nullopt, *splitSupport};
+      if (auto permutationSupport =
+              getTMemCopyInstructionColumnPermutationScheduleSupport(
+                  plan.family, messageIdx, instructionProjectionFailure,
+                  instructionProjectionError))
+        return {std::nullopt, *permutationSupport};
       if (auto packedLaneSupport = getTMemCopyPackedLaneScheduleSupport(
               plan.family, messageIdx, instructionProjectionFailure,
               instructionProjectionError))
