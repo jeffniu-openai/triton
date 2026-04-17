@@ -24872,3 +24872,18 @@ Open after this slice:
   - commit and push this documentation checkpoint;
   - discuss gaps in numeric order, updating each entry in place as supported,
     impossible, or deferred.
+
+## 2026-04-17 23:50 UTC: note i8 MMAv5 descriptor TODOs in lowering
+
+- Starting point: `codex/tmem` at pushed `430368c0a`.
+- Change:
+  - added a brief TODO at the i8 MMAv5 descriptor encoding site noting that
+    PTX supports separate A/B signedness and integer saturation descriptor
+    fields, while Triton currently exposes one `is_unsigned` bit and no
+    saturation control.
+- Validation:
+  - comment-only change; `git diff --check` only.
+- Next:
+  - checkpoint and push;
+  - when the remote GB200 container API is available, use Gap #1 to drive
+    compile-only PTX/FileCheck/PTXAS validation for i8 MMAv5.

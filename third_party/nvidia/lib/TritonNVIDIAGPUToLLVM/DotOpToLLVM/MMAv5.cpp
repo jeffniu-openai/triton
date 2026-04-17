@@ -132,7 +132,8 @@ static Value createInstDescriptor(ConversionPatternRewriter &rewriter,
     if (llvm::isa<Float8E5M2Type>(type))
       return 1;
     // For 8-bit integer types, signed arithmetic is 1, unsigned arithmetic is
-    // 0.
+    // 0. TODO: PTX supports separate A/B signedness and integer saturation
+    // descriptor bits; expose them in the IR/frontend if needed.
     if (type.isInteger(8))
       return op.getIsUnsigned() ? 0 : 1;
     llvm_unreachable("Unsupported type.");
