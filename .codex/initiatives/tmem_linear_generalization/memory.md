@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:52 UTC no-modifier non-f32 TMEM
+  `load_min/load_max` is now positive software-reduction coverage for
+  non-scales layouts. i32, i16, i8, f16, and bf16 reductions lower as normal
+  TMEM loads plus layout-aware `ttgl.reduce(axis=1)` and assert no
+  `tcgen05.ld.red` emission. bf16 needed a dedicated software combine because
+  `ttgl.minimum/maximum` compare bf16 through f32 and `ttgl.reduce` requires
+  the combine region to return the original element type; the combiner casts
+  the selected value back to bf16. Non-f32 `abs` and NaN-propagating modifier
+  cases remain clean unsupported. Validation: `make -j8`, Python compile,
+  focused non-f32 contract positives (`12 passed`) and negatives (`12
+  passed`), descriptor-chain positives (`10 passed`) and negatives (`8
+  passed`), core i32 representative (`1 passed`), broader reduction selector
+  (`107 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:45 UTC the runtime-matrix mixed-layout `ld.red` row
   now matches the implemented backend behavior. Mixed linear TMEM layouts are
   positive software-reduction coverage: the load returns through ordinary

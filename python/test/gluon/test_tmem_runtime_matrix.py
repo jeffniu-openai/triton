@@ -5499,17 +5499,78 @@ def _seed_ld_red_nan_rows(inp, propagate_nan):
         inp[10, 5] = float("nan")
         inp[50, 15] = float("nan")
 
-LD_RED_NON_F32_CONTRACT_CASES = [
+
+def _make_ld_red_non_f32_input(shape, dtype):
+    if dtype in (torch.int8, torch.int16, torch.int32):
+        return torch.randint(-50, 50, shape, dtype=dtype, device="cuda")
+    return torch.randn(shape, dtype=dtype, device="cuda")
+
+
+def _assert_ld_red_uses_software_reduce(compiled):
+    ptx_red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    llir_red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    assert ptx_red_pairs == llir_red_pairs == []
+    ptx_ld_ops = [
+        op
+        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if op.startswith("tcgen05.ld.sync.aligned.")
+    ]
+    assert ptx_ld_ops
+
+LD_RED_NON_F32_SOFTWARE_CASES = [
     pytest.param(
         "i32_plain",
         torch.int32,
         _make_tmem_linear_layout(128, 128),
         "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
         id="i32_plain",
     ),
+    pytest.param(
+        "bf16_plain",
+        torch.bfloat16,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        id="bf16_plain",
+    ),
+    pytest.param(
+        "f16_plain",
+        torch.float16,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        id="f16_plain",
+    ),
+    pytest.param(
+        "i16_plain",
+        torch.int16,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        id="i16_plain",
+    ),
+    pytest.param(
+        "i8_plain",
+        torch.int8,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        id="i8_plain",
+    ),
+    pytest.param(
+        "f16_legacy_unpacked",
+        torch.float16,
+        TensorMemoryLayout(block=(128, 2), col_stride=2),
+        "auto",
+        id="f16_legacy_unpacked",
+    ),
+]
+
+LD_RED_NON_F32_UNSUPPORTED_CASES = [
     pytest.param(
         "i32_nan",
         torch.int32,
@@ -5529,16 +5590,6 @@ LD_RED_NON_F32_CONTRACT_CASES = [
         tl.PropagateNan.NONE,
         "'abs' requires floating-point element type (f32)",
         id="i32_abs",
-    ),
-    pytest.param(
-        "bf16_plain",
-        torch.bfloat16,
-        _make_tmem_linear_layout(128, 128),
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="bf16_plain",
     ),
     pytest.param(
         "bf16_nan",
@@ -5561,16 +5612,6 @@ LD_RED_NON_F32_CONTRACT_CASES = [
         id="bf16_abs",
     ),
     pytest.param(
-        "f16_plain",
-        torch.float16,
-        _make_tmem_linear_layout(128, 128),
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="f16_plain",
-    ),
-    pytest.param(
         "f16_nan",
         torch.float16,
         _make_tmem_linear_layout(128, 128),
@@ -5590,57 +5631,42 @@ LD_RED_NON_F32_CONTRACT_CASES = [
         "'abs' requires floating-point element type (f32)",
         id="f16_abs",
     ),
-    pytest.param(
-        "i16_plain",
-        torch.int16,
-        _make_tmem_linear_layout(128, 128),
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="i16_plain",
-    ),
-    pytest.param(
-        "i8_plain",
-        torch.int8,
-        _make_tmem_linear_layout(128, 128),
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="i8_plain",
-    ),
-    pytest.param(
-        "f16_legacy_unpacked",
-        torch.float16,
-        TensorMemoryLayout(block=(128, 2), col_stride=2),
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="f16_legacy_unpacked",
-    ),
 ]
 
-LD_RED_NON_F32_DESCRIPTOR_CHAIN_CASES = [
+LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES = [
     pytest.param(
         "i32_plain_descriptor",
         torch.int32,
         "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
         id="i32_plain_descriptor",
     ),
     pytest.param(
         "bf16_plain_descriptor",
         torch.bfloat16,
         "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
         id="bf16_plain_descriptor",
     ),
+    pytest.param(
+        "f16_plain_descriptor",
+        torch.float16,
+        "auto",
+        id="f16_plain_descriptor",
+    ),
+    pytest.param(
+        "i16_plain_descriptor",
+        torch.int16,
+        "auto",
+        id="i16_plain_descriptor",
+    ),
+    pytest.param(
+        "i8_plain_descriptor",
+        torch.int8,
+        "auto",
+        id="i8_plain_descriptor",
+    ),
+]
+
+LD_RED_NON_F32_DESCRIPTOR_CHAIN_UNSUPPORTED_CASES = [
     pytest.param(
         "bf16_nan_descriptor",
         torch.bfloat16,
@@ -5660,15 +5686,6 @@ LD_RED_NON_F32_DESCRIPTOR_CHAIN_CASES = [
         id="bf16_abs_descriptor",
     ),
     pytest.param(
-        "f16_plain_descriptor",
-        torch.float16,
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="f16_plain_descriptor",
-    ),
-    pytest.param(
         "f16_nan_descriptor",
         torch.float16,
         "auto",
@@ -5685,24 +5702,6 @@ LD_RED_NON_F32_DESCRIPTOR_CHAIN_CASES = [
         tl.PropagateNan.NONE,
         "'abs' requires floating-point element type (f32)",
         id="f16_abs_descriptor",
-    ),
-    pytest.param(
-        "i16_plain_descriptor",
-        torch.int16,
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="i16_plain_descriptor",
-    ),
-    pytest.param(
-        "i8_plain_descriptor",
-        torch.int8,
-        "auto",
-        False,
-        tl.PropagateNan.NONE,
-        "tmem_load reduction currently requires f32 element type",
-        id="i8_plain_descriptor",
     ),
 ]
 
@@ -8168,7 +8167,27 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_uses_software_redu
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize(
-    "name,dtype,layout,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_CONTRACT_CASES
+    "name,dtype,layout,load_variant", LD_RED_NON_F32_SOFTWARE_CASES
+)
+def test_tmem_runtime_matrix_ld_red_non_f32_contract_uses_software_reduce(
+    name, dtype, layout, load_variant, red_op
+):
+    inp = _make_ld_red_non_f32_input((128, 128), dtype)
+    out = torch.empty_like(inp)
+    red = torch.empty((128,), dtype=dtype, device="cuda")
+
+    compiled = tmem_ld_red_non_f32_contract_kernel[(1, )](
+        inp, out, red, layout, load_variant, red_op, False, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, False, tl.PropagateNan.NONE)
+    _assert_ld_red_uses_software_reduce(compiled)
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize(
+    "name,dtype,layout,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_UNSUPPORTED_CASES
 )
 def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
     name, dtype, layout, load_variant, use_abs, propagate_nan, expected_diag, red_op, capfd
@@ -8192,7 +8211,34 @@ def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize(
-    "name,dtype,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_DESCRIPTOR_CHAIN_CASES
+    "name,dtype,load_variant", LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES
+)
+def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduce(
+    name, dtype, load_variant, red_op
+):
+    layout = _make_tmem_linear_layout(128, 128)
+    inp = _make_ld_red_non_f32_input((128, 128), dtype)
+    out = torch.empty_like(inp)
+    red = torch.empty((128,), dtype=dtype, device="cuda")
+
+    compiled = tmem_ld_red_descriptor_chain_kernel[(1, )](
+        inp, out, red, layout, 128, load_variant, red_op, False, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, False, tl.PropagateNan.NONE)
+    _assert_ld_red_uses_software_reduce(compiled)
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_index" in ttgir
+    assert "ttg.memdesc_subslice" in ttgir
+    assert "ttg.memdesc_reshape" in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize(
+    "name,dtype,load_variant,use_abs,propagate_nan,expected_diag",
+    LD_RED_NON_F32_DESCRIPTOR_CHAIN_UNSUPPORTED_CASES,
 )
 def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_unsupported(
     name, dtype, load_variant, use_abs, propagate_nan, expected_diag, red_op, capfd

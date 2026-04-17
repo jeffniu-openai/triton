@@ -22112,3 +22112,65 @@ Open after this slice:
     decomposition, not a high-level load/store replacement.
 - Cleanup:
   - removed the temporary probe file; no source changes remain from the probe.
+
+## 2026-04-17 08:52 UTC: non-f32 ld.red no-modifier software fallback
+
+- Starting point: `codex/tmem` at `5ddc0e9d0`.
+- Change:
+  - extended `tensor_memory_descriptor._load_red(...)` so non-scales,
+    non-f32, no-modifier reductions use a normal TMEM load plus
+    `ttgl.reduce(axis=1)` instead of rejecting all non-f32 element types;
+  - added bf16-specific software reduction combiners that compare through the
+    existing f32 min/max path and cast the selected value back to bf16, which
+    preserves `ttgl.reduce` combine-region type invariants;
+  - converted runtime-matrix no-modifier i32, i16, i8, f16, bf16, and f16
+    legacy-unpacked contract rows plus descriptor-chain rows to positive
+    software-reduction coverage;
+  - converted the core i32 representative from a clean-negative test to a
+    value/codegen test that asserts ordinary `tcgen05.ld` and no
+    `tcgen05.ld.red`.
+- Boundary:
+  - this is a software fallback, not an ISA claim that `tcgen05.ld.red`
+    supports non-f32 elements;
+  - non-f32 `abs` and NaN propagation modifiers still raise clean diagnostics.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py python/test/gluon/test_core.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-nonf32-contract-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_non_f32_contract_uses_software_reduce`
+    (`12 passed in 13.36s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-nonf32-contract-negative
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported`
+    (`12 passed in 4.62s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-nonf32-desc-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduce`
+    (`10 passed in 10.85s`);
+  - `CUDA_VISIBLE_DEVICES=3
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu3-nonf32-desc-negative
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_unsupported`
+    (`8 passed in 5.33s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-nonf32-core-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py::test_tmem_reduction_non_f32_uses_software_reduce`
+    (`1 passed in 4.87s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-nonf32-ldred-broad
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ld_red_non_f32 or ld_red_explicit_n_sharded_layout_uses_software_reduce
+    or ld_red_explicit_compatible_layout_variants or
+    ld_red_m64_splitn_linear_layout or ld_red_m64_explicit_splitn_variants or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn or
+    ld_red_mixed_linear_layout_uses_software_reduce'` (`107 passed, 1471
+    deselected in 74.99s`).

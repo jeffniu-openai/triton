@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:52 UTC: promoted no-modifier non-f32 TMEM
+  `load_min/load_max` rows from clean negatives to positive software-reduction
+  coverage for non-scales layouts. The API now lowers i32, i16, i8, f16, and
+  bf16 no-modifier reductions through ordinary `tcgen05.ld` plus
+  layout-aware `ttgl.reduce(axis=1)`; bf16 uses a dedicated combine function
+  that compares via the existing f32 min/max path and casts the selected value
+  back to bf16 to satisfy reduction-region type checking. `abs` and NaN
+  propagation modifiers remain clean unsupported for non-f32. Validation:
+  `make -j8`, Python compile for touched files, focused contract positive
+  (`12 passed`) and negative (`12 passed`) selectors, descriptor-chain
+  positive (`10 passed`) and negative (`8 passed`) selectors, core i32
+  representative (`1 passed`), broader reduction selector (`107 passed`), and
+  `git diff --check`.
 - 2026-04-17 08:45 UTC: converted the stale runtime-matrix mixed-layout
   `ld.red` clean negative into positive software-reduction coverage. The
   backend already lowers this source layout as normal `tcgen05.ld` plus
