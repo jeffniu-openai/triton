@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 12:25 UTC: completed the current MMAv5 higher-rank
+  dim0-slice `ld/st` bucket. The distributed-layout planner now restores CTA
+  ownership in query layouts before atom selection, covering the case where an
+  indexed descriptor view keeps a size-1 `block` dimension while the ownership
+  basis has moved into row/column bases. It also rejects register-layout
+  candidates whose CTA ownership disagrees with the memdesc. This promotes
+  `mmav5_twocta, N=64, 16x128b` and removes the now-empty MMAv5 clean-negative
+  test bucket. Validation: `make -j8`, manual runtime/opcode probe (`maxdiff
+  0.0`), Python compile, `git diff --check`, focused MMAv5 higher-rank
+  selector (`13 passed`), and split-4 `ldst_twocta_descriptor` selector
+  (`9/7/20/9` passed, expected skips only).
 - 2026-04-17 12:13 UTC: restored two-CTA ownership while inferring MMAv5
   descriptor-view encodings. A leading-unit slice over a lifted two-CTA MMAv5
   view can move the CTA ownership basis out of `block` and into trailing

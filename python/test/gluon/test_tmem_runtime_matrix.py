@@ -4361,6 +4361,7 @@ LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS = list(
             ("f32", torch.float32, "mmav5_twocta", 128, "auto"),
         ] + [
             ("f32", torch.float32, "block_two_ctas", 64, "16x128b"),
+            ("f32", torch.float32, "mmav5_twocta", 64, "16x128b"),
             ("i32", torch.int32, "block_two_ctas", 128, "32x32b"),
         ]
     )
@@ -4387,10 +4388,6 @@ LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES = [
         ("block_two_ctas", "mmav5_twocta"),
         ((64, "16x128b"), (128, "auto"), (128, "16x256b")),
     )
-]
-
-LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
-    ("mmav5_twocta", 64, "16x128b"),
 ]
 
 LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES = [
@@ -7186,27 +7183,6 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error(
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
     assert "dims.size()" not in msg
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_mmav5_descriptor_higher_rank_reports_clean_error(layout_name, n, variant,
-                                                                                          capfd):
-    m = 256
-    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(Exception) as excinfo:
-        tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-        )
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    _assert_clean_cta_per_cga_mismatch(text, layout_ctas=1, required_ctas=2)
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

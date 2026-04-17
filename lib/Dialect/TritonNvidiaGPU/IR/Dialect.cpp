@@ -2800,9 +2800,58 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
          TensorMemorySpaceAttr::get(memType.getContext()));
   if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
     return std::nullopt;
+  auto restoreQueryCTAOwnership = [&](LinearLayout layout) {
+    auto *ctx = memType.getContext();
+    auto kBlock = StringAttr::get(ctx, "block");
+    auto kRow = StringAttr::get(ctx, "row");
+    auto kCol = StringAttr::get(ctx, "col");
+    if (!layout.hasInDim(kBlock))
+      return layout;
+    auto bases = layout.getBases();
+    auto blockIt = bases.find(kBlock);
+    if (blockIt == bases.end() || !blockIt->second.empty())
+      return layout;
+    for (StringAttr dim : {kRow, kCol}) {
+      auto dimIt = bases.find(dim);
+      if (dimIt == bases.end() || dimIt->second.empty())
+        continue;
+      ArrayRef<int32_t> candidate = dimIt->second.back();
+      int nonZeroDim = -1;
+      bool valid = true;
+      for (auto [idx, value] : llvm::enumerate(candidate)) {
+        if (value == 0)
+          continue;
+        if (value < 0 || nonZeroDim >= 0) {
+          valid = false;
+          break;
+        }
+        nonZeroDim = static_cast<int>(idx);
+      }
+      if (!valid || nonZeroDim < 0)
+        continue;
+      auto outDims = llvm::to_vector(layout.getOutDimNames());
+      if (static_cast<size_t>(nonZeroDim) >= outDims.size())
+        continue;
+      int32_t dimSize = layout.getOutDimSize(outDims[nonZeroDim]);
+      if (candidate[nonZeroDim] * 2 != dimSize)
+        continue;
+      blockIt->second.push_back(candidate.vec());
+      dimIt->second.pop_back();
+      return LinearLayout(std::move(bases), layout.getOutDims(),
+                          layout.isSurjective());
+    }
+    return layout;
+  };
+  auto hasExpectedCTAOwnership = [&](Attribute attr) {
+    auto maybeTwoCTAs = getTensorMemoryTwoCTAs(memType.getEncoding());
+    if (!maybeTwoCTAs)
+      return true;
+    unsigned expectedCTAs = *maybeTwoCTAs ? 2 : 1;
+    return product<unsigned>(getCTAsPerCGA(attr)) == expectedCTAs;
+  };
   auto isValidLayout = [&](const LinearLayout &layout) {
     auto attr = tryGetLinearEncodingAttr(memType.getContext(), layout);
-    if (!attr)
+    if (!attr || !hasExpectedCTAOwnership(*attr))
       return false;
     auto regTy = RankedTensorType::get(memType.getShape(), memType.getElementType(),
                                        *attr);
@@ -2814,7 +2863,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                    const LinearLayout &queryLayout,
                                    std::optional<TMemLdStRowPlan> queryRowPlan) {
     auto attr = tryGetLinearEncodingAttr(memType.getContext(), layout);
-    if (!attr)
+    if (!attr || !hasExpectedCTAOwnership(*attr))
       return false;
     auto regTy = RankedTensorType::get(memType.getShape(),
                                        memType.getElementType(), *attr);
@@ -2865,7 +2914,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   if (ll.getNumOutDims() == 0)
     return std::nullopt;
   if (queryLayoutOverride)
-    ll = *queryLayoutOverride;
+    ll = restoreQueryCTAOwnership(*queryLayoutOverride);
   auto bitwidth = memType.getElementTypeBitWidth();
   if (queryLayoutOverride) {
     if (auto layout = getTwoCTAScalesDescriptorViewTMemLdStLayout(

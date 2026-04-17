@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:25 UTC the current MMAv5 higher-rank dim0-slice
+  `ld/st` bucket is fully positive. The last row,
+  `mmav5_twocta, N=64, 16x128b`, was not an ISA gap: after descriptor-view
+  type inference recovered the two-CTA memdesc, the register-layout query path
+  could still select a raw layout with no `block` ownership. The
+  distributed-layout planner now restores ownership from a size-1 `block`
+  query layout before atom selection and validates returned layouts against
+  the memdesc CTA ownership. The stale clean-negative test bucket was removed
+  rather than left as an empty skipped parametrization. Validation: `make
+  -j8`; manual runtime/opcode probe (`maxdiff 0.0`, expected full and half
+  `16x128b` opcodes); Python compile; `git diff --check`; focused MMAv5
+  higher-rank selector (`13 passed`); split-4 `ldst_twocta_descriptor`
+  selector (`9/7/20/9` passed, expected skips only).
+
 - Latest: 2026-04-17 12:13 UTC MMAv5 higher-rank two-CTA descriptor-view
   inference now preserves CTA ownership instead of silently degrading to a
   one-CTA view encoding. A leading-unit slice can leave `block` empty while

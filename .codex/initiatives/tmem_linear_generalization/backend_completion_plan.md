@@ -1128,6 +1128,12 @@ Progress:
   `mmav5_twocta, N=128, auto` higher-rank dim0-slice row and reclassifies the
   `N=256, 32x32b` row as true TMEM OOR; the `N=64, 16x128b` row remains a
   clean register-layout frontier.
+- 2026-04-17 12:25 UTC: closed that `N=64, 16x128b` frontier by applying the
+  same ownership principle to distributed register-layout planning. Query
+  layouts that retain a size-1 `block` dimension can now re-home a trailing
+  full-extent row/column basis into `block` before atom layout selection, and
+  returned register layouts must match the memdesc CTA ownership. The current
+  MMAv5 higher-rank dim0-slice `ld/st` bucket is now fully positive.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would
