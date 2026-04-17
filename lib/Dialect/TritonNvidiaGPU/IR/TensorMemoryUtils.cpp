@@ -231,6 +231,39 @@ getTMemLdStCandidateLayoutsForQuery(Value memDesc, MemDescType queryTy,
   return candidates;
 }
 
+SmallVector<DistributedEncodingTrait>
+getTMemLdStGenericCompatibleLayouts(Value memDesc, MemDescType queryTy,
+                                    unsigned numWarps, StringRef atomName) {
+  SmallVector<DistributedEncodingTrait> layouts;
+  std::optional<LinearEncodingAttr> canonicalSplitNAttr;
+  bool deferCanonicalM64SplitNCompatibleLayout =
+      shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(memDesc, queryTy,
+                                                            atomName);
+  if (deferCanonicalM64SplitNCompatibleLayout) {
+    if (auto canonicalSplitN =
+            getCanonicalM64SplitNLayout(queryTy, numWarps)) {
+      canonicalSplitNAttr =
+          LinearEncodingAttr::get(queryTy.getContext(), *canonicalSplitN);
+    }
+  }
+
+  std::optional<DistributedEncodingTrait> deferredLayout;
+  auto addLayout = [&](DistributedEncodingTrait layout) {
+    if (canonicalSplitNAttr && layout == *canonicalSplitNAttr) {
+      deferredLayout = layout;
+      return;
+    }
+    layouts.push_back(layout);
+  };
+  for (DistributedEncodingTrait layout :
+       getTmemCompatibleLayouts(queryTy, numWarps)) {
+    addLayout(layout);
+  }
+  if (deferredLayout)
+    layouts.push_back(*deferredLayout);
+  return layouts;
+}
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
                                                       unsigned numWarps,
                                                       TMemAccessAtom atom) {

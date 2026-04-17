@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:07 UTC direct `ld/st` generic compatible-layout
+  fallback ordering is backend-owned. `TensorMemoryUtils` now exposes
+  `getTMemLdStGenericCompatibleLayouts(...)`, which appends the generic
+  fallback layouts while deferring canonical M64 split-N compatible layouts
+  when the backend predicate requires it. The Gluon bridge no longer owns that
+  ordering policy. Support is unchanged. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, Python compile, focused M64/direct-layout runtime
+  selector (`64 passed, 1 skipped`), `test_core.py -k tmem_linear_m64`
+  (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:04 UTC direct `ld/st` row-plan candidate layout
   enumeration is backend-owned. `TensorMemoryUtils` now exposes
   `TMemLdStCandidateLayout` and `getTMemLdStCandidateLayoutsForQuery(...)`;

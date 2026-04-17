@@ -1559,28 +1559,6 @@ void init_gluon_ir(py::module &&m) {
               layouts.push_back(attr);
             }
           };
-          bool deferCanonicalM64SplitNCompatibleLayout =
-              ttng::shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
-                  queryMemDesc, queryTy, atomName);
-          auto addGenericCompatibleLayouts = [&]() {
-            std::optional<ttg::DistributedEncodingTrait> deferredLayout;
-            std::optional<ttg::LinearEncodingAttr> canonicalSplitNAttr;
-            if (deferCanonicalM64SplitNCompatibleLayout) {
-              if (auto canonicalSplitN =
-                      ttng::getCanonicalM64SplitNLayout(queryTy, numWarps)) {
-                canonicalSplitNAttr = createLinearRegAttr(*canonicalSplitN);
-              }
-            }
-            for (auto layout : ttng::getTmemCompatibleLayouts(queryTy, numWarps)) {
-              if (canonicalSplitNAttr && layout == *canonicalSplitNAttr) {
-                deferredLayout = layout;
-                continue;
-              }
-              addAttr(layout);
-            }
-            if (deferredLayout)
-              addAttr(*deferredLayout);
-          };
           auto addLayout = [&](tt::LinearLayout layout) {
             auto normalizedLayout =
                 normalizeRegLayoutForAttr(std::move(layout));
@@ -1601,7 +1579,10 @@ void init_gluon_ir(py::module &&m) {
             }
             addLayout(std::move(candidate.layout));
           }
-          addGenericCompatibleLayouts();
+          for (auto layout : ttng::getTMemLdStGenericCompatibleLayouts(
+                   queryMemDesc, queryTy, numWarps, atomName)) {
+            addAttr(layout);
+          }
           return layouts;
         };
         auto getBlockedFallbackLayouts =

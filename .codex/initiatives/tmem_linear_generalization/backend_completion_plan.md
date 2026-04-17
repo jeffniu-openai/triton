@@ -172,6 +172,10 @@ Progress:
   direct-layout decision and split-N-fastpath refusal for exact-view
   candidates. The Gluon bridge still converts layouts to pybind-visible Gluon
   objects, but no longer builds this candidate set itself.
+- 2026-04-17 08:07 UTC: moved generic compatible-layout fallback ordering into
+  `TensorMemoryUtils` as `getTMemLdStGenericCompatibleLayouts(...)`. The
+  backend now owns canonical M64 split-N compatible-layout deferral for the
+  generic fallback list; the Gluon bridge only appends the returned attributes.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

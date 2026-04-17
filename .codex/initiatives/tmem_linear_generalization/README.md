@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:07 UTC: moved direct `ld/st` generic compatible-layout
+  fallback ordering into `TensorMemoryUtils` as
+  `getTMemLdStGenericCompatibleLayouts(...)`. The backend now owns the
+  canonical M64 split-N compatible-layout deferral for generic fallback
+  layouts, while the Gluon bridge only appends backend-provided attributes.
+  Support is unchanged. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile for affected Gluon tests, focused
+  M64/direct-layout runtime selector (`64 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
 - 2026-04-17 08:04 UTC: moved direct `ld/st` row-plan candidate layout
   enumeration from the Gluon bridge into `TensorMemoryUtils` as
   `TMemLdStCandidateLayout` plus

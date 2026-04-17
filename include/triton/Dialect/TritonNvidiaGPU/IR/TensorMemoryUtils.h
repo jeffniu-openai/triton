@@ -461,6 +461,10 @@ llvm::SmallVector<TMemLdStCandidateLayout>
 getTMemLdStCandidateLayoutsForQuery(Value memDesc, gpu::MemDescType queryTy,
                                     unsigned numWarps, StringRef atomName);
 
+llvm::SmallVector<gpu::DistributedEncodingTrait>
+getTMemLdStGenericCompatibleLayouts(Value memDesc, gpu::MemDescType queryTy,
+                                    unsigned numWarps, StringRef atomName);
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
 
