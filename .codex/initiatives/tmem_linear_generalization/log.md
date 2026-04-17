@@ -24781,3 +24781,28 @@ Open after this slice:
 - Next:
   - commit and push this cleanup checkpoint;
   - continue the active tracker plan.
+
+## 2026-04-17 21:45 UTC: full runtime-matrix sweep after backend-policy cleanup
+
+- Starting point: `codex/tmem` at pushed `420bd28bf`.
+- Commands:
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'reports_clean_unsupported or reports_clean_error'`
+  - `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`
+- Results:
+  - clean-negative/error collect-only remains `161/1592`;
+  - all corrected runtime-matrix buckets passed with complete `1592/1592`
+    coverage;
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` cases.
+- Logs:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_213804/`
+- Next:
+  - commit and push this validation checkpoint;
+  - update the tracker toward final boundary/closure status unless a new
+    unblocked support-bearing slice is identified.

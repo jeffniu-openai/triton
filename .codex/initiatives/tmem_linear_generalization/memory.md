@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:45 UTC full validation after backend-policy cleanup:
+  the corrected runtime-matrix runner passed all buckets again after the
+  MMAv5 address helper, stale copy-address deletion, and Gluon view-predicate
+  cleanup checkpoints. Bucket evidence: `cp` `312 passed, 4 skipped`; `mma`
+  `601 passed`; `splitn` `35 passed`; `ld_red` `247 passed`; `ldst`
+  `295 passed, 98 skipped`; aggregate `1490 passed, 102 skipped` across all
+  `1592` collected cases. Logs:
+  `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_213804/`.
+  The combined clean-negative/error collect-only surface remains `161/1592`.
+  Next: checkpoint/push, then update the tracker toward final boundary status
+  if no unblocked support-bearing slice remains.
+
 - Latest: 2026-04-17 21:37 UTC Gluon view-producer cleanup: exposed backend
   `isExplicitTMemLdStViewProducer` and made the Gluon register-layout bridge
   use it instead of spelling the explicit view op list locally. This is

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:37 UTC
+Last updated: 2026-04-17 21:45 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -85,6 +85,9 @@ slice: `165/1592` tests collected (1427 deselected) in 3.20s.
 Result after the 20:48 integer `ld.red` NaN no-op promotion:
 `161/1592` tests collected (1431 deselected) in 3.13s.
 
+Result after the 21:37 backend-policy cleanup checkpoints:
+`161/1592` tests collected (1431 deselected) in 2.97s.
+
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
   too-narrow n-sharded scale atoms. The n-sharded rows now report a structured
@@ -153,7 +156,22 @@ Current buckets:
 
 ## Current Runtime Matrix Validation
 
-Latest checkpoint at 2026-04-17 21:26 UTC after the Phase F leading-slice
+Latest checkpoint at 2026-04-17 21:45 UTC after the Phase F backend-policy
+cleanup commits:
+
+- `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`
+  passed all corrected buckets with complete `1592/1592` coverage.
+- Bucket evidence:
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` cases.
+- Logs:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_213804/`
+
+Previous checkpoint at 2026-04-17 21:26 UTC after the Phase F leading-slice
 replay policy cleanup and MMAv5 family address-layout cleanup:
 
 - `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`
@@ -457,6 +475,15 @@ direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
 frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:45 UTC: reran the corrected full runtime-matrix runner after
+  the latest backend-policy cleanup commits. All buckets passed with complete
+  `1592/1592` coverage: `cp` `312 passed, 4 skipped`; `mma` `601 passed`;
+  `splitn` `35 passed`; `ld_red` `247 passed`; `ldst`
+  `295 passed, 98 skipped`; aggregate `1490 passed, 102 skipped`. Per-shard
+  logs are in
+  `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_213804/`.
+  Combined clean-negative/error collect-only remains `161/1592`.
 
 - 2026-04-17 21:37 UTC: exposed backend
   `isExplicitTMemLdStViewProducer` and replaced the Gluon bridge's local

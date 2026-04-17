@@ -48,6 +48,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:45 UTC: reran the corrected full runtime-matrix sweep after
+  the latest backend-policy cleanups. The matrix remains green with complete
+  bucket coverage: `cp` `312 passed, 4 skipped`; `mma` `601 passed`;
+  `splitn` `35 passed`; `ld_red` `247 passed`; `ldst`
+  `295 passed, 98 skipped`; aggregate `1490 passed, 102 skipped` across all
+  `1592` cases. Logs are under
+  `experiments/results/tmem_runtime_matrix_sweep_20260417_213804/`.
+  Collect-only `reports_clean_unsupported or reports_clean_error` remains
+  `161/1592`, matching the classified boundary inventory. Next: checkpoint
+  this validation and move the tracker toward final boundary/closure status
+  unless a new unblocked support-bearing slice is found.
 - 2026-04-17 21:37 UTC: exposed the backend explicit-view predicate
   `isExplicitTMemLdStViewProducer` and removed the matching local view-like
   memdesc test from the Gluon register-layout bridge. This keeps type-only
