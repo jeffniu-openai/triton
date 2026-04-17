@@ -414,6 +414,10 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 
+RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
+                                                   Value memDesc,
+                                                   unsigned numWarps);
+
 FailureOr<std::optional<TMemAccessAtom>>
 parseTMemAccessAtomName(StringRef atomName, bool allowAuto = false,
                         bool splitNAsPacked = false);

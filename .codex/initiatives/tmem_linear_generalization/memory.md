@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:19 UTC M64 reduction-load result-type
+  canonicalization is now backend-owned. `TensorMemoryUtils` exposes
+  `canonicalizeTMemLoadReductionType(...)`, and `python/src/gluon_ir.cc`
+  calls that instead of carrying a local raw-query/M64 split-N rewrite helper.
+  Behavior is unchanged: the rewrite remains limited to noncanonical rank-2
+  M64 f32 exact raw queries that prove the canonical split-N layout and keep a
+  reduction-friendly result layout. Validation: `make -j8`, py-compile for
+  the Python runtime files, and `test_tmem_runtime_matrix.py -k "ld_red_m64 or
+  m64_splitn or ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b"`
+  (`47 passed`).
+
 - Latest: 2026-04-17 06:16 UTC TMEM atom request semantics are now
   backend-owned: `TensorMemoryUtils` exposes the access-atom name parser, M64
   split-N descriptor-type predicate, descriptor-handle split-N request mapping,

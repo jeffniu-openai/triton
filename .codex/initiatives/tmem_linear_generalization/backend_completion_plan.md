@@ -1247,6 +1247,10 @@ Progress:
   This is a layering cleanup toward one backend planner contract: support did
   not change, but frontend code no longer carries a separate copy of the
   split-N/M64 atom semantics.
+- 2026-04-17 06:19 UTC: moved the remaining pybind-local M64 reduction-load
+  result-type canonicalization into `TensorMemoryUtils`. The new backend API
+  keeps the same exact-query guard and reduction-friendly proof while removing
+  another frontend copy of the M64 split-N raw-query rewrite.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

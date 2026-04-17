@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:19 UTC: moved the M64 reduction-load result-type
+  canonicalization helper from `python/src/gluon_ir.cc` into
+  `TensorMemoryUtils` as `canonicalizeTMemLoadReductionType(...)`. The helper
+  still only rewrites noncanonical rank-2 M64 f32 reduction loads whose exact
+  raw query proves the canonical split-N layout and the result remains
+  reduction-friendly. Validation: `make -j8`, py-compile for the Python
+  runtime files, and the focused reduction selector (`47 passed`).
 - 2026-04-17 06:16 UTC: moved TMEM `ld/st` access-atom parsing,
   descriptor-handle split-N request mapping, M64 split-N descriptor-type
   classification, and requested-vs-realized atom compatibility from

@@ -358,41 +358,6 @@ template <typename CondT> static void check(CondT &&cond, const char *msg) {
     throw py::value_error(msg);
 }
 
-static RankedTensorType canonicalizeTMemReductionLoadType(
-    RankedTensorType resultTy, Value memDesc, unsigned numWarps) {
-  auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
-  if (!memDescTy || numWarps != 4 || memDescTy.getRank() != 2 ||
-      memDescTy.getShape()[0] != 64 ||
-      memDescTy.getElementTypeBitWidth() != 32 ||
-      isa<ttng::TensorMemoryScalesEncodingAttr>(memDescTy.getEncoding()))
-    return resultTy;
-
-  int64_t n = memDescTy.getShape()[1];
-  if (n < 2 || !llvm::isPowerOf2_64(n))
-    return resultTy;
-
-  auto rawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
-      memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
-  if (failed(rawQuery) || ttng::hasCanonicalM64SplitNRows(rawQuery->layout))
-    return resultTy;
-
-  // A noncanonical M64 split-N TMEM image can make an explicit 32x32b
-  // reduction layout scalarize to .x1. Select the canonical split-N reduction
-  // layout once the raw query proves the same simple physical image.
-  auto canonical =
-      ttng::getCanonicalM64SplitNLayoutForRawQuery(memDescTy, *rawQuery,
-                                                   numWarps);
-  if (!canonical)
-    return resultTy;
-  auto attr =
-      ttg::LinearEncodingAttr::get(memDesc.getContext(), std::move(*canonical));
-  auto canonicalTy = resultTy.cloneWithEncoding(attr);
-  if (!ttng::isReductionFriendlyTmemLoadLayout(
-          canonicalTy, ttg::toLinearLayout(canonicalTy)))
-    return resultTy;
-  return canonicalTy;
-}
-
 void init_gluon_ir(py::module &&m) {
   using ret = py::return_value_policy;
 
@@ -979,7 +944,7 @@ void init_gluon_ir(py::module &&m) {
 
             if (redOp) {
               if (auto rankedTy = dyn_cast<RankedTensorType>(resultTy))
-                resultTy = canonicalizeTMemReductionLoadType(
+                resultTy = ttng::canonicalizeTMemLoadReductionType(
                     rankedTy, memDesc, numWarps);
               redOpAttr = ttng::TMEMLoadReduceModifierAttr::get(
                   self.getContext(), redOp.value());

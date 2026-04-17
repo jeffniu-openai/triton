@@ -2805,6 +2805,36 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
   return getCanonicalM64SplitNLayout(memTy.getContext(), n, numWarps);
 }
 
+RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
+                                                   Value memDesc,
+                                                   unsigned numWarps) {
+  auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (!isM64SplitNDescriptorType(memDescTy, numWarps))
+    return resultTy;
+
+  int64_t n = memDescTy.getShape()[1];
+  if (n < 2 || !llvm::isPowerOf2_64(n))
+    return resultTy;
+
+  auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+      memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
+  if (failed(rawQuery) || hasCanonicalM64SplitNRows(rawQuery->layout))
+    return resultTy;
+
+  auto canonical =
+      getCanonicalM64SplitNLayoutForRawQuery(memDescTy, *rawQuery, numWarps);
+  if (!canonical)
+    return resultTy;
+
+  auto attr =
+      LinearEncodingAttr::get(memDesc.getContext(), std::move(*canonical));
+  auto canonicalTy = resultTy.cloneWithEncoding(attr);
+  if (!isReductionFriendlyTmemLoadLayout(canonicalTy,
+                                         toLinearLayout(canonicalTy)))
+    return resultTy;
+  return canonicalTy;
+}
+
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps) {
   auto memDescTy = dyn_cast<MemDescType>(memDesc.getType());

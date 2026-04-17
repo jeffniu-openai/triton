@@ -1,3 +1,18 @@
+## 2026-04-17 06:19 UTC: moved M64 reduction-load type canonicalization backend-side
+
+- Starting point: `codex/tmem` at `0e87ec964`.
+- Change:
+  - added `canonicalizeTMemLoadReductionType(...)` in `TensorMemoryUtils`;
+  - removed the equivalent pybind-local helper from `python/src/gluon_ir.cc`;
+  - kept the same constraints: rank-2 M64 f32, noncanonical raw query,
+    canonical split-N layout proof, and reduction-friendly result type.
+- Validation:
+  - `make -j8`;
+  - py-compile for the Python runtime files;
+  - `test_tmem_runtime_matrix.py -k "ld_red_m64 or m64_splitn or
+    ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b"`
+    (`47 passed`).
+
 ## 2026-04-17 06:16 UTC: moved TMEM atom request semantics into TensorMemoryUtils
 
 - Starting point: `codex/tmem` at `6c597ce69`.
