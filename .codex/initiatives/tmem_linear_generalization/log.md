@@ -24743,3 +24743,21 @@ Open after this slice:
   - commit and push this cleanup checkpoint;
   - continue the active tracker plan, preferring support-bearing Phase C/Phase
     E work unless the next inspection finds another backend-policy duplicate.
+
+## 2026-04-17 21:34 UTC: remove unused copy address helpers from lowering
+
+- Starting point: `codex/tmem` at pushed `bddec7fff`.
+- Change:
+  - deleted unused `getTMemCopyAddressLayout` and `getTMemCopyViewOffset`
+    statics from `TensorMemoryToLLVM.cpp`.
+- Intent:
+  - no support surface changes;
+  - remove stale family-specific address/layout sorting from LLVM lowering now
+    that copy planning owns executable schedule and footprint semantics.
+- Validation:
+  - `make -j8`;
+  - `git diff --check`.
+- Next:
+  - commit and push this deletion checkpoint;
+  - continue support-bearing Phase C/Phase E probes or the next backend-policy
+    cleanup slice.

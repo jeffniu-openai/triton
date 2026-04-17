@@ -1,5 +1,12 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:34 UTC stale copy-address helper deletion: removed
+  unused `TensorMemoryToLLVM.cpp` helpers for copy address layout/view offset.
+  Those helpers were no longer called and still encoded family-specific layout
+  sorting outside the backend copy planner. Support impact is unchanged.
+  Validation: `make -j8`; `git diff --check`. Next: checkpoint/push and keep
+  executing the active tracker plan.
+
 - Latest: 2026-04-17 21:32 UTC Phase F MMAv5 address-layout helper cleanup:
   `DotOpMmaV5TmemLoader` no longer owns the physical-bitcast predicate, typed
   exact-layout fallback ladder, family-layout selection, or tile-order

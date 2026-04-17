@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:32 UTC
+Last updated: 2026-04-17 21:34 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -215,6 +215,17 @@ Baseline checkpoint at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - `git diff --check`.
 
 ## Latest Cleanup Checkpoint
+
+2026-04-17 21:34 UTC:
+
+- Deleted unused `TensorMemoryToLLVM.cpp` copy address-layout/view-offset
+  helpers that still carried family-specific layout sorting outside the shared
+  copy planner.
+- This is deletion-only cleanup; no support rows were promoted and no
+  clean-negative inventory changed.
+- Validation:
+  - `make -j8`;
+  - `git diff --check`.
 
 2026-04-17 21:32 UTC:
 
@@ -434,6 +445,11 @@ direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
 frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:34 UTC: deleted unused copy address-layout/view-offset helper
+  code from `TensorMemoryToLLVM.cpp`. The removed code was not referenced by
+  lowering and preserved stale family-specific layout sorting outside the
+  backend copy planner. Validation: `make -j8`; `git diff --check`.
 
 - 2026-04-17 21:32 UTC: moved MMAv5 TMEM address-layout and tile-order offset
   selection from LLVM lowering into backend `TensorMemoryUtils` helpers. This

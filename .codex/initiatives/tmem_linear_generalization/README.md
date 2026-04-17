@@ -48,6 +48,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:34 UTC: deleted unused `TensorMemoryToLLVM.cpp` copy address
+  helper code that carried stale family-specific layout sorting and view-offset
+  arithmetic. No lowering path referenced it; removing it avoids preserving a
+  second copy-planning policy surface outside the backend planner. Validation:
+  `make -j8`; `git diff --check`. Next: checkpoint/push and continue the
+  active tracker plan.
 - 2026-04-17 21:32 UTC: continued Phase F cleanup by moving MMAv5 TMEM
   address-layout and tile-order offset selection into backend
   `TensorMemoryUtils` helpers. `DotOpMmaV5TmemLoader` now asks
