@@ -20709,3 +20709,36 @@ Open after this slice:
   - focused scaled-MMAv5 selector passed
     (`41 passed, 1534 deselected in 20.05s`);
   - `git diff --check`.
+
+## 2026-04-17 04:53 UTC: moved explicit M64 ld.red split-N canonicalization to C++
+
+- Starting point: `codex/tmem` at `052d4f750`.
+- Probe:
+  - deleting `_try_m64_reduction_layout_for_explicit_32x32b` without a C++
+    replacement made the two noncanonical explicit-`32x32b` M64 `ld.red`
+    rows fail during parsing with the existing scalar `.x1` reduction
+    diagnostic;
+  - the stable backend proof is the descriptor raw-query image, not equality
+    with the raw-query direct `I32x32b` layout: the Python-era explicit layout
+    can still be a different register layout while lowering to an unsupported
+    scalar reduction message.
+- Change:
+  - added C++ recognition for rank-2 M64 f32 non-scales raw queries with one
+    zero row basis and permuted power-of-two row/column bases;
+  - `create_tmem_load` now accepts the active warp count and canonicalizes
+    matching reduction loads to `getCanonicalM64SplitNLayout(...)` before
+    creating `ttng.tmem_load`;
+  - deleted Python helpers
+    `_is_simple_m64_splitn_tmem_layout`,
+    `_has_canonical_m64_splitn_rows`, and
+    `_try_m64_reduction_layout_for_explicit_32x32b`.
+- Validation:
+  - `make -j8`;
+  - `python -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused M64 explicit/default selector passed
+    (`23 passed, 1552 deselected in 10.22s`);
+  - adjacent `ld.red` selector passed
+    (`59 passed, 1516 deselected in 30.10s`);
+  - `git diff --check`.

@@ -377,6 +377,110 @@ template <typename CondT> static void check(CondT &&cond, const char *msg) {
     throw py::value_error(msg);
 }
 
+static bool hasCanonicalM64SplitNRows(const tt::LinearLayout &layout,
+                                      MLIRContext *ctx) {
+  auto kRow = StringAttr::get(ctx, "row");
+  if (!layout.hasInDim(kRow) || layout.getInDimSize(kRow) != 128)
+    return false;
+  constexpr std::array<int32_t, 7> expectedRows = {1,  2,  4, 8,
+                                                   0, 16, 32};
+  if (layout.getInDimSizeLog2(kRow) != expectedRows.size())
+    return false;
+  for (auto [idx, expected] : llvm::enumerate(expectedRows)) {
+    auto basis = layout.getBasis(kRow, idx);
+    if (basis.size() != 2 || basis[0] != expected || basis[1] != 0)
+      return false;
+  }
+  return true;
+}
+
+static bool isSimpleM64SplitNRawQueryLayout(const tt::LinearLayout &layout,
+                                            int64_t m, int64_t n,
+                                            MLIRContext *ctx) {
+  if (m != 64 || n < 2 || !llvm::isPowerOf2_64(n))
+    return false;
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (layout.getNumOutDims() != 2 || layout.getNumInDims() != 2 ||
+      !layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
+      layout.getInDimSize(kRow) != 128 || layout.getInDimSize(kCol) != n)
+    return false;
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (layout.getOutDimSize(outDims[0]) != m ||
+      layout.getOutDimSize(outDims[1]) != n)
+    return false;
+
+  std::array<bool, 6> seenRows = {};
+  unsigned zeroRows = 0;
+  for (unsigned bit = 0; bit < layout.getInDimSizeLog2(kRow); ++bit) {
+    auto basis = layout.getBasis(kRow, bit);
+    if (basis.size() != 2 || basis[1] != 0)
+      return false;
+    if (basis[0] == 0) {
+      ++zeroRows;
+      continue;
+    }
+    if (basis[0] < 0 ||
+        !llvm::isPowerOf2_32(static_cast<uint32_t>(basis[0])) ||
+        basis[0] > 32)
+      return false;
+    unsigned rowBit = llvm::Log2_32(static_cast<uint32_t>(basis[0]));
+    if (rowBit >= seenRows.size() || seenRows[rowBit])
+      return false;
+    seenRows[rowBit] = true;
+  }
+  if (zeroRows != 1 || !llvm::all_of(seenRows, [](bool seen) { return seen; }))
+    return false;
+
+  SmallVector<bool> seenCols(layout.getInDimSizeLog2(kCol), false);
+  for (unsigned bit = 0; bit < layout.getInDimSizeLog2(kCol); ++bit) {
+    auto basis = layout.getBasis(kCol, bit);
+    if (basis.size() != 2 || basis[0] != 0 || basis[1] <= 0 ||
+        basis[1] >= n ||
+        !llvm::isPowerOf2_32(static_cast<uint32_t>(basis[1])))
+      return false;
+    unsigned colBit = llvm::Log2_32(static_cast<uint32_t>(basis[1]));
+    if (colBit >= seenCols.size() || seenCols[colBit])
+      return false;
+    seenCols[colBit] = true;
+  }
+  return llvm::all_of(seenCols, [](bool seen) { return seen; });
+}
+
+static RankedTensorType canonicalizeTMemReductionLoadType(
+    RankedTensorType resultTy, Value memDesc, unsigned numWarps) {
+  auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
+  if (!memDescTy || numWarps != 4 || memDescTy.getRank() != 2 ||
+      memDescTy.getShape()[0] != 64 ||
+      memDescTy.getElementTypeBitWidth() != 32 ||
+      isa<ttng::TensorMemoryScalesEncodingAttr>(memDescTy.getEncoding()))
+    return resultTy;
+
+  auto *ctx = memDesc.getContext();
+  int64_t n = memDescTy.getShape()[1];
+  if (n < 2 || !llvm::isPowerOf2_64(n))
+    return resultTy;
+
+  auto rawQuery = ttng::inferStandaloneTMemLdStQueryLayout(
+      memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
+  if (failed(rawQuery) || hasCanonicalM64SplitNRows(rawQuery->layout, ctx) ||
+      !isSimpleM64SplitNRawQueryLayout(rawQuery->layout, /*m=*/64, n, ctx))
+    return resultTy;
+
+  // A noncanonical M64 split-N TMEM image can make an explicit 32x32b
+  // reduction layout scalarize to .x1. Select the canonical split-N reduction
+  // layout once the raw query proves the same simple physical image.
+  auto canonical = ttng::getCanonicalM64SplitNLayout(ctx, n, numWarps);
+  if (!canonical)
+    return resultTy;
+  auto attr = ttg::LinearEncodingAttr::get(ctx, std::move(*canonical));
+  auto canonicalTy = resultTy.cloneWithEncoding(attr);
+  if (!ttng::isReductionFriendlyTmemLoadLayout(
+          canonicalTy, ttg::toLinearLayout(canonicalTy)))
+    return resultTy;
+  return canonicalTy;
+}
+
 void init_gluon_ir(py::module &&m) {
   using ret = py::return_value_policy;
 
@@ -956,12 +1060,15 @@ void init_gluon_ir(py::module &&m) {
           "create_tmem_load",
           [](GluonOpBuilder &self, Type resultTy, Value memDesc,
              std::optional<ttng::TMEMLoadReduceModifier> redOp, bool useAbs,
-             tt::PropagateNan propagateNan) -> py::object {
+             tt::PropagateNan propagateNan, unsigned numWarps) -> py::object {
             ttng::TMEMLoadReduceModifierAttr redOpAttr = nullptr;
             BoolAttr absAttr = nullptr;
             BoolAttr nanAttr = nullptr;
 
             if (redOp) {
+              if (auto rankedTy = dyn_cast<RankedTensorType>(resultTy))
+                resultTy = canonicalizeTMemReductionLoadType(
+                    rankedTy, memDesc, numWarps);
               redOpAttr = ttng::TMEMLoadReduceModifierAttr::get(
                   self.getContext(), redOp.value());
               if (useAbs)
@@ -986,7 +1093,8 @@ void init_gluon_ir(py::module &&m) {
           },
           py::arg("resultTy"), py::arg("memDesc"),
           py::arg("redOp") = py::none(), py::arg("useAbs") = false,
-          py::arg("propagateNan") = tt::PropagateNan::NONE)
+          py::arg("propagateNan") = tt::PropagateNan::NONE,
+          py::arg("numWarps") = 0)
       .def("create_tmem_copy",
            [](GluonOpBuilder &self, Value src, Value dst) {
              self.create<ttng::TMEMCopyOp>(src, dst, /*barrier=*/Value());
@@ -2289,68 +2397,9 @@ void init_gluon_ir(py::module &&m) {
             if (n < 2 || !llvm::isPowerOf2_64(n))
               return py::none();
 
-            const auto &rawLayout = rawQueryLayout.layout;
-            auto kRow = StringAttr::get(ctx, "row");
-            auto kCol = StringAttr::get(ctx, "col");
-            if (rawLayout.getNumOutDims() != 2 ||
-                rawLayout.getNumInDims() != 2 ||
-                !rawLayout.hasInDim(kRow) || !rawLayout.hasInDim(kCol) ||
-                rawLayout.getInDimSize(kRow) != 128 ||
-                rawLayout.getInDimSize(kCol) != n) {
-              return py::none();
-            }
-            auto outDims = llvm::to_vector(rawLayout.getOutDimNames());
-            if (rawLayout.getOutDimSize(outDims[0]) !=
-                    queryMemDescTy.getShape()[0] ||
-                rawLayout.getOutDimSize(outDims[1]) != n) {
-              return py::none();
-            }
-
-            std::array<bool, 6> seenRows = {};
-            unsigned zeroRows = 0;
-            for (unsigned bit = 0; bit < rawLayout.getInDimSizeLog2(kRow);
-                 ++bit) {
-              auto basis = rawLayout.getBasis(kRow, bit);
-              if (basis.size() != 2 || basis[1] != 0)
-                return py::none();
-              if (basis[0] == 0) {
-                ++zeroRows;
-                continue;
-              }
-              if (basis[0] < 0 || basis[0] > 32 ||
-                  !llvm::isPowerOf2_32(
-                      static_cast<uint32_t>(basis[0]))) {
-                return py::none();
-              }
-              unsigned rowBit =
-                  llvm::Log2_32(static_cast<uint32_t>(basis[0]));
-              if (rowBit >= seenRows.size() || seenRows[rowBit])
-                return py::none();
-              seenRows[rowBit] = true;
-            }
-            if (zeroRows != 1 ||
-                !llvm::all_of(seenRows, [](bool seen) { return seen; })) {
-              return py::none();
-            }
-
-            SmallVector<bool> seenCols(rawLayout.getInDimSizeLog2(kCol),
-                                       false);
-            for (unsigned bit = 0; bit < rawLayout.getInDimSizeLog2(kCol);
-                 ++bit) {
-              auto basis = rawLayout.getBasis(kCol, bit);
-              if (basis.size() != 2 || basis[0] != 0 || basis[1] <= 0 ||
-                  basis[1] >= n ||
-                  !llvm::isPowerOf2_32(
-                      static_cast<uint32_t>(basis[1]))) {
-                return py::none();
-              }
-              unsigned colBit =
-                  llvm::Log2_32(static_cast<uint32_t>(basis[1]));
-              if (colBit >= seenCols.size() || seenCols[colBit])
-                return py::none();
-              seenCols[colBit] = true;
-            }
-            if (!llvm::all_of(seenCols, [](bool seen) { return seen; }))
+            if (!isSimpleM64SplitNRawQueryLayout(
+                    rawQueryLayout.layout, queryMemDescTy.getShape()[0], n,
+                    ctx))
               return py::none();
 
             // The generic exact-query search still rejects this simple M64
@@ -2699,25 +2748,10 @@ void init_gluon_ir(py::module &&m) {
                     memDescTy.getEncoding())) {
               return py::none();
             }
-            auto hasCanonicalM64SplitNRows = [&]() {
-              auto *ctx = memDesc.getContext();
-              auto kRow = StringAttr::get(ctx, "row");
-              const auto &layout = rawQueryLayout->layout;
-              if (!layout.hasInDim(kRow) || layout.getInDimSize(kRow) != 128)
-                return false;
-              constexpr std::array<int32_t, 7> expectedRows = {
-                  1, 2, 4, 8, 0, 16, 32};
-              if (layout.getInDimSizeLog2(kRow) != expectedRows.size())
-                return false;
-              for (auto [idx, expected] : llvm::enumerate(expectedRows)) {
-                auto basis = layout.getBasis(kRow, idx);
-                if (basis.size() != 2 || basis[0] != expected ||
-                    basis[1] != 0)
-                  return false;
-              }
-              return true;
-            };
-            if (hasCanonicalM64SplitNRows())
+            int64_t n = memDescTy.getShape()[1];
+            if (hasCanonicalM64SplitNRows(rawQueryLayout->layout, ctx) ||
+                !isSimpleM64SplitNRawQueryLayout(
+                    rawQueryLayout->layout, memDescTy.getShape()[0], n, ctx))
               return py::none();
             if (auto canonical =
                     ttng::getCanonicalM64SplitNLayout(queryTy, numWarps)) {

@@ -1093,6 +1093,12 @@ Progress:
   `16x32bx2`, and the Python canonical M64 split-N constructor/fallback has
   been removed. The M64 row/column-permuted split-N register-layout family is
   now backend-owned for auto/default and explicit split-N requests.
+- 2026-04-17 04:53 UTC: removed the remaining Python explicit-`32x32b` M64
+  `ld.red` helper stack. The C++ `create_tmem_load` bridge now receives
+  `numWarps`, recognizes simple noncanonical M64 f32 non-scales raw queries,
+  and selects the canonical split-N reduction layout before creating
+  `ttng.tmem_load`. The M64 split-N reduction family is now backend-owned for
+  default, explicit split-N, and explicit logical `32x32b` reduction requests.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 04:53 UTC explicit M64 `ld.red` canonicalization cleanup:
+  deleted the last Python-side M64 reduction split-N recognizer from
+  `_load_red`. The C++ Gluon bridge for `create_tmem_load` now takes the
+  active warp count and canonicalizes rank-2 M64 f32 non-scales reduction
+  loads when the exact raw query proves a simple noncanonical split-N physical
+  image. This keeps the user-facing explicit `32x32b` spelling working for
+  noncanonical M64 row/column permutations while selecting the canonical
+  `16x32bx2` split-N reduction layout before `ttng.tmem_load` verification.
+  The old Python helpers `_is_simple_m64_splitn_tmem_layout`,
+  `_has_canonical_m64_splitn_rows`, and
+  `_try_m64_reduction_layout_for_explicit_32x32b` are gone. Validation:
+  `make -j8`, py-compile for the touched Python test/frontend files, focused
+  M64 explicit/default selector (`23 passed, 1552 deselected`), adjacent
+  `ld.red` selector including explicit compatible positives and n-sharded
+  clean negatives (`59 passed, 1516 deselected`), and `git diff --check`.
+
 - Latest: 2026-04-17 02:08 UTC canonical 32x32 subview-offset deletion:
   removed the shape-specific `getCanonicalContiguous32x32SubviewOffset(...)`
   helper and let `getTMemSubviewOffsetForLowering(...)` use the generic

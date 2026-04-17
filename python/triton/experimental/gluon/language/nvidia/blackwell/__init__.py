@@ -89,44 +89,6 @@ def _strip_zero_reg_bases_from_layout(layout):
     )
 
 
-def _is_simple_m64_splitn_tmem_layout(layout, n):
-    if not isinstance(layout, TensorMemoryLinearLayout):
-        return False
-    if layout.two_ctas or layout.block_bases:
-        return False
-
-    rows = [list(basis) for basis in layout.rows]
-    cols = [list(basis) for basis in layout.cols]
-    if len(rows) != 7 or len(cols) != n.bit_length() - 1:
-        return False
-
-    row_values = []
-    zero_rows = 0
-    for basis in rows:
-        if len(basis) != 2 or basis[1] != 0:
-            return False
-        if basis[0] == 0:
-            zero_rows += 1
-        else:
-            row_values.append(basis[0])
-    if zero_rows != 1 or sorted(row_values) != [1, 2, 4, 8, 16, 32]:
-        return False
-
-    col_values = []
-    for basis in cols:
-        if len(basis) != 2 or basis[0] != 0:
-            return False
-        col_values.append(basis[1])
-    return sorted(col_values) == [1 << bit for bit in range(n.bit_length() - 1)]
-
-
-def _has_canonical_m64_splitn_rows(layout):
-    if not isinstance(layout, TensorMemoryLinearLayout):
-        return False
-    rows = [list(basis) for basis in layout.rows]
-    return rows == [[1, 0], [2, 0], [4, 0], [8, 0], [0, 0], [16, 0], [32, 0]]
-
-
 def _is_4x256b_refresh_tmem_layout(layout, element_bitwidth, shape):
     if not isinstance(layout, TensorMemoryLinearLayout):
         return False
@@ -216,33 +178,6 @@ def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
     return gluon_ir.compute_tmem_reg_layout_from_memdesc(
         desc.handle, num_warps, "32x32b_splitn"
     )
-
-
-def _try_m64_reduction_layout_for_explicit_32x32b(desc, layout, num_warps):
-    num_warps = _unwrap_if_constexpr(num_warps)
-    shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.shape)]
-    raw_layout = _unwrap_if_constexpr(desc.layout)
-
-    if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
-        return None
-    if desc.dtype != ttgl.float32:
-        return None
-    if isinstance(raw_layout, TensorMemoryScalesLayout):
-        return None
-    if _has_canonical_m64_splitn_rows(raw_layout):
-        return None
-    if not _is_simple_m64_splitn_tmem_layout(raw_layout, shape[1]):
-        return None
-
-    direct_32x32b_layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
-        desc.handle, num_warps, "32x32b"
-    )
-    if direct_32x32b_layout is None or layout != direct_32x32b_layout:
-        return None
-    reduction_layout = gluon_ir.compute_tmem_reduce_reg_layout_from_memdesc(
-        desc.handle, num_warps
-    )
-    return reduction_layout
 
 
 @gluon.jit
@@ -681,18 +616,12 @@ class tensor_memory_descriptor(base_value):
                 except Exception as e:
                     raise ValueError(str(e)) from e
         layout = _unwrap_if_constexpr(layout)
-        num_warps = _semantic.builder.options.num_warps
-        reduction_layout = _try_m64_reduction_layout_for_explicit_32x32b(
-            self, layout, num_warps
-        )
-        if reduction_layout is not None:
-            layout = reduction_layout
-
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder
+        num_warps = builder.options.num_warps
 
         result, reduced, red_layout = builder.create_tmem_load(ret_ty.to_ir(builder), self.handle, red_op, abs_flag,
-                                                               propagate_nan)
+                                                               propagate_nan, num_warps)
 
         red_shape = [self.shape[0]]  # [M] for [M,N] input
         red_ty = ttgl.distributed_type(self.dtype, red_shape, red_layout)

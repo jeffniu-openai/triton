@@ -44,6 +44,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 04:53 UTC: moved the remaining explicit-`32x32b` M64
+  `ld.red` split-N canonicalization out of Python `_load_red` and into the C++
+  Gluon/TTGIR bridge. `create_tmem_load` now receives the active warp count
+  and, for rank-2 M64 f32 non-scales reduction loads, recognizes the same
+  simple noncanonical split-N raw query image as the backend register-layout
+  bridge and selects the canonical split-N reduction layout. The Python
+  `_is_simple_m64_splitn_tmem_layout`,
+  `_has_canonical_m64_splitn_rows`, and
+  `_try_m64_reduction_layout_for_explicit_32x32b` helpers were deleted.
+  Validation: `make -j8`, py-compile for `blackwell/__init__.py` and
+  `test_tmem_runtime_matrix.py`, focused M64 explicit/default selector
+  (`23 passed, 1552 deselected`), adjacent `ld.red` selector including
+  explicit compatible positives and n-sharded clean negatives
+  (`59 passed, 1516 deselected`), and `git diff --check`.
 - 2026-04-17 03:33 UTC: removed the stale scaled-MMAv5 scale-subcolumn
   environment override hooks (`TRITON_MMAV5_SCALE_ID_MAP_A/B`). Scale-fragment
   lowering now uses the deterministic subword index derived from the K
