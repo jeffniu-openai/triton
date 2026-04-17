@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 14:27 UTC the 256-row split store-join replay now has
+  focused lit coverage beside the 256-row split-load case. With a legal
+  full-tile direct source layout before the rewrite, `OptimizeTMemLayouts`
+  rewrites the joined `256x64 + 256x64 -> 256x128` store into two
+  `ttng.tmem_subslice` plus two `ttng.tmem_store` operations using the same
+  compatible-layout planner proof. Validation: `make -j8`; direct
+  `triton-opt` run on `test/TritonNvidiaGPU/tmem_layouts.mlir`;
+  `git diff --check`. A synthetic direct LLVM-lowering probe hit the existing
+  shared-memory `allocation.offset` requirement for the generated
+  `convert_layout`, so the durable claim here is optimizer/lit coverage, not a
+  standalone LLVM lowering proof.
+
 - Latest: 2026-04-17 14:26 UTC the 256-row split-load replay lit case is now
   positive. The backend completes pure row bases for row-preserving column
   subviews before TMEM load/store analysis, builds the 8-warp direct

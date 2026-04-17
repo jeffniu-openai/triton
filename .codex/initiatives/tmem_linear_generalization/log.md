@@ -1,3 +1,32 @@
+## 2026-04-17 14:27 UTC: 256-row store-join split replay coverage
+
+- Starting point: `codex/tmem` at `d7f4596c1`.
+- Change:
+  - added `@subtile_tmem_store_256` to `test/TritonNvidiaGPU/tmem_layouts.mlir`;
+  - the test constructs a joined `256x64 + 256x64 -> 256x128` value, converts
+    the reshape result into a full-tile direct source layout that is legal for
+    the original full store, and verifies that `OptimizeTMemLayouts` rewrites
+    it into two `ttng.tmem_subslice` plus two `ttng.tmem_store` operations.
+- Boundary:
+  - no optimizer or backend code change was needed after the folded-query
+    planner promotion;
+  - this is lit/optimizer coverage. A synthetic direct LLVM-lowering probe of
+    the optimized store body hit the existing shared-memory `allocation.offset`
+    precondition for the generated `convert_layout`, so this checkpoint does
+    not claim standalone LLVM lowering validation for that synthetic snippet.
+- Validation:
+  - `make -j8`;
+  - direct compiler pass run:
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/tmem_layouts.mlir -split-input-file
+    --triton-nvidia-optimize-tmem-layouts --allow-unregistered-dialect`
+    (exit `0`, no stderr; output rewrites both 256-row split load and store);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked until the active GitHub account is `Mogball` per the
+    repo instruction. `gh auth status -h github.com` currently reports
+    `jeffniu-openai`.
+
 ## 2026-04-17 14:26 UTC: 256-row split replay folded-query promotion
 
 - Starting point: `codex/tmem` at `190960e92`.

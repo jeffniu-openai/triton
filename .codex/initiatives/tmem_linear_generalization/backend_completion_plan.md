@@ -1190,6 +1190,14 @@ Progress:
   The next local check is whether the store-join half of the replay family is
   now covered by the same planner proof or still needs a separate packet/write
   boundary.
+- 2026-04-17 14:27 UTC: added the matching 256-row store-join optimizer/lit
+  coverage. No extra backend special case was needed: once the full store uses
+  a legal direct full-tile source layout, the existing store-join replay asks
+  the same compatible-layout planner for the two `256x64` subslices and emits
+  two `ttng.tmem_store` operations. Standalone LLVM lowering of the synthetic
+  optimized store probe still needs a fuller pipeline that assigns shared
+  allocation offsets for the generated `convert_layout`; this is not treated
+  as a TMEM planner regression.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would
@@ -1700,6 +1708,11 @@ Progress:
   pieces available to future `ld/st` cleanup. Validation: `make -j8`, direct
   `triton-opt` for `test/TritonNvidiaGPU/tmem_layouts.mlir`, minimal LLVM
   lowering for the two 256x64 subslice loads, and `git diff --check`.
+- 2026-04-17 14:27 UTC: added the corresponding 256-row store-join
+  optimizer/lit coverage, confirming the previous planner promotion covers
+  both split-load and store-join rewrites when the pre-rewrite full store is
+  itself legal. Validation: `make -j8`, direct `triton-opt` for
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `git diff --check`.
 
 Exit criteria:
 - TMEM backend decisions flow through the shared physical-query/planner stack.

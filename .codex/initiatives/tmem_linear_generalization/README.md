@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 14:27 UTC: added the matching 256-row split store-join lit
+  coverage. The existing planner-gated store rewrite now lowers the joined
+  `256x64 + 256x64 -> 256x128` pattern into two `ttng.tmem_subslice` plus
+  two `ttng.tmem_store` operations when the pre-rewrite full store uses a
+  legal full-tile source layout. Validation: `make -j8`, direct `triton-opt`
+  run for `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `git diff --check`.
+  A synthetic direct LLVM-lowering probe of the optimized store body hit the
+  existing shared-memory `allocation.offset` precondition for a generated
+  `convert_layout`, so this checkpoint only claims optimizer/lit coverage.
 - 2026-04-17 14:26 UTC: promoted the existing 256-row split-load replay case.
   Row-preserving column subviews now complete the missing high row basis for
   exact analysis and validate the 8-warp `I32x32b` direct register-layout

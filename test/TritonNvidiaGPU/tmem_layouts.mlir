@@ -143,6 +143,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 #blocked2 = #ttg.blocked<{sizePerThread = [1, 2, 64], threadsPerWarp = [32, 1, 1], warpsPerCTA = [8, 1, 1], order = [0, 2, 1]}>
 #blocked3 = #ttg.blocked<{sizePerThread = [1, 64, 2], threadsPerWarp = [32, 1, 1], warpsPerCTA = [8, 1, 1], order = [0, 1, 2]}>
 #blocked4 = #ttg.blocked<{sizePerThread = [1, 1, 2], threadsPerWarp = [1, 32, 1], warpsPerCTA = [4, 2, 1], order = [2, 1, 0]}>
+#blocked5 = #ttg.blocked<{sizePerThread = [1, 2, 1], threadsPerWarp = [1, 1, 32], warpsPerCTA = [4, 1, 2], order = [1, 2, 0]}>
+#linear_store = #ttg.linear<{register = [[0, 64], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0], [128, 0]], lane = [[0, 1], [0, 2], [0, 4], [0, 8], [0, 16]], warp = [[0, 32], [1, 0], [2, 0]], block = []}>
 #tmem = #ttng.tensor_memory_encoding<blockM = 128, blockN = 128, colStride = 1>
 
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.target = "cuda:100"} {
@@ -161,6 +163,27 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
     %3 = ttg.convert_layout %2 : tensor<256x64x2xf32, #blocked3> -> tensor<256x64x2xf32, #blocked4>
     %outLHS, %outRHS = tt.split %3 : tensor<256x64x2xf32, #blocked4> -> tensor<256x64xf32, #blocked>
     tt.return %outLHS, %outRHS : tensor<256x64xf32, #blocked>, tensor<256x64xf32, #blocked>
+  }
+
+  // CHECK-LABEL: @subtile_tmem_store_256
+  // CHECK: %[[S0:.+]] = ttng.tmem_subslice %arg0 {N = 0 : i32}
+  // CHECK: %[[V0:.+]] = ttg.convert_layout %arg1
+  // CHECK: ttng.tmem_store %[[V0]], %[[S0]]
+  // CHECK: %[[S1:.+]] = ttng.tmem_subslice %arg0 {N = 64 : i32}
+  // CHECK: %[[V1:.+]] = ttg.convert_layout %arg2
+  // CHECK: ttng.tmem_store %[[V1]], %[[S1]]
+  tt.func public @subtile_tmem_store_256(
+    %arg0: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>,
+    %arg1: tensor<256x64xf32, #blocked>,
+    %arg2: tensor<256x64xf32, #blocked>
+  ) {
+    %true = arith.constant true
+    %joined = tt.join %arg1, %arg2 : tensor<256x64xf32, #blocked> -> tensor<256x64x2xf32, #blocked4>
+    %trans = tt.trans %joined {order = array<i32: 0, 2, 1>} : tensor<256x64x2xf32, #blocked4> -> tensor<256x2x64xf32, #blocked5>
+    %reshaped = tt.reshape %trans : tensor<256x2x64xf32, #blocked5> -> tensor<256x128xf32, #linear_store>
+    %cvt = ttg.convert_layout %reshaped : tensor<256x128xf32, #linear_store> -> tensor<256x128xf32, #linear>
+    ttng.tmem_store %cvt, %arg0, %true : tensor<256x128xf32, #linear> -> !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>
+    tt.return
   }
 }
 
