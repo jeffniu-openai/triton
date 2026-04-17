@@ -1261,6 +1261,12 @@ Progress:
   predicate into `TensorMemoryUtils`. The backend now decides when the
   `auto`/`32x32b_splitn`/`16x32bx2` fallback may return the canonical split-N
   layout; pybind no longer owns that request/desired-atom/M64-type filter.
+- 2026-04-17 06:35 UTC: moved descriptor-chain base-adjustment semantics out
+  of LLVM lowering and into `TensorMemoryUtils`. The backend now owns both
+  already-lowered subview/index base subtraction and support-query base-offset
+  preservation. This does not promote the remaining packet-footprint negatives,
+  but it keeps packet-base arithmetic with the query/origin planner instead of
+  in operation lowering.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

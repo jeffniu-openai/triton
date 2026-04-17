@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:35 UTC `ld/st` and copy lowering no longer own local
+  TMEM subview base-adjustment semantics. `TensorMemoryUtils` now exposes
+  `getAlreadyAdjustedTMemSubviewBaseOffset(...)`, which walks reinterpret,
+  reshape, transpose, subslice, legacy `ttng.tmem_subslice`, and index views,
+  and `preserveTMemLdStSupportQueryBaseOffset(...)`, which records when a
+  support-query origin still needs to be preserved. This is support-neutral,
+  but it moves packet-base adjustment into the backend layer that owns
+  descriptor-view query/origin arithmetic. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, `test_tmem_runtime_matrix.py -k
+  "ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout or
+  ldst_descriptor_higher_rank_half_rows_positive_lifted_layout or
+  ldst_descriptor_multidim_slice_identity_reports_clean_error or
+  ldst_descriptor_multidim_slice_positive or
+  ldst_descriptor_multidim_slice_reports_clean_unsupported or
+  ldst_4x256b_refresh or cp_no_scales_linear_subslice_view or
+  cp_no_scales_twocta_linear_subslice_view or
+  cp_no_scales_warpx2_subslice_view_positive"` (`38 passed, 1 skipped`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 06:30 UTC warpx2 copy shared-source layout semantics are
   no longer duplicated. `TensorMemoryUtils` now uses shared helpers for the
   canonical warpx2 shared source dimensions and offset-basis order in both the

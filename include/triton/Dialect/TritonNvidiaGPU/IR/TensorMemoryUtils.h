@@ -444,6 +444,8 @@ uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);
 
+uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue);
+
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemRegLayoutQueryType(Value memDesc,
                                       std::string *error = nullptr);
@@ -530,6 +532,9 @@ StringRef stringifyTMemPhysicalQueryDifference(
     TMemPhysicalQueryDifference difference);
 
 uint32_t getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query);
+
+bool preserveTMemLdStSupportQueryBaseOffset(
+    gpu::MemDescType memTy, const TMemLdStQueryLayout &supportQuery);
 
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:35 UTC: moved TMEM descriptor-view base-adjustment semantics
+  from LLVM lowering into `TensorMemoryUtils`. The backend now owns
+  `getAlreadyAdjustedTMemSubviewBaseOffset(...)` and
+  `preserveTMemLdStSupportQueryBaseOffset(...)`; `ld/st` and copy lowering
+  consume the shared helpers instead of keeping local packet-base arithmetic.
+  Support is unchanged, but the packet-base/per-message-offset work now has a
+  backend-owned seam for subtracting already-lowered subview bases. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, focused descriptor-view/copy
+  subview selector (`38 passed, 1 skipped`), and `git diff --check`.
 - 2026-04-17 06:30 UTC: consolidated the canonical warpx2 shared-source
   layout contract inside `TensorMemoryUtils`. The runtime support preflight
   and the `warpx2::02_13` direct-seed descriptor path now share the same

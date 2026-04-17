@@ -21252,3 +21252,39 @@ Open after this slice:
     cp_no_scales_warpx2_subword_dtypes_report_clean_error"`
     (`30 passed, 1548 deselected in 12.16s`);
   - `git diff --check`.
+
+## 2026-04-17 06:35 UTC: moved TMEM base-adjustment semantics to backend
+
+- Starting point: `codex/tmem` at `69bbda78e`.
+- Change:
+  - added backend declarations and definitions for
+    `getAlreadyAdjustedTMemSubviewBaseOffset(...)` and
+    `preserveTMemLdStSupportQueryBaseOffset(...)`;
+  - removed the lowering-local copies from
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TensorMemoryToLLVM.cpp`;
+  - kept `ld/st` and copy lowering behavior unchanged while moving subview
+    base subtraction and support-query base preservation to `TensorMemoryUtils`.
+- Support boundary:
+  - no support surface changed. This is a layering step for the packet-base /
+    per-message-offset rematerialization work: the backend now owns the fact
+    that a descriptor-chain base may already include subview/index offsets
+    before packet offsets are applied.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-base-adjust-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ldst_descriptor_higher_rank_dim0_slice_positive_lifted_layout or
+    ldst_descriptor_higher_rank_half_rows_positive_lifted_layout or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_reports_clean_unsupported or
+    ldst_4x256b_refresh or cp_no_scales_linear_subslice_view or
+    cp_no_scales_twocta_linear_subslice_view or
+    cp_no_scales_warpx2_subslice_view_positive"`
+    (`38 passed, 1 skipped, 1539 deselected in 24.98s`);
+  - `git diff --check`.

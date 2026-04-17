@@ -3590,6 +3590,67 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
   return getTMemViewOffsetForLowering(op.getSrc(), offsets);
 }
 
+uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
+  if (!memDescValue)
+    return 0;
+
+  auto recurse = [&](Value src) {
+    return getAlreadyAdjustedTMemSubviewBaseOffset(src);
+  };
+
+  if (auto reinterpret = dyn_cast_if_present<gpu::MemDescReinterpretOp>(
+          memDescValue.getDefiningOp())) {
+    return recurse(reinterpret.getSrc());
+  }
+
+  if (auto reshape = dyn_cast_if_present<gpu::MemDescReshapeOp>(
+          memDescValue.getDefiningOp())) {
+    return recurse(reshape.getSrc());
+  }
+
+  if (auto trans = dyn_cast_if_present<gpu::MemDescTransOp>(
+          memDescValue.getDefiningOp())) {
+    return recurse(trans.getSrc());
+  }
+
+  if (auto subslice = dyn_cast_if_present<gpu::MemDescSubsliceOp>(
+          memDescValue.getDefiningOp())) {
+    auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+    if (!srcTy || !isTensorMemoryEncoding(srcTy.getEncoding()) ||
+        isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding())) {
+      return 0;
+    }
+    return recurse(subslice.getSrc()) +
+           getTMemSubviewOffsetForLowering(subslice);
+  }
+
+  if (auto subslice =
+          dyn_cast_if_present<TMEMSubSliceOp>(memDescValue.getDefiningOp())) {
+    auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+    if (!srcTy)
+      return 0;
+    return recurse(subslice.getSrc()) +
+           getTMemSubSliceOffset(srcTy, subslice.getN());
+  }
+
+  if (auto index = dyn_cast_if_present<gpu::MemDescIndexOp>(
+          memDescValue.getDefiningOp())) {
+    auto srcTy = dyn_cast<MemDescType>(index.getSrc().getType());
+    if (!srcTy)
+      return 0;
+    if (getTMemScalesRootEncoding(index.getSrc()))
+      return recurse(index.getSrc());
+    APInt indexValue;
+    if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)))
+      return 0;
+    SmallVector<int32_t> offsets(srcTy.getRank(), 0);
+    offsets.front() = indexValue.getSExtValue();
+    return recurse(index.getSrc()) + getTMemViewOffset(srcTy, offsets);
+  }
+
+  return 0;
+}
+
 static FailureOr<MemDescType>
 inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
                                 std::string *error) {
@@ -5510,6 +5571,13 @@ getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query) {
   accumulate(kRow, 16);
   accumulate(kCol, 0);
   return offset;
+}
+
+bool preserveTMemLdStSupportQueryBaseOffset(
+    MemDescType memTy, const TMemLdStQueryLayout &supportQuery) {
+  (void)memTy;
+  return llvm::any_of(supportQuery.origin,
+                      [](int32_t value) { return value != 0; });
 }
 
 FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
