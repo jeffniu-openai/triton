@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:48 UTC removed the final stale empty higher-rank
+  bucket, `LDST_HIGHER_RANK_INDEX_CASES`, and its dead one-CTA index test.
+  Full-file collection is now `1590` tests, with no empty case buckets left in
+  this matrix except the intentionally constructed `M64_SPLITN_BASE_CASES`
+  builder list. Validation: Python compile; `git diff --check`; full-file
+  collect; nearby one-CTA higher-rank multidim-slice selector passed (`9
+  passed`).
+
 - Latest: 2026-04-17 12:47 UTC removed the remaining stale empty higher-rank
   OOR buckets (`LDST_HIGHER_RANK_OOR_CASES` and
   `LDST_TWOCTA_HIGHER_RANK_OOR_CASES`) and their five dead parametrized tests.

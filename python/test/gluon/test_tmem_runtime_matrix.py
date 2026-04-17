@@ -4263,8 +4263,6 @@ LDST_HIGHER_RANK_CASE_SPECS = list(
     )
 )
 
-LDST_HIGHER_RANK_INDEX_CASES = []
-
 LDST_HIGHER_RANK_SLICE_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant)
     for dtype_name, torch_dtype, layout_name, n, variant in LDST_HIGHER_RANK_CASE_SPECS
@@ -6608,42 +6606,6 @@ def test_tmem_runtime_matrix_ldst_descriptor_roundtrip_rowcol_permuted_sweeps(
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_reinterpret" not in ttgir
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize(
-    "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
-    LDST_HIGHER_RANK_INDEX_CASES,
-)
-def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index(
-    dtype_name, torch_dtype, layout_name, n, variant, expected_shape, expected_half_shape
-):
-    m = 128
-    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
-    out = torch.empty_like(inp)
-
-    compiled = tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-    torch.testing.assert_close(out, inp + 5, atol=0, rtol=0)
-
-    ops, _ = _assert_ldst_ptx_llir_match(compiled)
-    observed_opcodes = [op for op, _ in ops]
-    expected_full_st = f"tcgen05.st.sync.aligned.{expected_shape}"
-    expected_full_ld = f"tcgen05.ld.sync.aligned.{expected_shape}"
-    expected_half_st = f"tcgen05.st.sync.aligned.{expected_half_shape}"
-    expected_half_ld = f"tcgen05.ld.sync.aligned.{expected_half_shape}"
-    assert expected_full_st in observed_opcodes
-    assert expected_full_ld in observed_opcodes
-    assert expected_half_st in observed_opcodes
-    assert expected_half_ld in observed_opcodes
-
-    ttgir = compiled.asm["ttgir"]
-    assert "tensor_memory_linear" in ttgir
-    assert "ttg.memdesc_index" in ttgir
-    assert "ttg.memdesc_subslice" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
-
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant", LDST_HIGHER_RANK_SLICE_CASES)

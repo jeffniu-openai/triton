@@ -23175,3 +23175,26 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'ldst_twocta_descriptor_higher_rank_dim0_slice_reports_tmem_oor'`
     (`6 passed, 1585 deselected`).
+
+## 2026-04-17 12:48 UTC: remove stale one-CTA higher-rank index bucket
+
+- Starting point: `codex/tmem` at `57c1623a6`.
+- Change:
+  - removed empty `LDST_HIGHER_RANK_INDEX_CASES`;
+  - removed the dead `test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index`
+    parametrization.
+- Reason:
+  - no one-CTA higher-rank index rows remain in the current lean matrix. The
+    adjacent higher-rank multidim-slice matrix is live and still validates the
+    descriptor-view replay path.
+- Validation:
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - full-file collect now reports `1590 tests collected`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-index-prune
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_descriptor_multidim_slices and not twocta'`
+    (`9 passed, 1581 deselected`).
