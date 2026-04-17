@@ -5849,7 +5849,8 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
 
   LinearLayout::BasesT bases;
   if (atom != TMemAccessAtom::I32x32b) {
-    if (atom != TMemAccessAtom::I16x64b &&
+    if (atom != TMemAccessAtom::I16x32bx2 &&
+        atom != TMemAccessAtom::I16x64b &&
         atom != TMemAccessAtom::I16x128b &&
         atom != TMemAccessAtom::I16x256b) {
       return std::nullopt;
@@ -5894,6 +5895,18 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
 
     int32_t prepackTileCols = 0;
     switch (atom) {
+    case TMemAccessAtom::I16x32bx2:
+      prepackTileCols = 4;
+      // The 16x32bx2 second half must stay on lane=16.  In this
+      // two-CTA scales view, physical row16 lifts to logical row8; appending
+      // it again as register repetition would duplicate that row basis and
+      // make the layout non-invertible.
+      if (!appendBasis(kRegister, {32, 0}) ||
+          !appendBasis(kLane, {1, 0}) || !appendBasis(kLane, {2, 0}) ||
+          !appendBasis(kLane, {4, 0}) || !appendBasis(kLane, {8, 0}) ||
+          !appendBasis(kLane, {16, 0}))
+        return std::nullopt;
+      break;
     case TMemAccessAtom::I16x64b:
       prepackTileCols = 8;
       if (!appendBasis(kLane, {8, 0}) || !appendBasis(kLane, {0, 4}) ||
@@ -5919,7 +5932,6 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
         return std::nullopt;
       break;
     case TMemAccessAtom::I32x32b:
-    case TMemAccessAtom::I16x32bx2:
       llvm_unreachable("handled above");
     }
 
@@ -5927,7 +5939,7 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(MemDescType memTy,
       if (!appendBasis(kRegister, {0, col}))
         return std::nullopt;
     }
-    if (!appendBasis(kRegister, {16, 0}))
+    if (atom != TMemAccessAtom::I16x32bx2 && !appendBasis(kRegister, {16, 0}))
       return std::nullopt;
 
     bases[kWarp] = {{0, 0}, {0, 0}};
@@ -8583,6 +8595,37 @@ computeTMemLdStEncodingInfoImpl(
                                   cvt.getBasis(kWarp, 0).end());
   SmallVector<int32_t> warpBasis1(cvt.getBasis(kWarp, 1).begin(),
                                   cvt.getBasis(kWarp, 1).end());
+  auto hasRegisterHalfNBasis = [&]() {
+    if (!regLayout.hasInDim(kReg) || regLayout.getNumOutDims() != 2 ||
+        logicalCols < 2 || !llvm::isPowerOf2_64(logicalCols))
+      return false;
+    SmallVector<int32_t> halfNBasis(regLayout.getNumOutDims(), 0);
+    halfNBasis.back() = static_cast<int32_t>(logicalCols / 2);
+    for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(kReg); ++idx) {
+      if (regLayout.getBasis(kReg, idx) == ArrayRef<int32_t>(halfNBasis))
+        return true;
+    }
+    return false;
+  };
+  auto hasZeroRegisterBasis = [&]() {
+    if (!regLayout.hasInDim(kReg))
+      return false;
+    for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(kReg); ++idx) {
+      if (isZeroBasis(regLayout.getBasis(kReg, idx)))
+        return true;
+    }
+    return false;
+  };
+  // Descriptor-view queries over scales TMEM arrive here as
+  // TensorMemoryLinear, so the root scales preference path above cannot see
+  // the requested 16x32bx2 split.  The lifted candidate carries a zero
+  // register basis for the folded physical row32 bit and a register half-N
+  // basis for packet repetition; together those distinguish it from the
+  // explicit 32x32b candidate for the same view.
+  bool prefersTwoCTAScalesDescriptorViewI16x32bx2 =
+      bitwidth == 8 &&
+      isTwoCTAScalesDescriptorViewTMemLdStQuery(memTy, memLayout) &&
+      hasRegisterHalfNBasis() && hasZeroRegisterBasis();
   auto prefersCanonicalM64SplitN = [&]() {
     if (bitwidth != 32 || isScales || logicalRows != 64 || logicalCols < 2 ||
         !llvm::isPowerOf2_64(logicalCols) || rowPlan->rowSpan != 64 ||
@@ -8597,7 +8640,9 @@ computeTMemLdStEncodingInfoImpl(
 
   auto info = lowerTMemLdSt(cvt, maxnreg, bitwidth, emitError,
                             /*unpacked=*/false, warpBasis0, warpBasis1,
-                            rowPlan->rowSpan, prefersCanonicalM64SplitN);
+                            rowPlan->rowSpan,
+                            prefersCanonicalM64SplitN ||
+                                prefersTwoCTAScalesDescriptorViewI16x32bx2);
   if (failed(info))
     return failure();
   // Sparse higher-rank TMEM views can carry logical selection bits as zero

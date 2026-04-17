@@ -24252,3 +24252,42 @@ Open after this slice:
     empty and was rerun with exit-code-5 normalized to success;
   - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 18:59 UTC: promote two-CTA scales descriptor-view 16x32bx2
+
+- Starting point: `codex/tmem` at `b1b4732ee`.
+- Change:
+  - added `I16x32bx2` support to the two-CTA scales descriptor-view
+    load/store layout helper;
+  - kept the physical row16 half-tile split as a lane=16 basis and avoided
+    appending that lifted row basis again as register repetition, which would
+    make the candidate non-invertible;
+  - taught generic direct `ld/st` lowering to preserve the requested split-N
+    atom for this exact descriptor-view candidate even though the memdesc is
+    represented as `TensorMemoryLinear` after view analysis;
+  - moved the former clean-negative `128x64` two-CTA `16x32bx2` case into the
+    supported CGA descriptor-view runtime matrix.
+- Result:
+  - the promoted row roundtrips correctly and emits
+    `tcgen05.st.sync.aligned.16x32bx2.x32.b32` and
+    `tcgen05.ld.sync.aligned.16x32bx2.x32.b32` for both root and view access;
+  - `reports_clean_unsupported` rebaselines from `124/1592` to `123/1592`;
+  - `reports_clean_unsupported or reports_clean_error` rebaselines from
+    `175/1592` to `174/1592`.
+- Validation:
+  - `make -j8`;
+  - exact promoted row:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip[128-64-4-2-cga_layout1-16x32bx2-expected_ops1]'`
+    (`1 passed`);
+  - focused selector:
+    `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_cga'` (`9 passed, 1583 deselected`);
+  - split-4 focused selector assigned selected tests to groups 1-3
+    (`3/3/3` passed) and left group 4 empty due duration splitting;
+  - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

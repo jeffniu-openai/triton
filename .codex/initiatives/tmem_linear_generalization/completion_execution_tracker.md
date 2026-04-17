@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:41 UTC
+Last updated: 2026-04-17 18:59 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -56,7 +56,7 @@ The project is complete when:
 
 ## Current Clean-Negative Inventory
 
-Collected at 2026-04-17 17:36 UTC after `make -j8`:
+Collected at 2026-04-17 18:59 UTC after `make -j8`:
 
 ```bash
 PYTHONPATH=.:./python:./python/test/gluon \
@@ -64,12 +64,11 @@ PYTHONPATH=.:./python:./python/test/gluon \
   -k 'reports_clean_unsupported'
 ```
 
-Result: `124/1592 tests collected (1468 deselected) in 3.02s`.
+Result: `123/1592 tests collected (1469 deselected) in 2.97s`.
 
 Current buckets:
-- `ld/st` scales descriptor-view and variant atom-footprint boundaries:
-  explicit two-CTA `16x32bx2` half-tile semantics and too-narrow n-sharded
-  scale atoms. The n-sharded rows now report a structured
+- `ld/st` scales variant atom-footprint boundaries:
+  too-narrow n-sharded scale atoms. The n-sharded rows now report a structured
   tensor-memory-scales packet-footprint requirement with required/exposed
   scale-element counts.
 - `ld.red` non-f32 NaN-propagating cases: software fallback exists for many
@@ -177,9 +176,10 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 - `active`: keep packet-footprint limitations represented as structured
   atom-footprint requirements rather than layout-name failures.
-- `pending`: complete scales direct `ld/st` descriptor-view support where the
-  ISA can realize the requested atom, and leave only true scale-half-tile or
-  too-narrow atom boundaries.
+- `active`: continue scales direct `ld/st` descriptor-view support where the
+  ISA can realize the requested atom. The two-CTA `16x32bx2` row is now
+  positive; remaining clean negatives should be only true packet-footprint
+  boundaries or future missing schedules proved by exact layout arithmetic.
 - `pending`: decide whether `4x256b` refresh images can be read back through a
   rematerialized public load/store view; otherwise keep a precise row-anchor
   diagnostic.
@@ -228,6 +228,19 @@ row/column partition, or destination-mask schedule must be proved before
 support can lift.
 
 ## Progress
+
+- 2026-04-17 18:59 UTC: promoted the two-CTA scales descriptor-view
+  `16x32bx2` direct `ld/st` row from clean-negative to positive support. The
+  backend now synthesizes an exact lifted view layout for
+  `tcgen05.ld/st.16x32bx2` by keeping the half-tile split on lane=16 and not
+  duplicating the lifted row basis as register repetition. Generic lowering
+  now recognizes this descriptor-view candidate even though the memdesc arrives
+  as `TensorMemoryLinear`, preserving the requested split-N atom instead of
+  silently selecting `32x32b`. Validation: `make -j8`; exact promoted row
+  passed; focused CGA descriptor-view selector passed as `9 passed,
+  1583 deselected`; Python byte-compile; `git diff --check`. Clean-negative
+  rebaseline: `reports_clean_unsupported` is now `123/1592`, and
+  `reports_clean_unsupported or reports_clean_error` is now `174/1592`.
 
 - 2026-04-17 18:41 UTC: structured the explicit n-sharded scales `ld/st`
   packet-footprint boundary. `getUnsupportedDirectTMemLdStAtomFootprintReason`

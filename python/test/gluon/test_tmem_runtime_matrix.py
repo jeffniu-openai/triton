@@ -5405,6 +5405,17 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
             _expected_scales_ldst_descriptor_view_ops(
                 "16x32bx2.x1.b32", "16x32bx2.x1.b32", tuple(range(0, 32, 2))
             ),
+        ),
+        (
+            128,
+            64,
+            4,
+            2,
+            ((1, 0),),
+            "16x32bx2",
+            _expected_scales_ldst_descriptor_view_ops(
+                "16x32bx2.x32.b32", "16x32bx2.x32.b32", (0,)
+            ),
         )
     ] + [
         case
@@ -5416,18 +5427,6 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
         if case[:6] in SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_REPRESENTATIVE_KEYS
     ]
 )
-
-SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
-    (
-        128,
-        64,
-        4,
-        2,
-        ((1, 0),),
-        "16x32bx2",
-        "tcgen05.ld/st.16x32bx2 requires the half-tile split to be a lane-selected second-half offset",
-    ),
-]
 
 LD_RED_LINEAR_CASES = [
     ("identity", 128, 32, 4, "32x32b.x32"),
@@ -7762,28 +7761,6 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
     else:
         assert "tt.reshape" in ttgir
         assert "tt.trans" in ttgir
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize(
-    "M,N,num_warps,num_ctas,cga_layout,instr_variant,expected_text",
-    SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES,
-)
-def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_reports_clean_unsupported(
-    M, N, num_warps, num_ctas, cga_layout, instr_variant, expected_text
-):
-    inp = torch.arange(M * N, dtype=torch.int8, device="cuda").reshape(M, N)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(CompilationError) as excinfo:
-        tmem_scales_ldst_descriptor_view_kernel[(1, )](
-            inp, out, M, N, instr_variant, cga_layout, num_warps=num_warps, num_ctas=num_ctas
-        )
-
-    text = str(excinfo.value)
-    _assert_clean_unsupported_descriptor_view(text, expected_text)
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

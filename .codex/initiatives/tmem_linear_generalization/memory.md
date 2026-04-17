@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 18:59 UTC Phase D support-bearing scales
+  descriptor-view slice: the two-CTA `16x32bx2` direct `ld/st` view is now
+  positive. `getTwoCTAScalesDescriptorViewTMemLdStLayout` handles
+  `I16x32bx2` by lifting the physical packet layout through the exact query,
+  preserving lane=16 as the second-half selector, and avoiding duplicate
+  register repetition for the lifted row basis. Generic lowering now gives
+  that lifted candidate the same split-N preference root scales layouts already
+  had, gated by the two-CTA scales descriptor-view query plus zero-register and
+  half-N register-basis facts. The runtime matrix moved the former clean
+  unsupported row to supported CGA descriptor-view coverage with
+  `tcgen05.ld/st.16x32bx2.x32.b32`. Validation: `make -j8`, exact promoted
+  row (`1 passed`), focused CGA selector (`9 passed, 1583 deselected`), Python
+  compile, `git diff --check`. Rebaseline: `reports_clean_unsupported`
+  `123/1592`; `reports_clean_unsupported or reports_clean_error` `174/1592`.
+
 - Latest: 2026-04-17 18:41 UTC Phase D scales `ld/st` classification:
   explicit n-sharded scales atom requests now report a structured packet
   footprint requirement when the descriptor view is smaller than the public

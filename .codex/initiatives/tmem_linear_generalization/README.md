@@ -48,6 +48,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 18:59 UTC: the two-CTA scales descriptor-view
+  `16x32bx2` direct `ld/st` case is now supported. The backend lifts the
+  physical packet layout through the exact descriptor-view query, keeps the
+  half-tile split on lane=16, and gives the resulting `TensorMemoryLinear`
+  view the split-N preference needed to preserve the requested atom instead
+  of selecting `32x32b`. The runtime matrix now covers the former clean
+  negative as a positive CGA descriptor-view row emitting
+  `tcgen05.ld/st.16x32bx2.x32.b32`. Validation: `make -j8`, exact promoted
+  row (`1 passed`), focused CGA selector (`9 passed, 1583 deselected`),
+  Python byte-compile, and `git diff --check`.
 - 2026-04-17 18:41 UTC: explicit n-sharded scales `ld/st` requests that are
   smaller than the public packet footprint now report a structured
   tensor-memory-scales atom-footprint requirement. The diagnostic records the
