@@ -20691,3 +20691,21 @@ Open after this slice:
   - focused scaled narrow/repeated selector passed
     (`40 passed, 1535 deselected in 21.08s`);
   - `git diff --check`.
+
+## 2026-04-17 03:33 UTC: removed scaled-MMAv5 scale-ID probe hook
+
+- Starting point: `codex/tmem` at `ebb0314bd`.
+- Change:
+  - deleted the `TRITON_MMAV5_SCALE_ID_MAP_A/B` environment override path from
+    scaled-MMAv5 lowering;
+  - `getMMAv5ScaleFactorFragment(...)` now uses the deterministic K-repetition
+    subword index directly.
+- Rationale:
+  - the override was useful while probing repeated-N32 scale-fragment
+    schedules, but keeping it in normal lowering is a hidden runtime escape
+    hatch rather than a clean planner abstraction.
+- Validation:
+  - `make -j8`;
+  - focused scaled-MMAv5 selector passed
+    (`41 passed, 1534 deselected in 20.05s`);
+  - `git diff --check`.

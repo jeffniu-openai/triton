@@ -11548,7 +11548,24 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-17 03:27 UTC scaled-MMAv5 narrow-N scale-fragment requirement
+## Latest: 2026-04-17 03:33 UTC deterministic scaled-MMAv5 scale subcolumns
+
+- Removed the stale `TRITON_MMAV5_SCALE_ID_MAP_A/B` lowering hooks that could
+  override scaled-MMAv5 scale subcolumn IDs at runtime.
+- Change:
+  - `getMMAv5ScaleFactorFragment(...)` now returns the subword index derived
+    directly from the K repetition;
+  - the probe-only environment mapping is gone, so future repeated-N32 or
+    narrow-N work has to change the actual scale-fragment planner instead of
+    relying on runtime ID remapping.
+- Validation:
+  - `make -j8`;
+  - focused scaled-MMAv5 selector covering minimal positive, tile-permuted
+    positive, narrow clean negative, and repeated-N32 clean negative
+    (`41 passed, 1534 deselected`);
+  - `git diff --check`.
+
+## Previous: 2026-04-17 03:27 UTC scaled-MMAv5 narrow-N scale-fragment requirement
 
 - Continued Phase 5 scaled-MMAv5 cleanup from the narrow tile-permuted
   accumulator clean negatives.

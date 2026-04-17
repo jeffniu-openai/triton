@@ -342,19 +342,6 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
   return b.int_val(32, desc.descriptor);
 }
 
-static int overrideScaleFactorSubIdx(const char *envName, int defaultId) {
-  const char *env = std::getenv(envName);
-  if (!env)
-    return defaultId;
-  StringRef mapping(env);
-  if (mapping.size() != 4 || defaultId < 0 || defaultId >= 4)
-    return defaultId;
-  char mapped = mapping[defaultId];
-  if (mapped < '0' || mapped > '3')
-    return defaultId;
-  return mapped - '0';
-}
-
 //===----------------------------------------------------------------------===//
 // tcgen05 instructions
 //===----------------------------------------------------------------------===//
@@ -797,8 +784,7 @@ static MMAv5ScaleFactorFragment
 getMMAv5ScaleFactorFragment(int nonKRep, int kRep, int numRepNonK,
                             int numRepK, int numTMemScaleCols,
                             int scaleFactorColsPerSet,
-                            int minColsPerScaleBlock,
-                            const char *subColumnOverrideEnv) {
+                            int minColsPerScaleBlock) {
   int colsPerWord = 4 / scaleFactorColsPerSet;
   int numColPerScaleBlock =
       ceil<int>(numTMemScaleCols,
@@ -810,8 +796,7 @@ getMMAv5ScaleFactorFragment(int nonKRep, int kRep, int numRepNonK,
   return MMAv5ScaleFactorFragment{
       /*tmemColumnOffset=*/(nonKRep + wordIdx * numRepNonK) *
           numColPerScaleBlock,
-      /*subColumnId=*/overrideScaleFactorSubIdx(subColumnOverrideEnv,
-                                                subWordIdx)};
+      /*subColumnId=*/subWordIdx};
 }
 
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
@@ -885,12 +870,10 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
     auto scaleAFragment = getMMAv5ScaleFactorFragment(
         m, k, numRepM, numRepK, ttng::getTmemAllocSizes(aScaleTy).numCols,
-        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1,
-        "TRITON_MMAV5_SCALE_ID_MAP_A");
+        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1);
     auto scaleBFragment = getMMAv5ScaleFactorFragment(
         n, k, numRepN, numRepK, ttng::getTmemAllocSizes(bScaleTy).numCols,
-        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/2,
-        "TRITON_MMAV5_SCALE_ID_MAP_B");
+        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/2);
     Value scaleA =
         tb.add(baseScaleA, tb.i32_val(scaleAFragment.tmemColumnOffset));
     Value scaleB =

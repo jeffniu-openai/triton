@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 03:33 UTC: removed the stale scaled-MMAv5 scale-subcolumn
+  environment override hooks (`TRITON_MMAV5_SCALE_ID_MAP_A/B`). Scale-fragment
+  lowering now uses the deterministic subword index derived from the K
+  repetition directly. This deletes probe-only configurability that could
+  obscure the real B-scale fragment boundary. Validation: `make -j8`, focused
+  scaled-MMAv5 positive/narrow/repeated selector (`41 passed, 1534
+  deselected`), and `git diff --check`.
 - 2026-04-17 03:27 UTC: typed the scaled-MMAv5 sub-32-N accumulator boundary.
   Layouts that are valid for plain MMAv5 only with an N<32 instruction now
   derive an `MMAv5ScaledNarrowNScaleFragmentRequirement` instead of falling
