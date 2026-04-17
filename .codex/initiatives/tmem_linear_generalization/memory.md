@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:24 UTC descriptor-view subslice failures now
+  distinguish a true non-affine view boundary from an unclassified layout miss.
+  When subslice inference sees a negative physical-basis delta, both
+  `inferTMemSubsliceEncoding` and `inferTMemSubsliceQueryLayout` report the
+  source dimension, offset, size, basis step, and that the view would need a
+  carry-dependent descriptor. The current `block_two_ctas_bitcast_subslice`
+  clean negative is such a boundary: the active slice crosses a physical
+  layout basis boundary before the final bitcast, so it remains a clean
+  unsupported descriptor-view chain rather than a stale positive. Validation:
+  `make -j8`; exact block descriptor clean-negative (`2 passed`); neighboring
+  `test_core.py` unsupported bitcast row (`1 passed`); Python compile for
+  `test_tmem_runtime_matrix.py`; `git diff --check`.
+
 - Latest: 2026-04-17 13:13 UTC dense direct no-scales `tcgen05.copy`
   destination support now proves two-CTA block ownership from the actual
   physical query, not just row/column shape. `getDirectTMemCopyLayoutSupport`

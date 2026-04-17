@@ -23239,6 +23239,49 @@ Open after this slice:
   - checkpoint push remains blocked by the current repo instruction requiring
     `Mogball` for Triton GitHub operations.
 
+## 2026-04-17 13:24 UTC: descriptor subslice non-affine diagnostic
+
+- Starting point: `codex/tmem` at `079a7843e`.
+- Probe:
+  - reprobed the `block_two_ctas_bitcast_subslice` clean-negative row with
+    `TRITON_DEBUG_TMEM_QUERY=1`;
+  - confirmed the high-rank view chain falls off subslice inference before the
+    final bitcast, and the active slice crosses a physical basis boundary
+    rather than exposing a stale support-positive row;
+  - reprobed two-CTA `warpx2::02_13` and confirmed the current source-row
+    selected-offset / destination-row-mask diagnostic remains the active hard
+    copy frontier.
+- Change:
+  - added a shared non-affine subslice diagnostic helper in
+    `TensorMemoryUtils.cpp`;
+  - routed negative physical-basis deltas in both subslice type inference and
+    exact query inference through that helper;
+  - tightened the runtime-matrix block descriptor clean-negative row to assert
+    the new carry-dependent descriptor-view explanation.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-block-desc-affine2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_block_descriptor_reports_clean_error`
+    (`2 passed`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-core-view-affine
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py::test_tmem_linear_runtime_view_bitcast_reports_clean_error`
+    (`1 passed`);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by active `jeffniu-openai` auth under the current
+    `Mogball` repo instructions.
+- Next:
+  - commit this diagnostic checkpoint locally;
+  - continue support-bearing Phase 2 copy planner work, with scales
+    descriptor-view copies and two-CTA `warpx2::02_13` still blocked on real
+    destination-mask/source-format schedule limits.
+
 ## 2026-04-17 12:58 UTC: scaled accumulator tile requirement cleanup
 
 - Starting point: `codex/tmem` at `38750e84b`.

@@ -4464,6 +4464,9 @@ UNSUPPORTED_BLOCK_DESCRIPTOR_CASES = [
         _make_tmem_linear_layout_64x32_block(two_ctas=True),
         (
             "unsupported tensor memory memdesc_subslice view",
+            "is not affine in the selected tensor-memory linear layout",
+            "basis step 2 crosses a physical layout boundary",
+            "carry-dependent descriptor view",
         ),
     ),
 ]

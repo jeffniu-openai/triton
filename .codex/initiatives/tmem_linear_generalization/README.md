@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:24 UTC: tightened a descriptor-view clean negative for
+  non-affine tensor-memory subslices. `inferTMemSubsliceEncoding` and
+  `inferTMemSubsliceQueryLayout` now report when a subview window crosses a
+  physical basis boundary and would require a carry-dependent descriptor view,
+  instead of surfacing only the generic memdesc_subslice failure. The
+  block-backed two-CTA bitcast/subslice runtime-matrix row now asserts this
+  boundary explicitly. Validation: `make -j8`, exact block descriptor
+  clean-negative (`2 passed`), neighboring `test_core.py` unsupported bitcast
+  row (`1 passed`), Python compile, and `git diff --check`.
 - 2026-04-17 13:13 UTC: dense direct `tcgen05.copy` destination support now
   carries the actual two-CTA mode into the layout proof and checks canonical
   `[[128, 0]]` CTA block ownership through the same helper used by multicast

@@ -861,6 +861,24 @@ static LogicalResult verifyTMemSubsliceProjection(
   return success();
 }
 
+static void setTMemSubsliceNonAffineWindowError(std::string *error,
+                                                int64_t dim, int64_t offset,
+                                                int64_t size,
+                                                int64_t step) {
+  if (!error)
+    return;
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "unsupported tensor memory memdesc_subslice view: subview dimension "
+     << dim << " with offset " << offset << " and size " << size
+     << " is not affine in the selected tensor-memory linear layout; basis "
+        "step "
+     << step
+     << " crosses a physical layout boundary and would require a "
+        "carry-dependent descriptor view";
+  *error = os.str();
+}
+
 static LogicalResult verifyTMemIndexProjection(
     const LinearLayout &srcInv, ArrayRef<StringAttr> srcLogicalDims,
     const LinearLayout &dstLayout, ArrayRef<int64_t> dstShape,
@@ -1593,8 +1611,8 @@ inferTMemSubsliceQueryLayout(ArrayRef<int64_t> srcShape,
         int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
                         lookupLinearLayoutCoord(baseCoords, physDim);
         if (delta < 0) {
-          if (error)
-            *error = "unsupported tensor memory memdesc_subslice view";
+          setTMemSubsliceNonAffineWindowError(error, dim, offsets[dim],
+                                              dstDimSize, step);
           return failure();
         }
         basis.push_back(delta);
@@ -6732,8 +6750,8 @@ inferTMemSubsliceEncoding(ArrayRef<int64_t> srcShape, Attribute srcEncoding,
         int32_t delta = lookupLinearLayoutCoord(pointCoords, physDim) -
                         lookupLinearLayoutCoord(baseCoords, physDim);
         if (delta < 0) {
-          if (error)
-            *error = "unsupported tensor memory memdesc_subslice view";
+          setTMemSubsliceNonAffineWindowError(error, dim, offsets[dim],
+                                              dstDimSize, step);
           return failure();
         }
         activePhysMasks[physIdx] |= static_cast<uint32_t>(delta);

@@ -201,6 +201,12 @@ Progress:
   `getTMemLdStBlockedFallbackLayouts(...)`. The Gluon bridge now delegates the
   final blocked fallback policy to the backend for both static-type and
   handle-aware register-layout queries.
+- 2026-04-17 13:24 UTC: classified non-affine tensor-memory subslice windows
+  explicitly in both descriptor-view type inference and exact query inference.
+  Negative physical-basis deltas now report the dimension/offset/size/step and
+  the carry-dependent descriptor-view requirement, keeping true non-linear
+  subview chains out of the support backlog while preserving the exact
+  `LinearLayout` path for affine chains.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:
