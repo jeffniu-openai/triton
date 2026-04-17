@@ -409,6 +409,13 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForQuery(Value memDesc,
 std::optional<TMemLdStRowPlan>
 getTMemLdStRowPlanForQueryLayout(Value memDesc, gpu::MemDescType queryTy,
                                  const TMemLdStQueryLayout &queryLayout);
+std::optional<TMemLdStRowPlan>
+getTMemLdStRowPlanForRawQuery(Value memDesc, gpu::MemDescType queryTy,
+                              const TMemLdStQueryLayout &queryLayout);
+std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
+    Value memDesc, gpu::MemDescType queryTy,
+    const TMemLdStQueryLayout &supportQuery,
+    std::optional<TMemLdStRowPlan> supportRowPlan);
 
 bool hasCanonicalM64SplitNRows(const LinearLayout &layout);
 

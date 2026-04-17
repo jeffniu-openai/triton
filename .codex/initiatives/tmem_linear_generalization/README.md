@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 10:07 UTC: moved raw/support query row-plan selection for direct
+  `ld/st` register-layout checking into backend helpers. The Gluon pybind
+  bridge and generic TMEM load/store verifier now use
+  `getTMemLdStRowPlanForRawQuery(...)` and
+  `getTMemLdStRowPlanForSupportQuery(...)`, keeping raw-query override
+  suppression and support-query fallback order in `TensorMemoryUtils` rather
+  than bridge/verifier-local code. Support is unchanged. Validation:
+  `make -j8`, direct row-half/x1 fallback selector (`13 passed`), lifted
+  row-half selector (`6 passed`), core `test_core.py -k tmem_linear_m64` (`21
+  passed`), Python compile, and `git diff --check`.
 - 2026-04-17 10:03 UTC: moved the half-row descriptor-view type-only fallback
   refusal out of the Gluon pybind bridge and into the backend-owned
   `disallowTMemLdStTypeOnlyFallback(...)` policy. Support is unchanged, but

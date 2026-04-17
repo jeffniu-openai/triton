@@ -1772,18 +1772,10 @@ void init_gluon_ir(py::module &&m) {
                 std::optional<ttng::TMemLdStRowPlan> rowPlanOverride =
                     std::nullopt) -> py::object {
           auto queryTy = cast<ttg::MemDescType>(queryMemDesc.getType());
-          bool disableRawRowPlanOverride =
-              ttng::disallowTMemLdStRawQueryRowPlanOverride(queryMemDesc);
           std::optional<ttng::TMemLdStRowPlan> rowPlan = rowPlanOverride;
-          if (!rowPlan && !disableRawRowPlanOverride) {
-            rowPlan = ttng::getTMemLdStRowPlanForQueryLayout(queryMemDesc,
-                                                             queryTy,
-                                                             queryLayout);
-            if (!rowPlan)
-              rowPlan = ttng::getBackingTMemLdStRowPlan(queryMemDesc);
-          }
           if (!rowPlan)
-            rowPlan = ttng::getTMemLdStRowPlan(queryLayout.layout);
+            rowPlan = ttng::getTMemLdStRowPlanForRawQuery(
+                queryMemDesc, queryTy, queryLayout);
           if (traceToFile) {
             appendTrace(Twine("firstLegalLayoutForQueryLayout atomName=") +
                         atomName + " rowPlan=" +
@@ -1926,10 +1918,8 @@ void init_gluon_ir(py::module &&m) {
                   std::optional<ttng::TMemLdStRowPlan> supportRowPlan)
               -> py::object {
             if (!supportRowPlan)
-              supportRowPlan = ttng::getTMemLdStRowPlanForQueryLayout(
-                  queryMemDesc, queryMemDescTy, supportQuery);
-            if (!supportRowPlan)
-              supportRowPlan = ttng::getBackingTMemLdStRowPlan(queryMemDesc);
+              supportRowPlan = ttng::getTMemLdStRowPlanForSupportQuery(
+                  queryMemDesc, queryMemDescTy, supportQuery, supportRowPlan);
             if (debug) {
               debugLog << "[tmem-reg-layout] support rowPlan="
                        << (supportRowPlan

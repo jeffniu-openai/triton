@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 10:07 UTC raw/support query row-plan selection is now
+  backend-owned for direct `ld/st` layout checking. Added
+  `getTMemLdStRowPlanForRawQuery(...)` and
+  `getTMemLdStRowPlanForSupportQuery(...)` in `TensorMemoryUtils`; the Gluon
+  pybind bridge and generic TMEM load/store verifier now use those helpers
+  instead of open-coding raw-query override suppression and support-query
+  fallback order locally. Support is unchanged; this tightens the layering so
+  future linear-layout fixes land in one backend policy surface. Validation:
+  `make -j8`, direct row-half/x1 fallback selector (`13 passed`), lifted
+  row-half selector (`6 passed`), core `test_core.py -k tmem_linear_m64` (`21
+  passed`), Python compile, and `git diff --check`.
+
 - Latest: 2026-04-17 10:03 UTC half-row descriptor-view type-only fallback
   refusal is backend-owned. `disallowTMemLdStTypeOnlyFallback(...)` now covers
   half-row descriptor views that require exact support/raw-query lowering, and

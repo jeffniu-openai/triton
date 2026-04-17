@@ -1,3 +1,40 @@
+## 2026-04-17 10:07 UTC: backend-owned raw/support row-plan selection
+
+- Starting point: `codex/tmem` at `2d87afaa0`.
+- Change:
+  - added backend row-plan helpers for direct `ld/st` raw and support queries:
+    `getTMemLdStRowPlanForRawQuery(...)` and
+    `getTMemLdStRowPlanForSupportQuery(...)`;
+  - switched the Gluon pybind register-layout bridge to use the raw-query
+    helper instead of carrying its own raw row-plan override suppression;
+  - switched the generic TMEM load/store verifier support/raw-query checks and
+    diagnostic repro path to use the same helpers.
+- Boundary:
+  - no support is promoted in this checkpoint;
+  - the goal is to keep exact linear-layout row-plan policy in
+    `TensorMemoryUtils`, so future support work does not need to keep bridge
+    and verifier fallback ordering in sync manually.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ldst_descriptor_direct_half_rows_positive or
+    ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported or
+    ldst_x1_i32_descriptor_chain_roundtrip or
+    ldst_x1_i32_unsupported_variants_report_clean_unsupported"` (`13 passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ldst_descriptor_higher_rank_half_rows_positive_lifted_layout or
+    ldst_twocta_descriptor_higher_rank_half_rows_positive_lifted_layout"` (`6
+    passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 pytest -s --tb=short
+    python/test/gluon/test_core.py -k tmem_linear_m64` (`21 passed`);
+  - `PYTHONPATH=./python python -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py && git diff --check`.
+
 ## 2026-04-17 09:29 UTC: copy/scaled hard-frontier reprobes
 
 - Starting point: `codex/tmem` at `c546fc41e`.

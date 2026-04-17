@@ -3670,6 +3670,31 @@ getTMemLdStRowPlanForQueryLayout(Value memDesc, MemDescType queryTy,
   return queryPlan;
 }
 
+std::optional<TMemLdStRowPlan>
+getTMemLdStRowPlanForRawQuery(Value memDesc, MemDescType queryTy,
+                              const TMemLdStQueryLayout &queryLayout) {
+  std::optional<TMemLdStRowPlan> rowPlan;
+  if (!disallowTMemLdStRawQueryRowPlanOverride(memDesc)) {
+    rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, queryTy, queryLayout);
+    if (!rowPlan)
+      rowPlan = getBackingTMemLdStRowPlan(memDesc);
+  }
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlan(queryLayout.layout);
+  return rowPlan;
+}
+
+std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForSupportQuery(
+    Value memDesc, MemDescType queryTy, const TMemLdStQueryLayout &supportQuery,
+    std::optional<TMemLdStRowPlan> supportRowPlan) {
+  auto rowPlan = supportRowPlan;
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, queryTy, supportQuery);
+  if (!rowPlan)
+    rowPlan = getBackingTMemLdStRowPlan(memDesc);
+  return rowPlan;
+}
+
 static std::optional<gpu::MemDescType>
 getCanonicalTMemLdStSurrogateType(gpu::MemDescType queryTy,
                                   std::optional<TMemLdStRowPlan> backingPlan,
