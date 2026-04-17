@@ -1101,6 +1101,7 @@ static LinearLayout getMsgToPackedOffsetLayout(ttg::MemDescType ty,
                                                ttg::TMAMode mode) {
   auto ctx = ty.getContext();
   auto kMsg = str_attr("msg");
+  auto kBlock = str_attr("block");
   auto shapePerCTA = ttg::getShapePerCTA(ty);
   int rank = shapePerCTA.size();
   auto blockShape = ttng::getTMABlockShape(ty, /*packedSize=*/true, mode);
@@ -1210,9 +1211,9 @@ struct AsyncTMACopyGlobalToLocalOpConversion
 
     uint32_t barrierMask =
         toLinearLayout(barrierTy).getFreeVariableMasks().lookup(kBlock);
-    // We emit a cluster-level barrier when the barrier mask is set.
-    bool clusterBarrier = barrierMask != 0;
-    if (clusterBarrier) {
+    // Use a cross-CTA mbarrier pointer when the barrier mask is set.
+    bool crossCTABarrier = barrierMask != 0;
+    if (crossCTABarrier) {
       barrierPtr =
           LLVM::NVIDIA::getLeaderAddress(loc, rewriter, barrierPtr, barrierTy);
     }
@@ -1249,7 +1250,7 @@ struct AsyncTMACopyGlobalToLocalOpConversion
           ptxBuilderTMA.newOperand(adaptor.getDesc(), "l")};
       std::string tmaInst =
           "@$0 cp.async.bulk.tensor." + std::to_string(rank) + "d." + ctaGroup +
-          "shared::" + ((clusterBarrier || multicast) ? "cluster" : "cta") +
+          "shared::" + ((crossCTABarrier || multicast) ? "cluster" : "cta") +
           ".global" + (isIm2Col ? ".im2col" : "") +
           ".mbarrier::complete_tx::bytes";
       if (multicast)
@@ -1535,6 +1536,8 @@ static LogicalResult iterateGatherScatterIndices(
   LinearLayout msgToCol =
       LinearLayout::strided1D(numMessagesPerRow, msgSize, kMsg, kDim1);
   LinearLayout msgLayout = xCoordsLayout * msgToCol;
+  LinearLayout msgToOffset =
+      getMsgToPackedOffsetLayout(smemType, ttg::TMAMode::Tiled);
 
   // `gather4` will put the segments of the 4 rows consecutively in
   // shared memory. However, if the 4 rows are smaller than the shared memory
@@ -1553,6 +1556,10 @@ static LogicalResult iterateGatherScatterIndices(
 
   Value warpId = mlir::triton::gpu::WarpIdOp::create(rewriter, loc);
   Value blockId = nvgpu::ClusterCTAIdOp::create(rewriter, loc);
+  auto ctaOffsets = applyLinearLayout(
+      loc, rewriter, msgToOffset, {{kMsg, b.i32_val(0)}, {kBlock, blockId}});
+  assert(ctaOffsets.size() == 2 && ctaOffsets.back().first == kDim1);
+  yOffsetValue = b.add(yOffsetValue, ctaOffsets.back().second);
 
   // Mask out warps with redundant x offsets.
   pred = b.and_(pred,
@@ -1630,9 +1637,9 @@ LogicalResult AsyncTMAGatherOpConversion::matchAndRewrite(
   }
 
   Value barrierPtr = barrierMemObj.getBase();
-  bool clusterBarrier =
+  bool crossCTABarrier =
       toLinearLayout(barrierTy).getFreeVariableMasks().lookup(kBlock) != 0;
-  if (clusterBarrier) {
+  if (crossCTABarrier) {
     barrierPtr =
         LLVM::NVIDIA::getLeaderAddress(loc, rewriter, barrierPtr, barrierTy);
   }
@@ -1647,7 +1654,7 @@ LogicalResult AsyncTMAGatherOpConversion::matchAndRewrite(
     std::string tmaInst = "@$0 cp.async.bulk.tensor.2d.tile::gather4";
     tmaInst += ctaGroup;
     tmaInst += ".shared::";
-    tmaInst += (clusterBarrier || multicast) ? "cluster" : "cta";
+    tmaInst += (crossCTABarrier || multicast) ? "cluster" : "cta";
     tmaInst += ".global.mbarrier::complete_tx::bytes";
     if (multicast)
       tmaInst += ".multicast::cluster";
