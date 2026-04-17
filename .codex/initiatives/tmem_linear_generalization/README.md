@@ -48,6 +48,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:05 UTC: continued Phase F by moving the direct `ld/st`
+  replay/support register-layout search out of `OptimizeTMemLayouts` and into
+  backend `TensorMemoryUtils` as `getTMemLdStDirectSupportTensorType`. The
+  transform now only asks the backend helper for the support tensor type used
+  by leading-slice and replay rewrites. Validation: `make -j8`; focused
+  split-4 runtime selector for multidim replay, direct/half-row replay, and
+  direct higher-rank get-reg-layout paths passed `6/6`, `6/6`, `6/6`, and
+  `4/4`; `git diff --check`.
 - 2026-04-17 21:01 UTC: started the Phase F compatibility-shim audit after
   the full runtime-matrix baseline. `TMEMLoadOp`/`TMEMStoreOp` verification no
   longer carries its own row-zero lifted reinterpret predicate; it delegates to

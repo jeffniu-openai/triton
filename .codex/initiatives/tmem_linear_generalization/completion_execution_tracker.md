@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:01 UTC
+Last updated: 2026-04-17 21:05 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -218,11 +218,27 @@ Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
 - Validation note:
   - `lit` is not installed in this shell as either `lit` or `python3 -m lit`.
 
+2026-04-17 21:05 UTC:
+
+- Moved the direct `ld/st` support register-layout search used by
+  `OptimizeTMemLayouts` replay/leading-slice rewrites into backend
+  `TensorMemoryUtils` as `getTMemLdStDirectSupportTensorType`.
+- This removes a transform-local copy of raw-query/support-query/query-type
+  search policy and keeps replay lowering as a consumer of backend-owned
+  support helpers.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory was changed.
+- Validation:
+  - `make -j8`;
+  - focused replay/direct-support runtime selector split across four GPUs
+    passed `6/6`, `6/6`, `6/6`, and `4/4`;
+  - `git diff --check`.
+
 ## Immediate Execution Order
 
-1. Continue the Phase F shim audit in `OptimizeTMemLayouts` direct-support
-   selection and replay rewrites. Delete only behavior already represented by
-   backend query/support helpers.
+1. Finish the Phase F shim audit in `OptimizeTMemLayouts` shape-match replay
+   plumbing. Delete only behavior already represented by backend query/support
+   helpers; otherwise move back to the support-bearing frontier.
 2. Classify each clean-negative bucket in code comments/tests/docs as stale,
    missing planner schedule, missing storage representation, or true boundary.
 3. Take the next support-bearing slice from `tcgen05.copy` because it has the

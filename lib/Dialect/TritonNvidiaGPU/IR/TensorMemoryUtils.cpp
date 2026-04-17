@@ -286,6 +286,127 @@ getTMemLdStBlockedFallbackLayouts(MemDescType queryTy,
   return layouts;
 }
 
+std::optional<RankedTensorType>
+getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps) {
+  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
+  if (!memTy)
+    return std::nullopt;
+
+  auto backingRowPlan = getBackingTMemLdStRowPlan(memDesc);
+  auto isInvalidScalesLoadLayout = [&](RankedTensorType regTy,
+                                       MemDescType queryTy) {
+    if (!isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()) ||
+        queryTy.getElementTypeBitWidth() >= 32)
+      return false;
+    auto kReg = StringAttr::get(memDesc.getContext(), "register");
+    auto freeMask = toLinearLayout(regTy).getFreeVariableMasks().lookup(kReg);
+    return freeMask != 0;
+  };
+  auto normalizeScalesRegisterLayout =
+      [&](DistributedEncodingTrait layout,
+          MemDescType queryTy) -> DistributedEncodingTrait {
+    if (!isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()) ||
+        queryTy.getElementTypeBitWidth() >= 32)
+      return layout;
+    auto regTy =
+        RankedTensorType::get(memTy.getShape(), memTy.getElementType(), layout);
+    auto regLayout = toLinearLayout(regTy);
+    auto kReg = StringAttr::get(memDesc.getContext(), "register");
+    regLayout = regLayout.removeZeroBasesAlongDim(kReg);
+    Attribute normalized =
+        gpu::LinearEncodingAttr::get(memTy.getContext(), std::move(regLayout));
+    return cast<DistributedEncodingTrait>(normalized);
+  };
+  auto queryTypes = getTMemLdStQueryTypes(memDesc);
+  auto tryQueryLayout = [&](const TMemLdStQueryLayout &query,
+                            std::optional<TMemLdStRowPlan> rowPlan)
+      -> std::optional<RankedTensorType> {
+    for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(std::nullopt)) {
+      auto layout =
+          getDistributedLayoutForTmemLdSt(memTy, atom, numWarps, rowPlan,
+                                          query.layout);
+      if (!layout)
+        continue;
+      if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()) &&
+          memTy.getElementTypeBitWidth() < 32) {
+        auto kReg = StringAttr::get(memDesc.getContext(), "register");
+        *layout = layout->removeZeroBasesAlongDim(kReg);
+      }
+      auto attr =
+          gpu::LinearEncodingAttr::get(memTy.getContext(), std::move(*layout));
+      auto regTy =
+          RankedTensorType::get(memTy.getShape(), memTy.getElementType(), attr);
+      if (isInvalidScalesLoadLayout(regTy, memTy))
+        continue;
+      if (succeeded(computeTMemLdStEncodingInfo(
+              regTy, memTy, query, /*maxnreg=*/256, /*emitError=*/{},
+              rowPlan))) {
+        return regTy;
+      }
+    }
+    return std::nullopt;
+  };
+
+  std::string rawError;
+  if (auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+          memDesc, /*preserveNonCanonicalView=*/true, &rawError);
+      succeeded(rawQuery)) {
+    auto rawRowPlan = getTMemLdStRowPlanForRawQuery(memDesc, memTy, *rawQuery);
+    if (auto regTy = tryQueryLayout(*rawQuery, rawRowPlan))
+      return *regTy;
+  }
+
+  std::string supportError;
+  if (auto supportPlan = getTMemLdStSupportQueryPlan(memDesc, &supportError)) {
+    auto supportRowPlan = getTMemLdStRowPlanForSupportQuery(
+        memDesc, memTy, supportPlan->query, supportPlan->rowPlan);
+    if (auto regTy = tryQueryLayout(supportPlan->query, supportRowPlan))
+      return *regTy;
+  }
+
+  for (MemDescType queryTy : queryTypes) {
+    SmallVector<DistributedEncodingTrait> layouts;
+    auto addLayout = [&](DistributedEncodingTrait layout) {
+      if (llvm::none_of(layouts, [&](DistributedEncodingTrait existing) {
+            return cast<Attribute>(existing) == cast<Attribute>(layout);
+          })) {
+        layouts.push_back(layout);
+      }
+    };
+    for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(std::nullopt)) {
+      if (auto layout = getDistributedLayoutForTmemLdSt(queryTy, atom,
+                                                        numWarps)) {
+        addLayout(gpu::LinearEncodingAttr::get(queryTy.getContext(),
+                                               std::move(*layout)));
+      }
+    }
+    for (auto candidate :
+         getTMemLdStCandidateLayoutsForQuery(memDesc, queryTy, numWarps,
+                                             /*atomName=*/"auto")) {
+      addLayout(gpu::LinearEncodingAttr::get(queryTy.getContext(),
+                                             std::move(candidate.layout)));
+    }
+    for (auto layout : getTmemCompatibleLayouts(queryTy, numWarps))
+      addLayout(layout);
+    for (auto layout : getTMemLdStGenericCompatibleLayouts(
+             memDesc, queryTy, numWarps, /*atomName=*/"auto"))
+      addLayout(layout);
+    for (auto candidateLayout : layouts) {
+      candidateLayout = normalizeScalesRegisterLayout(candidateLayout, queryTy);
+      auto regTy = RankedTensorType::get(
+          memTy.getShape(), memTy.getElementType(), candidateLayout);
+      if (isInvalidScalesLoadLayout(regTy, queryTy))
+        continue;
+      if (succeeded(computeTMemLdStEncodingInfo(
+              regTy, queryTy, /*maxnreg=*/256, /*emitError=*/{},
+              backingRowPlan))) {
+        return regTy;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 static std::optional<unsigned>
 matchReplayableTMemHalfSliceDim(gpu::MemDescSubsliceOp subslice) {
   auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());

@@ -24615,3 +24615,24 @@ Open after this slice:
 - Note:
   - `lit` and `python3 -m lit` are unavailable in this shell, so the
     verify-diagnostics lit check was not runnable for this cleanup.
+
+## 2026-04-17 21:05 UTC: direct-support helper moved to backend utilities
+
+- Starting point: `codex/tmem` at pushed `5aa068f9a`.
+- Change:
+  - added `getTMemLdStDirectSupportTensorType` to `TensorMemoryUtils`;
+  - moved the direct support register-layout search used by
+    `OptimizeTMemLayouts` leading-slice/replay rewrites into that helper;
+  - removed the transform-local copy of raw-query/support-query/query-type
+    layout search policy.
+- Intent:
+  - no support surface changes;
+  - keep `OptimizeTMemLayouts` as a rewrite consumer and keep direct `ld/st`
+    support selection in the backend helper layer with the other physical
+    query and row-plan APIs.
+- Validation:
+  - `make -j8`;
+  - split-4 focused runtime selector for multidim replay, direct/half-row
+    replay, two-CTA replay, and direct higher-rank get-reg-layout rows passed
+    as `6/6`, `6/6`, `6/6`, and `4/4`;
+  - `git diff --check`.

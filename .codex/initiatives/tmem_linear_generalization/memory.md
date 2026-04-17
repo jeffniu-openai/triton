@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:05 UTC Phase F direct-support helper cleanup:
+  `OptimizeTMemLayouts` no longer owns the direct `ld/st` support
+  register-layout search used by leading-slice and replay rewrites. The logic
+  now lives in `TensorMemoryUtils` as
+  `getTMemLdStDirectSupportTensorType`, so replay lowering consumes the same
+  backend-owned query/support helper layer as verification and direct support
+  planning. Validation: `make -j8`, split-4 focused replay/direct-support
+  selector passed `6/6`, `6/6`, `6/6`, and `4/4`, and `git diff --check`.
+  Next: keep auditing remaining `OptimizeTMemLayouts` shape-match rewrites for
+  old compatibility behavior; otherwise return to Phase C/Phase E
+  support-bearing work.
+
 - Latest: 2026-04-17 21:01 UTC Phase F compatibility-shim cleanup:
   `verifyTMEMOperand` now uses the shared
   `disallowTMemLdStQueryTypeRescue` backend helper instead of carrying a local
