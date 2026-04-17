@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:25 UTC lowered-subview base-offset subtraction is
+  backend-owned. `TensorMemoryUtils` now exposes
+  `getTMemSubviewRelativeBaseOffset(...)`, and direct `ld/st` plus
+  `tcgen05.copy` lowering use it to subtract already-lowered subview bases
+  instead of duplicating the clamp in the emission layer. Support is unchanged.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, Python compile,
+  expanded descriptor/copy runtime selector (`96 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:20 UTC query-type direct `ld/st` scalarization is
   backend-owned. `TensorMemoryUtils` now exposes
   `refineTMemLdStQueryTypeEncodingInfo(...)`, and LLVM lowering calls it after

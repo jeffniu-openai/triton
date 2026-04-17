@@ -779,16 +779,11 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(rawEncodingInfoOr)) {
         auto &encodingInfoOr = rawEncodingInfoOr;
-        uint32_t alreadyAdjustedBase =
-            getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
         // Subview ops that already advanced the TMEM base pointer should only
         // keep the portion of the raw-query baseOffset that remains relative
         // to the lowered base, rather than re-applying the full view origin.
-        if (alreadyAdjustedBase != 0)
-          encodingInfoOr->baseOffset =
-              encodingInfoOr->baseOffset > alreadyAdjustedBase
-                  ? encodingInfoOr->baseOffset - alreadyAdjustedBase
-                  : 0;
+        encodingInfoOr->baseOffset = getTMemSubviewRelativeBaseOffset(
+            memDescValue, encodingInfoOr->baseOffset);
         if (auto lowered = lowerTMemLdStFromInfo(
                 loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals,
                 tmemBase, redOp, useAbs, useNaN);
@@ -848,15 +843,10 @@ lowerTMemLdStFromTypes(
       }
       if (succeeded(encodingInfoOr)) {
         auto &encodingInfo = *encodingInfoOr;
-        uint32_t alreadyAdjustedBase =
-            getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
         if (!preserveTMemLdStSupportQueryBaseOffset(memTy, supportQuery))
           encodingInfo.baseOffset = 0;
-        if (alreadyAdjustedBase != 0)
-          encodingInfo.baseOffset =
-              encodingInfo.baseOffset > alreadyAdjustedBase
-                  ? encodingInfo.baseOffset - alreadyAdjustedBase
-                  : 0;
+        encodingInfo.baseOffset = getTMemSubviewRelativeBaseOffset(
+            memDescValue, encodingInfo.baseOffset);
         return lowerTMemLdStFromInfo(
             loc, rewriter, encodingInfo, pred, llvmElemTy, vals, tmemBase,
             redOp, useAbs, useNaN);
@@ -935,13 +925,9 @@ lowerTMemLdStFromTypes(
                              : (Twine("fail details=") + sourceRawDetails)));
           }
           if (succeeded(sourceRawEncodingInfo)) {
-            uint32_t alreadyAdjustedBase =
-                getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
-            if (alreadyAdjustedBase != 0)
-              sourceRawEncodingInfo->baseOffset =
-                  sourceRawEncodingInfo->baseOffset > alreadyAdjustedBase
-                      ? sourceRawEncodingInfo->baseOffset - alreadyAdjustedBase
-                      : 0;
+            sourceRawEncodingInfo->baseOffset =
+                getTMemSubviewRelativeBaseOffset(
+                    memDescValue, sourceRawEncodingInfo->baseOffset);
             if (auto lowered = lowerTMemLdStFromInfo(
                     loc, rewriter, *sourceRawEncodingInfo, pred, llvmElemTy,
                     vals, tmemBase, redOp, useAbs, useNaN);
@@ -1400,13 +1386,8 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   bool twoCTAs = getModuleTwoCTAs(op);
   uint32_t destinationBaseOffset =
       getTMemPhysicalQueryOriginBaseOffset(supportDstQuery);
-  uint32_t alreadyAdjustedBase =
-      getAlreadyAdjustedTMemSubviewBaseOffset(op.getDst());
-  if (alreadyAdjustedBase != 0)
-    destinationBaseOffset =
-        destinationBaseOffset > alreadyAdjustedBase
-            ? destinationBaseOffset - alreadyAdjustedBase
-            : 0;
+  destinationBaseOffset =
+      getTMemSubviewRelativeBaseOffset(op.getDst(), destinationBaseOffset);
 
   for (const TMemCopyScheduledInstruction &instruction :
        planSelection.plan->instructions) {

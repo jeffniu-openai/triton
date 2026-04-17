@@ -21905,3 +21905,47 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.28s`);
   - `git diff --check`.
+
+## 2026-04-17 08:25 UTC: centralized lowered-subview base-offset subtraction
+
+- Starting point: `codex/tmem` at `87431c54d`.
+- Change:
+  - added `getTMemSubviewRelativeBaseOffset(...)` to `TensorMemoryUtils`;
+  - replaced three direct `ld/st` lowering copies of the
+    `baseOffset - alreadyAdjustedBase` clamp;
+  - replaced the same `tcgen05.copy` destination-base adjustment in copy
+    lowering.
+- Boundary:
+  - support is unchanged. The helper preserves the existing saturating
+    subtraction semantics and keeps the already-lowered subview base rule in
+    the backend utility layer that computes those bases.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-base-offset-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga or ldst_4x256b_refresh or
+    cp_no_scales_linear_subslice_view or
+    cp_no_scales_twocta_linear_subslice_view or
+    cp_no_scales_warpx2_subslice_view_positive or
+    cp_no_scales_4x256b_refresh"` (`96 passed, 1 skipped,
+    1481 deselected in 66.87s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-base-offset-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 6.23s`);
+  - `git diff --check`.

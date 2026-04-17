@@ -486,6 +486,9 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);
 
 uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue);
 
+uint32_t getTMemSubviewRelativeBaseOffset(Value memDescValue,
+                                          uint32_t baseOffset);
+
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemRegLayoutQueryType(Value memDesc,
                                       std::string *error = nullptr);

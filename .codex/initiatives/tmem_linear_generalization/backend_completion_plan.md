@@ -192,6 +192,10 @@ Progress:
   `refineTMemLdStQueryTypeEncodingInfo(...)`. The backend now owns the
   view-like 32x32 descriptor case that must scalarize `32x32b` messages after
   query-type encoding selection.
+- 2026-04-17 08:25 UTC: centralized lowered-subview base-offset subtraction in
+  `TensorMemoryUtils` as `getTMemSubviewRelativeBaseOffset(...)`. Direct
+  `ld/st` and `tcgen05.copy` lowering now use one backend helper to subtract
+  already-lowered subview bases from query-derived offsets.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

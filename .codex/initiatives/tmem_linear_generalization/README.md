@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:25 UTC: centralized lowered-subview base-offset subtraction
+  in `TensorMemoryUtils` as `getTMemSubviewRelativeBaseOffset(...)`. Direct
+  `ld/st` raw-query, support-query, source-column raw-query, and `tcgen05.copy`
+  lowering now use the shared helper instead of reimplementing the same
+  `baseOffset - alreadyAdjustedBase` clamp locally. Support is unchanged.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, Python compile for
+  affected Gluon tests, expanded descriptor/copy runtime selector (`96 passed,
+  1 skipped`), `test_core.py -k tmem_linear_m64` (`21 passed`), and
+  `git diff --check`.
 - 2026-04-17 08:20 UTC: moved query-type direct `ld/st` scalarization
   refinement from LLVM lowering into `TensorMemoryUtils` as
   `refineTMemLdStQueryTypeEncodingInfo(...)`. Query-type lowering now

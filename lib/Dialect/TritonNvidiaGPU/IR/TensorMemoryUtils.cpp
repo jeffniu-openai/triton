@@ -3901,6 +3901,16 @@ uint32_t getAlreadyAdjustedTMemSubviewBaseOffset(Value memDescValue) {
   return 0;
 }
 
+uint32_t getTMemSubviewRelativeBaseOffset(Value memDescValue,
+                                          uint32_t baseOffset) {
+  uint32_t alreadyAdjustedBase =
+      getAlreadyAdjustedTMemSubviewBaseOffset(memDescValue);
+  if (alreadyAdjustedBase == 0)
+    return baseOffset;
+  return baseOffset > alreadyAdjustedBase ? baseOffset - alreadyAdjustedBase
+                                          : 0;
+}
+
 static FailureOr<MemDescType>
 inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
                                 std::string *error) {
