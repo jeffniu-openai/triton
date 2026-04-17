@@ -20766,3 +20766,24 @@ Open after this slice:
   - `make -j8`;
   - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-restored2 PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_4x256b'`
     (`3 passed, 1572 deselected in 3.25s`).
+
+## 2026-04-17 05:03 UTC: removed Python M64 split-N auto shim
+
+- Starting point: `codex/tmem` at `f4cd1f9cf`.
+- Change:
+  - taught `findDirectLayoutForMemDesc` that `instr_variant="auto"` is
+    eligible for the canonical M64 split-N raw-query recognizer;
+  - for M64 f32 non-scales descriptor values, the C++ bridge now tries the
+    canonical split-N layout before generic raw-query layout selection;
+  - deleted `_try_handle_aware_m64_splitn_auto_layout(...)` and simplified
+    `load(layout=None)` to call `get_reg_layout(auto)` directly.
+- Validation:
+  - `make -j8`;
+  - `python -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused M64 auto/default selector passed
+    (`32 passed, 1543 deselected in 10.79s`);
+  - split-N family selector passed
+    (`28 passed, 1547 deselected in 6.80s`);
+  - `git diff --check`.

@@ -1099,6 +1099,11 @@ Progress:
   and selects the canonical split-N reduction layout before creating
   `ttng.tmem_load`. The M64 split-N reduction family is now backend-owned for
   default, explicit split-N, and explicit logical `32x32b` reduction requests.
+- 2026-04-17 05:03 UTC: removed the Python M64 split-N auto-layout shim. The
+  C++ raw-query recognizer now handles `instr_variant="auto"` before generic
+  raw-query selection for rank-2 M64 f32 non-scales descriptor values, so
+  `load(layout=None)` and `get_reg_layout(auto)` no longer need to pre-query
+  `32x32b_splitn` from Python.
 - 2026-04-17 05:00 UTC: re-probed ordinary contiguous `tcgen05.copy.4x256b` by
   bypassing the refresh-only support and lowering guards. The ISA opcode
   emitted, but the output copied the refresh physical pattern into the ordinary

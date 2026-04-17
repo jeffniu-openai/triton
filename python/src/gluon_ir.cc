@@ -2382,10 +2382,11 @@ void init_gluon_ir(py::module &&m) {
               [&](const ttng::TMemLdStQueryLayout &rawQueryLayout)
               -> py::object {
             bool requestedM64SplitN =
-                atomName == "32x32b_splitn" || atomName == "16x32bx2";
+                atomName == "auto" || atomName == "32x32b_splitn" ||
+                atomName == "16x32bx2";
             if (!requestedM64SplitN || numWarps != 4 ||
-                !desiredAtom ||
-                *desiredAtom != ttng::TMemAccessAtom::I16x32bx2 ||
+                (desiredAtom &&
+                 *desiredAtom != ttng::TMemAccessAtom::I16x32bx2) ||
                 queryMemDescTy.getRank() != 2 ||
                 queryMemDescTy.getShape()[0] != 64 ||
                 queryMemDescTy.getElementTypeBitWidth() != 32 ||
@@ -2450,6 +2451,11 @@ void init_gluon_ir(py::module &&m) {
               return layout;
           }
           if (auto rawQueryLayout = inferRawQueryLayout(queryMemDesc)) {
+            if (atomName == "auto") {
+              py::object layout = tryCanonicalM64SplitNRawQuery(*rawQueryLayout);
+              if (!layout.is_none())
+                return layout;
+            }
             py::object layout = firstLegalLayoutForQueryLayout(
                 queryMemDesc, *rawQueryLayout, desiredAtom);
             if (!layout.is_none()) {

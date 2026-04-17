@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:03 UTC M64 split-N auto shim deletion: removed
+  `_try_handle_aware_m64_splitn_auto_layout(...)` and its `load()` /
+  `get_reg_layout(auto)` call sites. The C++ memdesc register-layout bridge now
+  lets `instr_variant="auto"` use the canonical M64 split-N raw-query
+  recognizer and tries it before generic raw-query layout selection for rank-2
+  M64 f32 non-scales descriptor values. Validation: `make -j8`, py-compile,
+  focused M64 auto/default selector (`32 passed, 1543 deselected`), split-N
+  family selector (`28 passed, 1547 deselected`), and `git diff --check`.
+
 - Latest: 2026-04-17 05:00 UTC ordinary contiguous `tcgen05.cp.4x256b`
   reprobe: temporarily removing the support and lowering guards made the
   ordinary parent-slice copy emit `tcgen05.cp.cta_group::1.4x256b`, but the

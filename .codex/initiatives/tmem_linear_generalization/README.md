@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:03 UTC: removed the remaining Python M64 split-N auto-layout
+  shim. The C++ `findDirectLayoutForMemDesc` raw-query recognizer now treats
+  `instr_variant="auto"` as eligible for the canonical M64 split-N layout and
+  tries that before generic raw-query layout selection for rank-2 M64 f32
+  non-scales descriptor values. `load(layout=None)` now routes through
+  `get_reg_layout(auto)` directly. Validation: `make -j8`, py-compile for
+  `blackwell/__init__.py` and `test_tmem_runtime_matrix.py`, focused M64
+  auto/default selector (`32 passed, 1543 deselected`), split-N family
+  selector (`28 passed, 1547 deselected`), and `git diff --check`.
 - 2026-04-17 05:00 UTC: re-probed ordinary contiguous
   `tcgen05.cp.4x256b` by temporarily removing the direct-support and lowering
   guards. The kernel emitted `tcgen05.cp.cta_group::1.4x256b`, but copied the

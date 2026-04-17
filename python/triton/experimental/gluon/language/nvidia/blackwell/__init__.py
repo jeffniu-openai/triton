@@ -164,22 +164,6 @@ def _fold_canonical_single_cta_block_rows(rows, block_bases, shape, two_ctas):
     return folded_rows, []
 
 
-def _try_handle_aware_m64_splitn_auto_layout(desc, num_warps):
-    num_warps = _unwrap_if_constexpr(num_warps)
-    shape = [_unwrap_if_constexpr(dim) for dim in _unwrap_if_constexpr(desc.shape)]
-
-    if num_warps != 4 or len(shape) != 2 or shape[0] != 64:
-        return None
-    if desc.dtype.primitive_bitwidth != 32:
-        return None
-    if isinstance(_unwrap_if_constexpr(desc.layout), TensorMemoryScalesLayout):
-        return None
-
-    return gluon_ir.compute_tmem_reg_layout_from_memdesc(
-        desc.handle, num_warps, "32x32b_splitn"
-    )
-
-
 @gluon.jit
 def _reduce_min_direct(a, b):
     return ttgl.minimum(a, b)
@@ -525,11 +509,6 @@ class tensor_memory_descriptor(base_value):
                 num_warps,
                 "16x32bx2",
             )
-        splitn_auto_layout = _try_handle_aware_m64_splitn_auto_layout(
-            self, num_warps
-        )
-        if requested_variant == "auto" and splitn_auto_layout is not None:
-            return splitn_auto_layout
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
                 self.handle, num_warps, requested_variant
@@ -578,13 +557,11 @@ class tensor_memory_descriptor(base_value):
         self._require_rank2_tmem_ldst("load")
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
-            layout = _try_handle_aware_m64_splitn_auto_layout(self, num_warps)
-            if layout is None:
-                layout = self.get_reg_layout(
-                    num_warps=num_warps,
-                    _semantic=_semantic,
-                    _generator=_generator,
-                )
+            layout = self.get_reg_layout(
+                num_warps=num_warps,
+                _semantic=_semantic,
+                _generator=_generator,
+            )
         layout = _unwrap_if_constexpr(layout)
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder
