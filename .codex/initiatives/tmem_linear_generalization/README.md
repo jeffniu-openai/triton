@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:32 UTC: promoted direct higher-rank TMEM `load()` and
+  `store()` by replaying them through an explicit 2D descriptor view. The
+  Gluon descriptor methods now flatten leading logical dimensions for direct
+  load/store only, use the existing rank-2 backend register-layout and
+  `ttng.tmem_load`/`ttng.tmem_store` path, then reshape the register value
+  back to the original descriptor shape. Direct `get_reg_layout()` and
+  reduction load remain rank-2-only because they expose a concrete register
+  layout contract rather than a value replay. Validation: `make -j8`,
+  exact direct higher-rank clean-negative plus replay positive (`3 passed`),
+  focused `ldst_direct_higher_rank` selector (`3 passed`), Python compile,
+  and `git diff --check`.
 - 2026-04-17 13:24 UTC: tightened a descriptor-view clean negative for
   non-affine tensor-memory subslices. `inferTMemSubsliceEncoding` and
   `inferTMemSubsliceQueryLayout` now report when a subview window crosses a

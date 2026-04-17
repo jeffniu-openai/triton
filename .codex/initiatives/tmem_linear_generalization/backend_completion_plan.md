@@ -1155,6 +1155,14 @@ Progress:
   full-extent row/column basis into `block` before atom layout selection, and
   returned register layouts must match the memdesc CTA ownership. The current
   MMAv5 higher-rank dim0-slice `ld/st` bucket is now fully positive.
+- 2026-04-17 13:32 UTC: direct higher-rank `load()` and `store()` now replay
+  through an explicit flattened rank-2 descriptor view. This removes the
+  stale value-operation guard without inventing a separate higher-rank packet
+  layout: value load/store reshapes the memdesc to
+  `(prod(shape[:-1]), shape[-1])`, uses the existing rank-2 backend planner,
+  and reshapes the value back. Direct `get_reg_layout()` and reduction load
+  stay rank-2-only because their public contract is the concrete register
+  layout, not a value replay.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

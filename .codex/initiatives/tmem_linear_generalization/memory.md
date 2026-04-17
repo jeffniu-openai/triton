@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:32 UTC direct higher-rank TMEM `load()` and
+  `store()` now replay through a flattened rank-2 descriptor view instead of
+  stopping at the frontend rank guard. The replay is intentionally limited to
+  value load/store: the descriptor is reshaped to `(prod(shape[:-1]),
+  shape[-1])`, the existing rank-2 backend chooses and verifies the register
+  layout, and the loaded/stored tensor is reshaped back to the original shape.
+  Direct `get_reg_layout()` and reduction load still require a rank-2
+  descriptor because they expose or depend on a concrete register layout
+  contract. Validation: `make -j8`; exact direct higher-rank clean-negative
+  plus replay positive (`3 passed`); focused `ldst_direct_higher_rank`
+  selector (`3 passed`); Python compile for
+  `blackwell/__init__.py` and `test_tmem_runtime_matrix.py`;
+  `git diff --check`.
+
 - Latest: 2026-04-17 13:24 UTC descriptor-view subslice failures now
   distinguish a true non-affine view boundary from an unclassified layout miss.
   When subslice inference sees a negative physical-basis delta, both

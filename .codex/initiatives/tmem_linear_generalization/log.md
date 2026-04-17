@@ -23282,6 +23282,56 @@ Open after this slice:
     descriptor-view copies and two-CTA `warpx2::02_13` still blocked on real
     destination-mask/source-format schedule limits.
 
+## 2026-04-17 13:32 UTC: direct higher-rank load/store replay
+
+- Starting point: `codex/tmem` at `0c21b8fb7`.
+- Probe:
+  - bypassing the frontend rank guard showed direct rank-3 load/store did not
+    have a separate backend packet contract: `get_reg_layout()` remained
+    rank-2-only, direct explicit `load` hit shape mismatches, and raw
+    `ttng.tmem_store` still requires a 2D source value;
+  - manually reshaping a `[2, M, N]` descriptor to `[2*M, N]`, performing the
+    existing rank-2 direct load/store, and reshaping the register value back
+    produced correct runtime output and emitted ordinary
+    `tcgen05.ld/st.sync.aligned.32x32b` packets.
+- Change:
+  - added a descriptor helper that flattens all leading dimensions for direct
+    value `load()` and `store()`;
+  - direct higher-rank load/store now replay through that 2D descriptor view
+    and reshape the value at the frontend boundary;
+  - direct `get_reg_layout()` and reduction load remain rank-2-only because
+    they expose or depend on the concrete register layout contract;
+  - converted the direct higher-rank clean-negative matrix so only
+    `get_reg_layout` rows remain negative, and added a positive runtime replay
+    row for load+store.
+- Validation:
+  - `make -j8`;
+  - exact direct higher-rank selector:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-hr-replay5
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_load_store_replay_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error`
+    (`3 passed`);
+  - focused family selector:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-hr-selector
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_direct_higher_rank'`
+    (`3 passed, 1588 deselected`);
+  - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by active `jeffniu-openai` auth under the current
+    `Mogball` repo instructions.
+- Next:
+  - commit this replay checkpoint locally;
+  - continue Phase 4 packet-footprint work or Phase 2 copy scheduler work
+    depending on the next support-bearing stale-negative probe.
+
 ## 2026-04-17 12:58 UTC: scaled accumulator tile requirement cleanup
 
 - Starting point: `codex/tmem` at `38750e84b`.

@@ -446,8 +446,16 @@ class tensor_memory_descriptor(base_value):
             raise ValueError(
                 f"direct TMEM {op_name} requires a rank-2 descriptor view; "
                 "index, slice, or reshape higher-rank TMEM descriptors to a 2D "
-                "view before calling get_reg_layout(), load(), or store()."
+                "view before querying a register layout or using reduction load."
             )
+
+    def _flatten_ldst_view(self, _semantic: GluonSemantic = None) -> tensor_memory_descriptor:
+        if len(self.shape) <= 2:
+            return self
+        rows = 1
+        for dim in self.shape[:-1]:
+            rows *= dim
+        return self.reshape((rows, self.shape[-1]), _semantic=_semantic)
 
     @builtin
     def get_reg_layout(self, num_warps=None, instr_variant="auto", _semantic: GluonSemantic = None, _generator=None):
@@ -515,6 +523,11 @@ class tensor_memory_descriptor(base_value):
         Returns:
             tensor: A distributed tensor containing the loaded data.
         """
+        if len(self.shape) != 2:
+            flat = self._flatten_ldst_view(_semantic=_semantic)
+            loaded = flat.load(layout=layout, _semantic=_semantic, _generator=_generator)
+            return loaded.reshape(self.shape, _semantic=_semantic)
+
         self._require_rank2_tmem_ldst("load")
         if layout is None:
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
@@ -640,6 +653,13 @@ class tensor_memory_descriptor(base_value):
             value (tensor): The tensor to store.
             pred (bool): Scalar predicate. Operation is skipped if predicate is False. Defaults to True.
         """
+        if len(self.shape) != 2:
+            assert value.shape == self.shape, f"source shape {value.shape} does not match destination shape {self.shape}"
+            assert value.dtype == self.dtype, f"source dtype {value.dtype} does not match destination dtype {self.dtype}"
+            flat = self._flatten_ldst_view(_semantic=_semantic)
+            flat.store(value.reshape(flat.shape, _semantic=_semantic), pred=pred, _semantic=_semantic)
+            return
+
         self._require_rank2_tmem_ldst("store")
         pred = _unwrap_if_constexpr(pred)
         pred = _semantic.to_tensor(pred)

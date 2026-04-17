@@ -1120,6 +1120,22 @@ def tmem_ldst_direct_higher_rank_store_kernel(out_ptr, layout: ttgl.constexpr, M
 
 
 @gluon.jit
+def tmem_ldst_direct_higher_rank_replay_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                               N: ttgl.constexpr):
+    flat_m: ttgl.constexpr = 2 * M
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    flat = tmem.reshape((flat_m, N))
+    flat_layout: ttgl.constexpr = flat.get_reg_layout()
+    offs_m = ttgl.arange(0, flat_m, ttgl.SliceLayout(1, flat_layout))[:, None]
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, flat_layout))[None, :]
+    offs = offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs).reshape((2, M, N))
+    tmem.store(value)
+    out = tmem.load().reshape((flat_m, N))
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, flat_layout))
+
+
+@gluon.jit
 def tmem_ldst_blocked_fallback_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -4440,8 +4456,6 @@ LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES = [
 LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES = [
     ("get_reg_layout_auto", "auto", "direct TMEM auto register layout query"),
     ("get_reg_layout_explicit", "16x128b", "direct TMEM 16x128b register layout query"),
-    ("load", None, "direct TMEM load"),
-    ("store", None, "direct TMEM store"),
 ]
 
 BLOCKED_FALLBACK_CASES = [
@@ -7076,6 +7090,26 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error(
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
     assert "dims.size()" not in msg
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_store_replay_positive():
+    m = 128
+    n = 128
+    layout = _lift_tmem_layout(LDST_LAYOUTS["identity"](n), [2])
+    inp = torch.arange(2 * m * n, dtype=torch.float32, device="cuda").reshape(2, m, n)
+    out = torch.empty_like(inp)
+
+    compiled = tmem_ldst_direct_higher_rank_replay_kernel[(1, )](
+        inp, out, layout, m, n, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert any(op.startswith("tcgen05.st.sync.aligned.32x32b") for op in observed_opcodes)
+    assert any(op.startswith("tcgen05.ld.sync.aligned.32x32b") for op in observed_opcodes)
+    assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
