@@ -1532,12 +1532,13 @@ LogicalResult TMEMLoadOp::verify() {
         getTmemLoadReductionLayoutSupport(regTy, toLinearLayout(regTy));
     if (!reductionLayoutSupport) {
       InFlightDiagnostic diag = emitOpError(
-          "tmem_load reduction with N dimension sharded across threads is not "
-          "supported.");
-      diag.attachNote() << "Reduction requires all N elements to reside in the "
-                           "register dimension and M to be unsharded. A single "
-                           "lane-16 split of N is supported when lowering can "
-                           "combine the partial tcgen05.ld.red results.";
+          "tmem_load reduction register layout is not directly supported by "
+          "tcgen05.ld.red lowering.");
+      diag.attachNote()
+          << "Direct tcgen05.ld.red lowering requires M to be unsharded and "
+             "all N elements to reside in the register dimension, except for a "
+             "single lane-16 split of N that lowering can combine after the "
+             "partial tcgen05.ld.red results.";
       if (!reductionLayoutSupport.unsupportedReason.empty())
         diag.attachNote() << reductionLayoutSupport.unsupportedReason;
       auto regLayout = toLinearLayout(regTy);

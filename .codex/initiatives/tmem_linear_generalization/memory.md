@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:56 UTC `tcgen05.ld.red` unsupported-layout
+  diagnostics now report the failed reduction-layout proof instead of
+  classifying every unsupported layout as N sharding. The primary error is
+  `tmem_load reduction register layout is not directly supported by
+  tcgen05.ld.red lowering`; detailed notes still state the direct-lowering
+  requirements and now make explicit when the selected register layout shards
+  M across register values. Support is unchanged. Validation: `make -j8`,
+  direct `invalid.mlir` verifier, Python compile for
+  `test_tmem_runtime_matrix.py`, focused reduction selector (`59 passed`),
+  and `git diff --check`.
+
 - Latest: 2026-04-17 07:52 UTC scaled-MMAv5 lowering now consumes one
   backend instruction-info object instead of recombining kind-derived facts.
   `MMAv5ScaledInstructionInfo` carries the selected MXFP kind, MXFP4

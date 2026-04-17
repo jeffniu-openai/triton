@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:56 UTC: sharpened the `tcgen05.ld.red` unsupported-layout
+  diagnostic. The primary verifier error now says the reduction register
+  layout is not directly supported by `tcgen05.ld.red` lowering instead of
+  always blaming N sharding; the detailed support note now carries the exact
+  failed proof, including M sharding for explicit `16x64b`/`16x128b`/`16x256b`
+  layouts. Support is unchanged. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, Python compile for the runtime matrix, focused
+  reduction selector (`59 passed`), and `git diff --check`.
 - 2026-04-17 07:52 UTC: consolidated scaled-MMAv5 kind-derived instruction
   facts into `MMAv5ScaledInstructionInfo`. Lowering now asks one backend
   helper for the selected MXFP kind, MXFP4 classification, K instruction size,

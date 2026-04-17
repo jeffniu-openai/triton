@@ -21617,3 +21617,38 @@ Open after this slice:
     mma_scaled_tmem_lhs_full_shape_tile_permuted_fp4"` (`51 passed,
     1527 deselected in 34.13s`);
   - `git diff --check`.
+
+## 2026-04-17 07:56 UTC: sharpened ld.red unsupported-layout diagnostics
+
+- Starting point: `codex/tmem` at `c0ddb7763`.
+- Probe:
+  - direct invocation of explicit `16x64b`, `16x128b`, and `16x256b`
+    `tcgen05.ld.red` variants showed the detailed support object already
+    identifies the true failure as M sharding across register values for these
+    layouts;
+  - the old primary verifier error still said only N was sharded, which was
+    misleading for the explicit n-sharded clean negatives.
+- Change:
+  - changed the primary verifier error to report that the reduction register
+    layout is not directly supported by `tcgen05.ld.red` lowering;
+  - kept the direct-lowering requirement note and the structured support
+    reason, so unsupported N-thread splits and M-sharded explicit variants are
+    distinguished by the detailed note;
+  - updated the lit verifier and runtime-matrix assertions. Support is
+    unchanged.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-diag
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_explicit_n_sharded_layout_reports_clean_unsupported or
+    ld_red_m64 or
+    ld_red_explicit_compatible_non_identity_layouts_canonicalize_32x32b"`
+    (`59 passed, 1519 deselected in 26.23s`);
+  - `git diff --check`.

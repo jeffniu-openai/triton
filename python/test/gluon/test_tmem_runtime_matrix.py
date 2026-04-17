@@ -8147,8 +8147,9 @@ def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsu
 
     captured = capfd.readouterr()
     text = str(err.value) + captured.err + captured.out
-    assert "tmem_load reduction with N dimension sharded across threads is not supported" in text
-    assert "Reduction requires all N elements to reside in the register dimension and M to be unsharded" in text
+    assert "tmem_load reduction register layout is not directly supported by tcgen05.ld.red lowering" in text
+    assert "Direct tcgen05.ld.red lowering requires M to be unsharded" in text
+    assert "Reduction load layout shards the M dimension across register values" in text
     assert "Got register layout" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

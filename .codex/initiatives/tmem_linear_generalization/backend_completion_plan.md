@@ -1300,6 +1300,13 @@ Progress:
   unsupported N thread splits and layouts where the register stream carries
   multiple M rows, which requires a software reduction/writeback schedule
   rather than only another `shuffle.xor` mask.
+- 2026-04-17 07:56 UTC: the verifier diagnostic now uses that support object
+  as the classification source. Unsupported explicit
+  `16x64b`/`16x128b`/`16x256b` layouts report a generic unsupported
+  reduction-register-layout primary error and then the exact M-sharded support
+  proof, rather than being mislabeled as only N sharding. This keeps the
+  remaining explicit non-M64 variants pinned as a software
+  reduction/writeback schedule boundary.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate
