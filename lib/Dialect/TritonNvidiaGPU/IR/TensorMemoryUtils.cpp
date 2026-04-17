@@ -8000,6 +8000,62 @@ getTMemLdStPhysicalSupportPlan(MemDescType memTy, unsigned numWarps,
   return std::nullopt;
 }
 
+std::optional<TMemLdStPhysicalSupportPlan>
+getTMemLdStPhysicalSupportPlan(Value memDesc, unsigned numWarps, int maxnreg) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!memTy || memTy.getRank() != 2 ||
+      !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return std::nullopt;
+  }
+
+  std::string error;
+  auto support = getTMemLdStSupportQueryPlan(memDesc, &error);
+  if (!support)
+    return getTMemLdStPhysicalSupportPlan(memTy, numWarps, maxnreg);
+
+  // Descriptor-view values can have a different exact support/query image than
+  // their standalone type. Use the same support query that lowering will try so
+  // handle-aware get_reg_layout does not promise a layout for the wrong image.
+  auto rowPlan = support->rowPlan;
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlanForQueryLayout(memDesc, memTy, support->query);
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlanForQuery(memDesc, memTy);
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlan(support->query.layout);
+  if (!rowPlan)
+    return std::nullopt;
+
+  bool prefer16x256 =
+      triton::tools::getBoolEnv("TRITON_PREFER_TMEM_16x256_LAYOUT");
+  SmallVector<TMemAccessAtom> atoms =
+      prefer16x256
+          ? SmallVector<TMemAccessAtom>{TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b}
+          : SmallVector<TMemAccessAtom>{TMemAccessAtom::I32x32b,
+                                        TMemAccessAtom::I16x256b,
+                                        TMemAccessAtom::I16x128b,
+                                        TMemAccessAtom::I16x64b};
+  auto *ctx = memTy.getContext();
+  for (auto atom : atoms) {
+    auto maybeLayout = getDistributedLayoutForTmemLdSt(
+        memTy, atom, numWarps, rowPlan, support->query.layout);
+    if (!maybeLayout)
+      continue;
+    auto regTy = RankedTensorType::get(
+        memTy.getShape(), memTy.getElementType(),
+        LinearEncodingAttr::get(ctx, std::move(*maybeLayout)));
+    auto info = computeTMemLdStEncodingInfo(
+        regTy, memTy, support->query, maxnreg, /*emitError=*/{}, rowPlan);
+    if (succeeded(info) && info->atom == atom)
+      return TMemLdStPhysicalSupportPlan{memTy, regTy, atom};
+  }
+  return std::nullopt;
+}
+
 static std::optional<LinearLayout>
 getTMemCopy4x256RefreshDescriptorCvt(const LinearLayout &cvt, int bitwidth);
 

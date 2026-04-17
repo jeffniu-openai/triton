@@ -1,5 +1,25 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 01:32 UTC value-based `ld/st` support-plan seam:
+  added `getTMemLdStPhysicalSupportPlan(Value, ...)`, which first asks the
+  memdesc value for its exact support query and validates candidate register
+  layouts against that query before falling back to the existing type-only
+  helper. The handle-aware Gluon `compute_tmem_reg_layout_from_memdesc` support
+  fallback now uses the value helper, while type-only layout queries keep the
+  old type helper. This is behavior-preserving on the focused matrix but closes
+  an abstraction gap exposed by the identity multidim slice probes: support
+  promotion must align three facts at once, not just one of them. The probes
+  showed (1) raw `row64|col64` base plus current `16x32bx2` query is wrong;
+  (2) folded support-frame base plus current `16x32bx2` query is also wrong;
+  and (3) folded base plus a forced folded scalar `32x32b.x1` query still
+  miscomputes because `get_reg_layout()` selected the register layout from the
+  original descriptor type, not the forced support image. Next support work
+  should therefore create one exact descriptor-view support plan that owns base
+  frame, query layout, row plan, and returned register layout together.
+  Validation: `make -j8`, py-compile, `git diff --check`, focused
+  identity/mixed/x1 selector (`6 passed`), M64/split-N selector (`49 passed`),
+  and two-CTA promoted selector (`9 passed, 2 skipped`).
+
 - Latest: 2026-04-17 00:50 UTC nested TMEM subslice fold hardening:
   the outage-resume probe found a real invalid-IR blocker below the direct
   `ld/st` row-anchor frontier. With the row-anchor guard temporarily bypassed,

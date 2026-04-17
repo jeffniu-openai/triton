@@ -1782,13 +1782,17 @@ void init_gluon_ir(py::module &&m) {
         auto physicalSupportLayout =
             [&](Value queryMemDesc,
                 std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
-          std::string error;
-          auto standaloneTy =
-              ttng::inferStandaloneTMemViewType(queryMemDesc, &error);
-          if (failed(standaloneTy))
-            return py::none();
           auto maybePlan = ttng::getTMemLdStPhysicalSupportPlan(
-              *standaloneTy, numWarps, /*maxnreg=*/256);
+              queryMemDesc, numWarps, /*maxnreg=*/256);
+          if (!maybePlan) {
+            std::string error;
+            auto standaloneTy =
+                ttng::inferStandaloneTMemViewType(queryMemDesc, &error);
+            if (failed(standaloneTy))
+              return py::none();
+            maybePlan = ttng::getTMemLdStPhysicalSupportPlan(
+                *standaloneTy, numWarps, /*maxnreg=*/256);
+          }
           if (!maybePlan)
             return py::none();
           auto queryTy = cast<ttg::MemDescType>(queryMemDesc.getType());

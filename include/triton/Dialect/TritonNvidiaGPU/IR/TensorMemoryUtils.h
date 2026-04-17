@@ -496,6 +496,8 @@ bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info);
 std::optional<TMemLdStPhysicalSupportPlan>
 getTMemLdStPhysicalSupportPlan(gpu::MemDescType memTy, unsigned numWarps,
                                int maxnreg);
+std::optional<TMemLdStPhysicalSupportPlan>
+getTMemLdStPhysicalSupportPlan(Value memDesc, unsigned numWarps, int maxnreg);
 
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,

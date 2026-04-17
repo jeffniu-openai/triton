@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 01:32 UTC: added a value-based `ld/st` physical-support plan
+  helper and wired handle-aware Gluon `get_reg_layout()` fallback to consult it
+  before falling back to standalone type-only support. This is a scaffold for
+  the descriptor-view completeness work: future promoted views can now derive
+  register layout from the same `getTMemLdStSupportQueryPlan(...)` image that
+  lowering tries. Identity 32x32 multidim slice probes remain negative:
+  forcing only folded base, or folded base plus a folded query layout, still
+  produced wrong output because the register layout selected by
+  `get_reg_layout()` was not derived from that exact support image. Validation:
+  `make -j8`, py-compile, `git diff --check`, focused identity/mixed/x1
+  selector (`6 passed`), M64/split-N selector (`49 passed`), and two-CTA
+  promoted selector (`9 passed, 2 skipped`).
 - 2026-04-17 00:50 UTC: fixed an analysis-time invalid-IR blocker in nested
   TMEM descriptor-view chains. `ModuleAxisInfoAnalysis` can ask MLIR for fold
   results while building coalescing information; `MemDescSubsliceOp::fold`

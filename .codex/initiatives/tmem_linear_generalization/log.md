@@ -20538,3 +20538,37 @@ Open after this slice:
   - this still does not promote repeated-`N=32` scaled MMAv5. Public
     tensor-memory scales expose matrix-B scale fragments at 64-column alignment,
     so support needs a real B-scale fragment representation.
+
+## 2026-04-17 01:32 UTC: value-based ld/st physical-support plan
+
+- Starting point: `codex/tmem` at `764c00397`.
+- Probe:
+  - temporarily bypassed the single-CTA identity multidim-slice row-anchor
+    guard to separate base-frame, query-layout, and register-layout causes;
+  - forcing only the folded support-frame base still emitted `16x32bx2` and
+    remained wrong;
+  - forcing both folded base and a folded scalar `32x32b.x1` query emitted the
+    mixed-positive opcode shape but still miscomputed because
+    `get_reg_layout()` had selected the register layout from the original
+    descriptor type, not from that exact support image.
+- Change:
+  - added `getTMemLdStPhysicalSupportPlan(Value, ...)`;
+  - the value helper consumes `getTMemLdStSupportQueryPlan(...)`, derives the
+    row plan from the same support query, and validates candidate register
+    layouts with `computeTMemLdStEncodingInfo(..., supportQuery, rowPlan)`;
+  - handle-aware Gluon `compute_tmem_reg_layout_from_memdesc` now uses this
+    value helper before falling back to the old standalone type-only helper.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - focused identity/mixed/x1 selector (`6 passed, 1569 deselected`);
+  - M64/split-N selector (`49 passed, 1526 deselected`);
+  - two-CTA promoted selector (`9 passed, 2 skipped, 1564 deselected`).
+- Remaining note:
+  - identity 32x32 multidim-slice support still needs one support-plan owner
+    for base-frame lowering, exact query layout, row plan, and returned
+    register layout. The clean negative remains correct until that full
+    contract is implemented.
