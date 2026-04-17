@@ -4613,6 +4613,7 @@ enum class TMemLdStPacketFootprintRequirementKind {
   SparseRefreshPhysicalBitcast,
   M64ScalesBroadcastRowAnchor,
   AtomColumnFootprint,
+  ScalesAtomElementFootprint,
 };
 
 struct TMemLdStPacketFootprintRequirement {
@@ -4621,6 +4622,8 @@ struct TMemLdStPacketFootprintRequirement {
   TMemAccessAtom atom = TMemAccessAtom::I32x32b;
   int64_t viewDwordColumns = 0;
   int64_t instructionDwordColumns = 0;
+  int64_t viewElements = 0;
+  int64_t instructionElements = 0;
   std::optional<TMemCopy4x256RefreshImageRequirement> refreshImage;
 };
 
@@ -4688,6 +4691,19 @@ static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
           "32x32b for x1 views, or reshape/copy so the TMEM columns cover the "
           "requested atom footprint.";
     break;
+  case TMemLdStPacketFootprintRequirementKind::ScalesAtomElementFootprint:
+    os << "requested tcgen05.ld/st atom " << getOpShape(requirement.atom)
+       << " has a " << requirement.instructionElements
+       << "-element tensor-memory-scales footprint, but the descriptor view "
+          "exposes only "
+       << requirement.viewElements << " scale element"
+       << (requirement.viewElements == 1 ? "" : "s")
+       << ". This is an n-sharded scales footprint requirement: public scales "
+          "packets do not provide an element mask for directly accessing a "
+          "smaller view. Use a narrower atom, auto layout selection, or "
+          "reshape/copy so the scales view covers the requested packet "
+          "footprint.";
+    break;
   }
   return os.str();
 }
@@ -4718,6 +4734,44 @@ getUnsupportedTMemLdStAtomColumnFootprintRequirement(MemDescType memTy,
   return TMemLdStPacketFootprintRequirement{
       TMemLdStPacketFootprintRequirementKind::AtomColumnFootprint,
       std::nullopt, atom, viewDwordColumns, instructionDwordColumns};
+}
+
+static std::optional<TMemLdStPacketFootprintRequirement>
+getUnsupportedTMemLdStScalesAtomElementFootprintRequirement(
+    MemDescType memTy, TMemAccessAtom atom, unsigned numWarps) {
+  (void)numWarps;
+  if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 8 ||
+      !isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return std::nullopt;
+  }
+
+  int64_t atomBits = 0;
+  switch (atom) {
+  case TMemAccessAtom::I16x64b:
+    atomBits = 64;
+    break;
+  case TMemAccessAtom::I16x128b:
+    atomBits = 128;
+    break;
+  case TMemAccessAtom::I16x256b:
+    atomBits = 256;
+    break;
+  case TMemAccessAtom::I32x32b:
+  case TMemAccessAtom::I16x32bx2:
+    return std::nullopt;
+  }
+
+  int64_t instructionElements = 4 * atomBits;
+  int64_t viewElements = memTy.getShape()[0] * memTy.getShape()[1];
+  if (viewElements >= instructionElements)
+    return std::nullopt;
+
+  TMemLdStPacketFootprintRequirement requirement{
+      TMemLdStPacketFootprintRequirementKind::ScalesAtomElementFootprint};
+  requirement.atom = atom;
+  requirement.viewElements = viewElements;
+  requirement.instructionElements = instructionElements;
+  return requirement;
 }
 
 static std::optional<TMemLdStPacketFootprintRequirement>
@@ -4803,6 +4857,11 @@ std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
   if (auto requirement =
           getUnsupportedTMemLdStAtomColumnFootprintRequirement(memTy, atom,
                                                                numWarps)) {
+    return formatUnsupportedTMemLdStPacketFootprintRequirement(*requirement);
+  }
+  if (auto requirement =
+          getUnsupportedTMemLdStScalesAtomElementFootprintRequirement(
+              memTy, atom, numWarps)) {
     return formatUnsupportedTMemLdStPacketFootprintRequirement(*requirement);
   }
   return std::nullopt;
@@ -4919,6 +4978,8 @@ getUnsupportedDirectTMemLdStReason(MemDescType memTy) {
             TMemAccessAtom::I32x32b,
             /*viewDwordColumns=*/0,
             /*instructionDwordColumns=*/0,
+            /*viewElements=*/0,
+            /*instructionElements=*/0,
             TMemCopy4x256RefreshImageRequirement{}});
   }
   return std::nullopt;

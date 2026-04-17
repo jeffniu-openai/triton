@@ -24228,3 +24228,27 @@ Open after this slice:
     (groups: `4/4/4/2` passed);
   - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 18:41 UTC: structured scales n-sharded ld/st atom-footprint boundary
+
+- Starting point: `codex/tmem` at `6446cce7f`.
+- Change:
+  - added a tensor-memory-scales atom-footprint requirement for explicit
+    16x64b/16x128b/16x256b direct `ld/st` requests whose view exposes fewer
+    scale elements than the public packet footprint;
+  - tightened the scales variant clean-negative rows to assert the required
+    and exposed element counts.
+- Boundary:
+  - support is unchanged. This is an explicit variant/ISA footprint boundary,
+    not a stale planner miss: the public scales packets have no element mask
+    for directly accessing a smaller descriptor view.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - focused scales unsupported selector passed (`5 passed`);
+  - split-4 selected groups for the same selector passed `2/2/1`; group 4 was
+    empty and was rerun with exit-code-5 normalized to success;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

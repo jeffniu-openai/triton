@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:36 UTC
+Last updated: 2026-04-17 18:41 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -69,7 +69,9 @@ Result: `124/1592 tests collected (1468 deselected) in 3.02s`.
 Current buckets:
 - `ld/st` scales descriptor-view and variant atom-footprint boundaries:
   explicit two-CTA `16x32bx2` half-tile semantics and too-narrow n-sharded
-  scale atoms.
+  scale atoms. The n-sharded rows now report a structured
+  tensor-memory-scales packet-footprint requirement with required/exposed
+  scale-element counts.
 - `ld.red` non-f32 NaN-propagating cases: software fallback exists for many
   non-f32 reductions, but these rows remain true semantic boundaries unless a
   correct fallback can preserve the requested NaN contract.
@@ -226,6 +228,19 @@ row/column partition, or destination-mask schedule must be proved before
 support can lift.
 
 ## Progress
+
+- 2026-04-17 18:41 UTC: structured the explicit n-sharded scales `ld/st`
+  packet-footprint boundary. `getUnsupportedDirectTMemLdStAtomFootprintReason`
+  now also classifies tensor-memory-scales views for 16x64b/16x128b/16x256b
+  requests whose exposed element count is smaller than the public atom
+  footprint, and the clean-negative tests assert required versus exposed scale
+  elements. Behavior is unchanged: these rows remain unsupported unless the
+  user selects a narrower atom/auto layout or reshapes/copies to cover the
+  requested packet footprint. Validation: `make -j8`; built `triton-opt
+  test/TritonNvidiaGPU/invalid.mlir --split-input-file
+  --verify-diagnostics`; focused scales unsupported selector passed
+  `5 passed`; split-4 selected groups passed `2/2/1` with group 4 empty;
+  Python byte-compile for `test_tmem_runtime_matrix.py`; `git diff --check`.
 
 - 2026-04-17 18:36 UTC: structured the under-wide subword `warpx2`
   destination footprint boundary. The multicast destination-layout check now

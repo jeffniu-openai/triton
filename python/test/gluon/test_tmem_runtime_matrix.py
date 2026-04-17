@@ -7804,6 +7804,12 @@ def test_tmem_runtime_matrix_ldst_scales_variant_reports_clean_unsupported(
     text = str(excinfo.value) + captured.err + captured.out
 
     _assert_clean_unsupported_descriptor_view(text, expected_text)
+    if instr_variant in SCALES_LDST_N_SHARDED_VARIANT_WIDTHS:
+        required_elements = _scales_ldst_n_sharded_min_elements(instr_variant)
+        exposed_elements = M * N
+        assert f"{required_elements}-element tensor-memory-scales footprint" in text
+        assert f"exposes only {exposed_elements} scale elements" in text
+        assert "n-sharded scales footprint requirement" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

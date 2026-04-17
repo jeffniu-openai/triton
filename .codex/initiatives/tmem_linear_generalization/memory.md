@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 18:41 UTC Phase D scales `ld/st` classification:
+  explicit n-sharded scales atom requests now report a structured packet
+  footprint requirement when the descriptor view is smaller than the public
+  atom. The remaining unsupported rows are concrete footprint gaps such as
+  16x128b needing 512 scale elements while a 64x4 view exposes 256, or
+  16x256b needing 1024 while 64x8/128x4 expose 512. Support is unchanged:
+  use a narrower atom/auto selection or provide a view covering the packet
+  footprint. Validation: `make -j8`, built `triton-opt` verify-diagnostics,
+  focused selector (`5 passed`), split-4 selected groups (`2/2/1`, group 4
+  empty), Python compile, and `git diff --check`.
+
 - Latest: 2026-04-17 18:36 UTC Phase C subword `warpx2` classification:
   under-wide subword `warpx2` destinations now fail through a structured
   destination-column footprint requirement instead of a generic "not enough

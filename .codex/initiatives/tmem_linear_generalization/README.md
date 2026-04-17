@@ -48,6 +48,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 18:41 UTC: explicit n-sharded scales `ld/st` requests that are
+  smaller than the public packet footprint now report a structured
+  tensor-memory-scales atom-footprint requirement. The diagnostic records the
+  requested atom, required scale-element footprint, and exposed view elements
+  instead of stopping at a generic descriptor-view unsupported message.
+  Validation: `make -j8`, focused selector (`5 passed`) plus split-4 selected
+  groups (`2/2/1`, group 4 empty), built `triton-opt` verify-diagnostics,
+  Python byte-compile, and `git diff --check`.
 - 2026-04-17 18:36 UTC: subword `warpx2` copy destinations now report a
   structured destination-column footprint requirement. The diagnostic records
   exposed versus required column basis bits, logical instruction columns,
