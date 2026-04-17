@@ -181,6 +181,12 @@ Progress:
   `preferBackingTMemLdStRowPlanForDirectRoot(...)`. This keeps the root M64
   row-anchor/range decision beside the other backend row-plan and
   packet-footprint predicates instead of in the LLVM emission layer.
+- 2026-04-17 08:16 UTC: moved the source-column subview direct `ld/st`
+  predicates into `TensorMemoryUtils`. The backend now owns the pure 2D TMEM
+  column-subview detector and the borrowed-source support/raw-query row-plan
+  selection, including the current 64x32 f32 backing-row-plan promotion. LLVM
+  lowering still orchestrates the fallback order, but the subview-specific
+  layout policy no longer lives in the emission layer.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

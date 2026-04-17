@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:16 UTC: moved the direct `ld/st` source-column subview
+  detection and borrowed-source row-plan selection from LLVM lowering into
+  `TensorMemoryUtils`. Lowering now asks
+  `getTMemLdStPure2DColumnSubview(...)`,
+  `getTMemLdStSourceColumnSubviewSupportQueryPlan(...)`, and
+  `getTMemLdStSourceColumnSubviewRawQueryRowPlan(...)` instead of carrying
+  the 2D TMEM column-subview and 64x32 f32 backing-row-plan predicates
+  locally. Support is unchanged. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, Python compile for affected Gluon tests, focused
+  M64/direct-layout runtime selector (`66 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
 - 2026-04-17 08:11 UTC: moved the direct-root backing row-plan preference
   from LLVM lowering into `TensorMemoryUtils` as
   `preferBackingTMemLdStRowPlanForDirectRoot(...)`. Raw-query,

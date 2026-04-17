@@ -677,25 +677,6 @@ lowerTMemLdStFromTypes(
       return;
     os << msg << "\n";
   };
-  auto isPureTMem2DColumnSubview =
-      [&](Value value) -> std::optional<triton::gpu::MemDescSubsliceOp> {
-    auto subslice = dyn_cast_if_present<triton::gpu::MemDescSubsliceOp>(
-        value.getDefiningOp());
-    if (!subslice)
-      return std::nullopt;
-    auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
-    auto dstTy = dyn_cast<MemDescType>(subslice.getType());
-    auto tmemSpace = TensorMemorySpaceAttr::get(rewriter.getContext());
-    if (!srcTy || !dstTy || srcTy.getMemorySpace() != tmemSpace ||
-        dstTy.getMemorySpace() != tmemSpace || srcTy.getRank() != 2 ||
-        dstTy.getRank() != 2 || subslice.getOffsets().size() != 2 ||
-        subslice.getOffsets()[0] != 0 ||
-        srcTy.getShape()[0] != dstTy.getShape()[0] ||
-        srcTy.getShape()[1] <= dstTy.getShape()[1]) {
-      return std::nullopt;
-    }
-    return subslice;
-  };
   if (memDescValue) {
     std::string unsupportedDescriptorViewError;
     if (isUnsupportedDirectTMemLdStDescriptorView(
@@ -892,27 +873,14 @@ lowerTMemLdStFromTypes(
     };
     std::string supportError;
     if (!disableSupportQuery) {
-      if (auto subslice = isPureTMem2DColumnSubview(memDescValue)) {
+      if (auto subslice = getTMemLdStPure2DColumnSubview(memDescValue)) {
         if (auto srcSupportPlan =
-                getTMemLdStSupportQueryPlan(subslice->getSrc(), &supportError)) {
+                getTMemLdStSourceColumnSubviewSupportQueryPlan(memDescValue,
+                                                               &supportError)) {
           if (traceQuerySelection)
             appendTrace("supportQuery source-column-subview plan");
-          auto supportRowPlan = srcSupportPlan->rowPlan;
-          auto sourceTy = dyn_cast<MemDescType>(subslice->getSrc().getType());
-          if (sourceTy && memTy.getRank() == 2 && sourceTy.getRank() == 2 &&
-              memTy.getElementTypeBitWidth() == 32 &&
-              sourceTy.getElementTypeBitWidth() == 32 &&
-              memTy.getShape()[0] == 64 && memTy.getShape()[1] == 32 &&
-              sourceTy.getShape()[0] == 64 &&
-              sourceTy.getShape()[1] > memTy.getShape()[1]) {
-            if (auto backingPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
-                backingPlan &&
-                (!supportRowPlan || backingPlan->rowSpan > supportRowPlan->rowSpan)) {
-              supportRowPlan = backingPlan;
-            }
-          }
           auto lowered =
-              trySupportQuery(srcSupportPlan->query, supportRowPlan);
+              trySupportQuery(srcSupportPlan->query, srcSupportPlan->rowPlan);
           if (traceQuerySelection) {
             appendTrace(Twine("supportQuery source-column-subview ") +
                         (succeeded(lowered) ? Twine("ok") : Twine("fail")));
@@ -929,18 +897,9 @@ lowerTMemLdStFromTypes(
                 subslice->getSrc(), /*preserveNonCanonicalView=*/true,
                 &sourceRawError);
             succeeded(sourceRawQuery)) {
-          auto sourceTy = cast<MemDescType>(subslice->getSrc().getType());
-          auto sourceRowPlan = getTMemLdStRowPlanForQueryLayout(
-              memDescValue, memTy, *sourceRawQuery);
-          if (!sourceRowPlan)
-            sourceRowPlan = getTMemLdStRowPlanForQuery(subslice->getSrc(),
-                                                       sourceTy);
-          if (!sourceRowPlan)
-            sourceRowPlan = getBackingTMemLdStRowPlan(memDescValue);
-          if (!sourceRowPlan)
-            sourceRowPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
-          sourceRowPlan =
-              preferBackingRowPlanForDirectRootLoad(sourceTy, sourceRowPlan);
+          auto sourceRowPlan =
+              getTMemLdStSourceColumnSubviewRawQueryRowPlan(memDescValue,
+                                                            *sourceRawQuery);
           std::string sourceRawDetails;
           auto sourceRawEncodingInfo = [&]() -> FailureOr<TMemLdStEncodingInfo> {
             llvm::raw_string_ostream os(sourceRawDetails);

@@ -5341,6 +5341,83 @@ getTMemLdStSupportQueryLayout(Value memDesc, std::string *error) {
   return std::nullopt;
 }
 
+std::optional<gpu::MemDescSubsliceOp>
+getTMemLdStPure2DColumnSubview(Value memDesc) {
+  if (!memDesc)
+    return std::nullopt;
+  auto subslice =
+      dyn_cast_if_present<gpu::MemDescSubsliceOp>(memDesc.getDefiningOp());
+  if (!subslice)
+    return std::nullopt;
+  auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+  auto dstTy = dyn_cast<MemDescType>(subslice.getType());
+  auto tmemSpace = TensorMemorySpaceAttr::get(memDesc.getContext());
+  if (!srcTy || !dstTy || srcTy.getMemorySpace() != tmemSpace ||
+      dstTy.getMemorySpace() != tmemSpace || srcTy.getRank() != 2 ||
+      dstTy.getRank() != 2 || subslice.getOffsets().size() != 2 ||
+      subslice.getOffsets()[0] != 0 ||
+      srcTy.getShape()[0] != dstTy.getShape()[0] ||
+      srcTy.getShape()[1] <= dstTy.getShape()[1]) {
+    return std::nullopt;
+  }
+  return subslice;
+}
+
+static std::optional<TMemLdStRowPlan>
+preferBackingTMemLdStRowPlanForSourceColumnSubview(
+    Value memDesc, std::optional<TMemLdStRowPlan> rowPlan) {
+  auto subslice = getTMemLdStPure2DColumnSubview(memDesc);
+  if (!subslice)
+    return rowPlan;
+  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
+  auto sourceTy = dyn_cast<MemDescType>(subslice->getSrc().getType());
+  if (!memTy || !sourceTy || memTy.getRank() != 2 ||
+      sourceTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+      sourceTy.getElementTypeBitWidth() != 32 || memTy.getShape()[0] != 64 ||
+      memTy.getShape()[1] != 32 || sourceTy.getShape()[0] != 64 ||
+      sourceTy.getShape()[1] <= memTy.getShape()[1]) {
+    return rowPlan;
+  }
+  auto backingPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
+  if (backingPlan && (!rowPlan || backingPlan->rowSpan > rowPlan->rowSpan))
+    return backingPlan;
+  return rowPlan;
+}
+
+std::optional<TMemLdStSupportQueryPlan>
+getTMemLdStSourceColumnSubviewSupportQueryPlan(Value memDesc,
+                                               std::string *error) {
+  auto subslice = getTMemLdStPure2DColumnSubview(memDesc);
+  if (!subslice)
+    return std::nullopt;
+  auto srcSupport = getTMemLdStSupportQueryPlan(subslice->getSrc(), error);
+  if (!srcSupport)
+    return std::nullopt;
+  srcSupport->rowPlan = preferBackingTMemLdStRowPlanForSourceColumnSubview(
+      memDesc, srcSupport->rowPlan);
+  return srcSupport;
+}
+
+std::optional<TMemLdStRowPlan> getTMemLdStSourceColumnSubviewRawQueryRowPlan(
+    Value memDesc, const TMemLdStQueryLayout &sourceRawQuery) {
+  auto subslice = getTMemLdStPure2DColumnSubview(memDesc);
+  if (!subslice)
+    return std::nullopt;
+  auto memTy = dyn_cast<MemDescType>(memDesc.getType());
+  auto sourceTy = dyn_cast<MemDescType>(subslice->getSrc().getType());
+  if (!memTy || !sourceTy)
+    return std::nullopt;
+  auto rowPlan =
+      getTMemLdStRowPlanForQueryLayout(memDesc, memTy, sourceRawQuery);
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlanForQuery(subslice->getSrc(), sourceTy);
+  if (!rowPlan)
+    rowPlan = getBackingTMemLdStRowPlan(memDesc);
+  if (!rowPlan)
+    rowPlan = getBackingTMemLdStRowPlan(subslice->getSrc());
+  return rowPlan;
+}
+
 static bool hasExactBasisSequence(
     const LinearLayout &layout, StringAttr dim,
     ArrayRef<std::array<int32_t, 2>> expected) {

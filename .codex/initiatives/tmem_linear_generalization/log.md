@@ -21822,3 +21822,46 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.10s`);
   - `git diff --check`.
+
+## 2026-04-17 08:16 UTC: moved source-column subview ld/st policy to backend
+
+- Starting point: `codex/tmem` at `df41603f3`.
+- Change:
+  - added `getTMemLdStPure2DColumnSubview(...)` to `TensorMemoryUtils`;
+  - added `getTMemLdStSourceColumnSubviewSupportQueryPlan(...)` for the
+    borrowed-source support-query path and its existing row-plan promotion;
+  - added `getTMemLdStSourceColumnSubviewRawQueryRowPlan(...)` for the
+    borrowed-source raw-query row-plan fallback chain;
+  - removed the equivalent pure-column-subview lambda, 64x32 f32
+    backing-row-plan promotion, and raw-query row-plan chain from
+    `TensorMemoryToLLVM.cpp`.
+- Boundary:
+  - support is unchanged. Lowering still owns the fallback order and trace
+    labels, but no longer re-derives the column-subview shape and row-plan
+    predicates locally.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-source-col-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga or ldst_4x256b_refresh"`
+    (`66 passed, 1 skipped, 1511 deselected in 46.81s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-source-col-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.99s`);
+  - `git diff --check`.

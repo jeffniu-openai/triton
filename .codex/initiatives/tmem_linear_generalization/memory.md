@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:16 UTC source-column subview direct `ld/st` policy is
+  backend-owned. `TensorMemoryUtils` now exposes
+  `getTMemLdStPure2DColumnSubview(...)`,
+  `getTMemLdStSourceColumnSubviewSupportQueryPlan(...)`, and
+  `getTMemLdStSourceColumnSubviewRawQueryRowPlan(...)`; LLVM lowering uses
+  those helpers for the borrowed-source support/raw-query paths instead of
+  carrying its own pure 2D TMEM column-subview test and 64x32 f32
+  backing-row-plan promotion. Support is unchanged. Validation: `make -j8`,
+  direct `invalid.mlir` verifier, Python compile, focused M64/direct-layout
+  runtime selector (`66 passed, 1 skipped`), `test_core.py -k
+  tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:11 UTC direct-root row-plan preference is
   backend-owned. `TensorMemoryUtils` now exposes
   `preferBackingTMemLdStRowPlanForDirectRoot(...)`, and LLVM lowering calls it

@@ -501,6 +501,17 @@ getTMemLdStSupportQueryPlan(Value memDesc, std::string *error = nullptr);
 std::optional<TMemLdStQueryLayout> getTMemLdStSupportQueryLayout(
     Value memDesc, std::string *error = nullptr);
 
+std::optional<gpu::MemDescSubsliceOp>
+getTMemLdStPure2DColumnSubview(Value memDesc);
+
+std::optional<TMemLdStSupportQueryPlan>
+getTMemLdStSourceColumnSubviewSupportQueryPlan(Value memDesc,
+                                               std::string *error = nullptr);
+
+std::optional<TMemLdStRowPlan>
+getTMemLdStSourceColumnSubviewRawQueryRowPlan(
+    Value memDesc, const TMemLdStQueryLayout &sourceRawQuery);
+
 bool isTwoCTAScalesDescriptorViewTMemLdStQuery(gpu::MemDescType memTy,
                                                const LinearLayout &queryLayout);
 
