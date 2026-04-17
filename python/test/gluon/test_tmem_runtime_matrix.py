@@ -5215,6 +5215,7 @@ SCALES_LDST_EXPLICIT_VARIANT_CASES = [
     (128, 8, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x2.b32", [0, 4])),
     (128, 16, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x4.b32", [0, 8])),
     (128, 32, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x8.b32", [0, 16])),
+    (16, 8, 8, "16x32bx2", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (16, 8, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
     (16, 16, 4, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0, 2])),
     (16, 16, 8, "32x32b", _expected_ldst_ops("16x32bx2.x1.b32", [0])),
@@ -5289,6 +5290,7 @@ SCALES_LDST_EXPLICIT_VARIANT_REPRESENTATIVE_KEYS = {
     (16, 4, 4, "32x32b"),
     (64, 16, 8, "32x32b"),
     (16, 4, 4, "16x32bx2"),
+    (16, 8, 8, "16x32bx2"),
     (32, 16, 4, "16x32bx2"),
 }
 
@@ -5312,16 +5314,7 @@ SCALES_LDST_VARIANT_CASES = (
     ]
 )
 
-SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = [
-    (
-        16,
-        8,
-        8,
-        "16x32bx2",
-        "To be able to `tmem.load` into `tl.split` you need to have more than 4 8-bit registers",
-        False,
-    ),
-] + SCALES_LDST_N_SHARDED_VARIANT_CLEAN_UNSUPPORTED_CASES
+SCALES_LDST_VARIANT_CLEAN_UNSUPPORTED_CASES = SCALES_LDST_N_SHARDED_VARIANT_CLEAN_UNSUPPORTED_CASES
 
 SCALES_LDST_DESCRIPTOR_VIEW_CASES = [
     (

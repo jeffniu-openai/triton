@@ -23795,3 +23795,32 @@ Open after this slice:
     'ldst_scales_variant_sweep or ldst_scales_direct_roundtrip or
     ldst_scales_descriptor_view_roundtrip'` (`19 passed, 1573 deselected`);
   - `git diff --check`.
+
+## 2026-04-17 14:48 UTC: promote explicit scales 16x32bx2 narrow row
+
+- Starting point: `codex/tmem` at `5a803a5d3`.
+- Change:
+  - stopped applying the generic split-N register-layout finalizer to tensor
+    memory scales descriptors for explicit `16x32bx2`;
+  - the backend already produced the same valid scales register layout for
+    `auto`, `32x32b`, and explicit `16x32bx2`; the old failure was a frontend
+    split-N check firing before backend verification/lowering;
+  - moved the `M=16, N=8, num_warps=8, instr_variant=16x32bx2` row from clean
+    unsupported to the positive scales `ld/st` variant matrix.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/_semantic.py
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - exact promoted row:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-16x8-explicit2
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_scales_variant_sweep[16-8-8-16x32bx2-expected_ops7]'`
+    (`1 passed`);
+  - full `ldst_scales_variant` selector (`17 passed, 1575 deselected`);
+  - neighboring direct/descriptor-view scales `ld/st` selector
+    (`16 passed, 1576 deselected`);
+  - `ldst and reports_clean_unsupported` now collects `7` rows, down from `8`;
+  - `git diff --check`.

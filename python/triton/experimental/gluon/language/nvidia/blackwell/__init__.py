@@ -592,7 +592,10 @@ class tensor_memory_descriptor(base_value):
             )
         except Exception as e:
             raise ValueError(str(e)) from e
-        if layout is not None and requested_variant in ("32x32b_splitn", "16x32bx2"):
+        is_scales_layout = isinstance(self.layout, TensorMemoryScalesLayout)
+        if (layout is not None and
+                requested_variant in ("32x32b_splitn", "16x32bx2") and
+                not is_scales_layout):
             layout = _finalize_splitn_tmem_reg_layout(
                 layout,
                 self.dtype,
@@ -601,9 +604,9 @@ class tensor_memory_descriptor(base_value):
                 self.layout,
                 num_warps,
                 requested_variant,
-                isinstance(self.layout, TensorMemoryScalesLayout),
+                is_scales_layout,
             )
-        if isinstance(self.layout, TensorMemoryScalesLayout):
+        if is_scales_layout:
             layout = _strip_zero_reg_bases_from_layout(layout)
         if layout is None:
             reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(

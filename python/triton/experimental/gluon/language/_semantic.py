@@ -189,7 +189,7 @@ def _compute_tmem_reg_layout(element_ty, shape, alloc_shape, layout, num_warps, 
            + "reshape or permute so TMEM columns stay contiguous, or use a supported TMEM register layout "
              "and insert convert_layout explicitly")
 
-    if splitn:
+    if splitn and not is_scales_layout:
         layout_obj = _finalize_splitn_tmem_reg_layout(
             layout_obj,
             element_ty,

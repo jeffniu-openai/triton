@@ -1728,6 +1728,13 @@ Progress:
   through the same append-and-validate path as the rest of compatible-layout
   enumeration. Validation: `make -j8`, focused scales `ld/st` runtime selector
   (`19 passed`), and `git diff --check`.
+- 2026-04-17 14:48 UTC: promoted the explicit scales
+  `16x32bx2` `M=16,N=8,num_warps=8` row. The backend already produced a valid
+  scales layout for the same shape through `auto` and `32x32b`; the stale
+  failure was the generic split-N finalizer being applied to scales
+  descriptors. Validation: exact promoted row (`1 passed`), full
+  `ldst_scales_variant` selector (`17 passed`), neighboring scales `ld/st`
+  direct/descriptor selector (`16 passed`), and `git diff --check`.
 
 Exit criteria:
 - TMEM backend decisions flow through the shared physical-query/planner stack.
