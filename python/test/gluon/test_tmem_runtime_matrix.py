@@ -12384,14 +12384,16 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-def test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_copy():
+@pytest.mark.parametrize("num_ctas,block_m,block_n,parent_n,slice_start,multicast", [
+    (1, 128, 128, 256, 0, False),
+    (2, 256, 64, 128, 0, False),
+])
+def test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_copy(
+    num_ctas, block_m, block_n, parent_n, slice_start, multicast
+):
     a_format = "mxfp8"
     b_format = "mxfp8"
-    block_m = 128
-    block_n = 128
     block_k = 128
-    parent_n = 2 * block_n
-    slice_start = 0
     vec_size = 32
 
     torch.manual_seed(0)
@@ -12411,8 +12413,8 @@ def test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_c
         block_k,
         parent_n,
         slice_start,
-        num_ctas=1,
-        multicast=False,
+        num_ctas=num_ctas,
+        multicast=multicast,
         direct_shared_scales=True,
     )
 
@@ -12421,14 +12423,16 @@ def test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_c
     cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
     assert cp_ops
     assert len(cp_ops) == 2
-    assert all(op == _expected_scaled_cp_opcode(1) for op in cp_ops)
+    assert all(op == _expected_scaled_cp_opcode(num_ctas) for op in cp_ops)
     mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
     assert mma_ops
     assert len(mma_ops) == _expected_scaled_mma_acc_subslice_count(a_format, b_format)
-    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, num_ctas) for op in mma_ops)
     ttgir = compiled.asm["ttgir"]
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_trans" in ttgir
+    if num_ctas == 2:
+        assert "two_ctas" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

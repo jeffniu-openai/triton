@@ -1538,6 +1538,12 @@ Progress:
   helper rather than carrying its own product/shape arithmetic. A focused
   runtime row now validates unswizzled shared scale
   `memdesc_reshape`/`memdesc_trans` views consumed directly by scaled MMA.
+- 2026-04-17 11:16 UTC: the shared-scale helper now preserves the rank-2
+  shared scale view shape, including public 128-row padding for B scales when
+  the logical MMA N is narrower. The direct shared-scale runtime row covers
+  both single-CTA `128x128` and two-CTA `256x64` cases, proving the materialized
+  `TensorMemoryScalesLayout` destination matches the source view shape while
+  preserving the scale CGA basis.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

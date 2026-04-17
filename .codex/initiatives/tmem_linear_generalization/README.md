@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 11:16 UTC: tightened shared-scale materialization to preserve the
+  rank-2 shared scale view shape rather than redistributing by the MMA
+  logical row count. This fixes two-CTA direct shared B-scale views for
+  `blockN < 128`, where the source scale view is padded to the public
+  128-row scale fragment shape (`128x4`) even though the MMA logical N is
+  64. The focused runtime row now covers both single-CTA and two-CTA direct
+  shared scale views. Validation: incremental `make -j8`, exact direct
+  shared-scale descriptor-view test (`2 passed`), neighboring two-CTA manual
+  scale-copy row (`1 passed`), repeated-N32 tile-permuted scaled-MMA selector
+  (`11 passed`), Python compile, `triton-opt ... --triton-nvidia-mma-lowering
+  | FileCheck test/TritonNvidiaGPU/mma_lowering.mlir`, and `git diff --check`.
 - 2026-04-17 11:12 UTC: direct Gluon scaled-MMAv5 now supports shared-memory
   scale descriptor views by materializing shared scale operands to
   `TensorMemoryScalesLayout` allocations during `triton-tensor-memory-allocation`.

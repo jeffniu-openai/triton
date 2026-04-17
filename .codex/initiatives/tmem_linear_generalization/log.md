@@ -22809,3 +22809,33 @@ Open after this slice:
     'mma_scaled_acc_tile_permuted_32'`
     (`11 passed, 1581 deselected in 14.15s`);
   - `git diff --check`.
+
+## 2026-04-17 11:16 UTC: preserve padded shared scale view shapes
+
+- Starting point: `codex/tmem` at `edfdb3e30`.
+- Change:
+  - changed `getMMAv5ScaleTMemTypeForSharedScale(...)` to preserve rank-2
+    shared scale view shapes instead of redistributing by logical MMA rows;
+  - parameterized the direct shared-scale runtime row over a two-CTA
+    `blockM=256, blockN=64` case in addition to the single-CTA `128x128`
+    case.
+- Finding:
+  - the two-CTA direct shared-scale probe failed in tensor-memory allocation
+    because B scales are padded to the public `128x4` scale view while the
+    logical MMA N is `64`; the old helper derived `64x8`, and `ttng.tmem_copy`
+    correctly rejected the source/destination shape mismatch.
+- Validation:
+  - incremental `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-shared-scale-auto-v3
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_copy`
+    (`2 passed in 4.51s`);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - direct `triton-opt test/TritonNvidiaGPU/mma_lowering.mlir
+    -split-input-file --triton-nvidia-mma-lowering | python/triton/FileCheck
+    test/TritonNvidiaGPU/mma_lowering.mlir`;
+  - neighboring manual-copy two-CTA row (`1 passed in 3.80s`);
+  - repeated-N32 scaled-MMA selector (`11 passed, 1582 deselected in 14.40s`);
+  - `git diff --check`.

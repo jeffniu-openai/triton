@@ -1389,16 +1389,16 @@ getMMAv5ScaleTMemTypeForSharedScale(MemDescType sharedScaleType,
       !isa<SharedMemorySpaceAttr>(sharedScaleType.getMemorySpace()))
     return std::nullopt;
 
-  int64_t numElems = product(sharedScaleType.getShape());
-  if (numElems <= 0 || numElems % rows != 0)
+  auto shape = sharedScaleType.getShape();
+  if (shape.size() != 2 || shape[0] <= 0 || shape[1] <= 0 ||
+      shape[0] < rows || shape[0] % rows != 0)
     return std::nullopt;
 
   MLIRContext *ctx = sharedScaleType.getContext();
   auto cgaLayout = getCGALayout(sharedScaleType.getEncoding());
   auto scaleEncoding = TensorMemoryScalesEncodingAttr::get(ctx, cgaLayout);
-  return MemDescType::get({rows, numElems / rows},
-                          sharedScaleType.getElementType(), scaleEncoding,
-                          TensorMemorySpaceAttr::get(ctx),
+  return MemDescType::get(shape, sharedScaleType.getElementType(),
+                          scaleEncoding, TensorMemorySpaceAttr::get(ctx),
                           /*mutableMemory=*/true);
 }
 

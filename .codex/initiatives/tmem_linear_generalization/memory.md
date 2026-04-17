@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 11:16 UTC shared-scale materialization now preserves the
+  rank-2 shared scale view shape instead of deriving `{logicalRows,
+  numElems/logicalRows}`. This matters for two-CTA scaled MMA with `blockN <
+  128`: the B-scale view produced by the unswizzle chain is padded to
+  `128x4`, while the logical MMA N is `64`; redistributing it to `64x8` made
+  `ttng.tmem_copy` reject the source/destination shape mismatch. The focused
+  direct shared-scale runtime row is now parameterized over single-CTA
+  `128x128` and two-CTA `256x64` cases. Validation: incremental `make -j8`;
+  exact direct shared-scale descriptor-view test (`2 passed`); neighboring
+  two-CTA manual scale-copy row (`1 passed`); repeated-N32 tile-permuted
+  scaled-MMA selector (`11 passed`); Python compile; direct `triton-opt ...
+  --triton-nvidia-mma-lowering | FileCheck` for
+  `test/TritonNvidiaGPU/mma_lowering.mlir`; and `git diff --check`.
+
 - Latest: 2026-04-17 11:12 UTC direct Gluon scaled-MMAv5 shared scale
   descriptor views now materialize through the backend instead of falling into
   LLVM lowering with shared memdesc structs. Added
