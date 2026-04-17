@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:57 UTC: extended the non-f32 `load_min/load_max` software
+  fallback to supported modifiers. Software reduction now applies `abs`
+  before reducing for non-f32 dtypes and supports NaN propagation for f16/bf16
+  through the same layout-aware reduction path; integer NaN propagation remains
+  a clean semantic error. The runtime matrix now treats i32 `abs`, f16/bf16
+  `abs`, and f16/bf16 NaN propagation as positive software-reduction coverage
+  for both direct contract and descriptor-chain rows. Validation: `make -j8`,
+  Python compile for touched files, `git diff --check`, focused non-f32
+  contract positive (`22 passed`) and negative (`2 passed`) selectors,
+  descriptor-chain positive (`18 passed`) and negative (`2 passed`) selectors,
+  core i32 representative (`1 passed`), and broader reduction selector
+  (`109 passed`).
 - 2026-04-17 08:52 UTC: promoted no-modifier non-f32 TMEM
   `load_min/load_max` rows from clean negatives to positive software-reduction
   coverage for non-scales layouts. The API now lowers i32, i16, i8, f16, and

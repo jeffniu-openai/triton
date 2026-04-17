@@ -138,11 +138,27 @@ def _reduce_max_bf16(a, b):
     return ttgl.maximum(a, b).to(ttgl.bfloat16)
 
 
+@gluon.jit
+def _reduce_min_bf16_propagate_nan(a, b):
+    selected = ttgl.minimum(a, b).to(ttgl.bfloat16)
+    return ttgl.where(a != a, a, ttgl.where(b != b, b, selected))
+
+
+@gluon.jit
+def _reduce_max_bf16_propagate_nan(a, b):
+    selected = ttgl.maximum(a, b).to(ttgl.bfloat16)
+    return ttgl.where(a != a, a, ttgl.where(b != b, b, selected))
+
+
 def _get_tmem_software_reduce_combine(red_op, propagate_nan, dtype=None):
     propagate_nan = _unwrap_if_constexpr(propagate_nan)
-    if dtype == ttgl.bfloat16 and propagate_nan != ir.PROPAGATE_NAN.ALL:
+    if dtype == ttgl.bfloat16:
         if red_op == gluon_ir.TMEM_LOAD_REDUCE_MODIFIER.MIN:
+            if propagate_nan == ir.PROPAGATE_NAN.ALL:
+                return _reduce_min_bf16_propagate_nan
             return _reduce_min_bf16
+        if propagate_nan == ir.PROPAGATE_NAN.ALL:
+            return _reduce_max_bf16_propagate_nan
         return _reduce_max_bf16
     if red_op == gluon_ir.TMEM_LOAD_REDUCE_MODIFIER.MIN:
         if propagate_nan == ir.PROPAGATE_NAN.ALL:
@@ -544,13 +560,12 @@ class tensor_memory_descriptor(base_value):
 
         if not isinstance(self.layout, TensorMemoryScalesLayout):
             if self.dtype != ttgl.float32:
-                if abs_flag:
-                    raise ValueError("'abs' requires floating-point element type (f32)")
-                if propagate_nan == ir.PROPAGATE_NAN.ALL:
-                    raise ValueError("'NaN' requires floating-point element type (f32)")
+                if propagate_nan == ir.PROPAGATE_NAN.ALL and not self.dtype.is_floating():
+                    raise ValueError("'NaN' requires floating-point element type")
                 result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
+                reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
                 reduced = ttgl.reduce(
-                    result,
+                    reduce_input,
                     axis=1,
                     combine_fn=_get_tmem_software_reduce_combine(red_op, propagate_nan, self.dtype),
                     _semantic=_semantic,

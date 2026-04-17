@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:57 UTC non-f32 `load_min/load_max` software fallback
+  now supports the modifier cases that are semantically realizable without
+  hardware `tcgen05.ld.red`: `abs` is applied before software reduction for
+  non-f32 dtypes, and f16/bf16 NaN propagation uses the layout-aware reduction
+  path. Integer NaN propagation remains a clean error. Runtime-matrix coverage
+  now treats i32 `abs`, f16/bf16 `abs`, and f16/bf16 NaN propagation as
+  positive software-reduction rows for direct contract and descriptor-chain
+  cases. Validation: `make -j8`, Python compile, `git diff --check`, focused
+  contract positives (`22 passed`) and negatives (`2 passed`),
+  descriptor-chain positives (`18 passed`) and negatives (`2 passed`), core
+  i32 representative (`1 passed`), and broader reduction selector (`109
+  passed`).
+
 - Latest: 2026-04-17 08:52 UTC no-modifier non-f32 TMEM
   `load_min/load_max` is now positive software-reduction coverage for
   non-scales layouts. i32, i16, i8, f16, and bf16 reductions lower as normal
