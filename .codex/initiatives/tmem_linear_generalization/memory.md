@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:13 UTC M64 16-bit store frontend guard deletion:
+  removed the Python `tensor_memory_descriptor.store()` equality check that
+  forced rank-2 M64 f16/bf16 sources to exactly match
+  `get_reg_layout("16x32bx2")` before constructing `ttng.tmem_store`. The
+  backend verifier already owns source register-layout legality; with the
+  05:11 backend auto-selection fix in place, this frontend guard is redundant.
+  Validation: `make -j8`, py-compile, focused split-N plus blocked-layout
+  selector (`26 passed, 1551 deselected`), `test_core.py -k tmem_linear_m64`
+  (`21 passed, 17945 deselected`), and `git diff --check`.
+
 - Latest: 2026-04-17 05:11 UTC M64 16-bit split-N backend cleanup: removed
   the descriptor-handle Python type-only shortcut that returned a
   `16x32bx2` layout for rank-2 M64 f16/bf16 `auto`, `32x32b_splitn`, and

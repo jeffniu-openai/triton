@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:13 UTC: removed the adjacent Python `store()` equality guard
+  for rank-2 M64 f16/bf16 descriptors. Store validation now relies on
+  `ttng.tmem_store` / `TMEMStoreOp::verify()` and the backend register-layout
+  proof instead of a frontend shape-family check. Validation: `make -j8`,
+  py-compile for `blackwell/__init__.py` and `test_tmem_runtime_matrix.py`,
+  focused split-N plus blocked-layout selector (`26 passed, 1551
+  deselected`), `test_core.py -k tmem_linear_m64` (`21 passed, 17945
+  deselected`), and `git diff --check`.
 - 2026-04-17 05:11 UTC: removed the Python type-only M64 16-bit split-N
   shortcut from descriptor-handle `get_reg_layout()`. The C++ memdesc
   register-layout bridge now lets the canonical M64 split-N raw-query

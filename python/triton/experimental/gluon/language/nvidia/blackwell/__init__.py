@@ -640,24 +640,6 @@ class tensor_memory_descriptor(base_value):
         pred = _semantic.to_tensor(pred)
         assert value.shape == self.shape, f"source shape {value.shape} does not match destination shape {self.shape}"
         assert value.dtype == self.dtype, f"source dtype {value.dtype} does not match destination dtype {self.dtype}"
-        if (
-            len(self.shape) == 2
-            and self.shape[0] == 64
-            and self.dtype.primitive_bitwidth == 16
-            and not isinstance(self.layout, TensorMemoryScalesLayout)
-        ):
-            num_warps = _semantic.builder.options.num_warps
-            if num_warps == 4:
-                preferred_layout = self.get_reg_layout(
-                    num_warps=num_warps,
-                    instr_variant="16x32bx2",
-                    _semantic=_semantic,
-                )
-                if _unwrap_if_constexpr(value.type.layout) != preferred_layout:
-                    raise ValueError(
-                        "source has no supported register layout. "
-                        "Use the descriptor's own get_reg_layout() result."
-                    )
         _semantic.builder.create_tmem_store(self.handle, value.handle, pred.handle)
 
     @builtin

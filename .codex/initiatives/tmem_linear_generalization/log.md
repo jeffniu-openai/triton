@@ -20819,3 +20819,24 @@ Open after this slice:
   - adjacent M64 reduction/default selector passed
     (`34 passed, 1543 deselected in 11.40s`);
   - `git diff --check`.
+
+## 2026-04-17 05:13 UTC: removed Python M64 16-bit store equality guard
+
+- Starting point: `codex/tmem` at `6c4faa072`.
+- Change:
+  - removed the `tensor_memory_descriptor.store()` special case that checked
+    rank-2 M64 f16/bf16 values against `get_reg_layout("16x32bx2")` in
+    Python before building `ttng.tmem_store`;
+  - store legality now routes through `TMEMStoreOp::verify()` and the shared
+    backend `computeTMemLdStEncodingInfo(...)` proof, consistent with the
+    backend-owned split-N layout selection from the previous checkpoint.
+- Validation:
+  - `make -j8`;
+  - `python -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused split-N plus blocked-layout selector passed
+    (`26 passed, 1551 deselected in 7.40s`);
+  - `python/test/gluon/test_core.py -k 'tmem_linear_m64'` passed
+    (`21 passed, 17945 deselected in 5.98s`);
+  - `git diff --check`.

@@ -1111,6 +1111,10 @@ Progress:
   the backend-owned M64 `16x32bx2` route. Focused coverage now compares
   `auto`, `32x32b_splitn`, and explicit `16x32bx2` for representative 16-bit
   M64 rows.
+- 2026-04-17 05:13 UTC: removed the adjacent Python `store()` equality guard
+  for rank-2 M64 f16/bf16 descriptors. Store source-layout legality now uses
+  `TMEMStoreOp::verify()` and the shared backend `computeTMemLdStEncodingInfo`
+  proof instead of a frontend shape-family check.
 - 2026-04-17 05:00 UTC: re-probed ordinary contiguous `tcgen05.copy.4x256b` by
   bypassing the refresh-only support and lowering guards. The ISA opcode
   emitted, but the output copied the refresh physical pattern into the ordinary
