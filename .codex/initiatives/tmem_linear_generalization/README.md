@@ -44,6 +44,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 09:55 UTC: promoted pure rank-2 single-CTA row-half `ld/st`
+  descriptor views to replay/RMW support. The replay recognizer now permits a
+  pure half-slice over a rank-2 TMEM base when the base layout is single-CTA,
+  while continuing to require a shape-transformed chain for two-CTA layouts.
+  A probe of the corresponding two-CTA block layout selected odd rows
+  (`1,3,...,255`) instead of the logical high half (`128..255`), proving that
+  naive tensor split/join is not block-base aware enough for that case. The
+  runtime matrix now locks single-CTA N=64/128/256 positives and records the
+  two-CTA pure rank-2 half-row as a clean unsupported frontier with a
+  block-base diagnostic. Validation: `make -j8`, Python compile, `git diff
+  --check`, direct half-row positives (`4 passed`), two-CTA clean negatives
+  (`3 passed`), neighboring replay selectors (`7 passed` single CTA, `5
+  passed` two CTA), and `test_core.py -k tmem_linear_m64` (`21 passed`).
 - 2026-04-17 09:42 UTC: promoted lifted row-half `ld/st` descriptor views
   from clean negatives to replayed RMW support. The replay recognizer now
   treats the `slice(...).index(0)` unit-leading-dimension form as an exact

@@ -393,11 +393,19 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
   }
 
   auto baseTy = dyn_cast_if_present<MemDescType>(cur.getType());
-  return halfSliceCount > 0 && sawShapeTransform && baseTy &&
-         baseTy.getRank() == 2 &&
-         isa<TensorMemorySpaceAttr>(baseTy.getMemorySpace()) &&
-         isTensorMemoryEncoding(baseTy.getEncoding()) &&
-         !isa<TensorMemoryScalesEncodingAttr>(baseTy.getEncoding());
+  if (halfSliceCount == 0 || !baseTy || baseTy.getRank() != 2 ||
+      !isa<TensorMemorySpaceAttr>(baseTy.getMemorySpace()) ||
+      !isTensorMemoryEncoding(baseTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(baseTy.getEncoding()))
+    return false;
+
+  // Pure rank-2 half-slice replay currently splits the loaded tensor directly
+  // along the sliced dimension. For two-CTA block layouts that tensor split
+  // selects the block-base bit, not the logical high row half.
+  if (!sawShapeTransform && getNumCTAs(baseTy.getEncoding()) != 1)
+    return false;
+
+  return true;
 }
 
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
@@ -4517,13 +4525,14 @@ static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
           "tile or reshape/copy so the TMEM row anchors stay materializable.";
     break;
   case TMemLdStPacketFootprintRequirementKind::TranslatedRowOrigin:
-    os << "lifted row-half TMEM views translate the TMEM row origin. The "
-          "support-query planner can derive a register layout for some of these "
-          "views, but correct direct lowering still needs the row origin "
-          "decomposed into packet base, row anchors, and per-message offsets. "
-          "Without that decomposition, tcgen05.ld/st packets address the wrong "
-          "half of the backing tile or an invalid TMEM row. Access the full "
-          "backing tile or reshape/copy so the TMEM rows stay materializable.";
+    os << "row-half TMEM descriptor views can translate the TMEM row origin or "
+          "expose a CTA block-base bit as the sliced row bit. The support-query "
+          "planner can derive a register layout for some of these views, but "
+          "correct direct lowering still needs the row origin decomposed into "
+          "packet base, row anchors, and per-message offsets. Without that "
+          "decomposition, tcgen05.ld/st packets address the wrong half of the "
+          "backing tile or an invalid TMEM row. Access the full backing tile or "
+          "reshape/copy so the TMEM rows stay materializable.";
     break;
   case TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast:
     os << "the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a "

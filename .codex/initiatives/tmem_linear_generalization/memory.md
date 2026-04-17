@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 09:55 UTC pure rank-2 single-CTA row-half `ld/st`
+  descriptor views are now replayed RMW support. Dropping the old unconditional
+  shape-transform requirement is correct for single-CTA bases: the optimizer
+  can load the full backing tile, split the logical row dimension, update the
+  selected half, join it back, and store the full tile. The same pure rank-2
+  replay is not correct for two-CTA block layouts yet. A focused probe showed
+  `tmem.slice(M // 2, M // 2, dim=0)` replay on the two-CTA block layout
+  updated rows `1,3,...,255` rather than rows `128..255`, because the current
+  tensor split selects the CTA block-base bit. The recognizer now allows pure
+  rank-2 half-slices only for single-CTA bases; transformed chains, including
+  the lifted two-CTA row-half positives, remain enabled. Runtime coverage:
+  single-CTA N=64/128/256 positives assert `tt.split`/`tt.join` and no
+  surviving `ttg.memdesc_subslice`; two-CTA pure rank-2 cases assert a clean
+  packet-footprint diagnostic mentioning the CTA block-base bit. Validation:
+  `make -j8`, Python compile, `git diff --check`, direct half-row positives
+  (`4 passed`), two-CTA clean negatives (`3 passed`), neighboring replay
+  selectors (`7 passed` single CTA, `5 passed` two CTA), and core
+  `test_core.py -k tmem_linear_m64` (`21 passed`).
+
 - Latest: 2026-04-17 09:42 UTC lifted row-half `ld/st` descriptor views are
   now replayed RMW support instead of descriptor-view clean negatives. The
   backend replay recognizer now consumes the `.slice(...).index(0)` unit

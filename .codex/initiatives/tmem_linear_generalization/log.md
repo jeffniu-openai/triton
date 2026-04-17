@@ -22433,3 +22433,66 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.46s`);
   - `git diff --check`.
+
+## 2026-04-17 09:55 UTC: direct single-CTA row-half ld/st replay
+
+- Starting point: `codex/tmem` at `f3dbb4beb`.
+- Change:
+  - allowed `isTMemLdStReplayableHalfSliceView(...)` to recognize pure
+    rank-2 half-slice descriptor views over a single-CTA TMEM base, so
+    single-CTA `tmem.slice(M // 2, M // 2, dim=0)` load/store views lower
+    through the existing full-backing replay/RMW path;
+  - kept pure rank-2 two-CTA block-layout half-slices unsupported because the
+    current tensor split/join model is not block-base aware;
+  - updated the packet-footprint diagnostic to mention row-half views that
+    expose a CTA block-base bit as the sliced row bit;
+  - added runtime-matrix coverage for single-CTA direct row-half positives and
+    two-CTA direct row-half clean negatives.
+- Evidence:
+  - before the guard, a two-CTA block-layout probe updated rows
+    `1,3,...,255` instead of rows `128..255`; the observed difference was
+    exactly the test increment (`17.0`), so the bug was semantic selection of
+    the wrong half rather than numerical drift.
+- Boundary:
+  - transformed chains remain replayable, including lifted two-CTA row-half
+    positives from the previous checkpoint;
+  - pure rank-2 two-CTA row-half support still needs exact linear-layout
+    split arithmetic that distinguishes logical row halves from CTA
+    block-base selection.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `PYTHONPATH=./python:./python/test/gluon pytest --collect-only -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_direct_half_rows_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported`
+    (`7 tests collected in 4.28s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-halfrows-single
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_direct_half_rows_positive`
+    (`4 passed in 9.57s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-direct-halfrows-twocta-neg
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported`
+    (`3 passed in 4.76s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-halfrows-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lifted_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_tmem_oor
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_replays`
+    (`7 passed in 12.57s`);
+  - `CUDA_VISIBLE_DEVICES=3
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu3-halfrows-twocta-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_positive_lifted_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_tmem_oor`
+    (`5 passed in 19.32s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-core-m64-direct-halfrows
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.85s`);
+  - `git diff --check`.
