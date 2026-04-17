@@ -1114,7 +1114,7 @@ Progress:
   and normalizes narrow scales root support layouts by compacting zero
   register bases before creating root `ttng.tmem_load` operations.
 - 2026-04-17 12:00 UTC: promoted pure rank-2 two-CTA row-half `ld/st`
-  descriptor views for block-backed roots. The recognizer now admits exactly
+  descriptor views for block-backed and MMAv5 roots. The recognizer now admits exactly
   one direct row-half slice on a two-CTA root, and the optimizer lowers it via
   an explicit leading-dimension replay shape (`[M,N] -> [2,M/2,N]`) before
   the existing split/join RMW. This removes the stale clean negative without

@@ -22921,25 +22921,26 @@ Open after this slice:
     same leading-dimension replay shape used by lifted row-half views:
     `[M, N] -> [2, M/2, N]`, select the requested unit leading half, then
     reshape back to `[M/2, N]`;
-  - promoted the direct two-CTA block-backed row-half runtime rows from clean
-    unsupported to positive coverage.
+  - promoted the direct two-CTA block-backed and MMAv5 row-half runtime rows
+    to positive coverage.
 - Finding:
   - the stale clean negative was not a true ISA boundary. A generic direct
     split of the loaded `[256, N]` support tensor selected the CTA block-base
     bit as if it were an ordinary row bit, but spelling the replay as an
     explicit leading-dimension half matches the already-green lifted
-    descriptor-view semantics and updates rows `128..255` exactly.
+    descriptor-view semantics and updates rows `128..255` exactly. The same
+    replay is valid for MMAv5 two-CTA roots.
 - Validation:
   - `make -j8`;
   - representative manual probe for `block_two_ctas, N=64, 16x128b`
     (`maxdiff 0.0`, no surviving `ttg.memdesc_subslice`);
-  - exact direct row-half selector:
+  - exact direct row-half selector after adding MMAv5 rows:
     `CUDA_VISIBLE_DEVICES=0
-    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-rowhalf-direct-positive
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-rowhalf-direct-mmav5-positive
     PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'ldst_twocta_descriptor_direct_half_rows_positive'`
-    (`3 passed, 1591 deselected`);
+    (`6 passed, 1591 deselected`);
   - neighboring lifted row-half selector:
     `CUDA_VISIBLE_DEVICES=1
     TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-rowhalf-lifted-neighbor

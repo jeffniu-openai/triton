@@ -4381,8 +4381,11 @@ LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_OOR_CASES = [
 ]
 
 LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES = [
-    ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n])
-    for n, variant in ((64, "16x128b"), (128, "auto"), (128, "16x256b"))
+    (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
+    for layout_name, (n, variant) in product(
+        ("block_two_ctas", "mmav5_twocta"),
+        ((64, "16x128b"), (128, "auto"), (128, "16x256b")),
+    )
 ]
 
 LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [

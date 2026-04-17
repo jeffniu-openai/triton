@@ -1,15 +1,17 @@
 # TMEM Linear Generalization
 
 - Latest: 2026-04-17 12:00 UTC pure rank-2 two-CTA row-half `ld/st`
-  descriptor views are now replayed RMW support for block-backed TMEM roots.
+  descriptor views are now replayed RMW support for block-backed and MMAv5
+  TMEM roots.
   The previous clean negative was too broad: the unsafe path was the generic
   direct split of a `[256, N]` support tensor, which exposed the CTA block-base
   bit as the sliced row bit. The recognizer now admits only a single pure
   row-half slice on a two-CTA root, and the optimizer rewrites that direct view
   into an explicit `[2, 128, N] -> [1, 128, N] -> [128, N]`
   leading-dimension replay before applying the existing split/join RMW logic.
-  The promoted rows cover `N=64/128` with `16x128b`, `auto`, and `16x256b`.
-  Validation: `make -j8`; exact direct row-half selector (`3 passed`);
+  The promoted rows cover `N=64/128` with `16x128b`, `auto`, and `16x256b`
+  for both two-CTA layout families.
+  Validation: `make -j8`; exact direct row-half selector (`6 passed`);
   neighboring lifted row-half selector (`5 passed`); combined
   direct/lifted row-half selector (`17 passed`); Python compile; and
   `git diff --check`.
