@@ -1096,10 +1096,21 @@ def tmem_ldst_descriptor_direct_half_rows_positive_kernel(in_ptr, out_ptr, layou
 
 
 @gluon.jit
-def tmem_ldst_direct_higher_rank_get_reg_layout_kernel(out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+def tmem_ldst_direct_higher_rank_get_reg_layout_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
                                                        N: ttgl.constexpr, instr_variant: ttgl.constexpr):
     tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
-    _ = tmem.get_reg_layout(instr_variant=instr_variant)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout(instr_variant=instr_variant)
+    b_layout: ttgl.constexpr = ttgl.SliceLayout(1, ttgl.SliceLayout(2, reg_layout))
+    m_layout: ttgl.constexpr = ttgl.SliceLayout(0, ttgl.SliceLayout(2, reg_layout))
+    n_layout: ttgl.constexpr = ttgl.SliceLayout(0, ttgl.SliceLayout(1, reg_layout))
+    offs_b = ttgl.arange(0, 2, b_layout)[:, None, None]
+    offs_m = ttgl.arange(0, M, m_layout)[None, :, None]
+    offs_n = ttgl.arange(0, N, n_layout)[None, None, :]
+    offs = offs_b * M * N + offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+    out = tmem.load(reg_layout)
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
 
 
 @gluon.jit
@@ -4453,9 +4464,9 @@ LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES = [
     )
 ]
 
-LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES = [
-    ("get_reg_layout_auto", "auto", "direct TMEM auto register layout query"),
-    ("get_reg_layout_explicit", "16x128b", "direct TMEM 16x128b register layout query"),
+LDST_DIRECT_HIGHER_RANK_GET_REG_LAYOUT_POSITIVE_CASES = [
+    ("auto", "32x32b.x64.b32"),
+    ("16x128b", LDST_SHAPE_MAP["16x128b"][128]),
 ]
 
 BLOCKED_FALLBACK_CASES = [
@@ -7066,30 +7077,24 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_positive(
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("operation,variant,expected_prefix", LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES)
-def test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error(operation, variant, expected_prefix):
+@pytest.mark.parametrize("variant,expected_shape", LDST_DIRECT_HIGHER_RANK_GET_REG_LAYOUT_POSITIVE_CASES)
+def test_tmem_runtime_matrix_ldst_direct_higher_rank_get_reg_layout_positive(variant, expected_shape):
     m = 128
     n = 128
     layout = _lift_tmem_layout(LDST_LAYOUTS["identity"](n), [2])
-    out = torch.empty((1, ), dtype=torch.float32, device="cuda")
+    inp = torch.arange(2 * m * n, dtype=torch.float32, device="cuda").reshape(2, m, n)
+    out = torch.empty_like(inp)
 
-    with pytest.raises(CompilationError) as excinfo:
-        if operation.startswith("get_reg_layout"):
-            tmem_ldst_direct_higher_rank_get_reg_layout_kernel[(1, )](
-                out, layout, m, n, variant, num_warps=4
-            )
-        elif operation == "load":
-            tmem_ldst_direct_higher_rank_load_kernel[(1, )](out, layout, m, n, num_warps=4)
-        else:
-            tmem_ldst_direct_higher_rank_store_kernel[(1, )](out, layout, m, n, num_warps=4)
+    compiled = tmem_ldst_direct_higher_rank_get_reg_layout_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
 
-    msg = str(excinfo.value)
-    assert expected_prefix in msg
-    assert "requires a rank-2 descriptor view" in msg
-    assert "index, slice, or reshape higher-rank TMEM descriptors to a 2D view" in msg
-    assert "PassManager::run failed" not in msg
-    assert "Assertion" not in msg
-    assert "dims.size()" not in msg
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert f"tcgen05.st.sync.aligned.{expected_shape}" in observed_opcodes
+    assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
+    assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

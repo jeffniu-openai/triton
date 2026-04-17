@@ -1163,6 +1163,13 @@ Progress:
   and reshapes the value back. Direct `get_reg_layout()` and reduction load
   stay rank-2-only because their public contract is the concrete register
   layout, not a value replay.
+- 2026-04-17 13:37 UTC: direct higher-rank `get_reg_layout()` now uses the
+  same flattened descriptor replay contract instead of remaining a stale
+  clean negative. The implementation maps rank-2
+  `DistributedLinearLayout` bases back over the original descriptor shape and
+  maps explicit higher-rank load layouts to the flattened support view before
+  lowering. Reduction load remains separate because its result shape and
+  hardware/software reduction contract are not just value replay.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

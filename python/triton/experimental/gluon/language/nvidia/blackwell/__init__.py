@@ -90,6 +90,51 @@ def _strip_zero_reg_bases_from_layout(layout):
     )
 
 
+def _flatten_leading_layout_basis(basis: List[int], shape: List[int]) -> List[int]:
+    row = 0
+    for value, dim in zip(basis[:-1], shape[:-1]):
+        row = row * dim + value
+    return [row, basis[-1]]
+
+
+def _unflatten_leading_layout_basis(basis: List[int], shape: List[int]) -> List[int]:
+    row, col = basis
+    coords = []
+    rem = row
+    for dim in reversed(shape[:-1]):
+        coords.append(rem % dim)
+        rem //= dim
+    if rem != 0:
+        raise ValueError(
+            f"flattened TMEM register-layout row basis {row} is outside leading shape {shape[:-1]}"
+        )
+    return list(reversed(coords)) + [col]
+
+
+def _reshape_leading_distributed_linear_layout(layout, src_shape: List[int], dst_shape: List[int]):
+    if not isinstance(layout, DistributedLinearLayout):
+        raise ValueError(
+            "direct higher-rank TMEM register-layout replay currently requires a "
+            f"DistributedLinearLayout, got {type(layout).__name__}"
+        )
+    if len(src_shape) == len(dst_shape):
+        return layout
+    if len(src_shape) == 2 and len(dst_shape) > 2:
+        convert_basis = lambda basis: _unflatten_leading_layout_basis(basis, dst_shape)
+    elif len(src_shape) > 2 and len(dst_shape) == 2:
+        convert_basis = lambda basis: _flatten_leading_layout_basis(basis, src_shape)
+    else:
+        raise ValueError(f"unsupported TMEM register-layout reshape from {src_shape} to {dst_shape}")
+
+    return DistributedLinearLayout(
+        reg_bases=[convert_basis(basis) for basis in layout.reg_bases],
+        lane_bases=[convert_basis(basis) for basis in layout.lane_bases],
+        warp_bases=[convert_basis(basis) for basis in layout.warp_bases],
+        block_bases=[convert_basis(basis) for basis in layout.block_bases],
+        shape=dst_shape,
+    )
+
+
 def _fold_canonical_single_cta_block_rows(rows, block_bases, shape, two_ctas):
     if two_ctas or not block_bases or len(shape) != 2:
         return rows, block_bases
@@ -477,6 +522,17 @@ class tensor_memory_descriptor(base_value):
             num_warps = ttgl.num_warps(_semantic=_semantic, _generator=_generator)
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
+        if len(self.shape) != 2:
+            flat = self._flatten_ldst_view(_semantic=_semantic)
+            flat_layout = flat.get_reg_layout(
+                num_warps=num_warps,
+                instr_variant=requested_variant,
+                _semantic=_semantic,
+                _generator=_generator,
+            )
+            return _reshape_leading_distributed_linear_layout(
+                flat_layout, list(flat.shape), list(self.shape)
+            )
         self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
@@ -524,8 +580,21 @@ class tensor_memory_descriptor(base_value):
             tensor: A distributed tensor containing the loaded data.
         """
         if len(self.shape) != 2:
+            flat_layout = layout
             flat = self._flatten_ldst_view(_semantic=_semantic)
-            loaded = flat.load(layout=layout, _semantic=_semantic, _generator=_generator)
+            if flat_layout is not None:
+                flat_layout = _unwrap_if_constexpr(flat_layout)
+                if isinstance(flat_layout, DistributedLinearLayout) and flat_layout.rank == len(self.shape):
+                    flat_layout = _reshape_leading_distributed_linear_layout(
+                        flat_layout, list(self.shape), list(flat.shape)
+                    )
+                if getattr(flat_layout, "rank", None) != len(flat.shape):
+                    raise ValueError(
+                        "direct higher-rank TMEM load layout must either be a rank-2 layout for the flattened "
+                        "descriptor view or a DistributedLinearLayout returned by get_reg_layout() for the "
+                        "higher-rank descriptor"
+                    )
+            loaded = flat.load(layout=flat_layout, _semantic=_semantic, _generator=_generator)
             return loaded.reshape(self.shape, _semantic=_semantic)
 
         self._require_rank2_tmem_ldst("load")

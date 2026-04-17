@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:37 UTC: promoted direct higher-rank TMEM
+  `get_reg_layout()` for layouts whose flattened rank-2 register layout can be
+  exactly unflattened over the original logical dimensions. The frontend now
+  maps `DistributedLinearLayout` bases between `[prod(leading), N]` and the
+  higher-rank descriptor shape, and explicit higher-rank `load(layout=...)`
+  maps such layouts back to the flattened direct-load view. Validation:
+  `make -j8`, exact promoted `get_reg_layout` runtime rows (`2 passed`),
+  focused `ldst_direct_higher_rank` selector (`3 passed`), Python compile,
+  and `git diff --check`.
 - 2026-04-17 13:32 UTC: promoted direct higher-rank TMEM `load()` and
   `store()` by replaying them through an explicit 2D descriptor view. The
   Gluon descriptor methods now flatten leading logical dimensions for direct

@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:37 UTC direct higher-rank TMEM
+  `get_reg_layout()` is now positive for the flattened replay family. The
+  returned `DistributedLinearLayout` is derived by asking the existing rank-2
+  backend planner for the flattened descriptor view and then unflattening each
+  register/lane/warp/block basis from `[prod(leading), N]` back to the
+  descriptor's logical dimensions. Explicit higher-rank `load(layout=...)`
+  maps the layout in the opposite direction before calling the flattened
+  direct-load path. Validation: `make -j8`; exact promoted
+  `get_reg_layout` runtime rows (`2 passed`); focused
+  `ldst_direct_higher_rank` selector (`3 passed, 1588 deselected`); Python
+  compile for the Gluon Blackwell frontend and runtime-matrix file;
+  `git diff --check`.
+
 - Latest: 2026-04-17 13:32 UTC direct higher-rank TMEM `load()` and
   `store()` now replay through a flattened rank-2 descriptor view instead of
   stopping at the frontend rank guard. The replay is intentionally limited to

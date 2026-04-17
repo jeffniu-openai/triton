@@ -23332,6 +23332,53 @@ Open after this slice:
   - continue Phase 4 packet-footprint work or Phase 2 copy scheduler work
     depending on the next support-bearing stale-negative probe.
 
+## 2026-04-17 13:37 UTC: direct higher-rank get_reg_layout promotion
+
+- Starting point: `codex/tmem` at `f7a63d008`.
+- Change:
+  - added exact basis mapping between a flattened rank-2 TMEM register layout
+    and the original higher-rank descriptor shape for
+    `DistributedLinearLayout`;
+  - direct higher-rank `get_reg_layout()` now flattens the descriptor view,
+    asks the existing rank-2 backend planner for the requested atom, and
+    unflattens the returned register/lane/warp/block bases;
+  - direct higher-rank `load(layout=...)` maps an explicit higher-rank
+    `DistributedLinearLayout` back to the flattened descriptor shape before
+    calling the rank-2 direct-load path;
+  - converted the former clean-negative `get_reg_layout` rows into positive
+    runtime roundtrips for `auto` and `16x128b`.
+- Boundary:
+  - this covers layouts whose flattened register-layout bases are exactly
+    representable over the original row-major leading dimensions;
+  - reduction load remains separate because it changes the returned value
+    shape and must preserve the hardware/software reduction contract.
+- Validation:
+  - `make -j8`;
+  - exact promoted rows:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-hr-getreg3
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_get_reg_layout_positive`
+    (`2 passed`);
+  - focused family selector:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-hr-family
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_direct_higher_rank'`
+    (`3 passed, 1588 deselected`);
+  - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by active `jeffniu-openai` auth under the current
+    `Mogball` repo instructions.
+- Next:
+  - commit this checkpoint locally;
+  - continue Phase 4 direct `ld/st` packet-footprint work or Phase 2 copy
+    scheduler work.
+
 ## 2026-04-17 12:58 UTC: scaled accumulator tile requirement cleanup
 
 - Starting point: `codex/tmem` at `38750e84b`.
