@@ -20664,3 +20664,30 @@ Open after this slice:
   - adjacent copy selector passed
     (`36 passed, 1539 deselected in 11.34s`);
   - `git diff --check`.
+
+## 2026-04-17 03:27 UTC: typed scaled-MMAv5 narrow-N scale-fragment gap
+
+- Starting point: `codex/tmem` at `d5975e557`.
+- Change:
+  - introduced `MMAv5ScaledNarrowNScaleFragmentRequirement`;
+  - verifier and lowering now check this requirement before generic
+    scaled-accumulator layout rejection;
+  - narrow tile-permuted scaled accumulator negatives now state the concrete
+    scaled-MMAv5 ISA boundary: the layout needs an N<32 accumulator tile, while
+    public block-scaled MMAv5 starts at N=32 and matrix-B scale fragments are
+    exposed at 64-column alignment.
+- Behavior/support boundary is unchanged:
+  - support still requires a real scale-fragment storage/scheduling model for
+    sub-32-N accumulator tiles, or a user layout reshaped to a directly
+    supported larger tile.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics` from
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12`;
+  - focused scaled narrow/repeated selector passed
+    (`40 passed, 1535 deselected in 21.08s`);
+  - `git diff --check`.

@@ -230,6 +230,13 @@ struct MMAv5ScaledRepeatedN32ScaleFragmentRequirement {
   unsigned nInstructionCount;
 };
 
+struct MMAv5ScaledNarrowNScaleFragmentRequirement {
+  Attribute accumulatorEncoding;
+  unsigned instrSizeN;
+  unsigned minimumScaledInstrSizeN;
+  unsigned ctaColumns;
+};
+
 std::optional<MMAv5LhsLayoutInfo>
 getMMAv5LhsLayoutInfo(gpu::MemDescType memDescType);
 
@@ -243,8 +250,14 @@ std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
     gpu::MemDescType memDescType);
 
+std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
+getMMAv5ScaledNarrowNScaleFragmentRequirement(gpu::MemDescType memDescType);
+
 std::optional<std::string>
 getMMAv5ScaledRepeatedN32ScaleFragmentError(gpu::MemDescType memDescType);
+
+std::optional<std::string>
+getMMAv5ScaledNarrowNScaleFragmentError(gpu::MemDescType memDescType);
 
 SmallVector<gpu::DistributedEncodingTrait>
 getTmemCompatibleLayouts(gpu::MemDescType memType, unsigned numWarps,

@@ -1267,6 +1267,33 @@ getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
           (ctaShape[1] + instrSizeN - 1) / instrSizeN)};
 }
 
+std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
+getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
+  constexpr unsigned kMinimumScaledInstrSizeN = 32;
+  if (getMMAv5ScaledAccumulatorLayoutInfo(memDescType))
+    return std::nullopt;
+
+  auto plainInfo = getMMAv5AccumulatorLayoutInfo(memDescType);
+  if (!plainInfo)
+    return std::nullopt;
+
+  auto ctaShape =
+      getShapePerCTA(getCGALayout(memDescType.getEncoding()).getCTASplitNum(),
+                     memDescType.getShape());
+  if (ctaShape.size() < 2)
+    return std::nullopt;
+
+  auto instrSizeN = std::min<unsigned>(plainInfo->mmaSizeN, ctaShape[1]);
+  if (instrSizeN >= kMinimumScaledInstrSizeN)
+    return std::nullopt;
+
+  return MMAv5ScaledNarrowNScaleFragmentRequirement{
+      /*accumulatorEncoding=*/memDescType.getEncoding(),
+      /*instrSizeN=*/instrSizeN,
+      /*minimumScaledInstrSizeN=*/kMinimumScaledInstrSizeN,
+      /*ctaColumns=*/static_cast<unsigned>(ctaShape[1])};
+}
+
 static std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
   std::string message;
@@ -1281,6 +1308,24 @@ static std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
   return os.str();
 }
 
+static std::string getMMAv5ScaledNarrowNScaleFragmentError(
+    const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << "direct block-scaled MMAv5 does not support accumulator layouts that "
+        "require N="
+     << requirement.instrSizeN << " instructions along N for "
+     << requirement.accumulatorEncoding
+     << ". The minimum public scaled-MMAv5 N tile is "
+     << requirement.minimumScaledInstrSizeN
+     << ", and the public tensor-memory scales layout exposes matrix-B scale "
+        "fragments at 64-column alignment. This "
+     << requirement.ctaColumns
+     << "-column CTA tile must be reshaped to a larger directly supported "
+        "MMAv5 tile before it can use block-scaled tcgen05.mma.";
+  return os.str();
+}
+
 std::optional<std::string>
 getMMAv5ScaledRepeatedN32ScaleFragmentError(MemDescType memDescType) {
   auto requirement =
@@ -1288,6 +1333,14 @@ getMMAv5ScaledRepeatedN32ScaleFragmentError(MemDescType memDescType) {
   if (!requirement)
     return std::nullopt;
   return getMMAv5ScaledRepeatedN32ScaleFragmentError(*requirement);
+}
+
+std::optional<std::string>
+getMMAv5ScaledNarrowNScaleFragmentError(MemDescType memDescType) {
+  auto requirement = getMMAv5ScaledNarrowNScaleFragmentRequirement(memDescType);
+  if (!requirement)
+    return std::nullopt;
+  return getMMAv5ScaledNarrowNScaleFragmentError(*requirement);
 }
 
 static int64_t linearizePrefixOffsets(ArrayRef<int64_t> shape,

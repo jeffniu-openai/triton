@@ -838,6 +838,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.shape.N = dstPerCTA[1];
   dot.shape.K = op.getBlockK(); // K is not split across CTAs
   dot.mmaSizeK = !opKindIsMXFP4 ? 32 : 64;
+  if (auto error = ttng::getMMAv5ScaledNarrowNScaleFragmentError(dTensorTy))
+    return mlir::emitError(loc, *error);
   if (auto error = ttng::getMMAv5ScaledRepeatedN32ScaleFragmentError(dTensorTy))
     return mlir::emitError(loc, *error);
 

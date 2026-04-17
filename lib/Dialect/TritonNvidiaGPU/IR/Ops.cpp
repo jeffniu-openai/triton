@@ -928,6 +928,8 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   }
   auto info = getMMAv5ScaledAccumulatorLayoutInfo(getD().getType());
   if (!info) {
+    if (auto error = getMMAv5ScaledNarrowNScaleFragmentError(getD().getType()))
+      return emitOpError() << *error;
     return emitOpError()
            << "expected accumulator layout to be directly supported MMAv5 "
               "block-scaled tensor memory, but got "

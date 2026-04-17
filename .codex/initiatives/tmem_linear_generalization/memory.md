@@ -11548,7 +11548,36 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-17 03:19 UTC copy sub-instruction column permutation requirement
+## Latest: 2026-04-17 03:27 UTC scaled-MMAv5 narrow-N scale-fragment requirement
+
+- Continued Phase 5 scaled-MMAv5 cleanup from the narrow tile-permuted
+  accumulator clean negatives.
+- Change:
+  - added `MMAv5ScaledNarrowNScaleFragmentRequirement`;
+  - verifier and lowering now classify accumulator layouts that plain MMAv5 can
+    only realize with an N<32 instruction as a scaled-MMAv5 scale-fragment
+    boundary instead of the generic "tile-permuted accumulator not directly
+    representable" fallback;
+  - the diagnostic records the required N instruction size, the scaled minimum
+    N tile, the CTA N columns, and the matrix-B 64-column scale-fragment
+    alignment constraint.
+- Current hard fact:
+  - scaled-MMAv5 narrow tile-permuted accumulators are not arbitrary layout
+    failures. The physical layout would require sub-32-N accumulator
+    instructions, while public block-scaled MMAv5 exposes a minimum N=32 tile
+    and B-scale fragments aligned at 64 columns.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics` from the CMake build dir;
+  - focused scaled narrow/repeated selector
+    (`40 passed, 1535 deselected`);
+  - `git diff --check`.
+
+## Previous: 2026-04-17 03:19 UTC copy sub-instruction column permutation requirement
 
 - Continued Phase 2 copy scheduler cleanup from the dense no-scales tile_n=1/2
   boundary.

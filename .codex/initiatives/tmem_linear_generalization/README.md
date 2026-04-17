@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 03:27 UTC: typed the scaled-MMAv5 sub-32-N accumulator boundary.
+  Layouts that are valid for plain MMAv5 only with an N<32 instruction now
+  derive an `MMAv5ScaledNarrowNScaleFragmentRequirement` instead of falling
+  through to the generic tile-permuted accumulator error. Verifier and lowering
+  both report that public block-scaled MMAv5 has a minimum N=32 tile and
+  matrix-B scale fragments at 64-column alignment. Support is unchanged:
+  narrow tile-permuted scaled accumulators still need a real scale-fragment
+  storage/scheduling model or a larger directly supported tile. Validation:
+  `make -j8`, py-compile for `test_tmem_runtime_matrix.py`, direct
+  `invalid.mlir` verifier from the build dir, focused scaled narrow/repeated
+  selector (`40 passed, 1535 deselected`), and `git diff --check`.
 - 2026-04-17 03:19 UTC: moved the no-scales dense copy sub-instruction
   column-permutation boundary into the shared typed requirement layer. Dense
   direct-destination column-tile failures now derive a
