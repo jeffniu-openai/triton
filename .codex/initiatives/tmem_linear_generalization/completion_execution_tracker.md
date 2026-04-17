@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:50 UTC
+Last updated: 2026-04-17 17:53 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -109,6 +109,15 @@ row/source projection. If not, promote the proof into a clearer typed
 requirement and move to the next reachable support slice.
 
 ## Progress
+
+- 2026-04-17 17:53 UTC: made the scaled-MMAv5 narrow-N accumulator
+  requirement carry `minimumAddressableBScaleFragmentN` explicitly instead of
+  hardcoding the 64-column matrix-B scale-fragment alignment in the formatter.
+  Support is unchanged: N=8 and N=16 accumulator tiles remain clean
+  unsupported until a real scale-fragment rematerialization/storage model can
+  preserve the public scaled-MMAv5 fragment semantics. Validation: `make -j8`;
+  split-4 `mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported`
+  selector passed `5/5/5/5`; `git diff --check`.
 
 - 2026-04-17 17:50 UTC: added a typed
   `TMemCopyMixedBasisRequirement` for direct copy physical-query failures where

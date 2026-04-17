@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:53 UTC Phase E/F scaled-MMAv5 cleanup: the
+  `MMAv5ScaledNarrowNScaleFragmentRequirement` now carries the
+  `minimumAddressableBScaleFragmentN` field explicitly. The verifier error is
+  unchanged in behavior but no longer bakes the 64-column matrix-B
+  scale-fragment alignment only into string text. Validation: `make -j8`;
+  split-4 `mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported`
+  selector (`5/5/5/5` passed); `git diff --check`.
+
 - Latest: 2026-04-17 17:50 UTC Phase B/F copy-planner cleanup: added a typed
   `TMemCopyMixedBasisRequirement` for direct copy row/column bases that mix
   physical row and column contributions. The `mixed` no-scales copy

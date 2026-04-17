@@ -1581,6 +1581,7 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
       /*accumulatorEncoding=*/memDescType.getEncoding(),
       /*instrSizeN=*/instrSizeN,
       /*minimumScaledInstrSizeN=*/kMinimumScaledInstrSizeN,
+      /*minimumAddressableBScaleFragmentN=*/64,
       /*ctaColumns=*/static_cast<unsigned>(ctaShape[1])};
 }
 
@@ -1631,7 +1632,9 @@ std::string getMMAv5ScaledNarrowNScaleFragmentError(
      << ". The minimum public scaled-MMAv5 N tile is "
      << requirement.minimumScaledInstrSizeN
      << ", and the public tensor-memory scales layout exposes matrix-B scale "
-        "fragments at 64-column alignment. This "
+        "fragments at "
+     << requirement.minimumAddressableBScaleFragmentN
+     << "-column alignment. This "
      << requirement.ctaColumns
      << "-column CTA tile must be reshaped to a larger directly supported "
         "MMAv5 tile before it can use block-scaled tcgen05.mma.";

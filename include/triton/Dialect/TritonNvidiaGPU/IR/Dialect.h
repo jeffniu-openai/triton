@@ -249,6 +249,7 @@ struct MMAv5ScaledNarrowNScaleFragmentRequirement {
   Attribute accumulatorEncoding;
   unsigned instrSizeN;
   unsigned minimumScaledInstrSizeN;
+  unsigned minimumAddressableBScaleFragmentN;
   unsigned ctaColumns;
 };
 

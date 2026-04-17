@@ -48,6 +48,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 17:53 UTC: scaled-MMAv5 narrow-N accumulator rejection now records
+  `minimumAddressableBScaleFragmentN` in
+  `MMAv5ScaledNarrowNScaleFragmentRequirement`, making the 64-column B-scale
+  fragment boundary structured rather than string-only. Validation:
+  `make -j8`, split-4 scaled narrow clean-negative selector (`5/5/5/5`
+  passed), and `git diff --check`.
 - 2026-04-17 17:50 UTC: direct copy mixed row/column basis failures now use a
   typed `TMemCopyMixedBasisRequirement`, and the `mixed` no-scales runtime row
   reports the offending basis bit plus physical TMEM delta. Debug probes also

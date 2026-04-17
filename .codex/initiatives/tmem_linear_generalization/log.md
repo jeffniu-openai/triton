@@ -1,3 +1,27 @@
+## 2026-04-17 17:53 UTC: structured scaled-MMAv5 narrow-N scale boundary
+
+- Change:
+  - added `minimumAddressableBScaleFragmentN` to
+    `MMAv5ScaledNarrowNScaleFragmentRequirement`;
+  - the narrow-N verifier diagnostic now formats the matrix-B scale-fragment
+    alignment from requirement data rather than a hardcoded string.
+- Boundary:
+  - support is unchanged;
+  - N=8 and N=16 scaled accumulator tiles remain unsupported until a real
+    scale-fragment rematerialization/storage model can preserve the public
+    scaled-MMAv5 B-scale fragment semantics.
+- Validation:
+  - `make -j8`;
+  - split-4
+    `mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported` selector
+    passed as `5/5/5/5`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - continue with support-bearing work on `4x256b` refresh/view semantics or
+    mixed-fp4A TMEM-LHS storage, since the narrow-N bucket is now represented
+    as a structured scale-fragment boundary.
+
 ## 2026-04-17 17:50 UTC: typed copy mixed-basis requirement
 
 - Change:
