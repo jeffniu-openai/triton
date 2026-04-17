@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 10:09 UTC: reprobed the pure rank-2 two-CTA row-half frontier
+  after the single-CTA direct replay checkpoint and reverted the probe edits.
+  The full support load for `block_two_ctas` carries row `128` in the CTA
+  `block` basis, so ordinary tensor `reshape`/`split` works inside each CTA
+  rather than selecting the logical high half globally. Moving the split factor
+  only changed which intra-CTA row bit was selected (`1,3,...` then
+  `2,3,6,7,...`), never rows `128..255`. Keep this as a real block-aware
+  replay/planner gap: it needs CTA-block selection/predication or an exact
+  block-aware reconstruction, not a different split shape.
 - 2026-04-17 09:55 UTC: promoted pure rank-2 single-CTA row-half `ld/st`
   descriptor views to replay/RMW support. The replay recognizer now permits a
   pure half-slice over a rank-2 TMEM base when the base layout is single-CTA,

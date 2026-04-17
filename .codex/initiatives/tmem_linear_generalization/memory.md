@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest probe: 2026-04-17 10:09 UTC pure rank-2 two-CTA row-half replay is a
+  CTA-block selection problem, not a split-shape problem. A speculative
+  inner-factor split for `block_two_ctas` changed the wrong-row pattern from
+  odd rows (`1,3,...,255`) to bit-1 groups (`2,3,6,7,...`) but still did not
+  select rows `128..255`. Dumping TTGIR showed the support load layout for
+  the full two-CTA backing tile has `block = [[128, 0]]`; the global high row
+  half is carried by the CTA block basis, while tensor `reshape`/`split`
+  operates within each CTA's local tensor coordinates. Future support must
+  either predicate/select the CTA block or build a genuinely block-aware
+  replay reconstruction. Do not re-enable pure rank-2 two-CTA half-slice replay
+  with another ordinary tensor split variant.
+
 - Latest: 2026-04-17 09:55 UTC pure rank-2 single-CTA row-half `ld/st`
   descriptor views are now replayed RMW support. Dropping the old unconditional
   shape-transform requirement is correct for single-CTA bases: the optimizer

@@ -22496,3 +22496,30 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.85s`);
   - `git diff --check`.
+
+## 2026-04-17 10:09 UTC: two-CTA direct row-half split probe
+
+- Starting point: `codex/tmem` at `140d597b9`.
+- Probe-only edits were applied and reverted:
+  - allowed pure rank-2 two-CTA row-half views through the replay recognizer;
+  - added an optimizer flag to split the half factor as an inner factor rather
+    than the outer factor.
+- Results:
+  - the original naive split selected odd rows (`1,3,...,255`) for
+    `block_two_ctas` instead of the logical high half (`128..255`);
+  - the inner-factor split selected bit-1 row groups (`2,3,6,7,...`) and still
+    failed the high-half oracle;
+  - TTGIR for the support load showed `#linear1` with `block = [[128, 0]]`,
+    so the desired high row half is represented by CTA block selection, while
+    ordinary tensor split acts inside each CTA.
+- Conclusion:
+  - pure rank-2 two-CTA row-half replay needs a block-aware planner, CTA
+    predication/selection, or another exact reconstruction over the CGA block
+    basis;
+  - do not treat this as a missing split-shape variant.
+- Validation:
+  - `make -j8` for the probe build;
+  - Python row-diff probes for the original, inner-factor, and binary-factor
+    split variants;
+  - all probe source edits were reverted and `git status --short --branch`
+    returned a clean worktree at `140d597b9` before recording this note.
