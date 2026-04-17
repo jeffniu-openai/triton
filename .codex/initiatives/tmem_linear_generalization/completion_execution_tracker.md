@@ -250,6 +250,21 @@ Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
     `5/5`, `5/5`, and `3/3`;
   - `git diff --check`.
 
+2026-04-17 21:12 UTC:
+
+- Moved the leading-slice direct-vs-replay preservation policy out of
+  `OptimizeTMemLayouts` and into backend utility
+  `shouldPreserveDirectTMemLdStLeadingSliceView`.
+- The helper owns the gapped-column-basis check that decides when direct
+  physical support would alias logical halves and the transform should replay
+  the descriptor view instead.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory was changed.
+- Validation:
+  - `make -j8`;
+  - focused replay/direct-support runtime selector split across four GPUs
+    passed `6/6`, `6/6`, `6/6`, and `4/4`.
+
 ## Immediate Execution Order
 
 1. Return to the support-bearing frontier: start with the highest-value
@@ -366,12 +381,19 @@ footprints, ordinary-view `4x256b` refresh-remap/readback, scales
 descriptor-view masks, and noncanonical CTA ownership.
 
 The corrected full runtime-matrix runner passed at 2026-04-17 20:57 UTC.
-
-Next concrete slice: inspect remaining frontend/lowering compatibility shims
-against the backend-owned helper list. Do not delete a shim unless its behavior
-is already represented by a tested backend query/support object.
+Direct `ld/st` replay/support shim cleanup now has backend helpers for support
+type selection, replayable half-slice detection, and leading-slice
+direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
+frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:12 UTC: moved the leading-slice direct-vs-replay preservation
+  policy into backend utility `shouldPreserveDirectTMemLdStLeadingSliceView`.
+  `OptimizeTMemLayouts` now consumes the helper instead of owning the
+  gapped-column query check locally. Validation: `make -j8`; split-4 focused
+  replay/direct-support runtime selector passed `6/6`, `6/6`, `6/6`, and
+  `4/4`.
 
 - 2026-04-17 20:57 UTC: ran the corrected full runtime-matrix runner. All
   buckets passed with complete `1592/1592` coverage: `cp` `312 passed, 4

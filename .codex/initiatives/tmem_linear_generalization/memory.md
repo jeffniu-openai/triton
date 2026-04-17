@@ -13282,3 +13282,24 @@ rejection, not rescue
   - checkpoint validation evidence;
   - audit remaining frontend/lowering compatibility shims and delete only
     behavior already represented by backend query/support helpers.
+
+## Current: 2026-04-17 21:12 UTC leading-slice replay policy helper
+
+- Cleanup change:
+  - added backend utility `shouldPreserveDirectTMemLdStLeadingSliceView`;
+  - moved the gapped-column-basis direct-vs-replay policy out of
+    `OptimizeTMemLayouts`;
+  - replay lowering now remains a transform-local rewrite, while the decision
+    about whether direct physical support would alias a leading-slice view is
+    backend-owned.
+- Support impact:
+  - no rows were promoted;
+  - no clean-negative inventory changed.
+- Validation:
+  - `make -j8`;
+  - split-4 focused replay/direct-support runtime selector passed `6/6`,
+    `6/6`, `6/6`, and `4/4`.
+- Next:
+  - checkpoint and push this cleanup;
+  - return to the Phase C/Phase E support-bearing frontier unless another
+    obviously duplicated frontend/lowering policy is found.

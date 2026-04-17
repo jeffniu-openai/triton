@@ -480,6 +480,8 @@ getTMemLdStBlockedFallbackLayouts(gpu::MemDescType queryTy,
 std::optional<RankedTensorType>
 getTMemLdStDirectSupportTensorType(Value memDesc, unsigned numWarps);
 
+bool shouldPreserveDirectTMemLdStLeadingSliceView(Value memDesc);
+
 std::optional<unsigned>
 getTMemLdStReplayableHalfSliceDim(gpu::MemDescSubsliceOp subslice);
 

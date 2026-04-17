@@ -24654,3 +24654,23 @@ Open after this slice:
   - focused half-slice replay selector split across four GPUs passed `5/5`,
     `5/5`, `5/5`, and `3/3`;
   - `git diff --check`.
+
+## 2026-04-17 21:12 UTC: leading-slice replay policy moved to backend utility
+
+- Starting point: `codex/tmem` at pushed `805122bdb`.
+- Change:
+  - added `shouldPreserveDirectTMemLdStLeadingSliceView` to
+    `TensorMemoryUtils`;
+  - removed the transform-local gapped-column query check from
+    `OptimizeTMemLayouts`;
+  - leading-slice load/store rewrites now ask the backend helper whether a
+    direct physical support rewrite should be preserved or replayed.
+- Intent:
+  - no support surface changes;
+  - keep direct `ld/st` view-policy decisions in the backend helper layer,
+    leaving `OptimizeTMemLayouts` responsible for rewrite construction.
+- Validation:
+  - `make -j8`;
+  - split-4 focused runtime selector for multidim replay, direct/half-row
+    replay, two-CTA replay, and direct higher-rank get-reg-layout rows passed
+    as `6/6`, `6/6`, `6/6`, and `4/4`.

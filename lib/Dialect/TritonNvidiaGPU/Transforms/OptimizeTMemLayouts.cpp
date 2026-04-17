@@ -85,38 +85,6 @@ static ttg::MemDescType getSplitLoadRootMemDescType(Value memDesc) {
   return srcTy;
 }
 
-static bool shouldPreserveDirectLeadingSliceView(Value memDesc) {
-  if (getTMemLdStQueryTypes(memDesc).size() <= 1)
-    return false;
-
-  auto memTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
-  if (!memTy)
-    return true;
-
-  std::string error;
-  auto maybeLayout = getTMemViewAnalysisLinearLayout(memTy.getShape(),
-                                                     memTy.getEncoding(),
-                                                     &error);
-  if (!maybeLayout)
-    return true;
-
-  auto *ctx = memTy.getContext();
-  auto kCol = StringAttr::get(ctx, "col");
-  if (maybeLayout->hasInDim(kCol)) {
-    for (unsigned i = 0, e = maybeLayout->getInDimSizeLog2(kCol); i < e; ++i) {
-      if (llvm::all_of(maybeLayout->getBasis(kCol, i),
-                       [](int32_t value) { return value == 0; })) {
-        // Gapped-column leading-slice views still need the replay rewrite.
-        // Direct ld/st collapses them to a contiguous tile and aliases the two
-        // logical halves.
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
 enum class TMemTensorViewTransformKind { Reshape, Trans };
 
 struct TMemTensorViewTransform {
@@ -932,7 +900,7 @@ public:
 
   LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
                                 PatternRewriter &rewriter) const override {
-    if (shouldPreserveDirectLeadingSliceView(loadOp.getSrc()))
+    if (shouldPreserveDirectTMemLdStLeadingSliceView(loadOp.getSrc()))
       return failure();
 
     if (FailureOr<Value> support =
@@ -1068,7 +1036,7 @@ public:
 
   LogicalResult matchAndRewrite(TMEMStoreOp storeOp,
                                 PatternRewriter &rewriter) const override {
-    if (shouldPreserveDirectLeadingSliceView(storeOp.getDst()))
+    if (shouldPreserveDirectTMemLdStLeadingSliceView(storeOp.getDst()))
       return failure();
 
     if (succeeded(lowerTMemPhysicalSupportStore(rewriter, storeOp)))

@@ -4409,6 +4409,12 @@ When resuming the initiative:
   permutation and B-scale fragment rematerialization. Validation: `make -j8`,
   invalid verifier, split-4 focused narrow-N selector `5/5/5/5`, Python
   compile, and `git diff --check`.
+- 2026-04-17 21:12 UTC: direct `ld/st` leading-slice replay preservation now
+  uses backend utility `shouldPreserveDirectTMemLdStLeadingSliceView` instead
+  of a transform-local gapped-column query check. Behavior is unchanged:
+  gapped-column leading-slice views still replay to avoid direct physical
+  support aliasing logical halves. Validation: `make -j8` and split-4 focused
+  replay/direct-support selector `6/6`, `6/6`, `6/6`, `4/4`.
 - 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
   planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
   still use `None`, so behavior is unchanged; the next source-format support
