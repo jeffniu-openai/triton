@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:52 UTC: consolidated scaled-MMAv5 kind-derived instruction
+  facts into `MMAv5ScaledInstructionInfo`. Lowering now asks one backend
+  helper for the selected MXFP kind, MXFP4 classification, K instruction size,
+  operand element bit sizes, and scale-factor column grouping before calling
+  the shared scale-fragment planner. Support is unchanged. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, Python compile for affected
+  Gluon tests, focused scaled-MMAv5 runtime selector (`51 passed`), and
+  `git diff --check`.
 - 2026-04-17 07:49 UTC: moved scaled-MMAv5 operation-kind and element-format
   metadata out of LLVM lowering and into the TritonNvidiaGPU dialect backend.
   `MMAv5ScaledMxfpKind`, `getMMAv5ScaledMxfpKind(...)`,

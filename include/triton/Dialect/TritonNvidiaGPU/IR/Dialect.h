@@ -252,6 +252,15 @@ enum class MMAv5ScaledMxfpKind {
   Mxf4NvF4 = 2,
 };
 
+struct MMAv5ScaledInstructionInfo {
+  MMAv5ScaledMxfpKind kind;
+  bool isMxfp4;
+  unsigned mmaSizeK;
+  unsigned numBitsPerElementA;
+  unsigned numBitsPerElementB;
+  unsigned scaleFactorColsPerSet;
+};
+
 struct MMAv5ScaleFactorFragment {
   unsigned tmemColumnOffset;
   unsigned subColumnId;
@@ -275,6 +284,11 @@ MMAv5ScaledMxfpKind
 getMMAv5ScaledMxfpKind(ScaleDotElemType typeA, ScaleDotElemType typeB,
                        Type scaleAType, Type scaleBType,
                        bool hasTransposedOperand);
+
+MMAv5ScaledInstructionInfo
+getMMAv5ScaledInstructionInfo(ScaleDotElemType typeA, ScaleDotElemType typeB,
+                              Type scaleAType, Type scaleBType,
+                              bool hasTransposedOperand);
 
 bool isMMAv5ScaledMxfp4(MMAv5ScaledMxfpKind kind);
 

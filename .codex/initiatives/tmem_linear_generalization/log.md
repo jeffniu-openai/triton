@@ -21584,3 +21584,36 @@ Open after this slice:
     mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
     mma_scaled_tmem_lhs_full_shape_tile_permuted_fp4"` (`51 passed,
     1527 deselected in 34.36s`).
+
+## 2026-04-17 07:52 UTC: consolidated scaled-MMAv5 instruction info
+
+- Starting point: `codex/tmem` at `30a68d95a`.
+- Change:
+  - added `MMAv5ScaledInstructionInfo`, a backend carrier for the selected
+    MXFP kind, MXFP4 classification, K instruction size, logical operand
+    format bit sizes, and scale-factor columns-per-set;
+  - changed scaled-MMAv5 lowering to consume that one object before deriving
+    `DotConversion` fields and scale-fragment requests;
+  - preserved support and opcode behavior. The next B-scale fragment work now
+    has a single backend instruction-info input instead of scattered local
+    recomposition.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-instruction-info
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_minimal or
+    mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+    mma_scaled_acc_tile_permuted_64_format_matrix or
+    mma_scaled_acc_tile_permuted_64_format_use_acc or
+    mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+    mma_scaled_tmem_lhs_full_shape_tile_permuted_fp4"` (`51 passed,
+    1527 deselected in 34.13s`);
+  - `git diff --check`.

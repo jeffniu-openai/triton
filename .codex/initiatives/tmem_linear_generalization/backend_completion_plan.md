@@ -1441,6 +1441,11 @@ Progress:
   backend-owned scale-fragment planner. This is support-neutral but keeps the
   remaining B-scale fragment representation work anchored in one backend API
   instead of a lowering-local kind table.
+- 2026-04-17 07:52 UTC: added `MMAv5ScaledInstructionInfo` so the backend
+  returns the scaled instruction kind, K size, logical element bit sizes, and
+  scale-factor grouping as one object. This is still support-neutral, but it
+  gives repeated-N32 B-scale fragment work a coherent instruction descriptor
+  input instead of having lowering recompute pieces of the contract.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

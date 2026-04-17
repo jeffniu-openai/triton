@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:52 UTC scaled-MMAv5 lowering now consumes one
+  backend instruction-info object instead of recombining kind-derived facts.
+  `MMAv5ScaledInstructionInfo` carries the selected MXFP kind, MXFP4
+  classification, K instruction size, logical operand element bit sizes, and
+  scale-factor columns-per-set. `convertScaledDot(...)` uses this object for
+  `mmaSizeK`, operand storage/logical bit sizes, and scale-fragment planning.
+  Support is unchanged. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile for `test_tmem_runtime_matrix.py` and
+  `test_core.py`, focused scaled-MMAv5 runtime selector (`51 passed`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 07:49 UTC scaled-MMAv5 operation-kind and format
   metadata is backend-owned. The TritonNvidiaGPU dialect now exposes
   `MMAv5ScaledMxfpKind`, `getMMAv5ScaledMxfpKind(...)`,

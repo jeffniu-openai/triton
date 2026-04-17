@@ -737,11 +737,12 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   MemDescType bTensorTy = op.getB().getType();
   MemDescType dTensorTy = op.getD().getType();
 
-  auto mxfpInstKind = ttng::getMMAv5ScaledMxfpKind(
+  auto scaledInfo = ttng::getMMAv5ScaledInstructionInfo(
       op.getAType(), op.getBType(), op.getAScale().getType().getElementType(),
       op.getBScale().getType().getElementType(),
       isTransposed(op.getA()) || !isTransposed(op.getB()));
-  bool opKindIsMXFP4 = ttng::isMMAv5ScaledMxfp4(mxfpInstKind);
+  auto mxfpInstKind = scaledInfo.kind;
+  bool opKindIsMXFP4 = scaledInfo.isMxfp4;
 
   DotConversion dot;
 
@@ -752,7 +753,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.shape.M = dstPerCTA[0];
   dot.shape.N = dstPerCTA[1];
   dot.shape.K = op.getBlockK(); // K is not split across CTAs
-  dot.mmaSizeK = !opKindIsMXFP4 ? 32 : 64;
+  dot.mmaSizeK = scaledInfo.mmaSizeK;
   auto accSupport = ttng::getMMAv5ScaledAccumulatorSupport(dTensorTy);
   if (accSupport.narrowNScaleFragmentRequirement) {
     return mlir::emitError(
@@ -772,8 +773,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
     dot.shapeB[0] *= 2;
   }
 
-  dot.numBitsPerElementA = ttng::getMMAv5ScaledFormatBitSize(op.getAType());
-  dot.numBitsPerElementB = ttng::getMMAv5ScaledFormatBitSize(op.getBType());
+  dot.numBitsPerElementA = scaledInfo.numBitsPerElementA;
+  dot.numBitsPerElementB = scaledInfo.numBitsPerElementB;
 
   TritonLLVMOpBuilder tb(loc, rewriter);
   Value baseScaleA = tb.ptrtoint(i32_ty, adaptor.getAScale());
@@ -807,14 +808,12 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                           const DotConversion::InstDesc &desc, int m, int n,
                           int k) {
     auto [numRepM, numRepN, numRepK] = desc.repShape;
-    unsigned scaleFactorColsPerSet =
-        ttng::getMMAv5ScaleFactorColsPerSet(mxfpInstKind);
     auto scaleAFragment = ttng::getMMAv5ScaleFactorFragment(
         m, k, numRepM, numRepK, ttng::getTmemAllocSizes(aScaleTy).numCols,
-        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1);
+        scaledInfo.scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1);
     auto scaleBFragment = ttng::getMMAv5ScaleFactorFragment(
         n, k, numRepN, numRepK, ttng::getTmemAllocSizes(bScaleTy).numCols,
-        scaleFactorColsPerSet, /*minColsPerScaleBlock=*/2);
+        scaledInfo.scaleFactorColsPerSet, /*minColsPerScaleBlock=*/2);
     Value scaleA =
         tb.add(baseScaleA, tb.i32_val(scaleAFragment.tmemColumnOffset));
     Value scaleB =

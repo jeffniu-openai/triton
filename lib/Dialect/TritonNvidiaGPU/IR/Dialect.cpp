@@ -1334,6 +1334,22 @@ unsigned getMMAv5ScaleFactorColsPerSet(MMAv5ScaledMxfpKind kind) {
   }
 }
 
+MMAv5ScaledInstructionInfo
+getMMAv5ScaledInstructionInfo(ScaleDotElemType typeA, ScaleDotElemType typeB,
+                              Type scaleAType, Type scaleBType,
+                              bool hasTransposedOperand) {
+  auto kind = getMMAv5ScaledMxfpKind(typeA, typeB, scaleAType, scaleBType,
+                                     hasTransposedOperand);
+  bool isMxfp4 = isMMAv5ScaledMxfp4(kind);
+  return MMAv5ScaledInstructionInfo{
+      /*kind=*/kind,
+      /*isMxfp4=*/isMxfp4,
+      /*mmaSizeK=*/isMxfp4 ? 64u : 32u,
+      /*numBitsPerElementA=*/getMMAv5ScaledFormatBitSize(typeA),
+      /*numBitsPerElementB=*/getMMAv5ScaledFormatBitSize(typeB),
+      /*scaleFactorColsPerSet=*/getMMAv5ScaleFactorColsPerSet(kind)};
+}
+
 MMAv5ScaleFactorFragment getMMAv5ScaleFactorFragment(
     unsigned nonKRep, unsigned kRep, unsigned numRepNonK, unsigned numRepK,
     unsigned numTMemScaleCols, unsigned scaleFactorColsPerSet,
