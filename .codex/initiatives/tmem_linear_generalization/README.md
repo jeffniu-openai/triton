@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:26 UTC: reran the corrected full runtime-matrix sweep after
+  the leading-slice replay policy cleanup and MMAv5 family-address helper
+  cleanup. The matrix remains green with complete bucket coverage:
+  `cp` `312 passed, 4 skipped`; `mma` `601 passed`; `splitn` `35 passed`;
+  `ld_red` `247 passed`; `ldst` `295 passed, 98 skipped`; aggregate `1490
+  passed, 102 skipped` across all `1592` cases. Logs are under
+  `experiments/results/tmem_runtime_matrix_sweep_20260417_211829/`. Next:
+  commit/push this validation checkpoint and return to the support-bearing
+  Phase C/Phase E frontier plus remaining backend-policy cleanup.
 - 2026-04-17 21:08 UTC: finished the current Phase F
   `OptimizeTMemLayouts` shim audit by exposing the backend half-slice replay
   predicate as `getTMemLdStReplayableHalfSliceDim`. The transform now reuses

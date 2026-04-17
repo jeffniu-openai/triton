@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:08 UTC
+Last updated: 2026-04-17 21:26 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -153,7 +153,22 @@ Current buckets:
 
 ## Current Runtime Matrix Validation
 
-Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
+Latest checkpoint at 2026-04-17 21:26 UTC after the Phase F leading-slice
+replay policy cleanup and MMAv5 family address-layout cleanup:
+
+- `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`
+  passed all corrected buckets with complete `1592/1592` coverage.
+- Bucket evidence:
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` cases.
+- Logs:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_211829/`
+
+Baseline checkpoint at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
 
 - Fixed `run_tmem_runtime_matrix_sweep.py` so every shard uses the current
   checkout's `PYTHONPATH` (`repo`, `repo/python`, and
@@ -394,13 +409,22 @@ preservation, subword packed lanes, row/column masks or smaller atom
 footprints, ordinary-view `4x256b` refresh-remap/readback, scales
 descriptor-view masks, and noncanonical CTA ownership.
 
-The corrected full runtime-matrix runner passed at 2026-04-17 20:57 UTC.
+The corrected full runtime-matrix runner passed at 2026-04-17 20:57 UTC and
+again at 2026-04-17 21:26 UTC after the latest Phase F cleanup.
 Direct `ld/st` replay/support shim cleanup now has backend helpers for support
 type selection, replayable half-slice detection, and leading-slice
 direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
 frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:26 UTC: reran the corrected full runtime-matrix runner after
+  the leading-slice replay policy cleanup and MMAv5 family address-layout
+  helper cleanup. All buckets passed with complete `1592/1592` coverage:
+  `cp` `312 passed, 4 skipped`; `mma` `601 passed`; `splitn` `35 passed`;
+  `ld_red` `247 passed`; `ldst` `295 passed, 98 skipped`; aggregate `1490
+  passed, 102 skipped`. Per-shard logs are in
+  `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_211829/`.
 
 - 2026-04-17 21:12 UTC: moved the leading-slice direct-vs-replay preservation
   policy into backend utility `shouldPreserveDirectTMemLdStLeadingSliceView`.

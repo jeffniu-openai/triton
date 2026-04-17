@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:26 UTC validation checkpoint after Phase F cleanup:
+  the corrected full runtime-matrix runner passed again after the
+  leading-slice replay policy helper and MMAv5 family address-layout helper
+  checkpoints. Bucket evidence is unchanged and complete: `cp` `312 passed,
+  4 skipped`; `mma` `601 passed`; `splitn` `35 passed`; `ld_red`
+  `247 passed`; `ldst` `295 passed, 98 skipped`; aggregate `1490 passed,
+  102 skipped` across all `1592` collected cases. Logs:
+  `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_211829/`.
+  Next: commit/push the docs/log checkpoint, then continue the tracked
+  support-frontier plan from `completion_execution_tracker.md` without
+  treating the cleanup-only green sweep as project completion.
+
 - Latest: 2026-04-17 21:08 UTC Phase F half-slice predicate cleanup:
   `getTMemLdStReplayableHalfSliceDim` is now a backend utility and
   `OptimizeTMemLayouts` uses it instead of rechecking the half-slice replay

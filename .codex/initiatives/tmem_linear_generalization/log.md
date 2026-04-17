@@ -24693,3 +24693,25 @@ Open after this slice:
   - `make -j8`;
   - split-4 focused MMAv5 tile-permutation selector passed `26/26` on each
     group.
+
+## 2026-04-17 21:26 UTC: full runtime-matrix sweep after Phase F cleanup
+
+- Starting point: `codex/tmem` at pushed `f8475c740`.
+- Command:
+  - `python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py`
+- Result:
+  - all corrected buckets passed with complete `1592/1592` coverage;
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` cases.
+- Logs:
+  - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_211829/`
+- Next:
+  - commit and push this validation checkpoint;
+  - continue the tracked completion plan from
+    `completion_execution_tracker.md`, prioritizing support-bearing Phase C
+    or Phase E work unless the next inspection finds duplicated TMEM policy
+    that can be cleanly moved into backend helpers.
