@@ -405,6 +405,12 @@ std::optional<TMemLdStRowPlan>
 getTMemLdStRowPlanForQueryLayout(Value memDesc, gpu::MemDescType queryTy,
                                  const TMemLdStQueryLayout &queryLayout);
 
+bool hasCanonicalM64SplitNRows(const LinearLayout &layout);
+
+std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
+    gpu::MemDescType memTy, const TMemLdStQueryLayout &rawQueryLayout,
+    unsigned numWarps, bool allow16Bit = false);
+
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
 
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);

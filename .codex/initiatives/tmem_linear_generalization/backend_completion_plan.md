@@ -1132,6 +1132,11 @@ Progress:
   for rank-2 M64 f16/bf16 descriptors. Store source-layout legality now uses
   `TMEMStoreOp::verify()` and the shared backend `computeTMemLdStEncodingInfo`
   proof instead of a frontend shape-family check.
+- 2026-04-17 05:53 UTC: moved the simple M64 split-N raw-query proof itself
+  out of `python/src/gluon_ir.cc` and into `TensorMemoryUtils`. Pybind still
+  marshals the result to Gluon layouts, but the row/column-basis recognizer and
+  canonical split-N layout derivation are now shared backend utilities used by
+  both handle-aware `get_reg_layout()` and M64 `ld.red` canonicalization.
 - 2026-04-17 05:00 UTC: re-probed ordinary contiguous `tcgen05.copy.4x256b` by
   bypassing the refresh-only support and lowering guards. The ISA opcode
   emitted, but the output copied the refresh physical pattern into the ordinary

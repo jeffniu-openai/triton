@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:53 UTC M64 split-N raw-query proof backend cleanup:
+  moved the simple M64 split-N raw-query recognizer out of the pybind layer and
+  into `TensorMemoryUtils`. `python/src/gluon_ir.cc` now asks the backend for
+  `hasCanonicalM64SplitNRows(...)` and
+  `getCanonicalM64SplitNLayoutForRawQuery(...)` when canonicalizing explicit
+  M64 reduction loads and handle-aware M64 `get_reg_layout()` requests. This
+  keeps the same support surface while removing another duplicate copy of
+  exact TMEM row/column-basis arithmetic from the frontend boundary.
+  Validation: `make -j8`, py-compile, `test_tmem_runtime_matrix.py -k
+  "ld_red_m64 or m64_splitn"` (`39 passed, 1539 deselected`),
+  `test_core.py -k tmem_linear_m64` (`21 passed, 17945 deselected`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 05:46 UTC scales-CGA `16x32bx2` diagnostic migration:
   moved the explicit `16x32bx2` two-CTA tensor-memory-scales descriptor-view
   `ld/st` unsupported reason from `python/src/gluon_ir.cc` into

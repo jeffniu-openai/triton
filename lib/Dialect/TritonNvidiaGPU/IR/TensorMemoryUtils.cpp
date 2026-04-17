@@ -2656,6 +2656,94 @@ std::optional<TMemLdStRowPlan> getBackingTMemLdStRowPlan(Value memDesc) {
   return best;
 }
 
+bool hasCanonicalM64SplitNRows(const LinearLayout &layout) {
+  if (layout.getNumInDims() == 0)
+    return false;
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  if (!layout.hasInDim(kRow) || layout.getInDimSize(kRow) != 128)
+    return false;
+  constexpr std::array<int32_t, 7> expectedRows = {1,  2,  4, 8,
+                                                   0, 16, 32};
+  if (layout.getInDimSizeLog2(kRow) != expectedRows.size())
+    return false;
+  for (auto [idx, expected] : llvm::enumerate(expectedRows)) {
+    auto basis = layout.getBasis(kRow, idx);
+    if (basis.size() != 2 || basis[0] != expected || basis[1] != 0)
+      return false;
+  }
+  return true;
+}
+
+static bool isSimpleM64SplitNRawQueryLayout(const LinearLayout &layout,
+                                            int64_t m, int64_t n) {
+  if (m != 64 || n < 2 || !llvm::isPowerOf2_64(n) ||
+      layout.getNumOutDims() != 2 || layout.getNumInDims() != 2)
+    return false;
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
+      layout.getInDimSize(kRow) != 128 || layout.getInDimSize(kCol) != n)
+    return false;
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (layout.getOutDimSize(outDims[0]) != m ||
+      layout.getOutDimSize(outDims[1]) != n)
+    return false;
+
+  std::array<bool, 6> seenRows = {};
+  unsigned zeroRows = 0;
+  for (unsigned bit = 0; bit < layout.getInDimSizeLog2(kRow); ++bit) {
+    auto basis = layout.getBasis(kRow, bit);
+    if (basis.size() != 2 || basis[1] != 0)
+      return false;
+    if (basis[0] == 0) {
+      ++zeroRows;
+      continue;
+    }
+    if (basis[0] < 0 ||
+        !llvm::isPowerOf2_32(static_cast<uint32_t>(basis[0])) ||
+        basis[0] > 32)
+      return false;
+    unsigned rowBit = llvm::Log2_32(static_cast<uint32_t>(basis[0]));
+    if (rowBit >= seenRows.size() || seenRows[rowBit])
+      return false;
+    seenRows[rowBit] = true;
+  }
+  if (zeroRows != 1 || !llvm::all_of(seenRows, [](bool seen) { return seen; }))
+    return false;
+
+  SmallVector<bool> seenCols(layout.getInDimSizeLog2(kCol), false);
+  for (unsigned bit = 0; bit < layout.getInDimSizeLog2(kCol); ++bit) {
+    auto basis = layout.getBasis(kCol, bit);
+    if (basis.size() != 2 || basis[0] != 0 || basis[1] <= 0 ||
+        basis[1] >= n ||
+        !llvm::isPowerOf2_32(static_cast<uint32_t>(basis[1])))
+      return false;
+    unsigned colBit = llvm::Log2_32(static_cast<uint32_t>(basis[1]));
+    if (colBit >= seenCols.size() || seenCols[colBit])
+      return false;
+    seenCols[colBit] = true;
+  }
+  return llvm::all_of(seenCols, [](bool seen) { return seen; });
+}
+
+std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
+    MemDescType memTy, const TMemLdStQueryLayout &rawQueryLayout,
+    unsigned numWarps, bool allow16Bit) {
+  if (!memTy || memTy.getRank() != 2 || memTy.getShape()[0] != 64 ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
+    return std::nullopt;
+  int bitwidth = memTy.getElementTypeBitWidth();
+  if (bitwidth != 32 && !(allow16Bit && bitwidth == 16))
+    return std::nullopt;
+  int64_t n = memTy.getShape()[1];
+  if (!isSimpleM64SplitNRawQueryLayout(rawQueryLayout.layout,
+                                       memTy.getShape()[0], n))
+    return std::nullopt;
+  return getCanonicalM64SplitNLayout(memTy.getContext(), n, numWarps);
+}
+
 bool preferBackingTMemLdStQueryTypes(Value memDesc) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy)

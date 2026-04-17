@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:53 UTC: moved the simple M64 split-N raw-query proof out of
+  `python/src/gluon_ir.cc` and into `TensorMemoryUtils`. The backend now owns
+  `hasCanonicalM64SplitNRows(...)` and
+  `getCanonicalM64SplitNLayoutForRawQuery(...)`, and the pybind
+  `get_reg_layout()` / `ld.red` reduction paths call those helpers instead of
+  duplicating row/column-basis arithmetic. Support is unchanged; this is a
+  layering cleanup around the M64 split-N paths that were recently promoted.
+  Validation: `make -j8`, py-compile for the touched Python files,
+  `test_tmem_runtime_matrix.py -k "ld_red_m64 or m64_splitn"`
+  (`39 passed, 1539 deselected`), `test_core.py -k tmem_linear_m64`
+  (`21 passed, 17945 deselected`), and `git diff --check`.
 - 2026-04-17 05:46 UTC: moved the explicit `16x32bx2` two-CTA
   tensor-memory-scales descriptor-view `ld/st` diagnostic out of the Python
   binding and into `TensorMemoryUtils`. The new

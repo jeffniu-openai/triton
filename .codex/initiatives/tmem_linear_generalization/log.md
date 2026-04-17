@@ -21022,3 +21022,35 @@ Open after this slice:
     (`9 passed, 1569 deselected in 20.90s`);
   - py-compile for `test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 05:53 UTC: moved M64 split-N raw-query proof to TensorMemoryUtils
+
+- Starting point: `codex/tmem` at `8b535d472`.
+- Change:
+  - added backend helpers for the simple M64 split-N raw-query proof:
+    `hasCanonicalM64SplitNRows(...)` and
+    `getCanonicalM64SplitNLayoutForRawQuery(...)`;
+  - removed the duplicated row/column-basis recognizer from
+    `python/src/gluon_ir.cc`;
+  - updated the pybind M64 reduction canonicalization and handle-aware
+    M64 split-N `get_reg_layout()` fallback to call the shared backend helper.
+- Support boundary:
+  - no support surface changed. This keeps the existing M64 split-N positives
+    and leaves the known non-M64 `ld.red`, packet-footprint, copy, and scaled
+    scale-fragment boundaries unchanged.
+- Validation:
+  - `make -j8`;
+  - py-compile for `blackwell/__init__.py` and
+    `test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-m64-backend-predicate
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_m64 or m64_splitn"`
+    (`39 passed, 1539 deselected in 14.21s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-m64-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.95s`);
+  - `git diff --check`.
