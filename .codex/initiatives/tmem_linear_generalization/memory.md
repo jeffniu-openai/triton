@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:48 UTC direct `ld/st` query-precedence cleanup:
+  `TensorMemoryToLLVM` no longer owns the query-type-before-raw-query
+  lowering decision or its M64 direct-root exception. That policy now lives in
+  backend helper `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`.
+  Support impact is unchanged. Validation: `make -j8`; focused split-4
+  replay/direct-support selector passed `6/6`, `6/6`, `6/6`, and `4/4`.
+  Next: checkpoint/push and mark final boundary status in the tracker where
+  supported by the green matrix and clean-negative inventory.
+
 - Latest: 2026-04-17 21:45 UTC full validation after backend-policy cleanup:
   the corrected runtime-matrix runner passed all buckets again after the
   MMAv5 address helper, stale copy-address deletion, and Gluon view-predicate

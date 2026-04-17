@@ -3367,6 +3367,23 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
            activeLayout.getInDimSize(kRow) == memTy.getShape()[0]);
 }
 
+bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
+    Value memDesc, MemDescType memTy, RankedTensorType regTy) {
+  if (!memDesc)
+    return false;
+  if (memTy.getRank() == 2 && memTy.getShape()[0] == 64 &&
+      memTy.getElementTypeBitWidth() == 32 &&
+      isa<TensorMemoryEncodingAttr>(memTy.getEncoding())) {
+    return false;
+  }
+  auto regLayout = toLinearEncoding(regTy).getLinearLayout();
+  auto kWarp = StringAttr::get(memTy.getContext(), "warp");
+  unsigned numWarps =
+      regLayout.hasInDim(kWarp) ? regLayout.getInDimSize(kWarp) : 4;
+  return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+      memDesc, numWarps, /*desiredAtom=*/std::nullopt);
+}
+
 bool isExplicitTMemLdStViewProducer(Value memDesc) {
   return isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
                          gpu::MemDescIndexOp, gpu::MemDescReshapeOp,

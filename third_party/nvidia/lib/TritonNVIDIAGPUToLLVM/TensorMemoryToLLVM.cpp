@@ -585,7 +585,6 @@ lowerTMemLdStFromTypes(
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
-  auto kWarp = StringAttr::get(rewriter.getContext(), "warp");
   auto preferBackingRowPlanForDirectRootLoad =
       [&](MemDescType queryTy,
           std::optional<TMemLdStRowPlan> rowPlan,
@@ -595,18 +594,8 @@ lowerTMemLdStFromTypes(
         memDescValue, memTy, queryTy, rowPlan, queryLayout);
   };
   auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
-    if (!memDescValue)
-      return false;
-    if (memTy.getRank() == 2 && memTy.getShape()[0] == 64 &&
-        memTy.getElementTypeBitWidth() == 32 &&
-        isa<TensorMemoryEncodingAttr>(memTy.getEncoding())) {
-      return false;
-    }
-    auto regLayout = toLinearEncoding(regTy).getLinearLayout();
-    unsigned numWarps =
-        regLayout.hasInDim(kWarp) ? regLayout.getInDimSize(kWarp) : 4;
-    return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
-        memDescValue, numWarps, /*desiredAtom=*/std::nullopt);
+    return shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(memDescValue,
+                                                               memTy, regTy);
   }();
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret =
       memDescValue && disallowTMemLdStQueryTypeRescue(memDescValue);

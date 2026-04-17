@@ -48,6 +48,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:48 UTC: moved direct `ld/st` query-type-lowering precedence
+  out of `TensorMemoryToLLVM.cpp` into backend helper
+  `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`, including the
+  existing M64 direct-root exception and register-layout warp-count lookup.
+  Validation: `make -j8`; focused split-4 replay/direct-support selector
+  passed `6/6`, `6/6`, `6/6`, and `4/4`. No support rows were promoted.
+  Next: checkpoint/push and update the tracker toward final boundary status.
 - 2026-04-17 21:45 UTC: reran the corrected full runtime-matrix sweep after
   the latest backend-policy cleanups. The matrix remains green with complete
   bucket coverage: `cp` `312 passed, 4 skipped`; `mma` `601 passed`;

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:45 UTC
+Last updated: 2026-04-17 21:48 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -233,6 +233,20 @@ Baseline checkpoint at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - `git diff --check`.
 
 ## Latest Cleanup Checkpoint
+
+2026-04-17 21:48 UTC:
+
+- Moved direct `ld/st` query-type-lowering precedence into backend helper
+  `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`.
+- The helper owns the M64 direct-root exception and derives the warp count from
+  the register layout before delegating to
+  `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery`.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory changed.
+- Validation:
+  - `make -j8`;
+  - focused replay/direct-support runtime selector split across four GPUs
+    passed `6/6`, `6/6`, `6/6`, and `4/4`.
 
 2026-04-17 21:37 UTC:
 
@@ -475,6 +489,12 @@ direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
 frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:48 UTC: moved direct `ld/st` query-type-lowering precedence
+  from `TensorMemoryToLLVM` into
+  `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`. Validation:
+  `make -j8`; focused split-4 replay/direct-support selector passed `6/6`,
+  `6/6`, `6/6`, and `4/4`.
 
 - 2026-04-17 21:45 UTC: reran the corrected full runtime-matrix runner after
   the latest backend-policy cleanup commits. All buckets passed with complete

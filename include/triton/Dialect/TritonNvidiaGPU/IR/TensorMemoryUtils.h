@@ -431,6 +431,9 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
 bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
     Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom);
 
+bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
+    Value memDesc, gpu::MemDescType memTy, RankedTensorType regTy);
+
 bool shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
     Value memDesc, gpu::MemDescType queryTy, StringRef atomName);
 

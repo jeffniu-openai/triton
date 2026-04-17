@@ -24806,3 +24806,25 @@ Open after this slice:
   - commit and push this validation checkpoint;
   - update the tracker toward final boundary/closure status unless a new
     unblocked support-bearing slice is identified.
+
+## 2026-04-17 21:48 UTC: move direct ld/st query-precedence policy to backend
+
+- Starting point: `codex/tmem` at pushed `a91db94b1`.
+- Change:
+  - added `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery` to
+    `TensorMemoryUtils`;
+  - removed the lowering-local query-type-before-raw-query decision from
+    `TensorMemoryToLLVM.cpp`;
+  - preserved the existing M64 direct-root exception and register-layout
+    warp-count behavior inside the backend helper.
+- Intent:
+  - no support surface changes;
+  - keep direct `ld/st` query-lowering order policy with the backend
+    query/support helpers rather than in LLVM lowering.
+- Validation:
+  - `make -j8`;
+  - split-4 focused replay/direct-support selector passed `6/6`, `6/6`,
+    `6/6`, and `4/4`.
+- Next:
+  - commit and push this cleanup checkpoint;
+  - update final boundary/closure status in `completion_execution_tracker.md`.
