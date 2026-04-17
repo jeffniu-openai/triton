@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 18:36 UTC Phase C subword `warpx2` classification:
+  under-wide subword `warpx2` destinations now fail through a structured
+  destination-column footprint requirement instead of a generic "not enough
+  column bases" note. The f16/bf16/i16 rows expose 2 destination column basis
+  bits for `N=4` but need 3 logical column bits for an 8-column 128-bit
+  instruction; i8 needs 4 logical column bits for a 16-column instruction.
+  All occupy 4 physical 32-bit dword columns, so support still needs an
+  explicit packed-lane source/destination storage model through descriptor
+  synthesis, source footprint planning, and copy scheduling. Validation:
+  `make -j8`, built `triton-opt` verify-diagnostics, split-4 focused subword
+  selector (`4/4/4/2`), Python compile, and `git diff --check`.
+
 - Latest: 2026-04-17 18:32 UTC Phase C `warpx2` shared-source
   classification: the dense/noncanonical shared-source clean negatives now
   record the first source offset-basis mismatch in

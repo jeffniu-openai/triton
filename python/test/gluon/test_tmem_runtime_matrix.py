@@ -9766,6 +9766,19 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_err
     if "has no representable MMAv5 shared-memory descriptor" in text:
         assert "descriptor shape" in text
         assert "instruction shape" in text
+    if "requires enough TMEM column bases to cover the copy instruction width" in text:
+        bitwidth = CP_NO_SCALES_SUBWORD_BITWIDTHS[dtype_name]
+        instruction_columns = 128 // bitwidth
+        required_bits = int(math.log2(instruction_columns))
+        lanes_per_dword = 32 // bitwidth
+        physical_dword_columns = instruction_columns // lanes_per_dword
+        assert "destination-column footprint requirement" in text
+        assert f"exposes 2 column basis bits" in text
+        assert f"{instruction_columns}-column copy instruction requires {required_bits} logical column basis bit" in text
+        assert f"{physical_dword_columns} physical 32-bit dword columns" in text
+        assert f"{lanes_per_dword} packed lanes per word" in text
+        assert "packed-lane source/destination storage model" in text
+        assert "descriptor footprint coverage alone is not a correctness proof" in text
     if "01_23" in case_name and "requires enough TMEM column bases" not in text:
         assert "subword tcgen05.copy instruction source footprint spans" in text
         assert "descriptor semantic-equivalence model" in text

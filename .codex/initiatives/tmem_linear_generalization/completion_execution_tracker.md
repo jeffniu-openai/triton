@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:32 UTC
+Last updated: 2026-04-17 18:36 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -93,9 +93,11 @@ Current buckets:
   source-row split requirement.
 - `warpx2` dense/noncanonical shared-source layouts and subword copies:
   dense/noncanonical shared-source rows now report the first offset-basis
-  mismatch as structured source-rematerialization requirement data; remaining
-  support needs source rematerialization, packed-lane storage, and descriptor
-  semantic-equivalence proofs.
+  mismatch as structured source-rematerialization requirement data, and
+  subword rows now report a structured destination-column footprint
+  requirement with required logical column bits and packed-lane facts;
+  remaining support needs source rematerialization, packed-lane storage, and
+  descriptor semantic-equivalence proofs.
 - Copy row/column permutation and sub-instruction tile permutation rows:
   require row/column partitioning, smaller footprints, masks, or explicit
   proof that the full-footprint public atom cannot realize the projection.
@@ -218,12 +220,25 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 ## Next Concrete Slice
 
 Continue the `tcgen05.copy` scheduler frontier. The next highest-value rows
-are `warpx2` subword/packed-lane copies and sub-instruction row/column
-permutations where descriptor representability is not enough and a packed
-source model, semantic-equivalence proof, source-format change, or
-destination-mask schedule must be proved before support can lift.
+are sub-instruction row/column permutations where descriptor representability
+is not enough and a semantic-equivalence proof, source-format change,
+row/column partition, or destination-mask schedule must be proved before
+support can lift.
 
 ## Progress
+
+- 2026-04-17 18:36 UTC: structured the under-wide subword `warpx2`
+  destination footprint boundary. The multicast destination-layout check now
+  formats a `TMemCopyColumnFootprintRequirement` with element bitwidth,
+  logical instruction columns, physical 32-bit dword columns, packed lanes per
+  word, exposed column basis bits, and required column basis bits. Behavior is
+  unchanged: `N=4` subword `warpx2` rows remain clean unsupported because the
+  public 128-bit copy atom needs packed-lane storage semantics across
+  descriptor synthesis, source footprint planning, and instruction scheduling.
+  Validation: `make -j8`; built `triton-opt
+  test/TritonNvidiaGPU/invalid.mlir --split-input-file
+  --verify-diagnostics`; split-4 focused subword selector passed `4/4/4/2`;
+  Python byte-compile for `test_tmem_runtime_matrix.py`; `git diff --check`.
 
 - 2026-04-17 18:32 UTC: structured the `warpx2` dense/noncanonical
   shared-source boundary. `TMemCopyWarpx2SharedSourceRequirement` now carries

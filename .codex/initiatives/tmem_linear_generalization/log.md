@@ -24202,3 +24202,29 @@ Open after this slice:
     (groups: `2/2/2/2` passed);
   - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 18:36 UTC: structured warpx2 subword destination-column footprint boundary
+
+- Starting point: `codex/tmem` at `e33454b7b`.
+- Change:
+  - added a structured destination-column footprint requirement for multicast
+    copy layouts whose destination query exposes fewer column basis bits than
+    the selected public copy instruction width requires;
+  - tightened the `warpx2` subword clean-negative test to assert the f16/bf16/
+    i16/i8 logical instruction width, exposed basis count, physical dword
+    footprint, packed lanes per word, and the descriptor-footprint correctness
+    boundary.
+- Boundary:
+  - support is unchanged. These rows remain true packed-lane storage/schedule
+    gaps: a descriptor/tile schedule cannot drop lane bits and still prove it
+    copied all logical source columns.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 focused selector
+    `cp_no_scales_warpx2_subword_dtypes_report_clean_error`
+    (groups: `4/4/4/2` passed);
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

@@ -10260,6 +10260,16 @@ struct TMemCopyMixedBasisRequirement {
   int32_t physicalCol = 0;
 };
 
+struct TMemCopyColumnFootprintRequirement {
+  TMemCopyFamily family = TMemCopyFamily::Warpx2_01_23_64x128b;
+  unsigned elementBitwidth = 0;
+  unsigned instructionColumns = 0;
+  unsigned physicalDwordColumns = 0;
+  unsigned lanesPerDword = 1;
+  unsigned availableColumnBasisBits = 0;
+  unsigned requiredColumnBasisBits = 0;
+};
+
 static std::string getTMemCopyMixedBasisRequirementError(
     const TMemCopyMixedBasisRequirement &requirement) {
   StringRef basisKind;
@@ -10285,6 +10295,41 @@ static std::string getTMemCopyMixedBasisRequirementError(
         "multi-instruction schedule whose source and destination footprints "
         "are proved equivalent before this layout can be supported.";
   return os.str();
+}
+
+static TMemCopySupportResult getTMemCopyColumnFootprintFailure(
+    const TMemCopyColumnFootprintRequirement &requirement) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "direct tcgen05.copy." << stringifyTMemCopyFamily(requirement.family)
+     << " requires enough TMEM column bases to cover the copy instruction "
+        "width. The destination-column footprint requirement exposes "
+     << requirement.availableColumnBasisBits << " column basis bit"
+     << (requirement.availableColumnBasisBits == 1 ? "" : "s") << ", but the "
+     << requirement.instructionColumns << "-column copy instruction requires "
+     << requirement.requiredColumnBasisBits << " logical column basis bit"
+     << (requirement.requiredColumnBasisBits == 1 ? "" : "s");
+  if (requirement.elementBitwidth)
+    os << " for " << requirement.elementBitwidth << "-bit elements";
+  os << ".";
+  if (requirement.physicalDwordColumns) {
+    os << " Those logical columns occupy "
+       << requirement.physicalDwordColumns
+       << " physical 32-bit dword column"
+       << (requirement.physicalDwordColumns == 1 ? "" : "s");
+    if (requirement.lanesPerDword > 1) {
+      os << " with " << requirement.lanesPerDword
+         << " packed lane"
+         << (requirement.lanesPerDword == 1 ? "" : "s") << " per word";
+    }
+    os << ".";
+  }
+  os << " Support needs a packed-lane source/destination storage model that "
+        "carries lane selection through descriptor synthesis, source footprint "
+        "planning, and the tcgen05.copy instruction schedule; descriptor "
+        "footprint coverage alone is not a correctness proof.";
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::PhysicalQuery, os.str());
 }
 
 static std::optional<unsigned> findFirstNonAscendingRowBasis(
@@ -10691,11 +10736,20 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
   auto colBases = ll.getBases().lookup(kCol);
   unsigned instructionColumnBits = llvm::Log2_32(instructionColumns);
   if (colBases.size() < instructionColumnBits) {
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
-        Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
-            " requires enough TMEM column bases to cover the copy "
-            "instruction width.");
+    unsigned lanesPerDword =
+        (bitwidth > 0 && 32 % bitwidth == 0) ? 32 / bitwidth : 1;
+    unsigned physicalDwordColumns =
+        bitwidth > 0 ? llvm::divideCeil(instructionColumns * bitwidth, 32u)
+                     : 0u;
+    TMemCopyColumnFootprintRequirement requirement;
+    requirement.family = family;
+    requirement.elementBitwidth = bitwidth;
+    requirement.instructionColumns = instructionColumns;
+    requirement.physicalDwordColumns = physicalDwordColumns;
+    requirement.lanesPerDword = lanesPerDword;
+    requirement.availableColumnBasisBits = colBases.size();
+    requirement.requiredColumnBasisBits = instructionColumnBits;
+    return getTMemCopyColumnFootprintFailure(requirement);
   }
   for (unsigned bit = 0; bit < instructionColumnBits; ++bit) {
     ArrayRef<int32_t> basis = colBases[bit];

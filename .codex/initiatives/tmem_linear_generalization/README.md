@@ -48,6 +48,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 18:36 UTC: subword `warpx2` copy destinations now report a
+  structured destination-column footprint requirement. The diagnostic records
+  exposed versus required column basis bits, logical instruction columns,
+  physical 32-bit dword columns, and packed lanes per word, making the
+  under-wide `N=4` subword rows an explicit packed-lane storage/schedule
+  boundary. Validation: `make -j8`, split-4 focused subword selector
+  (`4/4/4/2` passed), built `triton-opt` verify-diagnostics, Python
+  byte-compile, and `git diff --check`.
 - 2026-04-17 18:32 UTC: dense/noncanonical `warpx2` shared-source layouts now
   report the first shared offset-basis mismatch through
   `TMemCopyWarpx2SharedSourceRequirement`. Support is unchanged: these rows
