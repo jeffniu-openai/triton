@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 20:24 UTC: pure TMEM column subview base lowering now prefers the
+  source query's exact surjective `LinearLayout` physical offset before using
+  origin-delta fallback. This fixes the legacy M64 split-N MMAv5 path where a
+  high-N `memdesc_subslice` had been lowered as a plain column offset even
+  though direct root `ld/st` stored the same logical band at the folded
+  physical row offset. Validation: `make -j8`, `test_block_m_64_mma`
+  (`2 passed`), focused legacy M64 runtime rows (`4 passed`), ld.red
+  descriptor-chain tile-permuted N=256 (`1 passed`), Python byte-compile, and
+  `git diff --check`.
 - 2026-04-17 19:27 UTC: the remaining no-scales `warpx2` subword bucket was
   probed after the source-rematerialization work. Representative f16
   single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23` rows all fail

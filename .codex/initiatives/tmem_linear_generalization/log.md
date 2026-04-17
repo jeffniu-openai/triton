@@ -24445,3 +24445,43 @@ Open after this slice:
   - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
     PYTHONPATH=.:./python:./python/test/gluon python3 - <<'PY' ...`
     using the existing runtime-matrix kernels and helpers.
+
+## 2026-04-17 20:24 UTC: fix M64 split-N descriptor-view physical bases
+
+- Starting point: `codex/tmem` at pushed `a59859375`.
+- Context:
+  - the legacy M64 core repro compiled after the store-join convergence fix
+    but produced a 49.9% numerical mismatch;
+  - LLIR showed direct root `tcgen05.st/ld.16x32bx2` using the folded high-N
+    offset `+1048576`, while MMAv5 `memdesc_subslice` views for the same
+    high-N band used a plain column-derived base;
+  - a first attempt to apply query origins as physical coordinates collapsed
+    the high half entirely, confirming that origin arithmetic was the wrong
+    abstraction.
+- Change:
+  - `getTMemSubviewOffsetForLowering` now gives pure TMEM column subviews a
+    first chance to compute the relative base from the source query's exact
+    surjective `LinearLayout` via `getTMemViewOffset`;
+  - projected or non-surjective query layouts keep the previous
+    query-origin-delta fallback;
+  - the result is exact linear-layout arithmetic for source views whose
+    physical address contains folded bases, including legacy M64 split-N.
+- Result:
+  - legacy M64 MMAv5 high-N accumulator and TMEM-LHS descriptor views now
+    lower to the same folded physical address family as root direct `ld/st`;
+  - the focused core repro now passes for both legacy and linear M64 layouts;
+  - the previously green M64 runtime rows and ld.red descriptor-chain row stay
+    green.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-core-blockm64-surj
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    'python/test/gluon/test_core.py::test_block_m_64_mma[legacy]'`
+    passed `1/1`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-core-blockm64-both
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    'python/test/gluon/test_core.py::test_block_m_64_mma'` passed `2/2`;
+  - focused legacy M64 runtime rows passed `4/4`;
+  - ld.red descriptor-chain tile-permuted N=256 row passed `1/1`;
+  - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

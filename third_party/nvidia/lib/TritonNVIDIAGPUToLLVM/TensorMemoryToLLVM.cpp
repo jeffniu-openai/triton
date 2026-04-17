@@ -701,6 +701,11 @@ lowerTMemLdStFromTypes(
   auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
     if (!memDescValue)
       return false;
+    if (memTy.getRank() == 2 && memTy.getShape()[0] == 64 &&
+        memTy.getElementTypeBitWidth() == 32 &&
+        isa<TensorMemoryEncodingAttr>(memTy.getEncoding())) {
+      return false;
+    }
     auto regLayout = toLinearEncoding(regTy).getLinearLayout();
     unsigned numWarps =
         regLayout.hasInDim(kWarp) ? regLayout.getInDimSize(kWarp) : 4;

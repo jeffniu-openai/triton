@@ -2191,6 +2191,17 @@ void init_gluon_ir(py::module &&m) {
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
 
+        if (atomName == "auto" &&
+            ttng::isM64SplitNDescriptorType(memDescTy, numWarps)) {
+          py::object splitNLayout = findDirectLayoutForMemDesc(
+              memDesc, ttng::TMemAccessAtom::I16x32bx2);
+          if (!splitNLayout.is_none()) {
+            if (debug)
+              llvm::errs() << debugLog.str();
+            return splitNLayout;
+          }
+        }
+
         if (ttng::shouldPreferLegacyTMemLdStI32x32bForAuto(memDescTy,
                                                            atomName)) {
           py::object legacyLayout =

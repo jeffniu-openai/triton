@@ -5640,6 +5640,7 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_SPECS = (
 )
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS = {
+    "tile_permuted": (0, 128, 64, 192),
     "col_reverse": (0, 128, 64, 192),
     "col_rotate1": (0, 128, 64, 192),
     "rowcol_rotate_reverse": (0, 128, 64, 192),
@@ -8156,7 +8157,21 @@ def test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep(
     )
 
     _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
-    _assert_ld_red_opcode_pairs(compiled, N, expected_shape, red_op, use_abs, propagate_nan)
+    expected_offsets = (
+        LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS[layout_name]
+        if layout_name in LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS
+        and N == 256
+        else None
+    )
+    _assert_ld_red_opcode_pairs(
+        compiled,
+        N,
+        expected_shape,
+        red_op,
+        use_abs,
+        propagate_nan,
+        expected_offsets=expected_offsets,
+    )
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_linear" in ttgir
     assert "ttg.memdesc_index" in ttgir

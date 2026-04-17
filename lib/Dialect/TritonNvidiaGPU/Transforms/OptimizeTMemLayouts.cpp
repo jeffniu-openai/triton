@@ -1165,7 +1165,6 @@ public:
     if (matchLeadingSliceView(tmem))
       return failure();
     int numWarps = ttg::lookupNumWarps(storeOp);
-    Value truePred = arith::ConstantOp::create(b, loc, b.getBoolAttr(true));
     auto slice0Layout =
         getReplaySliceRegLayout(getTMemSubSliceType(tmem, 0, splitNSize),
                                 numWarps);
@@ -1173,6 +1172,7 @@ public:
         getTMemSubSliceType(tmem, splitNSize, splitNSize), numWarps);
     if (!slice0Layout || !slice1Layout)
       return failure();
+    Value truePred = arith::ConstantOp::create(b, loc, b.getBoolAttr(true));
 
     auto createSlice =
         [&](TypedValue<RankedTensorType> input,

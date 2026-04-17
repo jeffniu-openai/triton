@@ -2286,6 +2286,12 @@ static bool hasFullShapeTMemTile(MemDescType memTy) {
              memTy.getAllocShape().take_back(rank);
 }
 
+static bool isLegacyM64TensorMemoryDescriptor(MemDescType memTy) {
+  return memTy && memTy.getRank() == 2 && memTy.getShape()[0] == 64 &&
+         memTy.getElementTypeBitWidth() == 32 &&
+         isa<TensorMemoryEncodingAttr>(memTy.getEncoding());
+}
+
 static std::optional<SmallVector<std::vector<int32_t>>>
 getPurePowerOfTwoLinearBases(const LinearLayout &layout, StringAttr inDim,
                              unsigned outDimIdx, int64_t extent) {
@@ -2424,6 +2430,8 @@ getFullShapeMMAv5FamilyQueryLayout(MemDescType memTy) {
     auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
     if (!maybeTwoCTAs)
       return std::nullopt;
+    if (isLegacyM64TensorMemoryDescriptor(memTy))
+      return makeQuery(toLinearLayout(memTy), *maybeTwoCTAs);
     auto layoutRank = static_cast<size_t>(
         cast<LayoutEncodingTrait>(encoding).getRank());
     SmallVector<int64_t> allocShape(memTy.getAllocShape().begin(),
@@ -3125,8 +3133,13 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
   if (bitwidth != 32 && !(allow16Bit && bitwidth == 16))
     return std::nullopt;
   int64_t n = memTy.getShape()[1];
-  if (!isSimpleM64SplitNRawQueryLayout(rawQueryLayout.layout,
-                                       memTy.getShape()[0], n))
+  auto layout = rawQueryLayout.layout;
+  auto kBlock = StringAttr::get(memTy.getContext(), "block");
+  if (layout.hasInDim(kBlock) && layout.getInDimSize(kBlock) == 1)
+    layout = layout.squeezeIns(kBlock);
+  if (layout.hasOutDim(kBlock) && layout.getOutDimSize(kBlock) == 1)
+    layout = layout.squeezeOuts(kBlock);
+  if (!isSimpleM64SplitNRawQueryLayout(layout, memTy.getShape()[0], n))
     return std::nullopt;
   return getCanonicalM64SplitNLayout(memTy.getContext(), n, numWarps);
 }
@@ -3155,7 +3168,6 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
       *desiredAtom != TMemAccessAtom::I16x32bx2) {
     return false;
   }
-
   auto rawQuery = inferStandaloneTMemLdStQueryLayout(
       memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
   if (failed(rawQuery))
@@ -4011,6 +4023,22 @@ static std::optional<uint32_t> getTMemLdStQueryOriginDeltaBaseOffset(
          (static_cast<uint32_t>(dstRow - srcRow) << 16);
 }
 
+static std::optional<uint32_t> getSurjectiveQuerySubviewBaseOffset(
+    MemDescType srcTy, const TMemLdStQueryLayout &srcQuery,
+    ArrayRef<int32_t> offsets) {
+  if (!srcTy || offsets.size() != static_cast<size_t>(srcTy.getRank()) ||
+      srcQuery.layout.getNumOutDims() != srcTy.getRank() ||
+      !srcQuery.layout.isSurjective())
+    return std::nullopt;
+
+  auto expectedOutDims =
+      standardOutDimNames(srcTy.getContext(), srcTy.getRank());
+  if (!llvm::equal(srcQuery.layout.getOutDimNames(), expectedOutDims))
+    return std::nullopt;
+  return getTMemViewOffset(srcQuery.layout, offsets,
+                           srcTy.getElementTypeBitWidth());
+}
+
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
   auto srcTy = cast<MemDescType>(op.getSrc().getType());
   if (isTensorMemoryColumnHalfDim0Slice(op))
@@ -4050,6 +4078,9 @@ uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
     auto dstQuery = inferStandaloneTMemLdStQueryLayout(
         op.getResult(), /*preserveNonCanonicalView=*/true, &error);
     if (succeeded(srcQuery) && succeeded(dstQuery)) {
+      if (auto offset = getSurjectiveQuerySubviewBaseOffset(
+              srcTy, *srcQuery, op.getOffsets()))
+        return *offset;
       if (auto offset = getTMemLdStQueryOriginDeltaBaseOffset(
               *srcQuery, *dstQuery, srcTy.getElementTypeBitWidth()))
         return *offset;
@@ -4199,6 +4230,10 @@ inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
       isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
                       gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
                       gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(defOp);
+  if (preserveNonCanonicalView && !hasDescriptorViewProducer &&
+      isLegacyM64TensorMemoryDescriptor(memDescTy)) {
+    return memDescTy;
+  }
   auto layoutRank = static_cast<size_t>(cast<LayoutEncodingTrait>(encoding).getRank());
   if (preserveNonCanonicalView && memDescTy.getShape().size() >= layoutRank &&
       memDescTy.getAllocShape().size() >= layoutRank &&
@@ -8946,6 +8981,8 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   bool twoCTAs = getTensorMemoryTwoCTAs(memTy.getEncoding()).value_or(false);
   LinearLayout memLayout = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
+      return squeezeTrivialBlock(toLinearLayout(memTy));
+    if (isLegacyM64TensorMemoryDescriptor(memTy))
       return squeezeTrivialBlock(toLinearLayout(memTy));
     // Full-shape TMEM descriptors already carry the exact physical contract in
     // their encoding. Direct ld/st planning must use that exact image instead

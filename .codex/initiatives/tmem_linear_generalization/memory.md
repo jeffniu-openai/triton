@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 20:24 UTC Phase B/D/E physical-subview checkpoint: a
+  core legacy M64 MMAv5 regression exposed that pure TMEM column subviews were
+  using query-origin subtraction as if query origins were physical row/column
+  addresses. That loses layouts whose source query is surjective but folds a
+  logical column basis into a physical row basis, exactly the legacy M64
+  split-N storage shape. `getTMemSubviewOffsetForLowering` now first computes
+  the relative base through the source query's exact surjective
+  `LinearLayout`/pseudoinverse before falling back to origin subtraction. The
+  fix makes MMAv5 `memdesc_subslice` bases agree with direct root `ld/st`
+  packet offsets for M64 high-N bands without a test-specific special case.
+  Validation: `make -j8`, `test_core.py::test_block_m_64_mma` (`2 passed`),
+  four focused legacy M64 runtime rows (`4 passed`), ld.red descriptor-chain
+  tile-permuted N=256 row (`1 passed`), Python byte-compile for the changed
+  runtime-matrix test, and `git diff --check`. Next: checkpoint/push, then
+  continue the residual boundary audit/final validation slice unless a new
+  support-bearing planner gap appears.
+
 - Latest: 2026-04-17 19:27 UTC Phase C `warpx2` subword probe: representative
   f16 single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23` rows now
   fail through the structured destination-column footprint requirement after

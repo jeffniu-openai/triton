@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 19:27 UTC
+Last updated: 2026-04-17 20:24 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -257,6 +257,22 @@ there is a real packed-lane, source-column, row/column-mask, refresh-remap, or
 CTA-ownership schedule.
 
 ## Progress
+
+- 2026-04-17 20:24 UTC: fixed the legacy M64 split-N physical-subview
+  mismatch exposed by `test_core.py::test_block_m_64_mma[legacy]`. The failure
+  was not a scales- or M64-only opcode issue: pure TMEM column subviews were
+  computing relative bases by subtracting query origins as row/column
+  coordinates. For source queries whose exact `LinearLayout` is surjective but
+  folds a logical column basis into a physical row basis, that arithmetic
+  lowers high-N descriptor views to a plain column offset. The base lowering
+  now first pseudoinverts the source query's exact surjective layout for the
+  requested subview offset, then falls back to the older origin-delta path for
+  projected/non-surjective queries. This aligns MMAv5 `memdesc_subslice`
+  addresses with direct root `ld/st` packet offsets for legacy M64 split-N
+  high bands. Validation: `make -j8`; `test_core.py::test_block_m_64_mma`
+  passed `2`; focused legacy M64 runtime rows passed `4`; ld.red
+  descriptor-chain tile-permuted N=256 passed `1`; Python byte-compile for
+  `test_tmem_runtime_matrix.py`; `git diff --check`.
 
 - 2026-04-17 19:27 UTC: probed the remaining `warpx2` subword/packed-lane
   bucket after source rematerialization. Representative f16 single-CTA
