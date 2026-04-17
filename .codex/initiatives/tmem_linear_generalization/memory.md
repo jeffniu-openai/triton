@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:27 UTC ordinary 4x256 refresh-image requirement:
+  introduced `TMemCopy4x256RefreshImageRequirement` and routed both
+  `getDirectTMemCopyLayoutSupport(...)` and shared descriptor-plan
+  realization through one backend formatter for the ordinary contiguous
+  `tcgen05.copy.4x256b` clean negative. This preserves the hard finding from
+  the 05:00 reprobe: the opcode writes a refresh physical image, not an
+  ordinary 4x8 logical view, so support requires an explicit refresh-image
+  view/remap plus load/store contract rather than just enabling the ISA atom.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, focused
+  `cp_no_scales_4x256b` selector (`3 passed, 1574 deselected`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 05:23 UTC scaled-MMAv5 support carrier cleanup:
   introduced `MMAv5ScaledAccumulatorSupport` in the dialect layer. It carries
   the scaled accumulator layout proof together with typed repeated-N32 and

@@ -361,7 +361,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
       %src: !ttg.memdesc<4x8xi32, #shared_cp_4x256b, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<4x8xi32, #tmem_linear_cp_4x256b, #ttng.tensor_memory, mutable>) {
     // expected-error @+4 {{The source shared layout maps to tcgen05.copy.4x256b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
-    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton cannot expose it as an ordinary contiguous four-row ttng.tmem_copy lowering. The instruction is only supported for the refresh-shaped destination view where logical row bits are stored in TMEM columns, low logical column bits are stored in TMEM rows 32/64, and the high logical column bit is stored at destination dword +4.}}
+    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton cannot expose it as an ordinary contiguous four-row ttng.tmem_copy lowering. The instruction writes a refresh-shaped destination view for a 4x8 logical tile: logical row bits are stored in TMEM columns, low logical column bits are stored in TMEM rows 32/64, and the high logical column bit is stored at destination dword +4.}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.4x256b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<4x8xi32, #shared_cp_4x256b, #ttg.shared_memory, mutable>, !ttg.memdesc<4x8xi32, #tmem_linear_cp_4x256b, #ttng.tensor_memory, mutable>
@@ -378,7 +378,7 @@ module attributes {"ttg.num-ctas" = 2 : i32, "ttng.two-ctas" = true, "ttg.num-wa
       %src: !ttg.memdesc<8x8xi32, #shared_cp_4x256b_twocta, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<8x8xi32, #tmem_linear_cp_4x256b_twocta, #ttng.tensor_memory, mutable>) {
     // expected-error @+4 {{The source shared layout maps to tcgen05.copy.4x256b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
-    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton cannot expose it as an ordinary contiguous four-row ttng.tmem_copy lowering. The instruction is only supported for the refresh-shaped destination view where logical row bits are stored in TMEM columns, low logical column bits are stored in TMEM rows 32/64, and the high logical column bit is stored at destination dword +4.}}
+    // expected-note @+3 {{tcgen05.copy.4x256b is recognized by the ISA, but Triton cannot expose it as an ordinary contiguous four-row ttng.tmem_copy lowering. The instruction writes a refresh-shaped destination view for a 4x8 logical tile: logical row bits are stored in TMEM columns, low logical column bits are stored in TMEM rows 32/64, and the high logical column bit is stored at destination dword +4.}}
     // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.4x256b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<8x8xi32, #shared_cp_4x256b_twocta, #ttg.shared_memory, mutable>, !ttg.memdesc<8x8xi32, #tmem_linear_cp_4x256b_twocta, #ttng.tensor_memory, mutable>

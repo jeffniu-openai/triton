@@ -9030,6 +9030,37 @@ static TMemCopySupportResult getDenseTMemCopyColumnPermutationFailure(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
 
+std::string getTMemCopy4x256RefreshImageRequirementError(
+    const TMemCopy4x256RefreshImageRequirement &requirement) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "tcgen05.copy.4x256b is recognized by the ISA, but Triton cannot "
+        "expose it as an ordinary contiguous four-row ttng.tmem_copy "
+        "lowering. The instruction writes a refresh-shaped destination view "
+        "for a "
+     << requirement.logicalRows << "x" << requirement.logicalColumns
+     << " logical tile: logical row bits are stored in TMEM columns, low "
+        "logical column bits are stored in TMEM rows "
+     << requirement.lowColumnRowDelta0 << "/"
+     << requirement.lowColumnRowDelta1
+     << ", and the high logical column bit is stored at destination dword +"
+     << requirement.highColumnDwordDelta
+     << ". Source columns [0, " << requirement.sourceColumnSplit << ") and ["
+     << requirement.sourceColumnSplit << ", " << requirement.logicalColumns
+     << ") are scheduled as separate physical refresh messages. Ordinary "
+        "contiguous tensor-memory layouts need an explicit refresh-image "
+        "view/remap plus a load/store contract before this can be supported.";
+  return os.str();
+}
+
+static TMemCopySupportResult getUnsupportedTMemCopy4x256RefreshImageResult(
+    TMemCopySupportFailureLayer layer,
+    const TMemCopy4x256RefreshImageRequirement &requirement =
+        TMemCopy4x256RefreshImageRequirement{}) {
+  return getUnsupportedTMemCopyResult(
+      layer, getTMemCopy4x256RefreshImageRequirementError(requirement));
+}
+
 static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
@@ -9041,14 +9072,8 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
   if (family == TMemCopyFamily::Dense4x256b) {
     if (isTMemCopy4x256RefreshLayout(layout, ctx, bitwidth))
       return getSupportedTMemCopyResult();
-    return getUnsupportedTMemCopyResult(
-        TMemCopySupportFailureLayer::PhysicalQuery,
-        "tcgen05.copy.4x256b is recognized by the ISA, but Triton "
-        "cannot expose it as an ordinary contiguous four-row "
-        "ttng.tmem_copy lowering. The instruction is only supported for the "
-        "refresh-shaped destination view where logical row bits are stored in "
-        "TMEM columns, low logical column bits are stored in TMEM rows 32/64, "
-        "and the high logical column bit is stored at destination dword +4.");
+    return getUnsupportedTMemCopy4x256RefreshImageResult(
+        TMemCopySupportFailureLayer::PhysicalQuery);
   }
 
   auto ll = normalizeTensorMemoryLinearLayoutForAnalysis(layout);
@@ -10622,20 +10647,8 @@ getTMemCopySharedDescriptorPlanRealization(gpu::MemDescType srcTy,
         return !message.descriptorCvt.has_value();
       })) {
     return {std::nullopt,
-            getUnsupportedTMemCopyResult(
-                TMemCopySupportFailureLayer::DescriptorSynthesis,
-                "tcgen05.copy.4x256b is recognized by the ISA, but Triton "
-                "cannot yet expose it as a correct logical ttng.tmem_copy "
-                "lowering. The instruction behaves as a TMEM refresh "
-                "primitive: one message maps source-column vectors onto "
-                "tensor-memory lanes separated by 32, with four source rows "
-                "packed into destination dwords. A two-message physical "
-                "refresh schedule using smem column offsets 0 and 4 with "
-                "destination dword offsets 0 and 4 covers an 8-column tile, "
-                "but ordinary contiguous four-row tensor-memory copies remain "
-                "disabled until that refresh-shaped destination view and its "
-                "load/store contract are represented explicitly in the "
-                "linear-layout planner.")};
+            getUnsupportedTMemCopy4x256RefreshImageResult(
+                TMemCopySupportFailureLayer::DescriptorSynthesis)};
   }
   for (auto [messageIdx, message] : llvm::enumerate(plan.messages)) {
     TMemCopyScheduledMessage scheduledMessage;

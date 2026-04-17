@@ -260,6 +260,15 @@ struct TMemCopyDestinationMaskRequirement {
   unsigned selectionPeriod = 0;
 };
 
+struct TMemCopy4x256RefreshImageRequirement {
+  unsigned logicalRows = 4;
+  unsigned logicalColumns = 8;
+  unsigned sourceColumnSplit = 4;
+  unsigned lowColumnRowDelta0 = 32;
+  unsigned lowColumnRowDelta1 = 64;
+  unsigned highColumnDwordDelta = 4;
+};
+
 enum class TMemCopyInstructionColumnProjectionFailureKind {
   None,
   PackedLaneState,
@@ -312,6 +321,9 @@ getTMemCopyDestinationMaskRequirement(
 std::optional<TMemCopyPackedLaneRequirement>
 getTMemCopyPackedLaneRequirement(
     const TMemCopyInstructionColumnProjectionFailure &failure);
+
+std::string getTMemCopy4x256RefreshImageRequirementError(
+    const TMemCopy4x256RefreshImageRequirement &requirement);
 
 struct TMemCopyInstructionColumnProjection {
   unsigned instructionColumns = 0;

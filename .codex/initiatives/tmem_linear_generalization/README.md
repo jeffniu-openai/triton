@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:27 UTC: promoted the ordinary `tcgen05.copy.4x256b`
+  refresh-image boundary into a typed backend requirement. The new
+  `TMemCopy4x256RefreshImageRequirement` records the 4x8 refresh image
+  contract (logical row bits in TMEM columns, low column bits in rows 32/64,
+  high column bit at destination dword +4, and the low/high source-column
+  message split), and both direct-destination layout support and descriptor
+  plan realization now use one formatter. Support is unchanged: ordinary
+  contiguous four-row copies remain clean negatives until an explicit
+  refresh-image view/remap plus load/store contract exists. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, focused
+  `cp_no_scales_4x256b` selector (`3 passed, 1574 deselected`), and
+  `git diff --check`.
 - 2026-04-17 05:23 UTC: introduced `MMAv5ScaledAccumulatorSupport`, a shared
   scaled-MMAv5 accumulator support carrier containing the selected accumulator
   layout proof plus typed narrow-N and repeated-N32 scale-fragment

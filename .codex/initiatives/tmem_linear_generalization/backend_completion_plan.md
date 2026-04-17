@@ -550,6 +550,16 @@ Progress:
   views reuse the same utility. This keeps the true packet-footprint boundary
   in C++ rather than split between frontend shape matching and backend
   verifier diagnostics.
+- 2026-04-17 05:27 UTC: ordinary contiguous `tcgen05.copy.4x256b` is now
+  represented as a typed refresh-image requirement instead of duplicated
+  string guards. `TMemCopy4x256RefreshImageRequirement` records the source
+  column split and destination refresh image facts, and both direct layout
+  support and descriptor-plan realization format the same requirement. Support
+  is unchanged: the 05:00 probe remains decisive evidence that opcode emission
+  writes the refresh physical image into the wrong ordinary logical view.
+  Future support must make that refresh image explicit in the planner and
+  define a valid load/store/readback contract, or leave the ordinary layout as
+  a clean negative.
 - 2026-04-15 20:51 UTC: scales descriptor-view copy projection probes ruled
   out descriptor-basis reassignment as a standalone support path. The
   representable projection preserved columns but rotated rows; the row-correct

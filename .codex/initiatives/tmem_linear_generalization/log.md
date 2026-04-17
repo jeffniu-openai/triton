@@ -20932,3 +20932,33 @@ Open after this slice:
     mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported'`
     (`50 passed, 1527 deselected in 19.48s`);
   - `git diff --check`.
+
+## 2026-04-17 05:27 UTC: typed ordinary 4x256 refresh-image copy boundary
+
+- Starting point: `codex/tmem` at `1a3fecd55`.
+- Change:
+  - added `TMemCopy4x256RefreshImageRequirement`, carrying the logical 4x8
+    refresh-image facts for `tcgen05.copy.4x256b`;
+  - routed ordinary contiguous 4x256 direct-destination support and
+    shared-descriptor plan realization through one formatter instead of two
+    duplicated string guards;
+  - updated the compiler-only invalid diagnostic to the shared wording.
+- Support boundary is unchanged:
+  - the 05:00 runtime reprobe remains the current proof that the public
+    opcode writes the refresh physical image, not an ordinary contiguous
+    four-row logical layout;
+  - a future support promotion needs an explicit refresh-image view/remap and
+    a load/store/readback contract, not just descriptor synthesis.
+- Validation:
+  - `make -j8`;
+  - `cd build/cmake.linux-aarch64-cpython-3.12 &&
+    bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-requirement
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'cp_no_scales_4x256b'`
+    (`3 passed, 1574 deselected in 3.16s`);
+  - `git diff --check`.
