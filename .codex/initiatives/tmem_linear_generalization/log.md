@@ -24587,3 +24587,31 @@ Open after this slice:
   - aggregate: `1490 passed, 102 skipped` across all `1592` cases.
 - Logs:
   - `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_205257/`
+
+## 2026-04-17 21:01 UTC: verifier query-rescue shim cleanup
+
+- Starting point: `codex/tmem` at pushed `8c564b851`.
+- Change:
+  - removed the local row-zero lifted reinterpret predicate from
+    `verifyTMEMOperand`;
+  - wired the verifier to the backend-owned
+    `disallowTMemLdStQueryTypeRescue` helper in `TensorMemoryUtils`.
+- Intent:
+  - no support surface changes;
+  - consolidate direct `ld/st` query-type rescue policy in the backend helper
+    layer so future cleanup/support work does not have to keep verifier-local
+    and backend-local predicates synchronized by hand.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_block_descriptor_reports_clean_error`
+    passed `2/2`;
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_blocked_layout_reports_clean_error`
+    passed `2/2`;
+  - `git diff --check`.
+- Note:
+  - `lit` and `python3 -m lit` are unavailable in this shell, so the
+    verify-diagnostics lit check was not runnable for this cleanup.

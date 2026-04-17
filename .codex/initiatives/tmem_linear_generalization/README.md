@@ -48,6 +48,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:01 UTC: started the Phase F compatibility-shim audit after
+  the full runtime-matrix baseline. `TMEMLoadOp`/`TMEMStoreOp` verification no
+  longer carries its own row-zero lifted reinterpret predicate; it delegates to
+  the backend-owned `disallowTMemLdStQueryTypeRescue` helper in
+  `TensorMemoryUtils`. This is intended as behavior-preserving cleanup that
+  leaves the support/boundary surface unchanged while consolidating layout
+  policy in the backend helper layer. Validation: `make -j8`; focused
+  runtime-matrix clean-error rows for blocked layouts (`2 passed`) and block
+  descriptor views (`2 passed`); `git diff --check`. `lit` is not installed in
+  this shell as either `lit` or `python3 -m lit`, so no lit command was
+  included in this checkpoint.
 - 2026-04-17 20:57 UTC: the corrected full runtime-matrix runner passed with
   complete `1592/1592` bucket coverage. Aggregate evidence: `cp`
   `312 passed, 4 skipped`; `mma` `601 passed`; `splitn` `35 passed`;

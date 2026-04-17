@@ -1190,45 +1190,11 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   if (isOptimizerReplayableTMemLdSt(op, memdescValue))
     return success();
 
-  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
-    if (!layout.hasInDim(dim))
-      return false;
-    unsigned dimBits = layout.getInDimSizeLog2(dim);
-    for (unsigned idx = 0; idx < dimBits; ++idx) {
-      if (llvm::all_of(layout.getBasis(dim, idx),
-                       [](int32_t value) { return value == 0; })) {
-        return true;
-      }
-    }
-    return false;
-  };
-  auto kRow = StringAttr::get(op->getContext(), "row");
-  auto kCol = StringAttr::get(op->getContext(), "col");
-  bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
-    if (!isa_and_nonnull<gpu::MemDescReinterpretOp>(memdescValue.getDefiningOp()) ||
-        memdesc.getRank() != 2)
-      return false;
-    auto memLayout = toLinearLayout(memdesc);
-    int bitwidth = memdesc.getElementTypeBitWidth();
-    int64_t logicalRows = memdesc.getShape()[0];
-    int64_t logicalCols = memdesc.getShape()[1];
-    auto activeMemLayout = memLayout;
-    if (activeMemLayout.hasInDim(kRow))
-      activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
-    int64_t activePhysicalRows =
-        activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
-                                       : logicalRows;
-    int64_t physicalCols =
-        memLayout.hasInDim(kCol) ? memLayout.getInDimSize(kCol) / (32 / bitwidth)
-                                 : logicalCols;
-    return bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
-           !hasZeroBasisAlong(memLayout, kCol) &&
-           logicalRows == activePhysicalRows &&
-           logicalCols == physicalCols * 2;
-  }();
+  bool disallowQueryTypeRescue =
+      disallowTMemLdStQueryTypeRescue(memdescValue);
 
   auto maxnreg = getContextualMaxNReg(op);
-  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
+  if (!disallowQueryTypeRescue) {
     auto directRowPlan = getTMemLdStRowPlanForQuery(memdescValue, memdesc);
     if (succeeded(computeTMemLdStEncodingInfo(type, memdesc, maxnreg,
                                               /*emitError=*/{},
@@ -1238,7 +1204,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   }
 
   auto queryTypes = triton::nvidia_gpu::getTMemLdStQueryTypes(memdescValue);
-  if (!disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
+  if (!disallowQueryTypeRescue) {
     for (MemDescType queryTy : queryTypes) {
       auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
       if (succeeded(computeTMemLdStEncodingInfo(type, queryTy, maxnreg,
@@ -1317,7 +1283,7 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
       }
     }
     if (requestedLayoutDetails.empty() &&
-        !disallowQueryTypeRescueForRowZeroLiftedReinterpret) {
+        !disallowQueryTypeRescue) {
       for (MemDescType queryTy : queryTypes) {
         auto rowPlan = getTMemLdStRowPlanForQuery(memdescValue, queryTy);
         (void)computeTMemLdStEncodingInfo(

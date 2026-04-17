@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:01 UTC Phase F compatibility-shim cleanup:
+  `verifyTMEMOperand` now uses the shared
+  `disallowTMemLdStQueryTypeRescue` backend helper instead of carrying a local
+  duplicate predicate for row-zero lifted reinterpret views. This keeps the
+  query-type rescue boundary owned by `TensorMemoryUtils` and removes a stale
+  verifier-side policy copy. Validation: `make -j8`, focused runtime-matrix
+  clean-error rows for block descriptor views (`2 passed`) and blocked layouts
+  (`2 passed`), and `git diff --check`. `lit` was attempted via both `lit` and
+  `python3 -m lit`, but is not installed in this shell; use pytest/focused
+  runtime checks for this checkpoint unless the environment is repaired. Next:
+  keep auditing remaining `ld/st` optimizer/lowering compatibility paths,
+  especially direct-support selection and replay rewrites, and delete only
+  behavior already represented by backend query/support helpers.
+
 - Latest: 2026-04-17 20:24 UTC Phase B/D/E physical-subview checkpoint: a
   core legacy M64 MMAv5 regression exposed that pure TMEM column subviews were
   using query-origin subtraction as if query origins were physical row/column

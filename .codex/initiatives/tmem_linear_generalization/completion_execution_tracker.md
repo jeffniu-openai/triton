@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 20:57 UTC
+Last updated: 2026-04-17 21:01 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -199,16 +199,38 @@ Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - Python byte-compile for the changed Python files;
   - `git diff --check`.
 
+## Latest Cleanup Checkpoint
+
+2026-04-17 21:01 UTC:
+
+- Removed a verifier-local duplicate of the row-zero lifted reinterpret
+  query-type rescue predicate.
+- `verifyTMEMOperand` now calls the backend-owned
+  `disallowTMemLdStQueryTypeRescue` helper, so this policy lives in the shared
+  `TensorMemoryUtils` layer.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory was changed.
+- Validation:
+  - `make -j8`;
+  - block descriptor clean-error runtime rows passed `2/2`;
+  - blocked-layout clean-error runtime rows passed `2/2`;
+  - `git diff --check`.
+- Validation note:
+  - `lit` is not installed in this shell as either `lit` or `python3 -m lit`.
+
 ## Immediate Execution Order
 
-1. Classify each clean-negative bucket in code comments/tests/docs as stale,
+1. Continue the Phase F shim audit in `OptimizeTMemLayouts` direct-support
+   selection and replay rewrites. Delete only behavior already represented by
+   backend query/support helpers.
+2. Classify each clean-negative bucket in code comments/tests/docs as stale,
    missing planner schedule, missing storage representation, or true boundary.
-2. Take the next support-bearing slice from `tcgen05.copy` because it has the
+3. Take the next support-bearing slice from `tcgen05.copy` because it has the
    largest remaining inventory and most directly reflects linear-layout
    incompleteness.
-3. Between support slices, delete redundant frontend/lowering compatibility
+4. Between support slices, delete redundant frontend/lowering compatibility
    policy that is now represented by backend query/support objects.
-4. After each meaningful slice, update this file plus `memory.md`, `log.md`,
+5. After each meaningful slice, update this file plus `memory.md`, `log.md`,
    and `handoff_2026-04-09.md`; commit with a detailed message and push to
    `origin/codex/tmem`.
 
