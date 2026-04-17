@@ -101,6 +101,44 @@
     while `gh auth status -h github.com` reports active account
     `jeffniu-openai`.
 
+## 2026-04-17 14:34 UTC: linear divide optional failure cleanup
+
+- Starting point: `codex/tmem` at `c73dbecc4`.
+- Change:
+  - fixed `divideLeft` and `divideRight` so quotient candidates are created
+    through `LinearLayout::tryCreate` rather than the checked constructor;
+  - quotient candidates that are not well formed, not surjective when required,
+    or do not reconstruct the dividend now return `std::nullopt`;
+  - added `Divide_MalformedCandidateFailsGracefully` to the C++ LinearLayout
+    unit tests.
+- Root cause:
+  - the no-scales two-CTA `warpx2::02_13` clean-negative bucket hit
+    `divideRight(squeezed, blockOnly)` while exploring TMEM register layouts;
+  - the helper's optional API promised a clean miss, but the checked
+    constructor called `report_fatal_error` for a malformed quotient before the
+    TMEM planner could return structured unsupported.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/unittest/Tools/LinearLayout`
+    (`71` tests passed);
+  - exact repro:
+    `TRITON_DEBUG_TMEM_QUERY=1 CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-cpwarpx2-repro
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_02_13_twocta_slice_index_view_reports_clean_unsupported[0-f32-torch_dtype0]`
+    (`1 passed`);
+  - split-4 selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-cpwarpx2
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py
+    -k 'cp_no_scales_warpx2_02_13_twocta'`
+    (groups: `4/4/4/2` passed);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked unless `gh auth status -h github.com` reports
+    `Mogball`; last known active account remains `jeffniu-openai`.
+
 ## 2026-04-17 13:47 UTC: compatible-layout candidate validation cleanup
 
 - Starting point: `codex/tmem` at `65dc1963c`.

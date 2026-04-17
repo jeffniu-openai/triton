@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 14:34 UTC: fixed a core `LinearLayout` division contract bug
+  exposed by the no-scales two-CTA `warpx2::02_13` copy clean-negative rows.
+  `divideLeft` and `divideRight` now use `LinearLayout::tryCreate` for the
+  quotient candidate and return `std::nullopt` when the candidate is not a
+  well-formed layout or does not reproduce the dividend, instead of letting an
+  optional helper abort the process through the checked constructor/assertion.
+  Added a focused C++ unit test for the malformed-candidate case. Validation:
+  `make -j8`, `unittest/Tools/LinearLayout` (`71` tests), the exact
+  `cp_no_scales_warpx2_02_13_twocta` clean-negative repro (`1 passed`), the
+  split-4 selector for that bucket (`4/4/4/2` passed), and
+  `git diff --check`.
 - 2026-04-17 14:27 UTC: added the matching 256-row split store-join lit
   coverage. The existing planner-gated store rewrite now lowers the joined
   `256x64 + 256x64 -> 256x128` pattern into two `ttng.tmem_subslice` plus

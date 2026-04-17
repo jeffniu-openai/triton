@@ -984,6 +984,15 @@ TEST_F(LinearLayoutTest, Divide_NonMatchingDims) {
   EXPECT_FALSE(candidateOpt.has_value());
 }
 
+TEST_F(LinearLayoutTest, Divide_MalformedCandidateFailsGracefully) {
+  LinearLayout A({{S("in"), {{1, 0}, {2, 1}, {0, 1}}}},
+                 {{S("x"), 4}, {S("y"), 2}}, true);
+  LinearLayout B({{S("in"), {{1}, {0}}}}, {{S("x"), 2}}, true);
+
+  EXPECT_FALSE(divideLeft(A, B).has_value());
+  EXPECT_FALSE(divideRight(A, B).has_value());
+}
+
 TEST_F(LinearLayoutTest, Divide_Simple) {
   auto A = LinearLayout::identity1D(8, S("in"), S("out"));
   auto B = LinearLayout::identity1D(4, S("in"), S("out"));

@@ -380,6 +380,15 @@ Progress:
   canonical `[[128, 0]]`. This closes the matching false-general dense-copy
   gap without affecting the `4x256b` refresh image, whose valid two-CTA
   ownership remains `[[4, 0]]` and is checked by the refresh-layout recognizer.
+- 2026-04-17 14:34 UTC: fixed the core `LinearLayout` division optional
+  contract exposed while rerunning no-scales two-CTA `warpx2::02_13`
+  clean-negative rows. `divideRight` could build a malformed quotient
+  candidate and abort before the copy planner returned its structured
+  unsupported result. Both `divideLeft` and `divideRight` now fail through
+  `std::nullopt` if candidate construction or product reconstruction is
+  invalid. This is support-neutral, but it makes planner exploration robust for
+  non-factorable linear layouts instead of turning clean negatives into process
+  aborts.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

@@ -646,10 +646,14 @@ std::optional<LinearLayout> divideLeft(const LinearLayout &A,
     COutDims.push_back({outDim, outC});
   }
   // If the layout A and B are surjective, then C should also be surjective.
-  LinearLayout C(std::move(cBases), COutDims,
-                 /*requireSurjective=*/A.isSurjective() && B.isSurjective());
-  assert(B * C == A);
-  return C;
+  auto maybeC = LinearLayout::tryCreate(
+      std::move(cBases), COutDims,
+      /*requireSurjective=*/A.isSurjective() && B.isSurjective());
+  if (!maybeC)
+    return std::nullopt;
+  if (B * *maybeC != A)
+    return std::nullopt;
+  return maybeC;
 }
 
 std::optional<LinearLayout> divideRight(const LinearLayout &A,
@@ -728,10 +732,14 @@ std::optional<LinearLayout> divideRight(const LinearLayout &A,
   for (auto [outDim, size] : cOutDimSizes)
     COutDims.push_back({outDim, size});
   // If A and B are surjective, then C should also be surjective.
-  LinearLayout C(std::move(cBases), COutDims,
-                 /*requireSurjective=*/A.isSurjective() && B.isSurjective());
-  assert(C * B == A);
-  return C;
+  auto maybeC = LinearLayout::tryCreate(
+      std::move(cBases), COutDims,
+      /*requireSurjective=*/A.isSurjective() && B.isSurjective());
+  if (!maybeC)
+    return std::nullopt;
+  if (*maybeC * B != A)
+    return std::nullopt;
+  return maybeC;
 }
 
 LinearLayout operator*(LinearLayout inner, LinearLayout outer) {

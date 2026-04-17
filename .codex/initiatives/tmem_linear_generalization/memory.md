@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 14:34 UTC the no-scales two-CTA
+  `warpx2::02_13` clean-negative bucket no longer aborts in
+  `compute_tmem_reg_layout_from_memdesc`. The root cause was not a copy-family
+  diagnostic issue: `LinearLayout::divideRight` exposed as `std::optional`
+  could still call the checked `LinearLayout` constructor for a malformed
+  quotient candidate, which raised `report_fatal_error` before the TMEM
+  planner could return clean unsupported. `divideLeft` and `divideRight` now
+  construct quotient candidates through `LinearLayout::tryCreate` and verify
+  the reconstructed product before returning a value; malformed candidates
+  return `std::nullopt`. Added a focused `LinearLayout` unit test for this
+  contract. Validation: `make -j8`; `unittest/Tools/LinearLayout` (`71`
+  tests); exact clean-negative repro (`1 passed`); split-4
+  `cp_no_scales_warpx2_02_13_twocta` selector (`4/4/4/2` passed);
+  `git diff --check`.
+
 - Latest: 2026-04-17 14:27 UTC the 256-row split store-join replay now has
   focused lit coverage beside the 256-row split-load case. With a legal
   full-tile direct source layout before the rewrite, `OptimizeTMemLayouts`
