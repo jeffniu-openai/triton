@@ -44,6 +44,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 12:13 UTC: restored two-CTA ownership while inferring MMAv5
+  descriptor-view encodings. A leading-unit slice over a lifted two-CTA MMAv5
+  view can move the CTA ownership basis out of `block` and into trailing
+  row/column bases; `tryMakeTMemViewEncoding` now tries to re-home that
+  full-extent trailing basis back into `block` before giving up, and no longer
+  falls back to a one-CTA encoding for a two-CTA source view. This promotes the
+  `mmav5_twocta, N=128, auto` higher-rank dim0 slice row, moves the
+  `N=256, 32x32b` row to the real TMEM-capacity boundary, and leaves the
+  `N=64, 16x128b` row as the remaining clean register-layout mismatch.
+  Validation: `make -j8`, Python compile, `git diff --check`, MMAv5
+  higher-rank descriptor selector (`13 passed`), and the direct row-half
+  replay selector (`6 passed`). A broader split-4
+  `ldst_twocta_descriptor` selector also passed across all shards (`9/5/19/11`
+  passed, expected skips only).
 - 2026-04-17 12:00 UTC: promoted pure rank-2 two-CTA row-half `ld/st`
   descriptor views for block-backed and MMAv5 TMEM roots. The replay recognizer now
   admits exactly one direct row-half slice over a two-CTA root, and

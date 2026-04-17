@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:13 UTC MMAv5 higher-rank two-CTA descriptor-view
+  inference now preserves CTA ownership instead of silently degrading to a
+  one-CTA view encoding. A leading-unit slice can leave `block` empty while
+  preserving the former block basis as a trailing full-extent row/column basis;
+  `tryMakeTMemViewEncoding` now detects that case, moves the basis back into
+  `block`, removes duplicate trailing bases, and retries two-CTA encoding
+  before reporting unsupported. For two-CTA source views, the old one-CTA
+  collapsed fallback is now disabled. This promotes
+  `mmav5_twocta, N=128, auto` in the higher-rank dim0-slice matrix; the
+  `mmav5_twocta, N=256, 32x32b` row is reclassified as the true TMEM OOR
+  boundary (`Required: 1024`, limit `512`), and
+  `mmav5_twocta, N=64, 16x128b` remains a clean unsupported register-layout
+  mismatch. Validation: `make -j8`; Python compile; `git diff --check`;
+  MMAv5 higher-rank descriptor selector (`13 passed`); direct row-half replay
+  selector (`6 passed`); split-4 `ldst_twocta_descriptor` selector across the
+  four GPUs (`9/5/19/11` passed, expected skips only).
+
 - Latest: 2026-04-17 12:00 UTC pure rank-2 two-CTA row-half `ld/st`
   descriptor views are now replayed RMW support for block-backed and MMAv5
   TMEM roots.

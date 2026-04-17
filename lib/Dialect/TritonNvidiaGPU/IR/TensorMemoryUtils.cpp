@@ -6309,6 +6309,80 @@ tryMakeTMemViewEncoding(MLIRContext *ctx, LinearLayout ll, bool twoCTAs,
   ll = LinearLayout(ll.getBases(), canonicalOutDims, ll.isSurjective());
   if (auto enc = tryMakeTensorMemoryLinearEncoding(ctx, ll, twoCTAs, error))
     return enc;
+  auto tryMakeOwnershipPreferred = [&]() {
+    if (!twoCTAs || !hadBlock || !ll.hasInDim(kBlock))
+      return std::optional<TensorMemoryLinearEncodingAttr>();
+    auto bases = ll.getBases();
+    auto blockIt = bases.find(kBlock);
+    if (blockIt == bases.end())
+      return std::optional<TensorMemoryLinearEncodingAttr>();
+
+    bool changed = false;
+    if (blockIt->second.empty()) {
+      for (StringAttr dim : {kRow, kCol}) {
+        auto dimIt = bases.find(dim);
+        if (dimIt == bases.end() || dimIt->second.empty())
+          continue;
+        ArrayRef<int32_t> candidate = dimIt->second.back();
+        int nonZeroDim = -1;
+        bool valid = true;
+        for (auto [idx, value] : llvm::enumerate(candidate)) {
+          if (value == 0)
+            continue;
+          if (value < 0 || nonZeroDim >= 0) {
+            valid = false;
+            break;
+          }
+          nonZeroDim = static_cast<int>(idx);
+        }
+        if (!valid || nonZeroDim < 0)
+          continue;
+        auto outDims = llvm::to_vector(ll.getOutDimNames());
+        if (static_cast<size_t>(nonZeroDim) >= outDims.size())
+          continue;
+        int32_t dimSize = ll.getOutDimSize(outDims[nonZeroDim]);
+        if (candidate[nonZeroDim] * 2 != dimSize)
+          continue;
+        blockIt->second.push_back(candidate.vec());
+        dimIt->second.pop_back();
+        changed = true;
+        break;
+      }
+    }
+    for (StringAttr dim : {kRow, kCol}) {
+      auto dimIt = bases.find(dim);
+      if (dimIt == bases.end() || dimIt->second.empty())
+        continue;
+      while (!dimIt->second.empty()) {
+        ArrayRef<int32_t> candidate = dimIt->second.back();
+        bool duplicatesBlock =
+            !llvm::all_of(candidate,
+                          [](int32_t value) { return value == 0; }) &&
+            llvm::any_of(blockIt->second, [&](ArrayRef<int32_t> blockBasis) {
+              return candidate == blockBasis;
+            });
+        if (!duplicatesBlock)
+          break;
+        dimIt->second.pop_back();
+        changed = true;
+      }
+    }
+    if (!changed)
+      return std::optional<TensorMemoryLinearEncodingAttr>();
+
+    auto preferred =
+        LinearLayout(std::move(bases), ll.getOutDims(), ll.isSurjective());
+    std::string preferredError;
+    if (auto enc = tryMakeTensorMemoryLinearEncoding(
+            ctx, std::move(preferred), /*twoCTAs=*/true, &preferredError)) {
+      return std::optional<TensorMemoryLinearEncodingAttr>(*enc);
+    }
+    return std::optional<TensorMemoryLinearEncodingAttr>();
+  };
+  if (auto enc = tryMakeOwnershipPreferred())
+    return enc;
+  if (twoCTAs)
+    return std::nullopt;
   if (!hadBlock)
     return std::nullopt;
 

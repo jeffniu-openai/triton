@@ -4317,7 +4317,7 @@ LDST_TWOCTA_HIGHER_RANK_OOR_CASES = []
 
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
     ("block_two_ctas", variant) for variant in LDST_VARIANTS
-]
+] + [("mmav5_twocta", "32x32b")]
 
 LDST_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS = list(
     dict.fromkeys(
@@ -4358,6 +4358,7 @@ LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_POSITIVE_SPECS = list(
             ("f32", torch.float32, "block_two_ctas", 128, "auto"),
             ("f32", torch.float32, "block_two_ctas", 128, "16x128b"),
             ("f32", torch.float32, "block_two_ctas", 128, "16x256b"),
+            ("f32", torch.float32, "mmav5_twocta", 128, "auto"),
         ] + [
             ("f32", torch.float32, "block_two_ctas", 64, "16x128b"),
             ("i32", torch.int32, "block_two_ctas", 128, "32x32b"),
@@ -4389,9 +4390,7 @@ LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES = [
 ]
 
 LDST_TWOCTA_MMAV5_HIGHER_RANK_UNSUPPORTED_CASES = [
-    ("mmav5_twocta", 128, "auto"),
     ("mmav5_twocta", 64, "16x128b"),
-    ("mmav5_twocta", 256, "32x32b"),
 ]
 
 LDST_DIRECT_HIGHER_RANK_CLEAN_ERROR_CASES = [

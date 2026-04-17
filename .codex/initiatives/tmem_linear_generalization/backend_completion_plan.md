@@ -1120,6 +1120,14 @@ Progress:
   the existing split/join RMW. This removes the stale clean negative without
   reopening the unsafe generic direct split that exposed the CTA block-base
   bit as an ordinary row bit.
+- 2026-04-17 12:13 UTC: restored two-CTA ownership during MMAv5
+  descriptor-view encoding inference. When a leading-unit slice moves a
+  source block basis into a trailing full-extent row/column basis, the backend
+  now re-homes that basis into `block` and retries exact two-CTA encoding
+  rather than falling through to a one-CTA layout. This promotes the
+  `mmav5_twocta, N=128, auto` higher-rank dim0-slice row and reclassifies the
+  `N=256, 32x32b` row as true TMEM OOR; the `N=64, 16x128b` row remains a
+  clean register-layout frontier.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

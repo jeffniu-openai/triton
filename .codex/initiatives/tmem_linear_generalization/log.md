@@ -22958,3 +22958,54 @@ Open after this slice:
   - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 12:13 UTC: MMAv5 descriptor views preserve two-CTA ownership
+
+- Starting point: `codex/tmem` at `fc1096053`.
+- Change:
+  - taught `tryMakeTMemViewEncoding(...)` to try an ownership-preferred
+    two-CTA encoding when descriptor-view inference preserves the source
+    block dimension but leaves the `block` basis empty;
+  - the recovery looks for a trailing full-extent row/column basis whose step
+    is half of the corresponding output dimension, moves that basis back into
+    `block`, removes duplicate trailing bases, and retries exact two-CTA
+    encoding;
+  - for source views that began two-CTA, the helper no longer falls through to
+    the old one-CTA block-collapse fallback after the two-CTA attempts fail;
+  - promoted the `mmav5_twocta, N=128, auto` higher-rank dim0-slice runtime row,
+    moved the `N=256, 32x32b` row to the OOR table, and kept the
+    `N=64, 16x128b` row in the clean unsupported MMAv5 bucket.
+- Finding:
+  - a leading-unit slice over the lifted MMAv5 two-CTA layout can convert the
+    CTA ownership bit into an ordinary trailing basis. The old fallback then
+    produced a one-CTA register layout, which later failed with `Layout has 1
+    CTAs per CGA, but the context requires 2 CTAs per CGA`.
+  - `N=256, 32x32b` is not a layout-support miss after ownership is restored;
+    it reaches tensor-memory allocation and correctly reports the 1024-byte
+    requirement against the 512-byte hardware limit.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-mmav5-higher-selector
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_higher_rank_dim0_slice or
+    ldst_twocta_mmav5_descriptor_higher_rank'`
+    (`13 passed, 1584 deselected in 49.50s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-rowhalf-direct-after-mmav5-view
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_direct_half_rows_positive'`
+    (`6 passed, 1591 deselected in 29.75s`);
+  - split-4 broader selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-twocta-desc-broad
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short --splits 4
+    --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor'`
+    (groups: `9 passed, 12 skipped`; `5 passed, 16 skipped`; `19 passed, 2
+    skipped`; `11 passed, 10 skipped`; all expected skips).
