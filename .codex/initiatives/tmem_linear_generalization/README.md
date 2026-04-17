@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:10 UTC: re-probed the single-CTA identity high-quadrant
+  `32x32` descriptor-view `ld/st` boundary. Moving the already-lowered row
+  origin from the TMEM base to packet offsets, scaling it into packet-row
+  units, and borrowing the root support query did not produce correct code:
+  the variants updated the top-right footprint, row-16 footprint, or faulted
+  with misaligned-address packets. All temporary edits were removed. This
+  remains a real warp-row-anchor / packet-footprint planner boundary rather
+  than a stale row-origin base-offset bug.
 - 2026-04-17 06:51 UTC: moved the row-zero lifted reinterpret query-type
   rescue guard from LLVM lowering into `TensorMemoryUtils` as
   `disallowTMemLdStQueryTypeRescue(...)`. Lowering no longer inspects zero

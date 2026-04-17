@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:10 UTC re-probed the single-CTA identity
+  high-quadrant `32x32` descriptor-view `ld/st` boundary beyond the earlier
+  base-offset tweak. Three temporary variants were tried and removed: moving
+  the already-lowered row origin from the memdesc base to packet offsets,
+  scaling that logical row origin into packet-row units, and borrowing the
+  root descriptor support query while narrowing the 32x32 scalarization guard.
+  They respectively updated the top-right footprint, row-16 footprint, or
+  faulted with misaligned-address packets. The tree is back to the clean
+  baseline. Treat this row as requiring a real warp-row-anchor/materialized
+  packet-footprint planner, not a base/offset rescue.
+
 - Latest: 2026-04-17 06:51 UTC row-zero lifted reinterpret query-type rescue
   is now backend-owned. `TensorMemoryUtils` exposes
   `disallowTMemLdStQueryTypeRescue(...)`, and

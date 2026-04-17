@@ -21392,3 +21392,28 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.76s`);
   - `git diff --check`.
+
+## 2026-04-17 07:10 UTC: re-probed identity high-quadrant ld/st row-anchor boundary
+
+- Starting point: `codex/tmem` at `3d864ee23`.
+- Probe:
+  - temporarily moved the already-lowered high-quadrant row origin out of the
+    memdesc base and into direct `tcgen05.ld/st` packet offsets. The emitted
+    `16x32bx2` packet became column-base plus row64 immediate and still
+    updated the top-right footprint (`2048` mismatches).
+  - scaled the logical row origin into packet-row units. The emitted row16
+    immediate updated row 16 instead of the target row 64 (`2048`
+    mismatches).
+  - temporarily borrowed the root descriptor support query and narrowed the
+    broad non-zero-origin 32x32 scalarization guard. The selected 32x32
+    packets carried row16 immediates without materialized warp row anchors and
+    faulted with CUDA misaligned-address.
+- Result:
+  - all temporary source edits and the temporary Python probe file were
+    removed;
+  - this row remains a real warp-row-anchor / packet-footprint planner
+    boundary. Do not retry base-only or static-offset-only rescues.
+- Validation:
+  - `make -j8` after each C++ probe;
+  - exact manual runtime probes for the identity high-quadrant kernel;
+  - final tree returned to clean `git status`.
