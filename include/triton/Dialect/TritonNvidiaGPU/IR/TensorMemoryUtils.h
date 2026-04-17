@@ -441,6 +441,10 @@ bool isUnsupportedDirectTMemLdStDescriptorView(
 std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
     Value memDesc, TMemAccessAtom atom, unsigned numWarps);
 
+std::optional<std::string>
+getUnsupportedDirectTMemLdStVariantReason(Value memDesc, TMemAccessAtom atom,
+                                          unsigned numWarps);
+
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemViewType(Value memDesc, std::string *error = nullptr);
 

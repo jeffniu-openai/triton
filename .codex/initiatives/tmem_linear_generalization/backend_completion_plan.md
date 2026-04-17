@@ -1206,6 +1206,13 @@ Progress:
   materializes only 1. This confirms these rows are true footprint/mask
   boundaries, not stale descriptor enumeration gaps, while preserving the
   positive `32x32b.x1` path.
+- 2026-04-17 05:46 UTC: explicit `16x32bx2` two-CTA scales descriptor-view
+  `ld/st` now gets its atom-specific diagnostic from `TensorMemoryUtils`
+  instead of the Python binding. The backend checks that wider supported atoms
+  can realize the exact view and explains that `16x32bx2` needs a
+  lane-selected second-half offset, while this descriptor view carries the
+  split through register/message repetition. A 16-row-per-CTA support probe
+  did not promote the row and was reverted.
 - 2026-04-17 00:12 UTC: promoted block-backed two-CTA higher-rank index
   descriptor views. The old row-anchor diagnostic assumed anchors must appear
   as pure row bases; the successful schedules prove the anchors can be carried

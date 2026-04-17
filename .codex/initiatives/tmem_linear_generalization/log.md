@@ -20996,3 +20996,29 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_blockm64_reports_backend_error`
     (`4 passed in 5.58s`);
   - `git diff --check`.
+
+## 2026-04-17 05:46 UTC: moved scales-CGA 16x32bx2 reason to TensorMemoryUtils
+
+- Starting point: `codex/tmem` at `38b67870c`.
+- Change:
+  - added `getUnsupportedDirectTMemLdStVariantReason(...)` in the backend
+    TMEM utilities;
+  - moved the two-CTA tensor-memory-scales descriptor-view explicit
+    `16x32bx2` half-tile diagnostic out of `python/src/gluon_ir.cc`;
+  - tightened the runtime-matrix negative to assert the precise backend-owned
+    message.
+- Probe evidence:
+  - a temporary planner tweak treating the scales-CGA view as 16-row-per-CTA
+    did not promote support; it made the `16x32bx2` candidate disappear, so
+    the change was reverted before this implementation.
+- Validation:
+  - `make -j8`;
+  - exact `16x32bx2` clean-negative node (`1 passed in 2.68s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-scales-cga
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ldst_scales_descriptor_view_cga"`
+    (`9 passed, 1569 deselected in 20.90s`);
+  - py-compile for `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

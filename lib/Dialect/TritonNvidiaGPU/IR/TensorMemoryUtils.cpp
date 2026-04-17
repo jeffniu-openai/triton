@@ -3925,6 +3925,54 @@ std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
   return std::nullopt;
 }
 
+std::optional<std::string>
+getUnsupportedDirectTMemLdStVariantReason(Value memDesc, TMemAccessAtom atom,
+                                          unsigned numWarps) {
+  if (auto reason =
+          getUnsupportedDirectTMemLdStAtomFootprintReason(memDesc, atom,
+                                                          numWarps)) {
+    return reason;
+  }
+
+  auto memDescTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (atom != TMemAccessAtom::I16x32bx2 || numWarps != 4 || !memDescTy ||
+      memDescTy.getRank() != 2 || memDescTy.getElementTypeBitWidth() != 8 ||
+      !getTMemScalesRootEncoding(memDesc)) {
+    return std::nullopt;
+  }
+
+  std::string queryError;
+  auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
+      memDesc, /*preserveNonCanonicalView=*/true, &queryError);
+  if (failed(maybeQuery))
+    return std::nullopt;
+  auto rowPlan =
+      getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy, *maybeQuery);
+  if (!rowPlan)
+    rowPlan = getBackingTMemLdStRowPlan(memDesc);
+  if (!rowPlan)
+    rowPlan = getTMemLdStRowPlan(maybeQuery->layout);
+
+  auto i16x32bx2Layout = getDistributedLayoutForTmemLdSt(
+      memDescTy, TMemAccessAtom::I16x32bx2, numWarps, rowPlan,
+      maybeQuery->layout);
+  if (i16x32bx2Layout)
+    return std::nullopt;
+
+  auto i32x32bLayout = getDistributedLayoutForTmemLdSt(
+      memDescTy, TMemAccessAtom::I32x32b, numWarps, rowPlan,
+      maybeQuery->layout);
+  if (!i32x32bLayout)
+    return std::nullopt;
+
+  return std::string(
+      "tcgen05.ld/st.16x32bx2 requires the half-tile split to be a "
+      "lane-selected second-half offset. This descriptor view places that "
+      "split in register/message repetition, so the exact view is directly "
+      "realizable by instr_variant=\"32x32b\" or by the wider n-sharded "
+      "scale atoms, but not by 16x32bx2.");
+}
+
 static bool isTMemCopy4x256RefreshPhysicalBitcastLayout(MemDescType memTy) {
   if (!memTy || memTy.getRank() != 2 ||
       memTy.getElementTypeBitWidth() != 8 || memTy.getShape()[0] != 32 ||

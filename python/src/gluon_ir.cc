@@ -2621,8 +2621,7 @@ void init_gluon_ir(py::module &&m) {
       "get_tmem_ldst_unsupported_reason_from_memdesc_for_variant",
       [](Value memDesc, unsigned numWarps,
          const std::string &atomName) -> py::object {
-        auto memDescTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
-        if (!memDescTy)
+        if (!isa<ttg::MemDescType>(memDesc.getType()))
           throw std::invalid_argument("expected a memdesc value");
         std::string reason;
         if (ttng::isUnsupportedDirectTMemLdStDescriptorView(memDesc, &reason) &&
@@ -2640,50 +2639,12 @@ void init_gluon_ir(py::module &&m) {
                 .Case("32x32b_splitn", ttng::TMemAccessAtom::I16x32bx2)
                 .Default(std::nullopt);
         if (maybeAtom) {
-          if (auto atomReason =
-                  ttng::getUnsupportedDirectTMemLdStAtomFootprintReason(
-                      memDesc, *maybeAtom, numWarps)) {
+          if (auto atomReason = ttng::getUnsupportedDirectTMemLdStVariantReason(
+                  memDesc, *maybeAtom, numWarps)) {
             return py::str(*atomReason);
           }
         }
-
-        if (atomName != "16x32bx2" || numWarps != 4 ||
-            memDescTy.getRank() != 2 || memDescTy.getElementTypeBitWidth() != 8 ||
-            !ttng::getTMemScalesRootEncoding(memDesc)) {
-          return py::none();
-        }
-
-        std::string queryError;
-        auto maybeQuery = ttng::inferStandaloneTMemLdStQueryLayout(
-            memDesc, /*preserveNonCanonicalView=*/true, &queryError);
-        if (failed(maybeQuery))
-          return py::none();
-        auto rowPlan =
-            ttng::getTMemLdStRowPlanForQueryLayout(memDesc, memDescTy,
-                                                   *maybeQuery);
-        if (!rowPlan)
-          rowPlan = ttng::getBackingTMemLdStRowPlan(memDesc);
-        if (!rowPlan)
-          rowPlan = ttng::getTMemLdStRowPlan(maybeQuery->layout);
-
-        auto i16x32bx2Layout = ttng::getDistributedLayoutForTmemLdSt(
-            memDescTy, ttng::TMemAccessAtom::I16x32bx2, numWarps, rowPlan,
-            maybeQuery->layout);
-        if (i16x32bx2Layout)
-          return py::none();
-
-        auto i32x32bLayout = ttng::getDistributedLayoutForTmemLdSt(
-            memDescTy, ttng::TMemAccessAtom::I32x32b, numWarps, rowPlan,
-            maybeQuery->layout);
-        if (!i32x32bLayout)
-          return py::none();
-
-        return py::str(
-            "tcgen05.ld/st.16x32bx2 requires the half-tile split to be a "
-            "lane-selected second-half offset. This descriptor view places "
-            "that split in register/message repetition, so the exact view is "
-            "directly realizable by instr_variant=\"32x32b\" or by the wider "
-            "n-sharded scale atoms, but not by 16x32bx2.");
+        return py::none();
       });
 
   m.def(

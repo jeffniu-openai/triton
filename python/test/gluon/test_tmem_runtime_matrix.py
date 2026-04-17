@@ -5179,7 +5179,7 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
         2,
         ((1, 0),),
         "16x32bx2",
-        "TMEM layout 'constexpr[16x32bx2]' unsupported for descriptor view",
+        "tcgen05.ld/st.16x32bx2 requires the half-tile split to be a lane-selected second-half offset",
     ),
 ]
 

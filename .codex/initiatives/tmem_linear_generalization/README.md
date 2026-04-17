@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:46 UTC: moved the explicit `16x32bx2` two-CTA
+  tensor-memory-scales descriptor-view `ld/st` diagnostic out of the Python
+  binding and into `TensorMemoryUtils`. The new
+  `getUnsupportedDirectTMemLdStVariantReason(...)` first preserves atom
+  footprint diagnostics, then explains the scales-CGA half-tile boundary: this
+  view is directly realizable by `32x32b` or wider n-sharded scale atoms, but
+  not by `16x32bx2` because that atom requires the half-tile split as a
+  lane-selected second-half offset. A speculative planner probe that tried to
+  treat the view as 16-row-per-CTA did not promote support and was reverted.
+  Validation: `make -j8`, exact `16x32bx2` clean negative (`1 passed`), full
+  `ldst_scales_descriptor_view_cga` selector (`9 passed, 1569 deselected`),
+  py-compile for `test_tmem_runtime_matrix.py`, and `git diff --check`.
 - 2026-04-17 05:37 UTC: removed the frontend `tcgen05_mma_scaled`
   `TensorMemoryLayout` blockM=64 assertion and pinned that this unsupported
   ISA shape now reaches the backend verifier. The new runtime-matrix negative

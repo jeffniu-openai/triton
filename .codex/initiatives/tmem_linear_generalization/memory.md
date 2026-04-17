@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:46 UTC scales-CGA `16x32bx2` diagnostic migration:
+  moved the explicit `16x32bx2` two-CTA tensor-memory-scales descriptor-view
+  `ld/st` unsupported reason from `python/src/gluon_ir.cc` into
+  `TensorMemoryUtils` as `getUnsupportedDirectTMemLdStVariantReason(...)`.
+  The backend helper preserves existing atom-footprint messages and now owns
+  the half-tile split explanation for this view: `32x32b` and wider
+  n-sharded scale atoms can realize it, but `16x32bx2` cannot because its
+  native second-half offset requires a lane-selected split, not
+  register/message repetition. A speculative planner probe that tried to
+  classify the view as 16-row-per-CTA removed the candidate instead of
+  promoting support; it was reverted. Validation: `make -j8`, exact new
+  diagnostic case (`1 passed`), `ldst_scales_descriptor_view_cga`
+  (`9 passed, 1569 deselected`), py-compile, and `git diff --check`.
+
 - Latest: 2026-04-17 05:37 UTC scaled-MMAv5 blockM=64 frontend guard
   deletion: removed the Python `tcgen05_mma_scaled` assertion that rejected
   legacy `TensorMemoryLayout` blockM=64 before IR construction. The backend
