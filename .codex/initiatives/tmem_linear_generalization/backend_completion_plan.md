@@ -1170,6 +1170,11 @@ Progress:
   maps explicit higher-rank load layouts to the flattened support view before
   lowering. Reduction load remains separate because its result shape and
   hardware/software reduction contract are not just value replay.
+- 2026-04-17 13:40 UTC: direct higher-rank reduction load now completes the
+  same replay family. `_load_red()` flattens rank > 2 descriptors to the
+  rank-2 view, reuses the existing backend reduction-layout selector, and
+  reshapes both returned values (`[prod(leading), N]` and `[prod(leading)]`)
+  back to the higher-rank value and leading-dimension reduction shapes.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

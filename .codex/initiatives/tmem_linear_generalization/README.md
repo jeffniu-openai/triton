@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:40 UTC: direct higher-rank TMEM reduction load now replays
+  through the flattened descriptor view as well. The implementation reshapes
+  the full load result back to the descriptor shape and the reduction result
+  back to the leading dimensions, while still letting the rank-2 backend pick
+  the hardware/software reduction layout. Validation: `make -j8`, exact
+  higher-rank `load_min` replay row (`1 passed`), focused
+  `ldst_direct_higher_rank` selector (`4 passed`), Python compile, and
+  `git diff --check`.
 - 2026-04-17 13:37 UTC: promoted direct higher-rank TMEM
   `get_reg_layout()` for layouts whose flattened rank-2 register layout can be
   exactly unflattened over the original logical dimensions. The frontend now

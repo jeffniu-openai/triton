@@ -1147,6 +1147,31 @@ def tmem_ldst_direct_higher_rank_replay_kernel(in_ptr, out_ptr, layout: ttgl.con
 
 
 @gluon.jit
+def tmem_ldst_direct_higher_rank_load_red_kernel(in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr, M: ttgl.constexpr,
+                                                 N: ttgl.constexpr):
+    tmem = allocate_tensor_memory(ttgl.float32, [2, M, N], layout)
+    reg_layout: ttgl.constexpr = tmem.get_reg_layout()
+    b_layout: ttgl.constexpr = ttgl.SliceLayout(1, ttgl.SliceLayout(2, reg_layout))
+    m_layout: ttgl.constexpr = ttgl.SliceLayout(0, ttgl.SliceLayout(2, reg_layout))
+    n_layout: ttgl.constexpr = ttgl.SliceLayout(0, ttgl.SliceLayout(1, reg_layout))
+    offs_b = ttgl.arange(0, 2, b_layout)[:, None, None]
+    offs_m = ttgl.arange(0, M, m_layout)[None, :, None]
+    offs_n = ttgl.arange(0, N, n_layout)[None, None, :]
+    offs = offs_b * M * N + offs_m * N + offs_n
+    value = ttgl.load(in_ptr + offs)
+    tmem.store(ttgl.convert_layout(value, reg_layout))
+
+    out, reduced = tmem.load_min()
+    ttgl.store(out_ptr + offs, ttgl.convert_layout(out, reg_layout))
+
+    red_layout: ttgl.constexpr = ttgl.BlockedLayout([1, 1], [1, 32], [1, 8], [1, 0])
+    red_b = ttgl.arange(0, 2, ttgl.SliceLayout(1, red_layout))[:, None]
+    red_m = ttgl.arange(0, M, ttgl.SliceLayout(0, red_layout))[None, :]
+    red_offs = red_b * M + red_m
+    ttgl.store(red_ptr + red_offs, ttgl.convert_layout(reduced, red_layout))
+
+
+@gluon.jit
 def tmem_ldst_blocked_fallback_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
     M: ttgl.constexpr = 128
     N: ttgl.constexpr = 128
@@ -7114,6 +7139,38 @@ def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_store_replay_positive(
     observed_opcodes = [op for op, _ in ops]
     assert any(op.startswith("tcgen05.st.sync.aligned.32x32b") for op in observed_opcodes)
     assert any(op.startswith("tcgen05.ld.sync.aligned.32x32b") for op in observed_opcodes)
+    assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_ldst_direct_higher_rank_load_red_replay_positive():
+    m = 128
+    n = 128
+    layout = _lift_tmem_layout(LDST_LAYOUTS["identity"](n), [2])
+    inp = torch.arange(2 * m * n, dtype=torch.float32, device="cuda").reshape(2, m, n)
+    out = torch.empty_like(inp)
+    red = torch.empty((2, m), dtype=torch.float32, device="cuda")
+
+    compiled = tmem_ldst_direct_higher_rank_load_red_kernel[(1, )](
+        inp, out, red, layout, m, n, num_warps=8
+    )
+    torch.testing.assert_close(out, inp, atol=0, rtol=0)
+    torch.testing.assert_close(red, torch.min(inp, dim=2).values, atol=0, rtol=0)
+
+    ptx_red_ops = [
+        op
+        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if ".ld.red." in op
+    ]
+    llir_red_ops = [
+        op
+        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
+        if ".ld.red." in op
+    ]
+    assert ptx_red_ops == llir_red_ops
+    assert ptx_red_ops
+    assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b") for op in ptx_red_ops)
+    assert all(".min" in op for op in ptx_red_ops)
     assert "ttg.memdesc_reshape" in compiled.asm["ttgir"]
 
 

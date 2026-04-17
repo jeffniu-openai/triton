@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:40 UTC direct higher-rank TMEM reduction load now
+  uses the same flattened descriptor replay path. For rank > 2,
+  `_load_red()` reshapes the descriptor to `[prod(leading), N]`, maps any
+  explicit higher-rank `DistributedLinearLayout` to that flat view, delegates
+  reduction layout selection to the existing rank-2 backend path, then
+  reshapes the full load result to the original descriptor shape and the
+  reduction result to `shape[:-1]`. Validation: `make -j8`; exact higher-rank
+  `load_min` replay row (`1 passed`); focused `ldst_direct_higher_rank`
+  selector (`4 passed, 1588 deselected`); Python compile; `git diff --check`.
+
 - Latest: 2026-04-17 13:37 UTC direct higher-rank TMEM
   `get_reg_layout()` is now positive for the flattened replay family. The
   returned `DistributedLinearLayout` is derived by asking the existing rank-2

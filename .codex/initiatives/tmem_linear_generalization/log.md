@@ -23379,6 +23379,47 @@ Open after this slice:
   - continue Phase 4 direct `ld/st` packet-footprint work or Phase 2 copy
     scheduler work.
 
+## 2026-04-17 13:40 UTC: direct higher-rank reduction replay
+
+- Starting point: `codex/tmem` at `b53d15d85`.
+- Change:
+  - factored direct higher-rank explicit-layout flattening into a shared
+    descriptor helper;
+  - taught `_load_red()` to replay rank > 2 descriptors through the flattened
+    rank-2 view, delegate reduction layout selection to the existing backend
+    path, and reshape both returned tensors back to the higher-rank full value
+    and leading-dimension reduction shape;
+  - added a runtime row proving `load_min()` on a `[2, M, N]` direct TMEM
+    descriptor uses hardware `tcgen05.ld.red` at 8 warps and returns the
+    expected `[2, M]` reductions.
+- Validation:
+  - `make -j8`;
+  - exact higher-rank reduction row:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-hr-red3
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_load_red_replay_positive`
+    (`1 passed`);
+  - focused family selector:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-direct-hr-family2
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_direct_higher_rank'`
+    (`4 passed, 1588 deselected`);
+  - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by active `jeffniu-openai` auth under the current
+    `Mogball` repo instructions.
+- Next:
+  - commit this checkpoint locally;
+  - direct higher-rank value/reg-layout/reduction replay is now green for the
+    current representative family, so move back to packet-footprint and copy
+    scheduler frontiers.
+
 ## 2026-04-17 12:58 UTC: scaled accumulator tile requirement cleanup
 
 - Starting point: `codex/tmem` at `38750e84b`.

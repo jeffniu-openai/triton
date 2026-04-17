@@ -502,6 +502,21 @@ class tensor_memory_descriptor(base_value):
             rows *= dim
         return self.reshape((rows, self.shape[-1]), _semantic=_semantic)
 
+    def _flatten_ldst_reg_layout(self, layout, flat_shape):
+        if layout is None:
+            return None
+        flat_layout = _unwrap_if_constexpr(layout)
+        if isinstance(flat_layout, DistributedLinearLayout) and flat_layout.rank == len(self.shape):
+            flat_layout = _reshape_leading_distributed_linear_layout(
+                flat_layout, list(self.shape), list(flat_shape)
+            )
+        if getattr(flat_layout, "rank", None) != len(flat_shape):
+            raise ValueError(
+                "direct higher-rank TMEM layout must either be a rank-2 layout for the flattened descriptor view "
+                "or a DistributedLinearLayout returned by get_reg_layout() for the higher-rank descriptor"
+            )
+        return flat_layout
+
     @builtin
     def get_reg_layout(self, num_warps=None, instr_variant="auto", _semantic: GluonSemantic = None, _generator=None):
         """
@@ -580,20 +595,8 @@ class tensor_memory_descriptor(base_value):
             tensor: A distributed tensor containing the loaded data.
         """
         if len(self.shape) != 2:
-            flat_layout = layout
             flat = self._flatten_ldst_view(_semantic=_semantic)
-            if flat_layout is not None:
-                flat_layout = _unwrap_if_constexpr(flat_layout)
-                if isinstance(flat_layout, DistributedLinearLayout) and flat_layout.rank == len(self.shape):
-                    flat_layout = _reshape_leading_distributed_linear_layout(
-                        flat_layout, list(self.shape), list(flat.shape)
-                    )
-                if getattr(flat_layout, "rank", None) != len(flat.shape):
-                    raise ValueError(
-                        "direct higher-rank TMEM load layout must either be a rank-2 layout for the flattened "
-                        "descriptor view or a DistributedLinearLayout returned by get_reg_layout() for the "
-                        "higher-rank descriptor"
-                    )
+            flat_layout = self._flatten_ldst_reg_layout(layout, flat.shape)
             loaded = flat.load(layout=flat_layout, _semantic=_semantic, _generator=_generator)
             return loaded.reshape(self.shape, _semantic=_semantic)
 
@@ -615,6 +618,15 @@ class tensor_memory_descriptor(base_value):
         #   red_op: MIN/MAX reduction operation
         #   abs (bool): If True, reduce absolute values.
         #   propagate_nan (NONE): If ALL, propagate NaN in specified reduction operation.
+        if len(self.shape) != 2:
+            flat = self._flatten_ldst_view(_semantic=_semantic)
+            flat_layout = self._flatten_ldst_reg_layout(layout, flat.shape)
+            result, reduced = flat._load_red(flat_layout, red_op, abs, propagate_nan, _semantic, _generator)
+            return (
+                result.reshape(self.shape, _semantic=_semantic),
+                reduced.reshape(self.shape[:-1], _semantic=_semantic),
+            )
+
         self._require_rank2_tmem_ldst("reduction load")
         abs_flag = _unwrap_if_constexpr(abs)
         propagate_nan = _unwrap_if_constexpr(propagate_nan)
