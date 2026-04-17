@@ -3685,6 +3685,16 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-17 08:35 UTC: explicit non-M64 f32 non-scales `ld.red` layouts now
+  have a software reduction fallback. The Gluon TMEM API asks the backend
+  whether the selected register layout is directly `tcgen05.ld.red`-supported;
+  unsupported direct-reduction layouts use a normal TMEM load plus
+  layout-aware `ttgl.reduce(axis=1)`, preserving `abs` and NaN propagation.
+  Hardware-supported layouts still emit `tcgen05.ld.red`. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, py-compile, explicit
+  n-sharded software selector (`12 passed`), broader reduction selector
+  (`77 passed`), core reduction selector (`43 passed`), and
+  `git diff --check`.
 - 2026-04-17 08:27 UTC: `ld.red` reduction-layout support now carries typed
   unsupported reason kinds. `TMemLoadReductionLayoutSupport` still preserves
   the existing diagnostic text, but future software-reduction planning can

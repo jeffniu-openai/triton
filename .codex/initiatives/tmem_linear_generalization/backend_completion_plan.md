@@ -1352,6 +1352,14 @@ Progress:
   distinguish M-sharded register streams, unsupported N thread bases,
   missing lane splits, and partial/non-contiguous N coverage without
   reparsing text.
+- 2026-04-17 08:35 UTC: explicit non-M64 f32 non-scales reduction loads now
+  use that backend support predicate to choose between hardware
+  `tcgen05.ld.red` and a software fallback. Unsupported direct-reduction
+  register layouts lower as normal TMEM loads followed by layout-aware
+  `ttgl.reduce(axis=1)`, preserving `abs` and NaN-propagation semantics. The
+  former explicit `16x64b`/`16x128b`/`16x256b` clean negatives are positive
+  software-reduction rows; non-f32 and tensor-memory-scales reductions remain
+  clean unsupported.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

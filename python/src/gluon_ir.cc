@@ -2291,6 +2291,14 @@ void init_gluon_ir(py::module &&m) {
         return py::none();
       });
 
+  m.def("is_tmem_load_reduction_reg_layout_supported", [](Type resultTy) {
+    auto rankedTy = dyn_cast<RankedTensorType>(resultTy);
+    if (!rankedTy)
+      throw std::invalid_argument("expected a ranked tensor result type");
+    return static_cast<bool>(ttng::getTmemLoadReductionLayoutSupport(
+        rankedTy, ttg::toLinearLayout(rankedTy)));
+  });
+
   m.def(
       "make_cga_layout",
       [](std::vector<unsigned> ctasPerCga, std::vector<unsigned> ctaSplitNum,

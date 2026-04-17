@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:35 UTC explicit non-M64 `ld.red` register layouts now
+  have a software reduction path. The Gluon TMEM API asks the backend whether
+  the selected f32 non-scales reduction register layout is directly
+  `tcgen05.ld.red`-supported; unsupported direct-reduction layouts fall back
+  to a normal TMEM load plus layout-aware `ttgl.reduce(axis=1)`, preserving
+  `abs` and NaN propagation semantics. Hardware-supported reductions still
+  emit `tcgen05.ld.red`. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile, explicit n-sharded software selector (`12
+  passed`), broader runtime-matrix reduction selector (`77 passed`), core
+  reduction selector (`43 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:27 UTC `ld.red` support failures now carry typed
   backend reason kinds. `TMemLoadReductionLayoutSupport` still exposes the
   same user-facing diagnostic string, but also records a

@@ -8131,28 +8131,38 @@ def test_tmem_runtime_matrix_ld_red_explicit_compatible_non_identity_layouts_can
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("load_variant", ["16x64b", "16x128b", "16x256b"])
-def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_reports_clean_unsupported(
-    load_variant, use_abs, propagate_nan, red_op, capfd
+def test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_uses_software_reduce(
+    load_variant, use_abs, propagate_nan, red_op
 ):
     M = N = 128
     layout = _make_tmem_linear_layout(M, N)
     inp = torch.randn(M, N, dtype=torch.float32, device="cuda")
+    _seed_ld_red_nan_rows(inp, propagate_nan)
     out = torch.empty_like(inp)
     red = torch.empty(M, dtype=torch.float32, device="cuda")
 
-    with pytest.raises(Exception) as err:
-        tmem_ld_red_explicit_layout_kernel[(1, )](
-            inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
-        )
+    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
+        inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
+    )
 
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert "tmem_load reduction register layout is not directly supported by tcgen05.ld.red lowering" in text
-    assert "Direct tcgen05.ld.red lowering requires M to be unsharded" in text
-    assert "Reduction load layout shards the M dimension across register values" in text
-    assert "Got register layout" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan)
+    ptx_red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    llir_red_pairs = [
+        pair
+        for pair in _extract_tcgen05_opcode_offsets(compiled.asm["llir"], opcodes=("ld", ))
+        if ".ld.red." in pair[0]
+    ]
+    assert ptx_red_pairs == llir_red_pairs == []
+    ptx_ld_ops = [
+        op
+        for op, _ in _extract_tcgen05_opcode_offsets(compiled.asm["ptx"], opcodes=("ld", ))
+        if op.startswith("tcgen05.ld.sync.aligned.")
+    ]
+    assert ptx_ld_ops
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

@@ -21985,3 +21985,62 @@ Open after this slice:
     ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn"`
     (`45 passed, 1533 deselected in 13.23s`);
   - `git diff --check`.
+
+## 2026-04-17 08:35 UTC: explicit non-M64 ld.red software reduction fallback
+
+- Starting point: `codex/tmem` at `d904c012b`.
+- Change:
+  - added the pybind helper
+    `is_tmem_load_reduction_reg_layout_supported(...)`, which queries the
+    backend `TMemLoadReductionLayoutSupport` predicate for a candidate result
+    type;
+  - taught `tensor_memory_descriptor._load_red(...)` to preserve hardware
+    `tcgen05.ld.red` for supported f32 non-scales register layouts and to
+    lower unsupported direct-reduction register layouts as a normal TMEM load
+    followed by layout-aware `ttgl.reduce(axis=1)`;
+  - preserved `abs` and NaN-propagating min/max semantics in the software
+    reduction combiner;
+  - converted the explicit `16x64b`/`16x128b`/`16x256b` runtime-matrix rows
+    from clean negatives into positive software-reduction coverage;
+  - updated core reduction tests for rows that are now hardware-positive
+    through existing canonicalization and for the mixed-layout software path.
+- Boundary:
+  - non-f32 and tensor-memory-scales reduction diagnostics remain clean
+    unsupported;
+  - this is not a direct `tcgen05.ld.red` ISA promotion for the n-sharded
+    register layouts. It is the planned software fallback using the existing
+    linear-layout-aware reduction machinery to prove the cross-thread value
+    mapping.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-software-fallback
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_explicit_n_sharded_layout_uses_software_reduce`
+    (`12 passed in 12.15s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-software-broad
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_explicit_n_sharded_layout_uses_software_reduce or
+    ld_red_explicit_compatible_layout_variants or
+    ld_red_m64_splitn_linear_layout or
+    ld_red_m64_explicit_splitn_variants or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn or
+    ld_red_non_f32_contract_reports_clean_unsupported"` (`77 passed,
+    1501 deselected in 31.68s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-ldred-software-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k
+    "tmem_reduction_linear or tmem_reduction_linear_legacy_block_equiv_layout
+    or tmem_reduction_linear_former_clean_errors_are_supported or
+    tmem_reduction_linear_mixed_layout_uses_software_reduce"` (`43 passed,
+    17923 deselected in 3.53s`);
+  - `git diff --check`.

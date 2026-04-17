@@ -4963,7 +4963,17 @@ def tmem_reduction_i32_kernel(in_ptr, out_ptr, red_ptr, layout: ttgl.constexpr):
     ttgl.store(red_ptr + offs_1d, reduced)
 
 
-def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_warps, expect_hw_reduce=True):
+def _run_tmem_reduction_case(
+    layout,
+    M,
+    N,
+    red_op,
+    use_abs,
+    propagate_nan,
+    num_warps,
+    expect_hw_reduce=True,
+    expected_red_opcode_prefix="tcgen05.ld.red.sync.aligned.32x32b.x",
+):
     input_tensor = torch.randn(M, N, dtype=torch.float32, device="cuda")
 
     use_nan = propagate_nan == tl.PropagateNan.ALL
@@ -5009,7 +5019,8 @@ def _run_tmem_reduction_case(layout, M, N, red_op, use_abs, propagate_nan, num_w
         if propagate_nan == tl.PropagateNan.ALL:
             expected_modifier += ".NaN"
         expected_modifier += ".f32"
-        assert all(op.startswith("tcgen05.ld.red.sync.aligned.32x32b.x") for op in ptx_red_ops)
+        if expected_red_opcode_prefix is not None:
+            assert all(op.startswith(expected_red_opcode_prefix) for op in ptx_red_ops)
         assert all(expected_modifier in op for op in ptx_red_ops)
     else:
         assert not ptx_red_ops
@@ -5071,47 +5082,47 @@ def test_tmem_reduction_linear_legacy_block_equiv_layout(red_op, use_abs, propag
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize(
-    "layout, M, N, diag_substr",
+    "layout, M, N, expected_red_opcode_prefix",
     [
         (
             _make_tmem_linear_layout_m64(64),
             64,
             64,
-            "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible",
+            "tcgen05.ld.red.sync.aligned.16x32bx2.x",
         ),
         (
             _make_tmem_linear_layout_block(128, 64),
             128,
             64,
-            "TMEM layout '32x32b' unsupported for descriptor view",
+            "tcgen05.ld.red.sync.aligned.32x32b.x",
         ),
     ],
 )
-def test_tmem_reduction_linear_reports_clean_error(layout, M, N, diag_substr, capfd):
-    with pytest.raises(Exception) as err:
-        _run_tmem_reduction_case(layout, M, N, "min", False, tl.PropagateNan.NONE, num_warps=4)
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert diag_substr in text
+def test_tmem_reduction_linear_former_clean_errors_are_supported(layout, M, N, expected_red_opcode_prefix):
+    _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        "min",
+        False,
+        tl.PropagateNan.NONE,
+        num_warps=4,
+        expected_red_opcode_prefix=expected_red_opcode_prefix,
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-def test_tmem_reduction_linear_mixed_layout_reports_clean_error(capfd):
-    with pytest.raises(Exception) as err:
-        _run_tmem_reduction_case(
-            _make_tmem_linear_layout_mixed(128, 64),
-            128,
-            64,
-            "min",
-            False,
-            tl.PropagateNan.NONE,
-            num_warps=4,
-        )
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
-    assert "tmem.load(...)+tt.reduce(...)" in text
-    assert "tt.reduce" in text
+def test_tmem_reduction_linear_mixed_layout_uses_software_reduce():
+    _run_tmem_reduction_case(
+        _make_tmem_linear_layout_mixed(128, 64),
+        128,
+        64,
+        "min",
+        False,
+        tl.PropagateNan.NONE,
+        num_warps=4,
+        expect_hw_reduce=False,
+    )
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

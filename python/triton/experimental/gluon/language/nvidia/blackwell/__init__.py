@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from triton.experimental import gluon
 from triton.runtime.jit import constexpr_function
 from triton.experimental.gluon.language import _core as ttgl
+from triton.experimental.gluon.language import _math as ttgl_math
 from triton.experimental.gluon.language._core import builtin, base_type, base_value, _unwrap_if_constexpr
 from triton.experimental.gluon.language._layouts import DistributedLinearLayout
 from triton.experimental.gluon.language._semantic import _compute_tmem_reg_layout, _finalize_splitn_tmem_reg_layout
@@ -125,6 +126,17 @@ def _reduce_min_propagate_nan(a, b):
 @gluon.jit
 def _reduce_max_propagate_nan(a, b):
     return ttgl.where(a != a, a, ttgl.where(b != b, b, ttgl.maximum(a, b)))
+
+
+def _get_tmem_software_reduce_combine(red_op, propagate_nan):
+    propagate_nan = _unwrap_if_constexpr(propagate_nan)
+    if red_op == gluon_ir.TMEM_LOAD_REDUCE_MODIFIER.MIN:
+        if propagate_nan == ir.PROPAGATE_NAN.ALL:
+            return _reduce_min_propagate_nan
+        return _reduce_min_direct
+    if propagate_nan == ir.PROPAGATE_NAN.ALL:
+        return _reduce_max_propagate_nan
+    return _reduce_max_direct
 
 
 @dataclass(frozen=True, eq=True)
@@ -515,6 +527,19 @@ class tensor_memory_descriptor(base_value):
         ret_ty = ttgl.distributed_type(self.dtype, self.shape, layout)
         builder = _semantic.builder
         num_warps = builder.options.num_warps
+
+        if self.dtype.primitive_bitwidth == 32 and not isinstance(self.layout, TensorMemoryScalesLayout):
+            if not gluon_ir.is_tmem_load_reduction_reg_layout_supported(ret_ty.to_ir(builder)):
+                result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
+                reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
+                reduced = ttgl.reduce(
+                    reduce_input,
+                    axis=1,
+                    combine_fn=_get_tmem_software_reduce_combine(red_op, propagate_nan),
+                    _semantic=_semantic,
+                    _generator=_generator,
+                )
+                return result, reduced
 
         result, reduced, red_layout = builder.create_tmem_load(ret_ty.to_ir(builder), self.handle, red_op, abs_flag,
                                                                propagate_nan, num_warps)
