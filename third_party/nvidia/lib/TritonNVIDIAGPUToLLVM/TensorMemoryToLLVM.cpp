@@ -767,6 +767,7 @@ lowerTMemLdStFromTypes(
   };
   auto kRow = StringAttr::get(rewriter.getContext(), "row");
   auto kCol = StringAttr::get(rewriter.getContext(), "col");
+  auto kWarp = StringAttr::get(rewriter.getContext(), "warp");
   auto preferBackingRowPlanForDirectRootLoad =
       [&](MemDescType queryTy,
           std::optional<TMemLdStRowPlan> rowPlan,
@@ -790,7 +791,13 @@ lowerTMemLdStFromTypes(
     return backingPlan;
   };
   auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
-    return false;
+    if (!memDescValue)
+      return false;
+    auto regLayout = toLinearEncoding(regTy).getLinearLayout();
+    unsigned numWarps =
+        regLayout.hasInDim(kWarp) ? regLayout.getInDimSize(kWarp) : 4;
+    return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+        memDescValue, numWarps, /*desiredAtom=*/std::nullopt);
   }();
   bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
     if (!memDescValue ||

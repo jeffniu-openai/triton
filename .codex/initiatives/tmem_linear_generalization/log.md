@@ -21326,3 +21326,32 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.89s`);
   - `git diff --check`.
+
+## 2026-04-17 06:43 UTC: aligned lowering M64 query ordering
+
+- Starting point: `codex/tmem` at `f9be6c619`.
+- Change:
+  - changed `lowerTMemLdStFromTypes(...)` to derive the selected register
+    layout warp count and call
+    `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(...)`;
+  - removed the lowering-local hard-coded `false` query-ordering decision;
+  - kept support unchanged while making lowering and handle-aware
+    register-layout selection consume the same backend M64 predicate.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-lowering-query-order
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error"`
+    (`41 passed, 1537 deselected in 16.52s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-lowering-query-order-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 6.35s`);
+  - `git diff --check`.

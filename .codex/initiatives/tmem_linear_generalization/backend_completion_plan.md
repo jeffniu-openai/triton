@@ -139,6 +139,10 @@ Progress:
   descriptor-view exact-lowering requirement, and two-CTA int8
   broadcast/support-base fallback refusal used during register-layout
   selection.
+- 2026-04-17 06:43 UTC: wired `lowerTMemLdStFromTypes(...)` to the same
+  backend M64 query-ordering predicate, so lowering no longer has a
+  hard-coded raw-query-first decision that can diverge from handle-aware
+  register-layout selection.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:43 UTC: aligned LLVM lowering with the backend-owned M64
+  query-ordering predicate. `lowerTMemLdStFromTypes(...)` no longer keeps the
+  raw-query-first ordering hard-coded for all descriptor values; it asks
+  `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(...)`, using the warp
+  count from the selected register layout. Support is unchanged, but
+  register-layout selection and lowering now consume the same backend decision
+  for non-projected M64 split-N views. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused M64/multidim selector (`41 passed`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
 - 2026-04-17 06:40 UTC: moved the remaining Gluon register-layout fallback
   predicates for M64 query ordering, half-row descriptor views, and two-CTA
   int8 descriptor-view type-only fallback refusal into `TensorMemoryUtils`.

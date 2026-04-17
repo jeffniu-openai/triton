@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:43 UTC LLVM lowering now consumes the backend-owned
+  M64 query-ordering predicate. `lowerTMemLdStFromTypes(...)` derives the warp
+  count from the selected register layout and asks
+  `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(...)` instead of
+  hard-coding raw-query-first lowering. This keeps support unchanged while
+  making register-layout selection and lowering agree on when non-projected
+  M64 split-N views should try query-type lowering before exact raw-query
+  lowering. Validation: `make -j8`, direct `invalid.mlir` verifier,
+  `test_tmem_runtime_matrix.py -k "m64_splitn or ld_red_m64 or
+  ldst_descriptor_multidim_slice_positive or
+  ldst_descriptor_multidim_slice_identity_reports_clean_error"` (`41 passed`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 06:40 UTC the Gluon register-layout bridge no longer
   owns M64 query-ordering or descriptor-view type-only fallback predicates.
   `TensorMemoryUtils` now exposes
