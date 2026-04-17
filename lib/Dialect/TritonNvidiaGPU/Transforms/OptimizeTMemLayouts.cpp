@@ -384,6 +384,40 @@ matchReplayableHalfSliceView(Value memDesc) {
 
   SmallVector<TMemReplayHalfSliceStep> steps(reverseSteps.rbegin(),
                                              reverseSteps.rend());
+  if (steps.size() == 1 &&
+      steps.front().kind == TMemReplayHalfSliceStepKind::HalfSlice &&
+      steps.front().dim == 0 && gpu::getNumCTAs(baseTy.getEncoding()) != 1 &&
+      steps.front().srcShape.size() == 2) {
+    const TMemReplayHalfSliceStep halfSlice = steps.front();
+    int64_t rows = halfSlice.srcShape[0];
+    int64_t cols = halfSlice.srcShape[1];
+    if (rows <= 1 || rows % 2 != 0)
+      return std::nullopt;
+    SmallVector<int64_t> leadingShape{2, rows / 2, cols};
+    SmallVector<int64_t> unitLeadingShape{1, rows / 2, cols};
+    steps.clear();
+    steps.push_back(TMemReplayHalfSliceStep{
+        TMemReplayHalfSliceStepKind::Reshape,
+        halfSlice.srcShape,
+        leadingShape,
+        {},
+        0,
+        false});
+    steps.push_back(TMemReplayHalfSliceStep{
+        TMemReplayHalfSliceStepKind::HalfSlice,
+        leadingShape,
+        unitLeadingShape,
+        {},
+        0,
+        halfSlice.selectRHS});
+    steps.push_back(TMemReplayHalfSliceStep{
+        TMemReplayHalfSliceStepKind::Reshape,
+        unitLeadingShape,
+        halfSlice.dstShape,
+        {},
+        0,
+        false});
+  }
   return TMemReplayHalfSliceViewMatch{cur, std::move(steps)};
 }
 

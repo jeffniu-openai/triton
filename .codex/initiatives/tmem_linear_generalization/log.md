@@ -22910,3 +22910,50 @@ Open after this slice:
   - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 12:00 UTC: pure two-CTA row-half ld/st replay
+
+- Starting point: `codex/tmem` at `eb7d83109`.
+- Change:
+  - relaxed `isTMemLdStReplayableHalfSliceView(...)` only for the pure
+    rank-2 case where a two-CTA TMEM root has exactly one row-half slice;
+  - rewrote that pure two-CTA row-half match in `OptimizeTMemLayouts` as the
+    same leading-dimension replay shape used by lifted row-half views:
+    `[M, N] -> [2, M/2, N]`, select the requested unit leading half, then
+    reshape back to `[M/2, N]`;
+  - promoted the direct two-CTA block-backed row-half runtime rows from clean
+    unsupported to positive coverage.
+- Finding:
+  - the stale clean negative was not a true ISA boundary. A generic direct
+    split of the loaded `[256, N]` support tensor selected the CTA block-base
+    bit as if it were an ordinary row bit, but spelling the replay as an
+    explicit leading-dimension half matches the already-green lifted
+    descriptor-view semantics and updates rows `128..255` exactly.
+- Validation:
+  - `make -j8`;
+  - representative manual probe for `block_two_ctas, N=64, 16x128b`
+    (`maxdiff 0.0`, no surviving `ttg.memdesc_subslice`);
+  - exact direct row-half selector:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-rowhalf-direct-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_direct_half_rows_positive'`
+    (`3 passed, 1591 deselected`);
+  - neighboring lifted row-half selector:
+    `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-rowhalf-lifted-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_higher_rank_half_rows'`
+    (`5 passed, 1589 deselected`);
+  - combined direct/lifted row-half selector:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-rowhalf-combined
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'descriptor_direct_half_rows or descriptor_higher_rank_half_rows'`
+    (`17 passed, 1577 deselected`);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

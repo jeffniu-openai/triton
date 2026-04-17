@@ -286,13 +286,14 @@ getTMemLdStBlockedFallbackLayouts(MemDescType queryTy,
   return layouts;
 }
 
-static bool isReplayableTMemHalfSlice(gpu::MemDescSubsliceOp subslice) {
+static std::optional<unsigned>
+matchReplayableTMemHalfSliceDim(gpu::MemDescSubsliceOp subslice) {
   auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
   auto dstTy = dyn_cast<MemDescType>(subslice.getType());
   if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank())
-    return false;
+    return std::nullopt;
   if (subslice.getOffsets().size() != static_cast<size_t>(srcTy.getRank()))
-    return false;
+    return std::nullopt;
 
   std::optional<unsigned> changedDim;
   for (auto [dim, srcSize] : llvm::enumerate(srcTy.getShape())) {
@@ -301,14 +302,18 @@ static bool isReplayableTMemHalfSlice(gpu::MemDescSubsliceOp subslice) {
     if (dstSize == srcSize && offset == 0)
       continue;
     if (changedDim)
-      return false;
+      return std::nullopt;
     if (srcSize <= 1 || srcSize % 2 != 0 || dstSize != srcSize / 2)
-      return false;
+      return std::nullopt;
     if (offset != 0 && offset != dstSize)
-      return false;
+      return std::nullopt;
     changedDim = dim;
   }
-  return changedDim.has_value();
+  return changedDim;
+}
+
+static bool isReplayableTMemHalfSlice(gpu::MemDescSubsliceOp subslice) {
+  return matchReplayableTMemHalfSliceDim(subslice).has_value();
 }
 
 static std::optional<Value>
@@ -352,6 +357,7 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
     return false;
 
   unsigned halfSliceCount = 0;
+  std::optional<unsigned> pureHalfSliceDim;
   bool sawShapeTransform = false;
   SmallPtrSet<Value, 8> seen;
   Value cur = memDesc;
@@ -383,8 +389,10 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
       break;
     }
     if (auto subslice = cur.getDefiningOp<gpu::MemDescSubsliceOp>()) {
-      if (!isReplayableTMemHalfSlice(subslice))
+      auto halfSliceDim = matchReplayableTMemHalfSliceDim(subslice);
+      if (!halfSliceDim)
         return false;
+      pureHalfSliceDim = *halfSliceDim;
       ++halfSliceCount;
       cur = subslice.getSrc();
       continue;
@@ -399,10 +407,12 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
       isa<TensorMemoryScalesEncodingAttr>(baseTy.getEncoding()))
     return false;
 
-  // Pure rank-2 half-slice replay currently splits the loaded tensor directly
-  // along the sliced dimension. For two-CTA block layouts that tensor split
-  // selects the block-base bit, not the logical high row half.
-  if (!sawShapeTransform && getNumCTAs(baseTy.getEncoding()) != 1)
+  // Pure rank-2 two-CTA replay is only enabled for row halves. The optimizer
+  // lowers that case through the leading-dimension replay shape so it selects
+  // the CTA block half explicitly instead of exposing the block-base bit as an
+  // ordinary intra-CTA row split.
+  if (!sawShapeTransform && getNumCTAs(baseTy.getEncoding()) != 1 &&
+      (halfSliceCount != 1 || pureHalfSliceDim != 0))
     return false;
 
   return true;

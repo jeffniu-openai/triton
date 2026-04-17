@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 12:00 UTC: promoted pure rank-2 two-CTA row-half `ld/st`
+  descriptor views for block-backed TMEM roots. The replay recognizer now
+  admits exactly one direct row-half slice over a two-CTA root, and
+  `OptimizeTMemLayouts` lowers it through the same leading-dimension replay
+  shape that already handled lifted row-half views. This selects the CTA
+  block half explicitly instead of splitting the loaded tensor on the block
+  base as an ordinary row bit. Validation: `make -j8`, exact direct row-half
+  selector (`3 passed`), neighboring lifted row-half selector (`5 passed`),
+  combined direct/lifted row-half selector (`17 passed`), Python compile, and
+  `git diff --check`.
 - 2026-04-17 11:50 UTC: promoted the M64 two-CTA
   tensor-memory-scales descriptor-view `ld/st` row by replaying full-tile
   `memdesc_reshape`/`memdesc_trans` views through the directly supported root

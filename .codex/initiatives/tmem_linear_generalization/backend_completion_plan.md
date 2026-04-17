@@ -1113,6 +1113,13 @@ Progress:
   plus tensor transforms. The optimizer now has a shared full-view replay path
   and normalizes narrow scales root support layouts by compacting zero
   register bases before creating root `ttng.tmem_load` operations.
+- 2026-04-17 12:00 UTC: promoted pure rank-2 two-CTA row-half `ld/st`
+  descriptor views for block-backed roots. The recognizer now admits exactly
+  one direct row-half slice on a two-CTA root, and the optimizer lowers it via
+  an explicit leading-dimension replay shape (`[M,N] -> [2,M/2,N]`) before
+  the existing split/join RMW. This removes the stale clean negative without
+  reopening the unsafe generic direct split that exposed the CTA block-base
+  bit as an ordinary row bit.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

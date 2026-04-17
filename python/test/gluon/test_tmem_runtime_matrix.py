@@ -4380,8 +4380,8 @@ LDST_TWOCTA_HIGHER_RANK_HALF_ROWS_OOR_CASES = [
     for n, variant in ((256, "32x32b"), (256, "16x128b"))
 ]
 
-LDST_TWOCTA_DIRECT_HALF_ROWS_UNSUPPORTED_CASES = [
-    ("block_two_ctas", n, variant)
+LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES = [
+    ("block_two_ctas", n, variant, LDST_SHAPE_MAP[variant][n])
     for n, variant in ((64, "16x128b"), (128, "auto"), (128, "16x256b"))
 ]
 
@@ -7132,25 +7132,31 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_report
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_DIRECT_HALF_ROWS_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_reports_clean_unsupported(
-    layout_name, n, variant
+@pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_TWOCTA_DIRECT_HALF_ROWS_POSITIVE_CASES)
+def test_tmem_runtime_matrix_ldst_twocta_descriptor_direct_half_rows_positive(
+    layout_name, n, variant, expected_shape
 ):
     m = 256
     layout = LDST_TWOCTA_LAYOUTS[layout_name](n)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(CompilationError) as excinfo:
-        tmem_ldst_descriptor_direct_half_rows_positive_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-        )
+    compiled = tmem_ldst_descriptor_direct_half_rows_positive_kernel[(1, )](
+        inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
+    )
+    ref = inp.clone()
+    ref[m // 2 :, :] += 17.0
+    torch.testing.assert_close(out, ref, atol=0, rtol=0)
 
-    msg = str(excinfo.value)
-    assert "row-half TMEM descriptor views can translate the TMEM row origin" in msg
-    assert "expose a CTA block-base bit as the sliced row bit" in msg
-    assert "PassManager::run failed" not in msg
-    assert "Assertion" not in msg
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert f"tcgen05.st.sync.aligned.{expected_shape}" in observed_opcodes
+    assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
+    ttgir = compiled.asm["ttgir"]
+    assert "twoCTAs = true" in ttgir
+    assert "tt.split" in ttgir
+    assert "tt.join" in ttgir
+    assert "ttg.memdesc_subslice" not in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
