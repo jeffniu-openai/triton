@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 18:04 UTC Phase C scales-copy classification:
+  `getTMemCopyExactViewScheduleNote` now formats from a structured
+  `TMemCopyExactViewScheduleRequirement` with the first differing physical
+  query field and active shape. The scales descriptor-view/shared-subslice
+  copy gap is now classified as a true `warpx4.32x128b` full-footprint
+  boundary: source column bit 2 needs descriptor row `+32` for 4-column runs
+  every 8 columns, but the atom writes all 16 destination columns. Validation:
+  `make -j8`, split-4 focused scales-copy selector (`3/3/3/2`), built
+  `triton-opt` verify-diagnostics for `invalid.mlir`, Python compile, and
+  `git diff --check`.
+
 - Latest: 2026-04-17 17:59 UTC Phase C/D `4x256b` boundary cleanup:
   direct `ld/st` refresh-image diagnostics now format from
   `TMemCopy4x256RefreshImageRequirement` instead of a static string, and the

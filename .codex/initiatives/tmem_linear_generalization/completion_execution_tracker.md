@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:59 UTC
+Last updated: 2026-04-17 18:04 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -76,7 +76,9 @@ Current buckets:
 - `tcgen05.copy` scales shared-subslice/descriptor-view rows: source column bit
   2 selects descriptor row `+32` inside a `warpx4` instruction, requiring a
   source-message/destination-column split, narrower atom, valid source format,
-  or destination mask.
+  or destination mask. Current probes show the public `warpx4.32x128b` atom
+  writes the full 16-column destination footprint, so the requested 4-of-8
+  column split is a true mask/source-format schedule boundary.
 - `tcgen05.copy` no-scales ordinary contiguous `4x256b`: copy support is
   positive for refresh-shaped layouts only; ordinary view exposure needs a
   first-class refresh remap/readback contract or stays negative.
@@ -207,15 +209,27 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 ## Next Concrete Slice
 
 Resume support-bearing `tcgen05.copy` work from the shared scheduled-message
-planner. The next highest-value bucket is the scales descriptor-row split/mask
-family because the debug probes already show the concrete gap: source column
-bit 2 selects descriptor row `+32` for four-column runs inside a wider
-instruction footprint. Determine whether this can be expressed as a legal
-source-message split or destination-column partition; if not, promote the
-existing proof into a typed requirement and move to the next reachable support
-slice.
+planner. The next highest-value bucket is the no-scales two-CTA
+`warpx2::02_13` schedule: determine whether a legal schedule can preserve the
+high source-column bit for the second CTA without duplicating low columns or
+reading zeros. If the public atom cannot encode that projection, promote the
+proof into a typed source-message/CTA-ownership requirement and move to the
+next reachable support slice.
 
 ## Progress
+
+- 2026-04-17 18:04 UTC: classified the scales `tcgen05.copy`
+  descriptor-view/shared-subslice split as a true full-footprint schedule
+  boundary and structured the exact-view note. `TMemCopyExactViewScheduleNote`
+  now derives from `TMemCopyExactViewScheduleRequirement`, recording the first
+  differing physical-query field and active shape before reporting that a
+  destination-row/source-message schedule is required. Debug probes showed the
+  concrete gap: source column bit 2 selects descriptor row `+32` for
+  4-column runs every 8 columns, but `warpx4.32x128b` writes the full
+  16-column destination footprint. Validation: `make -j8`; split-4 focused
+  scales-copy selector passed as `3/3/3/2`; built `triton-opt
+  test/TritonNvidiaGPU/invalid.mlir --split-input-file --verify-diagnostics`;
+  Python byte-compile for `test_tmem_runtime_matrix.py`; `git diff --check`.
 
 - 2026-04-17 17:59 UTC: represented the direct `ld/st` `4x256b`
   refresh-image boundary with structured refresh-image data instead of a

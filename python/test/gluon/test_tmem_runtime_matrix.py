@@ -8803,6 +8803,7 @@ def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupp
     assert "4-column destination runs every 8 columns" in text
     assert "32-row source footprint" in text
     assert "entire tcgen05.copy instruction row footprint" in text
+    assert "first differing physical-query field is physical layout for active view shape 128x32" in text
     assert "needs a destination-row / source-message schedule" in text
     assert "Source element type should be 32-bit" not in text
     assert "PassManager::run failed" not in text

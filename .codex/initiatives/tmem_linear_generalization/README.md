@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 18:04 UTC: scales `tcgen05.copy` descriptor-view failures now
+  have a structured exact-view schedule note. The note records that the first
+  differing physical-query field is the physical layout for the active
+  `128x32` view before reporting the required destination-row/source-message
+  schedule. Probes confirm source column bit 2 selects descriptor row `+32`
+  for 4-column runs every 8 columns while the public `warpx4.32x128b` atom
+  writes the full 16-column destination footprint. Validation: `make -j8`,
+  split-4 focused scales-copy selector (`3/3/3/2` passed), built `triton-opt`
+  verify-diagnostics, Python byte-compile, and `git diff --check`.
 - 2026-04-17 17:59 UTC: direct `ld/st` diagnostics for `4x256b`
   refresh-shaped layouts now share the structured
   `TMemCopy4x256RefreshImageRequirement` facts already used by copy support.

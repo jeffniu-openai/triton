@@ -1,3 +1,33 @@
+## 2026-04-17 18:04 UTC: structured scales copy exact-view schedule boundary
+
+- Change:
+  - introduced an internal `TMemCopyExactViewScheduleRequirement` for scales
+    copy descriptor views whose exact physical query differs from the
+    standalone/root scales query;
+  - the exact-view note now records the first differing physical-query field
+    and active view shape before reporting the missing destination-row /
+    source-message schedule;
+  - pinned the descriptor-view runtime-matrix row to the new structured note.
+- Boundary:
+  - support is unchanged;
+  - debug probes show source column bit 2 selects descriptor row `+32` for
+    4-column destination runs every 8 columns, while the public
+    `warpx4.32x128b` copy atom writes the full 16-column destination
+    footprint;
+  - this bucket therefore needs a narrower atom, destination column mask, source
+    format, or equivalent non-overwriting schedule before it can be promoted.
+- Validation:
+  - `make -j8`;
+  - split-4 focused scales-copy selector passed as `3/3/3/2`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - Python byte-compile for `python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - move to no-scales two-CTA `warpx2::02_13` schedule analysis.
+
 ## 2026-04-17 17:59 UTC: structured direct `ld/st` 4x256b refresh boundary
 
 - Change:

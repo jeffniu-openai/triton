@@ -6123,21 +6123,51 @@ selectTMemCopyPhysicalQuery(Value memDesc, const LinearLayout &shmemLl,
   return failure();
 }
 
+struct TMemCopyExactViewScheduleRequirement {
+  SmallVector<int64_t, 2> activeShape;
+  TMemPhysicalQueryDifference firstDifference =
+      TMemPhysicalQueryDifference::Layout;
+};
+
+static std::optional<TMemCopyExactViewScheduleRequirement>
+getTMemCopyExactViewScheduleRequirement(const TMemPhysicalQuery &standalone,
+                                        const TMemPhysicalQuery &exact) {
+  if (!standalone.isScales || !exact.isScales)
+    return std::nullopt;
+  auto firstDifference = getFirstTMemPhysicalQueryDifference(standalone, exact);
+  if (!firstDifference || *firstDifference != TMemPhysicalQueryDifference::Layout)
+    return std::nullopt;
+  TMemCopyExactViewScheduleRequirement requirement;
+  requirement.activeShape.assign(exact.shape.begin(), exact.shape.end());
+  requirement.firstDifference = *firstDifference;
+  return requirement;
+}
+
 std::optional<std::string>
 getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
                                  const TMemPhysicalQuery &exact) {
-  if (!standalone.isScales || !exact.isScales)
+  auto requirement =
+      getTMemCopyExactViewScheduleRequirement(standalone, exact);
+  if (!requirement)
     return std::nullopt;
-  if (standalone.layout == exact.layout)
-    return std::nullopt;
+  std::string note;
+  llvm::raw_string_ostream os(note);
+  os << "The exact tensor-memory-scales descriptor view changes the physical "
+        "TMEM layout relative to the root scales layout. The first differing "
+        "physical-query field is "
+     << stringifyTMemPhysicalQueryDifference(requirement->firstDifference);
+  if (!requirement->activeShape.empty()) {
+    os << " for active view shape ";
+    llvm::interleave(
+        requirement->activeShape, os, [&](int64_t dim) { os << dim; }, "x");
+  }
+  os << ". Current tcgen05.copy scheduling cannot realize that logical view by "
+        "selecting a representable source descriptor alone; it needs a "
+        "destination-row / source-message schedule that preserves the "
+        "descriptor-view row permutation. Set TRITON_DEBUG_TMEM_QUERY=1 to "
+        "print the selected copy conversion and descriptor candidates.";
   return std::string(
-      "The exact tensor-memory-scales descriptor view changes the physical "
-      "TMEM layout relative to the root scales layout. Current tcgen05.copy "
-      "scheduling cannot realize that logical view by selecting a "
-      "representable source descriptor alone; it needs a destination-row / "
-      "source-message schedule that preserves the descriptor-view row "
-      "permutation. Set TRITON_DEBUG_TMEM_QUERY=1 to print the selected copy "
-      "conversion and descriptor candidates.");
+      os.str());
 }
 
 StringRef stringifyTMemPhysicalQueryDifference(
