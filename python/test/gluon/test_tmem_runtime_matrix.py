@@ -8392,25 +8392,21 @@ def test_tmem_runtime_matrix_ld_red_rowcol_permuted_n_sweep(
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_MODIFIER_CASES)
 @pytest.mark.parametrize("M,N,num_warps", LD_RED_MIXED_CASES)
-def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupported(
-    red_op, use_abs, propagate_nan, M, N, num_warps, capfd
+def test_tmem_runtime_matrix_ld_red_mixed_linear_layout_uses_software_reduce(
+    red_op, use_abs, propagate_nan, M, N, num_warps
 ):
     layout = _make_tmem_linear_layout_mixed(M, N)
-    with pytest.raises(Exception) as err:
-        _run_tmem_reduction_case(
-            layout,
-            M,
-            N,
-            red_op,
-            use_abs,
-            propagate_nan,
-            num_warps=num_warps,
-        )
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert "tmem_load reduction source layout is not directly tcgen05.ld.red-compatible" in text
-    assert "tmem.load(...)+tt.reduce(...)" in text
-    assert "tt.reduce" in text
+    compiled = _run_tmem_reduction_case(
+        layout,
+        M,
+        N,
+        red_op,
+        use_abs,
+        propagate_nan,
+        num_warps=num_warps,
+        expect_hw_reduce=False,
+    )
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

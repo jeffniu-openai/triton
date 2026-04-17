@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:45 UTC: converted the stale runtime-matrix mixed-layout
+  `ld.red` clean negative into positive software-reduction coverage. The
+  backend already lowers this source layout as normal `tcgen05.ld` plus
+  layout-aware `ttgl.reduce(axis=1)`; the runtime matrix now asserts no
+  hardware `tcgen05.ld.red` is emitted for the mixed row/column layout.
+  Validation: `make -j8`, Python compile for the runtime matrix, exact mixed
+  runtime selector (`12 passed`), matching core representative (`1 passed`),
+  broader reduction selector (`86 passed`), and `git diff --check`.
 - 2026-04-17 08:25 UTC: centralized lowered-subview base-offset subtraction
   in `TensorMemoryUtils` as `getTMemSubviewRelativeBaseOffset(...)`. Direct
   `ld/st` raw-query, support-query, source-column raw-query, and `tcgen05.copy`

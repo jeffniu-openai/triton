@@ -1,3 +1,47 @@
+## 2026-04-17 08:45 UTC: runtime-matrix mixed ld.red software coverage
+
+- Starting point: `codex/tmem` at `5e12db502`.
+- Change:
+  - converted
+    `test_tmem_runtime_matrix_ld_red_mixed_linear_layout_reports_clean_unsupported`
+    into
+    `test_tmem_runtime_matrix_ld_red_mixed_linear_layout_uses_software_reduce`;
+  - the runtime matrix now calls the shared reduction helper with
+    `expect_hw_reduce=False` for mixed linear layouts, matching the backend
+    software fallback added earlier.
+- Boundary:
+  - no compiler behavior changed in this checkpoint. The positive behavior
+    was already present: mixed TMEM layouts lower the value load through
+    ordinary `tcgen05.ld` and compute min/max with layout-aware `ttgl.reduce`.
+  - hardware `tcgen05.ld.red` coverage remains reserved for layouts proven by
+    `TMemLoadReductionLayoutSupport`.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-mixed-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_mixed_linear_layout_uses_software_reduce`
+    (`12 passed in 24.58s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-ldred-mixed-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py::test_tmem_reduction_linear_mixed_layout_uses_software_reduce`
+    (`1 passed in 5.02s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-runtime-refresh
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_mixed_linear_layout_uses_software_reduce or
+    ld_red_explicit_n_sharded_layout_uses_software_reduce or
+    ld_red_explicit_compatible_layout_variants or
+    ld_red_m64_splitn_linear_layout or
+    ld_red_m64_explicit_splitn_variants or
+    ld_red_non_f32_contract_reports_clean_unsupported"`
+    (`86 passed, 1492 deselected in 53.17s`);
+  - `git diff --check`.
+
 ## 2026-04-17 07:33 UTC: tightened repeated-N32 scaled-MMAv5 B-scale requirement
 
 - Starting point: `codex/tmem` at `dd3a47396`.

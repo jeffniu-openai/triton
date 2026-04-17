@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:45 UTC the runtime-matrix mixed-layout `ld.red` row
+  now matches the implemented backend behavior. Mixed linear TMEM layouts are
+  positive software-reduction coverage: the load returns through ordinary
+  `tcgen05.ld`, the reduction is computed with layout-aware `ttgl.reduce`, and
+  no hardware `tcgen05.ld.red` is expected for that layout. Validation:
+  `make -j8`, Python compile for `test_tmem_runtime_matrix.py`, exact mixed
+  selector (`12 passed`), core representative (`1 passed`), broader reduction
+  selector (`86 passed`), and `git diff --check`.
+
 - Latest probe: 2026-04-17 08:38 UTC normal shared-load plus TMEM-store is
   not a valid fallback for the two-CTA no-scales
   `tcgen05.copy.warpx2::02_13` gap. A scratch kernel using the same shared and
