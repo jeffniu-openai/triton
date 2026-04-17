@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest probe: 2026-04-17 09:29 UTC rechecked two hard frontiers after the
+  replayed high-quadrant `ld/st` checkpoint. For two-CTA no-scales
+  `tcgen05.copy.warpx2::02_13`, temporarily allowing logical row bit 5 through
+  source-row projection only moved the failure to descriptor synthesis: the
+  64x4 plan had no representable MMAv5 shared descriptor after 95 candidates,
+  and the bounded 32x4 fallback had none after 161 candidates. This reinforces
+  that the bucket needs a real cta_group::2 descriptor/address schedule that
+  preserves the high source-column bit, not a row-projection guard lift. For
+  scaled-MMAv5 repeated `N=32`, temporarily bypassing the verifier/lowering
+  guard emitted 16 MMAs but produced wrong results because B-scale addresses
+  advanced by two TMEM columns per N32 tile (`+132,+134,+136,+138`), i.e. the
+  old 64-column fragment assumption. Forcing one-column B-scale fragments then
+  faulted with a misaligned address. Keep repeated `N=32` as a real B-scale
+  fragment storage/rematerialization problem; do not unblock it with
+  address-formula tweaks.
+
 - Latest: 2026-04-17 09:19 UTC the remaining single-CTA high-quadrant 32x32
   multidim-slice `ld/st` rows now use an explicit optimizer replay/RMW model
   instead of a direct packet-footprint fallback. Added

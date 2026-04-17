@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 09:29 UTC: reprobed two hard frontiers and reverted all probe
+  edits. The two-CTA no-scales `warpx2::02_13` row-bit-5 bypass moves the
+  failure to descriptor synthesis with no representable 64x4 or bounded 32x4
+  MMAv5 shared descriptor. The scaled-MMAv5 repeated-`N=32` guard bypass emits
+  MMAs but computes wrong results under the old two-column B-scale fragment
+  mapping, and a one-column B-scale address probe faults as misaligned. These
+  remain real descriptor/address and B-scale storage-rematerialization
+  frontiers, not guard-lift fixes.
 - 2026-04-17 09:19 UTC: promoted the single-CTA high-quadrant
   multidim-slice `ld/st` descriptor views from clean negatives to replayed
   RMW support. `TensorMemoryUtils` now recognizes replayable reshape/transpose

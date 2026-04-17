@@ -1,3 +1,24 @@
+## 2026-04-17 09:29 UTC: copy/scaled hard-frontier reprobes
+
+- Starting point: `codex/tmem` at `c546fc41e`.
+- Probe-only changes, all reverted:
+  - bypassed the two-CTA no-scales `warpx2::02_13` logical-row-bit-5 source-row
+    projection failure;
+  - bypassed the scaled-MMAv5 repeated-`N=32` guard, then temporarily changed
+    matrix-B scale fragments from two TMEM columns per scale block to one.
+- Results:
+  - the `warpx2::02_13` bypass did not yield a schedule; it failed descriptor
+    synthesis for both the 64x4 and bounded 32x4 descriptor shapes, reinforcing
+    that this is a real cta_group::2 descriptor/address schedule gap;
+  - the repeated-`N=32` bypass emitted the expected opcode family but produced
+    wrong results with the 64-column B-scale addressing assumption;
+  - the one-column B-scale probe faulted with a misaligned address, so support
+    needs real B-scale fragment storage/rematerialization rather than a simple
+    scale-address stride tweak.
+- Validation:
+  - `make -j8` after reverting probes; worktree is clean except for this
+    durable-doc update before the next checkpoint.
+
 ## 2026-04-17 08:45 UTC: runtime-matrix mixed ld.red software coverage
 
 - Starting point: `codex/tmem` at `5e12db502`.
