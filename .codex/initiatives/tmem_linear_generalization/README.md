@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:13 UTC: dense direct `tcgen05.copy` destination support now
+  carries the actual two-CTA mode into the layout proof and checks canonical
+  `[[128, 0]]` CTA block ownership through the same helper used by multicast
+  destinations. Added a focused clean-negative for a noncanonical dense
+  two-CTA block basis before descriptor planning. Validation: `make -j8`,
+  exact new negative (`1 passed`), split-4 neighboring
+  `cp_no_scales_twocta or cp_no_scales_warpx2` selector
+  (`31/31/31/28` passed), Python compile, and `git diff --check`.
 - 2026-04-17 12:59 UTC: pruned a stale plain-MMAv5 fpsan negative. The
   block-backed `128x128` accumulator row now compiles at current head and was
   removed from `MMA_UNSUPPORTED_LAYOUT_CASES`; the remaining plain-MMAv5

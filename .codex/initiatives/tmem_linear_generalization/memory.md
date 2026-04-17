@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:13 UTC dense direct no-scales `tcgen05.copy`
+  destination support now proves two-CTA block ownership from the actual
+  physical query, not just row/column shape. `getDirectTMemCopyLayoutSupport`
+  carries the two-CTA bit from memdesc analysis or `TMemPhysicalQuery`, and
+  dense `128x128b`/`128x256b` destinations share the same canonical
+  `[[128, 0]]` block-basis helper as multicast copy families. A new
+  clean-negative row uses a noncanonical `[[192, 0]]` source/destination block
+  basis to prove the failure reaches CTA-ownership support before descriptor
+  synthesis. `4x256b` refresh support is unchanged; its valid two-CTA block
+  basis remains `[[4, 0]]` in the refresh recognizer. Validation: `make -j8`;
+  exact new negative (`1 passed`); split-4
+  `cp_no_scales_twocta or cp_no_scales_warpx2` selector
+  (`31/31/31/28` passed); Python compile for
+  `test_tmem_runtime_matrix.py`; `git diff --check`.
+
 - Latest: 2026-04-17 13:06 UTC no-scales multicast `tcgen05.copy`
   destinations now have a direct physical-layout support proof instead of
   being accepted by default whenever the source conversion classified as a

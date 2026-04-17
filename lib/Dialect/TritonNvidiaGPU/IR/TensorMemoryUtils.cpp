@@ -10166,6 +10166,37 @@ static TMemCopySupportResult getDenseTMemCopyColumnPermutationFailure(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
 
+static TMemCopySupportResult getTMemCopyDestinationBlockOwnershipSupport(
+    const LinearLayout &ll, MLIRContext *ctx, TMemCopyFamily family,
+    bool twoCTAs, int32_t expectedBlockRow) {
+  if (!twoCTAs)
+    return getSupportedTMemCopyResult();
+
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto makeFailure = [&](Twine detail) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::CtaOwnership,
+        Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+            " two-CTA destination layouts require the canonical TMEM block "
+            "basis [[" +
+            Twine(expectedBlockRow) + ", 0]]. " + detail);
+  };
+
+  if (!ll.hasInDim(kBlock) || ll.getInDimSize(kBlock) != 2)
+    return makeFailure("The destination query does not expose exactly one "
+                       "two-CTA block-selection bit.");
+
+  auto blockBases = ll.getBases().lookup(kBlock);
+  if (blockBases.size() != 1 || blockBases.front().size() < 2 ||
+      blockBases.front()[0] != expectedBlockRow ||
+      blockBases.front()[1] != 0) {
+    return makeFailure("CTA ownership is part of the instruction schedule; "
+                       "without this basis the current copy atom cannot "
+                       "select the second CTA's physical row half correctly.");
+  }
+  return getSupportedTMemCopyResult();
+}
+
 static LinearLayout canonicalizeTMemCopyLayoutDimsForAnalysis(
     LinearLayout layout, MLIRContext *ctx) {
   auto kRow = StringAttr::get(ctx, "row");
@@ -10222,7 +10253,7 @@ getTMemCopyMulticastBroadcastMask(TMemCopyFamily family) {
 
 static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
     const LinearLayout &layout, MLIRContext *ctx, TMemCopyFamily family,
-    unsigned bitwidth) {
+    unsigned bitwidth, bool twoCTAs) {
   auto broadcastMask = getTMemCopyMulticastBroadcastMask(family);
   if (!broadcastMask)
     return getSupportedTMemCopyResult();
@@ -10230,7 +10261,6 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
   auto ll = canonicalizeTMemCopyLayoutDimsForAnalysis(layout, ctx);
   auto kRow = StringAttr::get(ctx, "row");
   auto kCol = StringAttr::get(ctx, "col");
-  auto kBlock = StringAttr::get(ctx, "block");
   if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getNumOutDims() != 2) {
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery,
@@ -10314,17 +10344,11 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
     return getDenseTMemCopyColumnPermutationFailure(family, requirement);
   }
 
-  if (ll.hasInDim(kBlock) && ll.getInDimSize(kBlock) > 1) {
-    auto blockBases = ll.getBases().lookup(kBlock);
-    if (blockBases.size() != 1 || blockBases.front().size() < 2 ||
-        blockBases.front()[0] != 128 || blockBases.front()[1] != 0) {
-      return getUnsupportedTMemCopyResult(
-          TMemCopySupportFailureLayer::CtaOwnership,
-          Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
-              " two-CTA destination layouts require the canonical TMEM "
-              "block basis [[128, 0]].");
-    }
-  }
+  auto blockOwnershipSupport =
+      getTMemCopyDestinationBlockOwnershipSupport(ll, ctx, family, twoCTAs,
+                                                  /*expectedBlockRow=*/128);
+  if (!blockOwnershipSupport)
+    return blockOwnershipSupport;
 
   return getSupportedTMemCopyResult();
 }
@@ -10364,10 +10388,10 @@ static TMemCopySupportResult
 getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         MLIRContext *ctx,
                                         TMemCopyFamily family,
-                                        unsigned bitwidth) {
+                                        unsigned bitwidth, bool twoCTAs) {
   if (!isDenseTMemCopyFamily(family))
     return getMulticastTMemCopyDestinationLayoutSupport(layout, ctx, family,
-                                                        bitwidth);
+                                                        bitwidth, twoCTAs);
 
   if (family == TMemCopyFamily::Dense4x256b) {
     if (isTMemCopy4x256RefreshLayout(layout, ctx, bitwidth))
@@ -10385,6 +10409,12 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
         "direct tcgen05.copy currently requires a rank-2 TMEM view "
         "with explicit row/col bases.");
   }
+
+  auto blockOwnershipSupport =
+      getTMemCopyDestinationBlockOwnershipSupport(ll, ctx, family, twoCTAs,
+                                                  /*expectedBlockRow=*/128);
+  if (!blockOwnershipSupport)
+    return blockOwnershipSupport;
 
   auto rowProjectionSupport = getDenseTMemCopyRowProjectionSupport(ll, ctx);
   if (!rowProjectionSupport)
@@ -10437,23 +10467,24 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
 TMemCopySupportResult getDirectTMemCopyLayoutSupport(MemDescType memTy,
                                                      TMemCopyFamily family) {
   std::string layoutError;
-  auto maybeLayout = getTMemViewAnalysisLinearLayout(memTy.getShape(),
-                                                     memTy.getEncoding(),
-                                                     &layoutError);
-  if (!maybeLayout) {
+  auto maybeAnalysis =
+      getTMemViewAnalysisLayout(memTy.getShape(), memTy.getEncoding(),
+                                &layoutError);
+  if (!maybeAnalysis) {
     return getUnsupportedTMemCopyResult(
         TMemCopySupportFailureLayer::PhysicalQuery, layoutError);
   }
   return getDirectTMemCopyLayoutSupportForLayout(
-      *maybeLayout, memTy.getContext(), family,
-      memTy.getElementTypeBitWidth());
+      maybeAnalysis->layout, memTy.getContext(), family,
+      memTy.getElementTypeBitWidth(), maybeAnalysis->twoCTAs);
 }
 
 TMemCopySupportResult
 getDirectTMemCopyLayoutSupport(const TMemPhysicalQuery &query,
                                TMemCopyFamily family) {
   return getDirectTMemCopyLayoutSupportForLayout(
-      query.layout, query.memTy.getContext(), family, query.elementBitWidth);
+      query.layout, query.memTy.getContext(), family, query.elementBitWidth,
+      query.twoCTAs);
 }
 
 bool isDirectTMemCopyLayoutSupported(MemDescType memTy, TMemCopyFamily family,

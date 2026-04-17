@@ -367,6 +367,13 @@ Progress:
   false-general gap where non-dense copy destinations were accepted by default
   once source conversion picked a copy family; row-permuted multicast
   destinations now fail at the correct physical-query layer.
+- 2026-04-17 13:13 UTC: moved the dense direct-copy CTA ownership proof onto
+  the physical query path as well. Direct destination support now receives the
+  actual two-CTA mode from `TMemPhysicalQuery` or memdesc analysis and rejects
+  dense `128x128b`/`128x256b` destinations whose block basis is not the
+  canonical `[[128, 0]]`. This closes the matching false-general dense-copy
+  gap without affecting the `4x256b` refresh image, whose valid two-CTA
+  ownership remains `[[4, 0]]` and is checked by the refresh-layout recognizer.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

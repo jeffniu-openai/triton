@@ -200,6 +200,18 @@ def _make_tmem_linear_layout_mmav5_twocta(m, n):
     )
 
 
+def _make_tmem_linear_layout_noncanonical_twocta_block(m, n):
+    assert m == 256
+    assert n >= 1 and (n & (n - 1)) == 0
+    return TensorMemoryLinearLayout(
+        rows=[[1 << i, 0] for i in range(7)],
+        cols=[[0, 1 << i] for i in range(int(math.log2(n)))],
+        block_bases=[[192, 0]],
+        shape=[m, n],
+        two_ctas=True,
+    )
+
+
 def _make_tmem_linear_layout_64x32_block(two_ctas=False):
     return TensorMemoryLinearLayout(
         rows=[[2, 0], [4, 0], [8, 0], [16, 0], [32, 0]],
@@ -2348,6 +2360,41 @@ def tmem_copy_no_scales_twocta_kernel(in_ptr, out_ptr, layout: ttgl.constexpr, c
 
     out = tmem.load(reg_layout)
     ttgl.store(out_ptr + offs, out)
+
+
+@gluon.jit
+def tmem_copy_no_scales_twocta_noncanonical_block_kernel(in_ptr, out_ptr, layout: ttgl.constexpr):
+    M: ttgl.constexpr = 256
+    N: ttgl.constexpr = 4
+    reg_layout: ttgl.constexpr = ttgl.DistributedLinearLayout(
+        reg_bases=[[0, 1], [0, 2]],
+        lane_bases=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0]],
+        warp_bases=[[32, 0], [64, 0]],
+        block_bases=[[128, 0]],
+        shape=[M, N],
+    )
+    offs_m = ttgl.arange(0, M, ttgl.SliceLayout(1, reg_layout))
+    offs_n = ttgl.arange(0, N, ttgl.SliceLayout(0, reg_layout))
+    offs = offs_m[:, None] * N + offs_n[None, :]
+    value = ttgl.load(in_ptr + offs)
+
+    smem_layout: ttgl.constexpr = ttgl.SharedLinearLayout(
+        offset_bases=[[0, 1], [0, 2], [1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [32, 0], [64, 0]],
+        block_bases=[[192, 0]],
+        alignment=16,
+    )
+    smem = ttgl.allocate_shared_memory(in_ptr.dtype.element_ty, [M, N], layout=smem_layout)
+    tmem = allocate_tensor_memory(in_ptr.dtype.element_ty, [M, N], layout=layout)
+    smem.store(value)
+    fence_async_shared(cluster=True)
+
+    barrier = mbarrier.allocate_mbarrier()
+    mbarrier.init(barrier, count=1)
+    tcgen05_copy(smem, tmem)
+    tcgen05_commit(barrier)
+    mbarrier.wait(barrier, phase=0)
+
+    ttgl.store(out_ptr + offs, value)
 
 
 @gluon.jit
@@ -9808,6 +9855,33 @@ def test_tmem_runtime_matrix_cp_no_scales_twocta_128x128b_codegen(layout_kind, d
     assert llir.index("llvm.nvvm.barrier.cluster.arrive.aligned") < llir.index("llvm.nvvm.barrier.cluster.wait.aligned") < first_cp_llir
     if layout_kind == "linear":
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_twocta_noncanonical_block_reports_clean_unsupported(capfd):
+    M = 256
+    N = 4
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+    layout = _make_tmem_linear_layout_noncanonical_twocta_block(M, N)
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_twocta_noncanonical_block_kernel[(1, )](
+            inp,
+            out,
+            layout,
+            num_ctas=2,
+            num_warps=4,
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.128x128b" in text
+    assert "two-CTA destination layouts require the canonical TMEM block basis [[128, 0]]" in text
+    assert "CTA ownership is part of the instruction schedule" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
 
 
 

@@ -23346,3 +23346,45 @@ Open after this slice:
 - GitHub state:
   - push remains blocked by the current repo instruction requiring `Mogball`
     while this shell is authenticated as `jeffniu-openai`.
+
+## 2026-04-17 13:13 UTC: dense copy destination block-ownership proof
+
+- Starting point: `codex/tmem` at `af4a191b0`.
+- Change:
+  - direct destination support for dense `tcgen05.copy.128x128b` and
+    `128x256b` now receives the actual two-CTA mode rather than only the
+    physical layout;
+  - added a shared destination block-ownership support helper used by dense
+    and multicast copy families;
+  - dense two-CTA destinations now reject noncanonical block bases before
+    descriptor synthesis or tile scheduling;
+  - added a focused runtime-matrix clean-negative whose source and destination
+    intentionally share a noncanonical `[[192, 0]]` block basis so the failure
+    reaches the copy-planner ownership proof instead of the pre-existing
+    source/destination CGA-layout equality check.
+- Boundary:
+  - `tcgen05.copy.4x256b` refresh support is unchanged. Its valid two-CTA
+    block basis remains `[[4, 0]]` and is still checked by the refresh-layout
+    recognizer, not by the dense 128-row ownership helper.
+- Validation:
+  - `make -j8`;
+  - exact new negative:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-block-proof
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_twocta_noncanonical_block_reports_clean_unsupported`
+    (`1 passed`);
+  - split-4 neighboring copy selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-copy-ownership
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py
+    -k 'cp_no_scales_twocta or cp_no_scales_warpx2'`
+    (groups: `31/31/31/28` passed);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by the current repo instruction requiring `Mogball`
+    while `gh auth status -h github.com` reports active account
+    `jeffniu-openai`.
