@@ -3102,11 +3102,17 @@ getTmemLoadLayoutSplitLongM(RankedTensorType tensorType, MemDescType memType,
   return std::nullopt;
 }
 
-std::optional<unsigned>
-getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType,
+TMemLoadReductionLayoutSupport
+getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
                                   const LinearLayout &layout) {
+  auto unsupported = [](Twine reason) {
+    return TMemLoadReductionLayoutSupport{std::nullopt, reason.str()};
+  };
+
   if (layout.getNumOutDims() != 2)
-    return std::nullopt;
+    return unsupported(
+        "Reduction load layout support requires exactly two logical output "
+        "dimensions.");
   auto attr = LinearEncodingAttr::get(tensorType.getContext(), layout);
   auto regTy = tensorType.cloneWithEncoding(attr);
   auto kReg = StringAttr::get(tensorType.getContext(), "register");
@@ -3115,22 +3121,86 @@ getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType,
   auto regDims = toLinearEncoding(regTy).basesPerDim(kReg);
   auto outDims = llvm::to_vector(regLayout.getOutDimSizes());
   if (outDims.size() < 2)
-    return std::nullopt;
+    return unsupported(
+        "Reduction load layout support requires materialized M and N output "
+        "dimensions.");
 
   constexpr int dimM = 0;
   constexpr int dimN = 1;
-  if (regDims[dimM] != 1)
-    return std::nullopt;
-  if (regDims[dimN] == outDims[dimN])
-    return 0u;
-  if (outDims[dimN] < 2 || outDims[dimN] != regDims[dimN] * 2)
-    return std::nullopt;
-
   auto dims = llvm::to_vector(regLayout.getOutDimNames());
+  auto describeBases = [&](StringAttr inDim, unsigned dim) {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    bool first = true;
+    if (!regLayout.hasInDim(inDim))
+      return std::string();
+    for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(inDim); ++idx) {
+      int32_t basis = regLayout.getBasis(inDim, idx, dims[dim]);
+      if (basis == 0)
+        continue;
+      if (!first)
+        os << ", ";
+      first = false;
+      os << inDim.getValue() << " bit " << idx << " -> " << basis;
+    }
+    return text;
+  };
+
+  if (regDims[dimM] != 1) {
+    std::string mBases = describeBases(kReg, dimM);
+    return unsupported(
+        Twine("Reduction load layout shards the M dimension across register "
+              "values") +
+        (mBases.empty() ? Twine(".") : Twine(" (") + mBases + ").") +
+        " tcgen05.ld.red returns one reduction value per emitted message and "
+        "thread, so lowering cannot assign distinct reduced results to "
+        "multiple M rows carried by one thread without a separate software "
+        "reduction/writeback schedule.");
+  }
+  if (regDims[dimN] == outDims[dimN])
+    return TMemLoadReductionLayoutSupport{0u, ""};
+
+  auto describeNonRegisterNBases = [&]() {
+    std::string text;
+    llvm::raw_string_ostream os(text);
+    bool first = true;
+    for (StringAttr inDim : regLayout.getInDimNames()) {
+      if (inDim == kReg)
+        continue;
+      for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(inDim); ++idx) {
+        int32_t nBasis = regLayout.getBasis(inDim, idx, dims[dimN]);
+        if (nBasis == 0)
+          continue;
+        if (!first)
+          os << ", ";
+        first = false;
+        int32_t mBasis = regLayout.getBasis(inDim, idx, dims[dimM]);
+        os << inDim.getValue() << " bit " << idx << " -> N " << nBasis;
+        if (mBasis != 0)
+          os << " and M " << mBasis;
+      }
+    }
+    return text;
+  };
+
+  if (outDims[dimN] < 2 || outDims[dimN] != regDims[dimN] * 2) {
+    std::string nBases = describeNonRegisterNBases();
+    return unsupported(
+        Twine("Reduction load layout keeps only ") + Twine(regDims[dimN]) +
+        " of " + Twine(outDims[dimN]) +
+        " N elements in the register dimension. Current lowering supports "
+        "full-register N coverage or exactly one lane-local split of N; this "
+        "layout would need a broader cross-thread reduction" +
+        (nBases.empty() ? Twine(".") : Twine(" (") + nBases + ")."));
+  }
+
   SmallVector<int32_t> nBases;
   for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(kReg); ++idx) {
     if (regLayout.getBasis(kReg, idx, dims[dimM]) != 0)
-      return std::nullopt;
+      return unsupported(
+          "Reduction load layout has a register basis that contributes to "
+          "both the per-thread value stream and M, so lowering cannot treat "
+          "the register dimension as a pure N-reduction dimension.");
     int32_t nBasis = regLayout.getBasis(kReg, idx, dims[dimN]);
     if (nBasis != 0)
       nBases.push_back(nBasis);
@@ -3145,22 +3215,39 @@ getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType,
       if (nBasis == 0)
         continue;
       if (inDim != kLane || idx != 4 ||
-          regLayout.getBasis(inDim, idx, dims[dimM]) != 0 || laneSplitMask)
-        return std::nullopt;
+          regLayout.getBasis(inDim, idx, dims[dimM]) != 0 || laneSplitMask) {
+        std::string nBasesText = describeNonRegisterNBases();
+        return unsupported(
+            Twine("Reduction load layout splits N through an unsupported "
+                  "thread basis. Current lowering can combine only one pure "
+                  "lane bit 4 split with shuffle-xor 16") +
+            (nBasesText.empty() ? Twine(".")
+                                : Twine("; observed ") + nBasesText + "."));
+      }
       laneSplitMask = 1u << idx;
       nBases.push_back(nBasis);
     }
   }
   if (!laneSplitMask)
-    return std::nullopt;
+    return unsupported(
+        "Reduction load layout does not keep full N in registers and has no "
+        "supported lane bit 4 N split to combine after tcgen05.ld.red.");
 
   llvm::sort(nBases);
   SmallVector<int32_t> expectedNBases;
   for (int64_t n = 1; n < outDims[dimN]; n <<= 1)
     expectedNBases.push_back(static_cast<int32_t>(n));
   if (!llvm::equal(nBases, expectedNBases))
-    return std::nullopt;
-  return *laneSplitMask;
+    return unsupported(
+        "Reduction load layout register/lane N bases do not cover the full "
+        "contiguous power-of-two reduction dimension.");
+  return TMemLoadReductionLayoutSupport{*laneSplitMask, ""};
+}
+
+std::optional<unsigned>
+getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType,
+                                  const LinearLayout &layout) {
+  return getTmemLoadReductionLayoutSupport(tensorType, layout).laneSplitMask;
 }
 
 std::optional<unsigned>
@@ -3171,7 +3258,8 @@ getTmemLoadReductionLaneSplitMask(RankedTensorType tensorType) {
 
 bool isReductionFriendlyTmemLoadLayout(RankedTensorType tensorType,
                                        const LinearLayout &layout) {
-  return getTmemLoadReductionLaneSplitMask(tensorType, layout).has_value();
+  return static_cast<bool>(
+      getTmemLoadReductionLayoutSupport(tensorType, layout));
 }
 
 bool isReductionFriendlyTmemSourceLayout(MemDescType memType) {

@@ -1280,6 +1280,14 @@ Progress:
   preservation. This does not promote the remaining packet-footprint negatives,
   but it keeps packet-base arithmetic with the query/origin planner instead of
   in operation lowering.
+- 2026-04-17 07:18 UTC: reduction-layout support now flows through
+  `TMemLoadReductionLayoutSupport`, which carries either the supported lane
+  split mask or the exact failed sharding proof. This keeps M64 split-N and
+  full-register-N reductions unchanged while making the explicit non-M64
+  n-sharded negatives more precise: a valid support path must handle both
+  unsupported N thread splits and layouts where the register stream carries
+  multiple M rows, which requires a software reduction/writeback schedule
+  rather than only another `shuffle.xor` mask.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

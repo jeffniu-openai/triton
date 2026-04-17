@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:18 UTC: `tcgen05.ld.red` reduction-layout support now returns
+  a structured support object carrying the supported lane-split mask or an
+  exact unsupported sharding reason. This preserves current functionality but
+  makes the remaining non-M64 explicit n-sharded reduction gap concrete: some
+  layouts split N through unsupported thread bases, while the explicit
+  `16x64b`/`16x128b`/`16x256b` variants also carry M rows in the register
+  value stream and would need a software reduction/writeback schedule, not a
+  simple lane-16 shuffle extension. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused reduction selector (`45 passed`), and
+  `git diff --check`.
 - 2026-04-17 07:10 UTC: re-probed the single-CTA identity high-quadrant
   `32x32` descriptor-view `ld/st` boundary. Moving the already-lowered row
   origin from the TMEM base to packet offsets, scaling it into packet-row

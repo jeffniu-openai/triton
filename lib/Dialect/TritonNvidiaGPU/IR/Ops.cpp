@@ -1528,8 +1528,9 @@ LogicalResult TMEMLoadOp::verify() {
     // registers, or split only across lane bit 4 where lowering combines the
     // two tcgen05.ld.red partial reductions with a warp shuffle. Broader
     // cross-thread/warp reductions still need an explicit software reduce.
-    auto reductionLaneSplitMask = getTmemLoadReductionLaneSplitMask(regTy);
-    if (!reductionLaneSplitMask) {
+    auto reductionLayoutSupport =
+        getTmemLoadReductionLayoutSupport(regTy, toLinearLayout(regTy));
+    if (!reductionLayoutSupport) {
       InFlightDiagnostic diag = emitOpError(
           "tmem_load reduction with N dimension sharded across threads is not "
           "supported.");
@@ -1537,6 +1538,8 @@ LogicalResult TMEMLoadOp::verify() {
                            "register dimension and M to be unsharded. A single "
                            "lane-16 split of N is supported when lowering can "
                            "combine the partial tcgen05.ld.red results.";
+      if (!reductionLayoutSupport.unsupportedReason.empty())
+        diag.attachNote() << reductionLayoutSupport.unsupportedReason;
       auto regLayout = toLinearLayout(regTy);
       diag.attachNote() << "Got register layout:\n" << regLayout.toString();
       return diag;

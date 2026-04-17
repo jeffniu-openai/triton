@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:18 UTC reduction-layout support now has a structured
+  support object instead of only a nullable lane-split mask. The new
+  `TMemLoadReductionLayoutSupport` preserves the existing supported cases
+  (`full N in registers` and the current single lane-16 N split) while
+  carrying an exact unsupported reason for broader cross-thread reductions.
+  The explicit non-M64 `ld.red` n-sharded variants remain clean negatives, but
+  their diagnostic now distinguishes true unsupported N thread splits from the
+  common explicit-variant case where the register dimension also carries M
+  rows and would need a separate software reduction/writeback schedule.
+  Validation: `make -j8`, direct `invalid.mlir` verifier,
+  `test_tmem_runtime_matrix.py -k "ld_red_explicit_n_sharded_layout_reports_clean_unsupported
+  or ld_red_m64_splitn_linear_layout or ld_red_m64_explicit_splitn_variants or
+  ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn"` (`45 passed`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 07:10 UTC re-probed the single-CTA identity
   high-quadrant `32x32` descriptor-view `ld/st` boundary beyond the earlier
   base-offset tweak. Three temporary variants were tried and removed: moving

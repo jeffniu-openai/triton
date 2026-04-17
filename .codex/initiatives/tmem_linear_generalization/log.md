@@ -1,3 +1,33 @@
+## 2026-04-17 07:18 UTC: structured reduction-layout support diagnostics
+
+- Starting point: `codex/tmem` at `bee6ebfb7`.
+- Change:
+  - added `TMemLoadReductionLayoutSupport` as the shared carrier for
+    `tcgen05.ld.red` register-layout support;
+  - kept the existing lane-split mask API as a compatibility wrapper;
+  - routed `TMEMLoadOp::verify()` through the structured support object so
+    unsupported reduction layouts report the exact failed sharding proof;
+  - updated `invalid.mlir` for the new warp-N split note.
+- Support boundary:
+  - support is unchanged. Valid reductions still require all N in registers or
+    exactly one supported lane-16 N split; broader N splits and layouts that
+    carry M rows through the register value stream still need an explicit
+    software reduction/writeback schedule before they can be promoted.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reduction-support
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_explicit_n_sharded_layout_reports_clean_unsupported or
+    ld_red_m64_splitn_linear_layout or ld_red_m64_explicit_splitn_variants or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn"`
+    (`45 passed, 1533 deselected in 13.12s`);
+  - `git diff --check`.
+
 ## 2026-04-17 06:22 UTC: moved M64 split-N raw-query fallback request filter backend-side
 
 - Starting point: `codex/tmem` at `d0dc67462`.
