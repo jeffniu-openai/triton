@@ -1521,6 +1521,12 @@ Progress:
   scale-factor grouping as one object. This is still support-neutral, but it
   gives repeated-N32 B-scale fragment work a coherent instruction descriptor
   input instead of having lowering recompute pieces of the contract.
+- 2026-04-17 11:05 UTC: repeated-N32 B-scale descriptor-view storage-root
+  recovery now lives in the backend dialect API as
+  `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`, shared by
+  `TCGen5MMAScaledOp` verification and tensor-memory allocation. This preserves
+  the 10:57 descriptor-view support while keeping scale-view acceptance and
+  rematerialization on one contract.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

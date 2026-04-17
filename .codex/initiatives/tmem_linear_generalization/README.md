@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 11:05 UTC: moved repeated-N32 B-scale descriptor-view
+  storage-root recovery into the TritonNvidiaGPU dialect API so
+  `TCGen5MMAScaledOp` verification and `RematerializeRepeatedN32BScale` use
+  one shared helper. Support is unchanged from the 10:57 checkpoint, but the
+  scale-view contract is now layered in the backend dialect instead of being
+  verifier-local. Validation: full rebuild from the touched header (`make
+  -j8`), exact B-scale descriptor-view repeated-N32 test (`1 passed`), the
+  repeated-N32 tile-permuted selector (`11 passed`), and `git diff --check`.
 - 2026-04-17 10:57 UTC: extended repeated-`N=32` scaled-MMAv5 B-scale
   rematerialization through descriptor-view chains backed by
   `TensorMemoryScalesLayout`. The verifier now recognizes compact B-scale

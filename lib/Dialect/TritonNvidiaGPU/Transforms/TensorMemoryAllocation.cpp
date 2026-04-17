@@ -288,6 +288,10 @@ public:
         *accSupport.repeatedN32ScaleFragmentRequirement;
     Value bScale = mmaOp.getBScale();
     auto bScaleType = cast<ttg::MemDescType>(bScale.getType());
+    std::optional<ttg::MemDescType> bScaleStorageType =
+        getMMAv5ScaledBScaleStorageTypeThroughViews(bScale);
+    if (!bScaleStorageType)
+      return failure();
 
     SmallVector<Operation *> allocs = getAlloc(bScale);
     if (allocs.size() != 1)
@@ -300,20 +304,12 @@ public:
         allocType.getMemorySpace() != bScaleType.getMemorySpace())
       return failure();
 
-    ttg::MemDescType bScaleStorageType = bScaleType;
-    if (!isa<TensorMemoryScalesEncodingAttr>(bScaleStorageType.getEncoding()) &&
-        isa<TensorMemoryScalesEncodingAttr>(allocType.getEncoding())) {
-      bScaleStorageType = ttg::MemDescType::get(
-          bScaleType.getShape(), bScaleType.getElementType(),
-          allocType.getEncoding(), bScaleType.getMemorySpace(),
-          bScaleType.getMutableMemory());
-    }
-    if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(bScaleStorageType,
+    if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(*bScaleStorageType,
                                                        requirement))
       return failure();
 
     std::optional<SmallVector<int64_t>> rematerializedShape =
-        getMMAv5ScaledRepeatedN32BScaleRematerializedShape(bScaleStorageType,
+        getMMAv5ScaledRepeatedN32BScaleRematerializedShape(*bScaleStorageType,
                                                           requirement);
     if (!rematerializedShape)
       return failure();
@@ -374,9 +370,9 @@ public:
         /*allowReorder=*/false);
 
     auto rematerializedType = ttg::MemDescType::get(
-        *rematerializedShape, bScaleStorageType.getElementType(),
-        bScaleStorageType.getEncoding(), bScaleStorageType.getMemorySpace(),
-        bScaleStorageType.getMutableMemory());
+        *rematerializedShape, bScaleStorageType->getElementType(),
+        bScaleStorageType->getEncoding(), bScaleStorageType->getMemorySpace(),
+        bScaleStorageType->getMutableMemory());
     auto rematerializedTensorType =
         cast<RankedTensorType>(rematerialized.getType());
     if (!isDistributedLayoutTMemCompatible(storeOp.getOperation(),

@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 11:05 UTC repeated-N32 B-scale descriptor-view
+  storage-root recovery is now one backend dialect helper:
+  `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`. This keeps
+  `TCGen5MMAScaledOp` verification and tensor-memory allocation on the same
+  scale-view contract after the descriptor-view support promotion. Support is
+  unchanged from the 10:57 checkpoint. Validation: full header-triggered
+  rebuild with `make -j8`; exact B-scale descriptor-view repeated-N32 runtime
+  test (`1 passed`); repeated-N32 tile-permuted selector (`11 passed`); and
+  `git diff --check`.
+
 - Latest: 2026-04-17 10:57 UTC repeated-`N=32` scaled-MMAv5 B-scale
   rematerialization now covers descriptor-view B-scale operands backed by a
   `TensorMemoryScalesLayout` allocation. The verifier walks memdesc-view chains

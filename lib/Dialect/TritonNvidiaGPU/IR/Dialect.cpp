@@ -40,6 +40,7 @@
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutAsm.h"
 #include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
+#include "triton/Dialect/TritonGPU/IR/Traits.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/TensorMemoryUtils.h"
 #include "triton/Tools/LayoutUtils.h"
@@ -1379,6 +1380,37 @@ std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
   return getMMAv5ScaledAccumulatorSupport(memDescType)
       .repeatedN32ScaleFragmentRequirement;
+}
+
+std::optional<MemDescType>
+getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
+  auto bScaleType = dyn_cast<MemDescType>(bScale.getType());
+  if (!bScaleType)
+    return std::nullopt;
+  if (isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return bScaleType;
+
+  Value current = bScale;
+  while (Operation *defOp = current.getDefiningOp()) {
+    if (!defOp->hasTrait<OpTrait::MemDescViewTrait>() ||
+        defOp->getNumOperands() == 0)
+      return std::nullopt;
+
+    current = defOp->getOperand(0);
+    auto currentType = dyn_cast<MemDescType>(current.getType());
+    if (!currentType)
+      return std::nullopt;
+    if (!isa<TensorMemoryScalesEncodingAttr>(currentType.getEncoding()))
+      continue;
+    if (currentType.getElementType() != bScaleType.getElementType() ||
+        currentType.getMemorySpace() != bScaleType.getMemorySpace())
+      return std::nullopt;
+    return MemDescType::get(bScaleType.getShape(), bScaleType.getElementType(),
+                            currentType.getEncoding(),
+                            bScaleType.getMemorySpace(),
+                            bScaleType.getMutableMemory());
+  }
+  return std::nullopt;
 }
 
 static std::optional<unsigned> getMMAv5ScaledRepeatedN32PaddingFactor(

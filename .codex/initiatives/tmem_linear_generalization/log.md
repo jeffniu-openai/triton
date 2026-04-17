@@ -1,3 +1,28 @@
+## 2026-04-17 11:05 UTC: shared repeated-N32 B-scale view helper
+
+- Starting point: `codex/tmem` at `77ac6204c`.
+- Change:
+  - moved B-scale descriptor-view storage-root recovery from
+    `TCGen5MMAScaledOp` verifier-local code into the TritonNvidiaGPU dialect
+    API as `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`;
+  - updated `RematerializeRepeatedN32BScale` to consume the same helper before
+    checking padded-storage support or deriving the rematerialized shape.
+- Boundary:
+  - support is unchanged from the 10:57 descriptor-view promotion;
+  - the cleanup keeps the verifier and allocation rewrite from drifting on
+    what counts as a scale-backed B-scale view.
+- Validation:
+  - `make -j8` after the public dialect header change;
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_bscale_descriptor_view`
+    (`1 passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_32"` (`11 passed, 1580 deselected`);
+  - `git diff --check`.
+
 ## 2026-04-17 10:57 UTC: repeated-N32 B-scale view rematerialization
 
 - Starting point: `codex/tmem` at `73cedf347`.

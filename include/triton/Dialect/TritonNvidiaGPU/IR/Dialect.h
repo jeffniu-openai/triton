@@ -305,6 +305,9 @@ std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
     gpu::MemDescType memDescType);
 
+std::optional<gpu::MemDescType>
+getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale);
+
 bool isMMAv5ScaledRepeatedN32BScaleStorageSupported(
     gpu::MemDescType bScaleType,
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement);
