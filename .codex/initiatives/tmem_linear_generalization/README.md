@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 12:53 UTC: plain MMAv5 tensor-memory layout
+  incompatibility is now represented by `MMAv5TMemInstructionTileRequirement`
+  in the backend dialect API. Plain `tcgen05.mma` LHS/accumulator diagnostics
+  and scaled-MMAv5 TMEM-LHS layout diagnostics now share this requirement path,
+  while preserving the current clean unsupported boundary for arbitrary
+  row/column permutations inside one MMAv5 instruction tile. Validation:
+  `make -j8`, focused split-4 MMA/scaled-LHS clean-negative selector
+  (`11/11/11/8` passed), and `git diff --check`. Lit was attempted but is not
+  installed/on PATH in this shell.
 - 2026-04-17 12:25 UTC: completed the current MMAv5 higher-rank
   dim0-slice `ld/st` bucket. The distributed-layout planner now restores CTA
   ownership in query layouts before atom selection, covering the case where an

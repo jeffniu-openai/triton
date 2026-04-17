@@ -23198,3 +23198,43 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'ldst_descriptor_multidim_slices and not twocta'`
     (`9 passed, 1581 deselected`).
+
+## 2026-04-17 12:53 UTC: MMAv5 tensor-memory tile requirement cleanup
+
+- Starting point: `codex/tmem` at `8bc4b48f2`.
+- Change:
+  - added `MMAv5TMemInstructionTileRequirement` plus formatter helpers to the
+    TritonNvidiaGPU dialect API;
+  - moved the plain MMAv5 unsupported tensor-memory layout diagnostic out of
+    the `TCGen5MMAOp` verifier lambda and into the backend requirement layer;
+  - routed scaled-MMAv5 TMEM-LHS layout rejection through the same helper so
+    LHS layout failures share one requirement path before scaled-specific fp4
+    or scale-fragment checks run.
+- Reason:
+  - the remaining plain-MMAv5 row/column-permuted clean negatives are real
+    instruction-tile schedule boundaries, not frontend type-spelling issues;
+    representing that as a typed backend requirement keeps the verifier aligned
+    with the full linear-layout completion plan.
+- Validation:
+  - `make -j8`;
+  - split-4 focused selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-mmav5-req
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short --splits 4
+    --group <1..4> -q python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_exotic_layout_reports_clean_unsupported or
+    mma_rowcol_permuted_layout_reports_clean_unsupported or
+    mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported or
+    mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported'`
+    (groups: `11/11/11/8` passed);
+  - `git diff --check`.
+- Attempted but unavailable:
+  - `lit -v test/TritonNvidiaGPU/invalid.mlir` failed because `lit` is not on
+    PATH;
+  - `python3 -m lit --version` failed because the `lit` Python module is not
+    installed in this shell.
+- GitHub state:
+  - `gh auth status -h github.com` still reports active account
+    `jeffniu-openai`;
+  - checkpoint push remains blocked by the current repo instruction requiring
+    `Mogball` for Triton GitHub operations.

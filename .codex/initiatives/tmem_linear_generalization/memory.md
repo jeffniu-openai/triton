@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:53 UTC plain MMAv5 tensor-memory layout
+  incompatibility is now represented by a typed backend requirement instead of
+  an op-local verifier lambda. Added `MMAv5TMemInstructionTileRequirement` with
+  formatter helpers in the TritonNvidiaGPU dialect layer, and routed both plain
+  `tcgen05.mma` and scaled-MMAv5 TMEM-LHS layout rejection through it. Support
+  is unchanged: arbitrary row/column permutations inside an MMAv5 instruction
+  tile still require an unsupported permutation or masked writeback schedule.
+  Validation: `make -j8`; split-4 focused MMA/scaled-LHS clean-negative
+  selector passed (`11/11/11/8`); `git diff --check`. Lit diagnostic validation
+  was attempted but `lit`/`python -m lit` are unavailable in this shell.
+
 - Latest: 2026-04-17 12:48 UTC removed the final stale empty higher-rank
   bucket, `LDST_HIGHER_RANK_INDEX_CASES`, and its dead one-CTA index test.
   Full-file collection is now `1590` tests, with no empty case buckets left in

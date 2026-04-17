@@ -1242,6 +1242,64 @@ getMMAv5ScaledAccumulatorLayoutInfo(MemDescType memDescType) {
                                            planMMAv5ScaledAccumulatorFamily);
 }
 
+std::optional<MMAv5TMemInstructionTileRequirement>
+getMMAv5TMemInstructionTileRequirement(MemDescType memDescType,
+                                       MMAv5TMemOperandKind operandKind) {
+  if (!isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(
+          memDescType.getEncoding()))
+    return std::nullopt;
+
+  switch (operandKind) {
+  case MMAv5TMemOperandKind::LHS:
+    if (getMMAv5LhsLayoutInfo(memDescType))
+      return std::nullopt;
+    break;
+  case MMAv5TMemOperandKind::Accumulator:
+    if (getMMAv5AccumulatorLayoutInfo(memDescType))
+      return std::nullopt;
+    break;
+  }
+
+  return MMAv5TMemInstructionTileRequirement{
+      /*operandEncoding=*/memDescType.getEncoding(),
+      /*operandKind=*/operandKind};
+}
+
+static StringRef stringifyMMAv5TMemOperandKind(
+    MMAv5TMemOperandKind operandKind) {
+  switch (operandKind) {
+  case MMAv5TMemOperandKind::LHS:
+    return "LHS operand";
+  case MMAv5TMemOperandKind::Accumulator:
+    return "return operand";
+  }
+  llvm_unreachable("unknown MMAv5 tensor-memory operand kind");
+}
+
+std::string getMMAv5TMemInstructionTileRequirementError(
+    const MMAv5TMemInstructionTileRequirement &requirement) {
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << stringifyMMAv5TMemOperandKind(requirement.operandKind)
+     << " must have a MMAv5-compatible tensor memory layout, but got "
+     << requirement.operandEncoding
+     << ". Use a directly supported #ttng.tensor_memory_linear layout, or "
+        "reshape/permute the descriptor to a supported MMAv5 tile.";
+  return os.str();
+}
+
+std::string getMMAv5TMemInstructionTileRequirementNote(
+    const MMAv5TMemInstructionTileRequirement &requirement) {
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << "MMAv5 tensor-memory operands are planned by physical instruction "
+        "tiles. Current public tcgen05.mma atoms require each instruction "
+        "tile to preserve the canonical row/column basis order; arbitrary row "
+        "or column permutations inside a tile need an unsupported permutation "
+        "or masked writeback schedule.";
+  return os.str();
+}
+
 static std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
     MemDescType memDescType, const MMAv5AccumulatorLayoutInfo &info) {

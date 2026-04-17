@@ -617,22 +617,13 @@ LogicalResult TCGen5MMAOp::verify() {
     }
   }
   auto retType = getD().getType();
-  auto emitUnsupportedTMemLayout = [&](StringRef operand, Attribute layout) {
+  auto emitUnsupportedTMemLayout =
+      [&](const MMAv5TMemInstructionTileRequirement &requirement) {
     InFlightDiagnostic diag =
-        emitOpError() << operand
-                      << " operand must have a MMAv5-compatible tensor "
-                         "memory layout, but got "
-                      << layout
-                      << ". Use a directly supported "
-                         "#ttng.tensor_memory_linear layout, or "
-                         "reshape/permute the descriptor to a supported "
-                         "MMAv5 tile.";
+        emitOpError() << getMMAv5TMemInstructionTileRequirementError(
+            requirement);
     diag.attachNote()
-        << "MMAv5 tensor-memory operands are planned by physical instruction "
-           "tiles. Current public tcgen05.mma atoms require each instruction "
-           "tile to preserve the canonical row/column basis order; arbitrary "
-           "row or column permutations inside a tile need an unsupported "
-           "permutation or masked writeback schedule.";
+        << getMMAv5TMemInstructionTileRequirementNote(requirement);
     return diag;
   };
   auto lhsTy = getA().getType();
@@ -641,11 +632,17 @@ LogicalResult TCGen5MMAOp::verify() {
                        ? getMMAv5LhsLayoutInfo(getA().getType())
                        : std::optional<MMAv5LhsLayoutInfo>{};
   if (isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(aEnc) &&
-      !aTmemInfo)
-    return emitUnsupportedTMemLayout("LHS", aEnc);
+      !aTmemInfo) {
+    if (auto requirement = getMMAv5TMemInstructionTileRequirement(
+            lhsTy, MMAv5TMemOperandKind::LHS))
+      return emitUnsupportedTMemLayout(*requirement);
+  }
   auto retInfo = getMMAv5AccumulatorLayoutInfo(retType);
-  if (!retInfo)
-    return emitUnsupportedTMemLayout("return", getD().getType().getEncoding());
+  if (!retInfo) {
+    if (auto requirement = getMMAv5TMemInstructionTileRequirement(
+            retType, MMAv5TMemOperandKind::Accumulator))
+      return emitUnsupportedTMemLayout(*requirement);
+  }
 
   // Check colStride of TMEM operands
   if (aTmemInfo) {
@@ -908,12 +905,15 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   if (failed(verifyMMADType(*this, atype, btype, dtype)))
     return failure();
   if (aInTmem && !aTmemInfo) {
-    return emitOpError()
-           << "LHS operand must have a MMAv5-compatible tensor memory layout, "
-              "but got "
-           << aEnc
-           << ". Use a directly supported #ttng.tensor_memory_linear layout, "
-              "or reshape/permute the descriptor to a supported MMAv5 tile.";
+    if (auto requirement = getMMAv5TMemInstructionTileRequirement(
+            getA().getType(), MMAv5TMemOperandKind::LHS)) {
+      InFlightDiagnostic diag =
+          emitOpError() << getMMAv5TMemInstructionTileRequirementError(
+              *requirement);
+      diag.attachNote()
+          << getMMAv5TMemInstructionTileRequirementNote(*requirement);
+      return diag;
+    }
   }
   if (aTmemInfo && aTmemInfo->colStride != 1)
     return emitOpError("The col stride of the LHS operand must be 1");
