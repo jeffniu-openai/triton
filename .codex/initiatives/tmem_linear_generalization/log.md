@@ -24761,3 +24761,23 @@ Open after this slice:
   - commit and push this deletion checkpoint;
   - continue support-bearing Phase C/Phase E probes or the next backend-policy
     cleanup slice.
+
+## 2026-04-17 21:37 UTC: expose backend explicit-view predicate to Gluon
+
+- Starting point: `codex/tmem` at pushed `ce68caf49`.
+- Change:
+  - exposed `isExplicitTMemLdStViewProducer` from `TensorMemoryUtils`;
+  - replaced the Gluon register-layout bridge's local explicit-view op list
+    with the backend helper.
+- Intent:
+  - no support surface changes;
+  - keep type-only fallback and view-like memdesc decisions tied to the same
+    backend-owned predicate used by direct `ld/st` support planning.
+- Validation:
+  - `make -j8`;
+  - split-4 focused replay/direct-support selector passed `6/6`, `6/6`,
+    `6/6`, and `4/4`;
+  - `git diff --check`.
+- Next:
+  - commit and push this cleanup checkpoint;
+  - continue the active tracker plan.

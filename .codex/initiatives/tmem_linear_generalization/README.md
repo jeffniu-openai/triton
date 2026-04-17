@@ -48,6 +48,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:37 UTC: exposed the backend explicit-view predicate
+  `isExplicitTMemLdStViewProducer` and removed the matching local view-like
+  memdesc test from the Gluon register-layout bridge. This keeps type-only
+  fallback decisions tied to backend-owned view classification. Validation:
+  `make -j8`; focused split-4 replay/direct-support selector passed `6/6`,
+  `6/6`, `6/6`, and `4/4`; `git diff --check`. Next: checkpoint/push and
+  continue the active tracker plan.
 - 2026-04-17 21:34 UTC: deleted unused `TensorMemoryToLLVM.cpp` copy address
   helper code that carried stale family-specific layout sorting and view-offset
   arithmetic. No lowering path referenced it; removing it avoids preserving a

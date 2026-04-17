@@ -1898,10 +1898,7 @@ void init_gluon_ir(py::module &&m) {
             return py::none();
           }
           bool isViewLikeMemDesc =
-              isa_and_nonnull<ttg::MemDescIndexOp, ttg::MemDescSubsliceOp,
-                              ttg::MemDescReshapeOp, ttg::MemDescTransOp,
-                              ttg::MemDescReinterpretOp>(
-                  queryMemDesc.getDefiningOp());
+              ttng::isExplicitTMemLdStViewProducer(queryMemDesc);
           bool disableTypeOnlyFallback =
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;

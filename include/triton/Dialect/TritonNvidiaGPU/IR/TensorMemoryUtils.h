@@ -501,6 +501,8 @@ bool isTMemLdStHalfRowsDescriptorView(Value memDesc);
 
 bool isTMemPhysicalBitcast(Value value);
 
+bool isExplicitTMemLdStViewProducer(Value memDesc);
+
 bool disallowTMemLdStTypeOnlyFallback(Value memDesc,
                                       std::string *reason = nullptr);
 

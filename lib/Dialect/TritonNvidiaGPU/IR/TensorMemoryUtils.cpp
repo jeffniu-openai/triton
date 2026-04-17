@@ -3367,7 +3367,7 @@ bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
            activeLayout.getInDimSize(kRow) == memTy.getShape()[0]);
 }
 
-static bool isExplicitTMemLdStViewProducer(Value memDesc) {
+bool isExplicitTMemLdStViewProducer(Value memDesc) {
   return isa_and_nonnull<gpu::MemDescSubsliceOp, TMEMSubSliceOp,
                          gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
                          gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(

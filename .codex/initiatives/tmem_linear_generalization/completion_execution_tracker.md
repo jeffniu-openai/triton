@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:34 UTC
+Last updated: 2026-04-17 21:37 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -215,6 +215,18 @@ Baseline checkpoint at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - `git diff --check`.
 
 ## Latest Cleanup Checkpoint
+
+2026-04-17 21:37 UTC:
+
+- Exposed backend `isExplicitTMemLdStViewProducer` and made the Gluon
+  register-layout bridge use it for type-only fallback/view-like decisions.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory changed.
+- Validation:
+  - `make -j8`;
+  - focused replay/direct-support runtime selector split across four GPUs
+    passed `6/6`, `6/6`, `6/6`, and `4/4`;
+  - `git diff --check`.
 
 2026-04-17 21:34 UTC:
 
@@ -445,6 +457,12 @@ direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
 frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:37 UTC: exposed backend
+  `isExplicitTMemLdStViewProducer` and replaced the Gluon bridge's local
+  explicit-view op list with that helper. Validation: `make -j8`; focused
+  split-4 replay/direct-support selector passed `6/6`, `6/6`, `6/6`, and
+  `4/4`; `git diff --check`.
 
 - 2026-04-17 21:34 UTC: deleted unused copy address-layout/view-offset helper
   code from `TensorMemoryToLLVM.cpp`. The removed code was not referenced by

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:37 UTC Gluon view-producer cleanup: exposed backend
+  `isExplicitTMemLdStViewProducer` and made the Gluon register-layout bridge
+  use it instead of spelling the explicit view op list locally. This is
+  cleanup only; support and clean-negative inventory are unchanged.
+  Validation: `make -j8`; focused split-4 replay/direct-support selector
+  passed `6/6`, `6/6`, `6/6`, and `4/4`; `git diff --check`. Next:
+  checkpoint/push and continue the active tracker plan.
+
 - Latest: 2026-04-17 21:34 UTC stale copy-address helper deletion: removed
   unused `TensorMemoryToLLVM.cpp` helpers for copy address layout/view offset.
   Those helpers were no longer called and still encoded family-specific layout
