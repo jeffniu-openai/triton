@@ -760,9 +760,13 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
         loc, ttng::getMMAv5ScaledNarrowNScaleFragmentError(
                  *accSupport.narrowNScaleFragmentRequirement));
   }
+  auto bScaleStorageTy =
+      ttng::getMMAv5ScaledBScaleStorageTypeThroughViews(op.getBScale());
+  MemDescType bScaleTyForPlanning =
+      bScaleStorageTy.value_or(op.getBScale().getType());
   if (accSupport.repeatedN32ScaleFragmentRequirement &&
       !ttng::isMMAv5ScaledRepeatedN32BScaleStorageSupported(
-          op.getBScale().getType(),
+          bScaleTyForPlanning,
           *accSupport.repeatedN32ScaleFragmentRequirement)) {
     return mlir::emitError(
         loc, ttng::getMMAv5ScaledRepeatedN32ScaleFragmentError(
@@ -783,7 +787,7 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   Value baseScaleA = tb.ptrtoint(i32_ty, adaptor.getAScale());
   Value baseScaleB = tb.ptrtoint(i32_ty, adaptor.getBScale());
   auto aScaleTy = cast<MemDescType>(op.getAScale().getType());
-  auto bScaleTy = cast<MemDescType>(op.getBScale().getType());
+  MemDescType bScaleTy = bScaleTyForPlanning;
   bool twoCTAs = ttng::getModuleTwoCTAs(op);
   // Use the layout-aware TMEM loader for all scaled MMAv5 accumulators, not
   // just non-legacy layouts. This keeps scaled lowering on the same physical

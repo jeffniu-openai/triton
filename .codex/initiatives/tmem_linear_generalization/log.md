@@ -22839,3 +22839,32 @@ Open after this slice:
   - neighboring manual-copy two-CTA row (`1 passed in 3.80s`);
   - repeated-N32 scaled-MMA selector (`11 passed, 1582 deselected in 14.40s`);
   - `git diff --check`.
+
+## 2026-04-17 11:23 UTC: repeated-N32 B-scale lowering uses storage views
+
+- Starting point: `codex/tmem` at `87162b9e6`.
+- Change:
+  - switched scaled-MMAv5 LLVM lowering to call
+    `getMMAv5ScaledBScaleStorageTypeThroughViews(...)` for the repeated-N32
+    support check and for B-scale scale-fragment column planning;
+  - folded a padded-storage mode into the existing B-scale descriptor-view
+    runtime kernel;
+  - added a focused runtime row where the B-scale operand is a no-op memdesc
+    view over already padded `TensorMemoryScalesLayout` storage, so
+    `RematerializeRepeatedN32BScale` does not rewrite it and LLVM lowering must
+    consume the descriptor view directly.
+- Finding:
+  - verifier and tensor-memory allocation already shared the storage-through-view
+    helper, but lowering still looked only at `op.getBScale().getType()`. That
+    was a stale layering mismatch for descriptor views whose storage root is
+    already padded and legal.
+  - an initial test variant that permuted the padded B-scale rows was rejected
+    by the numerical oracle; the committed test uses a no-op descriptor view so
+    the padded storage contract matches the rematerialization layout exactly.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - exact compact plus padded B-scale descriptor-view tests (`2 passed`);
+  - repeated-N32 tile-permuted selector (`12 passed, 1582 deselected`);
+  - `git diff --check`.

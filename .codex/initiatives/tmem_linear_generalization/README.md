@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 11:23 UTC: aligned repeated-N32 scaled-MMAv5 LLVM lowering with
+  the backend B-scale storage-through-view contract. Lowering now plans and
+  validates B-scale storage via `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`,
+  the same helper used by `TCGen5MMAScaledOp` verification and
+  `RematerializeRepeatedN32BScale`. Added a padded B-scale descriptor-view
+  runtime row that is already storage-supported, so tensor-memory allocation
+  does not rematerialize it; this proves LLVM lowering can consume the view
+  directly. Validation: `make -j8`, exact compact plus padded B-scale
+  descriptor-view tests (`2 passed`), repeated-N32 tile-permuted selector
+  (`12 passed`), Python compile, and `git diff --check`.
 - 2026-04-17 11:16 UTC: tightened shared-scale materialization to preserve the
   rank-2 shared scale view shape rather than redistributing by the MMA
   logical row count. This fixes two-CTA direct shared B-scale views for

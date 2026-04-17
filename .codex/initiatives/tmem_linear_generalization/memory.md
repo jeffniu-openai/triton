@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 11:23 UTC repeated-N32 scaled-MMAv5 LLVM lowering now
+  uses `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`, matching verifier
+  and allocation-pass scale-view semantics. This closes a layering mismatch
+  where verifier/allocation accepted a descriptor view backed by already
+  padded B-scale storage, but lowering still checked only the immediate view
+  type and could reject or plan with the wrong scale-storage column count. The
+  runtime matrix now has a padded B-scale descriptor-view row that deliberately
+  bypasses rematerialization and reaches LLVM lowering as a supported view.
+  Validation: `make -j8`; exact compact and padded B-scale descriptor-view
+  tests (`2 passed`); repeated-N32 tile-permuted selector (`12 passed`);
+  Python compile; and `git diff --check`.
+
 - Latest: 2026-04-17 11:16 UTC shared-scale materialization now preserves the
   rank-2 shared scale view shape instead of deriving `{logicalRows,
   numElems/logicalRows}`. This matters for two-CTA scaled MMA with `blockN <

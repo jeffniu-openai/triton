@@ -1544,6 +1544,12 @@ Progress:
   both single-CTA `128x128` and two-CTA `256x64` cases, proving the materialized
   `TensorMemoryScalesLayout` destination matches the source view shape while
   preserving the scale CGA basis.
+- 2026-04-17 11:23 UTC: repeated-N32 B-scale storage-through-view semantics are
+  now shared by verification, allocation, and LLVM lowering. Lowering uses
+  `getMMAv5ScaledBScaleStorageTypeThroughViews(...)` both for the repeated-N32
+  support check and for scale-fragment column planning. A focused padded
+  B-scale descriptor-view row reaches lowering without allocation-pass
+  rematerialization and validates the already-supported storage view directly.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy
