@@ -97,6 +97,13 @@ def _flatten_leading_layout_basis(basis: List[int], shape: List[int]) -> List[in
     return [row, basis[-1]]
 
 
+def _flatten_leading_shape(shape: List[int]) -> List[int]:
+    rows = 1
+    for dim in shape[:-1]:
+        rows *= dim
+    return [rows, shape[-1]]
+
+
 def _unflatten_leading_layout_basis(basis: List[int], shape: List[int]) -> List[int]:
     row, col = basis
     coords = []
@@ -132,6 +139,19 @@ def _reshape_leading_distributed_linear_layout(layout, src_shape: List[int], dst
         warp_bases=[convert_basis(basis) for basis in layout.warp_bases],
         block_bases=[convert_basis(basis) for basis in layout.block_bases],
         shape=dst_shape,
+    )
+
+
+def _flatten_leading_tmem_linear_layout(layout: TensorMemoryLinearLayout) -> TensorMemoryLinearLayout:
+    flat_shape = _flatten_leading_shape(list(layout.shape))
+    return TensorMemoryLinearLayout(
+        rows=[_flatten_leading_layout_basis(basis, list(layout.shape)) for basis in layout.rows],
+        cols=[_flatten_leading_layout_basis(basis, list(layout.shape)) for basis in layout.cols],
+        block_bases=[
+            _flatten_leading_layout_basis(basis, list(layout.shape)) for basis in layout.block_bases
+        ],
+        shape=flat_shape,
+        two_ctas=layout.two_ctas,
     )
 
 
@@ -439,6 +459,23 @@ class tensor_memory_descriptor_type(base_type):
             raise ValueError("num_warps could not be inferred; pass a positive power of two")
         if not isinstance(num_warps, int) or num_warps <= 0 or (num_warps & (num_warps - 1)) != 0:
             raise ValueError(f"num_warps must be a positive power of two, got {num_warps!r}")
+        if len(tmem_ty.shape) != 2:
+            raw_layout = _unwrap_tmem_layout_arg(tmem_ty.layout)
+            if not isinstance(raw_layout, TensorMemoryLinearLayout):
+                raise ValueError(
+                    "direct higher-rank TMEM register layout queries require a TensorMemoryLinearLayout "
+                    "so the leading dimensions can be flattened exactly"
+                )
+            flat_ty = tensor_memory_descriptor_type(
+                tmem_ty.element_ty,
+                _flatten_leading_shape(list(tmem_ty.shape)),
+                _flatten_leading_tmem_linear_layout(raw_layout),
+                _flatten_leading_shape(list(tmem_ty.alloc_shape)),
+            )
+            flat_layout = flat_ty.get_reg_layout(num_warps=num_warps, instr_variant=instr_variant)
+            return _reshape_leading_distributed_linear_layout(
+                flat_layout, list(flat_ty.shape), list(tmem_ty.shape)
+            )
         layout = _compute_tmem_reg_layout(
             _unwrap_tmem_layout_arg(tmem_ty.element_ty),
             _unwrap_tmem_layout_arg(tmem_ty.shape),

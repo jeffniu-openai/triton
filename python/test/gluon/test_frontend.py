@@ -608,6 +608,27 @@ def test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reas
     assert "do not provide a lane mask for this refresh image" in text
 
 
+def test_tensor_memory_higher_rank_descriptor_type_get_reg_layout_replays_flattened_layout():
+    base_layout = _make_tmem_linear_layout_128_identity()
+    layout = TensorMemoryLinearLayout(
+        rows=[[0] + list(basis) for basis in base_layout.rows],
+        cols=[[0] + list(basis) for basis in base_layout.cols] + [[1, 0, 0]],
+        shape=[2, 128, 128],
+    )
+    tmem_ty = blackwell.tensor_memory_descriptor_type(
+        ttgl.float32,
+        [2, 128, 128],
+        layout,
+        [2, 128, 128],
+    )
+
+    reg_layout = tmem_ty.get_reg_layout(num_warps=4)
+    assert reg_layout.shape == [2, 128, 128]
+    bases = reg_layout.reg_bases + reg_layout.lane_bases + reg_layout.warp_bases + reg_layout.block_bases
+    assert all(len(basis) == 3 for basis in bases)
+    assert [1, 0, 0] in bases
+
+
 @gluon.jit
 def tensor_memory_descriptor_chain_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
                                           reinterpret_layout: ttgl.constexpr, target_layout: ttgl.constexpr):

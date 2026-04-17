@@ -1175,6 +1175,11 @@ Progress:
   rank-2 view, reuses the existing backend reduction-layout selector, and
   reshapes both returned values (`[prod(leading), N]` and `[prod(leading)]`)
   back to the higher-rank value and leading-dimension reduction shapes.
+- 2026-04-17 13:43 UTC: the type-only
+  `tensor_memory_descriptor_type.get_reg_layout()` path now uses the same
+  exact flatten/unflatten arithmetic for higher-rank
+  `TensorMemoryLinearLayout` descriptors, keeping constexpr type queries and
+  handle-aware descriptor queries on one contract.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

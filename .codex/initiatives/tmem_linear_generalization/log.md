@@ -23420,6 +23420,34 @@ Open after this slice:
     current representative family, so move back to packet-footprint and copy
     scheduler frontiers.
 
+## 2026-04-17 13:43 UTC: type-only higher-rank register-layout replay
+
+- Starting point: `codex/tmem` at `d83ef460e`.
+- Change:
+  - added type-only flattening for higher-rank `TensorMemoryLinearLayout`
+    descriptor types;
+  - `tensor_memory_descriptor_type.get_reg_layout()` now constructs the
+    flattened rank-2 descriptor type, asks the existing rank-2 backend helper
+    for a layout, and unflattens the returned `DistributedLinearLayout` bases
+    over the original descriptor shape;
+  - added a frontend test proving the rank-3 type helper returns rank-3 bases
+    including the lifted leading-dimension selector.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_frontend.py::test_tensor_memory_higher_rank_descriptor_type_get_reg_layout_replays_flattened_layout`
+    (`1 passed`);
+  - `PYTHONPATH=.:./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_frontend.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by active `jeffniu-openai` auth under the current
+    `Mogball` repo instructions.
+- Next:
+  - commit this checkpoint locally;
+  - resume packet-footprint/copy-scheduler frontiers.
+
 ## 2026-04-17 12:58 UTC: scaled accumulator tile requirement cleanup
 
 - Starting point: `codex/tmem` at `38750e84b`.

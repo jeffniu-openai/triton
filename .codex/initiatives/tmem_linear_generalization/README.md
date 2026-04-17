@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:43 UTC: aligned type-only
+  `tensor_memory_descriptor_type.get_reg_layout()` with the handle-aware
+  higher-rank replay path. Type-only TMEM-linear higher-rank layouts now
+  flatten leading dimensions before calling the rank-2 backend planner and
+  unflatten the returned `DistributedLinearLayout` bases. Validation:
+  `make -j8`, exact frontend type-only test (`1 passed`), Python compile, and
+  `git diff --check`.
 - 2026-04-17 13:40 UTC: direct higher-rank TMEM reduction load now replays
   through the flattened descriptor view as well. The implementation reshapes
   the full load result back to the descriptor shape and the reduction result

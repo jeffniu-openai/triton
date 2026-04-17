@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:43 UTC type-only
+  `tensor_memory_descriptor_type.get_reg_layout()` now follows the same
+  flatten/unflatten contract as handle-aware higher-rank descriptors for
+  `TensorMemoryLinearLayout`. This avoids a split where `tmem.get_reg_layout()`
+  succeeded but the corresponding descriptor type helper still tried to plan
+  directly over a rank > 2 layout. Validation: `make -j8`; exact frontend
+  type-only test (`1 passed`); Python compile; `git diff --check`.
+
 - Latest: 2026-04-17 13:40 UTC direct higher-rank TMEM reduction load now
   uses the same flattened descriptor replay path. For rank > 2,
   `_load_red()` reshapes the descriptor to `[prod(leading), N]`, maps any
