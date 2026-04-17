@@ -332,9 +332,23 @@ std::optional<gpu::DistributedEncodingTrait>
 getTmemLoadReductionLayout(RankedTensorType tensorType,
                            gpu::MemDescType memType, int numWarps);
 
+enum class TMemLoadReductionUnsupportedReason {
+  None,
+  LayoutRank,
+  MissingOutputDims,
+  MShardedAcrossRegisters,
+  PartialNInRegisters,
+  RegisterBasisTouchesM,
+  UnsupportedNThreadBasis,
+  MissingLaneSplit,
+  NonContiguousNBases,
+};
+
 struct TMemLoadReductionLayoutSupport {
   std::optional<unsigned> laneSplitMask;
   std::string unsupportedReason;
+  TMemLoadReductionUnsupportedReason unsupportedReasonKind =
+      TMemLoadReductionUnsupportedReason::None;
 
   explicit operator bool() const { return laneSplitMask.has_value(); }
 };

@@ -21949,3 +21949,39 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.23s`);
   - `git diff --check`.
+
+## 2026-04-17 08:27 UTC: typed ld.red unsupported reason kinds
+
+- Starting point: `codex/tmem` at `dfd1f08c3`.
+- Change:
+  - added `TMemLoadReductionUnsupportedReason` to the TritonNvidiaGPU dialect
+    API;
+  - extended `TMemLoadReductionLayoutSupport` with an
+    `unsupportedReasonKind` field while preserving the existing diagnostic
+    string;
+  - classified every current `getTmemLoadReductionLayoutSupport(...)`
+    rejection into a typed reason: layout rank, missing output dims,
+    M-sharded registers, partial N in registers, register bases touching M,
+    unsupported N thread basis, missing lane split, or non-contiguous N bases.
+- Boundary:
+  - support and diagnostics are unchanged. This is a planner-preparation
+    checkpoint: a future explicit non-M64 software reduction/writeback path can
+    branch on the semantic failure kind instead of parsing the explanatory
+    string.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-reason-kind
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "ld_red_explicit_n_sharded_layout_reports_clean_unsupported or
+    ld_red_m64_splitn_linear_layout or ld_red_m64_explicit_splitn_variants or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn"`
+    (`45 passed, 1533 deselected in 13.23s`);
+  - `git diff --check`.

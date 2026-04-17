@@ -1345,6 +1345,13 @@ Progress:
   proof, rather than being mislabeled as only N sharding. This keeps the
   remaining explicit non-M64 variants pinned as a software
   reduction/writeback schedule boundary.
+- 2026-04-17 08:27 UTC: `TMemLoadReductionLayoutSupport` now carries a typed
+  `TMemLoadReductionUnsupportedReason` in addition to the diagnostic string.
+  This is support-neutral, but it turns the explicit non-M64 reduction
+  boundary into planner data: future software reduction/writeback can
+  distinguish M-sharded register streams, unsupported N thread bases,
+  missing lane splits, and partial/non-contiguous N coverage without
+  reparsing text.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

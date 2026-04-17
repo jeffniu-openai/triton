@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:27 UTC `ld.red` support failures now carry typed
+  backend reason kinds. `TMemLoadReductionLayoutSupport` still exposes the
+  same user-facing diagnostic string, but also records a
+  `TMemLoadReductionUnsupportedReason` enum for layout-rank errors, missing
+  output dimensions, M sharding, partial-N register streams, M-touched register
+  bases, unsupported N thread bases, missing lane splits, and non-contiguous N
+  bases. Support is unchanged. The next software-reduction planner can now
+  branch on exact semantics instead of reparsing diagnostics. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, Python compile, focused
+  reduction selector (`45 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:25 UTC lowered-subview base-offset subtraction is
   backend-owned. `TensorMemoryUtils` now exposes
   `getTMemSubviewRelativeBaseOffset(...)`, and direct `ld/st` plus

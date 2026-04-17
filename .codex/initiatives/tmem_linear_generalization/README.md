@@ -3685,6 +3685,14 @@ When resuming the initiative:
 
 ## Latest Checkpoint
 
+- 2026-04-17 08:27 UTC: `ld.red` reduction-layout support now carries typed
+  unsupported reason kinds. `TMemLoadReductionLayoutSupport` still preserves
+  the existing diagnostic text, but future software-reduction planning can
+  branch on semantic failure classes such as M-sharded registers, unsupported
+  N thread bases, missing lane splits, partial-N registers, and non-contiguous
+  N bases. Validation: `make -j8`, direct `invalid.mlir` verifier,
+  py-compile, focused reduction selector (`45 passed`), and
+  `git diff --check`.
 - 2026-04-16 03:34 UTC: dense no-scales copy tile-permutation coverage now
   includes non-adjacent pure tile-selector permutations (`reverse` and
   `even_odd`) where low instruction columns remain contiguous. This pins the

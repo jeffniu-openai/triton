@@ -3175,12 +3175,14 @@ getTmemLoadLayoutSplitLongM(RankedTensorType tensorType, MemDescType memType,
 TMemLoadReductionLayoutSupport
 getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
                                   const LinearLayout &layout) {
-  auto unsupported = [](Twine reason) {
-    return TMemLoadReductionLayoutSupport{std::nullopt, reason.str()};
+  auto unsupported = [](TMemLoadReductionUnsupportedReason kind,
+                        Twine reason) {
+    return TMemLoadReductionLayoutSupport{std::nullopt, reason.str(), kind};
   };
 
   if (layout.getNumOutDims() != 2)
     return unsupported(
+        TMemLoadReductionUnsupportedReason::LayoutRank,
         "Reduction load layout support requires exactly two logical output "
         "dimensions.");
   auto attr = LinearEncodingAttr::get(tensorType.getContext(), layout);
@@ -3192,6 +3194,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
   auto outDims = llvm::to_vector(regLayout.getOutDimSizes());
   if (outDims.size() < 2)
     return unsupported(
+        TMemLoadReductionUnsupportedReason::MissingOutputDims,
         "Reduction load layout support requires materialized M and N output "
         "dimensions.");
 
@@ -3219,6 +3222,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
   if (regDims[dimM] != 1) {
     std::string mBases = describeBases(kReg, dimM);
     return unsupported(
+        TMemLoadReductionUnsupportedReason::MShardedAcrossRegisters,
         Twine("Reduction load layout shards the M dimension across register "
               "values") +
         (mBases.empty() ? Twine(".") : Twine(" (") + mBases + ").") +
@@ -3256,6 +3260,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
   if (outDims[dimN] < 2 || outDims[dimN] != regDims[dimN] * 2) {
     std::string nBases = describeNonRegisterNBases();
     return unsupported(
+        TMemLoadReductionUnsupportedReason::PartialNInRegisters,
         Twine("Reduction load layout keeps only ") + Twine(regDims[dimN]) +
         " of " + Twine(outDims[dimN]) +
         " N elements in the register dimension. Current lowering supports "
@@ -3268,6 +3273,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
   for (unsigned idx = 0; idx < regLayout.getInDimSizeLog2(kReg); ++idx) {
     if (regLayout.getBasis(kReg, idx, dims[dimM]) != 0)
       return unsupported(
+          TMemLoadReductionUnsupportedReason::RegisterBasisTouchesM,
           "Reduction load layout has a register basis that contributes to "
           "both the per-thread value stream and M, so lowering cannot treat "
           "the register dimension as a pure N-reduction dimension.");
@@ -3288,6 +3294,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
           regLayout.getBasis(inDim, idx, dims[dimM]) != 0 || laneSplitMask) {
         std::string nBasesText = describeNonRegisterNBases();
         return unsupported(
+            TMemLoadReductionUnsupportedReason::UnsupportedNThreadBasis,
             Twine("Reduction load layout splits N through an unsupported "
                   "thread basis. Current lowering can combine only one pure "
                   "lane bit 4 split with shuffle-xor 16") +
@@ -3300,6 +3307,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
   }
   if (!laneSplitMask)
     return unsupported(
+        TMemLoadReductionUnsupportedReason::MissingLaneSplit,
         "Reduction load layout does not keep full N in registers and has no "
         "supported lane bit 4 N split to combine after tcgen05.ld.red.");
 
@@ -3309,6 +3317,7 @@ getTmemLoadReductionLayoutSupport(RankedTensorType tensorType,
     expectedNBases.push_back(static_cast<int32_t>(n));
   if (!llvm::equal(nBases, expectedNBases))
     return unsupported(
+        TMemLoadReductionUnsupportedReason::NonContiguousNBases,
         "Reduction load layout register/lane N bases do not cover the full "
         "contiguous power-of-two reduction dimension.");
   return TMemLoadReductionLayoutSupport{*laneSplitMask, ""};
