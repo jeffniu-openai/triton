@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:42 UTC guard-lifting scaled-MMAv5 narrow accumulator
+  tiles to N8/N16 is not correct. A probe that temporarily let the scaled
+  accumulator planner choose N8/N16 compiled the representative
+  `mxfp8/mxfp8, N=32, tile_n=8, K=128` case and emitted 16 scaled `tcgen05.mma`
+  ops, but runtime was wrong (`maxdiff 888.0625`). Re-running with constant
+  A/B scales still failed outside the first 8-column tile (`maxdiff 324.75`),
+  so this is not merely B-scale fragment addressing; the scaled N8/N16 atom
+  schedule itself is not a valid support path for this tile-permuted
+  accumulator. Keep the current clean narrow-N requirement unless a real
+  B/scale/accumulator permutation schedule is modeled and validated.
+
 - Latest: 2026-04-17 12:38 UTC mixed fp4A TMEM-LHS scaled-MMAv5 is now
   represented as an explicit backend requirement instead of a raw verifier
   special case. This does not promote support: prior guard-lift probes showed

@@ -23097,3 +23097,30 @@ Open after this slice:
   - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
     python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 12:42 UTC: scaled-MMAv5 narrow-N guard-lift probe
+
+- Starting point: `codex/tmem` at `ab58e2cd0`.
+- Probe:
+  - temporarily allowed `planMMAv5ScaledAccumulatorFamily(...)` to include
+    N8/N16 accumulator microtiles, matching the plain MMAv5 accumulator
+    planner;
+  - rebuilt and ran a direct runtime probe for
+    `mxfp8/mxfp8, M=128, N=32, tile_n=8, K=128` through
+    `tmem_mma_scaled_layout_format_kernel`.
+- Result:
+  - the probe compiled and emitted 16 scaled `tcgen05.mma` ops, but runtime
+    was numerically wrong (`maxdiff 888.0625`);
+  - comparing against the expected intra-N32 tile permutation did not explain
+    the failure;
+  - forcing constant A/B scales still failed outside the first 8-column tile
+    (`maxdiff 324.75`), so the boundary is not merely B-scale fragment
+    addressing.
+- Conclusion:
+  - the current narrow-N clean unsupported requirement is a real scaled-MMA
+    atom/schedule boundary for tile-permuted accumulator layouts;
+  - future support must model a correct B operand, B-scale, and accumulator
+    permutation schedule, not just reuse the plain MMAv5 N8/N16 planner.
+- Cleanup:
+  - reverted the temporary planner guard lift;
+  - rebuilt with `make -j8` so local artifacts match the checked-in source.
