@@ -3389,6 +3389,44 @@ appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts
 }
 
 static std::optional<LinearLayout>
+getTMemScalesNarrowTileLayout(MemDescType memType, unsigned numWarps) {
+  if (!isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) ||
+      numWarps != 4 || memType.getElementTypeBitWidth() != 8)
+    return std::nullopt;
+  auto shape = memType.getShape();
+  if (shape.size() < 2 || shape[shape.size() - 2] != 16 ||
+      shape[shape.size() - 1] != 8)
+    return std::nullopt;
+
+  auto *ctx = memType.getContext();
+  auto dims = standardOutDimNames(ctx, 2);
+  auto kReg = StringAttr::get(ctx, "register");
+  auto kLane = StringAttr::get(ctx, "lane");
+  auto kWarp = StringAttr::get(ctx, "warp");
+
+  LinearLayout::BasesT bases;
+  bases[kReg] = {{0, 1}, {0, 2}, {0, 0}};
+  bases[kLane] = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 4}};
+  bases[kWarp] = {{0, 0}, {0, 0}};
+  return LinearLayout(
+      std::move(bases),
+      {{dims[0], static_cast<int32_t>(shape[shape.size() - 2])},
+       {dims[1], static_cast<int32_t>(shape[shape.size() - 1])}},
+      /*requireSurjective=*/false);
+}
+
+static bool appendTMemScalesNarrowTileCompatibleLayout(
+    SmallVectorImpl<DistributedEncodingTrait> &layouts,
+    RankedTensorType tensorType, MemDescType memType, unsigned numWarps,
+    unsigned maxnreg, bool requireUnique = false) {
+  auto narrow = getTMemScalesNarrowTileLayout(memType, numWarps);
+  if (!narrow)
+    return false;
+  return appendTMemCompatibleCandidate(layouts, tensorType, memType, *narrow,
+                                       maxnreg, requireUnique);
+}
+
+static std::optional<LinearLayout>
 getExpandedRowDirectI32x32bLayout(MemDescType memType,
                                   const LinearLayout &memLayout,
                                   unsigned numWarps) {
@@ -4072,42 +4110,10 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
     }
   }
 
-  auto tryAddScalesNarrowTileLayout = [&]() {
-    if (!isScales || numWarps != 4 || memType.getElementTypeBitWidth() != 8)
-      return;
-    auto shape = memType.getShape();
-    if (shape.size() < 2 || shape[shape.size() - 2] != 16 ||
-        shape[shape.size() - 1] != 8)
-      return;
-    auto *ctx = memType.getContext();
-    auto dims = standardOutDimNames(ctx, 2);
-    auto kReg = StringAttr::get(ctx, "register");
-    auto kLane = StringAttr::get(ctx, "lane");
-    auto kWarp = StringAttr::get(ctx, "warp");
-    LinearLayout::BasesT bases;
-    bases[kReg] = {{0, 1}, {0, 2}, {0, 0}};
-    bases[kLane] = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 4}};
-    bases[kWarp] = {{0, 0}, {0, 0}};
-    auto narrow =
-        LinearLayout(std::move(bases),
-                     {{dims[0], static_cast<int32_t>(shape[shape.size() - 2])},
-                      {dims[1],
-                       static_cast<int32_t>(shape[shape.size() - 1])}},
-                     /*requireSurjective=*/false);
-    auto candidateEncoding =
-        LinearEncodingAttr::get(memType.getContext(), narrow);
-    auto tensorTy = RankedTensorType::get(memType.getShape(),
-                                          memType.getElementType(),
-                                          candidateEncoding);
-    if (succeeded(computeTMemLdStEncodingInfo(
-            tensorTy, memType, /*maxnreg=*/256))) {
-      layouts.push_back(candidateEncoding);
-    }
-  };
-  tryAddScalesNarrowTileLayout();
-
   auto tensorTy =
       RankedTensorType::get(memType.getShape(), memType.getElementType());
+  appendTMemScalesNarrowTileCompatibleLayout(
+      layouts, tensorTy, memType, numWarps, /*maxnreg=*/256);
   auto tryPushUniqueLayout = [&](const LinearLayout &layout) {
     appendTMemCompatibleCandidate(layouts, tensorTy, memType, layout,
                                   /*maxnreg=*/256, /*requireUnique=*/true);
@@ -4216,34 +4222,8 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   if (numWarps % 4 != 0)
     return layouts;
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding());
-  auto tryAddScalesNarrowTileLayout = [&]() {
-    if (!isScales || numWarps != 4 || memType.getElementTypeBitWidth() != 8)
-      return;
-    auto shape = memType.getShape();
-    if (shape.size() < 2 || shape[shape.size() - 2] != 16 ||
-        shape[shape.size() - 1] != 8)
-      return;
-    auto *ctx = tensorType.getContext();
-    auto dims = standardOutDimNames(ctx, 2);
-    auto kReg = StringAttr::get(ctx, "register");
-    auto kLane = StringAttr::get(ctx, "lane");
-    auto kWarp = StringAttr::get(ctx, "warp");
-    LinearLayout::BasesT bases;
-    bases[kReg] = {{0, 1}, {0, 2}, {0, 0}};
-    bases[kLane] = {{1, 0}, {2, 0}, {4, 0}, {8, 0}, {0, 4}};
-    bases[kWarp] = {{0, 0}, {0, 0}};
-    auto narrow =
-        LinearLayout(std::move(bases),
-                     {{dims[0], static_cast<int32_t>(shape[shape.size() - 2])},
-                      {dims[1],
-                       static_cast<int32_t>(shape[shape.size() - 1])}},
-                     /*requireSurjective=*/false);
-    if (isTMemCompatibleCandidate(op, tensorType, memType, narrow)) {
-      layouts.push_back(
-          LinearEncodingAttr::get(tensorType.getContext(), std::move(narrow)));
-    }
-  };
-  tryAddScalesNarrowTileLayout();
+  appendTMemScalesNarrowTileCompatibleLayout(
+      layouts, tensorType, memType, numWarps, getContextualMaxNReg(op));
   LinearLayout memLL = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()))
       return toLinearLayout(memType);

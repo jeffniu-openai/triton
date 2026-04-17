@@ -23772,3 +23772,26 @@ Open after this slice:
   - push remains blocked by the current repo instruction requiring `Mogball`
     while `gh auth status -h github.com` reports active account
     `jeffniu-openai`.
+
+## 2026-04-17 14:44 UTC: shared scales narrow-tile compatible layout helper
+
+- Starting point: `codex/tmem` at `26b6990e3`.
+- Change:
+  - factored the duplicated scales `16x8` narrow-tile compatible-layout
+    construction in `Dialect.cpp` into `getTMemScalesNarrowTileLayout(...)`;
+  - both `getTmemCompatibleLayouts(...)` overloads now validate that candidate
+    through the same `appendTMemCompatibleCandidate(...)` path used by the rest
+    of the compatible-layout planner.
+- Boundary:
+  - this is support-neutral cleanup. It preserves the existing scales `ld/st`
+    surface while removing a local rescue block from the compatibility
+    enumeration.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scales-compat-refactor
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_variant_sweep or ldst_scales_direct_roundtrip or
+    ldst_scales_descriptor_view_roundtrip'` (`19 passed, 1573 deselected`);
+  - `git diff --check`.

@@ -1722,6 +1722,12 @@ Progress:
   both split-load and store-join rewrites when the pre-rewrite full store is
   itself legal. Validation: `make -j8`, direct `triton-opt` for
   `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `git diff --check`.
+- 2026-04-17 14:44 UTC: removed duplicate local scales `16x8` narrow-tile
+  compatible-layout construction by factoring it into a shared helper consumed
+  by both `getTmemCompatibleLayouts(...)` overloads. The candidate now goes
+  through the same append-and-validate path as the rest of compatible-layout
+  enumeration. Validation: `make -j8`, focused scales `ld/st` runtime selector
+  (`19 passed`), and `git diff --check`.
 
 Exit criteria:
 - TMEM backend decisions flow through the shared physical-query/planner stack.
