@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:04 UTC: moved direct `ld/st` row-plan candidate layout
+  enumeration from the Gluon bridge into `TensorMemoryUtils` as
+  `TMemLdStCandidateLayout` plus
+  `getTMemLdStCandidateLayoutsForQuery(...)`. The backend now owns the
+  row-plan, exact-view M64 direct-layout predicate, atom order, and
+  split-N-fastpath refusal used to propose direct register layouts; Gluon only
+  normalizes and converts those layouts to Python objects. Support is
+  unchanged. Validation: `make -j8`, direct `invalid.mlir` verifier, Python
+  compile for affected Gluon tests, focused M64/direct-layout runtime selector
+  (`64 passed, 1 skipped`), `test_core.py -k tmem_linear_m64` (`21 passed`),
+  and `git diff --check`.
 - 2026-04-17 08:01 UTC: moved the direct `ld/st` atom search order out of
   the Gluon pybind bridge and into `TensorMemoryUtils` as
   `getTMemLdStAtomSearchOrder(...)`. The bridge still tries the same atom

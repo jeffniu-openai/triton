@@ -1559,13 +1559,6 @@ void init_gluon_ir(py::module &&m) {
               layouts.push_back(attr);
             }
           };
-          auto rowPlan =
-              ttng::getTMemLdStRowPlanForQuery(queryMemDesc, queryTy);
-          bool explicitViewProducer =
-              isa_and_nonnull<ttg::MemDescSubsliceOp, ttng::TMEMSubSliceOp,
-                              ttg::MemDescIndexOp, ttg::MemDescReshapeOp,
-                              ttg::MemDescTransOp, ttg::MemDescReinterpretOp>(
-                  queryMemDesc.getDefiningOp());
           bool deferCanonicalM64SplitNCompatibleLayout =
               ttng::shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(
                   queryMemDesc, queryTy, atomName);
@@ -1599,41 +1592,16 @@ void init_gluon_ir(py::module &&m) {
             addAttr(*attr);
           };
 
-          if (rowPlan) {
-            bool useExactViewLinearPlannerForM64DirectView =
-                ttng::shouldUseExactTMemLdStViewLayoutForM64DirectView(
-                    queryMemDesc, queryTy, atomName);
-            auto exactViewLayout =
-                useExactViewLinearPlannerForM64DirectView
-                    ? std::optional<tt::LinearLayout>(ttg::toLinearLayout(queryTy))
-                    : std::nullopt;
-            for (auto atom : ttng::getTMemLdStAtomSearchOrder(std::nullopt)) {
-              std::optional<tt::LinearLayout> maybeLayout;
-              if (exactViewLayout &&
-                  (atom == ttng::TMemAccessAtom::I32x32b ||
-                   atom == ttng::TMemAccessAtom::I16x32bx2)) {
-                maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
-                    *exactViewLayout, atom, numWarps,
-                    queryTy.getElementTypeBitWidth(), *rowPlan,
-                    /*allowSplitNFastPath=*/false);
-              } else {
-                maybeLayout = ttng::getDistributedLayoutForTmemLdSt(
-                    queryTy, atom, numWarps, rowPlan);
-              }
-              if (maybeLayout) {
-                if (traceToFile) {
-                  appendTrace(Twine("getCompatibleLayouts rowPlan atom=") +
-                              Twine(static_cast<int>(atom)) + " layout=" +
-                              maybeLayout->toString());
-                }
-                addLayout(std::move(*maybeLayout));
-              }
+          for (auto candidate : ttng::getTMemLdStCandidateLayoutsForQuery(
+                   queryMemDesc, queryTy, numWarps, atomName)) {
+            if (traceToFile) {
+              appendTrace(Twine("getCompatibleLayouts rowPlan atom=") +
+                          Twine(static_cast<int>(candidate.atom)) +
+                          " layout=" + candidate.layout.toString());
             }
+            addLayout(std::move(candidate.layout));
           }
-          if (explicitViewProducer)
-            addGenericCompatibleLayouts();
-          else
-            addGenericCompatibleLayouts();
+          addGenericCompatibleLayouts();
           return layouts;
         };
         auto getBlockedFallbackLayouts =

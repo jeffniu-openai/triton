@@ -21693,3 +21693,46 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.74s`);
   - `git diff --check`.
+
+## 2026-04-17 08:04 UTC: moved direct ld/st candidate enumeration to backend
+
+- Starting point: `codex/tmem` at `71be1d857`.
+- Change:
+  - added `TMemLdStCandidateLayout` and
+    `getTMemLdStCandidateLayoutsForQuery(...)` to `TensorMemoryUtils`;
+  - moved the row-plan candidate enumeration out of `python/src/gluon_ir.cc`;
+  - the backend helper now owns the row-plan lookup, exact-view M64
+    direct-layout predicate, atom order, and the `allowSplitNFastPath=false`
+    exact-view restriction for `32x32b` / `16x32bx2` candidates;
+  - removed a stale pybind `explicitViewProducer` branch whose both arms did
+    the same generic-layout fallback.
+- Boundary:
+  - support and candidate ordering are unchanged. The bridge still owns Gluon
+    layout normalization and conversion to Python-visible objects; the backend
+    owns which direct candidate layouts should be considered.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-candidate-layout-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga"` (`64 passed, 1 skipped,
+    1513 deselected in 46.72s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-candidate-layout-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.88s`);
+  - `git diff --check`.

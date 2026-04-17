@@ -165,6 +165,13 @@ Progress:
   sequence in the pybind bridge. Support is unchanged; this keeps another
   direct-lowering policy in the backend layer before packet-footprint and
   reduction-schedule work continues.
+- 2026-04-17 08:04 UTC: moved row-plan candidate layout enumeration for direct
+  `ld/st` register-layout search into `TensorMemoryUtils`. The backend now
+  returns typed `TMemLdStCandidateLayout` entries from
+  `getTMemLdStCandidateLayoutsForQuery(...)`, including the exact-view M64
+  direct-layout decision and split-N-fastpath refusal for exact-view
+  candidates. The Gluon bridge still converts layouts to pybind-visible Gluon
+  objects, but no longer builds this candidate set itself.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

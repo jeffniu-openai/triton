@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:04 UTC direct `ld/st` row-plan candidate layout
+  enumeration is backend-owned. `TensorMemoryUtils` now exposes
+  `TMemLdStCandidateLayout` and `getTMemLdStCandidateLayoutsForQuery(...)`;
+  this helper owns the row-plan lookup, exact-view M64 direct-layout predicate,
+  direct atom order, and split-N-fastpath refusal for exact-view `32x32b` /
+  `16x32bx2` candidates. The Gluon bridge only normalizes and converts the
+  backend-proposed layouts to Python layout objects. Support is unchanged.
+  Validation: `make -j8`, direct `invalid.mlir` verifier, Python compile,
+  focused M64/direct-layout runtime selector (`64 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:01 UTC direct `ld/st` atom search ordering is
   backend-owned. `TensorMemoryUtils` now exposes
   `getTMemLdStAtomSearchOrder(...)`, and `python/src/gluon_ir.cc` uses it for

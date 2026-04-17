@@ -199,6 +199,38 @@ getTMemLdStAtomSearchOrder(std::optional<TMemAccessAtom> desiredAtom) {
   return atomOrder;
 }
 
+SmallVector<TMemLdStCandidateLayout>
+getTMemLdStCandidateLayoutsForQuery(Value memDesc, MemDescType queryTy,
+                                    unsigned numWarps, StringRef atomName) {
+  SmallVector<TMemLdStCandidateLayout> candidates;
+  auto rowPlan = getTMemLdStRowPlanForQuery(memDesc, queryTy);
+  if (!rowPlan)
+    return candidates;
+
+  bool useExactViewLinearPlanner =
+      shouldUseExactTMemLdStViewLayoutForM64DirectView(memDesc, queryTy,
+                                                       atomName);
+  std::optional<LinearLayout> exactViewLayout =
+      useExactViewLinearPlanner
+          ? std::optional<LinearLayout>(toLinearLayout(queryTy))
+          : std::nullopt;
+  for (TMemAccessAtom atom : getTMemLdStAtomSearchOrder(std::nullopt)) {
+    std::optional<LinearLayout> layout;
+    if (exactViewLayout && (atom == TMemAccessAtom::I32x32b ||
+                            atom == TMemAccessAtom::I16x32bx2)) {
+      layout = getDistributedLayoutForTmemLdSt(
+          *exactViewLayout, atom, numWarps, queryTy.getElementTypeBitWidth(),
+          *rowPlan, /*allowSplitNFastPath=*/false);
+    } else {
+      layout = getDistributedLayoutForTmemLdSt(queryTy, atom, numWarps,
+                                               rowPlan);
+    }
+    if (layout)
+      candidates.push_back(TMemLdStCandidateLayout{atom, std::move(*layout)});
+  }
+  return candidates;
+}
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
                                                       unsigned numWarps,
                                                       TMemAccessAtom atom) {

@@ -91,6 +91,11 @@ struct TMemLdStPhysicalSupportPlan {
   TMemAccessAtom atom;
 };
 
+struct TMemLdStCandidateLayout {
+  TMemAccessAtom atom;
+  LinearLayout layout;
+};
+
 struct TMemCopyAtom {
   int nRow;
   int bCol;
@@ -451,6 +456,10 @@ bool isTMemAccessAtomCompatibleWithRequest(
 
 llvm::SmallVector<TMemAccessAtom>
 getTMemLdStAtomSearchOrder(std::optional<TMemAccessAtom> desiredAtom);
+
+llvm::SmallVector<TMemLdStCandidateLayout>
+getTMemLdStCandidateLayoutsForQuery(Value memDesc, gpu::MemDescType queryTy,
+                                    unsigned numWarps, StringRef atomName);
 
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
