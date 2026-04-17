@@ -2820,6 +2820,30 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
                                                 numWarps, allow16Bit);
 }
 
+bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+    Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!isM64SplitNDescriptorType(memTy, numWarps))
+    return false;
+  if (desiredAtom && *desiredAtom != TMemAccessAtom::I32x32b &&
+      *desiredAtom != TMemAccessAtom::I16x32bx2) {
+    return false;
+  }
+
+  auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+      memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
+  if (failed(rawQuery))
+    return true;
+
+  auto kRow = StringAttr::get(memTy.getContext(), "row");
+  if (!rawQuery->layout.hasInDim(kRow))
+    return true;
+  auto activeLayout = rawQuery->layout.removeZeroBasesAlongDim(kRow);
+  return !(rawQuery->layout.getInDimSize(kRow) > memTy.getShape()[0] &&
+           activeLayout.hasInDim(kRow) &&
+           activeLayout.getInDimSize(kRow) == memTy.getShape()[0]);
+}
+
 RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    Value memDesc,
                                                    unsigned numWarps) {
@@ -3086,6 +3110,58 @@ static bool shouldPreferDirectHalfRowsSubviewRowPlan(
          backingPlan->rowSpan == queryTy.getShape()[0] * 2 &&
          (isDirectHalfRowsSubview(memDesc) ||
           isHigherRankHalfRowsSubview(memDesc));
+}
+
+bool isTMemLdStHalfRowsDescriptorView(Value memDesc) {
+  return isDirectHalfRowsSubview(memDesc) ||
+         isHigherRankHalfRowsSubview(memDesc);
+}
+
+bool disallowTMemLdStTypeOnlyFallback(Value memDesc, std::string *reason) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!memTy)
+    return false;
+  auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(memTy.getEncoding());
+  if (!linear || !linear.getTwoCTAs() || memTy.getElementTypeBitWidth() != 8)
+    return false;
+
+  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
+    if (!layout.hasInDim(dim))
+      return false;
+    for (unsigned idx = 0; idx < layout.getInDimSizeLog2(dim); ++idx) {
+      if (llvm::all_of(layout.getBasis(dim, idx),
+                       [](int32_t value) { return value == 0; }))
+        return true;
+    }
+    return false;
+  };
+
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  auto typeLayout = toLinearLayout(memTy);
+  bool hasNonTrivialBlock =
+      typeLayout.hasInDim(kBlock) && typeLayout.getInDimSize(kBlock) > 1;
+  if (!hasNonTrivialBlock) {
+    auto rawQuery = inferStandaloneTMemLdStQueryLayout(
+        memDesc, /*preserveNonCanonicalView=*/true, /*error=*/nullptr);
+    hasNonTrivialBlock = succeeded(rawQuery) &&
+                         rawQuery->layout.hasInDim(kBlock) &&
+                         rawQuery->layout.getInDimSize(kBlock) > 1;
+  }
+  if (!hasNonTrivialBlock ||
+      (!hasZeroBasisAlong(typeLayout, kRow) &&
+       !hasZeroBasisAlong(typeLayout, kCol))) {
+    return false;
+  }
+
+  if (reason) {
+    *reason =
+        "two-CTA int8 descriptor views with broadcast/support bases require "
+        "exact support/raw-query lowering";
+  }
+  return true;
 }
 
 static bool shouldPreferBackingRowPlanForPureOuterIndexView(

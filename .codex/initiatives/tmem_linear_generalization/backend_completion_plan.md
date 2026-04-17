@@ -133,6 +133,12 @@ Progress:
   Verification and lowering now compute the exact destination query and prefer
   it only when it compares equal to the standalone projection; divergent or
   failed exact queries preserve the current standalone behavior.
+- 2026-04-17 06:40 UTC: moved the Gluon bridge's remaining M64 query-ordering
+  and descriptor-view type-only fallback predicates into `TensorMemoryUtils`.
+  The backend now owns the projected-M64 raw-query test, half-row
+  descriptor-view exact-lowering requirement, and two-CTA int8
+  broadcast/support-base fallback refusal used during register-layout
+  selection.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

@@ -416,6 +416,9 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
     unsigned numWarps, StringRef atomName,
     std::optional<TMemAccessAtom> desiredAtom, bool allow16Bit = false);
 
+bool shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+    Value memDesc, unsigned numWarps, std::optional<TMemAccessAtom> desiredAtom);
+
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 
@@ -439,6 +442,11 @@ bool isTMemAccessAtomCompatibleWithRequest(
     TMemAccessAtom actualAtom);
 
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
+
+bool isTMemLdStHalfRowsDescriptorView(Value memDesc);
+
+bool disallowTMemLdStTypeOnlyFallback(Value memDesc,
+                                      std::string *reason = nullptr);
 
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 

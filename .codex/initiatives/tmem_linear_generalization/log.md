@@ -119,6 +119,7 @@
   - promoted two-CTA plus adjacent unsupported selector:
     `5 passed, 2 skipped, 1568 deselected in 32.50s`;
   - `git diff --check`.
+
 - Remaining note:
   - this is infrastructure cleanup, not a support promotion. It removes a
     false invalid-IR blocker so future packet-base/per-message-offset work can
@@ -21287,4 +21288,41 @@ Open after this slice:
     cp_no_scales_twocta_linear_subslice_view or
     cp_no_scales_warpx2_subslice_view_positive"`
     (`38 passed, 1 skipped, 1539 deselected in 24.98s`);
+  - `git diff --check`.
+
+## 2026-04-17 06:40 UTC: moved register-layout fallback predicates to backend
+
+- Starting point: `codex/tmem` at `1853d3c61`.
+- Change:
+  - added backend helpers for the M64 query-type-before-raw-query decision,
+    half-row descriptor-view detection, and type-only fallback refusal;
+  - removed the corresponding raw `LinearLayout` row, zero-basis, and
+    descriptor-chain predicates from `python/src/gluon_ir.cc`;
+  - kept the Gluon bridge responsible for search orchestration and layout
+    conversion, while `TensorMemoryUtils` owns the planner semantics.
+- Support boundary:
+  - no support surface changed. This removes another frontend-local fallback
+    interpretation before working on support-bearing packet rematerialization
+    or copy source-message scheduling.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reglayout-predicates
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga"` (`62 passed, 1 skipped,
+    1515 deselected in 44.93s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-reglayout-predicates-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.89s`);
   - `git diff --check`.

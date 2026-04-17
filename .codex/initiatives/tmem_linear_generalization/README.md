@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:40 UTC: moved the remaining Gluon register-layout fallback
+  predicates for M64 query ordering, half-row descriptor views, and two-CTA
+  int8 descriptor-view type-only fallback refusal into `TensorMemoryUtils`.
+  The pybind bridge now delegates those support/raw-query decisions to the
+  backend instead of reinterpreting raw `LinearLayout` rows, zero bases, and
+  view chains locally. Support is unchanged. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused M64/half-row/two-CTA selector (`62 passed,
+  1 skipped`), `test_core.py -k tmem_linear_m64` (`21 passed`), and
+  `git diff --check`.
 - 2026-04-17 06:35 UTC: moved TMEM descriptor-view base-adjustment semantics
   from LLVM lowering into `TensorMemoryUtils`. The backend now owns
   `getAlreadyAdjustedTMemSubviewBaseOffset(...)` and

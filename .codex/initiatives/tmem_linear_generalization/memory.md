@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:40 UTC the Gluon register-layout bridge no longer
+  owns M64 query-ordering or descriptor-view type-only fallback predicates.
+  `TensorMemoryUtils` now exposes
+  `shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(...)`,
+  `isTMemLdStHalfRowsDescriptorView(...)`, and
+  `disallowTMemLdStTypeOnlyFallback(...)`; `python/src/gluon_ir.cc` delegates
+  the M64 projected-row test, half-row descriptor-view exact-lowering
+  requirement, and two-CTA int8 broadcast/support-base fallback refusal to
+  those backend helpers. Support is unchanged, but another frontend-local copy
+  of exact TMEM query/layout semantics is gone. Validation: `make -j8`,
+  direct `invalid.mlir` verifier, `test_tmem_runtime_matrix.py -k "m64_splitn
+  or ld_red_m64 or ldst_descriptor_higher_rank_half_rows or
+  ldst_twocta_descriptor_higher_rank_half_rows or
+  ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+  ldst_scales_descriptor_view_cga"` (`62 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 06:35 UTC `ld/st` and copy lowering no longer own local
   TMEM subview base-adjustment semantics. `TensorMemoryUtils` now exposes
   `getAlreadyAdjustedTMemSubviewBaseOffset(...)`, which walks reinterpret,

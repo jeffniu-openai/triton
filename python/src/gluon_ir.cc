@@ -2004,31 +2004,9 @@ void init_gluon_ir(py::module &&m) {
               std::getenv("TRITON_DISABLE_TYPE_ONLY_TMEM_REG_LAYOUT_FALLBACK") !=
               nullptr;
           auto queryTypes = ttng::getTMemLdStQueryTypes(queryMemDesc);
-          auto hasProjectedM64RawQueryLayout = [&]() {
-            if (queryMemDescTy.getRank() != 2 ||
-                queryMemDescTy.getElementTypeBitWidth() != 32 ||
-                queryMemDescTy.getShape()[0] != 64) {
-              return false;
-            }
-            auto rawQueryLayout = inferRawQueryLayout(queryMemDesc);
-            if (!rawQueryLayout)
-              return false;
-            auto kRow = StringAttr::get(ctx, "row");
-            if (!rawQueryLayout->layout.hasInDim(kRow))
-              return false;
-            auto activeLayout =
-                rawQueryLayout->layout.removeZeroBasesAlongDim(kRow);
-            return rawQueryLayout->layout.getInDimSize(kRow) >
-                       queryMemDescTy.getShape()[0] &&
-                   activeLayout.hasInDim(kRow) &&
-                   activeLayout.getInDimSize(kRow) ==
-                       queryMemDescTy.getShape()[0];
-          }();
           auto preferQueryTypeLayoutsBeforeRawQuery =
-              ttng::isM64SplitNDescriptorType(queryMemDescTy, numWarps) &&
-              !hasProjectedM64RawQueryLayout &&
-              (!desiredAtom || *desiredAtom == ttng::TMemAccessAtom::I32x32b ||
-               *desiredAtom == ttng::TMemAccessAtom::I16x32bx2);
+              ttng::shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
+                  queryMemDesc, numWarps, desiredAtom);
           auto tryQueryTypeLayouts = [&]() -> py::object {
             for (ttg::MemDescType queryTy : queryTypes) {
               auto layouts = getCompatibleLayouts(queryMemDesc, queryTy);
@@ -2040,79 +2018,6 @@ void init_gluon_ir(py::module &&m) {
               }
             }
             return py::none();
-          };
-          auto isGenericHalfRowsDescriptorView = [&](Value memDesc) {
-            auto queryTy = dyn_cast<ttg::MemDescType>(memDesc.getType());
-            auto rejectHalfRowsView = [&](ttg::MemDescType srcTy) {
-              return srcTy && queryTy && srcTy.getRank() == 2 &&
-                     queryTy.getRank() == 2 &&
-                     srcTy.getShape()[0] == queryTy.getShape()[0] * 2 &&
-                     srcTy.getShape()[1] == queryTy.getShape()[1];
-            };
-            if (auto subslice = memDesc.getDefiningOp<ttg::MemDescSubsliceOp>()) {
-              auto srcTy = dyn_cast<ttg::MemDescType>(subslice.getSrc().getType());
-              auto offsets = subslice.getOffsets();
-              return rejectHalfRowsView(srcTy) && offsets.size() == 2 &&
-                     offsets[0] == queryTy.getShape()[0] && offsets[1] == 0;
-            }
-            auto index = memDesc.getDefiningOp<ttg::MemDescIndexOp>();
-            if (!index)
-              return false;
-            APInt indexValue;
-            if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)) ||
-                indexValue.getSExtValue() != 0)
-              return false;
-            auto subslice = index.getSrc().getDefiningOp<ttg::MemDescSubsliceOp>();
-            if (!subslice)
-              return false;
-            auto offsets = subslice.getOffsets();
-            if (offsets.size() != 3 || offsets[0] != 1 || offsets[1] != 0 ||
-                offsets[2] != 0)
-              return false;
-            auto reshape = subslice.getSrc().getDefiningOp<ttg::MemDescReshapeOp>();
-            if (!reshape)
-              return false;
-            auto reshapeTy = dyn_cast<ttg::MemDescType>(reshape.getType());
-            auto srcTy = dyn_cast<ttg::MemDescType>(reshape.getSrc().getType());
-            return reshapeTy && rejectHalfRowsView(srcTy) && queryTy &&
-                   reshapeTy.getRank() == 3 && queryTy.getRank() == 2 &&
-                   reshapeTy.getShape()[0] == 2 &&
-                   reshapeTy.getShape()[1] == queryTy.getShape()[0] &&
-                   reshapeTy.getShape()[2] == queryTy.getShape()[1];
-          };
-          auto hasZeroBasisAlong = [&](const tt::LinearLayout &layout,
-                                      StringAttr dim) {
-            if (!layout.hasInDim(dim))
-              return false;
-            for (unsigned idx = 0; idx < layout.getInDimSizeLog2(dim); ++idx) {
-              if (llvm::all_of(layout.getBasis(dim, idx),
-                               [](int32_t value) { return value == 0; })) {
-                return true;
-              }
-            }
-            return false;
-          };
-          auto disallowTypeOnlyFallbackForTwoCTAInt8View = [&]() {
-            auto linear = dyn_cast<ttng::TensorMemoryLinearEncodingAttr>(
-                queryMemDescTy.getEncoding());
-            if (!linear || !linear.getTwoCTAs() ||
-                queryMemDescTy.getElementTypeBitWidth() != 8)
-              return false;
-            auto rawQuery = inferRawQueryLayout(queryMemDesc);
-            auto kRow = StringAttr::get(ctx, "row");
-            auto kCol = StringAttr::get(ctx, "col");
-            auto kBlock = StringAttr::get(ctx, "block");
-            auto typeLayout = ttg::toLinearLayout(queryMemDescTy);
-            bool hasNonTrivialBlock =
-                typeLayout.hasInDim(kBlock) &&
-                typeLayout.getInDimSize(kBlock) > 1;
-            if (!hasNonTrivialBlock && rawQuery) {
-              hasNonTrivialBlock = rawQuery->layout.hasInDim(kBlock) &&
-                                   rawQuery->layout.getInDimSize(kBlock) > 1;
-            }
-            return hasNonTrivialBlock &&
-                   (hasZeroBasisAlong(typeLayout, kRow) ||
-                    hasZeroBasisAlong(typeLayout, kCol));
           };
           std::string supportError;
           auto trySupportLayout =
@@ -2316,7 +2221,7 @@ void init_gluon_ir(py::module &&m) {
             if (!layout.is_none())
               return layout;
           }
-          if (isGenericHalfRowsDescriptorView(queryMemDesc)) {
+          if (ttng::isTMemLdStHalfRowsDescriptorView(queryMemDesc)) {
             if (traceToFile)
               appendTrace("findDirectLayoutForMemDesc halfRows exact-lowering-required");
             if (debug) {
@@ -2333,14 +2238,15 @@ void init_gluon_ir(py::module &&m) {
             appendTrace("findDirectLayoutForMemDesc physicalSupportLayout");
             return supportFallback;
           }
-          if (disallowTypeOnlyFallbackForTwoCTAInt8View()) {
+          std::string typeOnlyFallbackReason;
+          if (ttng::disallowTMemLdStTypeOnlyFallback(
+                  queryMemDesc, &typeOnlyFallbackReason)) {
             if (traceToFile)
               appendTrace(
                   "findDirectLayoutForMemDesc twoCTA-int8 exact-query-required");
             if (debug) {
-              debugLog << "[tmem-reg-layout] two-CTA int8 descriptor view "
-                          "requires exact support/raw-query lowering; "
-                          "refusing type-only fallback\n";
+              debugLog << "[tmem-reg-layout] " << typeOnlyFallbackReason
+                       << "; refusing type-only fallback\n";
             }
             return py::none();
           }
