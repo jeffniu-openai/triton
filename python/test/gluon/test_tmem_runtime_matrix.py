@@ -4309,10 +4309,6 @@ LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
     for dtype_name, torch_dtype, layout_name, n, variant in LDST_TWOCTA_HIGHER_RANK_SLICE_SPECS
 ]
 
-LDST_HIGHER_RANK_OOR_CASES = []
-
-LDST_TWOCTA_HIGHER_RANK_OOR_CASES = []
-
 LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES = [
     ("block_two_ctas", variant) for variant in LDST_VARIANTS
 ] + [("mmav5_twocta", "32x32b")]
@@ -6673,41 +6669,6 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices(dtype_name, torch_d
     assert "tt.join" in ttgir
     assert "ttg.memdesc_subslice" not in ttgir
 
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,variant", LDST_HIGHER_RANK_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_index_reports_tmem_oor(layout_name, variant):
-    m = 128
-    n = 256
-    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
-        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,variant", LDST_HIGHER_RANK_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slices_report_tmem_oor(layout_name, variant):
-    m = 128
-    n = 256
-    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
-        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](inp, out, layout, m, n, variant, num_warps=4)
-
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
-
-
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(
     "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
@@ -6770,45 +6731,6 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices(dtype_name, 
     assert "tt.join" in ttgir
     assert "ttg.memdesc_subslice" not in ttgir
 
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,variant", LDST_TWOCTA_HIGHER_RANK_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_tmem_oor(layout_name, variant):
-    m = 256
-    n = 256
-    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
-        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-        )
-
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,variant", LDST_TWOCTA_HIGHER_RANK_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices_report_tmem_oor(layout_name, variant):
-    m = 256
-    n = 256
-    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
-        tmem_ldst_descriptor_multidim_slice_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-        )
-
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
-
-
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize(
     "dtype_name,torch_dtype,layout_name,n,variant,expected_shape,expected_half_shape",
@@ -6835,26 +6757,6 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_positive_lif
     assert f"tcgen05.ld.sync.aligned.{expected_shape}" in observed_opcodes
     assert f"tcgen05.st.sync.aligned.{expected_half_shape}" in observed_opcodes
     assert f"tcgen05.ld.sync.aligned.{expected_half_shape}" in observed_opcodes
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,variant", LDST_HIGHER_RANK_OOR_CASES)
-def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_tmem_oor(layout_name, variant):
-    m = 128
-    n = 256
-    layout = _lift_tmem_layout(LDST_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(triton.runtime.errors.OutOfResources) as excinfo:
-        tmem_ldst_descriptor_higher_rank_dim0_slice_positive_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4
-        )
-
-    text = str(excinfo.value)
-    _assert_clean_tmem_oor(text, required=1024, hardware_limit=512)
-    assert "Assertion" not in text
-
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_REPLAY_LAYOUTS.items())

@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:47 UTC removed the remaining stale empty higher-rank
+  OOR buckets (`LDST_HIGHER_RANK_OOR_CASES` and
+  `LDST_TWOCTA_HIGHER_RANK_OOR_CASES`) and their five dead parametrized tests.
+  The only live higher-rank OOR surface in this area is the non-empty two-CTA
+  dim0-slice bucket. Validation: Python compile; `git diff --check`; OOR
+  collect now selects 6 rows; focused two-CTA dim0-slice OOR selector passed
+  (`6 passed`).
+
 - Latest: 2026-04-17 12:44 UTC removed the stale empty
   `LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES` bucket and its dead
   clean-negative test. Those two-CTA higher-rank index rows are now either

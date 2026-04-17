@@ -23151,3 +23151,27 @@ Open after this slice:
     python/test/gluon/test_tmem_runtime_matrix.py -k
     'ldst_twocta_descriptor_higher_rank_index'`
     (`4 passed, 1 skipped, 1591 deselected`).
+
+## 2026-04-17 12:47 UTC: remove stale higher-rank OOR buckets
+
+- Starting point: `codex/tmem` at `5185b9b0e`.
+- Change:
+  - removed empty `LDST_HIGHER_RANK_OOR_CASES` and
+    `LDST_TWOCTA_HIGHER_RANK_OOR_CASES`;
+  - removed the five dead tests parameterized by those empty buckets.
+- Reason:
+  - the live higher-rank OOR coverage in this region is now the non-empty
+    `LDST_TWOCTA_HIGHER_RANK_DIM0_SLICE_OOR_CASES` bucket. The empty buckets
+    only inflated skip counts and made it look like unsupported surfaces still
+    existed where rows had already moved to positive or current OOR coverage.
+- Validation:
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - OOR collect selector now reports `6/1591` collected;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-oor-prune
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_higher_rank_dim0_slice_reports_tmem_oor'`
+    (`6 passed, 1585 deselected`).
