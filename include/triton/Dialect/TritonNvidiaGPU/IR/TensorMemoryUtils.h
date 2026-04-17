@@ -614,6 +614,9 @@ bool isTMemCopy4x256RefreshLayout(gpu::MemDescType memTy);
 
 StringRef getTMemCopy4x256RefreshLdStUnsupportedMessage();
 
+std::optional<std::string>
+getUnsupportedDirectTMemLdStReason(gpu::MemDescType memTy);
+
 TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(gpu::MemDescType srcTy,
                                       TMemCopyFamily family);

@@ -89,63 +89,6 @@ def _strip_zero_reg_bases_from_layout(layout):
     )
 
 
-def _is_4x256b_refresh_tmem_layout(layout, element_bitwidth, shape):
-    if not isinstance(layout, TensorMemoryLinearLayout):
-        return False
-    if element_bitwidth != 32:
-        return False
-    rows = [list(basis) for basis in layout.rows]
-    cols = [list(basis) for basis in layout.cols]
-    if rows != [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1], [0, 2]]:
-        return False
-    if cols != [[1, 0], [2, 0], [0, 4]]:
-        return False
-    if list(shape) == [4, 8]:
-        return list(layout.shape) == [4, 8] and not layout.two_ctas and not layout.block_bases
-    if list(shape) == [8, 8]:
-        return list(layout.shape) == [8, 8] and layout.two_ctas and layout.block_bases == [[4, 0]]
-    return False
-
-
-def _is_4x256b_refresh_physical_bitcast_tmem_layout(layout, element_bitwidth, shape):
-    if not isinstance(layout, TensorMemoryLinearLayout):
-        return False
-    if element_bitwidth != 8:
-        return False
-    if list(shape) != [32, 4] or list(layout.shape) != [32, 4]:
-        return False
-    if layout.two_ctas or layout.block_bases:
-        return False
-    rows = [list(basis) for basis in layout.rows]
-    cols = [list(basis) for basis in layout.cols]
-    return rows == [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0], [2, 0]] and cols == [
-        [0, 1],
-        [0, 2],
-        [8, 0],
-        [16, 0],
-        [4, 0],
-    ]
-
-
-def _is_unsupported_4x256b_refresh_tmem_ldst_layout(layout, element_bitwidth, shape):
-    return _is_4x256b_refresh_tmem_layout(
-        layout, element_bitwidth, shape
-    ) or _is_4x256b_refresh_physical_bitcast_tmem_layout(layout, element_bitwidth, shape)
-
-
-def _raise_unsupported_4x256b_refresh_tmem_ldst(op_name):
-    raise ValueError(
-        f"direct TMEM {op_name} is unsupported for the tcgen05.copy.4x256b "
-        "refresh-shaped TensorMemoryLinearLayout or its raw physical bitcast. "
-        "tcgen05.ld/st packets require TMEM row anchors to be materializable as "
-        "warp bases and read whole row footprints, but this refresh image stores "
-        "logical row bits in TMEM columns and low logical column bits in sparse "
-        "TMEM rows 32/64 without a lane mask. Use tcgen05_copy from shared "
-        "memory for this refresh image, or access a directly supported 128-row "
-        "physical layout."
-    )
-
-
 def _fold_canonical_single_cta_block_rows(rows, block_bases, shape, two_ctas):
     if two_ctas or not block_bases or len(shape) != 2:
         return rows, block_bases
@@ -409,13 +352,6 @@ class tensor_memory_descriptor_type(base_type):
             raise ValueError("num_warps could not be inferred; pass a positive power of two")
         if not isinstance(num_warps, int) or num_warps <= 0 or (num_warps & (num_warps - 1)) != 0:
             raise ValueError(f"num_warps must be a positive power of two, got {num_warps!r}")
-        if _is_unsupported_4x256b_refresh_tmem_ldst_layout(
-            tmem_ty.layout,
-            _unwrap_tmem_layout_arg(tmem_ty.element_ty).primitive_bitwidth,
-            _unwrap_tmem_layout_arg(tmem_ty.shape),
-        ):
-            _raise_unsupported_4x256b_refresh_tmem_ldst("register layout query")
-
         layout = _compute_tmem_reg_layout(
             _unwrap_tmem_layout_arg(tmem_ty.element_ty),
             _unwrap_tmem_layout_arg(tmem_ty.shape),

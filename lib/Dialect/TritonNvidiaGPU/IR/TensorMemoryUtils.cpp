@@ -3925,6 +3925,70 @@ std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
   return std::nullopt;
 }
 
+static bool isTMemCopy4x256RefreshPhysicalBitcastLayout(MemDescType memTy) {
+  if (!memTy || memTy.getRank() != 2 ||
+      memTy.getElementTypeBitWidth() != 8 || memTy.getShape()[0] != 32 ||
+      memTy.getShape()[1] != 4 || !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return false;
+  }
+
+  std::string layoutError;
+  auto maybeLayout = getTMemViewAnalysisLinearLayout(
+      memTy.getShape(), memTy.getEncoding(), &layoutError);
+  if (!maybeLayout)
+    return false;
+
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto layout = *maybeLayout;
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
+      layout.getInDimSize(kRow) != 128 || layout.getInDimSize(kCol) != 32)
+    return false;
+  auto outDims = llvm::to_vector(layout.getOutDims());
+  if (outDims.size() != 2 || outDims[0].second != 32 ||
+      outDims[1].second != 4)
+    return false;
+
+  auto isZeroBasis = [](ArrayRef<int32_t> basis) {
+    return llvm::all_of(basis, [](int32_t value) { return value == 0; });
+  };
+  auto isBasis = [](ArrayRef<int32_t> basis,
+                    std::initializer_list<int32_t> expected) {
+    return llvm::equal(basis, expected);
+  };
+  for (unsigned bit = 0; bit < 5; ++bit)
+    if (!isZeroBasis(layout.getBasis(kRow, bit)))
+      return false;
+  return isBasis(layout.getBasis(kRow, 5), {1, 0}) &&
+         isBasis(layout.getBasis(kRow, 6), {2, 0}) &&
+         isBasis(layout.getBasis(kCol, 0), {0, 1}) &&
+         isBasis(layout.getBasis(kCol, 1), {0, 2}) &&
+         isBasis(layout.getBasis(kCol, 2), {8, 0}) &&
+         isBasis(layout.getBasis(kCol, 3), {16, 0}) &&
+         isBasis(layout.getBasis(kCol, 4), {4, 0});
+}
+
+std::optional<std::string>
+getUnsupportedDirectTMemLdStReason(MemDescType memTy) {
+  if (!memTy || memTy.getRank() != 2 ||
+      !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return std::nullopt;
+  }
+
+  if (isTMemCopy4x256RefreshLayout(memTy))
+    return getTMemCopy4x256RefreshLdStUnsupportedMessage().str();
+  if (isTMemCopy4x256RefreshPhysicalBitcastLayout(memTy)) {
+    return formatUnsupportedTMemLdStPacketFootprintRequirement(
+        TMemLdStPacketFootprintRequirement{
+            TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast,
+            std::nullopt});
+  }
+  return std::nullopt;
+}
+
 bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
                                                std::string *error) {
   auto unsupported = [&](StringRef reason) {
@@ -3939,55 +4003,11 @@ bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,
       isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding())) {
     return false;
   }
-  if (isTMemCopy4x256RefreshLayout(queryTy))
-    return unsupported(getTMemCopy4x256RefreshLdStUnsupportedMessage());
+  if (auto reason = getUnsupportedDirectTMemLdStReason(queryTy))
+    return unsupported(*reason);
   if (isDirectHalfRowsSubview(memDesc) ||
       isHigherRankHalfRowsSubview(memDesc)) {
     return unsupported(getUnsupportedDirectTMemLdStHalfRowsReason());
-  }
-
-  auto is4x256RefreshPhysicalBitcastView = [&]() {
-    if (queryTy.getElementTypeBitWidth() != 8 || queryTy.getShape()[0] != 32 ||
-        queryTy.getShape()[1] != 4)
-      return false;
-    std::string rawQueryError;
-    auto rawQuery = inferStandaloneTMemLdStQueryLayoutImpl(
-        memDesc, /*preserveNonCanonicalView=*/true, &rawQueryError);
-    if (failed(rawQuery))
-      return false;
-    auto *ctx = queryTy.getContext();
-    auto kRow = StringAttr::get(ctx, "row");
-    auto kCol = StringAttr::get(ctx, "col");
-    auto layout = rawQuery->layout;
-    if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol) ||
-        layout.getInDimSize(kRow) != 128 || layout.getInDimSize(kCol) != 32)
-      return false;
-    auto outDims = llvm::to_vector(layout.getOutDims());
-    if (outDims.size() != 2 || outDims[0].second != 32 ||
-        outDims[1].second != 4)
-      return false;
-    auto isZero = [](ArrayRef<int32_t> basis) {
-      return llvm::all_of(basis, [](int32_t value) { return value == 0; });
-    };
-    auto isBasis = [](ArrayRef<int32_t> basis, int32_t row, int32_t col) {
-      return basis.size() == 2 && basis[0] == row && basis[1] == col;
-    };
-    for (unsigned bit = 0; bit < 5; ++bit)
-      if (!isZero(layout.getBasis(kRow, bit)))
-        return false;
-    return isBasis(layout.getBasis(kRow, 5), 1, 0) &&
-           isBasis(layout.getBasis(kRow, 6), 2, 0) &&
-           isBasis(layout.getBasis(kCol, 0), 0, 1) &&
-           isBasis(layout.getBasis(kCol, 1), 0, 2) &&
-           isBasis(layout.getBasis(kCol, 2), 8, 0) &&
-           isBasis(layout.getBasis(kCol, 3), 16, 0) &&
-           isBasis(layout.getBasis(kCol, 4), 4, 0);
-  };
-  if (is4x256RefreshPhysicalBitcastView()) {
-    return unsupported(formatUnsupportedTMemLdStPacketFootprintRequirement(
-        TMemLdStPacketFootprintRequirement{
-            TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast,
-            std::nullopt}));
   }
 
   if (isPureOuterTMemIndexView(memDesc))

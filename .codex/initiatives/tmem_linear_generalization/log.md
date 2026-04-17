@@ -20840,3 +20840,44 @@ Open after this slice:
   - `python/test/gluon/test_core.py -k 'tmem_linear_m64'` passed
     (`21 passed, 17945 deselected in 5.98s`);
   - `git diff --check`.
+
+## 2026-04-17 05:18 UTC: moved 4x256 refresh ld/st type rejection to C++
+
+- Starting point: `codex/tmem` at `3d733f3a8`.
+- Change:
+  - added backend utility `getUnsupportedDirectTMemLdStReason(MemDescType)`;
+  - moved the raw physical-bitcast refresh-image matcher into
+    `TensorMemoryUtils`;
+  - reused that type-level backend reason from
+    `isUnsupportedDirectTMemLdStDescriptorView(...)`;
+  - deleted Python helpers that recognized the refresh-shaped layout and raw
+    bitcast by hand before type-only `get_reg_layout()`;
+  - taught the Gluon type-only register-layout bridge to reject those layouts
+    through the backend packet-footprint reason before trying to synthesize a
+    direct `tcgen05.ld/st` register layout.
+- Support boundary is unchanged:
+  - direct `ld/st` for the 4x256 refresh image remains unsupported because the
+    public packets require materializable row anchors and whole row footprints;
+  - logical copy through `tcgen05.copy.4x256b` remains the supported path for
+    that physical image, and ordinary contiguous 4x256b remains blocked until
+    a refresh-image remapping layer exists.
+- Validation:
+  - `make -j8`;
+  - `python -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-refresh-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_4x256b_refresh or cp_no_scales_4x256b'`
+    (`5 passed, 1572 deselected in 3.20s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-refresh-adjacent
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'splitn_16bit_m64_auto_matches_explicit or
+    splitn_auto_selects_16x32bx2 or explicit_16x32bx2_matches_splitn or
+    blocked_layout_reports_clean_error'`
+    (`16 passed, 1561 deselected in 5.80s`);
+  - `git diff --check`.

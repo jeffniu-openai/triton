@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:18 UTC: moved the 4x256 refresh direct `ld/st`
+  type rejection out of Python layout-pattern helpers and into the backend
+  packet-footprint layer. `TensorMemoryUtils` now owns both the refresh-shaped
+  `f32` layout diagnostic and the raw physical-bitcast diagnostic, and the
+  type-only Gluon register-layout bridge asks that C++ utility before trying
+  to promise a load/store register layout. Validation: `make -j8`,
+  py-compile for `blackwell/__init__.py` and `test_tmem_runtime_matrix.py`,
+  focused `ldst_4x256b_refresh`/`cp_no_scales_4x256b` selector (`5 passed,
+  1572 deselected`), adjacent M64 split-N selector (`16 passed, 1561
+  deselected`), and `git diff --check`.
 - 2026-04-17 05:13 UTC: removed the adjacent Python `store()` equality guard
   for rank-2 M64 f16/bf16 descriptors. Store validation now relies on
   `ttng.tmem_store` / `TMEMStoreOp::verify()` and the backend register-layout

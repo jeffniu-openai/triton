@@ -1392,6 +1392,8 @@ void init_gluon_ir(py::module &&m) {
             shape, elementType, layoutAttr,
             ttng::TensorMemorySpaceAttr::get(ctx),
             /*mutableMemory=*/true, allocShape);
+        if (auto reason = ttng::getUnsupportedDirectTMemLdStReason(memDescTy))
+          throw std::invalid_argument(*reason);
         auto matchesDesiredAtom =
             [&](ttg::MemDescType queryTy,
                 std::optional<ttng::TMemAccessAtom> desiredAtom,

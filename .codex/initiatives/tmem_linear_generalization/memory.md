@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:18 UTC 4x256 refresh direct-`ld/st` backend
+  diagnostic cleanup: removed Python-side layout pattern helpers for the
+  tcgen05.copy.4x256b refresh image and its raw physical bitcast. The C++
+  `TensorMemoryUtils` packet-footprint layer now exposes
+  `getUnsupportedDirectTMemLdStReason(MemDescType)` for type-only callers and
+  reuses the same helper from descriptor-view diagnostics. The Gluon
+  type-only register-layout bridge throws that backend reason before returning
+  any direct `ld/st` layout. Support is unchanged: direct `ld/st` remains
+  unsupported for refresh images because public packets require materializable
+  row anchors and whole row footprints. Validation: `make -j8`, py-compile,
+  focused refresh/copy selector (`5 passed, 1572 deselected`), adjacent M64
+  split-N selector (`16 passed, 1561 deselected`), and `git diff --check`.
+
 - Latest: 2026-04-17 05:13 UTC M64 16-bit store frontend guard deletion:
   removed the Python `tensor_memory_descriptor.store()` equality check that
   forced rank-2 M64 f16/bf16 sources to exactly match

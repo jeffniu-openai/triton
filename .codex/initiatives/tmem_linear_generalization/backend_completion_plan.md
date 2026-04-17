@@ -543,6 +543,13 @@ Progress:
   does not promote direct `ld/st` support; it prevents bypassed frontend paths
   from falling through to generic register-layout enumeration and records the
   row-anchor schedule requirement in C++.
+- 2026-04-17 05:18 UTC: the remaining type-only Python guard for that refresh
+  layout and its raw physical bitcast was deleted. Type-only Gluon
+  register-layout queries now call the backend
+  `getUnsupportedDirectTMemLdStReason(MemDescType)` utility, and descriptor
+  views reuse the same utility. This keeps the true packet-footprint boundary
+  in C++ rather than split between frontend shape matching and backend
+  verifier diagnostics.
 - 2026-04-15 20:51 UTC: scales descriptor-view copy projection probes ruled
   out descriptor-basis reassignment as a standalone support path. The
   representable projection preserved columns but rotated rows; the row-correct
