@@ -10166,6 +10166,169 @@ static TMemCopySupportResult getDenseTMemCopyColumnPermutationFailure(
       TMemCopySupportFailureLayer::InstructionSchedule, os.str());
 }
 
+static LinearLayout canonicalizeTMemCopyLayoutDimsForAnalysis(
+    LinearLayout layout, MLIRContext *ctx) {
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  SmallVector<StringAttr> canonicalInDims;
+  for (StringAttr dim : {kRow, kCol, kBlock}) {
+    if (layout.hasInDim(dim))
+      canonicalInDims.push_back(dim);
+  }
+  if (!canonicalInDims.empty())
+    layout = layout.transposeIns(canonicalInDims);
+  return layout.transposeOuts(standardOutDimNames(ctx, layout.getNumOutDims()));
+}
+
+static TMemCopySupportResult getTMemCopyMulticastDestinationRowOrderFailure(
+    ArrayRef<DenseTMemCopyRowBasisStep> steps, TMemCopyFamily family) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "direct tcgen05.copy." << stringifyTMemCopyFamily(family)
+     << " requires non-broadcast TMEM row bases to stay in ascending physical "
+        "row order. Public multicast copy atoms write a fixed physical row "
+        "footprint for each instruction, so row-permuted destinations need an "
+        "explicit source-row projection schedule with a destination-row mask, "
+        "row-partitioned atom, or equivalent smaller copy footprint.";
+  if (auto offendingIdx = findFirstNonAscendingRowBasis(steps)) {
+    const auto &previous = steps[*offendingIdx - 1];
+    const auto &current = steps[*offendingIdx];
+    os << " The first non-ascending non-broadcast basis is bit "
+       << current.bit << " mapping to physical row " << current.physicalRow
+       << " after bit " << previous.bit << " mapped to physical row "
+       << previous.physicalRow << ".";
+  }
+  return getUnsupportedTMemCopyResult(
+      TMemCopySupportFailureLayer::InstructionSchedule, os.str());
+}
+
+static std::optional<unsigned>
+getTMemCopyMulticastBroadcastMask(TMemCopyFamily family) {
+  switch (family) {
+  case TMemCopyFamily::Warpx2_01_23_64x128b:
+    return 1u;
+  case TMemCopyFamily::Warpx2_02_13_64x128b:
+    return 2u;
+  case TMemCopyFamily::Warpx4_32x128b:
+    return 3u;
+  case TMemCopyFamily::Dense4x256b:
+  case TMemCopyFamily::Dense128x128b:
+  case TMemCopyFamily::Dense128x256b:
+    return std::nullopt;
+  }
+  llvm_unreachable("unknown tcgen05.copy family");
+}
+
+static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
+    const LinearLayout &layout, MLIRContext *ctx, TMemCopyFamily family,
+    unsigned bitwidth) {
+  auto broadcastMask = getTMemCopyMulticastBroadcastMask(family);
+  if (!broadcastMask)
+    return getSupportedTMemCopyResult();
+
+  auto ll = canonicalizeTMemCopyLayoutDimsForAnalysis(layout, ctx);
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto kBlock = StringAttr::get(ctx, "block");
+  if (!ll.hasInDim(kRow) || !ll.hasInDim(kCol) || ll.getNumOutDims() != 2) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        "direct tcgen05.copy multicast destinations currently require a "
+        "rank-2 TMEM view with explicit row/col bases.");
+  }
+
+  SmallVector<DenseTMemCopyRowBasisStep> nonBroadcastRowBases;
+  auto rowBases = ll.getBases().lookup(kRow);
+  constexpr unsigned kRow32Bit = 5;
+  constexpr unsigned kRow64Bit = 6;
+  for (auto [idx, basis] : llvm::enumerate(rowBases)) {
+    bool expectedBroadcast =
+        (idx == kRow32Bit && (*broadcastMask & 1u)) ||
+        (idx == kRow64Bit && (*broadcastMask & 2u));
+    if (expectedBroadcast) {
+      if (!isAllZeroBasis(basis)) {
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::PhysicalQuery,
+            Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+                " requires the multicast row basis at logical row bit " +
+                Twine(idx) + " to be a zero/broadcast basis.");
+      }
+      continue;
+    }
+    if (basis.size() < 2 || basis[0] == 0 || basis[1] != 0) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::PhysicalQuery,
+          Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+              " requires non-broadcast row bases to map only to physical "
+              "TMEM rows.");
+    }
+    nonBroadcastRowBases.push_back(
+        DenseTMemCopyRowBasisStep{static_cast<unsigned>(idx),
+                                  std::abs(basis[0])});
+  }
+  if (findFirstNonAscendingRowBasis(nonBroadcastRowBases))
+    return getTMemCopyMulticastDestinationRowOrderFailure(
+        nonBroadcastRowBases, family);
+
+  if (bitwidth == 0 || 128 % bitwidth != 0) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::IsaAtom,
+        Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+            " requires an element bitwidth that divides the 128-bit "
+            "multicast instruction width.");
+  }
+  unsigned instructionColumns = 128 / bitwidth;
+  if (!llvm::isPowerOf2_32(instructionColumns)) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::IsaAtom,
+        Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+            " requires a power-of-two multicast instruction column count.");
+  }
+  auto colBases = ll.getBases().lookup(kCol);
+  unsigned instructionColumnBits = llvm::Log2_32(instructionColumns);
+  if (colBases.size() < instructionColumnBits) {
+    return getUnsupportedTMemCopyResult(
+        TMemCopySupportFailureLayer::PhysicalQuery,
+        Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+            " requires enough TMEM column bases to cover the copy "
+            "instruction width.");
+  }
+  for (unsigned bit = 0; bit < instructionColumnBits; ++bit) {
+    ArrayRef<int32_t> basis = colBases[bit];
+    int32_t expectedCol = 1 << bit;
+    if (basis.size() >= 2 && basis[0] == 0 && basis[1] == expectedCol)
+      continue;
+    auto runAndPeriod = getTMemCopyColumnSelectionRunAndPeriod(bit);
+    TMemCopyInstructionColumnPermutationRequirement requirement;
+    requirement.instructionRows =
+        family == TMemCopyFamily::Warpx4_32x128b ? 32 : 64;
+    requirement.instructionColumns = instructionColumns;
+    requirement.logicalColBit = bit;
+    if (runAndPeriod) {
+      requirement.selectedColumnRun = runAndPeriod->first;
+      requirement.columnSelectionPeriod = runAndPeriod->second;
+    }
+    requirement.actualOffset = basis.size() >= 2 ? basis[1] : 0;
+    requirement.expectedOffset = expectedCol;
+    return getDenseTMemCopyColumnPermutationFailure(family, requirement);
+  }
+
+  if (ll.hasInDim(kBlock) && ll.getInDimSize(kBlock) > 1) {
+    auto blockBases = ll.getBases().lookup(kBlock);
+    if (blockBases.size() != 1 || blockBases.front().size() < 2 ||
+        blockBases.front()[0] != 128 || blockBases.front()[1] != 0) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::CtaOwnership,
+          Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+              " two-CTA destination layouts require the canonical TMEM "
+              "block basis [[128, 0]].");
+    }
+  }
+
+  return getSupportedTMemCopyResult();
+}
+
 std::string getTMemCopy4x256RefreshImageRequirementError(
     const TMemCopy4x256RefreshImageRequirement &requirement) {
   std::string reason;
@@ -10203,7 +10366,8 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
                                         TMemCopyFamily family,
                                         unsigned bitwidth) {
   if (!isDenseTMemCopyFamily(family))
-    return getSupportedTMemCopyResult();
+    return getMulticastTMemCopyDestinationLayoutSupport(layout, ctx, family,
+                                                        bitwidth);
 
   if (family == TMemCopyFamily::Dense4x256b) {
     if (isTMemCopy4x256RefreshLayout(layout, ctx, bitwidth))
@@ -10272,11 +10436,6 @@ getDirectTMemCopyLayoutSupportForLayout(const LinearLayout &layout,
 
 TMemCopySupportResult getDirectTMemCopyLayoutSupport(MemDescType memTy,
                                                      TMemCopyFamily family) {
-  if (family != TMemCopyFamily::Dense4x256b &&
-      family != TMemCopyFamily::Dense128x128b &&
-      family != TMemCopyFamily::Dense128x256b)
-    return getSupportedTMemCopyResult();
-
   std::string layoutError;
   auto maybeLayout = getTMemViewAnalysisLinearLayout(memTy.getShape(),
                                                      memTy.getEncoding(),

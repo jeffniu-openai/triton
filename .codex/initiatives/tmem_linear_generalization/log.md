@@ -23306,3 +23306,43 @@ Open after this slice:
 - GitHub state:
   - push remains blocked by the current repo instruction requiring `Mogball`
     while this shell is authenticated as `jeffniu-openai`.
+
+## 2026-04-17 13:06 UTC: multicast copy destination proof
+
+- Starting point: `codex/tmem` at `bf41e4047`.
+- Change:
+  - added a direct destination-layout support proof for non-dense
+    `tcgen05.copy` multicast families in `TensorMemoryUtils`;
+  - the proof keeps multicast zero row bases visible instead of using the
+    zero-basis-stripping dense analysis layout, then checks:
+    - expected broadcast row bit(s) for `warpx2::01_23`,
+      `warpx2::02_13`, and `warpx4`;
+    - ascending physical order for non-broadcast row bases;
+    - contiguous low destination columns across the 128-bit instruction
+      footprint;
+    - canonical `[[128, 0]]` two-CTA destination block ownership;
+  - added a clean-negative runtime row for a row-permuted
+    `warpx2::01_23` destination;
+  - updated existing subword `warpx2` negative expectations to accept the
+    earlier physical-query proof when the destination does not expose enough
+    TMEM column bases for the multicast instruction width.
+- Validation:
+  - `make -j8`;
+  - exact row-permuted `warpx2` negative:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-warpx2-dst-proof
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_cp_no_scales_warpx2_row_permuted_destination_reports_clean_unsupported`
+    (`1 passed`);
+  - split-4 `cp_no_scales_warpx2` selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-warpx2-slice
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py
+    -k 'cp_no_scales_warpx2'`
+    (groups: `20/20/20/19` passed);
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by the current repo instruction requiring `Mogball`
+    while this shell is authenticated as `jeffniu-openai`.

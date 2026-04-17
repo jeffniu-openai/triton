@@ -359,6 +359,14 @@ Progress:
   use one backend helper, so future source-message/rematerialization work does
   not have to keep two copies of the same `128x4` shared-linear source fact in
   sync.
+- 2026-04-17 13:06 UTC: added a direct destination-layout proof for no-scales
+  multicast copy families. `warpx2`/`warpx4` plans now preserve multicast zero
+  row bases while checking expected broadcast row positions, ascending
+  non-broadcast TMEM row bases, contiguous low instruction columns, and
+  canonical two-CTA block ownership before descriptor planning. This closes a
+  false-general gap where non-dense copy destinations were accepted by default
+  once source conversion picked a copy family; row-permuted multicast
+  destinations now fail at the correct physical-query layer.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

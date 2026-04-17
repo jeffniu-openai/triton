@@ -4047,6 +4047,16 @@ When resuming the initiative:
   `.b8x16.b6x16_p32` and `.b8x16.b4x16_p64`. Source-format suffixes are
   therefore not a drop-in descriptor-view copy fix; continue with row
   partition/sub-instruction scheduling.
+- 2026-04-17 13:06 UTC: no-scales multicast `tcgen05.copy` destinations now
+  have a backend physical-layout proof. `warpx2`/`warpx4` plans no longer
+  accept the destination layout merely because source conversion classified a
+  copy family; the planner now checks expected multicast zero row bases,
+  ascending non-broadcast row bases, contiguous low instruction columns, and
+  canonical two-CTA block ownership. This keeps row-permuted multicast
+  destinations and subword destinations with too few TMEM column bases as clean
+  physical-query negatives. Validation: `make -j8`; exact row-permuted
+  `warpx2` negative (`1 passed`); split-4 `cp_no_scales_warpx2`
+  (`20/20/20/19` passed); Python compile; `git diff --check`.
 - 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
   planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
   still use `None`, so behavior is unchanged; the next source-format support

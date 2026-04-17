@@ -340,6 +340,14 @@ def _make_tmem_copy_warpx2_tmem_layout():
     )
 
 
+def _make_tmem_copy_warpx2_tmem_layout_row_permuted():
+    return TensorMemoryLinearLayout(
+        rows=[[2, 0], [1, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
+        cols=[[0, 1], [0, 2]],
+        shape=[128, 4],
+    )
+
+
 def _make_tmem_copy_warpx2_parent_tmem_layout():
     return TensorMemoryLinearLayout(
         rows=[[1, 0], [2, 0], [4, 0], [8, 0], [16, 0], [0, 0], [32, 0]],
@@ -9604,11 +9612,12 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_subword_dtypes_report_clean_err
         or "has no representable MMAv5 shared-memory descriptor" in text
         or "direct-seed descriptor plan requires a shared-memory source layout" in text
         or "source row projection requires logical row bit 5" in text
+        or "requires enough TMEM column bases to cover the copy instruction width" in text
     )
     if "has no representable MMAv5 shared-memory descriptor" in text:
         assert "descriptor shape" in text
         assert "instruction shape" in text
-    if "01_23" in case_name:
+    if "01_23" in case_name and "requires enough TMEM column bases" not in text:
         assert "subword tcgen05.copy instruction source footprint spans" in text
         assert "descriptor semantic-equivalence model" in text
         assert "descriptor footprint coverage alone is not a correctness proof" in text
@@ -9646,6 +9655,30 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsu
     text = str(excinfo.value) + captured.err + captured.out
     assert f"maps to tcgen05.copy.{family}" in text
     assert "canonical 128x4 shared-linear offset basis order" in text
+    assert "cleanly unsupported" in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_cp_no_scales_warpx2_row_permuted_destination_reports_clean_unsupported(capfd):
+    M = 128
+    N = 4
+    inp = torch.arange(M * N, device="cuda", dtype=torch.float32).reshape(M, N)
+    out = torch.empty_like(inp)
+    shared_layout = _make_tmem_copy_warpx2_shared_layout()
+    tmem_layout = _make_tmem_copy_warpx2_tmem_layout_row_permuted()
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_copy_no_scales_warpx2_candidate_kernel[(1, )](
+            inp, out, shared_layout, tmem_layout, num_warps=4
+        )
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "maps to tcgen05.copy.warpx2::01_23.64x128b" in text
+    assert "non-broadcast TMEM row bases" in text
+    assert "source-row projection schedule" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:06 UTC no-scales multicast `tcgen05.copy`
+  destinations now have a direct physical-layout support proof instead of
+  being accepted by default whenever the source conversion classified as a
+  `warpx2`/`warpx4` family. The new backend proof preserves zero multicast row
+  bases, requires non-broadcast row bases to stay in ascending physical row
+  order, proves low instruction columns are contiguous, and checks canonical
+  two-CTA block ownership. This pinned a new clean-negative row for a
+  row-permuted `warpx2::01_23` destination and moved subword `warpx2`
+  negatives to an earlier physical-query proof when the destination has fewer
+  TMEM column bases than the 128-bit multicast instruction footprint.
+  Validation: `make -j8`; exact row-permuted `warpx2` negative (`1 passed`);
+  split-4 `cp_no_scales_warpx2` selector (`20/20/20/19` passed);
+  Python compile for `test_tmem_runtime_matrix.py`; `git diff --check`.
+
 - Latest: 2026-04-17 12:59 UTC pruned one more stale fpsan negative:
   plain MMAv5 with the block-backed `128x128` accumulator no longer belongs in
   `MMA_UNSUPPORTED_LAYOUT_CASES`. A focused run showed that row compiles while
