@@ -132,6 +132,22 @@ struct TMemLeadingSliceViewMatch {
   bool selectRHS;
 };
 
+enum class TMemReplayHalfSliceStepKind { Reshape, Trans, HalfSlice };
+
+struct TMemReplayHalfSliceStep {
+  TMemReplayHalfSliceStepKind kind;
+  SmallVector<int64_t> srcShape;
+  SmallVector<int64_t> dstShape;
+  SmallVector<int32_t> order;
+  unsigned dim = 0;
+  bool selectRHS = false;
+};
+
+struct TMemReplayHalfSliceViewMatch {
+  Value base;
+  SmallVector<TMemReplayHalfSliceStep> steps;
+};
+
 static SmallVector<int32_t> invertPermutation(ArrayRef<int32_t> order) {
   SmallVector<int32_t> inverse(order.size());
   for (auto [idx, value] : llvm::enumerate(order))
@@ -232,6 +248,103 @@ matchLeadingSliceView(Value memDesc) {
       std::move(transforms),
       /*selectRHS=*/offsets[0] == 1,
   };
+}
+
+static std::optional<std::pair<unsigned, bool>>
+matchReplayableHalfSlice(ttg::MemDescSubsliceOp subslice) {
+  auto srcTy = dyn_cast<ttg::MemDescType>(subslice.getSrc().getType());
+  auto dstTy = dyn_cast<ttg::MemDescType>(subslice.getType());
+  if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank())
+    return std::nullopt;
+  if (subslice.getOffsets().size() != static_cast<size_t>(srcTy.getRank()))
+    return std::nullopt;
+
+  std::optional<std::pair<unsigned, bool>> changed;
+  for (auto [dim, srcSize] : llvm::enumerate(srcTy.getShape())) {
+    int64_t dstSize = dstTy.getShape()[dim];
+    int32_t offset = subslice.getOffsets()[dim];
+    if (dstSize == srcSize && offset == 0)
+      continue;
+    if (changed || srcSize <= 1 || srcSize % 2 != 0 ||
+        dstSize != srcSize / 2 || (offset != 0 && offset != dstSize))
+      return std::nullopt;
+    changed = std::make_pair(static_cast<unsigned>(dim), offset == dstSize);
+  }
+  return changed;
+}
+
+static std::optional<TMemReplayHalfSliceViewMatch>
+matchReplayableHalfSliceView(Value memDesc) {
+  if (matchLeadingSliceView(memDesc))
+    return std::nullopt;
+  if (!isTMemLdStReplayableHalfSliceView(memDesc))
+    return std::nullopt;
+  if (!isUnsupportedDirectTMemLdStDescriptorView(memDesc, /*error=*/nullptr))
+    return std::nullopt;
+
+  SmallVector<TMemReplayHalfSliceStep> reverseSteps;
+  Value cur = memDesc;
+  while (true) {
+    if (auto reshapeOp = cur.getDefiningOp<ttg::MemDescReshapeOp>()) {
+      auto srcTy = dyn_cast<ttg::MemDescType>(reshapeOp.getSrc().getType());
+      auto dstTy = dyn_cast<ttg::MemDescType>(reshapeOp.getType());
+      if (!srcTy || !dstTy)
+        return std::nullopt;
+      reverseSteps.push_back(TMemReplayHalfSliceStep{
+          TMemReplayHalfSliceStepKind::Reshape,
+          llvm::to_vector(srcTy.getShape()),
+          llvm::to_vector(dstTy.getShape()),
+          {},
+          0,
+          false});
+      cur = reshapeOp.getSrc();
+      continue;
+    }
+    if (auto transOp = cur.getDefiningOp<ttg::MemDescTransOp>()) {
+      auto srcTy = dyn_cast<ttg::MemDescType>(transOp.getSrc().getType());
+      auto dstTy = dyn_cast<ttg::MemDescType>(transOp.getType());
+      if (!srcTy || !dstTy)
+        return std::nullopt;
+      reverseSteps.push_back(TMemReplayHalfSliceStep{
+          TMemReplayHalfSliceStepKind::Trans,
+          llvm::to_vector(srcTy.getShape()),
+          llvm::to_vector(dstTy.getShape()),
+          llvm::to_vector(transOp.getOrder()),
+          0,
+          false});
+      cur = transOp.getSrc();
+      continue;
+    }
+    if (auto subsliceOp = cur.getDefiningOp<ttg::MemDescSubsliceOp>()) {
+      auto halfSlice = matchReplayableHalfSlice(subsliceOp);
+      if (!halfSlice)
+        return std::nullopt;
+      auto srcTy = dyn_cast<ttg::MemDescType>(subsliceOp.getSrc().getType());
+      auto dstTy = dyn_cast<ttg::MemDescType>(subsliceOp.getType());
+      reverseSteps.push_back(TMemReplayHalfSliceStep{
+          TMemReplayHalfSliceStepKind::HalfSlice,
+          llvm::to_vector(srcTy.getShape()),
+          llvm::to_vector(dstTy.getShape()),
+          {},
+          halfSlice->first,
+          halfSlice->second});
+      cur = subsliceOp.getSrc();
+      continue;
+    }
+    break;
+  }
+
+  auto baseTy = dyn_cast<ttg::MemDescType>(cur.getType());
+  if (!baseTy || baseTy.getRank() != 2 ||
+      !isa<TensorMemorySpaceAttr>(baseTy.getMemorySpace()) ||
+      !isTensorMemoryEncoding(baseTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(baseTy.getEncoding()) ||
+      reverseSteps.empty())
+    return std::nullopt;
+
+  SmallVector<TMemReplayHalfSliceStep> steps(reverseSteps.rbegin(),
+                                             reverseSteps.rend());
+  return TMemReplayHalfSliceViewMatch{cur, std::move(steps)};
 }
 
 static std::optional<RankedTensorType>
@@ -397,6 +510,191 @@ static Value reshapeAndConvertToType(PatternRewriter &rewriter, Location loc,
   if (currentTy != targetTy)
     current = ttg::ConvertLayoutOp::create(rewriter, loc, targetTy, current);
   return current;
+}
+
+static SmallVector<int64_t>
+getHalfSliceReplaySplitShape(ArrayRef<int64_t> srcShape, unsigned dim) {
+  SmallVector<int64_t> splitShape;
+  splitShape.reserve(srcShape.size() + 1);
+  for (auto [idx, size] : llvm::enumerate(srcShape)) {
+    if (idx == dim) {
+      splitShape.push_back(2);
+      splitShape.push_back(size / 2);
+      continue;
+    }
+    splitShape.push_back(size);
+  }
+  return splitShape;
+}
+
+static SmallVector<int32_t> moveDimToBackOrder(unsigned rank, unsigned dim) {
+  SmallVector<int32_t> order;
+  order.reserve(rank);
+  for (unsigned i = 0; i < rank; ++i) {
+    if (i != dim)
+      order.push_back(i);
+  }
+  order.push_back(dim);
+  return order;
+}
+
+static std::pair<Value, Value>
+splitTensorHalfAlongDim(PatternRewriter &rewriter, Location loc, Value tensor,
+                        const TMemReplayHalfSliceStep &step, int numWarps) {
+  auto tensorTy = cast<RankedTensorType>(tensor.getType());
+  Value current = tensor;
+  if (!llvm::equal(tensorTy.getShape(), step.srcShape))
+    current = ReshapeOp::create(rewriter, loc, step.srcShape, current);
+
+  auto splitShape = getHalfSliceReplaySplitShape(step.srcShape, step.dim);
+  current = ReshapeOp::create(rewriter, loc, splitShape, current);
+  SmallVector<int32_t> splitOrder =
+      moveDimToBackOrder(splitShape.size(), step.dim);
+  current = TransOp::create(rewriter, loc, current, splitOrder);
+
+  auto currentTy = cast<RankedTensorType>(current.getType());
+  auto splitFriendlyTy = getLeadingSliceSplitFriendlyType(
+      rewriter.getContext(), currentTy.getElementType(), currentTy.getShape(),
+      numWarps, ttg::lookupThreadsPerWarp(rewriter),
+      ttg::lookupNumCTAs(rewriter));
+  if (current.getType() != splitFriendlyTy) {
+    current =
+        ttg::ConvertLayoutOp::create(rewriter, loc, splitFriendlyTy, current);
+  }
+
+  auto split = SplitOp::create(rewriter, loc, current);
+  auto normalizeResultShape = [&](Value value) -> Value {
+    auto valueTy = cast<RankedTensorType>(value.getType());
+    if (!llvm::equal(valueTy.getShape(), step.dstShape))
+      value = ReshapeOp::create(rewriter, loc, step.dstShape, value);
+    return value;
+  };
+  return {normalizeResultShape(split.getResult(0)),
+          normalizeResultShape(split.getResult(1))};
+}
+
+static Value joinTensorHalfAlongDim(PatternRewriter &rewriter, Location loc,
+                                    Value lhs, Value rhs,
+                                    const TMemReplayHalfSliceStep &step) {
+  Value joined = JoinOp::create(rewriter, loc, lhs, rhs);
+  SmallVector<int64_t> splitShape =
+      getHalfSliceReplaySplitShape(step.srcShape, step.dim);
+  SmallVector<int32_t> splitOrder =
+      moveDimToBackOrder(splitShape.size(), step.dim);
+  Value untransposed =
+      TransOp::create(rewriter, loc, joined, invertPermutation(splitOrder));
+  return ReshapeOp::create(rewriter, loc, step.srcShape, untransposed);
+}
+
+static Value applyReplayHalfSliceViewSteps(
+    PatternRewriter &rewriter, Location loc, Value tensor,
+    ArrayRef<TMemReplayHalfSliceStep> steps, int numWarps) {
+  Value current = tensor;
+  for (const TMemReplayHalfSliceStep &step : steps) {
+    switch (step.kind) {
+    case TMemReplayHalfSliceStepKind::Reshape:
+      current = ReshapeOp::create(rewriter, loc, step.dstShape, current);
+      break;
+    case TMemReplayHalfSliceStepKind::Trans:
+      current = TransOp::create(rewriter, loc, current, step.order);
+      break;
+    case TMemReplayHalfSliceStepKind::HalfSlice: {
+      auto [lhs, rhs] =
+          splitTensorHalfAlongDim(rewriter, loc, current, step, numWarps);
+      current = step.selectRHS ? rhs : lhs;
+      break;
+    }
+    }
+  }
+  return current;
+}
+
+static Value replaceReplayHalfSliceViewValue(
+    PatternRewriter &rewriter, Location loc, Value full,
+    ArrayRef<TMemReplayHalfSliceStep> steps, Value replacement,
+    int numWarps) {
+  if (steps.empty()) {
+    return reshapeAndConvertToType(
+        rewriter, loc, replacement, cast<RankedTensorType>(full.getType()));
+  }
+
+  const TMemReplayHalfSliceStep &step = steps.front();
+  auto fullTy = cast<RankedTensorType>(full.getType());
+  Value restored;
+  switch (step.kind) {
+  case TMemReplayHalfSliceStepKind::Reshape: {
+    Value transformed = ReshapeOp::create(rewriter, loc, step.dstShape, full);
+    Value replaced = replaceReplayHalfSliceViewValue(
+        rewriter, loc, transformed, steps.drop_front(), replacement, numWarps);
+    restored = ReshapeOp::create(rewriter, loc, step.srcShape, replaced);
+    break;
+  }
+  case TMemReplayHalfSliceStepKind::Trans: {
+    Value transformed = TransOp::create(rewriter, loc, full, step.order);
+    Value replaced = replaceReplayHalfSliceViewValue(
+        rewriter, loc, transformed, steps.drop_front(), replacement, numWarps);
+    restored =
+        TransOp::create(rewriter, loc, replaced, invertPermutation(step.order));
+    break;
+  }
+  case TMemReplayHalfSliceStepKind::HalfSlice: {
+    auto [lhs, rhs] =
+        splitTensorHalfAlongDim(rewriter, loc, full, step, numWarps);
+    Value selected = step.selectRHS ? rhs : lhs;
+    Value replaced = replaceReplayHalfSliceViewValue(
+        rewriter, loc, selected, steps.drop_front(), replacement, numWarps);
+    replaced = reshapeAndConvertToType(
+        rewriter, loc, replaced, cast<RankedTensorType>(selected.getType()));
+    restored = step.selectRHS
+                   ? joinTensorHalfAlongDim(rewriter, loc, lhs, replaced, step)
+                   : joinTensorHalfAlongDim(rewriter, loc, replaced, rhs, step);
+    break;
+  }
+  }
+  return reshapeAndConvertToType(rewriter, loc, restored, fullTy);
+}
+
+static FailureOr<Value>
+lowerReplayHalfSliceViewLoad(PatternRewriter &rewriter, TMEMLoadOp loadOp,
+                             const TMemReplayHalfSliceViewMatch &match) {
+  int numWarps = ttg::lookupNumWarps(loadOp);
+  auto maybeSupportTy = getDirectSupportTMemTensorType(match.base, numWarps);
+  if (!maybeSupportTy)
+    return failure();
+
+  RankedTensorType supportTy = *maybeSupportTy;
+  Value support =
+      TMEMLoadOp::create(rewriter, loadOp.getLoc(), supportTy, match.base);
+  Value projected = applyReplayHalfSliceViewSteps(
+      rewriter, loadOp.getLoc(), support, match.steps, numWarps);
+  return reshapeAndConvertToType(
+      rewriter, loadOp.getLoc(), projected,
+      cast<RankedTensorType>(loadOp.getType()));
+}
+
+static LogicalResult
+lowerReplayHalfSliceViewStore(PatternRewriter &rewriter, TMEMStoreOp storeOp,
+                              const TMemReplayHalfSliceViewMatch &match) {
+  if (!matchPattern(storeOp.getPred(), m_One()))
+    return failure();
+
+  int numWarps = ttg::lookupNumWarps(storeOp);
+  auto maybeSupportTy = getDirectSupportTMemTensorType(match.base, numWarps);
+  if (!maybeSupportTy)
+    return failure();
+
+  RankedTensorType supportTy = *maybeSupportTy;
+  Value support =
+      TMEMLoadOp::create(rewriter, storeOp.getLoc(), supportTy, match.base);
+  Value supportReplacement = replaceReplayHalfSliceViewValue(
+      rewriter, storeOp.getLoc(), support, match.steps, storeOp.getSrc(),
+      numWarps);
+  supportReplacement = reshapeAndConvertToType(
+      rewriter, storeOp.getLoc(), supportReplacement, supportTy);
+  TMEMStoreOp::create(rewriter, storeOp.getLoc(), match.base,
+                      supportReplacement, storeOp.getPred());
+  rewriter.eraseOp(storeOp);
+  return success();
 }
 
 static FailureOr<Value>
@@ -566,6 +864,27 @@ public:
   }
 };
 
+class TMemReplayHalfSliceLoadPattern : public OpRewritePattern<TMEMLoadOp> {
+public:
+  TMemReplayHalfSliceLoadPattern(MLIRContext *context)
+      : OpRewritePattern<TMEMLoadOp>(context, /*benefit=*/1) {}
+
+  LogicalResult matchAndRewrite(TMEMLoadOp loadOp,
+                                PatternRewriter &rewriter) const override {
+    auto match = matchReplayableHalfSliceView(loadOp.getSrc());
+    if (!match)
+      return failure();
+
+    rewriter.setInsertionPoint(loadOp);
+    FailureOr<Value> replacement =
+        lowerReplayHalfSliceViewLoad(rewriter, loadOp, *match);
+    if (failed(replacement))
+      return failure();
+    rewriter.replaceOp(loadOp, *replacement);
+    return success();
+  }
+};
+
 class TMemStoreJoinPattern : public OpRewritePattern<TMEMStoreOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -700,6 +1019,22 @@ public:
                         supportReplacement, storeOp.getPred());
     rewriter.eraseOp(storeOp);
     return success();
+  }
+};
+
+class TMemReplayHalfSliceStorePattern : public OpRewritePattern<TMEMStoreOp> {
+public:
+  TMemReplayHalfSliceStorePattern(MLIRContext *context)
+      : OpRewritePattern<TMEMStoreOp>(context, /*benefit=*/1) {}
+
+  LogicalResult matchAndRewrite(TMEMStoreOp storeOp,
+                                PatternRewriter &rewriter) const override {
+    auto match = matchReplayableHalfSliceView(storeOp.getDst());
+    if (!match)
+      return failure();
+
+    rewriter.setInsertionPoint(storeOp);
+    return lowerReplayHalfSliceViewStore(rewriter, storeOp, *match);
   }
 };
 
@@ -957,7 +1292,8 @@ public:
     mlir::RewritePatternSet patterns(context);
     patterns
         .add<TMemSplitLoadPattern, TMemLeadingSliceLoadPattern,
-             TMemStoreJoinPattern, TMemLeadingSliceStorePattern,
+             TMemReplayHalfSliceLoadPattern, TMemStoreJoinPattern,
+             TMemLeadingSliceStorePattern, TMemReplayHalfSliceStorePattern,
              TMemLoadReducePattern, TMemFromSharedMemPattern,
              TMemToSharedMemPattern>(context);
     if (failed(applyPatternsGreedily(m, std::move(patterns))))

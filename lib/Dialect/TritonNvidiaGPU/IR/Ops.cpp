@@ -1130,6 +1130,16 @@ void TCGen5MMAScaledOp::build(OpBuilder &builder, OperationState &state,
 
 bool TCGen5MMAScaledOp::isAsync() { return getIsAsync(); }
 
+static bool isOptimizerReplayableTMemLdSt(Operation *op, Value memdescValue) {
+  if (auto load = dyn_cast<TMEMLoadOp>(op)) {
+    if (load.getRedOp())
+      return false;
+  } else if (!isa<TMEMStoreOp>(op)) {
+    return false;
+  }
+  return isTMemLdStReplayableHalfSliceView(memdescValue);
+}
+
 static LogicalResult
 verifyTMEMOperandPreconditions(Operation *op, RankedTensorType type,
                                MemDescType memdesc, Value memdescValue,
@@ -1149,6 +1159,8 @@ verifyTMEMOperandPreconditions(Operation *op, RankedTensorType type,
   std::string unsupportedDescriptorViewError;
   if (isUnsupportedDirectTMemLdStDescriptorView(memdescValue,
                                                 &unsupportedDescriptorViewError)) {
+    if (isOptimizerReplayableTMemLdSt(op, memdescValue))
+      return success();
     InFlightDiagnostic diag =
         op->emitOpError(regName) << " has no supported register layout";
     if (!unsupportedDescriptorViewError.empty())
@@ -1164,6 +1176,8 @@ static LogicalResult verifyTMEMOperand(Operation *op, RankedTensorType type,
   if (failed(verifyTMEMOperandPreconditions(op, type, memdesc, memdescValue,
                                             regName)))
     return failure();
+  if (isOptimizerReplayableTMemLdSt(op, memdescValue))
+    return success();
 
   auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
     if (!layout.hasInDim(dim))

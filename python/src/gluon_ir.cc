@@ -1877,6 +1877,15 @@ void init_gluon_ir(py::module &&m) {
           std::string unsupportedDescriptorViewError;
           if (ttng::isUnsupportedDirectTMemLdStDescriptorView(
                   queryMemDesc, &unsupportedDescriptorViewError)) {
+            if (ttng::isTMemLdStReplayableHalfSliceView(queryMemDesc)) {
+              auto fallbackLayouts = getBlockedFallbackLayouts(
+                  queryMemDescTy, queryMemDescTy.getShape());
+              if (!fallbackLayouts.empty()) {
+                appendTrace(
+                    "findDirectLayoutForMemDesc replayableHalfSliceFallback");
+                return layoutToGluon(fallbackLayouts.front());
+              }
+            }
             if (traceToFile && !unsupportedDescriptorViewError.empty()) {
               appendTrace(Twine("findDirectLayoutForMemDesc unsupportedView=") +
                           unsupportedDescriptorViewError);

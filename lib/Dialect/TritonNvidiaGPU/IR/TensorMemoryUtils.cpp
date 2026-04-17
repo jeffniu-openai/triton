@@ -7,6 +7,7 @@
 #include "triton/Tools/Sys/GetEnv.hpp"
 #include "triton/Tools/LayoutUtils.h"
 #include "third_party/f2reduce/f2reduce.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringSwitch.h"
 #include <algorithm>
 #include <array>
@@ -283,6 +284,79 @@ getTMemLdStBlockedFallbackLayouts(MemDescType queryTy,
       queryTy.getContext(), tensorShape, /*numWarps=*/numWarps,
       /*threadsPerWarp=*/32, /*numCTAs=*/numCTAs));
   return layouts;
+}
+
+static bool isReplayableTMemHalfSlice(gpu::MemDescSubsliceOp subslice) {
+  auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+  auto dstTy = dyn_cast<MemDescType>(subslice.getType());
+  if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank())
+    return false;
+  if (subslice.getOffsets().size() != static_cast<size_t>(srcTy.getRank()))
+    return false;
+
+  std::optional<unsigned> changedDim;
+  for (auto [dim, srcSize] : llvm::enumerate(srcTy.getShape())) {
+    int64_t dstSize = dstTy.getShape()[dim];
+    int32_t offset = subslice.getOffsets()[dim];
+    if (dstSize == srcSize && offset == 0)
+      continue;
+    if (changedDim)
+      return false;
+    if (srcSize <= 1 || srcSize % 2 != 0 || dstSize != srcSize / 2)
+      return false;
+    if (offset != 0 && offset != dstSize)
+      return false;
+    changedDim = dim;
+  }
+  return changedDim.has_value();
+}
+
+bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
+  auto queryTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!queryTy || queryTy.getRank() != 2 ||
+      !isTensorMemoryEncoding(queryTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(queryTy.getEncoding()))
+    return false;
+
+  unsigned halfSliceCount = 0;
+  bool sawShapeTransform = false;
+  SmallPtrSet<Value, 8> seen;
+  Value cur = memDesc;
+  while (cur && seen.insert(cur).second) {
+    if (auto reshape = cur.getDefiningOp<gpu::MemDescReshapeOp>()) {
+      auto srcTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
+      auto dstTy = dyn_cast<MemDescType>(reshape.getType());
+      if (!srcTy || !dstTy)
+        return false;
+      sawShapeTransform = true;
+      cur = reshape.getSrc();
+      continue;
+    }
+    if (auto trans = cur.getDefiningOp<gpu::MemDescTransOp>()) {
+      auto srcTy = dyn_cast<MemDescType>(trans.getSrc().getType());
+      auto dstTy = dyn_cast<MemDescType>(trans.getType());
+      if (!srcTy || !dstTy || srcTy.getRank() != dstTy.getRank())
+        return false;
+      sawShapeTransform = true;
+      cur = trans.getSrc();
+      continue;
+    }
+    if (auto subslice = cur.getDefiningOp<gpu::MemDescSubsliceOp>()) {
+      if (!isReplayableTMemHalfSlice(subslice))
+        return false;
+      ++halfSliceCount;
+      cur = subslice.getSrc();
+      continue;
+    }
+    break;
+  }
+
+  auto baseTy = dyn_cast_if_present<MemDescType>(cur.getType());
+  return halfSliceCount > 0 && sawShapeTransform && baseTy &&
+         baseTy.getRank() == 2 &&
+         isa<TensorMemorySpaceAttr>(baseTy.getMemorySpace()) &&
+         isTensorMemoryEncoding(baseTy.getEncoding()) &&
+         !isa<TensorMemoryScalesEncodingAttr>(baseTy.getEncoding());
 }
 
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,

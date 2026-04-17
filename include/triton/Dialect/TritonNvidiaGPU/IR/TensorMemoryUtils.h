@@ -470,6 +470,8 @@ getTMemLdStBlockedFallbackLayouts(gpu::MemDescType queryTy,
                                   ArrayRef<int64_t> tensorShape,
                                   unsigned numWarps);
 
+bool isTMemLdStReplayableHalfSliceView(Value memDesc);
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
 

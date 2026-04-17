@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 09:19 UTC the remaining single-CTA high-quadrant 32x32
+  multidim-slice `ld/st` rows now use an explicit optimizer replay/RMW model
+  instead of a direct packet-footprint fallback. Added
+  `isTMemLdStReplayableHalfSliceView(...)` in `TensorMemoryUtils` for
+  descriptor chains made of reshape/transpose plus exact half-slices over a
+  rank-2 TMEM base; handle-aware Gluon register-layout inference now returns a
+  backend blocked fallback only for those replayable direct-unsupported views.
+  `TMEMLoadOp`/`TMEMStoreOp` verification admits only plain replayable
+  load/store ops, and `OptimizeTMemLayouts` lowers them before direct lowering
+  by loading the backing tile, replaying the view with `tt.reshape`,
+  `tt.trans`, and `tt.split`, replacing the selected slice with `tt.join`,
+  and storing the full backing tile. The identity and scrambled-column
+  high-quadrant cases are now positive runtime coverage, emitting full backing
+  `32x32b.x128` RMW packets rather than wrong scalar `32x32b.x1` subview
+  packets. Validation: `make -j8`, focused replay/direct-neighbor multidim
+  selector (`12 passed`), nearby two-CTA descriptor selector (`13 passed, 1
+  skipped`), and `test_core.py -k tmem_linear_m64` (`21 passed`).
+
 - Latest: 2026-04-17 09:07 UTC direct `ld/st` blocked fallback layout
   selection is backend-owned. Added
   `getTMemLdStBlockedFallbackLayouts(...)` in `TensorMemoryUtils` and replaced

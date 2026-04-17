@@ -3772,16 +3772,13 @@ LDST_EXOTIC_LAYOUTS = {
                                                                          scramble_cols=True),
 }
 
-MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS_IDENTITY = {
+MULTIDIM_SLICE_REPLAY_LAYOUTS = {
     "identity": LDST_LAYOUTS["identity"],
+    "scrambled_cols": LDST_EXOTIC_LAYOUTS["scrambled_cols"],
 }
 
 MULTIDIM_SLICE_POSITIVE_LAYOUTS = {
     "mixed": LDST_LAYOUTS["mixed"],
-}
-
-MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS = {
-    "scrambled_cols": LDST_EXOTIC_LAYOUTS["scrambled_cols"],
 }
 
 LDST_TWOCTA_LAYOUTS = {
@@ -6733,32 +6730,34 @@ def test_tmem_runtime_matrix_ldst_descriptor_higher_rank_dim0_slice_reports_tmem
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS_IDENTITY.items())
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error(
-    layout_name, layout_fn, capfd
-):
+@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_REPLAY_LAYOUTS.items())
+def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_replays(layout_name, layout_fn):
     m = 128
     n = 128
     layout = layout_fn(n)
     inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
     out = torch.empty_like(inp)
 
-    with pytest.raises(CompilationError) as excinfo:
-        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
-            inp, out, layout, m, n, "16x128b", num_warps=4
-        )
+    compiled = tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
+        inp, out, layout, m, n, "16x128b", num_warps=4
+    )
+    ref = inp.clone().reshape(2, m // 2, 2, n // 2)
+    ref[1, 0:m // 4, 1, 0:n // 4] += 11.0
+    ref = ref.reshape(m, n)
+    torch.testing.assert_close(out, ref, atol=0, rtol=0)
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "TMEM layout 'auto' unsupported for descriptor view" in text
-    assert "tensor_memory_descriptor<fp32, [32, 32]," in text
-    assert "required row anchors 32,64 are not directly representable" in text
-    assert "wider row footprint" in text
-    assert "packet base, row anchors, and per-message offsets" in text
-    assert "read/modify/write footprint model" in text
-    assert "failed to infer memdesc_reshape result type" not in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    ops, _ = _assert_ldst_ptx_llir_match(compiled)
+    observed_opcodes = [op for op, _ in ops]
+    assert "tcgen05.st.sync.aligned.16x128b.x32.b32" in observed_opcodes
+    assert "tcgen05.ld.sync.aligned.16x128b.x32.b32" in observed_opcodes
+    assert "tcgen05.ld.sync.aligned.32x32b.x128.b32" in observed_opcodes
+    assert "tcgen05.st.sync.aligned.32x32b.x128.b32" in observed_opcodes
+
+    ttgir = compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in ttgir
+    assert "ttg.memdesc_subslice" not in ttgir
+    assert "tt.split" in ttgir
+    assert "tt.join" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -6807,37 +6806,6 @@ def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive(layout_name
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttg.memdesc_reshape" in ttgir
 
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,layout_fn", MULTIDIM_SLICE_UNSUPPORTED_LAYOUTS.items())
-def test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_reports_clean_unsupported(
-    layout_name, layout_fn, capfd
-):
-    m = 128
-    n = 128
-    layout = layout_fn(n)
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises(CompilationError) as excinfo:
-        tmem_ldst_descriptor_multidim_slice_positive_kernel[(1, )](
-            inp, out, layout, m, n, "16x128b", num_warps=4
-        )
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert (
-        "supported TMEM register layout" in text
-        or "TMEM layout 'auto' unsupported for descriptor view" in text
-        or "invalid tensor memory rank/layout combination" in text
-    )
-    if "supported TMEM register layout" in text:
-        assert "reshape or permute so TMEM columns stay contiguous" in text
-        assert "insert convert_layout explicitly" in text
-    if "invalid tensor memory rank/layout combination" in text:
-        assert "failed to infer memdesc_reshape result type" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("layout_name,n,variant,expected_shape", LDST_HIGHER_RANK_HALF_ROWS_POSITIVE_CASES)

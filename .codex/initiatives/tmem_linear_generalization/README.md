@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 09:19 UTC: promoted the single-CTA high-quadrant
+  multidim-slice `ld/st` descriptor views from clean negatives to replayed
+  RMW support. `TensorMemoryUtils` now recognizes replayable reshape/transpose
+  plus exact half-slice descriptor chains, Gluon layout inference admits them
+  through a backend-owned blocked fallback, TMEM load/store verification lets
+  only plain replayable loads/stores through, and `OptimizeTMemLayouts`
+  rewrites them to full backing TMEM load + tensor split/join + full backing
+  store before direct lowering. Identity and scrambled-column 32x32 rows now
+  pass with full backing `32x32b.x128` RMW packets. Validation: `make -j8`,
+  replay/direct-neighbor multidim slice selector (`12 passed`), nearby two-CTA
+  descriptor slice/index selector (`13 passed, 1 skipped`), and
+  `test_core.py -k tmem_linear_m64` (`21 passed`).
 - 2026-04-17 09:07 UTC: moved the remaining direct `ld/st` blocked-layout
   fallback policy out of the Gluon pybind bridge and into
   `TensorMemoryUtils` as `getTMemLdStBlockedFallbackLayouts(...)`. Support is

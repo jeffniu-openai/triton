@@ -1314,6 +1314,16 @@ Progress:
   as a proven packet-base plus per-message offset schedule. Keep this as a
   Phase 4 packet-rematerialization or mask/read-modify-write task; do not
   retry it as another support-layout fallback.
+- 2026-04-17 09:19 UTC: implemented the read/modify/write form for this
+  replayable half-slice family. Rather than forcing a direct scalar subview
+  packet, the backend now recognizes reshape/transpose plus exact half-slice
+  descriptor chains over a rank-2 TMEM base and admits only plain `ld/st`
+  operations to the optimizer. `OptimizeTMemLayouts` materializes the view in
+  registers by replaying the descriptor chain as tensor `reshape`/`trans`/
+  `split`, replaces the selected subview through `join`, and stores the full
+  backing tile. This promotes the identity and scrambled-column high-quadrant
+  32x32 rows to positive coverage while keeping direct packet lowering
+  conservative for non-replayable cases.
 - 2026-04-17 06:16 UTC: removed the pybind-local TMEM atom request
   interpretation. Access-atom spelling, split-N alias mapping for descriptor
   handles, the M64 split-N descriptor-type predicate, and M64

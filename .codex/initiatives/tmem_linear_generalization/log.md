@@ -22309,3 +22309,48 @@ Open after this slice:
     PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.75s`).
+
+## 2026-04-17 09:19 UTC: replayed high-quadrant ld/st half-slice views
+
+- Starting point: `codex/tmem` at `fdcf0c011`.
+- Change:
+  - added backend recognition for replayable TMEM `ld/st` descriptor chains
+    composed of reshape/transpose plus exact half-slices over a rank-2 TMEM
+    base;
+  - let Gluon handle-aware `get_reg_layout()` return a backend blocked
+    fallback for replayable direct-unsupported descriptor views so the IR can
+    reach the optimizer;
+  - allowed only plain replayable TMEM load/store verifier cases through this
+    path; reduction loads still require direct support;
+  - added `OptimizeTMemLayouts` replay lowering that loads the backing tile,
+    applies the descriptor chain with tensor `reshape`/`trans`/`split`, and
+    stores the full backing tile after replacing the selected subview with
+    `join`;
+  - converted identity and scrambled-column high-quadrant 32x32 runtime rows
+    from clean negatives to positive replay coverage.
+- Boundary:
+  - this is an explicit RMW replay model, not direct scalar subview
+    packet-footprint support;
+  - non-replayable descriptor views and reduction loads still need direct ISA
+    support or a separate planner.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-replay-half-slice-neighbors
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_replays
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slices`
+    (`12 passed in 4.57s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-replay-half-slice-twocta
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_clean_error
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_clean_error_lifted_layout`
+    (`13 passed, 1 skipped in 60.14s`);
+  - `CUDA_VISIBLE_DEVICES=3
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu3-replay-half-slice-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.74s`).
