@@ -24485,3 +24485,42 @@ Open after this slice:
   - ld.red descriptor-chain tile-permuted N=256 row passed `1/1`;
   - `python -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 20:41 UTC: correct runtime-matrix runner and rebaseline buckets
+
+- Starting point: `codex/tmem` at pushed `092cc3a76`.
+- Runner fix:
+  - full sweep attempt
+    `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_202924/`
+    failed immediately because inherited environment imported the installed
+    `triton` wheel from site-packages;
+  - `run_tmem_runtime_matrix_sweep.py` now sets deterministic checkout-local
+    `PYTHONPATH` for all shards and prints it in each shard log/dry-run
+    command.
+- Test cleanup:
+  - full sweep attempt
+    `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_20260417_203000/`
+    found two stale `ld.red` descriptor-chain N=256 opcode-offset assertions:
+    `col_reverse` and `rowcol_rotate_reverse` emitted correct runtime output
+    with default offsets `[0, 64, 128, 192]`;
+  - kept the non-default split-offset expectation only for `tile_permuted`,
+    which still passes with `(0, 128, 64, 192)`.
+- Coverage audit:
+  - initial bucket aggregation covered `1590/1592` nodeids;
+  - missing nodeids were both parameters of
+    `test_tmem_runtime_matrix_splitn_16bit_m64_auto_matches_explicit`;
+  - added that function to `SPLITN_NODEIDS`;
+  - collect-only audit now reports full `1592`, bucket union `1592`, missing
+    `0`, extra `0`.
+- Validation:
+  - exact corrected `ld.red` rows plus `tile_permuted` passed `3/3`;
+  - rerun `ld_red` group 6 passed;
+  - remaining `ld_red` groups 9-16 passed;
+  - `ldst` groups 1-16 passed;
+  - corrected `splitn` bucket passed all four groups;
+  - aggregate corrected runtime matrix evidence:
+    `1490 passed, 102 skipped` across all `1592` cases
+    (`cp` `312/4`, `mma` `601/0`, `splitn` `35/0`,
+    `ld_red` `247/0`, `ldst` `295/98`);
+  - Python byte-compile for the runner and runtime matrix;
+  - `git diff --check`.

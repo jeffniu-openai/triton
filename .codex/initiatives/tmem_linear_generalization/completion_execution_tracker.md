@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 20:24 UTC
+Last updated: 2026-04-17 20:41 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -51,8 +51,9 @@ The project is complete when:
   partially complete; remaining work is mainly scaled storage fragments and
   true MMAv5 tile-boundary proofs.
 - Phase F, cleanup/redesign deletion: active between support slices.
-- Phase G, saturation/performance/final validation: pending after major
-  support frontiers close.
+- Phase G, saturation/performance/final validation: active for the current
+  M64/runtime-matrix checkpoint; continue staged broad validation after each
+  new support-bearing slice.
 
 ## Current Clean-Negative Inventory
 
@@ -142,6 +143,35 @@ Current buckets:
   instruction shape, fragment count, and B-scale padding/rematerialization
   factor. Support still needs a real scale-fragment and accumulator
   permutation schedule.
+
+## Current Runtime Matrix Validation
+
+Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
+
+- Fixed `run_tmem_runtime_matrix_sweep.py` so every shard uses the current
+  checkout's `PYTHONPATH` (`repo`, `repo/python`, and
+  `repo/python/test/gluon`) instead of accidentally importing the installed
+  `triton` wheel.
+- Fixed the runner's `splitn` bucket to include
+  `test_tmem_runtime_matrix_splitn_16bit_m64_auto_matches_explicit`; a
+  collection audit now shows the bucket union covers all `1592/1592` nodeids
+  with zero missing and zero extra cases.
+- Removed stale `ld.red` split-offset expectations for reverse-column layouts:
+  those rows produce correct runtime output and use the default opcode offset
+  order, while `tile_permuted` remains the only currently verified N=256
+  descriptor-chain row needing `(0, 128, 64, 192)`.
+- Bucket evidence for the corrected full runtime matrix:
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` collected cases.
+- Hygiene:
+  - `python -m py_compile
+    .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
 
 ## Immediate Execution Order
 

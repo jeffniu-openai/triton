@@ -1,0 +1,50 @@
+cwd: /root/code/triton
+CUDA_VISIBLE_DEVICES=1
+PYTHONPATH=/root/code/triton:/root/code/triton/python:/root/code/triton/python/test/gluon
+TRITON_CACHE_DIR=/tmp/triton-cache-tmem-runtime-matrix-gpu1
+command: pytest -s --tb=short --splits 16 --group 6 -q -n 4 python/test/gluon/test_tmem_runtime_matrix.py -k ld_red
+
+
+[pytest-split] No test durations found. Pytest-split will split tests evenly when no durations are found. 
+[pytest-split] You can expect better results in consequent runs, when test timings have been documented.
+
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+bringing up nodes...
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+bringing up nodes...
+
+.......F
+_ test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep[col_reverse_n256-False-propagate_nan0-min] _
+[gw1] linux -- Python 3.12.9 /root/.pyenv/versions/3.12.9/bin/python
+python/test/gluon/test_tmem_runtime_matrix.py:8166: in test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep
+    _assert_ld_red_opcode_pairs(
+python/test/gluon/test_tmem_runtime_matrix.py:5468: in _assert_ld_red_opcode_pairs
+    assert [offset for _, offset in ptx_red_pairs] == list(expected_offsets)
+E   assert [0, 64, 128, 192] == [0, 128, 64, 192]
+E     
+E     At index 1 diff: 64 != 128
+E     Use -v to get more diff
+...F
+_ test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep[rowcol_rotate_reverse_n256-False-propagate_nan0-min] _
+[gw0] linux -- Python 3.12.9 /root/.pyenv/versions/3.12.9/bin/python
+python/test/gluon/test_tmem_runtime_matrix.py:8166: in test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep
+    _assert_ld_red_opcode_pairs(
+python/test/gluon/test_tmem_runtime_matrix.py:5468: in _assert_ld_red_opcode_pairs
+    assert [offset for _, offset in ptx_red_pairs] == list(expected_offsets)
+E   assert [0, 64, 128, 192] == [0, 128, 64, 192]
+E     
+E     At index 1 diff: 64 != 128
+E     Use -v to get more diff
+....
+=========================== short test summary info ============================
+FAILED python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep[col_reverse_n256-False-propagate_nan0-min]
+FAILED python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_descriptor_chain_n_sweep[rowcol_rotate_reverse_n256-False-propagate_nan0-min]
+2 failed, 14 passed in 17.83s

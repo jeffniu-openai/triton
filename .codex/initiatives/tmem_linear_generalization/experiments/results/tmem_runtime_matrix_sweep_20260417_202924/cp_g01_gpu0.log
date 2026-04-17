@@ -1,0 +1,31 @@
+cwd: /root/code/triton
+CUDA_VISIBLE_DEVICES=0
+TRITON_CACHE_DIR=/tmp/triton-cache-tmem-runtime-matrix-gpu0
+command: pytest -s --tb=short --splits 4 --group 1 -q python/test/gluon/test_tmem_runtime_matrix.py -k cp
+
+
+[pytest-split] No test durations found. Pytest-split will split tests evenly when no durations are found. 
+[pytest-split] You can expect better results in consequent runs, when test timings have been documented.
+
+________ ERROR collecting python/test/gluon/test_tmem_runtime_matrix.py ________
+ImportError while importing test module '/root/code/triton/python/test/gluon/test_tmem_runtime_matrix.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/root/.pyenv/versions/3.12.9/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/ddtrace/internal/module.py:309: in _exec_module
+    self.loader.exec_module(module)
+python/test/gluon/test_tmem_runtime_matrix.py:15: in <module>
+    from triton.experimental.gluon.language.nvidia.blackwell import (
+E   ImportError: cannot import name 'TensorMemoryLinearLayout' from 'triton.experimental.gluon.language.nvidia.blackwell' (/root/.pyenv/versions/3.12.9/lib/python3.12/site-packages/triton/experimental/gluon/language/nvidia/blackwell/__init__.py)
+
+
+[pytest-split] Splitting tests with algorithm: duration_based_chunks
+[pytest-split] Running group 1/4 (estimated duration: 0.00s)
+
+
+=========================== short test summary info ============================
+ERROR python/test/gluon/test_tmem_runtime_matrix.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 3.81s

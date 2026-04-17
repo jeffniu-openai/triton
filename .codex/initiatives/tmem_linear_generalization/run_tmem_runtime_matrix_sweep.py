@@ -27,12 +27,20 @@ LDST_DURATIONS = (
     ".codex/initiatives/tmem_linear_generalization/experiments/results/"
     "ldst_pytest_durations_20260413.json"
 )
+PYTHONPATH = os.pathsep.join(
+    [
+        str(REPO_ROOT),
+        str(REPO_ROOT / "python"),
+        str(REPO_ROOT / "python/test/gluon"),
+    ]
+)
 
 SPLITN_NODEIDS = [
     f"{TEST_FILE}::test_tmem_runtime_matrix_splitn_rowcol_permuted_layout_sweep",
     f"{TEST_FILE}::test_tmem_runtime_matrix_splitn_immediates",
     f"{TEST_FILE}::test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2",
     f"{TEST_FILE}::test_tmem_runtime_matrix_explicit_16x32bx2_matches_splitn",
+    f"{TEST_FILE}::test_tmem_runtime_matrix_splitn_16bit_m64_auto_matches_explicit",
     f"{TEST_FILE}::test_tmem_runtime_matrix_blocked_layout_reports_clean_error",
     f"{TEST_FILE}::test_tmem_runtime_matrix_block_descriptor_reports_clean_error",
     f"{TEST_FILE}::test_tmem_runtime_matrix_splitn_rowcol_permuted_auto_selects_16x32bx2",
@@ -158,7 +166,7 @@ def run_one(
     )
     log_path = log_dir / f"{bucket.name}_g{group:02d}_gpu{gpu}.log"
     env = os.environ.copy()
-    env.pop("PYTHONPATH", None)
+    env["PYTHONPATH"] = PYTHONPATH
     env["CUDA_VISIBLE_DEVICES"] = gpu
     env["TRITON_CACHE_DIR"] = f"{args.cache_prefix}-gpu{gpu}"
 
@@ -166,6 +174,7 @@ def run_one(
     with log_path.open("w") as log:
         log.write(f"cwd: {REPO_ROOT}\n")
         log.write(f"CUDA_VISIBLE_DEVICES={gpu}\n")
+        log.write(f"PYTHONPATH={env['PYTHONPATH']}\n")
         log.write(f"TRITON_CACHE_DIR={env['TRITON_CACHE_DIR']}\n")
         log.write("command: " + " ".join(cmd) + "\n\n")
         log.flush()
@@ -200,7 +209,14 @@ def format_command(bucket: Bucket, group: int, gpu: str, args: argparse.Namespac
         xdist_override=args.xdist_overrides.get(bucket.name),
     )
     cache_dir = f"{args.cache_prefix}-gpu{gpu}"
-    return " ".join([f"CUDA_VISIBLE_DEVICES={gpu}", f"TRITON_CACHE_DIR={cache_dir}"] + cmd)
+    return " ".join(
+        [
+            f"CUDA_VISIBLE_DEVICES={gpu}",
+            f"PYTHONPATH={PYTHONPATH}",
+            f"TRITON_CACHE_DIR={cache_dir}",
+        ]
+        + cmd
+    )
 
 
 def parse_xdist_overrides(values: list[str]) -> dict[str, int]:

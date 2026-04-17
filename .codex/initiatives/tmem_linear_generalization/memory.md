@@ -13137,3 +13137,40 @@ rejection, not rescue
 - Next:
   - return to `tcgen05.copy` dense/noncanonical `warpx2` and
     sub-instruction permutation scheduler gaps.
+
+## Current: 2026-04-17 20:41 UTC runtime-matrix runner and full bucket audit
+
+- Validation harness fix:
+  - `run_tmem_runtime_matrix_sweep.py` now sets checkout-local `PYTHONPATH`
+    for every shard (`repo`, `repo/python`, and `repo/python/test/gluon`);
+  - this avoids importing the installed site-packages `triton` wheel, which
+    caused the first full sweep attempt to fail at collection with
+    `TensorMemoryLinearLayout` missing.
+- Coverage-preserving runner fix:
+  - the `splitn` bucket now includes
+    `test_tmem_runtime_matrix_splitn_16bit_m64_auto_matches_explicit`;
+  - a collect-only audit over full file versus bucket union reports
+    `1592/1592` covered nodeids, zero missing, zero extra.
+- Test expectation cleanup:
+  - reverse-column `ld.red` descriptor-chain N=256 rows pass runtime
+    assertions and emit default split offsets `[0, 64, 128, 192]`;
+  - removed stale non-default expectations for `col_reverse`,
+    `col_rotate1`, and `rowcol_rotate_reverse`;
+  - `tile_permuted` remains the only verified N=256 descriptor-chain case
+    requiring `(0, 128, 64, 192)`.
+- Corrected full runtime-matrix bucket evidence:
+  - `cp`: `312 passed, 4 skipped`;
+  - `mma`: `601 passed`;
+  - `splitn`: `35 passed`;
+  - `ld_red`: `247 passed`;
+  - `ldst`: `295 passed, 98 skipped`;
+  - aggregate: `1490 passed, 102 skipped` across all `1592` collected cases.
+- Hygiene validation:
+  - Python byte-compile for
+    `run_tmem_runtime_matrix_sweep.py` and `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push the validation-harness checkpoint;
+  - resume Phase C support-bearing work from `completion_execution_tracker.md`,
+    with no-scales `tcgen05.copy` remaining the largest linear-layout
+    completeness frontier.

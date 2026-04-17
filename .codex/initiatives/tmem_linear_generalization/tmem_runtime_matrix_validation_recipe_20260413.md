@@ -6,17 +6,19 @@ This recipe is the current local way to run the full `python/test/gluon/test_tme
 
 The runtime-matrix timeout is not behaving like a deadlock. The slow runs keep printing progress, exact slow nodeids pass when isolated, and immediate warm reruns are much faster. The bottleneck is cold compilation plus poor static partitioning of a few dense families.
 
-Full collection with `PYTHONPATH` unset reports `7611` tests after the 2026-04-14 staged CP, `ld.red`, `ld/st`, MMAv5, and scaled-MMAv5 coverage expansions. The coverage-preserving bucket split is:
+Full collection with checkout-local `PYTHONPATH` reports `1592` tests after
+the 2026-04-17 coverage-pruning and TMEM backend completion slices. The
+coverage-preserving bucket split is:
 
 | Bucket | Selector | Cases | Scheduling |
 | --- | --- | ---: | --- |
-| `cp` | `-k cp` | 580 | split 4, one process per GPU |
-| `mma` | `-k test_tmem_runtime_matrix_mma` | 1743 | split 4, one process per GPU |
-| `splitn` / misc | exact function nodeids | 499 | split 4, one process per GPU |
-| `ld_red` | `-k ld_red` | 1920 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
-| `ldst` | `-k ldst` | 2869 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
+| `cp` | `-k cp` | 316 | split 4, one process per GPU |
+| `mma` | `-k test_tmem_runtime_matrix_mma` | 601 | split 4, one process per GPU |
+| `splitn` / misc | exact function nodeids | 35 | split 4, one process per GPU |
+| `ld_red` | `-k ld_red` | 247 | split 16, four waves, `pytest-xdist -n 4` inside each GPU shard |
+| `ldst` | `-k ldst` | 393 | split 16, least-duration split using the stored `ldst` durations, `pytest-xdist -n 4` inside each GPU shard |
 
-The buckets sum to all `7611` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile.
+The buckets sum to all `1592` collected tests. The `splitn` bucket must use exact nodeids; plain `-k splitn` also matches parameter IDs such as `32x32b_splitn` inside `ld_red` and `ld/st`, which pollutes the timing profile. The 2026-04-17 collection audit compared full-file nodeids to the runner bucket union and reported zero missing and zero extra nodeids.
 
 ## Canonical Command
 
@@ -55,9 +57,30 @@ python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sw
 python3 .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py --categories ldst --store-durations
 ```
 
-The runner removes inherited `PYTHONPATH`, sets a stable per-GPU `TRITON_CACHE_DIR`, and writes per-shard logs under `.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_<timestamp>/`. It does not delete caches by default.
+The runner sets `PYTHONPATH` to the current checkout (`repo`, `repo/python`,
+and `repo/python/test/gluon`), sets a stable per-GPU `TRITON_CACHE_DIR`, and
+writes per-shard logs under
+`.codex/initiatives/tmem_linear_generalization/experiments/results/tmem_runtime_matrix_sweep_<timestamp>/`.
+It does not delete caches by default.
 
 ## Measured Profile
+
+Latest full corrected bucket evidence after the 2026-04-17 M64 physical-subview
+fix and runner audit:
+
+- `cp`: `312 passed, 4 skipped` across four groups.
+- `mma`: `601 passed` across four groups.
+- `splitn`: `35 passed` across four groups.
+- `ld_red`: `247 passed` across 16 groups.
+- `ldst`: `295 passed, 98 skipped` across 16 groups.
+- aggregate: `1490 passed, 102 skipped` across all `1592` collected cases.
+
+The first 2026-04-17 runner attempt failed at collection because the runner
+removed inherited `PYTHONPATH` and imported site-packages `triton`, which did
+not contain the in-checkout `TensorMemoryLinearLayout` symbol. The runner now
+sets checkout-local `PYTHONPATH` for every shard and includes
+`test_tmem_runtime_matrix_splitn_16bit_m64_auto_matches_explicit` in the
+split-N bucket.
 
 Small buckets are not the timeout source:
 
@@ -100,9 +123,12 @@ Heavy buckets need finer scheduling:
 - After the 2026-04-14 legacy single-CTA no-scales CP dtype-parity expansion, the exact root+swizzle selector selected `78/6931`, the full CP selector selected `420/6931`, and the full file collected `6931`. The exact root+swizzle selector passed/skipped `68 passed, 10 skipped` across split-4 on four GPUs; the full CP bucket passed/skipped `410 passed, 10 skipped` across split-4 (`95 passed, 10 skipped`, `105 passed`, `105 passed`, and `105 passed`). The current aggregate evidence is `6480 passed, 451 skipped`.
 - After the 2026-04-14 direct `ld.red` explicit N-width expansion, the new direct selector selected `240/7171`, the full `ld_red` selector selected `1640/7171`, and the full file collected `7171`. The new direct selector passed all `240` cases across split-4 on four GPUs (`60` per group; `189.99s`, `410.82s`, `573.50s`, and `542.42s`). Adjacent N=128 explicit and unsupported selectors passed all `184` cases across split-4 (`46` per group; `160.11s`, `293.51s`, `308.59s`, and `180.22s`). The current aggregate evidence is `6720 passed, 451 skipped`.
 - After the 2026-04-14 scaled `warpx4` copy-helper use-acc expansion, the focused selector selected `160/7331`, `cp_scales_warpx4` selected `354/7331`, and the full file collected `7331`. The focused selector passed all `160` cases across split-4 (`40` per group; `51.74s`, `52.20s`, `52.83s`, and `52.43s`). The adjacent `cp_scales_warpx4` selector passed all `354` cases across split-4 (`89`, `89`, `89`, and `87` selected; `73.89s`, `88.59s`, `89.01s`, and `46.18s`). The current aggregate evidence is `6880 passed, 451 skipped`.
-- After the 2026-04-14 `ld.red` minimal-N descriptor/direct explicit-variant expansion, the focused selector selected `280/7611`, the full `ld_red` selector selected `1920/7611`, and the full file collected `7611`. The focused selector passed all `280` cases across split-4 (`70` per group; `774.99s`, `1402.19s`, `599.46s`, and `547.65s`). Group 2 was slow but kept printing progress, so record it as split imbalance rather than a hang. The current aggregate evidence is `7160 passed, 451 skipped`.
+- After the 2026-04-14 `ld.red` minimal-N descriptor/direct explicit-variant expansion, the focused selector selected `280/7611`, the full `ld_red` selector selected `1920/7611`, and the full file collected `7611`. The focused selector passed all `280` cases across split-4 (`70` per group; `774.99s`, `1402.19s`, `599.46s`, and `547.65s`). Group 2 was slow but kept printing progress, so record it as split imbalance rather than a hang. The aggregate evidence at that point was `7160 passed, 451 skipped`.
 
-Aggregating the current per-bucket evidence gives full matrix coverage: `7160 passed, 451 skipped` across all `7611` collected cases. This is bucketed evidence from focused/bucket reruns, not a reduced matrix claim; refresh the full runner after shared lowering or major scheduling changes.
+Aggregating the current 2026-04-17 per-bucket evidence gives full matrix coverage:
+`1490 passed, 102 skipped` across all `1592` collected cases. This is bucketed
+evidence from focused/bucket reruns, not a reduced matrix claim; refresh the
+full runner after shared lowering or major scheduling changes.
 
 Representative compile evidence:
 

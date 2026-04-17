@@ -48,6 +48,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 20:41 UTC: the runtime-matrix runner is corrected and reaudited
+  after the M64 physical-subview work. Shards now force checkout-local
+  `PYTHONPATH`, the `splitn` bucket includes the two 16-bit M64 parity rows
+  that were previously outside the bucket union, and a collection audit proves
+  the buckets cover all `1592/1592` collected nodeids. Corrected bucket
+  evidence: `cp` `312 passed, 4 skipped`; `mma` `601 passed`; `splitn`
+  `35 passed`; `ld_red` `247 passed`; `ldst` `295 passed, 98 skipped`;
+  aggregate `1490 passed, 102 skipped`. The only `ld.red` N=256 descriptor
+  chain override left is the verified `tile_permuted` split-offset order.
+  Validation also includes Python byte-compile for the runner and runtime
+  matrix plus `git diff --check`.
 - 2026-04-17 20:24 UTC: pure TMEM column subview base lowering now prefers the
   source query's exact surjective `LinearLayout` physical offset before using
   origin-delta fallback. This fixes the legacy M64 split-N MMAv5 path where a

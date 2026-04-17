@@ -5641,9 +5641,6 @@ LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_SPECS = (
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_PERMUTED_SPLIT_OFFSETS = {
     "tile_permuted": (0, 128, 64, 192),
-    "col_reverse": (0, 128, 64, 192),
-    "col_rotate1": (0, 128, 64, 192),
-    "rowcol_rotate_reverse": (0, 128, 64, 192),
 }
 
 LD_RED_DESCRIPTOR_CHAIN_N_SWEEP_EXPLICIT_VARIANT_CASES = [
