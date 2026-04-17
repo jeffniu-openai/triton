@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 19:27 UTC Phase C `warpx2` subword probe: representative
+  f16 single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23` rows now
+  fail through the structured destination-column footprint requirement after
+  the source-rematerialization work. N=4 exposes two column basis bits, but a
+  public 128-bit f16 `warpx2` copy instruction needs three logical column bits
+  and writes four physical dword columns with two packed lanes per word. This
+  is a packed-lane storage/ISA boundary, not a stale source-layout gap. Next:
+  perform the residual copy-boundary audit and final validation; only promote
+  another row if a real packed-lane, source-column, row/column-mask,
+  refresh-remap, or CTA-ownership schedule exists.
+
 - Latest: 2026-04-17 19:25 UTC Phase C support-bearing no-scales two-CTA
   `warpx2::01_23` source rematerialization: the `tcgen05_copy` helper now
   rematerializes 256x4 dense/noncanonical `SharedLinearLayout` sources into

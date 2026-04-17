@@ -48,6 +48,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 19:27 UTC: the remaining no-scales `warpx2` subword bucket was
+  probed after the source-rematerialization work. Representative f16
+  single-CTA `01_23`, single-CTA `02_13`, and two-CTA `01_23` rows all fail
+  through the structured destination-column footprint requirement: N=4 exposes
+  two column basis bits, while the public 128-bit f16 `warpx2` instruction
+  needs three logical column bits and writes four physical dword columns with
+  two packed lanes per word. Treat this as a packed-lane storage/ISA boundary
+  until a lane-aware source/destination model exists.
 - 2026-04-17 19:25 UTC: no-scales `tcgen05.copy.warpx2::01_23`
   now supports source rematerialization for two-CTA dense/noncanonical 256x4
   shared-linear sources. The rematerialized canonical source uses shared block

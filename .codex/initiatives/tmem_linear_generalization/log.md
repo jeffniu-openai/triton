@@ -24423,3 +24423,25 @@ Open after this slice:
   - collect-only rebaseline:
     `reports_clean_unsupported` is `115/1592`; combined
     `reports_clean_unsupported or reports_clean_error` is `165/1592`.
+
+## 2026-04-17 19:27 UTC: classify remaining warpx2 subword packed-lane bucket
+
+- Starting point: `codex/tmem` at pushed `74555c762`.
+- Probe:
+  - ran representative f16 single-CTA `warpx2::01_23`, single-CTA
+    `warpx2::02_13`, and two-CTA `warpx2::01_23` subword copies outside
+    pytest capture to inspect the emitted backend diagnostics.
+- Result:
+  - all three fail through the structured destination-column footprint
+    requirement rather than source-layout rematerialization;
+  - N=4 exposes two column basis bits, but a public 128-bit f16 `warpx2`
+    instruction needs three logical column bits, corresponding to four
+    physical 32-bit dword columns with two packed lanes per word;
+  - support requires a first-class packed-lane source/destination storage
+    model through descriptor synthesis, source-footprint planning, and
+    instruction scheduling. Without that model, the rows are true
+    storage/ISA boundaries.
+- Validation/probe command:
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0
+    PYTHONPATH=.:./python:./python/test/gluon python3 - <<'PY' ...`
+    using the existing runtime-matrix kernels and helpers.

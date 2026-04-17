@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 19:25 UTC
+Last updated: 2026-04-17 19:27 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -248,16 +248,27 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Continue the support-bearing `tcgen05.copy` frontier, but do not spend the next
-slice on already-proved full-footprint row/column permutation boundaries unless
-a new row/column-mask mechanism is introduced. The next concrete probe is the
-remaining `warpx2` subword/packed-lane bucket: determine whether a canonical
-source rematerialization plus packed-lane staging can preserve the public
-128-bit instruction semantics, or keep the rows as typed packed-lane storage
-boundaries and move the copy planner toward cleanup/deletion of obsolete
-source-layout diagnostics.
+Continue with residual-boundary cleanup and final validation. The next
+concrete slice is a copy-planner boundary audit: mark the remaining `warpx2`
+subword rows, `warpx2::02_13` two-CTA rows, row/column permutation rows,
+ordinary-view `4x256b`, and two-CTA noncanonical-block rows as either true
+ISA/storage/API boundaries or stale diagnostics. Do not promote any row unless
+there is a real packed-lane, source-column, row/column-mask, refresh-remap, or
+CTA-ownership schedule.
 
 ## Progress
+
+- 2026-04-17 19:27 UTC: probed the remaining `warpx2` subword/packed-lane
+  bucket after source rematerialization. Representative f16 single-CTA
+  `01_23`, single-CTA `02_13`, and two-CTA `01_23` runs all fail through the
+  structured destination-column footprint requirement: the N=4 destination
+  exposes two column basis bits, while a public 128-bit f16 `warpx2` copy
+  instruction needs three logical column bits and writes four physical dword
+  columns with two packed lanes per word. This is not a stale shared-source
+  layout failure. Support needs a first-class packed-lane source/destination
+  storage model through descriptor synthesis, source-footprint planning, and
+  instruction scheduling; otherwise the rows remain true storage/ISA
+  boundaries.
 
 - 2026-04-17 19:25 UTC: promoted two-CTA no-scales `warpx2::01_23`
   dense-source rematerialization. The same `tcgen05_copy` rematerialization
