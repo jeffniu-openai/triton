@@ -8653,6 +8653,35 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   return info;
 }
 
+static bool isViewLikeTMemLdStMemDesc(Value memDesc) {
+  return memDesc &&
+         isa_and_nonnull<gpu::MemDescIndexOp, TMEMSubSliceOp,
+                         gpu::MemDescSubsliceOp, gpu::MemDescReshapeOp,
+                         gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(
+             memDesc.getDefiningOp());
+}
+
+TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
+    Value memDesc, RankedTensorType regTy, MemDescType queryTy, int maxnreg,
+    std::optional<TMemLdStRowPlan> rowPlanOverride, TMemLdStEncodingInfo info) {
+  if (!isViewLikeTMemLdStMemDesc(memDesc) || regTy.getRank() != 2 ||
+      regTy.getShape()[0] != 32 || regTy.getShape()[1] != 32 ||
+      info.atom != TMemAccessAtom::I32x32b || info.numRegsPerMessage <= 1) {
+    return info;
+  }
+
+  auto scalarInfo = computeTMemLdStEncodingInfo(
+      regTy, queryTy, /*maxnreg=*/std::min(maxnreg, 2), /*emitError=*/{},
+      rowPlanOverride);
+  if (succeeded(scalarInfo) && scalarInfo->atom == info.atom &&
+      scalarInfo->numRegsPerMessage == 1) {
+    return *scalarInfo;
+  }
+
+  info.numRegsPerMessage = 1;
+  return info;
+}
+
 std::optional<TMemLdStPhysicalSupportPlan>
 getTMemLdStPhysicalSupportPlan(MemDescType memTy, unsigned numWarps,
                                int maxnreg) {

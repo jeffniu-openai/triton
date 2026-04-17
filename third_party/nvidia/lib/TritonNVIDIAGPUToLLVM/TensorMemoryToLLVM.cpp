@@ -686,14 +686,6 @@ lowerTMemLdStFromTypes(
       return failure();
     }
   }
-  bool isViewLikeMemDesc =
-      memDescValue &&
-      isa_and_nonnull<triton::gpu::MemDescIndexOp,
-                      TMEMSubSliceOp, triton::gpu::MemDescSubsliceOp,
-                      triton::gpu::MemDescReshapeOp,
-                      triton::gpu::MemDescTransOp,
-                      triton::gpu::MemDescReinterpretOp>(
-          memDescValue.getDefiningOp());
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
@@ -1017,26 +1009,8 @@ lowerTMemLdStFromTypes(
                         " reps=" + encodingInfoOr->reps.toString())
                      : Twine("fail")));
     if (succeeded(encodingInfoOr)) {
-      if (memDescValue &&
-          isa_and_nonnull<TMEMSubSliceOp, triton::gpu::MemDescSubsliceOp,
-                          triton::gpu::MemDescIndexOp,
-                          triton::gpu::MemDescReshapeOp>(
-              memDescValue.getDefiningOp()) &&
-          regTy.getRank() == 2 && regTy.getShape()[0] == 32 &&
-          regTy.getShape()[1] == 32 &&
-          encodingInfoOr->atom == TMemAccessAtom::I32x32b &&
-          encodingInfoOr->numRegsPerMessage > 1) {
-        if (auto scalarEncodingInfoOr = computeTMemLdStEncodingInfo(
-                regTy, queryTy, /*maxnreg=*/std::min(maxnreg, 2),
-                /*emitError=*/{}, rowPlan);
-            succeeded(scalarEncodingInfoOr) &&
-            scalarEncodingInfoOr->atom == encodingInfoOr->atom &&
-            scalarEncodingInfoOr->numRegsPerMessage == 1) {
-          encodingInfoOr = std::move(scalarEncodingInfoOr);
-        } else {
-          encodingInfoOr->numRegsPerMessage = 1;
-        }
-      }
+      *encodingInfoOr = refineTMemLdStQueryTypeEncodingInfo(
+          memDescValue, regTy, queryTy, maxnreg, rowPlan, *encodingInfoOr);
       return lowerTMemLdStFromInfo(
           loc, rewriter, *encodingInfoOr, pred, llvmElemTy, vals, tmemBase,
           redOp, useAbs, useNaN);

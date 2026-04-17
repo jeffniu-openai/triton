@@ -617,6 +617,11 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, gpu::MemDescType memTy,
                             std::optional<TMemLdStRowPlan> rowPlanOverride =
                                 std::nullopt);
 
+TMemLdStEncodingInfo refineTMemLdStQueryTypeEncodingInfo(
+    Value memDesc, RankedTensorType regTy, gpu::MemDescType queryTy,
+    int maxnreg, std::optional<TMemLdStRowPlan> rowPlanOverride,
+    TMemLdStEncodingInfo info);
+
 unsigned getTMemLdStReductionRepeats(const TMemLdStEncodingInfo &info);
 
 bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info);

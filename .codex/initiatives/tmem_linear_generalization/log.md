@@ -21865,3 +21865,43 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.99s`);
   - `git diff --check`.
+
+## 2026-04-17 08:20 UTC: moved query-type ld/st scalarization to backend
+
+- Starting point: `codex/tmem` at `55b18088a`.
+- Change:
+  - added `refineTMemLdStQueryTypeEncodingInfo(...)` to
+    `TensorMemoryUtils`;
+  - moved the view-like 32x32 descriptor query-type scalarization rule out of
+    `TensorMemoryToLLVM.cpp`;
+  - query-type lowering now computes the selected encoding and lets the backend
+    decide whether to retry with `maxnreg=2` or force a scalar `.x1` message.
+- Boundary:
+  - support is unchanged. The backend helper preserves the prior predicate and
+    fallback behavior; only policy ownership moved.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-query-scalar-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga or ldst_4x256b_refresh"`
+    (`66 passed, 1 skipped, 1511 deselected in 46.17s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-query-scalar-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 6.28s`);
+  - `git diff --check`.

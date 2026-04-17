@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:20 UTC: moved query-type direct `ld/st` scalarization
+  refinement from LLVM lowering into `TensorMemoryUtils` as
+  `refineTMemLdStQueryTypeEncodingInfo(...)`. Query-type lowering now
+  computes the encoding info and asks the backend to refine the 32x32
+  descriptor-view scalar-message case, instead of mutating
+  `numRegsPerMessage` in the emission layer. Support is unchanged. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, Python compile for affected
+  Gluon tests, focused M64/direct-layout runtime selector (`66 passed, 1
+  skipped`), `test_core.py -k tmem_linear_m64` (`21 passed`), and
+  `git diff --check`.
 - 2026-04-17 08:16 UTC: moved the direct `ld/st` source-column subview
   detection and borrowed-source row-plan selection from LLVM lowering into
   `TensorMemoryUtils`. Lowering now asks

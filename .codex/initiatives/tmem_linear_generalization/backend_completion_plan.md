@@ -187,6 +187,11 @@ Progress:
   selection, including the current 64x32 f32 backing-row-plan promotion. LLVM
   lowering still orchestrates the fallback order, but the subview-specific
   layout policy no longer lives in the emission layer.
+- 2026-04-17 08:20 UTC: moved query-type direct `ld/st` scalarization
+  refinement into `TensorMemoryUtils` as
+  `refineTMemLdStQueryTypeEncodingInfo(...)`. The backend now owns the
+  view-like 32x32 descriptor case that must scalarize `32x32b` messages after
+  query-type encoding selection.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

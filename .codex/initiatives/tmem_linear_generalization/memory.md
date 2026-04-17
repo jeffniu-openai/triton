@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:20 UTC query-type direct `ld/st` scalarization is
+  backend-owned. `TensorMemoryUtils` now exposes
+  `refineTMemLdStQueryTypeEncodingInfo(...)`, and LLVM lowering calls it after
+  query-type encoding selection instead of locally recognizing view-like
+  32x32 descriptor paths and forcing scalar `.x1` messages. Support is
+  unchanged. Validation: `make -j8`, direct `invalid.mlir` verifier, Python
+  compile, focused M64/direct-layout runtime selector (`66 passed, 1
+  skipped`), `test_core.py -k tmem_linear_m64` (`21 passed`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 08:16 UTC source-column subview direct `ld/st` policy is
   backend-owned. `TensorMemoryUtils` now exposes
   `getTMemLdStPure2DColumnSubview(...)`,
