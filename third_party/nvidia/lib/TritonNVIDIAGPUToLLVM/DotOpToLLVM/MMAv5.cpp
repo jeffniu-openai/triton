@@ -16,67 +16,14 @@ namespace ttng = mlir::triton::nvidia_gpu;
 using ::mlir::triton::gpu::NVMMASharedEncodingAttr;
 using ::mlir::triton::gpu::SharedLinearEncodingAttr;
 
-static bool isTMemPhysicalBitcast(Value value) {
-  auto reinterpret = value.getDefiningOp<MemDescReinterpretOp>();
-  return reinterpret && reinterpret->hasAttr("tmem_physical_bitcast");
-}
-
 //===----------------------------------------------------------------------===//
 // DotOpMmaV5TmemLoader
 //===----------------------------------------------------------------------===//
 
 DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     Location loc, RewriterBase &rewriter, gpu::MemDescType memTy,
-    Value memDescValue, Value tmemBase, bool useRawWordColumns) {
-  auto ll = [&]() {
-    std::string layoutError;
-    auto getExactTypeLayout = [&]() -> std::optional<LinearLayout> {
-      if (auto maybeAnalysis = ttng::getTMemViewAnalysisLinearLayout(
-              memTy.getShape(), memTy.getEncoding(), &layoutError)) {
-        // Exact typed descriptors carry the physical TMEM view contract
-        // directly. Physical bitcasts consume the result descriptor in this
-        // coordinate frame instead of the possibly non-surjective physical
-        // query layout.
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            *maybeAnalysis);
-      }
-      if (auto maybeCanonical =
-              ttng::getCanonicalTMemLinearEncoding(memTy, &layoutError)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            maybeCanonical->getLinearLayout());
-      }
-      return std::nullopt;
-    };
-    if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
-      // The lowered TMEM base already includes the source slice/subview
-      // offset. For typed MMAv5 addressing, use the result descriptor layout:
-      // the exact physical bitcast query may be non-surjective for packed
-      // sub-32-bit columns because two logical values share one TMEM word.
-      if (auto maybeLayout = getExactTypeLayout())
-        return *maybeLayout;
-    }
-    auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
-    auto shape = memTy.getShape().take_back(rank);
-    auto allocShape = memTy.getAllocShape().take_back(rank);
-    if (shape == allocShape) {
-      if (auto maybeLayout = ttng::getMMAv5TMemFamilyAddressLayout(memTy))
-        return *maybeLayout;
-      if (auto maybeLayout = getExactTypeLayout())
-        return *maybeLayout;
-    }
-    if (memDescValue) {
-      if (auto maybeQuery = ttng::inferStandaloneTMemLdStQueryLayout(
-              memDescValue, /*preserveNonCanonicalView=*/true, &layoutError);
-          succeeded(maybeQuery)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            maybeQuery->layout);
-      }
-    }
-    if (auto maybeLayout = getExactTypeLayout())
-      return *maybeLayout;
-    return toLinearLayout(memTy);
-  }();
-  (void)memDescValue;
+  Value memDescValue, Value tmemBase, bool useRawWordColumns) {
+  auto ll = ttng::getMMAv5TMemAddressLayout(memTy, memDescValue);
   auto bitwidth = memTy.getElementTypeBitWidth();
   auto tb = TritonLLVMOpBuilder(loc, rewriter);
   Value address = tb.ptrtoint(i32_ty, tmemBase);
@@ -108,12 +55,8 @@ getSortedTMemTileOrder(Value memDescValue, MemDescType memTy, int varyingDim,
   for (int rep = 0; rep < numRep; ++rep) {
     SmallVector<int32_t> logicalOffsets(memTy.getRank(), 0);
     logicalOffsets[memTy.getRank() - 2 + varyingDim] = rep * tileSize;
-    // Keep tile ordering in the same typed coordinate frame as
-    // DotOpMmaV5TmemLoader::build for physical bitcasts.
-    uint32_t offset =
-        memDescValue && !isTMemPhysicalBitcast(memDescValue)
-            ? ttng::getTMemViewOffsetForLowering(memDescValue, logicalOffsets)
-            : ttng::getTMemViewOffset(memTy, logicalOffsets);
+    uint32_t offset = ttng::getMMAv5TMemViewOffsetForLowering(
+        memDescValue, memTy, logicalOffsets);
     offsets.emplace_back(offset, rep);
   }
   llvm::sort(offsets, [](const auto &lhs, const auto &rhs) {

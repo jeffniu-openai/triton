@@ -48,6 +48,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:32 UTC: continued Phase F cleanup by moving MMAv5 TMEM
+  address-layout and tile-order offset selection into backend
+  `TensorMemoryUtils` helpers. `DotOpMmaV5TmemLoader` now asks
+  `getMMAv5TMemAddressLayout`, tile ordering asks
+  `getMMAv5TMemViewOffsetForLowering`, and the physical-bitcast predicate is
+  shared as `isTMemPhysicalBitcast`. Validation: `make -j8`; focused MMAv5
+  split-4 selector passed `26/26` on all four groups; physical-bitcast core
+  smoke passed `3/3`. No support rows were promoted. Next: checkpoint/push,
+  then continue support-frontier work or move the next duplicated TMEM policy
+  into backend helpers.
 - 2026-04-17 21:26 UTC: reran the corrected full runtime-matrix sweep after
   the leading-slice replay policy cleanup and MMAv5 family-address helper
   cleanup. The matrix remains green with complete bucket coverage:

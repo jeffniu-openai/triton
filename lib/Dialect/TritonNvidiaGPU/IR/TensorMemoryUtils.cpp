@@ -3014,6 +3014,70 @@ unsigned getTMemLdStReductionRepeats(const TMemLdStEncodingInfo &info) {
   return info.numRegsPerMessage / elementsPerThread;
 }
 
+bool isTMemPhysicalBitcast(Value value) {
+  if (!value)
+    return false;
+  auto reinterpret = value.getDefiningOp<gpu::MemDescReinterpretOp>();
+  return reinterpret && reinterpret->hasAttr("tmem_physical_bitcast");
+}
+
+LinearLayout getMMAv5TMemAddressLayout(MemDescType memTy, Value memDescValue) {
+  std::string layoutError;
+  auto getExactTypeLayout = [&]() -> std::optional<LinearLayout> {
+    if (auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
+            memTy.getShape(), memTy.getEncoding(), &layoutError)) {
+      return normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis);
+    }
+    if (auto maybeCanonical =
+            getCanonicalTMemLinearEncoding(memTy, &layoutError)) {
+      return normalizeTensorMemoryLinearLayoutForAnalysis(
+          maybeCanonical->getLinearLayout());
+    }
+    return std::nullopt;
+  };
+
+  if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
+    // The lowered TMEM base already includes the source slice/subview offset.
+    // Physical bitcasts consume the result descriptor in this typed coordinate
+    // frame instead of a possibly non-surjective physical query layout.
+    if (auto maybeLayout = getExactTypeLayout())
+      return *maybeLayout;
+  }
+
+  auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
+  auto shape = memTy.getShape().take_back(rank);
+  auto allocShape = memTy.getAllocShape().take_back(rank);
+  if (shape == allocShape) {
+    if (auto maybeLayout = getMMAv5TMemFamilyAddressLayout(memTy))
+      return *maybeLayout;
+    if (auto maybeLayout = getExactTypeLayout())
+      return *maybeLayout;
+  }
+
+  if (memDescValue) {
+    if (auto maybeQuery = inferStandaloneTMemLdStQueryLayout(
+            memDescValue, /*preserveNonCanonicalView=*/true, &layoutError);
+        succeeded(maybeQuery)) {
+      return normalizeTensorMemoryLinearLayoutForAnalysis(maybeQuery->layout);
+    }
+  }
+
+  if (auto maybeLayout = getExactTypeLayout())
+    return *maybeLayout;
+  return toLinearLayout(memTy);
+}
+
+uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
+                                           MemDescType memTy,
+                                           ArrayRef<int32_t> offsets) {
+  assert(offsets.size() == memTy.getRank());
+  // Keep tile ordering in the same typed coordinate frame as
+  // getMMAv5TMemAddressLayout for physical bitcasts.
+  if (memDescValue && !isTMemPhysicalBitcast(memDescValue))
+    return getTMemViewOffsetForLowering(memDescValue, offsets);
+  return getTMemViewOffset(memTy, offsets);
+}
+
 bool isTMemLdStReductionCompatible(const TMemLdStEncodingInfo &info) {
   return !info.unpacked && getTMemLdStReductionRepeats(info) >= 2;
 }
@@ -5583,10 +5647,6 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     if (auto rowPlan = getTMemLdStRowPlan(support.query.layout))
       support.rowPlan = rowPlan;
   };
-  auto isPhysicalBitcast = [](Value value) {
-    auto reinterpret = value.getDefiningOp<gpu::MemDescReinterpretOp>();
-    return reinterpret && reinterpret->hasAttr("tmem_physical_bitcast");
-  };
   auto getStandalonePhysicalBitcastSupport =
       [&](Value value) -> std::optional<TMemLdStSupportQueryPlan> {
     auto query = inferStandaloneTMemLdStQueryLayoutImpl(
@@ -5653,7 +5713,7 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   };
 
   if (auto reinterpret = memDesc.getDefiningOp<gpu::MemDescReinterpretOp>()) {
-    if (isPhysicalBitcast(memDesc) &&
+    if (isTMemPhysicalBitcast(memDesc) &&
         (!queryTy || queryTy.getRank() != 2 || queryTy.getShape()[0] != 64))
       return getStandalonePhysicalBitcastSupport(memDesc);
 
@@ -5667,7 +5727,7 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
     if (srcBits != dstBits)
       return std::nullopt;
 
-    if (!isPhysicalBitcast(memDesc) &&
+    if (!isTMemPhysicalBitcast(memDesc) &&
         srcTy.getElementTypeBitWidth() == queryTy.getElementTypeBitWidth()) {
       if (auto support = getStandalonePhysicalBitcastSupport(memDesc))
         return support;
@@ -5689,7 +5749,7 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
       auto result =
           TMemLdStSupportQueryPlan{*reinterpretedSupport, support->rowPlan};
       if (auto layoutRowPlan = getTMemLdStRowPlan(result.query.layout)) {
-        if (isPhysicalBitcast(memDesc) || !result.rowPlan ||
+        if (isTMemPhysicalBitcast(memDesc) || !result.rowPlan ||
             layoutRowPlan->rowSpan > result.rowPlan->rowSpan)
           result.rowPlan = layoutRowPlan;
       }
@@ -5698,7 +5758,7 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
 
     if (auto support = reinterpretSourceSupport())
       return support;
-    if (isPhysicalBitcast(memDesc))
+    if (isTMemPhysicalBitcast(memDesc))
       return getStandalonePhysicalBitcastSupport(memDesc);
     return std::nullopt;
   }
@@ -5744,7 +5804,7 @@ getColumnSubviewTMemLdStSupportQueryPlan(Value memDesc, std::string *error) {
   auto subslice = memDesc.getDefiningOp<gpu::MemDescSubsliceOp>();
   if (!subslice)
     return std::nullopt;
-  if (isPhysicalBitcast(subslice.getSrc()))
+  if (isTMemPhysicalBitcast(subslice.getSrc()))
     return getStandalonePhysicalBitcastSupport(memDesc);
   auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
   if (!srcTy || srcTy.getRank() != 2 || subslice.getOffsets().size() != 2 ||

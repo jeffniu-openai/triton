@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 21:32 UTC Phase F MMAv5 address-layout helper cleanup:
+  `DotOpMmaV5TmemLoader` no longer owns the physical-bitcast predicate, typed
+  exact-layout fallback ladder, family-layout selection, or tile-order
+  physical-bitcast offset choice. Those policies now live in
+  `TensorMemoryUtils` as `isTMemPhysicalBitcast`,
+  `getMMAv5TMemAddressLayout`, and `getMMAv5TMemViewOffsetForLowering`.
+  Support impact is unchanged. Validation: `make -j8`; split-4 focused MMAv5
+  runtime selector passed `26/26` on each group; physical-bitcast core smoke
+  passed `3/3`. Next: checkpoint/push, then continue the tracked Phase C/Phase
+  E frontier unless the next inspection finds another duplicated lowering
+  policy worth deleting first.
+
 - Latest: 2026-04-17 21:26 UTC validation checkpoint after Phase F cleanup:
   the corrected full runtime-matrix runner passed again after the
   leading-slice replay policy helper and MMAv5 family address-layout helper

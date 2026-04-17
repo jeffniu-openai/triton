@@ -499,12 +499,21 @@ llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
 
 bool isTMemLdStHalfRowsDescriptorView(Value memDesc);
 
+bool isTMemPhysicalBitcast(Value value);
+
 bool disallowTMemLdStTypeOnlyFallback(Value memDesc,
                                       std::string *reason = nullptr);
 
 bool disallowTMemLdStQueryTypeRescue(Value memDesc);
 
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
+
+LinearLayout getMMAv5TMemAddressLayout(gpu::MemDescType memTy,
+                                       Value memDescValue);
+
+uint32_t getMMAv5TMemViewOffsetForLowering(Value memDescValue,
+                                           gpu::MemDescType memTy,
+                                           ArrayRef<int32_t> offsets);
 
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);
 

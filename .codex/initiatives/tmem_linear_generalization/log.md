@@ -24715,3 +24715,31 @@ Open after this slice:
     `completion_execution_tracker.md`, prioritizing support-bearing Phase C
     or Phase E work unless the next inspection finds duplicated TMEM policy
     that can be cleanly moved into backend helpers.
+
+## 2026-04-17 21:32 UTC: MMAv5 address layout moved fully to backend helpers
+
+- Starting point: `codex/tmem` at pushed `8546b9a24`.
+- Change:
+  - added shared `isTMemPhysicalBitcast`;
+  - added backend helpers `getMMAv5TMemAddressLayout` and
+    `getMMAv5TMemViewOffsetForLowering`;
+  - removed the physical-bitcast predicate and address-layout fallback ladder
+    from `DotOpMmaV5TmemLoader`;
+  - reused the shared physical-bitcast predicate in the direct `ld/st`
+    column-subview support planner.
+- Intent:
+  - no support surface changes;
+  - keep MMAv5 typed-layout, full-family layout, descriptor-query layout, and
+    physical-bitcast coordinate-frame policy in the backend helper layer.
+- Validation:
+  - `make -j8`;
+  - split-4 focused MMAv5 runtime selector passed `26/26` on all four groups;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-mmav5-bitcast
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    python/test/gluon/test_core.py::test_tmem_physical_bitcast_mma_lhs
+    python/test/gluon/test_core.py::test_tmem_physical_bitcast_preserves_subview_mapping`
+    passed `3/3`.
+- Next:
+  - commit and push this cleanup checkpoint;
+  - continue the active tracker plan, preferring support-bearing Phase C/Phase
+    E work unless the next inspection finds another backend-policy duplicate.

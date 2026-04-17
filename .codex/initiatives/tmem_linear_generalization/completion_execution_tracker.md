@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:26 UTC
+Last updated: 2026-04-17 21:32 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -216,6 +216,23 @@ Baseline checkpoint at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
 
 ## Latest Cleanup Checkpoint
 
+2026-04-17 21:32 UTC:
+
+- Moved MMAv5 TMEM address-layout and tile-order offset selection out of
+  `DotOpMmaV5TmemLoader` and into backend `TensorMemoryUtils` helpers:
+  `isTMemPhysicalBitcast`, `getMMAv5TMemAddressLayout`, and
+  `getMMAv5TMemViewOffsetForLowering`.
+- This keeps physical-bitcast coordinate-frame selection and typed/family/query
+  fallback ordering in the backend helper layer instead of in LLVM lowering.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory was changed.
+- Validation:
+  - `make -j8`;
+  - focused MMAv5 runtime selector split across four GPUs passed `26/26` on
+    each group;
+  - `test_tmem_physical_bitcast_mma_lhs` plus
+    `test_tmem_physical_bitcast_preserves_subview_mapping` passed `3/3`.
+
 2026-04-17 21:01 UTC:
 
 - Removed a verifier-local duplicate of the row-zero lifted reinterpret
@@ -417,6 +434,12 @@ direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
 frontier unless another clearly duplicated frontend/lowering policy is found.
 
 ## Progress
+
+- 2026-04-17 21:32 UTC: moved MMAv5 TMEM address-layout and tile-order offset
+  selection from LLVM lowering into backend `TensorMemoryUtils` helpers. This
+  includes sharing `isTMemPhysicalBitcast` with the direct `ld/st` support
+  planner. Validation: `make -j8`; focused MMAv5 split-4 runtime selector
+  passed `26/26` on all groups; physical-bitcast core smoke passed `3/3`.
 
 - 2026-04-17 21:26 UTC: reran the corrected full runtime-matrix runner after
   the leading-slice replay policy cleanup and MMAv5 family address-layout
