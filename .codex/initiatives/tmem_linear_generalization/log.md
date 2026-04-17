@@ -1,3 +1,46 @@
+## 2026-04-17 14:26 UTC: 256-row split replay folded-query promotion
+
+- Starting point: `codex/tmem` at `190960e92`.
+- Change:
+  - added `completeTensorMemorySubviewRowBasesForAnalysis(...)` so exact TMEM
+    load/store analysis completes pure row bases for row-preserving column
+    subviews whose printed TMEM-linear row bases only cover the directly
+    addressable 128-row half;
+  - taught 8-warp direct `I32x32b` compatible-layout enumeration to consider
+    row-preserving 256-row column subviews, using the completed logical query
+    to build the register layout;
+  - added query-aware compatible-layout validation so the candidate can be
+    proved against the folded physical query that actual `ttng.tmem_subslice`
+    lowering uses: low row bases stay physical rows, while the high row
+    selector becomes an extra physical column basis;
+  - updated the existing `@subtile_tmem_load_256` lit checks from a negative
+    full-load/split expectation to a positive pair of subslice loads.
+- Boundary:
+  - this promotes the 256-row split-load replay case. The analogous store-join
+    behavior still needs an explicit test/validation slice before claiming the
+    full split replay family is saturated;
+  - the fix is intentionally algebraic and planner-owned. It does not add a
+    shape-only optimizer exception; unsupported cases must still fail through
+    compatible-layout validation.
+- Validation:
+  - `make -j8`;
+  - direct compiler pass run:
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/tmem_layouts.mlir -split-input-file
+    --triton-nvidia-optimize-tmem-layouts --allow-unregistered-dialect`
+    (exit `0`, no stderr; output rewrites `@subtile_tmem_load_256` to two
+    subslice loads);
+  - minimal LLVM lowering check for two 256x64 subslice loads:
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    /tmp/tmem_subtile_256_convert.mlir --allow-unregistered-dialect
+    --convert-triton-gpu-to-llvm=compute-capability=100 -cse`
+    (exit `0`, no stderr; two
+    `tcgen05.ld.sync.aligned.32x32b.x64.b32` packets observed);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked until the active GitHub account is `Mogball` per the
+    repo instruction. The prior shell state reported `jeffniu-openai`.
+
 ## 2026-04-17 13:56 UTC: split replay guard uses compatible-layout planner
 
 - Starting point: `codex/tmem` at `8b39a3acd`.

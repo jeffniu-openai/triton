@@ -1180,6 +1180,16 @@ Progress:
   exact flatten/unflatten arithmetic for higher-rank
   `TensorMemoryLinearLayout` descriptors, keeping constexpr type queries and
   handle-aware descriptor queries on one contract.
+- 2026-04-17 14:26 UTC: promoted the 256-row split-load replay case by making
+  row-preserving column subviews first-class in the load/store compatible-layout
+  planner. The analysis path completes missing high row bases, constructs the
+  direct 8-warp `I32x32b` register layout from exact linear-layout arithmetic,
+  and validates it against the folded physical query that actual subslice
+  lowering uses. This turns the old 256-row full-load/split lit negative into
+  a positive pair of `ttng.tmem_subslice` plus `ttng.tmem_load` operations.
+  The next local check is whether the store-join half of the replay family is
+  now covered by the same planner proof or still needs a separate packet/write
+  boundary.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would
@@ -1684,6 +1694,12 @@ Progress:
   preserves current 256-row behavior while deleting another family-specific
   TODO guard. Validation: `make -j8`, direct `triton-opt` run for
   `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `git diff --check`.
+- 2026-04-17 14:26 UTC: promoted the 256-row split-load replay through the
+  shared compatible-layout planner instead of adding an optimizer-only
+  exception. Row-completion and folded-query validation are now shared analysis
+  pieces available to future `ld/st` cleanup. Validation: `make -j8`, direct
+  `triton-opt` for `test/TritonNvidiaGPU/tmem_layouts.mlir`, minimal LLVM
+  lowering for the two 256x64 subslice loads, and `git diff --check`.
 
 Exit criteria:
 - TMEM backend decisions flow through the shared physical-query/planner stack.

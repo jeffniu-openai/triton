@@ -147,8 +147,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.target = "cuda:100"} {
   // CHECK-LABEL: @subtile_tmem_load_256
-  // CHECK-NOT: ttng.tmem_subslice
-  // CHECK: tt.return
+  // CHECK: %[[S0:.+]] = ttng.tmem_subslice %{{.+}} {N = 0 : i32}
+  // CHECK: %[[L0:.+]] = ttng.tmem_load %[[S0]] : !ttg.memdesc<256x64xf32
+  // CHECK: %[[C0:.+]] = ttg.convert_layout %[[L0]]
+  // CHECK: %[[S1:.+]] = ttng.tmem_subslice %{{.+}} {N = 64 : i32}
+  // CHECK: %[[L1:.+]] = ttng.tmem_load %[[S1]] : !ttg.memdesc<256x64xf32
+  // CHECK: %[[C1:.+]] = ttg.convert_layout %[[L1]]
+  // CHECK: tt.return %[[C0]], %[[C1]]
   tt.func public @subtile_tmem_load_256(%arg0: !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable>) -> (tensor<256x64xf32, #blocked>, tensor<256x64xf32, #blocked>) {
     %0 = ttng.tmem_load %arg0 : !ttg.memdesc<256x128xf32, #tmem, #ttng.tensor_memory, mutable> -> tensor<256x128xf32, #linear>
     %1 = tt.reshape %0 : tensor<256x128xf32, #linear> -> tensor<256x2x64xf32, #blocked2>

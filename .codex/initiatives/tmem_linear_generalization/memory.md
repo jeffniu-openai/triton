@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 14:26 UTC the 256-row split-load replay lit case is now
+  positive. The backend completes pure row bases for row-preserving column
+  subviews before TMEM load/store analysis, builds the 8-warp direct
+  `I32x32b` register layout from exact `LinearLayout` arithmetic, and validates
+  that candidate against the folded physical query where the high row selector
+  is represented as a physical column basis. `OptimizeTMemLayouts` now rewrites
+  `@subtile_tmem_load_256` into two `ttng.tmem_subslice` plus two
+  `ttng.tmem_load` operations. Validation: `make -j8`; direct `triton-opt`
+  run on `test/TritonNvidiaGPU/tmem_layouts.mlir`; minimal LLVM lowering of
+  the two 256x64 subslice loads emitted two
+  `tcgen05.ld.sync.aligned.32x32b.x64.b32` packets; `git diff --check`.
+  Lit/FileCheck are unavailable in this shell.
+
 - Latest: 2026-04-17 13:56 UTC the TMEM split-load/store-join optimizer no
   longer has a hard `M == 128` gate. Before creating any `ttng.tmem_subslice`
   or replay load/store ops, it now infers each future subslice memdesc type and

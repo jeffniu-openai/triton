@@ -190,6 +190,9 @@ LinearLayout normalizeTensorMemoryLinearLayoutForAnalysis(LinearLayout layout);
 LinearLayout foldCanonicalSingleCTABlockRowsForAnalysis(LinearLayout layout,
                                                         bool twoCTAs);
 
+LinearLayout completeTensorMemorySubviewRowBasesForAnalysis(
+    ArrayRef<int64_t> shape, LinearLayout layout);
+
 LinearLayout getCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
                                                   Attribute layout);
 

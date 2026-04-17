@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 14:26 UTC: promoted the existing 256-row split-load replay case.
+  Row-preserving column subviews now complete the missing high row basis for
+  exact analysis and validate the 8-warp `I32x32b` direct register-layout
+  candidate against the folded physical query used by actual
+  `ttng.tmem_subslice` lowering. The optimizer now rewrites
+  `@subtile_tmem_load_256` into two `ttng.tmem_subslice` plus two
+  `ttng.tmem_load` operations instead of leaving the full load/split in place.
+  Validation: `make -j8`, direct `triton-opt` run for
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`, minimal LLVM lowering of the two
+  256x64 subslice loads with two `tcgen05.ld.sync.aligned.32x32b.x64.b32`
+  packets, and `git diff --check`. Lit/FileCheck are unavailable in this
+  shell.
 - 2026-04-17 13:56 UTC: generalized the TMEM split-load/store-join replay
   optimizer guard. The rewrite no longer hard-codes `M == 128`; it infers the
   future `ttng.tmem_subslice` type, asks the TMEM compatible-layout planner

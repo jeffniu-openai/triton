@@ -1733,6 +1733,58 @@ static bool hasPurePowerOfTwoBasisSet(const LinearLayout &layout,
   return llvm::equal(*order, expected);
 }
 
+LinearLayout completeTensorMemorySubviewRowBasesForAnalysis(
+    ArrayRef<int64_t> shape, LinearLayout layout) {
+  // A row-preserving column subview can keep the parent logical row extent in
+  // its output shape while the printed TMEM-linear row bases only cover the
+  // directly-addressable 128-row half. Complete those pure row bases before
+  // doing exact layout arithmetic so register-layout selection sees the full
+  // logical row space.
+  if (shape.size() != 2 || layout.getNumOutDims() != 2 ||
+      layout.getNumInDims() == 0) {
+    return layout;
+  }
+
+  auto *ctx = (*layout.getInDimNames().begin()).getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
+    return layout;
+
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  StringAttr rowDim = outDims.front();
+  StringAttr colDim = outDims.back();
+  unsigned rowDimIdx = layout.getOutDimIndex(rowDim);
+  unsigned colDimIdx = layout.getOutDimIndex(colDim);
+  int64_t logicalRows = shape[0];
+  int64_t logicalCols = shape[1];
+  int64_t rowBasisSpan = layout.getInDimSize(kRow);
+  int64_t colBasisSpan = layout.getInDimSize(kCol);
+  if (logicalRows < 1 || logicalCols < 1 || rowBasisSpan >= logicalRows ||
+      layout.getOutDimSize(rowDim) != logicalRows ||
+      layout.getOutDimSize(colDim) < logicalCols ||
+      colBasisSpan < logicalCols || !llvm::isPowerOf2_64(logicalRows) ||
+      !llvm::isPowerOf2_64(rowBasisSpan) ||
+      !llvm::isPowerOf2_64(logicalCols)) {
+    return layout;
+  }
+
+  if (!getPurePowerOfTwoBasisOrder(layout, kRow, rowDimIdx, rowBasisSpan) ||
+      !getPurePowerOfTwoBasisOrder(layout, kCol, colDimIdx, logicalCols)) {
+    return layout;
+  }
+
+  auto bases = layout.getBases();
+  auto &rowBases = bases[kRow];
+  for (int64_t row = rowBasisSpan; row < logicalRows; row <<= 1) {
+    std::vector<int32_t> basis(layout.getNumOutDims(), 0);
+    basis[rowDimIdx] = static_cast<int32_t>(row);
+    rowBases.push_back(std::move(basis));
+  }
+  return LinearLayout(std::move(bases), layout.getOutDims(),
+                      layout.isSurjective());
+}
+
 static std::optional<TMemAllocation>
 getExpandedSeparableLinearTMemAllocSizes(const LinearLayout &layout,
                                          unsigned preferredColStride) {
@@ -2899,6 +2951,13 @@ isTMemLdStSelectionLayoutValid(gpu::MemDescType memType,
       computeTMemLdStEncodingInfo(regTy, memType, /*maxnreg=*/256));
 }
 
+static bool isFullShapeOrRowPreservingColumnSubview(gpu::MemDescType memType);
+
+static std::optional<LinearLayout>
+getExpandedRowDirectI32x32bLayout(gpu::MemDescType memType,
+                                  const LinearLayout &memLayout,
+                                  unsigned numWarps);
+
 std::optional<LinearLayout>
 getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
                                 unsigned numWarps,
@@ -2990,10 +3049,11 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
       std::string rawError;
       if (auto maybeLayout = getTMemViewAnalysisLinearLayout(
               memType.getShape(), memType.getEncoding(), &rawError)) {
-        auto normalized =
-            foldCanonicalSingleCTABlockRowsForAnalysis(
-                normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout),
-                twoCTAs);
+        auto normalized = foldCanonicalSingleCTABlockRowsForAnalysis(
+            completeTensorMemorySubviewRowBasesForAnalysis(
+                memType.getShape(),
+                normalizeTensorMemoryLinearLayoutForAnalysis(*maybeLayout)),
+            twoCTAs);
         if (matchesCanonicalContiguousM64LinearView(normalized))
           return normalized;
       }
@@ -3017,7 +3077,10 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     if (!maybe)
       return LinearLayout();
     return foldCanonicalSingleCTABlockRowsForAnalysis(
-        normalizeTensorMemoryLinearLayoutForAnalysis(*maybe), twoCTAs);
+        completeTensorMemorySubviewRowBasesForAnalysis(
+            memType.getShape(),
+            normalizeTensorMemoryLinearLayoutForAnalysis(*maybe)),
+        twoCTAs);
   }();
   if (ll.getNumOutDims() == 0)
     return std::nullopt;
@@ -3059,6 +3122,15 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
         if (isValidLayout(*legacyLike))
           return legacyLike;
       }
+    }
+  }
+  if (!rowPlanOverride && atom == TMemAccessAtom::I32x32b &&
+      !isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
+      isFullShapeOrRowPreservingColumnSubview(memType)) {
+    if (auto expanded =
+            getExpandedRowDirectI32x32bLayout(memType, ll, numWarps);
+        expanded && isValidLayout(*expanded)) {
+      return expanded;
     }
   }
   auto tryCanonicalContiguousM64 =
@@ -3229,7 +3301,24 @@ static bool appendTMemCompatibleEncodingCandidate(
   if (requireUnique && llvm::is_contained(layouts, candidateEncoding))
     return false;
   auto candidateType = tensorType.cloneWithEncoding(candidateEncoding);
-  if (failed(computeTMemLdStEncodingInfo(candidateType, memType, maxnreg)))
+  if (failed(computeTMemLdStEncodingInfo(candidateType, memType, maxnreg))) {
+    return false;
+  }
+  layouts.push_back(candidateEncoding);
+  return true;
+}
+
+static bool appendTMemCompatibleEncodingCandidateForQuery(
+    SmallVectorImpl<DistributedEncodingTrait> &layouts,
+    RankedTensorType tensorType, gpu::MemDescType memType,
+    DistributedEncodingTrait candidateEncoding, const LinearLayout &queryLayout,
+    unsigned maxnreg, std::optional<TMemLdStRowPlan> rowPlan,
+    bool requireUnique = false) {
+  if (requireUnique && llvm::is_contained(layouts, candidateEncoding))
+    return false;
+  auto candidateType = tensorType.cloneWithEncoding(candidateEncoding);
+  if (failed(computeTMemLdStEncodingInfo(candidateType, memType, queryLayout,
+                                         maxnreg, /*emitError=*/{}, rowPlan)))
     return false;
   layouts.push_back(candidateEncoding);
   return true;
@@ -3261,6 +3350,21 @@ appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts
       layouts, tensorType, memType, candidateEncoding, maxnreg, requireUnique);
 }
 
+static bool appendTMemCompatibleCandidateForQuery(
+    SmallVectorImpl<DistributedEncodingTrait> &layouts,
+    RankedTensorType tensorType, gpu::MemDescType memType,
+    const LinearLayout &layout, const LinearLayout &queryLayout,
+    unsigned maxnreg, std::optional<TMemLdStRowPlan> rowPlan,
+    bool requireUnique = false) {
+  auto candidateEncoding =
+      tryGetLinearEncodingAttr(tensorType.getContext(), layout);
+  if (!candidateEncoding)
+    return false;
+  return appendTMemCompatibleEncodingCandidateForQuery(
+      layouts, tensorType, memType, *candidateEncoding, queryLayout, maxnreg,
+      rowPlan, requireUnique);
+}
+
 static bool
 appendTMemCompatibleCandidate(SmallVectorImpl<DistributedEncodingTrait> &layouts,
                               Operation *op, RankedTensorType tensorType,
@@ -3289,10 +3393,13 @@ getExpandedRowDirectI32x32bLayout(MemDescType memType,
                                   const LinearLayout &memLayout,
                                   unsigned numWarps) {
   if (numWarps < 8 || memType.getElementTypeBitWidth() != 32 ||
-      memType.getRank() != 2 || memType.getShape() != memType.getAllocShape() ||
-      !isa<TensorMemoryLinearEncodingAttr>(memType.getEncoding()) ||
-      memLayout.getNumOutDims() != 2)
+      memType.getRank() != 2 ||
+      !isTensorMemoryEncoding(memType.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) ||
+      !isFullShapeOrRowPreservingColumnSubview(memType) ||
+      memLayout.getNumOutDims() != 2) {
     return std::nullopt;
+  }
 
   auto *ctx = memType.getContext();
   auto kRow = StringAttr::get(ctx, "row");
@@ -3304,22 +3411,28 @@ getExpandedRowDirectI32x32bLayout(MemDescType memType,
   auto outDims = llvm::to_vector(memLayout.getOutDimNames());
   if (!llvm::is_contained(outDims, dims[0]) ||
       !llvm::is_contained(outDims, dims[1]) || !memLayout.hasInDim(kRow) ||
-      !memLayout.hasInDim(kCol))
+      !memLayout.hasInDim(kCol)) {
     return std::nullopt;
+  }
 
-  int64_t logicalRows = memLayout.getInDimSize(kRow);
-  int64_t logicalCols = memLayout.getInDimSize(kCol);
+  int64_t logicalRows = memType.getShape()[0];
+  int64_t logicalCols = memType.getShape()[1];
   if (logicalRows != 256 || logicalCols < 1 ||
-      !llvm::isPowerOf2_64(logicalCols))
+      !llvm::isPowerOf2_64(logicalCols)) {
     return std::nullopt;
+  }
 
-  if (!getPurePowerOfTwoBasisOrder(memLayout, kRow,
-                                   memLayout.getOutDimIndex(dims[0]),
-                                   logicalRows) ||
-      !getPurePowerOfTwoBasisOrder(memLayout, kCol,
-                                   memLayout.getOutDimIndex(dims[1]),
-                                   logicalCols))
+  LinearLayout queryLayout =
+      completeTensorMemorySubviewRowBasesForAnalysis(memType.getShape(),
+                                                     memLayout);
+  unsigned rowDim = queryLayout.getOutDimIndex(dims[0]);
+  unsigned colDim = queryLayout.getOutDimIndex(dims[1]);
+  if (queryLayout.getInDimSize(kRow) != logicalRows ||
+      queryLayout.getInDimSize(kCol) < logicalCols ||
+      !getPurePowerOfTwoBasisOrder(queryLayout, kRow, rowDim, logicalRows) ||
+      !getPurePowerOfTwoBasisOrder(queryLayout, kCol, colDim, logicalCols)) {
     return std::nullopt;
+  }
 
   LinearLayout::BasesT bases;
   for (int64_t col = 1; col < logicalCols; col <<= 1)
@@ -3331,17 +3444,102 @@ getExpandedRowDirectI32x32bLayout(MemDescType memType,
       {{kRow, static_cast<int32_t>(logicalRows)},
        {kCol, static_cast<int32_t>(logicalCols)}},
       /*requireSurjective=*/false);
-  if (!canComposeLinearLayouts(physicalTile, memLayout))
+  if (!canComposeLinearLayouts(physicalTile, queryLayout)) {
     return std::nullopt;
-  auto ret = physicalTile.compose(memLayout);
+  }
+  auto ret = physicalTile.compose(queryLayout);
   SmallVector<StringAttr> canonicalInDims = {kReg, kLane, kWarp};
   ret = ret.transposeIns(canonicalInDims);
   auto withoutBroadcast = ret;
   for (auto inDim : ret.getInDimNames())
     withoutBroadcast = withoutBroadcast.removeZeroBasesAlongDim(inDim);
-  if (!withoutBroadcast.isInvertible())
+  if (!withoutBroadcast.isInvertible()) {
     return std::nullopt;
+  }
   return ret;
+}
+
+static bool isFullShapeOrRowPreservingColumnSubview(gpu::MemDescType memType) {
+  if (memType.getShape() == memType.getAllocShape())
+    return true;
+  if (memType.getRank() != 2 || memType.getAllocShape().size() != 2)
+    return false;
+  return memType.getShape()[0] == memType.getAllocShape()[0] &&
+         memType.getShape()[1] <= memType.getAllocShape()[1];
+}
+
+static std::optional<LinearLayout>
+getRowPreservingColumnSubviewPhysicalQueryLayout(gpu::MemDescType memType) {
+  // 32x32b packets cannot carry row >= 128 directly in the packet schedule.
+  // For row-preserving 256-row column subviews, validate candidates against
+  // the folded physical query used by actual `ttng.tmem_subslice` lowering:
+  // low row bases stay in `row`, and the high row selector is represented as
+  // an extra physical `col` basis.
+  if (memType.getRank() != 2 || memType.getAllocShape().size() != 2 ||
+      memType.getShape() == memType.getAllocShape() ||
+      memType.getShape()[0] != memType.getAllocShape()[0] ||
+      memType.getShape()[1] > memType.getAllocShape()[1] ||
+      !isTensorMemoryEncoding(memType.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding())) {
+    return std::nullopt;
+  }
+
+  std::string error;
+  auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
+      memType.getShape(), memType.getEncoding(), &error);
+  if (!maybeAnalysis)
+    return std::nullopt;
+  auto layout = completeTensorMemorySubviewRowBasesForAnalysis(
+      memType.getShape(),
+      normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis));
+  auto *ctx = memType.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto dims = standardOutDimNames(ctx, 2);
+  if (!layout.hasInDim(kRow) || !layout.hasInDim(kCol))
+    return std::nullopt;
+  if (layout.getNumOutDims() != 2 || !llvm::equal(layout.getOutDimNames(), dims))
+    return std::nullopt;
+
+  int64_t logicalRows = memType.getShape()[0];
+  int64_t logicalCols = memType.getShape()[1];
+  if (logicalRows != 256 || logicalCols < 1 ||
+      !llvm::isPowerOf2_64(logicalCols))
+    return std::nullopt;
+
+  unsigned rowOutIdx = layout.getOutDimIndex(dims[0]);
+  unsigned colOutIdx = layout.getOutDimIndex(dims[1]);
+  if (!getPurePowerOfTwoBasisOrder(layout, kRow, rowOutIdx, logicalRows) ||
+      !getPurePowerOfTwoBasisOrder(layout, kCol, colOutIdx, logicalCols)) {
+    return std::nullopt;
+  }
+
+  LinearLayout::BasesT bases;
+  bases[kRow] = {};
+  bases[kCol] = {};
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(kRow); ++idx) {
+    ArrayRef<int32_t> basis = layout.getBasis(kRow, idx);
+    if (basis[rowOutIdx] < 128)
+      bases[kRow].push_back(std::vector<int32_t>(basis.begin(), basis.end()));
+  }
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(kCol); ++idx) {
+    ArrayRef<int32_t> basis = layout.getBasis(kCol, idx);
+    bases[kCol].push_back(std::vector<int32_t>(basis.begin(), basis.end()));
+  }
+  for (unsigned idx = 0; idx < layout.getInDimSizeLog2(kRow); ++idx) {
+    ArrayRef<int32_t> basis = layout.getBasis(kRow, idx);
+    if (basis[rowOutIdx] >= 128)
+      bases[kCol].push_back(std::vector<int32_t>(basis.begin(), basis.end()));
+  }
+  if (bases[kRow].size() != 7 ||
+      bases[kCol].size() != layout.getInDimSizeLog2(kCol) + 1) {
+    return std::nullopt;
+  }
+
+  std::string layoutError;
+  return LinearLayout::tryCreate(std::move(bases),
+                                 llvm::to_vector(layout.getOutDims()),
+                                 /*requireSurjective=*/true, &layoutError);
 }
 
 DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
@@ -3862,8 +4060,17 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
 
   bool isScales = isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding());
   LinearLayout memLL;
-  if (isScales)
+  if (isScales) {
     memLL = toLinearLayout(memType);
+  } else {
+    std::string error;
+    if (auto maybeAnalysis = getTMemViewAnalysisLinearLayout(
+            memType.getShape(), memType.getEncoding(), &error)) {
+      memLL = completeTensorMemorySubviewRowBasesForAnalysis(
+          memType.getShape(),
+          normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis));
+    }
+  }
 
   auto tryAddScalesNarrowTileLayout = [&]() {
     if (!isScales || numWarps != 4 || memType.getElementTypeBitWidth() != 8)
@@ -3926,11 +4133,23 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
     }
   }
   if (!isScales && memType.getElementTypeBitWidth() == 32 &&
-      memType.getRank() == 2 && memType.getShape() == memType.getAllocShape()) {
-    auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+      memType.getRank() == 2 &&
+      isFullShapeOrRowPreservingColumnSubview(memType) &&
+      memLL.getNumOutDims() != 0) {
     if (auto expanded =
-            getExpandedRowDirectI32x32bLayout(memType, raw, numWarps))
+            getExpandedRowDirectI32x32bLayout(memType, memLL, numWarps)) {
+      auto before = layouts.size();
       tryPushUniqueLayout(*expanded);
+      if (layouts.size() == before) {
+        if (auto queryLayout =
+                getRowPreservingColumnSubviewPhysicalQueryLayout(memType)) {
+          appendTMemCompatibleCandidateForQuery(
+              layouts, tensorTy, memType, *expanded, *queryLayout,
+              /*maxnreg=*/256, getTMemLdStRowPlan(*queryLayout),
+              /*requireUnique=*/true);
+        }
+      }
+    }
   }
 
   int bitwidth = memType.getElementTypeBitWidth();
@@ -4033,16 +4252,29 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
         memType.getShape(), memType.getEncoding(), &error);
     if (!maybeAnalysis)
       return LinearLayout();
-    return normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis);
+    return completeTensorMemorySubviewRowBasesForAnalysis(
+        memType.getShape(),
+        normalizeTensorMemoryLinearLayoutForAnalysis(*maybeAnalysis));
   }();
   if (memLL.getNumOutDims() == 0)
     return layouts;
   if (!isScales && memType.getElementTypeBitWidth() == 32 &&
-      memType.getRank() == 2 && memType.getShape() == memType.getAllocShape()) {
-    auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
+      memType.getRank() == 2 &&
+      isFullShapeOrRowPreservingColumnSubview(memType)) {
     if (auto expanded =
-            getExpandedRowDirectI32x32bLayout(memType, raw, numWarps)) {
-      if (isTMemCompatibleCandidate(op, tensorType, memType, *expanded)) {
+            getExpandedRowDirectI32x32bLayout(memType, memLL, numWarps)) {
+      bool supported =
+          isTMemCompatibleCandidate(op, tensorType, memType, *expanded);
+      if (!supported) {
+        if (auto queryLayout =
+                getRowPreservingColumnSubviewPhysicalQueryLayout(memType)) {
+          supported = appendTMemCompatibleCandidateForQuery(
+              layouts, tensorType, memType, *expanded, *queryLayout,
+              getContextualMaxNReg(op), getTMemLdStRowPlan(*queryLayout),
+              /*requireUnique=*/true);
+        }
+      }
+      if (supported) {
         auto attr = LinearEncodingAttr::get(tensorType.getContext(),
                                             std::move(*expanded));
         if (!llvm::is_contained(layouts, attr))
