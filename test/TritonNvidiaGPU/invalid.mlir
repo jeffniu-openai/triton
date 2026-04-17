@@ -458,7 +458,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
                                                       %useAcc: i1,
                                                       %pred: i1) {
     // expected-error @+2 {{return operand must have a MMAv5-compatible tensor memory layout}}
-    // expected-note @+1 {{MMAv5 tensor-memory operands are planned by physical instruction tiles. Current public tcgen05.mma atoms require each instruction tile to preserve the canonical row/column basis order; arbitrary row or column permutations inside a tile need an unsupported permutation or masked writeback schedule.}}
+    // expected-note @+1 {{MMAv5 instruction-tile order requirement: return operand has logical shape 128x128, CTA shape 128x128, element bitwidth 32. Public tcgen05.mma atoms require each 64x8 or larger instruction tile to preserve the canonical row/column basis order}}
     ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
        !ttg.memdesc<128x128xf16, #shared_f16, #ttg.shared_memory>,
        !ttg.memdesc<128x128xf16, #shared_f16_t, #ttg.shared_memory>,
@@ -473,7 +473,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
       %useAcc: i1,
       %pred: i1) {
     // expected-error @+2 {{return operand must have a MMAv5-compatible tensor memory layout}}
-    // expected-note @+1 {{MMAv5 tensor-memory operands are planned by physical instruction tiles. Current public tcgen05.mma atoms require each instruction tile to preserve the canonical row/column basis order; arbitrary row or column permutations inside a tile need an unsupported permutation or masked writeback schedule.}}
+    // expected-note @+1 {{MMAv5 instruction-tile order requirement: return operand has logical shape 128x128, CTA shape 128x128, element bitwidth 32. Public tcgen05.mma atoms require each 64x8 or larger instruction tile to preserve the canonical row/column basis order}}
     ttng.tc_gen5_mma %a, %b, %c, %useAcc, %pred :
        !ttg.memdesc<128x128xf16, #shared_f16, #ttg.shared_memory>,
        !ttg.memdesc<128x128xf16, #shared_f16_t, #ttg.shared_memory>,

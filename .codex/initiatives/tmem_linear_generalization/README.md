@@ -4225,6 +4225,15 @@ When resuming the initiative:
   physical-query negatives. Validation: `make -j8`; exact row-permuted
   `warpx2` negative (`1 passed`); split-4 `cp_no_scales_warpx2`
   (`20/20/20/19` passed); Python compile; `git diff --check`.
+- 2026-04-17 18:16 UTC: plain MMAv5 exotic and row/column-permuted
+  accumulator negatives now report through a structured instruction-tile order
+  requirement. The backend note records logical/CTA shape, element bitwidth,
+  the public `64x8`-or-larger tile requirement, and the first noncanonical
+  in-tile basis. Behavior is unchanged: whole-tile accumulator permutations
+  remain positive, while in-tile permutations still need a real split or
+  masked writeback schedule. Validation: `make -j8`, invalid verifier,
+  split-4 focused MMAv5 negative selector `5/5/5/2`, Python compile, and
+  `git diff --check`.
 - 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
   planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
   still use `None`, so behavior is unchanged; the next source-format support

@@ -24028,6 +24028,38 @@ Open after this slice:
     while `gh auth status -h github.com` reports active account
     `jeffniu-openai`.
 
+## 2026-04-17 18:16 UTC: structured plain MMAv5 tile-order requirement
+
+- Starting point: `codex/tmem` at `2bc16a6a1`.
+- Change:
+  - extended `MMAv5TMemInstructionTileRequirement` so MMAv5 tensor-memory
+    verifier notes carry logical shape, CTA shape, element bitwidth, minimum
+    public instruction tile, and the first noncanonical in-tile row/column
+    basis when one can be derived from the linear layout;
+  - updated the plain MMAv5 exotic and row/column-permuted accumulator runtime
+    tests plus `invalid.mlir` to assert the structured tile-order note.
+- Boundary:
+  - behavior is intentionally unchanged. Existing whole-tile accumulator
+    permutation positives still compile and run; row/column permutations inside
+    a public `64x8`-or-larger MMAv5 instruction tile still require an
+    unsupported permutation, tile split below the public atom footprint, or
+    masked writeback schedule.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 focused selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py
+    -k 'mma_exotic_layout_reports_clean_unsupported or
+    mma_rowcol_permuted_layout_reports_clean_unsupported'`
+    (groups: `5/5/5/2` passed);
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-17 14:44 UTC: shared scales narrow-tile compatible layout helper
 
 - Starting point: `codex/tmem` at `26b6990e3`.

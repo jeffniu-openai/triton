@@ -12921,3 +12921,31 @@ rejection, not rescue
     `cp_scales_tmem_descriptor_view_reports_clean_unsupported or
     cp_no_scales_warpx2_02_13_twocta` (`15 passed, 1560 deselected`);
   - `git diff --check`.
+
+## Current: 2026-04-17 18:16 UTC plain MMAv5 tile-order requirement
+
+- Phase E MMAv5 boundary cleanup:
+  - `MMAv5TMemInstructionTileRequirement` now records shape, CTA shape,
+    element bitwidth, minimum public instruction tile, and the first
+    noncanonical in-tile row/column basis when available;
+  - verifier notes for plain MMAv5 exotic and row/column-permuted accumulator
+    negatives now explain the exact `64x8`-or-larger public tile-order
+    requirement instead of using a generic MMAv5-compatible note.
+- Behavior/support boundary is unchanged:
+  - whole-tile accumulator permutations remain positive through the existing
+    tile-preserving family planner;
+  - row/column permutations inside a public instruction tile remain true
+    boundaries unless the backend grows a correct sub-tile split or masked
+    writeback schedule.
+- Validation:
+  - `make -j8`;
+  - built `triton-opt test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 focused selector
+    `mma_exotic_layout_reports_clean_unsupported or
+    mma_rowcol_permuted_layout_reports_clean_unsupported` passed `5/5/5/2`;
+  - Python byte-compile for `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - move to scaled-MMAv5 storage representation: mixed fp4A TMEM-LHS padded
+    operand-A storage first, then narrow-N B-scale fragment rematerialization.

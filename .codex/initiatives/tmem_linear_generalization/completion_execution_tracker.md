@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:10 UTC
+Last updated: 2026-04-17 18:16 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -98,8 +98,9 @@ Current buckets:
 - Copy row/column permutation and sub-instruction tile permutation rows:
   require row/column partitioning, smaller footprints, masks, or explicit
   proof that the full-footprint public atom cannot realize the projection.
-- Plain MMAv5 exotic/row-column-permuted accumulators: public atoms require
-  canonical row/column basis order within an instruction tile unless a
+- Plain MMAv5 exotic/row-column-permuted accumulators: now reported through a
+  typed instruction-tile order requirement. Public atoms require canonical
+  row/column basis order within each 64x8-or-larger instruction tile unless a
   tile-splitting or masked writeback schedule is designed.
 - Scaled-MMAv5 mixed fp4A TMEM-LHS: needs padded operand-A storage semantics
   matching shared memory before the guard can lift.
@@ -178,8 +179,9 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ### Phase E: Plain And Scaled MMAv5
 
-- `active`: keep plain MMAv5 accumulator layout failures tied to instruction
-  tile row/column ordering or a real tile-splitting schedule gap.
+- `done`: keep plain MMAv5 accumulator layout failures tied to a structured
+  instruction-tile row/column ordering requirement while preserving existing
+  whole-tile permutation positives.
 - `pending`: implement or prove the scaled-MMAv5 mixed fp4A TMEM-LHS storage
   representation boundary.
 - `pending`: implement or prove the scaled-MMAv5 narrow-N B-scale fragment
@@ -210,13 +212,26 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Move to the next non-copy support frontier: plain MMAv5 row/column-permuted
-accumulator layouts. Determine whether any remaining rows can be realized by a
-tile-splitting or masked accumulator writeback schedule; if the public MMAv5
-atoms require canonical in-tile row/column basis order, promote the proof into
-a typed accumulator tile-order requirement and keep only true boundaries.
+Move to the remaining scaled-MMAv5 storage-representation frontiers. First
+classify mixed fp4A TMEM-LHS support against the shared-memory padded operand-A
+storage contract; then return to the narrow-N B-scale fragment schedule and
+decide whether a real rematerialized scale-fragment layout can promote N=8/16
+or whether those rows stay typed boundaries.
 
 ## Progress
+
+- 2026-04-17 18:16 UTC: promoted the plain MMAv5 exotic and row/column
+  permuted accumulator clean negatives into a structured
+  `MMAv5TMemInstructionTileRequirement`. The requirement records logical
+  shape, CTA shape, element bitwidth, minimum public instruction tile, and the
+  first noncanonical in-tile basis when one is available. Behavior is
+  unchanged: whole-tile accumulator permutations remain positive, while
+  permutations inside the public `64x8`-or-larger tile remain a true
+  tile-order / masked-writeback boundary. Validation: `make -j8`; built
+  `triton-opt test/TritonNvidiaGPU/invalid.mlir --split-input-file
+  --verify-diagnostics`; split-4 focused MMAv5 negative selector passed as
+  `5/5/5/2`; Python byte-compile for `test_tmem_runtime_matrix.py`;
+  `git diff --check`.
 
 - 2026-04-17 18:10 UTC: promoted the no-scales two-CTA
   `warpx2::02_13` probe evidence into a typed

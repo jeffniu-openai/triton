@@ -30,8 +30,10 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 
+#include <optional>
 #include <string>
 
 // TritonNvidiaGPU depends on Triton
@@ -232,9 +234,24 @@ enum class MMAv5TMemOperandKind {
   ScaledAccumulator,
 };
 
+struct MMAv5TMemInstructionTileOrderMismatch {
+  std::string dimension;
+  unsigned inputBit;
+  llvm::SmallVector<int32_t, 2> actualBasis;
+  llvm::SmallVector<int32_t, 2> canonicalBasis;
+  unsigned instrShapeM;
+  unsigned instrShapeN;
+};
+
 struct MMAv5TMemInstructionTileRequirement {
   Attribute operandEncoding;
   MMAv5TMemOperandKind operandKind;
+  llvm::SmallVector<int64_t, 4> logicalShape;
+  llvm::SmallVector<int64_t, 4> ctaShape;
+  unsigned elementBitWidth;
+  unsigned minimumInstructionRows;
+  unsigned minimumInstructionColumns;
+  std::optional<MMAv5TMemInstructionTileOrderMismatch> tileOrderMismatch;
 };
 
 struct MMAv5ScaledRepeatedN32ScaleFragmentRequirement {

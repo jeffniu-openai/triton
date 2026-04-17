@@ -1242,6 +1242,128 @@ getMMAv5ScaledAccumulatorLayoutInfo(MemDescType memDescType) {
                                            planMMAv5ScaledAccumulatorFamily);
 }
 
+static SmallVector<unsigned, 6>
+getMMAv5InstructionTileRequirementBlockNs(MMAv5TMemOperandKind operandKind) {
+  if (operandKind == MMAv5TMemOperandKind::ScaledAccumulator)
+    return {32u, 64u, 128u, 256u};
+  return {8u, 16u, 32u, 64u, 128u, 256u};
+}
+
+static unsigned
+getMMAv5InstructionTileRequirementPreferredColStride(MemDescType memDescType,
+                                                     MMAv5TMemOperandKind kind) {
+  if (kind == MMAv5TMemOperandKind::LHS)
+    return 1u;
+  return 32 / memDescType.getElementTypeBitWidth();
+}
+
+static std::optional<MMAv5TMemInstructionTileOrderMismatch>
+getMMAv5InstructionTileOrderMismatch(MemDescType memDescType,
+                                     MMAv5TMemOperandKind operandKind) {
+  auto layout = memDescType.getEncoding();
+  auto rank = cast<LayoutEncodingTrait>(layout).getRank();
+  auto shape = memDescType.getShape().take_back(rank);
+  auto allocShape = memDescType.getAllocShape().take_back(rank);
+  auto twoCTAs = getTensorMemoryTwoCTAs(layout);
+  if (!twoCTAs)
+    return std::nullopt;
+
+  auto blockNs = getMMAv5InstructionTileRequirementBlockNs(operandKind);
+  auto preferredColStride =
+      getMMAv5InstructionTileRequirementPreferredColStride(memDescType,
+                                                           operandKind);
+  SmallVector<unsigned, 4> colStrides;
+  if (preferredColStride == 1u || preferredColStride == 2u ||
+      preferredColStride == 4u)
+    colStrides.push_back(preferredColStride);
+  for (unsigned colStride : {1u, 2u, 4u}) {
+    if (!llvm::is_contained(colStrides, colStride))
+      colStrides.push_back(colStride);
+  }
+
+  auto findMismatchForShape =
+      [&](ArrayRef<int64_t> familyShape)
+          -> std::optional<MMAv5TMemInstructionTileOrderMismatch> {
+    if (familyShape.size() != 2)
+      return std::nullopt;
+    auto maybeCanonical =
+        tryGetCanonicalTensorMemoryLinearLayout(familyShape, layout,
+                                                /*error=*/nullptr);
+    if (!maybeCanonical ||
+        !tensorMemoryLinearLayoutMatchesShape(*maybeCanonical, familyShape))
+      return std::nullopt;
+
+    auto normalizedLinear =
+        normalizeTensorMemoryLinearLayoutForMMAv5Family(*maybeCanonical);
+    if (normalizedLinear.getNumOutDims() != 2)
+      return std::nullopt;
+
+    auto *ctx = (*normalizedLinear.getOutDimNames().begin()).getContext();
+    auto kRow = StringAttr::get(ctx, "row");
+    auto kCol = StringAttr::get(ctx, "col");
+    if (!normalizedLinear.hasInDim(kRow) || !normalizedLinear.hasInDim(kCol))
+      return std::nullopt;
+
+    auto checkDimension =
+        [&](const LinearLayout &normalizedCandidate, StringAttr dim,
+            StringRef dimName, unsigned tileM, unsigned tileN)
+            -> std::optional<MMAv5TMemInstructionTileOrderMismatch> {
+      if (!normalizedCandidate.hasInDim(dim))
+        return std::nullopt;
+      unsigned tileSize = dim == kRow ? tileM : tileN;
+      unsigned tileBits = llvm::Log2_64(tileSize);
+      unsigned actualBits = normalizedLinear.getInDimSizeLog2(dim);
+      unsigned canonicalBits = normalizedCandidate.getInDimSizeLog2(dim);
+      if (tileBits > actualBits || tileBits > canonicalBits)
+        return std::nullopt;
+      for (unsigned bit = 0; bit < tileBits; ++bit) {
+        auto actualBasis = normalizedLinear.getBasis(dim, bit);
+        auto canonicalBasis = normalizedCandidate.getBasis(dim, bit);
+        if (llvm::equal(actualBasis, canonicalBasis))
+          continue;
+        return MMAv5TMemInstructionTileOrderMismatch{
+            /*dimension=*/dimName.str(),
+            /*inputBit=*/bit,
+            /*actualBasis=*/SmallVector<int32_t, 2>(actualBasis.begin(),
+                                                    actualBasis.end()),
+            /*canonicalBasis=*/
+            SmallVector<int32_t, 2>(canonicalBasis.begin(),
+                                    canonicalBasis.end()),
+            /*instrShapeM=*/tileM,
+            /*instrShapeN=*/tileN};
+      }
+      return std::nullopt;
+    };
+
+    for (unsigned blockM : {64u, 128u}) {
+      for (unsigned blockN : blockNs) {
+        for (unsigned colStride : colStrides) {
+          auto maybeCandidate = buildCanonicalLegacyLikeTMemLinearLayout(
+              familyShape, blockM, blockN, colStride, gpu::getCGALayout(layout),
+              *twoCTAs, /*error=*/nullptr);
+          if (!maybeCandidate)
+            continue;
+          auto normalizedCandidate =
+              normalizeTensorMemoryLinearLayoutForMMAv5Family(*maybeCandidate);
+          if (auto mismatch = checkDimension(normalizedCandidate, kRow, "row",
+                                             blockM, blockN))
+            return mismatch;
+          if (auto mismatch = checkDimension(normalizedCandidate, kCol, "column",
+                                             blockM, blockN))
+            return mismatch;
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
+  if (auto mismatch = findMismatchForShape(shape))
+    return mismatch;
+  if (shape != allocShape)
+    return findMismatchForShape(allocShape);
+  return std::nullopt;
+}
+
 std::optional<MMAv5TMemInstructionTileRequirement>
 getMMAv5TMemInstructionTileRequirement(MemDescType memDescType,
                                        MMAv5TMemOperandKind operandKind) {
@@ -1264,9 +1386,22 @@ getMMAv5TMemInstructionTileRequirement(MemDescType memDescType,
     break;
   }
 
+  auto rank = cast<LayoutEncodingTrait>(memDescType.getEncoding()).getRank();
+  auto shape = memDescType.getShape().take_back(rank);
+  auto ctaShape =
+      getShapePerCTA(getCGALayout(memDescType.getEncoding()).getCTASplitNum(),
+                     shape);
   return MMAv5TMemInstructionTileRequirement{
       /*operandEncoding=*/memDescType.getEncoding(),
-      /*operandKind=*/operandKind};
+      /*operandKind=*/operandKind,
+      /*logicalShape=*/SmallVector<int64_t, 4>(shape.begin(), shape.end()),
+      /*ctaShape=*/SmallVector<int64_t, 4>(ctaShape.begin(), ctaShape.end()),
+      /*elementBitWidth=*/memDescType.getElementTypeBitWidth(),
+      /*minimumInstructionRows=*/64u,
+      /*minimumInstructionColumns=*/
+      getMMAv5InstructionTileRequirementBlockNs(operandKind).front(),
+      /*tileOrderMismatch=*/
+      getMMAv5InstructionTileOrderMismatch(memDescType, operandKind)};
 }
 
 static StringRef stringifyMMAv5TMemOperandKind(
@@ -1303,15 +1438,54 @@ std::string getMMAv5TMemInstructionTileRequirementError(
   return os.str();
 }
 
+static void printMMAv5RequirementShape(llvm::raw_ostream &os,
+                                       ArrayRef<int64_t> shape) {
+  for (auto [index, extent] : llvm::enumerate(shape)) {
+    if (index)
+      os << "x";
+    os << extent;
+  }
+}
+
+static void printMMAv5RequirementBasis(llvm::raw_ostream &os,
+                                       ArrayRef<int32_t> basis) {
+  os << "[";
+  for (auto [index, value] : llvm::enumerate(basis)) {
+    if (index)
+      os << ", ";
+    os << value;
+  }
+  os << "]";
+}
+
 std::string getMMAv5TMemInstructionTileRequirementNote(
     const MMAv5TMemInstructionTileRequirement &requirement) {
   std::string message;
   llvm::raw_string_ostream os(message);
-  os << "MMAv5 tensor-memory operands are planned by physical instruction "
-        "tiles. Current public tcgen05.mma atoms require each instruction "
-        "tile to preserve the canonical row/column basis order; arbitrary row "
-        "or column permutations inside a tile need an unsupported permutation "
-        "or masked writeback schedule.";
+  os << "MMAv5 instruction-tile order requirement: "
+     << stringifyMMAv5TMemOperandKind(requirement.operandKind)
+     << " has logical shape ";
+  printMMAv5RequirementShape(os, requirement.logicalShape);
+  os << ", CTA shape ";
+  printMMAv5RequirementShape(os, requirement.ctaShape);
+  os << ", element bitwidth " << requirement.elementBitWidth
+     << ". Public tcgen05.mma atoms require each "
+     << requirement.minimumInstructionRows << "x"
+     << requirement.minimumInstructionColumns
+     << " or larger instruction tile to preserve the canonical row/column "
+        "basis order";
+  if (requirement.tileOrderMismatch) {
+    const auto &mismatch = *requirement.tileOrderMismatch;
+    os << "; first noncanonical in-tile basis is " << mismatch.dimension
+       << " input bit " << mismatch.inputBit << " for candidate tile "
+       << mismatch.instrShapeM << "x" << mismatch.instrShapeN
+       << ", got physical delta ";
+    printMMAv5RequirementBasis(os, mismatch.actualBasis);
+    os << " but the canonical delta is ";
+    printMMAv5RequirementBasis(os, mismatch.canonicalBasis);
+  }
+  os << ". Arbitrary row or column permutations inside a tile need an "
+        "unsupported permutation or masked writeback schedule.";
   return os.str();
 }
 
