@@ -1771,10 +1771,29 @@ getMMAv5ScaledMixedFp4ATMemRequirement(MemDescType lhsType,
     return std::nullopt;
   if (!getMMAv5LhsLayoutInfo(lhsType))
     return std::nullopt;
+  auto rank = cast<LayoutEncodingTrait>(lhsType.getEncoding()).getRank();
+  auto shape = lhsType.getShape().take_back(rank);
+  auto ctaShape =
+      getShapePerCTA(getCGALayout(lhsType.getEncoding()).getCTASplitNum(),
+                     shape);
+  unsigned lhsLogicalBitWidth = getMMAv5ScaledFormatBitSize(typeA);
+  unsigned rhsLogicalBitWidth = getMMAv5ScaledFormatBitSize(typeB);
+  unsigned lhsStorageColumns = shape.size() >= 2 ? shape[1] : 0;
+  unsigned lhsLogicalK =
+      lhsLogicalBitWidth == 0 ? 0 : lhsStorageColumns * (8 / lhsLogicalBitWidth);
   return MMAv5ScaledMixedFp4ATMemRequirement{
       /*lhsEncoding=*/lhsType.getEncoding(),
       /*lhsType=*/typeA,
-      /*rhsType=*/typeB};
+      /*rhsType=*/typeB,
+      /*lhsShape=*/SmallVector<int64_t, 4>(shape.begin(), shape.end()),
+      /*lhsCTAShape=*/SmallVector<int64_t, 4>(ctaShape.begin(), ctaShape.end()),
+      /*lhsLogicalBitWidth=*/lhsLogicalBitWidth,
+      /*rhsLogicalBitWidth=*/rhsLogicalBitWidth,
+      /*lhsStorageColumns=*/lhsStorageColumns,
+      /*lhsLogicalK=*/lhsLogicalK,
+      /*fp4PaddedGroupOffsets=*/16u,
+      /*fp4PaddedRealOffsets=*/8u,
+      /*requiredFp4PaddedSwizzleBytes=*/128u};
 }
 
 std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
@@ -1825,10 +1844,25 @@ std::string getMMAv5ScaledMixedFp4ATMemError(
      << mlir::triton::stringifyScaleDotElemType(requirement.lhsType)
      << ", B="
      << mlir::triton::stringifyScaleDotElemType(requirement.rhsType)
-     << "). Mixed mxf8f6f4 fp4 LHS operands require the padded operand-A "
-        "storage model represented by fp4_padded shared memory; use shared "
-        "memory for operand A, or use a homogeneous fp4 scaled-MMA kind whose "
-        "TMEM LHS storage is directly modeled.";
+     << ", A bits=" << requirement.lhsLogicalBitWidth
+     << ", B bits=" << requirement.rhsLogicalBitWidth << "). The LHS tensor "
+        "memory storage shape is ";
+  printMMAv5RequirementShape(os, requirement.lhsShape);
+  os << " with CTA shape ";
+  printMMAv5RequirementShape(os, requirement.lhsCTAShape);
+  os << ", raw storage K columns " << requirement.lhsStorageColumns
+     << ", and logical K " << requirement.lhsLogicalK
+     << ". Mixed mxf8f6f4 fp4 LHS operands require the padded operand-A "
+        "storage model represented by fp4_padded shared memory: each "
+     << requirement.fp4PaddedGroupOffsets
+     << "-offset group contains only " << requirement.fp4PaddedRealOffsets
+     << " real packed fp4 values and the remaining offsets are padding "
+        "aliases under the required "
+     << requirement.requiredFp4PaddedSwizzleBytes
+     << "-byte swizzle. Linear tensor-memory LHS storage currently exposes raw "
+        "packed columns directly, so it cannot model that fp4_padded operand-A "
+        "contract. Use shared memory for operand A, or use a homogeneous fp4 "
+        "scaled-MMA kind whose TMEM LHS storage is directly modeled.";
   return os.str();
 }
 

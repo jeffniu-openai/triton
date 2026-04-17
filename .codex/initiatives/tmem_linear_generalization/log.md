@@ -24028,6 +24028,39 @@ Open after this slice:
     while `gh auth status -h github.com` reports active account
     `jeffniu-openai`.
 
+## 2026-04-17 18:23 UTC: structured scaled-MMAv5 mixed-fp4A TMEM-LHS storage requirement
+
+- Starting point: `codex/tmem` at `4c4bd50e4`.
+- Change:
+  - extended `MMAv5ScaledMixedFp4ATMemRequirement` with LHS shape, CTA shape,
+    raw storage K columns, logical K, A/B bitwidths, and the fp4-padded
+    operand-A storage group facts;
+  - updated the mixed fp4A TMEM-LHS runtime tests to assert the storage
+    requirement instead of only the high-level mixed-fp4A phrase.
+- Probe evidence:
+  - a temporary verifier guard-lift on the representative `n=128, linear`
+    tile emitted `tcgen05.mma.cta_group::1.kind::mxf8f6f4...` but produced
+    wrong output (`16376/16384` mismatched elements, max absolute error
+    `1135.04736328125`);
+  - the guard is therefore not stale. TMEM LHS currently exposes raw packed
+    columns and does not model the `fp4_padded` shared-memory contract where
+    each 16-offset group contains only 8 real packed fp4 values.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 focused selector:
+    `mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported or
+    mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported`
+    (groups: `6/6/6/6` passed);
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Boundary:
+  - support is unchanged. Mixed fp4A TMEM-LHS needs a real padded operand-A
+    TMEM storage representation or a correct rematerialization path before the
+    guard can lift.
+
 ## 2026-04-17 18:16 UTC: structured plain MMAv5 tile-order requirement
 
 - Starting point: `codex/tmem` at `2bc16a6a1`.

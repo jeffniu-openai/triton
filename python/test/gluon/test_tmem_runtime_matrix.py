@@ -12829,6 +12829,10 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_cle
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "mixed-precision fp4 LHS operands in tensor memory" in text
+    assert "raw storage K columns 128" in text
+    assert "logical K 256" in text
+    assert "each 16-offset group contains only 8 real packed fp4 values" in text
+    assert "cannot model that fp4_padded operand-A contract" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
@@ -12879,6 +12883,10 @@ def test_tmem_runtime_matrix_mma_scaled_lhs_subslice_view_mixed_fp4a_reports_cle
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "mixed-precision fp4 LHS operands in tensor memory" in text
+    assert f"raw storage K columns {k // a_elem_per_byte}" in text
+    assert f"logical K {k}" in text
+    assert "each 16-offset group contains only 8 real packed fp4 values" in text
+    assert "cannot model that fp4_padded operand-A contract" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

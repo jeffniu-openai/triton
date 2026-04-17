@@ -4234,6 +4234,13 @@ When resuming the initiative:
   masked writeback schedule. Validation: `make -j8`, invalid verifier,
   split-4 focused MMAv5 negative selector `5/5/5/2`, Python compile, and
   `git diff --check`.
+- 2026-04-17 18:23 UTC: scaled-MMAv5 mixed fp4A TMEM-LHS negatives now report
+  through a structured padded operand-A storage requirement. A temporary
+  guard-lift probe emitted `mxf8f6f4` but produced wrong output
+  (`16376/16384` mismatches), proving raw tensor-memory packed columns do not
+  model the shared-memory `fp4_padded` contract. Validation: `make -j8`,
+  invalid verifier, split-4 focused mixed-fp4A selector `6/6/6/6`, Python
+  compile, and `git diff --check`.
 - 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
   planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
   still use `None`, so behavior is unchanged; the next source-format support

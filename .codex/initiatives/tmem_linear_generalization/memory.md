@@ -12949,3 +12949,31 @@ rejection, not rescue
 - Next:
   - move to scaled-MMAv5 storage representation: mixed fp4A TMEM-LHS padded
     operand-A storage first, then narrow-N B-scale fragment rematerialization.
+
+## Current: 2026-04-17 18:23 UTC scaled-MMAv5 mixed-fp4A TMEM-LHS storage
+
+- Phase E scaled-MMAv5 boundary cleanup:
+  - `MMAv5ScaledMixedFp4ATMemRequirement` now records LHS storage shape, CTA
+    shape, raw storage K columns, logical K, A/B bitwidths, and the required
+    fp4-padded operand-A storage group facts;
+  - diagnostics now explain that raw tensor-memory packed columns do not model
+    the `fp4_padded` shared-memory contract where each 16-offset group contains
+    only 8 real packed fp4 values.
+- Probe evidence:
+  - temporarily lifting the mixed-fp4A TMEM-LHS guard compiled the
+    representative `n=128, linear` row and emitted
+    `tcgen05.mma.kind::mxf8f6f4`, but numerical output was wrong
+    (`16376/16384` mismatches; max absolute error `1135.04736328125`);
+  - this confirms the guard is a real storage-representation boundary, not
+    stale frontend policy.
+- Validation:
+  - `make -j8`;
+  - built `triton-opt test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 mixed-fp4A clean-negative selector passed `6/6/6/6`;
+  - Python byte-compile for `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - continue with scaled-MMAv5 narrow-N B-scale fragment rematerialization
+    (`N=8/16`) and decide whether a real storage/layout plan can promote those
+    rows.

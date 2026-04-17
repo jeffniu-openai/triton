@@ -274,6 +274,15 @@ struct MMAv5ScaledMixedFp4ATMemRequirement {
   Attribute lhsEncoding;
   ScaleDotElemType lhsType;
   ScaleDotElemType rhsType;
+  llvm::SmallVector<int64_t, 4> lhsShape;
+  llvm::SmallVector<int64_t, 4> lhsCTAShape;
+  unsigned lhsLogicalBitWidth;
+  unsigned rhsLogicalBitWidth;
+  unsigned lhsStorageColumns;
+  unsigned lhsLogicalK;
+  unsigned fp4PaddedGroupOffsets;
+  unsigned fp4PaddedRealOffsets;
+  unsigned requiredFp4PaddedSwizzleBytes;
 };
 
 struct MMAv5ScaledAccumulatorSupport {
