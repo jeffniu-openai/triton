@@ -1251,6 +1251,10 @@ Progress:
   result-type canonicalization into `TensorMemoryUtils`. The new backend API
   keeps the same exact-query guard and reduction-friendly proof while removing
   another frontend copy of the M64 split-N raw-query rewrite.
+- 2026-04-17 06:22 UTC: moved the M64 split-N raw-query fallback request
+  predicate into `TensorMemoryUtils`. The backend now decides when the
+  `auto`/`32x32b_splitn`/`16x32bx2` fallback may return the canonical split-N
+  layout; pybind no longer owns that request/desired-atom/M64-type filter.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

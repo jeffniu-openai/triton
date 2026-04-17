@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:22 UTC the M64 split-N raw-query fallback request
+  filter is backend-owned. `TensorMemoryUtils` now exposes
+  `getCanonicalM64SplitNLayoutForRawQueryRequest(...)`, which owns the
+  `auto`/`32x32b_splitn`/`16x32bx2` request predicate, desired-atom check, and
+  M64 descriptor-type predicate before returning the canonical split-N
+  `LinearLayout`. The pybind bridge only normalizes and converts the returned
+  layout. Validation: `make -j8`, py-compile for Python runtime files,
+  `test_tmem_runtime_matrix.py -k "m64_splitn or ld_red_m64"` (`39 passed`),
+  and `test_core.py -k tmem_linear_m64` (`21 passed`).
+
 - Latest: 2026-04-17 06:19 UTC M64 reduction-load result-type
   canonicalization is now backend-owned. `TensorMemoryUtils` exposes
   `canonicalizeTMemLoadReductionType(...)`, and `python/src/gluon_ir.cc`

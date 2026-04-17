@@ -2025,11 +2025,7 @@ void init_gluon_ir(py::module &&m) {
                        queryMemDescTy.getShape()[0];
           }();
           auto preferQueryTypeLayoutsBeforeRawQuery =
-              queryMemDescTy.getRank() == 2 &&
-              queryMemDescTy.getElementTypeBitWidth() == 32 &&
-              queryMemDescTy.getShape()[0] == 64 && numWarps == 4 &&
-              !isa<ttng::TensorMemoryScalesEncodingAttr>(
-                  queryMemDescTy.getEncoding()) &&
+              ttng::isM64SplitNDescriptorType(queryMemDescTy, numWarps) &&
               !hasProjectedM64RawQueryLayout &&
               (!desiredAtom || *desiredAtom == ttng::TMemAccessAtom::I32x32b ||
                *desiredAtom == ttng::TMemAccessAtom::I16x32bx2);
@@ -2253,20 +2249,6 @@ void init_gluon_ir(py::module &&m) {
           auto tryCanonicalM64SplitNRawQuery =
               [&](const ttng::TMemLdStQueryLayout &rawQueryLayout)
               -> py::object {
-            bool requestedM64SplitN =
-                atomName == "auto" || atomName == "32x32b_splitn" ||
-                atomName == "16x32bx2";
-            if (!requestedM64SplitN || numWarps != 4 ||
-                (desiredAtom &&
-                 *desiredAtom != ttng::TMemAccessAtom::I16x32bx2) ||
-                queryMemDescTy.getRank() != 2 ||
-                queryMemDescTy.getShape()[0] != 64 ||
-                (queryMemDescTy.getElementTypeBitWidth() != 16 &&
-                 queryMemDescTy.getElementTypeBitWidth() != 32) ||
-                isa<ttng::TensorMemoryScalesEncodingAttr>(
-                    queryMemDescTy.getEncoding())) {
-              return py::none();
-            }
             // The generic exact-query search still fails to expose the
             // canonical split-N user layout for this simple M64 image: for
             // 32-bit rows it rejects the unused half tile as a zero row basis,
@@ -2276,9 +2258,9 @@ void init_gluon_ir(py::module &&m) {
             // layout that load/store lowering already accepts for the same
             // physical TMEM data.
             auto canonical =
-                ttng::getCanonicalM64SplitNLayoutForRawQuery(
-                    queryMemDescTy, rawQueryLayout, numWarps,
-                    /*allow16Bit=*/true);
+                ttng::getCanonicalM64SplitNLayoutForRawQueryRequest(
+                    queryMemDescTy, rawQueryLayout, numWarps, atomName,
+                    desiredAtom, /*allow16Bit=*/true);
             if (!canonical)
               return py::none();
             auto normalizedLayout =

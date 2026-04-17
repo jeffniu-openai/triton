@@ -411,6 +411,11 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
     gpu::MemDescType memTy, const TMemLdStQueryLayout &rawQueryLayout,
     unsigned numWarps, bool allow16Bit = false);
 
+std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
+    gpu::MemDescType memTy, const TMemLdStQueryLayout &rawQueryLayout,
+    unsigned numWarps, StringRef atomName,
+    std::optional<TMemAccessAtom> desiredAtom, bool allow16Bit = false);
+
 std::optional<gpu::DistributedEncodingTrait>
 getTMemLoadReductionLayoutForMemDesc(Value memDesc, unsigned numWarps);
 

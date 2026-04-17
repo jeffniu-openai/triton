@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:22 UTC: moved the M64 split-N raw-query fallback request
+  filter into `TensorMemoryUtils` as
+  `getCanonicalM64SplitNLayoutForRawQueryRequest(...)`. The pybind bridge
+  still normalizes and returns the layout, but the backend now owns when the
+  `auto`/`32x32b_splitn`/`16x32bx2` fallback is allowed and uses the shared
+  M64 descriptor-type predicate. Validation: `make -j8`, py-compile for
+  Python runtime files, `m64_splitn or ld_red_m64` (`39 passed`), and
+  `test_core.py -k tmem_linear_m64` (`21 passed`).
 - 2026-04-17 06:19 UTC: moved the M64 reduction-load result-type
   canonicalization helper from `python/src/gluon_ir.cc` into
   `TensorMemoryUtils` as `canonicalizeTMemLoadReductionType(...)`. The helper

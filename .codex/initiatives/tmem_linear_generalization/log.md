@@ -1,3 +1,21 @@
+## 2026-04-17 06:22 UTC: moved M64 split-N raw-query fallback request filter backend-side
+
+- Starting point: `codex/tmem` at `d0dc67462`.
+- Change:
+  - added `getCanonicalM64SplitNLayoutForRawQueryRequest(...)` to
+    `TensorMemoryUtils`;
+  - replaced the pybind-local request predicate for the
+    `auto`/`32x32b_splitn`/`16x32bx2` M64 raw-query fallback with the backend
+    helper;
+  - used the shared M64 descriptor-type predicate for query-type ordering in
+    the same `get_reg_layout_from_memdesc` path.
+- Validation:
+  - `make -j8`;
+  - py-compile for the Python runtime files;
+  - `test_tmem_runtime_matrix.py -k "m64_splitn or ld_red_m64"`
+    (`39 passed`);
+  - `test_core.py -k tmem_linear_m64` (`21 passed`).
+
 ## 2026-04-17 06:19 UTC: moved M64 reduction-load type canonicalization backend-side
 
 - Starting point: `codex/tmem` at `0e87ec964`.

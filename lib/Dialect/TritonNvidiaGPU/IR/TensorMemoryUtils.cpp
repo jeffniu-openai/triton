@@ -2805,6 +2805,21 @@ std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQuery(
   return getCanonicalM64SplitNLayout(memTy.getContext(), n, numWarps);
 }
 
+std::optional<LinearLayout> getCanonicalM64SplitNLayoutForRawQueryRequest(
+    MemDescType memTy, const TMemLdStQueryLayout &rawQueryLayout,
+    unsigned numWarps, StringRef atomName,
+    std::optional<TMemAccessAtom> desiredAtom, bool allow16Bit) {
+  bool requestedM64SplitN = atomName == "auto" ||
+                            atomName == "32x32b_splitn" ||
+                            atomName == "16x32bx2";
+  if (!requestedM64SplitN ||
+      (desiredAtom && *desiredAtom != TMemAccessAtom::I16x32bx2) ||
+      !isM64SplitNDescriptorType(memTy, numWarps, allow16Bit))
+    return std::nullopt;
+  return getCanonicalM64SplitNLayoutForRawQuery(memTy, rawQueryLayout,
+                                                numWarps, allow16Bit);
+}
+
 RankedTensorType canonicalizeTMemLoadReductionType(RankedTensorType resultTy,
                                                    Value memDesc,
                                                    unsigned numWarps) {
