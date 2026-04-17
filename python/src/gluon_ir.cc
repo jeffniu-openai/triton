@@ -1386,12 +1386,8 @@ void init_gluon_ir(py::module &&m) {
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
-        if ((atom == ttng::TMemAccessAtom::I16x32bx2 ||
-             atom == ttng::TMemAccessAtom::I32x32b) &&
-            numWarps == 4 && memDescTy.getRank() == 2 &&
-            memDescTy.getShape()[0] == 64 &&
-            memDescTy.getElementTypeBitWidth() == 32 &&
-            !isa<ttng::TensorMemoryScalesEncodingAttr>(memDescTy.getEncoding())) {
+        if (ttng::shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
+                memDescTy, numWarps, atom)) {
           if (py::object layout =
                   firstLegalLayoutForCanonicalType(memDescTy, atom);
               !layout.is_none()) {
@@ -2298,9 +2294,8 @@ void init_gluon_ir(py::module &&m) {
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
 
-        if (atomName == "auto" &&
-            isa<ttng::TensorMemoryEncodingAttr>(memDescTy.getEncoding()) &&
-            !(memDescTy.getRank() == 2 && memDescTy.getShape()[0] == 64)) {
+        if (ttng::shouldPreferLegacyTMemLdStI32x32bForAuto(memDescTy,
+                                                           atomName)) {
           py::object legacyLayout =
               findDirectLayoutForMemDesc(memDesc, ttng::TMemAccessAtom::I32x32b);
           if (!legacyLayout.is_none()) {

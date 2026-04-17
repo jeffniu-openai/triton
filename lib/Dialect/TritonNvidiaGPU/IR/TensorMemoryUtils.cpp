@@ -183,6 +183,24 @@ bool isTMemAccessAtomCompatibleWithRequest(
          actualAtom == TMemAccessAtom::I16x32bx2;
 }
 
+bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
+                                                      unsigned numWarps,
+                                                      TMemAccessAtom atom) {
+  if (atom != TMemAccessAtom::I16x32bx2 &&
+      atom != TMemAccessAtom::I32x32b)
+    return false;
+  return isM64SplitNDescriptorType(memTy, numWarps);
+}
+
+bool shouldPreferLegacyTMemLdStI32x32bForAuto(MemDescType memTy,
+                                              StringRef atomName) {
+  if (atomName != "auto" || !memTy ||
+      !isa<TensorMemoryEncodingAttr>(memTy.getEncoding())) {
+    return false;
+  }
+  return !(memTy.getRank() == 2 && memTy.getShape()[0] == 64);
+}
+
 namespace {
 
 static int getMatrixRankForLayout(std::unique_ptr<uint64_t[]> matrix, int numRows,

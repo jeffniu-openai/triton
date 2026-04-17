@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:44 UTC: moved two more Gluon-local direct `ld/st`
+  selection policies into `TensorMemoryUtils`: the non-value M64 direct-atom
+  canonical-layout retry and the legacy `TensorMemoryLayout` auto path that
+  tries `32x32b` first outside M64. Support is unchanged. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, Python compile for the affected
+  test files, focused M64/direct-layout runtime selector (`64 passed, 1
+  skipped`), focused `test_core.py` selector (`21 passed`), and
+  `git diff --check`.
 - 2026-04-17 07:41 UTC: moved the remaining Gluon-local M64 direct-view
   register-layout selection predicates into `TensorMemoryUtils`. The backend
   now owns when to defer the canonical M64 split-N compatible layout, when to

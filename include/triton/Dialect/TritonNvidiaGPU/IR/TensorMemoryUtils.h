@@ -449,6 +449,12 @@ bool isTMemAccessAtomCompatibleWithRequest(
     gpu::MemDescType queryTy, std::optional<TMemAccessAtom> desiredAtom,
     TMemAccessAtom actualAtom);
 
+bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
+    gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
+
+bool shouldPreferLegacyTMemLdStI32x32bForAuto(gpu::MemDescType memTy,
+                                              StringRef atomName);
+
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
 
 bool isTMemLdStHalfRowsDescriptorView(Value memDesc);

@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:44 UTC two more direct `ld/st` selection policies are
+  backend-owned. `TensorMemoryUtils` now exposes
+  `shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(...)` for the non-value
+  M64 direct-atom canonical-layout retry and
+  `shouldPreferLegacyTMemLdStI32x32bForAuto(...)` for the legacy
+  `TensorMemoryLayout` auto preference. Gluon now delegates these policies
+  instead of open-coding atom/shape/legacy-encoding checks. Support is
+  unchanged. Validation: `make -j8`, direct `invalid.mlir` verifier, Python
+  compile for `test_tmem_runtime_matrix.py` and `test_core.py`, focused
+  runtime selector (`64 passed, 1 skipped`), focused `test_core.py` selector
+  (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 07:41 UTC Gluon-local M64 direct-view
   register-layout predicates moved into `TensorMemoryUtils`. The backend now
   owns `shouldDeferTMemLdStCanonicalM64SplitNCompatibleLayout(...)`,

@@ -153,6 +153,11 @@ Progress:
   override refusal. Support is unchanged; this keeps another set of
   descriptor-view/M64 fallback decisions backend-owned before packet-footprint
   or split-N cleanup continues.
+- 2026-04-17 07:44 UTC: moved the adjacent non-value direct `ld/st` policies
+  into `TensorMemoryUtils`: whether explicit M64 direct atom requests should
+  retry the canonical split-N layout, and whether legacy `TensorMemoryLayout`
+  auto queries should prefer `32x32b` first. Support is unchanged, but the
+  Gluon bridge has fewer TMEM-specific shape-family decisions left.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:
