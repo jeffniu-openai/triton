@@ -571,6 +571,43 @@ def test_tensor_memory_bitcast_subword_refresh_preserves_physical_coords():
     assert "col = [[0, 1], [0, 2], [8, 0], [16, 0], [4, 0]]" in ir
 
 
+def test_tensor_memory_4x256b_refresh_descriptor_type_reports_backend_ldst_reason():
+    tmem_ty = blackwell.tensor_memory_descriptor_type(
+        ttgl.float32,
+        [4, 8],
+        _make_tmem_copy_4x256b_refresh_layout(),
+        [4, 8],
+    )
+    with pytest.raises(ValueError) as excinfo:
+        tmem_ty.get_reg_layout(num_warps=4)
+
+    text = str(excinfo.value)
+    assert "tcgen05.copy.4x256b refresh-shaped tensor memory layout" in text
+    assert "row anchors to be materializable as warp bases" in text
+    assert "low logical column bits in TMEM rows 32/64" in text
+
+
+def test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason():
+    raw_layout = TensorMemoryLinearLayout(
+        rows=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0], [2, 0]],
+        cols=[[0, 1], [0, 2], [8, 0], [16, 0], [4, 0]],
+        shape=[32, 4],
+    )
+    tmem_ty = blackwell.tensor_memory_descriptor_type(
+        ttgl.int8,
+        [32, 4],
+        raw_layout,
+        [32, 4],
+    )
+    with pytest.raises(ValueError) as excinfo:
+        tmem_ty.get_reg_layout(num_warps=4)
+
+    text = str(excinfo.value)
+    assert "raw physical bitcast of a tcgen05.copy.4x256b refresh image" in text
+    assert "read whole row footprints" in text
+    assert "do not provide a lane mask for this refresh image" in text
+
+
 @gluon.jit
 def tensor_memory_descriptor_chain_kernel(layout: ttgl.constexpr, linear_layout: ttgl.constexpr,
                                           reinterpret_layout: ttgl.constexpr, target_layout: ttgl.constexpr):

@@ -20881,3 +20881,20 @@ Open after this slice:
     blocked_layout_reports_clean_error'`
     (`16 passed, 1561 deselected in 5.80s`);
   - `git diff --check`.
+
+## 2026-04-17 05:21 UTC: added frontend tests for 4x256 refresh type path
+
+- Starting point: `codex/tmem` at `332151721`.
+- Change:
+  - added direct `tensor_memory_descriptor_type.get_reg_layout()` tests for
+    the refresh-shaped `f32` descriptor type and the raw physical-bitcast
+    `i8` descriptor type in `python/test/gluon/test_frontend.py`;
+  - both tests assert the C++ backend packet-footprint diagnostic instead of
+    relying on the old Python layout-pattern guard.
+- Validation:
+  - `python -m py_compile python/test/gluon/test_frontend.py`;
+  - `PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_descriptor_type_reports_backend_ldst_reason
+    python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason`
+    (`2 passed in 0.42s`);
+  - `git diff --check`.

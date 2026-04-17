@@ -1,5 +1,14 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:21 UTC refresh type-path test pin: added two
+  `python/test/gluon/test_frontend.py` tests that call
+  `tensor_memory_descriptor_type.get_reg_layout()` directly for the
+  tcgen05.copy.4x256b refresh-shaped `f32` layout and its raw physical `i8`
+  bitcast layout. This covers the type-only path whose old Python pattern
+  guard was removed at 05:18 and confirms it reports the backend
+  packet-footprint reason. Validation: py-compile for `test_frontend.py`,
+  exact frontend selector (`2 passed in 0.42s`), and `git diff --check`.
+
 - Latest: 2026-04-17 05:18 UTC 4x256 refresh direct-`ld/st` backend
   diagnostic cleanup: removed Python-side layout pattern helpers for the
   tcgen05.copy.4x256b refresh image and its raw physical bitcast. The C++

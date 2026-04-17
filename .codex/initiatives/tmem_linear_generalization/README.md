@@ -44,6 +44,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:21 UTC: added cheap frontend coverage for the backend-owned
+  4x256 refresh direct-`ld/st` type rejection. The new
+  `test_frontend.py` cases call `tensor_memory_descriptor_type.get_reg_layout`
+  directly for the refresh-shaped `f32` layout and the raw physical-bitcast
+  `i8` layout, pinning that the type-only API now reports the C++ backend
+  packet-footprint reason. Validation: py-compile for `test_frontend.py`,
+  exact two-test frontend selector (`2 passed`), and `git diff --check`.
 - 2026-04-17 05:18 UTC: moved the 4x256 refresh direct `ld/st`
   type rejection out of Python layout-pattern helpers and into the backend
   packet-footprint layer. `TensorMemoryUtils` now owns both the refresh-shaped
