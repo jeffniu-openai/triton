@@ -1312,6 +1312,11 @@ Progress:
   wrapper, but future support work can use the structured accumulator encoding,
   selected N instruction size, CTA N columns, and repeated-N instruction count
   when building a real B-scale fragment planner.
+- 2026-04-17 05:23 UTC: verifier and lowering now consume a shared
+  `MMAv5ScaledAccumulatorSupport` object. The object carries the selected
+  scaled accumulator layout proof plus typed repeated-N32 and narrow-N
+  requirements, tightening the abstraction boundary for future B-scale
+  fragment planner work without changing current support.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

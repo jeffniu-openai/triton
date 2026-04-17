@@ -926,10 +926,13 @@ LogicalResult TCGen5MMAScaledOp::verify() {
               "fp4_padded shared memory; use shared memory for operand A or "
               "a homogeneous fp4 scaled-MMA kind.";
   }
-  auto info = getMMAv5ScaledAccumulatorLayoutInfo(getD().getType());
+  auto accSupport = getMMAv5ScaledAccumulatorSupport(getD().getType());
+  auto info = accSupport.layoutInfo;
   if (!info) {
-    if (auto error = getMMAv5ScaledNarrowNScaleFragmentError(getD().getType()))
-      return emitOpError() << *error;
+    if (accSupport.narrowNScaleFragmentRequirement) {
+      return emitOpError() << getMMAv5ScaledNarrowNScaleFragmentError(
+                 *accSupport.narrowNScaleFragmentRequirement);
+    }
     return emitOpError()
            << "expected accumulator layout to be directly supported MMAv5 "
               "block-scaled tensor memory, but got "
@@ -944,8 +947,10 @@ LogicalResult TCGen5MMAScaledOp::verify() {
       getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
                      getD().getType().getShape());
   auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
-  if (auto error = getMMAv5ScaledRepeatedN32ScaleFragmentError(getD().getType()))
-    return emitOpError() << *error;
+  if (accSupport.repeatedN32ScaleFragmentRequirement) {
+    return emitOpError() << getMMAv5ScaledRepeatedN32ScaleFragmentError(
+               *accSupport.repeatedN32ScaleFragmentRequirement);
+  }
   if (getTwoCtas() && (ctaShape[1] + instrSizeN - 1) / instrSizeN > 1) {
     return emitOpError(
         "We don't allow to emit more than one mma instruction along N. "

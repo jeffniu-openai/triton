@@ -1241,19 +1241,16 @@ getMMAv5ScaledAccumulatorLayoutInfo(MemDescType memDescType) {
                                            planMMAv5ScaledAccumulatorFamily);
 }
 
-std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
-getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
-  auto info = getMMAv5ScaledAccumulatorLayoutInfo(memDescType);
-  if (!info)
-    return std::nullopt;
-
+static std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
+getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
+    MemDescType memDescType, const MMAv5AccumulatorLayoutInfo &info) {
   auto ctaShape =
       getShapePerCTA(getCGALayout(memDescType.getEncoding()).getCTASplitNum(),
                      memDescType.getShape());
   if (ctaShape.size() < 2)
     return std::nullopt;
 
-  auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
+  auto instrSizeN = std::min<unsigned>(info.mmaSizeN, ctaShape[1]);
   if (instrSizeN != 32 ||
       (ctaShape[1] + instrSizeN - 1) / instrSizeN <= 1) {
     return std::nullopt;
@@ -1265,6 +1262,27 @@ getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
       /*ctaColumns=*/static_cast<unsigned>(ctaShape[1]),
       /*nInstructionCount=*/static_cast<unsigned>(
           (ctaShape[1] + instrSizeN - 1) / instrSizeN)};
+}
+
+MMAv5ScaledAccumulatorSupport
+getMMAv5ScaledAccumulatorSupport(MemDescType memDescType) {
+  MMAv5ScaledAccumulatorSupport support;
+  support.layoutInfo = getMMAv5ScaledAccumulatorLayoutInfo(memDescType);
+  if (support.layoutInfo) {
+    support.repeatedN32ScaleFragmentRequirement =
+        getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
+            memDescType, *support.layoutInfo);
+  } else {
+    support.narrowNScaleFragmentRequirement =
+        getMMAv5ScaledNarrowNScaleFragmentRequirement(memDescType);
+  }
+  return support;
+}
+
+std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
+getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
+  return getMMAv5ScaledAccumulatorSupport(memDescType)
+      .repeatedN32ScaleFragmentRequirement;
 }
 
 std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
@@ -1294,7 +1312,7 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
       /*ctaColumns=*/static_cast<unsigned>(ctaShape[1])};
 }
 
-static std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
+std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
   std::string message;
   llvm::raw_string_ostream os(message);
@@ -1308,7 +1326,7 @@ static std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
   return os.str();
 }
 
-static std::string getMMAv5ScaledNarrowNScaleFragmentError(
+std::string getMMAv5ScaledNarrowNScaleFragmentError(
     const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
   std::string message;
   llvm::raw_string_ostream os(message);

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:23 UTC: introduced `MMAv5ScaledAccumulatorSupport`, a shared
+  scaled-MMAv5 accumulator support carrier containing the selected accumulator
+  layout proof plus typed narrow-N and repeated-N32 scale-fragment
+  requirements. Verifier and LLVM lowering now consume the same support object
+  instead of recomputing separate layout/error probes, while support and
+  diagnostics remain unchanged. Validation: `make -j8`,
+  `triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir
+  --verify-diagnostics`, focused scaled-MMAv5 positive/narrow/repeated
+  selector (`50 passed, 1527 deselected`), and `git diff --check`.
 - 2026-04-17 05:21 UTC: added cheap frontend coverage for the backend-owned
   4x256 refresh direct-`ld/st` type rejection. The new
   `test_frontend.py` cases call `tensor_memory_descriptor_type.get_reg_layout`

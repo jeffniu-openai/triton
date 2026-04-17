@@ -823,10 +823,17 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.shape.N = dstPerCTA[1];
   dot.shape.K = op.getBlockK(); // K is not split across CTAs
   dot.mmaSizeK = !opKindIsMXFP4 ? 32 : 64;
-  if (auto error = ttng::getMMAv5ScaledNarrowNScaleFragmentError(dTensorTy))
-    return mlir::emitError(loc, *error);
-  if (auto error = ttng::getMMAv5ScaledRepeatedN32ScaleFragmentError(dTensorTy))
-    return mlir::emitError(loc, *error);
+  auto accSupport = ttng::getMMAv5ScaledAccumulatorSupport(dTensorTy);
+  if (accSupport.narrowNScaleFragmentRequirement) {
+    return mlir::emitError(
+        loc, ttng::getMMAv5ScaledNarrowNScaleFragmentError(
+                 *accSupport.narrowNScaleFragmentRequirement));
+  }
+  if (accSupport.repeatedN32ScaleFragmentRequirement) {
+    return mlir::emitError(
+        loc, ttng::getMMAv5ScaledRepeatedN32ScaleFragmentError(
+                 *accSupport.repeatedN32ScaleFragmentRequirement));
+  }
 
   dot.shapeA = triton::gpu::getAllocationShapePerCTA(aTensorTy);
   dot.shapeB = triton::gpu::getAllocationShapePerCTA(bTensorTy);
@@ -852,7 +859,10 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
       DotOpMmaV5TmemLoader::build(loc, rewriter, dTensorTy, op.getD(),
                                   adaptor.getD(),
                                   /*useRawWordColumns=*/true);
-  dot.getAccumulatorInfo = [](MemDescType memTy) {
+  dot.getAccumulatorInfo = [dTensorTy, accInfo = accSupport.layoutInfo](
+                               MemDescType memTy) {
+    if (memTy == dTensorTy)
+      return accInfo;
     return ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy);
   };
   dot.getAccAddress = [&](ConversionPatternRewriter &rewriter, Location loc,

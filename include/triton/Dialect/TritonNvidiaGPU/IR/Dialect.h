@@ -237,6 +237,14 @@ struct MMAv5ScaledNarrowNScaleFragmentRequirement {
   unsigned ctaColumns;
 };
 
+struct MMAv5ScaledAccumulatorSupport {
+  std::optional<MMAv5AccumulatorLayoutInfo> layoutInfo;
+  std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
+      repeatedN32ScaleFragmentRequirement;
+  std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
+      narrowNScaleFragmentRequirement;
+};
+
 std::optional<MMAv5LhsLayoutInfo>
 getMMAv5LhsLayoutInfo(gpu::MemDescType memDescType);
 
@@ -246,12 +254,21 @@ getMMAv5AccumulatorLayoutInfo(gpu::MemDescType memDescType);
 std::optional<MMAv5AccumulatorLayoutInfo>
 getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
+MMAv5ScaledAccumulatorSupport
+getMMAv5ScaledAccumulatorSupport(gpu::MemDescType memDescType);
+
 std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
     gpu::MemDescType memDescType);
 
 std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
 getMMAv5ScaledNarrowNScaleFragmentRequirement(gpu::MemDescType memDescType);
+
+std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement);
+
+std::string getMMAv5ScaledNarrowNScaleFragmentError(
+    const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement);
 
 std::optional<std::string>
 getMMAv5ScaledRepeatedN32ScaleFragmentError(gpu::MemDescType memDescType);

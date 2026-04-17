@@ -20898,3 +20898,37 @@ Open after this slice:
     python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason`
     (`2 passed in 0.42s`);
   - `git diff --check`.
+
+## 2026-04-17 05:23 UTC: introduced scaled-MMAv5 accumulator support carrier
+
+- Starting point: `codex/tmem` at `6e25a74dc`.
+- Change:
+  - added `MMAv5ScaledAccumulatorSupport` to carry the scaled accumulator
+    layout proof plus typed repeated-N32 and narrow-N scale-fragment
+    requirements;
+  - made the requirement-to-message formatters public for callers that already
+    have a typed requirement;
+  - routed `TCGen5MMAScaledOp::verify()` and scaled LLVM lowering through the
+    shared support object instead of asking independent layout/error helpers;
+  - cached the selected scaled accumulator layout proof for the lowering path
+    that immediately calls the common MMAv5 conversion routine.
+- Support boundary is unchanged:
+  - repeated N=32 remains a matrix-B scale-fragment representation boundary;
+  - narrow tile-permuted scaled accumulator rows remain unsupported until a
+    real sub-32-N scale-fragment storage/schedule model exists.
+- Validation:
+  - `make -j8`;
+  - `cd build/cmake.linux-aarch64-cpython-3.12 &&
+    bin/triton-opt --split-input-file
+    /root/code/triton/test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-support
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_acc_tile_permuted_64_format_matrix or
+    mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+    mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+    mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported'`
+    (`50 passed, 1527 deselected in 19.48s`);
+  - `git diff --check`.

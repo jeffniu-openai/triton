@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:23 UTC scaled-MMAv5 support carrier cleanup:
+  introduced `MMAv5ScaledAccumulatorSupport` in the dialect layer. It carries
+  the scaled accumulator layout proof together with typed repeated-N32 and
+  narrow-N scale-fragment requirements, so verifier and lowering no longer
+  ask separate helpers that each rediscover part of the same support state.
+  Support is unchanged: repeated N=32 and narrow tile-permuted scaled
+  accumulators remain clean scale-fragment boundaries. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, focused scaled-MMAv5
+  positive/narrow/repeated selector (`50 passed, 1527 deselected`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 05:21 UTC refresh type-path test pin: added two
   `python/test/gluon/test_frontend.py` tests that call
   `tensor_memory_descriptor_type.get_reg_layout()` directly for the
