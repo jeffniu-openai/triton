@@ -13382,3 +13382,39 @@ rejection, not rescue
 - Next:
   - checkpoint and push;
   - continue support-frontier probes/cleanup from the tracker.
+
+## Current: 2026-04-17 21:50 UTC final local boundary status
+
+- Active-plan status:
+  - `completion_execution_tracker.md` now marks the current TMEM
+    linear-layout generalization plan as locally complete for the public ISA
+    and storage/API model covered by this branch;
+  - no unblocked support-bearing runtime-matrix row remains after the latest
+    full sweep and clean-negative/error rebaseline;
+  - remaining work should be reopened only from fresh PR/CI failures, a new
+    duplicated backend-policy surface, or new ISA/API support for one of the
+    recorded boundary requirements.
+- Validation evidence to preserve:
+  - full runtime-matrix sweep at 2026-04-17 21:45 UTC: `cp` `312 passed, 4
+    skipped`, `mma` `601 passed`, `splitn` `35 passed`, `ld_red`
+    `247 passed`, `ldst` `295 passed, 98 skipped`, aggregate `1490 passed,
+    102 skipped` across `1592`;
+  - combined clean-negative/error collect-only remains `161/1592`;
+  - last code cleanup validation at 2026-04-17 21:48 UTC: `make -j8` and
+    focused replay/direct-support selector split across four GPUs passed
+    `6/6`, `6/6`, `6/6`, and `4/4`.
+- Boundary summary:
+  - copy residuals require destination masks, packed-lane storage, source
+    message schedules, refresh remap/readback contracts, or CTA/source
+    ownership semantics outside the current public copy model;
+  - direct `ld/st` and `ld.red` residuals are atom-footprint,
+    row-anchor/materialization, or dtype/storage boundaries with structured
+    diagnostics;
+  - MMAv5 residuals are PTXAS/ISA `.kind::i8`, instruction-tile order,
+    mixed-fp4A padded-storage, or narrow-N scale-fragment boundaries.
+- Next:
+  - commit and push this final documentation checkpoint to
+    `origin/codex/tmem`;
+  - after that, treat PR/CI integration as the next source of work rather than
+    continuing speculative local implementation against already-classified
+    boundary rows.

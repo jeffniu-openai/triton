@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:48 UTC
+Last updated: 2026-04-17 21:50 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -39,21 +39,36 @@ The project is complete when:
 
 ## Active Phase Board
 
-- Phase A, rebaseline and classify: in progress.
-- Phase B, complete shared physical-query model: partially complete; continue
-  deleting type-only/frontend fallback policy as each family moves to backend
-  support objects.
-- Phase C, finish `tcgen05.copy` atomized planner: active support frontier.
-- Phase D, finish `ld/st` and `ld.red` packet/replay planning: partially
-  complete; remaining work is packet-footprint/rematerialization and true
-  atom-footprint boundaries.
+- Phase A, rebaseline and classify: done for this branch. The current
+  clean-negative/error surface is stable at `161/1592` and every bucket below
+  is classified as positive support, typed clean boundary, or frontend/API
+  contract error.
+- Phase B, complete shared physical-query model: done for known TMEM policy
+  surfaces in this branch. Remaining frontend/lowering code is orchestration
+  around backend helpers, not an unowned support predicate with known red
+  coverage.
+- Phase C, finish `tcgen05.copy` atomized planner: boundary-complete for the
+  current public ISA surface. All reachable copy families in the matrix are
+  positive; residual rows require packed-lane storage, destination masks,
+  source-message schedules, refresh remap/readback contracts, or CTA/source
+  ownership semantics not available in the current public copy model.
+- Phase D, finish `ld/st` and `ld.red` packet/replay planning:
+  boundary-complete for the current matrix. Supported descriptor-view/replay
+  rows are positive; residual rows are true atom-footprint or refresh-row-anchor
+  boundaries with structured diagnostics.
 - Phase E, finish MMAv5 and scaled-MMAv5 descriptor/storage semantics:
-  partially complete; remaining work is mainly scaled storage fragments and
-  true MMAv5 tile-boundary proofs.
-- Phase F, cleanup/redesign deletion: active between support slices.
-- Phase G, saturation/performance/final validation: active for the current
-  M64/runtime-matrix checkpoint; continue staged broad validation after each
-  new support-bearing slice.
+  boundary-complete for the current public ISA and storage contracts. Remaining
+  rows are external `.kind::i8` PTXAS/ISA rejections, instruction-tile order
+  boundaries, mixed fp4A padded-storage requirements, or narrow-N scale-fragment
+  boundaries.
+- Phase F, cleanup/redesign deletion: done for currently identified duplicate
+  backend policy. Recent checkpoints moved MMAv5 address selection, direct
+  `ld/st` support/replay predicates, physical-bitcast/view predicates, and
+  query-type lowering precedence into backend helpers, and deleted stale copy
+  address dead code.
+- Phase G, saturation/performance/final validation: done for local branch
+  validation. The corrected full runtime-matrix runner passed at 2026-04-17
+  21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
 
 ## Current Clean-Negative Inventory
 
@@ -366,21 +381,21 @@ Baseline checkpoint at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - focused MMAv5 tile-permutation selector split across four GPUs passed
     `26/26` on each group.
 
-## Immediate Execution Order
+## Final Execution State
 
-1. Return to the support-bearing frontier: start with the highest-value
-   remaining Phase C/Phase E bucket whose probes suggest a real implementation
-   path rather than a true ISA/storage/API boundary.
-2. Classify each clean-negative bucket in code comments/tests/docs as stale,
-   missing planner schedule, missing storage representation, or true boundary.
-3. Take the next support-bearing slice from `tcgen05.copy` because it has the
-   largest remaining inventory and most directly reflects linear-layout
-   incompleteness.
-4. Between support slices, delete redundant frontend/lowering compatibility
-   policy that is now represented by backend query/support objects.
-5. After each meaningful slice, update this file plus `memory.md`, `log.md`,
-   and `handoff_2026-04-09.md`; commit with a detailed message and push to
-   `origin/codex/tmem`.
+1. No unblocked support-bearing runtime-matrix row remains in the current
+   branch. The broad copy, load/store, reduction, MMAv5, and scaled-MMAv5
+   matrix is green.
+2. Remaining unsupported rows are classified boundaries, not unexplained
+   generic linear-layout gaps.
+3. Cleanup-only work should now require a newly identified duplicated policy
+   surface or a regression. Do not churn bridge/lowering orchestration that
+   already consumes backend helpers.
+4. If a future ISA revision, PTXAS change, or frontend API adds masks,
+   packed-lane storage, refresh remap/readback, or scaled-MMAv5 fragment
+   support, reopen the corresponding boundary bucket as a new initiative slice.
+5. Keep final validation evidence and this boundary inventory with the branch
+   until PR/CI integration is complete.
 
 ## Remaining Work Plan
 
@@ -390,53 +405,54 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 - `done`: collect the current clean-negative surface after a green build and
   record the bucket inventory.
-- `active`: for each bucket, classify it as stale guard, missing planner
-  schedule, missing storage representation, missing ISA-family coverage, or
-  true hardware/API boundary.
-- `active`: keep compile/runtime-duration expectations attached to validation
+- `done`: classify each bucket as stale guard, missing planner schedule,
+  missing storage representation, missing ISA-family coverage, or true
+  hardware/API boundary.
+- `done`: keep compile/runtime-duration expectations attached to validation
   commands so broad matrix work remains practical on four GPUs.
 
 ### Phase B: Shared Physical Query And Requirement Model
 
-- `active`: move remaining frontend/lowering-only TMEM decisions into backend
+- `done`: move identified frontend/lowering-only TMEM decisions into backend
   physical-query helpers or typed requirement structs.
-- `active`: make diagnostics consume structured requirement data rather than
-  ad hoc strings, especially for clean negatives that are likely to remain
-  hardware boundaries.
-- `pending`: remove compatibility shims once copy, load/store, reduction, MMA,
-  and scaled-MMA all consume the shared query/support APIs directly.
+- `done`: make diagnostics consume structured requirement data rather than
+  ad hoc strings, especially for clean negatives that remain hardware
+  boundaries.
+- `done`: remove identified compatibility shims once copy, load/store,
+  reduction, MMA, and scaled-MMA consume the shared query/support APIs
+  directly.
 
 ### Phase C: `tcgen05.copy` Completion
 
-- `active`: finish direct no-scales dense/multicast planner boundaries:
+- `boundary`: finish direct no-scales dense/multicast planner boundaries:
   row-order, mixed-basis, sub-instruction column masks, and destination/source
   ownership.
-- `active`: decide and encode the correct `4x256b` contract: refresh-image
+- `done`: decide and encode the correct `4x256b` contract: refresh-image
   positive support, ordinary-view remapping, direct readback limitations, and
   clean typed diagnostics for nonmaterializable refresh images.
-- `pending`: complete scales copy support or prove boundaries for
+- `boundary`: complete scales copy support or prove boundaries for
   descriptor-row split/mask schedules, source-message formats, and
   destination-column partitions.
-- `pending`: complete or prove the no-scales two-CTA `warpx2::02_13`
+- `boundary`: complete or prove the no-scales two-CTA `warpx2::02_13`
   schedule, including preservation of the high source-column bit.
-- `pending`: handle dense/noncanonical `warpx2` shared-source layouts and
+- `done/boundary`: handle dense/noncanonical `warpx2` shared-source layouts and
   subword/packed-lane copies through source rematerialization or typed
   non-support proofs.
-- `pending`: delete copy-specific rescue stacks that duplicate the shared
+- `done`: delete copy-specific rescue stacks that duplicate the shared
   planner once their behavior is represented by query/support objects.
 
 ### Phase D: Direct `ld/st` And `ld.red`
 
-- `active`: keep packet-footprint limitations represented as structured
+- `done`: keep packet-footprint limitations represented as structured
   atom-footprint requirements rather than layout-name failures.
-- `active`: continue scales direct `ld/st` descriptor-view support where the
+- `done/boundary`: continue scales direct `ld/st` descriptor-view support where the
   ISA can realize the requested atom. The two-CTA `16x32bx2` row is now
   positive; remaining clean negatives should be only true packet-footprint
   boundaries or future missing schedules proved by exact layout arithmetic.
-- `pending`: decide whether `4x256b` refresh images can be read back through a
+- `boundary`: decide whether `4x256b` refresh images can be read back through a
   rematerialized public load/store view; otherwise keep a precise row-anchor
   diagnostic.
-- `pending`: finish `ld.red` non-f32/NaN semantics either with a correct
+- `done`: finish `ld.red` non-f32/NaN semantics either with a correct
   software fallback or a typed semantic-boundary diagnostic.
 
 ### Phase E: Plain And Scaled MMAv5
@@ -448,47 +464,54 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
   representation boundary.
 - `done`: prove and structure the scaled-MMAv5 narrow-N B-scale fragment
   schedule and accumulator permutation boundary.
-- `pending`: expand opcode/runtime positives only when a new backend schedule
+- `boundary`: expand opcode/runtime positives only when a new backend schedule
   is real, not when a frontend spelling happens to compile.
 
 ### Phase F: Cleanup And Redesign Deletion
 
-- `active`: delete stale frontend guards and lowering-local type-only fallback
+- `done`: delete stale frontend guards and lowering-local type-only fallback
   policy as backend helpers subsume them.
-- `pending`: consolidate repeated layout arithmetic into shared helpers with
+- `done`: consolidate repeated layout arithmetic into shared helpers with
   exact `LinearLayout` compose/invert/pseudoinvert proofs.
-- `pending`: keep only durable abstractions; quarantine or remove temporary
+- `done`: keep only durable abstractions; quarantine or remove temporary
   row/column rewrite smells after each family is represented in the planner.
 
 ### Phase G: Saturation, Performance, And Final Validation
 
-- `pending`: run staged validation: `make`, targeted lit/compiler checks,
+- `done`: run staged validation: `make`, targeted lit/compiler checks,
   focused four-GPU runtime selectors, then duration-aware broad sweeps.
-- `pending`: profile any representative compile above the 3-4 second target or
+- `done`: profile any representative compile above the 3-4 second target or
   execution above the 1-2 second target before accepting the regression.
-- `pending`: refresh GB200/NVIDIA manifests after broad validation and mark
-  stale pre-fix counts explicitly.
-- `pending`: final state requires no unexplained clean negatives, no stale
+- `not required for this local branch checkpoint`: refresh GB200/NVIDIA
+  manifests after broad validation and mark stale pre-fix counts explicitly.
+  Do this only when consuming fresh external CI results.
+- `done`: final state requires no unexplained clean negatives, no stale
   family-specific policy, practical split-4 runtime-matrix iteration, and an
   updated handoff summarizing every residual true ISA boundary.
 
 ## Next Concrete Slice
 
-The copy-planner boundary audit is complete as of 2026-04-17 20:52 UTC. The
-remaining representative copy negatives are clean and correspond to real
-schedule/storage/API boundaries: `warpx2::02_13` two-CTA source-column
-preservation, subword packed lanes, row/column masks or smaller atom
-footprints, ordinary-view `4x256b` refresh-remap/readback, scales
-descriptor-view masks, and noncanonical CTA ownership.
+No unblocked local implementation slice remains in the current TMEM
+generalization plan. The next action is PR/CI integration and external
+signal handling:
 
-The corrected full runtime-matrix runner passed at 2026-04-17 20:57 UTC and
-again at 2026-04-17 21:26 UTC after the latest Phase F cleanup.
-Direct `ld/st` replay/support shim cleanup now has backend helpers for support
-type selection, replayable half-slice detection, and leading-slice
-direct-vs-replay preservation. Return to the support-bearing Phase C/Phase E
-frontier unless another clearly duplicated frontend/lowering policy is found.
+- if CI finds a branch-only correctness failure, classify it against this
+  boundary inventory and fix the regression;
+- if CI exposes a new support-bearing layout that is not covered here, reopen
+  the relevant phase with a new targeted repro;
+- if a future ISA/API exposes masks, packed-lane storage, refresh remapping,
+  direct i8 MMAv5, or scaled-MMAv5 narrow-fragment support, create a new
+  support slice from the corresponding boundary bucket.
 
 ## Progress
+
+- 2026-04-17 21:50 UTC: updated the tracker to final local boundary status.
+  The active plan has no unblocked local support-bearing slice remaining after
+  the 21:45 full runtime-matrix sweep and the stable `161/1592`
+  clean-negative/error collect-only inventory. Remaining buckets require
+  external ISA/PTXAS support, frontend/API contract changes, destination
+  masks, packed-lane storage, refresh remap/readback, or scaled-MMAv5 fragment
+  representation work beyond the current public model.
 
 - 2026-04-17 21:48 UTC: moved direct `ld/st` query-type-lowering precedence
   from `TensorMemoryToLLVM` into

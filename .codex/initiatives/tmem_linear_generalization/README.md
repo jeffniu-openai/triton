@@ -48,13 +48,22 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 21:50 UTC: final local boundary checkpoint for the active
+  completion tracker. The current plan has no unblocked local
+  support-bearing implementation slice remaining: the full runtime matrix is
+  green (`1490 passed, 102 skipped` across `1592`), the combined
+  clean-negative/error inventory is stable at `161/1592`, and every remaining
+  bucket is classified as a typed public-ISA/PTXAS/storage/API boundary rather
+  than an unexplained generic linear-layout gap. Next local work should be
+  driven by PR/CI signal, a newly identified duplicated backend-policy surface,
+  or a new ISA/API capability such as masks, packed-lane storage, refresh
+  remap/readback, direct i8 MMAv5, or scaled-MMAv5 narrow-fragment support.
 - 2026-04-17 21:48 UTC: moved direct `ld/st` query-type-lowering precedence
   out of `TensorMemoryToLLVM.cpp` into backend helper
   `shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery`, including the
   existing M64 direct-root exception and register-layout warp-count lookup.
   Validation: `make -j8`; focused split-4 replay/direct-support selector
   passed `6/6`, `6/6`, `6/6`, and `4/4`. No support rows were promoted.
-  Next: checkpoint/push and update the tracker toward final boundary status.
 - 2026-04-17 21:45 UTC: reran the corrected full runtime-matrix sweep after
   the latest backend-policy cleanups. The matrix remains green with complete
   bucket coverage: `cp` `312 passed, 4 skipped`; `mma` `601 passed`;

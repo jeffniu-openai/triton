@@ -24828,3 +24828,23 @@ Open after this slice:
 - Next:
   - commit and push this cleanup checkpoint;
   - update final boundary/closure status in `completion_execution_tracker.md`.
+
+## 2026-04-17 21:50 UTC: final local boundary checkpoint
+
+- Starting point: `codex/tmem` at pushed `26c18e12e`.
+- Documentation update:
+  - refreshed `completion_execution_tracker.md` so the active phase board and
+    remaining work plan reflect the current local endpoint;
+  - added matching README, memory, log, and handoff entries so the initiative
+    source of truth does not depend on chat context.
+- Current state:
+  - no unblocked local support-bearing runtime-matrix row remains;
+  - the latest full runtime-matrix sweep remains the 2026-04-17 21:45 UTC run:
+    `1490 passed, 102 skipped` across all `1592` collected cases;
+  - combined clean-negative/error collect-only remains `161/1592`;
+  - residual rows are classified as public-ISA/PTXAS/storage/API boundaries
+    rather than generic linear-layout backend gaps.
+- Next:
+  - commit and push this documentation checkpoint;
+  - use PR/CI signal, newly identified duplicated policy, or future ISA/API
+    support as the trigger to reopen an implementation slice.
