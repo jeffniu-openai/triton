@@ -45,9 +45,19 @@ When resuming the initiative:
   the completion plan, including the current clean-negative inventory,
   remaining buckets, completed checkpoints, and next concrete implementation
   slice.
+- use `remaining_coverage_gaps.md` as the stable numbered register for the
+  unresolved support/coverage questions. Refer to these as Gap #1, Gap #2,
+  etc.; do not renumber gaps after discussion starts.
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 23:34 UTC: added `remaining_coverage_gaps.md` as the canonical
+  stable-numbered discussion register for the nine unresolved coverage/support
+  questions: GB200 i8 MMAv5 compile-only coverage; `tcgen05.cp` supported
+  layout completeness; partial copy footprints; `4x256b` refresh-view
+  exposure; packed copy/subword `warpx2`; two-CTA `warpx2::02_13`; narrow
+  scaled-MMAv5 N=8/16; mixed fp4 TMEM LHS; and frontend descriptor/copy-source
+  contracts. Use this register for future "Gap #N" discussions.
 - 2026-04-17 21:50 UTC: final local boundary checkpoint for the active
   completion tracker. The current plan has no unblocked local
   support-bearing implementation slice remaining: the full runtime matrix is

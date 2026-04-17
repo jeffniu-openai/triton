@@ -24848,3 +24848,27 @@ Open after this slice:
   - commit and push this documentation checkpoint;
   - use PR/CI signal, newly identified duplicated policy, or future ISA/API
     support as the trigger to reopen an implementation slice.
+
+## 2026-04-17 23:34 UTC: register stable remaining coverage gaps
+
+- Starting point: `codex/tmem` at pushed `00c1a44bb`.
+- Documentation update:
+  - added `remaining_coverage_gaps.md` as the stable numbered register for the
+    next support-boundary discussions;
+  - linked the register from README, memory, and the completion tracker.
+- Stable discussion order:
+  - Gap #1: GB200 i8 MMAv5 compile-only coverage;
+  - Gap #2: `tcgen05.cp` supported-layout completeness;
+  - Gap #3: partial `tcgen05.cp` footprints;
+  - Gap #4: `tcgen05.cp.4x256b` refresh views;
+  - Gap #5: packed `tcgen05.cp` and subword `warpx2`;
+  - Gap #6: two-CTA `warpx2::02_13`;
+  - Gap #7: narrow scaled-MMAv5 `N=8/16`;
+  - Gap #8: mixed fp4 TMEM LHS;
+  - Gap #9: frontend descriptor and copy-source contracts.
+- Validation:
+  - doc-only change; no build or runtime tests run.
+- Next:
+  - commit and push this documentation checkpoint;
+  - discuss gaps in numeric order, updating each entry in place as supported,
+    impossible, or deferred.

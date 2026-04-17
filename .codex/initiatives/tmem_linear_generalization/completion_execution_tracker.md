@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 21:50 UTC
+Last updated: 2026-04-17 23:34 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -71,6 +71,10 @@ The project is complete when:
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
 
 ## Current Clean-Negative Inventory
+
+For the stable discussion order of remaining support/coverage questions, use
+`remaining_coverage_gaps.md`. Those entries are intentionally numbered Gap #1
+through Gap #9 and should not be renumbered as individual gaps are resolved.
 
 Collected at 2026-04-17 18:59 UTC after `make -j8`:
 

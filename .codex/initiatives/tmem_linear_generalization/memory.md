@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 23:34 UTC remaining coverage gap register:
+  `remaining_coverage_gaps.md` is now the stable-numbered source of truth for
+  the next support-boundary discussions. The registered gaps are: Gap #1 GB200
+  i8 MMAv5 compile-only coverage; Gap #2 `tcgen05.cp` supported-layout
+  completeness; Gap #3 partial `tcgen05.cp` footprints; Gap #4
+  `tcgen05.cp.4x256b` refresh views; Gap #5 packed `tcgen05.cp` and subword
+  `warpx2`; Gap #6 two-CTA `warpx2::02_13`; Gap #7 narrow scaled-MMAv5
+  `N=8/16`; Gap #8 mixed fp4 TMEM LHS; Gap #9 frontend descriptor and
+  copy-source contracts. Keep these numbers stable and update the individual
+  entries in place as each gap is proven supported, impossible, or deferred.
+
 - Latest: 2026-04-17 21:48 UTC direct `ld/st` query-precedence cleanup:
   `TensorMemoryToLLVM` no longer owns the query-type-before-raw-query
   lowering decision or its M64 direct-root exception. That policy now lives in
