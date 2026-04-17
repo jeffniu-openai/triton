@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:00 UTC: re-probed ordinary contiguous
+  `tcgen05.cp.4x256b` by temporarily removing the direct-support and lowering
+  guards. The kernel emitted `tcgen05.cp.cta_group::1.4x256b`, but copied the
+  refresh pattern into an ordinary parent view (`out[:4]` began
+  `[0, 8, 16, 24, 0, 8, 16, 24]` and the rest of the first four rows were
+  zero). The guard was restored and the focused `cp_no_scales_4x256b` selector
+  passed (`3 passed, 1572 deselected`). Treat ordinary contiguous 4x256b as a
+  real missing representation/remapping layer, not an ISA-enable toggle.
 - 2026-04-17 04:53 UTC: moved the remaining explicit-`32x32b` M64
   `ld.red` split-N canonicalization out of Python `_load_red` and into the C++
   Gluon/TTGIR bridge. `create_tmem_load` now receives the active warp count

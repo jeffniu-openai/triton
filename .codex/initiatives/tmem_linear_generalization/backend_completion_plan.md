@@ -1099,6 +1099,13 @@ Progress:
   and selects the canonical split-N reduction layout before creating
   `ttng.tmem_load`. The M64 split-N reduction family is now backend-owned for
   default, explicit split-N, and explicit logical `32x32b` reduction requests.
+- 2026-04-17 05:00 UTC: re-probed ordinary contiguous `tcgen05.copy.4x256b` by
+  bypassing the refresh-only support and lowering guards. The ISA opcode
+  emitted, but the output copied the refresh physical pattern into the ordinary
+  parent view (`[0, 8, 16, 24, 0, 8, 16, 24]` in row 0 for input `0..31`),
+  confirming the guard is a real representation boundary. Covering ordinary
+  4x256b requires a first-class refresh-image remapping layer, not an
+  atom-enable patch.
 - 2026-04-16 09:37 UTC: re-probed two-CTA tensor-memory-scales descriptor-view
   direct `ld/st` at `M=64`. The exact-query shape is close to the promoted
   `M in {128,256}` forms, but support is not a stale shape gate: one required

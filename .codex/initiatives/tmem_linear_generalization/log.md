@@ -20742,3 +20742,27 @@ Open after this slice:
   - adjacent `ld.red` selector passed
     (`59 passed, 1516 deselected in 30.10s`);
   - `git diff --check`.
+
+## 2026-04-17 05:00 UTC: reprobed ordinary contiguous tcgen05.copy.4x256b
+
+- Starting point: `codex/tmem` at `d007c64e9`.
+- Probe:
+  - temporarily removed the `Dense4x256b` support guard that restricts the
+    family to the refresh-shaped destination view;
+  - temporarily disabled the lowering guard that rejects 4x256b plans without
+    a refresh descriptor projection;
+  - ran `tmem_copy_no_scales_4x256b_view_kernel` directly on a contiguous
+    parent-slice destination.
+- Result:
+  - the kernel emitted `tcgen05.cp.cta_group::1.4x256b`, but the output was
+    not a logical contiguous copy;
+  - for input values `0..31` shaped `4x8`, `out[:4]` began
+    `[0, 8, 16, 24, 0, 8, 16, 24]` in row 0 with rows 1-3 zero;
+  - conclusion: ordinary contiguous 4x256b still needs a real
+    representation/remapping layer for the refresh physical image. It is not
+    safe to promote by only enabling the ISA atom.
+- Restoration/validation:
+  - removed all probe edits;
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-4x256-restored2 PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q python/test/gluon/test_tmem_runtime_matrix.py -k 'cp_no_scales_4x256b'`
+    (`3 passed, 1572 deselected in 3.25s`).

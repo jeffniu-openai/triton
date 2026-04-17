@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:00 UTC ordinary contiguous `tcgen05.cp.4x256b`
+  reprobe: temporarily removing the support and lowering guards made the
+  ordinary parent-slice copy emit `tcgen05.cp.cta_group::1.4x256b`, but the
+  runtime output proved it is not a correct logical copy. For an input
+  `0..31` shaped `4x8`, `out[:4]` began
+  `[0, 8, 16, 24, 0, 8, 16, 24]` in row 0 and zeros in rows 1-3. The guard is
+  restored and `cp_no_scales_4x256b` passes (`3 passed, 1572 deselected`).
+  Do not promote ordinary contiguous 4x256b by only enabling the ISA atom; it
+  needs a representation/remapping layer that makes the refresh physical image
+  visible to the logical layout contract.
+
 - Latest: 2026-04-17 04:53 UTC explicit M64 `ld.red` canonicalization cleanup:
   deleted the last Python-side M64 reduction split-N recognizer from
   `_load_red`. The C++ Gluon bridge for `create_tmem_load` now takes the
