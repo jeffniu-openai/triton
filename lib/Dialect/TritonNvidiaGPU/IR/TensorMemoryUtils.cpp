@@ -3786,11 +3786,15 @@ enum class TMemLdStPacketFootprintRequirementKind {
   TranslatedRowOrigin,
   SparseRefreshPhysicalBitcast,
   M64ScalesBroadcastRowAnchor,
+  AtomColumnFootprint,
 };
 
 struct TMemLdStPacketFootprintRequirement {
   TMemLdStPacketFootprintRequirementKind kind;
   std::optional<TMemLdStRowPlan> rowPlan;
+  TMemAccessAtom atom = TMemAccessAtom::I32x32b;
+  int64_t viewDwordColumns = 0;
+  int64_t instructionDwordColumns = 0;
 };
 
 static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
@@ -3834,8 +3838,48 @@ static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
           "row-anchor rematerialization or packet-footprint model for M64 "
           "scales views.";
     break;
+  case TMemLdStPacketFootprintRequirementKind::AtomColumnFootprint:
+    os << "requested tcgen05.ld/st atom " << getOpShape(requirement.atom)
+       << " has a " << requirement.instructionDwordColumns
+       << "-dword column footprint, but the descriptor view exposes only "
+       << requirement.viewDwordColumns
+       << " materializable dword column"
+       << (requirement.viewDwordColumns == 1 ? "" : "s")
+       << ". Public tcgen05.ld/st packets do not provide a column mask for "
+          "directly accessing a narrower view. Use a narrower atom such as "
+          "32x32b for x1 views, or reshape/copy so the TMEM columns cover the "
+          "requested atom footprint.";
+    break;
   }
   return os.str();
+}
+
+static std::optional<TMemLdStPacketFootprintRequirement>
+getUnsupportedTMemLdStAtomColumnFootprintRequirement(MemDescType memTy,
+                                                     TMemAccessAtom atom,
+                                                     unsigned numWarps) {
+  (void)numWarps;
+  if (!memTy || memTy.getRank() != 2 || memTy.getElementTypeBitWidth() != 32 ||
+      !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
+    return std::nullopt;
+  }
+  if (atom == TMemAccessAtom::I32x32b ||
+      atom == TMemAccessAtom::I16x32bx2) {
+    return std::nullopt;
+  }
+
+  auto *ctx = memTy.getContext();
+  auto kCol = StringAttr::get(ctx, "col");
+  auto tile = getTileLayout(ctx, atom, /*unpacked=*/false, /*withWarp=*/false);
+  int64_t instructionDwordColumns = tile.getOutDimSize(kCol);
+  int64_t viewDwordColumns = memTy.getShape().back();
+  if (viewDwordColumns >= instructionDwordColumns)
+    return std::nullopt;
+
+  return TMemLdStPacketFootprintRequirement{
+      TMemLdStPacketFootprintRequirementKind::AtomColumnFootprint,
+      std::nullopt, atom, viewDwordColumns, instructionDwordColumns};
 }
 
 static std::optional<TMemLdStPacketFootprintRequirement>
@@ -3904,6 +3948,17 @@ static std::string getUnsupportedDirectTMemLdStHalfRowsReason() {
       TMemLdStPacketFootprintRequirement{
           TMemLdStPacketFootprintRequirementKind::TranslatedRowOrigin,
           std::nullopt});
+}
+
+std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
+    Value memDesc, TMemAccessAtom atom, unsigned numWarps) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (auto requirement =
+          getUnsupportedTMemLdStAtomColumnFootprintRequirement(memTy, atom,
+                                                               numWarps)) {
+    return formatUnsupportedTMemLdStPacketFootprintRequirement(*requirement);
+  }
+  return std::nullopt;
 }
 
 bool isUnsupportedDirectTMemLdStDescriptorView(Value memDesc,

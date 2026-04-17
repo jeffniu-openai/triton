@@ -1,3 +1,42 @@
+## 2026-04-17 00:05 UTC: ld/st atom-footprint diagnostic checkpoint
+
+- Starting point: `codex/tmem` at `ffc32e5bf`.
+- Probe:
+  - traced explicit `16x128b` x1 `f32/i32` load/store failures with
+    `TRITON_DEBUG_TMEM_REG_LAYOUT=1` and
+    `TRITON_TRACE_TMEM_REG_LAYOUT_FILE=1`;
+  - backend search found the raw `[M,1]` query materializes as `32x32b`, while
+    `16x128b` has no legal direct layout because its packet footprint covers
+    more dword columns than the view exposes.
+- Change:
+  - added `AtomColumnFootprint` to the shared
+    `TMemLdStPacketFootprintRequirement` formatter;
+  - exposed `getUnsupportedDirectTMemLdStAtomFootprintReason(...)` for
+    variant-specific backend diagnostics;
+  - routed `tensor_memory_descriptor.get_reg_layout(...)` through
+    `get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(...)` before
+    generic view diagnostics;
+  - pinned x1 explicit `16x128b` clean negatives to the new packet-footprint
+    wording.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused negative selector:
+    `ldst_x1_i32_unsupported_variants or
+    ldst_x1_f32_unsupported_variants or
+    ldst_scales_variant_reports_clean_unsupported`
+    (`9 passed, 1566 deselected`);
+  - focused positive selector:
+    `ldst_x1_f32_roundtrip or ldst_x1_i32_descriptor_chain_roundtrip`
+    (`8 passed, 1567 deselected`);
+  - `git diff --check`.
+- Remaining note:
+  - this is not a support promotion. Explicit n-sharded atoms over x1 32-bit
+    views still need a true column-mask/narrow-footprint model; the supported
+    path remains `32x32b.x1`.
+
 ## 2026-04-16 15:59 UTC: verifier compile-time optimization checkpoint
 
 - Continued profiling compile time for TMEM code added during this initiative.

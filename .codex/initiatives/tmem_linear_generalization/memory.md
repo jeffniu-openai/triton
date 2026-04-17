@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 00:05 UTC direct `ld/st` atom-footprint checkpoint:
+  explicit n-sharded `tcgen05.ld/st` variants now share the packet-footprint
+  diagnostic layer when the requested atom is wider than the 32-bit descriptor
+  view. The concrete covered negative is x1 `f32/i32` with explicit
+  `16x128b`: backend layout search proves only `32x32b` is materializable, and
+  the new variant-specific reason says `16x128b` has a 4-dword column
+  footprint while the view exposes only one materializable dword column. This
+  keeps support unchanged but removes another generic/frontend-shaped clean
+  negative from Phase 4. Validation: `make -j8`, py-compile for
+  `blackwell/__init__.py` and `test_tmem_runtime_matrix.py`, focused
+  x1/scales negative selector (`9 passed, 1566 deselected`), x1 positive
+  selector (`8 passed, 1567 deselected`), and `git diff --check`.
+
 - Current runtime-matrix surface reduction checkpoint, 2026-04-16 18:12 UTC:
   reduced `python/test/gluon/test_tmem_runtime_matrix.py` collection from
   `11133` to `5019` tests while keeping every TMEM instruction family and the

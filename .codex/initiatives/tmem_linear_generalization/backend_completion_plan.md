@@ -1153,6 +1153,13 @@ Progress:
   aligns the current clean negatives under the same missing abstraction:
   packet-base and row-anchor rematerialization plus per-message offsets, or an
   explicit read/modify/write or mask footprint model.
+- 2026-04-17 00:05 UTC: extended that same packet-footprint requirement layer
+  to explicit n-sharded atom column footprints for 32-bit direct `ld/st` views.
+  The x1 `f32/i32` explicit `16x128b` rows now report a backend-derived
+  variant-specific reason: the public atom covers 4 dword columns but the view
+  materializes only 1. This confirms these rows are true footprint/mask
+  boundaries, not stale descriptor enumeration gaps, while preserving the
+  positive `32x32b.x1` path.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

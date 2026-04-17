@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 00:05 UTC: extended the shared direct `ld/st`
+  packet-footprint requirement to explicit n-sharded atom column footprints.
+  Explicit `16x128b` x1 `f32/i32` load/store negatives now report that the
+  requested atom owns a 4-dword column footprint while the descriptor view only
+  exposes one materializable dword column, and `tensor_memory_descriptor.get_reg_layout`
+  asks the backend for variant-specific unsupported reasons before falling back
+  to generic view diagnostics. Support is unchanged: these rows still need a
+  narrower atom (`32x32b`) or a true column-mask/footprint model. Validation:
+  `make -j8`, py-compile for the touched Python files, focused x1 explicit
+  negative plus scales negative selector (`9 passed, 1566 deselected`), x1
+  positive selector (`8 passed, 1567 deselected`), and `git diff --check`.
 - 2026-04-16 23:59 UTC: moved the scaled-MMAv5 repeated-`N=32`
   matrix-B scale-fragment boundary from a string-only helper to a typed
   `MMAv5ScaledRepeatedN32ScaleFragmentRequirement`. Verifier and lowering still

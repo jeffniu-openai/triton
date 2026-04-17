@@ -615,7 +615,11 @@ class tensor_memory_descriptor(base_value):
         if isinstance(self.layout, TensorMemoryScalesLayout):
             layout = _strip_zero_reg_bases_from_layout(layout)
         if layout is None:
-            reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc(self.handle)
+            reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc_for_variant(
+                self.handle, num_warps, requested_variant
+            )
+            if reason is None:
+                reason = gluon_ir.get_tmem_ldst_unsupported_reason_from_memdesc(self.handle)
             if reason is not None:
                 raise ValueError(
                     f"TMEM layout '{instr_variant}' unsupported for descriptor view {self.type}. {reason}"

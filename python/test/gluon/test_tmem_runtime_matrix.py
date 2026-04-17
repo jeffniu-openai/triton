@@ -7423,6 +7423,8 @@ def test_tmem_runtime_matrix_ldst_x1_i32_unsupported_variants_report_clean_unsup
 
     msg = str(excinfo.value)
     _assert_clean_unsupported_descriptor_view(msg, variant)
+    assert "requested tcgen05.ld/st atom 16x128b has a 4-dword column footprint" in msg
+    assert "descriptor view exposes only 1 materializable dword column" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 
@@ -7443,6 +7445,8 @@ def test_tmem_runtime_matrix_ldst_x1_f32_unsupported_variants_report_clean_unsup
 
     msg = str(excinfo.value)
     _assert_clean_unsupported_descriptor_view(msg, variant)
+    assert "requested tcgen05.ld/st atom 16x128b has a 4-dword column footprint" in msg
+    assert "descriptor view exposes only 1 materializable dword column" in msg
     assert "PassManager::run failed" not in msg
     assert "Assertion" not in msg
 

@@ -408,6 +408,9 @@ getTwoCTAScalesDescriptorViewTMemLdStLayout(gpu::MemDescType memTy,
 bool isUnsupportedDirectTMemLdStDescriptorView(
     Value memDesc, std::string *error = nullptr);
 
+std::optional<std::string> getUnsupportedDirectTMemLdStAtomFootprintReason(
+    Value memDesc, TMemAccessAtom atom, unsigned numWarps);
+
 FailureOr<gpu::MemDescType>
 inferStandaloneTMemViewType(Value memDesc, std::string *error = nullptr);
 

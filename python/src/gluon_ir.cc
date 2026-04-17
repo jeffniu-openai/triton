@@ -2564,6 +2564,23 @@ void init_gluon_ir(py::module &&m) {
           return py::str(reason);
         }
 
+        auto maybeAtom =
+            llvm::StringSwitch<std::optional<ttng::TMemAccessAtom>>(atomName)
+                .Case("32x32b", ttng::TMemAccessAtom::I32x32b)
+                .Case("16x64b", ttng::TMemAccessAtom::I16x64b)
+                .Case("16x128b", ttng::TMemAccessAtom::I16x128b)
+                .Case("16x256b", ttng::TMemAccessAtom::I16x256b)
+                .Case("16x32bx2", ttng::TMemAccessAtom::I16x32bx2)
+                .Case("32x32b_splitn", ttng::TMemAccessAtom::I16x32bx2)
+                .Default(std::nullopt);
+        if (maybeAtom) {
+          if (auto atomReason =
+                  ttng::getUnsupportedDirectTMemLdStAtomFootprintReason(
+                      memDesc, *maybeAtom, numWarps)) {
+            return py::str(*atomReason);
+          }
+        }
+
         if (atomName != "16x32bx2" || numWarps != 4 ||
             memDescTy.getRank() != 2 || memDescTy.getElementTypeBitWidth() != 8 ||
             !ttng::getTMemScalesRootEncoding(memDesc)) {
