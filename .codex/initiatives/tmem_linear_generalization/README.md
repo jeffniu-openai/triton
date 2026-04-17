@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 09:01 UTC: moved non-f32 `load_min/load_max` software fallback
+  ahead of the non-scales guard, so `TensorMemoryScalesLayout` int8 reductions
+  now use ordinary scales `tcgen05.ld` plus layout-aware `ttgl.reduce(axis=1)`
+  instead of attempting hardware `ld.red`. Added runtime-matrix scales
+  reduction coverage for min/max with and without `abs`; integer NaN
+  propagation remains a clean error. Validation: `make -j8`, Python compile,
+  focused scales reduction selector (`4 passed`), neighboring scales `ld/st`
+  selector (`19 passed`), broader reduction selector (`113 passed`), and
+  `git diff --check`.
 - 2026-04-17 08:57 UTC: extended the non-f32 `load_min/load_max` software
   fallback to supported modifiers. Software reduction now applies `abs`
   before reducing for non-f32 dtypes and supports NaN propagation for f16/bf16

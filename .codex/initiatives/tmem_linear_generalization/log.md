@@ -22235,3 +22235,47 @@ Open after this slice:
     ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn or
     ld_red_mixed_linear_layout_uses_software_reduce'` (`109 passed, 1471
     deselected in 89.48s`).
+
+## 2026-04-17 09:01 UTC: scales ld.red software fallback
+
+- Starting point: `codex/tmem` at `f76466505`.
+- Change:
+  - moved the non-f32 software-reduction fallback ahead of the non-scales
+    branch in `tensor_memory_descriptor._load_red(...)`;
+  - `TensorMemoryScalesLayout` int8 `load_min/load_max` now lowers through
+    ordinary scales `tcgen05.ld` plus layout-aware `ttgl.reduce(axis=1)`;
+  - added runtime-matrix scales reduction coverage for min/max with and
+    without `abs`, asserting no hardware `tcgen05.ld.red` is emitted.
+- Boundary:
+  - this does not add hardware `tcgen05.ld.red` support for scales payloads;
+  - integer NaN propagation remains a clean semantic error through the shared
+    non-f32 guard.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldred-scales-positive
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ld_red_scales_uses_software_reduce`
+    (`4 passed in 4.77s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-ldred-scales-ldst-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_direct_roundtrip or ldst_scales_variant_sweep or
+    ldst_scales_descriptor_view_roundtrip'` (`19 passed, 1565 deselected in
+    5.83s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-ldred-scales-broad
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ld_red_scales or ld_red_non_f32 or
+    ld_red_explicit_n_sharded_layout_uses_software_reduce or
+    ld_red_explicit_compatible_layout_variants or
+    ld_red_m64_splitn_linear_layout or ld_red_m64_explicit_splitn_variants or
+    ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn or
+    ld_red_mixed_linear_layout_uses_software_reduce'` (`113 passed, 1471
+    deselected in 96.13s`).

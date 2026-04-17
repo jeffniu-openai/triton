@@ -8285,6 +8285,26 @@ def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_unsup
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
+@pytest.mark.parametrize("red_op", ["min", "max"])
+@pytest.mark.parametrize("use_abs", [False, True])
+def test_tmem_runtime_matrix_ld_red_scales_uses_software_reduce(red_op, use_abs):
+    M = 128
+    N = 32
+    layout = TensorMemoryScalesLayout()
+    inp = torch.randint(-50, 50, (M, N), dtype=torch.int8, device="cuda")
+    out = torch.empty_like(inp)
+    red = torch.empty((M,), dtype=torch.int8, device="cuda")
+
+    compiled = tmem_ld_red_explicit_layout_kernel[(1, )](
+        inp, out, red, layout, N, "32x32b", red_op, use_abs, tl.PropagateNan.NONE, num_warps=4
+    )
+
+    _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, tl.PropagateNan.NONE)
+    _assert_ld_red_uses_software_reduce(compiled)
+    assert "tensor_memory_scales_encoding" in compiled.asm["ttgir"]
+
+
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", LD_RED_REPRESENTATIVE_RED_OPS)
 @pytest.mark.parametrize("use_abs,propagate_nan", LD_RED_REPRESENTATIVE_MODIFIER_CASES)
 @pytest.mark.parametrize("N,tile_n,num_warps,expected_shape", LD_RED_TILE_PERMUTED_CASES)

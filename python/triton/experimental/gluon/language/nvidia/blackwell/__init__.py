@@ -558,20 +558,21 @@ class tensor_memory_descriptor(base_value):
         builder = _semantic.builder
         num_warps = builder.options.num_warps
 
+        if self.dtype != ttgl.float32:
+            if propagate_nan == ir.PROPAGATE_NAN.ALL and not self.dtype.is_floating():
+                raise ValueError("'NaN' requires floating-point element type")
+            result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
+            reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
+            reduced = ttgl.reduce(
+                reduce_input,
+                axis=1,
+                combine_fn=_get_tmem_software_reduce_combine(red_op, propagate_nan, self.dtype),
+                _semantic=_semantic,
+                _generator=_generator,
+            )
+            return result, reduced
+
         if not isinstance(self.layout, TensorMemoryScalesLayout):
-            if self.dtype != ttgl.float32:
-                if propagate_nan == ir.PROPAGATE_NAN.ALL and not self.dtype.is_floating():
-                    raise ValueError("'NaN' requires floating-point element type")
-                result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
-                reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
-                reduced = ttgl.reduce(
-                    reduce_input,
-                    axis=1,
-                    combine_fn=_get_tmem_software_reduce_combine(red_op, propagate_nan, self.dtype),
-                    _semantic=_semantic,
-                    _generator=_generator,
-                )
-                return result, reduced
             if not gluon_ir.is_tmem_load_reduction_reg_layout_supported(ret_ty.to_ir(builder)):
                 result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
                 reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result

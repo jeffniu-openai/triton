@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 09:01 UTC `TensorMemoryScalesLayout` int8
+  `load_min/load_max` now uses the non-f32 software-reduction fallback.
+  The fallback runs before the non-scales hardware-support branch, so scales
+  reductions lower to ordinary scales `tcgen05.ld` plus layout-aware
+  `ttgl.reduce(axis=1)` and assert no hardware `tcgen05.ld.red`. Coverage now
+  includes min/max with and without `abs`; integer NaN propagation remains a
+  clean error. Validation: `make -j8`, Python compile, focused scales
+  reduction (`4 passed`), neighboring scales `ld/st` (`19 passed`), broader
+  reduction selector (`113 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:57 UTC non-f32 `load_min/load_max` software fallback
   now supports the modifier cases that are semantically realizable without
   hardware `tcgen05.ld.red`: `abs` is applied before software reduction for
