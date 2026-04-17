@@ -2389,7 +2389,8 @@ void init_gluon_ir(py::module &&m) {
                  *desiredAtom != ttng::TMemAccessAtom::I16x32bx2) ||
                 queryMemDescTy.getRank() != 2 ||
                 queryMemDescTy.getShape()[0] != 64 ||
-                queryMemDescTy.getElementTypeBitWidth() != 32 ||
+                (queryMemDescTy.getElementTypeBitWidth() != 16 &&
+                 queryMemDescTy.getElementTypeBitWidth() != 32) ||
                 isa<ttng::TensorMemoryScalesEncodingAttr>(
                     queryMemDescTy.getEncoding())) {
               return py::none();
@@ -2403,12 +2404,14 @@ void init_gluon_ir(py::module &&m) {
                     ctx))
               return py::none();
 
-            // The generic exact-query search still rejects this simple M64
-            // split-N image as an unsupported destination layout because the
-            // raw TMEM view carries the unused half tile as a zero row basis.
-            // Once the raw query proves exactly that image, return the
-            // canonical register layout that the load/store lowering already
-            // accepts for the same physical TMEM data.
+            // The generic exact-query search still fails to expose the
+            // canonical split-N user layout for this simple M64 image: for
+            // 32-bit rows it rejects the unused half tile as a zero row basis,
+            // while for 16-bit rows it can validate the hardware message with
+            // the high-N split left in lanes. Once the raw query proves the
+            // exact simple M64 image, return the canonical split-N register
+            // layout that load/store lowering already accepts for the same
+            // physical TMEM data.
             auto canonical =
                 ttng::getCanonicalM64SplitNLayout(ctx, n, numWarps);
             if (!canonical)
@@ -2560,12 +2563,14 @@ void init_gluon_ir(py::module &&m) {
         if (numWarps < 4 || !llvm::isPowerOf2_32(numWarps))
           throw std::invalid_argument(
               "numWarps must be a power of two and >= 4");
-        if (atomName == "32x32b_splitn" &&
-            !(numWarps == 4 && memDescTy.getRank() == 2 &&
-              memDescTy.getShape()[0] == 64 &&
-              memDescTy.getElementTypeBitWidth() == 32 &&
-              !isa<ttng::TensorMemoryScalesEncodingAttr>(
-                  memDescTy.getEncoding()))) {
+        bool isM64SplitNDescriptor =
+            numWarps == 4 && memDescTy.getRank() == 2 &&
+            memDescTy.getShape()[0] == 64 &&
+            (memDescTy.getElementTypeBitWidth() == 16 ||
+             memDescTy.getElementTypeBitWidth() == 32) &&
+            !isa<ttng::TensorMemoryScalesEncodingAttr>(
+                memDescTy.getEncoding());
+        if (atomName == "32x32b_splitn" && !isM64SplitNDescriptor) {
           // M64 split-N uses the hardware 16x32bx2 family directly. Other
           // split-N queries mirror the type-only path: infer an I32x32b
           // register layout for the descriptor view, then let the frontend

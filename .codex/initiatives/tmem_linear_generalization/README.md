@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:11 UTC: removed the Python type-only M64 16-bit split-N
+  shortcut from descriptor-handle `get_reg_layout()`. The C++ memdesc
+  register-layout bridge now lets the canonical M64 split-N raw-query
+  recognizer cover 16-bit f16/bf16 M64 descriptor values as well as the
+  existing 32-bit path, and keeps `32x32b_splitn` on the backend-owned M64
+  `16x32bx2` route for that family. Added focused runtime coverage comparing
+  `auto`, `32x32b_splitn`, and explicit `16x32bx2` for representative 16-bit
+  M64 rows. Validation: `make -j8`, py-compile for `blackwell/__init__.py` and
+  `test_tmem_runtime_matrix.py`, focused split-N selector (`24 passed, 1553
+  deselected`), adjacent M64 reduction/default selector (`34 passed, 1543
+  deselected`), and `git diff --check`.
 - 2026-04-17 05:03 UTC: removed the remaining Python M64 split-N auto-layout
   shim. The C++ `findDirectLayoutForMemDesc` raw-query recognizer now treats
   `instr_variant="auto"` as eligible for the canonical M64 split-N layout and

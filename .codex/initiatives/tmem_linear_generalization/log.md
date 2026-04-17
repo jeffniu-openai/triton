@@ -20787,3 +20787,35 @@ Open after this slice:
   - split-N family selector passed
     (`28 passed, 1547 deselected in 6.80s`);
   - `git diff --check`.
+
+## 2026-04-17 05:11 UTC: removed Python M64 16-bit split-N type-only shortcut
+
+- Starting point: `codex/tmem` at `b227ba45d`.
+- Probe:
+  - temporarily deleting the descriptor-handle Python shortcut exposed that
+    explicit `16x32bx2` and `32x32b_splitn` already reached valid C++ lowering
+    for f16/bf16 M64 in representative cases, but `auto` returned the hardware
+    message layout with the high-N split left in lanes;
+  - the store path then rejected the value layout because the descriptor's
+    explicit `16x32bx2` layout is canonicalized with the high-N split as a
+    register basis.
+- Change:
+  - extended the C++ simple M64 split-N raw-query recognizer in
+    `compute_tmem_reg_layout_from_memdesc(...)` to 16-bit f16/bf16 descriptor
+    values;
+  - kept `32x32b_splitn` on the backend-owned M64 `16x32bx2` route for 16-bit
+    and 32-bit M64 descriptors, while preserving the old generic fallback for
+    non-M64 split-N requests;
+  - removed the Python descriptor-handle type-only shortcut from
+    `blackwell/__init__.py`;
+  - added focused runtime coverage comparing `auto`, `32x32b_splitn`, and
+    explicit `16x32bx2` for representative 16-bit M64 rows.
+- Validation:
+  - `make -j8`;
+  - `python -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - focused split-N selector passed (`24 passed, 1553 deselected in 7.81s`);
+  - adjacent M64 reduction/default selector passed
+    (`34 passed, 1543 deselected in 11.40s`);
+  - `git diff --check`.

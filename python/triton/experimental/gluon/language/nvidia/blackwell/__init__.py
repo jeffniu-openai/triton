@@ -492,23 +492,6 @@ class tensor_memory_descriptor(base_value):
         num_warps = _unwrap_if_constexpr(num_warps)
         requested_variant = _unwrap_if_constexpr(instr_variant)
         self._require_rank2_tmem_ldst(f"{requested_variant} register layout query")
-        prefer_type_only_m64_splitn = (
-            num_warps == 4
-            and requested_variant in ("auto", "32x32b_splitn", "16x32bx2")
-            and len(self.shape) == 2
-            and self.shape[0] == 64
-            and self.dtype.primitive_bitwidth == 16
-            and not isinstance(self.layout, TensorMemoryScalesLayout)
-        )
-        if prefer_type_only_m64_splitn:
-            return _compute_tmem_reg_layout(
-                self.dtype,
-                self.shape,
-                self.type.alloc_shape,
-                self.layout,
-                num_warps,
-                "16x32bx2",
-            )
         try:
             layout = gluon_ir.compute_tmem_reg_layout_from_memdesc(
                 self.handle, num_warps, requested_variant

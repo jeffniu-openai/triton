@@ -1104,6 +1104,13 @@ Progress:
   raw-query selection for rank-2 M64 f32 non-scales descriptor values, so
   `load(layout=None)` and `get_reg_layout(auto)` no longer need to pre-query
   `32x32b_splitn` from Python.
+- 2026-04-17 05:11 UTC: removed the descriptor-handle Python type-only
+  shortcut for rank-2 M64 f16/bf16 split-N layout requests. The same C++
+  simple M64 raw-query recognizer now covers 16-bit descriptor values, returns
+  the canonical split-N user layout for `auto`, and keeps `32x32b_splitn` on
+  the backend-owned M64 `16x32bx2` route. Focused coverage now compares
+  `auto`, `32x32b_splitn`, and explicit `16x32bx2` for representative 16-bit
+  M64 rows.
 - 2026-04-17 05:00 UTC: re-probed ordinary contiguous `tcgen05.copy.4x256b` by
   bypassing the refresh-only support and lowering guards. The ISA opcode
   emitted, but the output copied the refresh physical pattern into the ordinary

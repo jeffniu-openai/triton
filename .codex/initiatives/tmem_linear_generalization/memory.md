@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:11 UTC M64 16-bit split-N backend cleanup: removed
+  the descriptor-handle Python type-only shortcut that returned a
+  `16x32bx2` layout for rank-2 M64 f16/bf16 `auto`, `32x32b_splitn`, and
+  explicit `16x32bx2` requests before asking the C++ memdesc bridge. The C++
+  raw-query recognizer now accepts 16-bit simple M64 split-N images and returns
+  the canonical split-N register layout for `auto`; `32x32b_splitn` remains on
+  the backend-owned M64 `16x32bx2` route for 16-bit and 32-bit M64 descriptor
+  values. New focused runtime coverage compares `auto`, `32x32b_splitn`, and
+  explicit `16x32bx2` for representative 16-bit M64 rows. Validation:
+  `make -j8`, py-compile, focused split-N selector (`24 passed, 1553
+  deselected`), adjacent M64 reduction/default selector (`34 passed, 1543
+  deselected`), and `git diff --check`.
+
 - Latest: 2026-04-17 05:03 UTC M64 split-N auto shim deletion: removed
   `_try_handle_aware_m64_splitn_auto_layout(...)` and its `load()` /
   `get_reg_layout(auto)` call sites. The C++ memdesc register-layout bridge now

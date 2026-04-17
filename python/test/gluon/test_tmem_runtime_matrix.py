@@ -4321,6 +4321,11 @@ M64_ROWCOL_PERMUTED_AUTO_CASES = [
     )
 ]
 
+M64_16BIT_AUTO_SPLITN_CASES = (
+    ("f16", torch.float16, 2),
+    ("bf16", torch.bfloat16, 64),
+)
+
 LDST_DESCRIPTOR_RANK5_CASES = [
     (layout_name, n, variant, LDST_SHAPE_MAP[variant][n])
     for layout_name, n, variant in product(LDST_LAYOUTS.keys(), (64, ), LDST_VARIANTS)
@@ -7074,6 +7079,40 @@ def test_tmem_runtime_matrix_splitn_auto_selects_16x32bx2(dtype_name, torch_dtyp
     for offset, imm in offset_imm_pairs:
         expected.append((expected_opcode_ld, offset, imm))
     assert imms == expected
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.parametrize("dtype_name,torch_dtype,n", M64_16BIT_AUTO_SPLITN_CASES)
+def test_tmem_runtime_matrix_splitn_16bit_m64_auto_matches_explicit(dtype_name, torch_dtype, n):
+    m = 64
+    layout = _make_tmem_linear_layout_m64(n)
+    inp = torch.arange(m * n, dtype=torch.int32, device="cuda").reshape(m, n).to(torch_dtype)
+    out_auto = torch.empty_like(inp)
+    out_splitn = torch.empty_like(inp)
+    out_explicit = torch.empty_like(inp)
+
+    compiled_auto = tmem_ldst_auto_kernel[(1, )](inp, out_auto, layout, m, n, num_warps=4)
+    compiled_splitn = tmem_ldst_variant_kernel[(1, )](
+        inp, out_splitn, layout, m, n, "32x32b_splitn", num_warps=4
+    )
+    compiled_explicit = tmem_ldst_variant_kernel[(1, )](
+        inp, out_explicit, layout, m, n, "16x32bx2", num_warps=4
+    )
+
+    torch.testing.assert_close(out_auto, inp, atol=0, rtol=0)
+    torch.testing.assert_close(out_splitn, inp, atol=0, rtol=0)
+    torch.testing.assert_close(out_explicit, inp, atol=0, rtol=0)
+    torch.testing.assert_close(out_auto, out_splitn, atol=0, rtol=0)
+    torch.testing.assert_close(out_auto, out_explicit, atol=0, rtol=0)
+
+    auto_ops, auto_imms = _assert_ldst_ptx_llir_match(compiled_auto)
+    splitn_ops, splitn_imms = _assert_ldst_ptx_llir_match(compiled_splitn)
+    explicit_ops, explicit_imms = _assert_ldst_ptx_llir_match(compiled_explicit)
+    assert auto_ops == splitn_ops
+    assert auto_ops == explicit_ops
+    assert auto_imms == splitn_imms
+    assert auto_imms == explicit_imms
+    assert all("16x32bx2" in op for op, _ in auto_ops)
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
