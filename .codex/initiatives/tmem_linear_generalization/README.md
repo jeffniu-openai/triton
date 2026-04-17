@@ -44,6 +44,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 11:12 UTC: direct Gluon scaled-MMAv5 now supports shared-memory
+  scale descriptor views by materializing shared scale operands to
+  `TensorMemoryScalesLayout` allocations during `triton-tensor-memory-allocation`.
+  The conversion uses the same backend dialect helper from both the
+  normal MMA-lowering pass and the Gluon allocation-stage path, and the old
+  broad `subviews NYI` rejection in MMA lowering is gone. Added a runtime row
+  where `tcgen05_mma_scaled` consumes unswizzled shared scale
+  `memdesc_reshape`/`memdesc_trans` views directly and the backend emits the
+  expected scale `tcgen05.cp` messages before the scaled MMA. Validation:
+  `make -j8`, exact new shared-scale descriptor-view runtime test (`1
+  passed`), neighboring two-CTA manual scale-copy runtime row (`1 passed`),
+  repeated-N32 tile-permuted scaled-MMA selector (`11 passed`), Python compile,
+  `triton-opt ... --triton-nvidia-mma-lowering | FileCheck
+  test/TritonNvidiaGPU/mma_lowering.mlir`, and `git diff --check`.
 - 2026-04-17 11:05 UTC: moved repeated-N32 B-scale descriptor-view
   storage-root recovery into the TritonNvidiaGPU dialect API so
   `TCGen5MMAScaledOp` verification and `RematerializeRepeatedN32BScale` use

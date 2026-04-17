@@ -1,5 +1,24 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 11:12 UTC direct Gluon scaled-MMAv5 shared scale
+  descriptor views now materialize through the backend instead of falling into
+  LLVM lowering with shared memdesc structs. Added
+  `getMMAv5ScaleTMemTypeForSharedScale(...)` as the shared backend type
+  helper, switched the normal MMA-lowering pass to use it, and added
+  `MaterializeSharedMMAScalesToTMem` to `triton-tensor-memory-allocation` so
+  the Gluon path inserts `ttng.tmem_copy` into `TensorMemoryScalesLayout`
+  allocations before TMEM offsets are assigned. The broad `subviews NYI`
+  rejection in MMA lowering was removed; unsupported shared scale shapes now
+  report a shape/row materialization diagnostic. Added a runtime-matrix row
+  where `tcgen05_mma_scaled` consumes unswizzled shared scale
+  `memdesc_reshape`/`memdesc_trans` views directly and validates the generated
+  scale `tcgen05.cp` plus scaled MMA opcodes. Validation: `make -j8`; exact
+  new shared-scale descriptor-view runtime test (`1 passed`); neighboring
+  two-CTA manual scale-copy runtime row (`1 passed`); repeated-N32
+  tile-permuted scaled-MMA selector (`11 passed`); Python compile; direct
+  `triton-opt ... --triton-nvidia-mma-lowering | FileCheck` for
+  `test/TritonNvidiaGPU/mma_lowering.mlir`; and `git diff --check`.
+
 - Latest: 2026-04-17 11:05 UTC repeated-N32 B-scale descriptor-view
   storage-root recovery is now one backend dialect helper:
   `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`. This keeps

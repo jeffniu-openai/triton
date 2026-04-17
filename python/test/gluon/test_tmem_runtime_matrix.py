@@ -3657,6 +3657,7 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
     slice_start: ttgl.constexpr,
     ACC_INIT: ttgl.constexpr,
     multicast: ttgl.constexpr,
+    DIRECT_SHARED_SCALES: ttgl.constexpr,
 ):
     A_IS_FP4: ttgl.constexpr = a_desc.dtype == ttgl.uint8
     B_IS_FP4: ttgl.constexpr = b_desc.dtype == ttgl.uint8
@@ -3672,12 +3673,13 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
 
     num_ctas: ttgl.constexpr = ttgl.num_ctas()
     two_ctas: ttgl.constexpr = num_ctas > 1
-    scale_layout_a: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[1, 0]] if two_ctas else [])
-    scale_layout_b: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[0, 0]] if two_ctas else [])
     A_SCALE_MN: ttgl.constexpr = a_scale_desc.block_type.shape[1] * 128
     B_SCALE_MN: ttgl.constexpr = b_scale_desc.block_type.shape[1] * 128
-    a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [A_SCALE_MN, BLOCK_K // VEC_SIZE], scale_layout_a)
-    b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [B_SCALE_MN, BLOCK_K // VEC_SIZE], scale_layout_b)
+    if not DIRECT_SHARED_SCALES:
+        scale_layout_a: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[1, 0]] if two_ctas else [])
+        scale_layout_b: ttgl.constexpr = TensorMemoryScalesLayout(cga_layout=[[0, 0]] if two_ctas else [])
+        a_scale_tmem = allocate_tensor_memory(a_scale_desc.dtype, [A_SCALE_MN, BLOCK_K // VEC_SIZE], scale_layout_a)
+        b_scale_tmem = allocate_tensor_memory(b_scale_desc.dtype, [B_SCALE_MN, BLOCK_K // VEC_SIZE], scale_layout_b)
     acc_parent = allocate_tensor_memory(ttgl.float32, [BLOCK_M, PARENT_N], acc_parent_layout)
     acc_tmem = acc_parent.slice(slice_start, BLOCK_N, dim=1)
     if ACC_INIT != 0.0:
@@ -3733,21 +3735,33 @@ def mma_scaled_tcgen05_acc_subslice_copy_kernel(
 
         a_scale = unswizzle_scales_shared_memory(a_scale_smem, A_SCALE_MN, BLOCK_K, VEC_SIZE)
         b_scale = unswizzle_scales_shared_memory(b_scale_smem, B_SCALE_MN, BLOCK_K, VEC_SIZE)
-        tcgen05_copy(a_scale, a_scale_tmem)
-        tcgen05_copy(b_scale, b_scale_tmem)
 
         a_format: ttgl.constexpr = "e2m1" if A_IS_FP4 else "e4m3"
         b_format: ttgl.constexpr = "e2m1" if B_IS_FP4 else "e4m3"
-        tcgen05_mma_scaled(
-            a_smem,
-            b_smem.permute((1, 0)),
-            acc_tmem,
-            a_scale_tmem,
-            b_scale_tmem,
-            a_format,
-            b_format,
-            use_acc=(ACC_INIT != 0.0 or k != 0),
-        )
+        if DIRECT_SHARED_SCALES:
+            tcgen05_mma_scaled(
+                a_smem,
+                b_smem.permute((1, 0)),
+                acc_tmem,
+                a_scale,
+                b_scale,
+                a_format,
+                b_format,
+                use_acc=(ACC_INIT != 0.0 or k != 0),
+            )
+        else:
+            tcgen05_copy(a_scale, a_scale_tmem)
+            tcgen05_copy(b_scale, b_scale_tmem)
+            tcgen05_mma_scaled(
+                a_smem,
+                b_smem.permute((1, 0)),
+                acc_tmem,
+                a_scale_tmem,
+                b_scale_tmem,
+                a_format,
+                b_format,
+                use_acc=(ACC_INIT != 0.0 or k != 0),
+            )
         tcgen05_commit(mma_bar)
         mbarrier.wait(mma_bar, phase_mma)
         phase_mma ^= 1
@@ -3778,6 +3792,7 @@ def mma_scaled_tcgen05_acc_subslice_copy(
     num_ctas,
     multicast,
     acc_init=0.0,
+    direct_shared_scales=False,
 ):
     M, N = A.shape[0], B.shape[0]
     mixed_prec = A.dtype != B.dtype
@@ -3846,6 +3861,7 @@ def mma_scaled_tcgen05_acc_subslice_copy(
         num_warps=num_warps,
         num_ctas=num_ctas,
         multicast=multicast,
+        DIRECT_SHARED_SCALES=direct_shared_scales,
     )
     return c_desc.base, compiled
 
@@ -12365,6 +12381,54 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc(
         assert "{multicast}" in ttgir
     else:
         assert "{multicast}" not in ttgir
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_copy():
+    a_format = "mxfp8"
+    b_format = "mxfp8"
+    block_m = 128
+    block_n = 128
+    block_k = 128
+    parent_n = 2 * block_n
+    slice_start = 0
+    vec_size = 32
+
+    torch.manual_seed(0)
+    a, a_scale, a_ref = random_quantized_tensor(block_m, block_k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(block_n, block_k, b_format)
+    a_scale = swizzle_scales_packed_block(a_scale, vec_size)
+    b_scale = swizzle_scales_packed_block(b_scale, vec_size)
+
+    out, compiled = mma_scaled_tcgen05_acc_subslice_copy(
+        a,
+        b,
+        a_scale,
+        b_scale,
+        vec_size,
+        block_m,
+        block_n,
+        block_k,
+        parent_n,
+        slice_start,
+        num_ctas=1,
+        multicast=False,
+        direct_shared_scales=True,
+    )
+
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    cp_ops = _assert_exact_cp_ptx_llir_match(compiled)
+    assert cp_ops
+    assert len(cp_ops) == 2
+    assert all(op == _expected_scaled_cp_opcode(1) for op in cp_ops)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert mma_ops
+    assert len(mma_ops) == _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    ttgir = compiled.asm["ttgir"]
+    assert "ttg.memdesc_reshape" in ttgir
+    assert "ttg.memdesc_trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

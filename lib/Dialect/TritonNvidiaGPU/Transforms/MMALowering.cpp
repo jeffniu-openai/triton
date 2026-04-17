@@ -58,48 +58,41 @@ struct TCGen5MMAScaleSharedToTmemConversion
 
   // Create a tmem_copy of scales from shared memory to tmem. `rows` is the M or
   // N of the MMA operation (for LHS or RHS respectively).
-  bool lowerScaleToTmem(OpOperand &operand, PatternRewriter &rewriter,
-                        int rows) const {
+  LogicalResult lowerScaleToTmem(OpOperand &operand, PatternRewriter &rewriter,
+                                 int rows) const {
     Location loc = operand.getOwner()->getLoc();
-    MLIRContext *context = operand.getOwner()->getContext();
-    Attribute tensorMemorySpace = TensorMemorySpaceAttr::get(context);
     auto oldType = cast<ttg::MemDescType>(operand.get().getType());
-    auto numElems = product(oldType.getShape());
-    Type elType = oldType.getElementType();
-    ttg::CGAEncodingAttr CGALayout = ttg::getCGALayout(oldType.getEncoding());
-    // Distribute the scales across the rows of the MMA operation.
-    SmallVector<int64_t> shape = {rows, numElems / rows};
-    Attribute scaleEncoding =
-        TensorMemoryScalesEncodingAttr::get(context, CGALayout);
-    Type scaleAType =
-        ttg::MemDescType::get(shape, elType, scaleEncoding, tensorMemorySpace,
-                              /*mutableMemory=*/true);
-    auto tmemAlloc = TMEMAllocOp::create(rewriter, loc, scaleAType, Value());
+    std::optional<ttg::MemDescType> scaleType =
+        getMMAv5ScaleTMemTypeForSharedScale(oldType, rows);
+    if (!scaleType) {
+      return operand.getOwner()->emitError()
+             << "cannot materialize shared scale operand with shape "
+             << oldType.getShape() << " into a tensor-memory scales layout "
+             << "with " << rows << " MMA rows";
+    }
+    auto tmemAlloc = TMEMAllocOp::create(rewriter, loc, *scaleType, Value());
     TMEMCopyOp::create(rewriter, loc, operand.get(), tmemAlloc,
                        /*barrier*/ Value());
     operand.set(tmemAlloc);
-    return true;
+    return success();
   }
 
   LogicalResult matchAndRewrite(TCGen5MMAScaledOp op,
                                 PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    MLIRContext *context = op->getContext();
     auto aScaleType = op.getAScale().getType();
     auto bScaleType = op.getBScale().getType();
-    if (aScaleType.getShape() != aScaleType.getAllocShape() ||
-        bScaleType.getShape() != bScaleType.getAllocShape()) {
-      op.emitError("subviews NYI");
-      return failure();
-    }
     int blockM = op.getBlockM();
     int blockN = op.getBlockN();
     bool anyChanged = false;
     if (isa<ttg::SharedMemorySpaceAttr>(aScaleType.getMemorySpace())) {
-      anyChanged = lowerScaleToTmem(op.getAScaleMutable(), rewriter, blockM);
+      if (failed(lowerScaleToTmem(op.getAScaleMutable(), rewriter, blockM)))
+        return failure();
+      anyChanged = true;
     }
     if (isa<ttg::SharedMemorySpaceAttr>(bScaleType.getMemorySpace())) {
-      anyChanged = lowerScaleToTmem(op.getBScaleMutable(), rewriter, blockN);
+      if (failed(lowerScaleToTmem(op.getBScaleMutable(), rewriter, blockN)))
+        return failure();
+      anyChanged = true;
     }
     return LogicalResult::success(anyChanged);
   }

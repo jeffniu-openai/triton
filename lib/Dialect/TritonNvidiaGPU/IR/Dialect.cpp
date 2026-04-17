@@ -1383,6 +1383,26 @@ getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
 }
 
 std::optional<MemDescType>
+getMMAv5ScaleTMemTypeForSharedScale(MemDescType sharedScaleType,
+                                    int64_t rows) {
+  if (rows <= 0 ||
+      !isa<SharedMemorySpaceAttr>(sharedScaleType.getMemorySpace()))
+    return std::nullopt;
+
+  int64_t numElems = product(sharedScaleType.getShape());
+  if (numElems <= 0 || numElems % rows != 0)
+    return std::nullopt;
+
+  MLIRContext *ctx = sharedScaleType.getContext();
+  auto cgaLayout = getCGALayout(sharedScaleType.getEncoding());
+  auto scaleEncoding = TensorMemoryScalesEncodingAttr::get(ctx, cgaLayout);
+  return MemDescType::get({rows, numElems / rows},
+                          sharedScaleType.getElementType(), scaleEncoding,
+                          TensorMemorySpaceAttr::get(ctx),
+                          /*mutableMemory=*/true);
+}
+
+std::optional<MemDescType>
 getMMAv5ScaledBScaleStorageTypeThroughViews(Value bScale) {
   auto bScaleType = dyn_cast<MemDescType>(bScale.getType());
   if (!bScaleType)

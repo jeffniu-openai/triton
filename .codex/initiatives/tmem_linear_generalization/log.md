@@ -22761,3 +22761,51 @@ Open after this slice:
     ldst_x1_i32_unsupported_variants_report_clean_unsupported"`
     (`6 passed, 1584 deselected in 5.74s`);
   - `git diff --check`.
+
+## 2026-04-17 11:12 UTC: shared-scale descriptor-view materialization for scaled MMA
+
+- Starting point: `codex/tmem` at `723ab9c38`.
+- Change:
+  - added `getMMAv5ScaleTMemTypeForSharedScale(...)` to derive the canonical
+    `TensorMemoryScalesLayout` destination type for a shared scale operand
+    from its exact element count, MMA row count, element type, and CGA layout;
+  - switched `TCGen5MMAScaleSharedToTmemConversion` in MMA lowering to use the
+    shared helper and removed the old broad `subviews NYI` guard;
+  - added `MaterializeSharedMMAScalesToTMem` to
+    `triton-tensor-memory-allocation`, which is the path reached by direct
+    Gluon `tcgen05_mma_scaled` before LLVM lowering;
+  - added a runtime-matrix row where unswizzled shared scale
+    `memdesc_reshape`/`memdesc_trans` views are passed directly to
+    `tcgen05_mma_scaled` and the backend emits the expected scale
+    `tcgen05.cp` messages.
+- Finding:
+  - the first failing repro did not hit `subviews NYI`; it reached LLVM with
+    shared scale memdesc structs and failed `llvm.ptrtoint`, proving that the
+    existing MMA-lowering conversion was not on the direct Gluon pipeline.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - direct `triton-opt test/TritonNvidiaGPU/mma_lowering.mlir
+    -split-input-file --triton-nvidia-mma-lowering | python/triton/FileCheck
+    test/TritonNvidiaGPU/mma_lowering.mlir`;
+  - exact new shared-scale descriptor-view runtime row:
+    `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-shared-scale-auto-v2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_shared_scale_descriptor_view_auto_tmem_copy`
+    (`1 passed in 3.55s`);
+  - neighboring manual-copy two-CTA row:
+    `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-shared-scale-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    'python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_matrix[mxfp8-mxfp8-64-0-128-False]'`
+    (`1 passed in 3.82s`);
+  - repeated-N32 scaled-MMA selector:
+    `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-scaled-n32-after-shared
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_acc_tile_permuted_32'`
+    (`11 passed, 1581 deselected in 14.15s`);
+  - `git diff --check`.

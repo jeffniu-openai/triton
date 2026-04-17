@@ -1527,6 +1527,17 @@ Progress:
   `TCGen5MMAScaledOp` verification and tensor-memory allocation. This preserves
   the 10:57 descriptor-view support while keeping scale-view acceptance and
   rematerialization on one contract.
+- 2026-04-17 11:12 UTC: shared-memory scale descriptor views feeding direct
+  Gluon `tcgen05_mma_scaled` now lower through the backend instead of reaching
+  LLVM as shared memdesc structs. The new
+  `getMMAv5ScaleTMemTypeForSharedScale(...)` helper builds the canonical
+  `TensorMemoryScalesLayout` destination type from the shared scale view's
+  exact element count and CGA layout. `triton-tensor-memory-allocation`
+  materializes shared A/B scale operands with `ttng.tmem_copy` before TMEM
+  offsets are assigned, and the existing MMA-lowering pass consumes the same
+  helper rather than carrying its own product/shape arithmetic. A focused
+  runtime row now validates unswizzled shared scale
+  `memdesc_reshape`/`memdesc_trans` views consumed directly by scaled MMA.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

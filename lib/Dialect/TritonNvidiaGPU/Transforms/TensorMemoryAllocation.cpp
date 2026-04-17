@@ -273,6 +273,56 @@ static SmallVector<Operation *> getAlloc(Value value) {
   return allocs;
 }
 
+class MaterializeSharedMMAScalesToTMem
+    : public OpRewritePattern<TCGen5MMAScaledOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult materializeScale(OpOperand &operand, int64_t rows,
+                                 PatternRewriter &rewriter) const {
+    auto scaleType = cast<ttg::MemDescType>(operand.get().getType());
+    std::optional<ttg::MemDescType> tmemScaleType =
+        getMMAv5ScaleTMemTypeForSharedScale(scaleType, rows);
+    if (!tmemScaleType) {
+      return operand.getOwner()->emitError()
+             << "cannot materialize shared scale operand with shape "
+             << scaleType.getShape()
+             << " into a tensor-memory scales layout with " << rows
+             << " MMA rows";
+    }
+
+    Location loc = operand.getOwner()->getLoc();
+    Value tmemAlloc =
+        TMEMAllocOp::create(rewriter, loc, *tmemScaleType, Value());
+    TMEMCopyOp::create(rewriter, loc, operand.get(), tmemAlloc,
+                       /*barrier=*/Value());
+    operand.set(tmemAlloc);
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(TCGen5MMAScaledOp mmaOp,
+                                PatternRewriter &rewriter) const override {
+    bool changed = false;
+    auto aScaleType = mmaOp.getAScale().getType();
+    if (isa<ttg::SharedMemorySpaceAttr>(aScaleType.getMemorySpace())) {
+      if (failed(materializeScale(mmaOp.getAScaleMutable(), mmaOp.getBlockM(),
+                                  rewriter)))
+        return failure();
+      changed = true;
+    }
+
+    auto bScaleType = mmaOp.getBScale().getType();
+    if (isa<ttg::SharedMemorySpaceAttr>(bScaleType.getMemorySpace())) {
+      if (failed(materializeScale(mmaOp.getBScaleMutable(), mmaOp.getBlockN(),
+                                  rewriter)))
+        return failure();
+      changed = true;
+    }
+
+    return success(changed);
+  }
+};
+
 class RematerializeRepeatedN32BScale
     : public OpRewritePattern<TCGen5MMAScaledOp> {
 public:
@@ -540,7 +590,8 @@ public:
 
     DenseMap<triton::nvidia_gpu::TMEMAllocOp, int> offsets;
     RewritePatternSet patterns(ctx);
-    patterns.add<RematerializeRepeatedN32BScale>(ctx);
+    patterns.add<MaterializeSharedMMAScalesToTMem,
+                 RematerializeRepeatedN32BScale>(ctx);
     if (failed(applyPatternsGreedily(mod, std::move(patterns))))
       return signalPassFailure();
 
