@@ -1,5 +1,23 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:30 UTC warpx2 copy shared-source layout semantics are
+  no longer duplicated. `TensorMemoryUtils` now uses shared helpers for the
+  canonical warpx2 shared source dimensions and offset-basis order in both the
+  runtime source-layout support check and the `warpx2::02_13` direct-seed
+  descriptor eligibility path. Support is unchanged: dense/noncanonical
+  warpx2 shared layouts and two-CTA `warpx2::02_13` remain source
+  rematerialization/schedule boundaries, but the canonical source-layout
+  contract now has one backend implementation. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, `test_tmem_runtime_matrix.py -k
+  "cp_no_scales_warpx2_01_23_candidate_positive or
+  cp_no_scales_warpx2_02_13_candidate_positive or
+  cp_no_scales_warpx2_01_23_twocta_positive or
+  cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported or
+  cp_no_scales_warpx2_dense_shared_reports_clean_unsupported or
+  cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported or
+  cp_no_scales_warpx2_subword_dtypes_report_clean_error"` (`30 passed`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 06:27 UTC scaled-MMAv5 scale-factor fragments now have a
   backend-owned planner API. `MMAv5ScaleFactorFragment` and
   `getMMAv5ScaleFactorFragment(...)` live in the TritonNvidiaGPU dialect, and

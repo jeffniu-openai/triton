@@ -285,6 +285,12 @@ Progress:
   row/column mask, narrower atom/source format, or a proved non-overwriting
   multi-message schedule. This is still a clean unsupported boundary, but it
   removes duplicated family-shaped no-mask reasoning from the copy planner.
+- 2026-04-17 06:30 UTC: consolidated the canonical warpx2 shared-source
+  dimension and offset-basis contract. The runtime source-layout support
+  preflight and the `warpx2::02_13` direct-seed descriptor immediate path now
+  use one backend helper, so future source-message/rematerialization work does
+  not have to keep two copies of the same `128x4` shared-linear source fact in
+  sync.
 - 2026-04-15 18:43 UTC: raised the copy instruction-column projection check
   into a preflight support layer. The planner now rejects sub-instruction
   source-column permutations before descriptor enumeration, so an expanded

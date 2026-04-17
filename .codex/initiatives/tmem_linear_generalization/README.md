@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:30 UTC: consolidated the canonical warpx2 shared-source
+  layout contract inside `TensorMemoryUtils`. The runtime support preflight
+  and the `warpx2::02_13` direct-seed descriptor path now share the same
+  `hasOnlyWarpx2SharedSourceDims(...)` and
+  `hasCanonicalWarpx2SharedSourceOffsetBases(...)` checks instead of carrying
+  duplicate expected offset-basis tables. Support is unchanged; this keeps the
+  current source-rematerialization boundary in one backend location before any
+  future `warpx2` source-message schedule work. Validation: `make -j8`,
+  direct `invalid.mlir` verifier, focused warpx2 copy selector (`30 passed`),
+  and `git diff --check`.
 - 2026-04-17 06:27 UTC: moved scaled-MMAv5 scale-factor fragment arithmetic
   out of LLVM lowering and into the TritonNvidiaGPU dialect backend as
   `getMMAv5ScaleFactorFragment(...)`. Lowering still computes the scale

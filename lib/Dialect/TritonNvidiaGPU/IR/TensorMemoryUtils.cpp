@@ -8506,6 +8506,33 @@ getTMemCopySourceFormatSupport(const TMemCopyMessagePlan &message,
   return getSupportedTMemCopyResult();
 }
 
+static bool hasOnlyWarpx2SharedSourceDims(const LinearLayout &shmemLl,
+                                          StringAttr offsetDim,
+                                          StringAttr blockDim) {
+  if (!shmemLl.hasInDim(offsetDim))
+    return false;
+  return llvm::all_of(shmemLl.getInDimNames(), [&](StringAttr dim) {
+    return dim == offsetDim || dim == blockDim;
+  });
+}
+
+static bool hasCanonicalWarpx2SharedSourceOffsetBases(
+    const LinearLayout &shmemLl, StringAttr offsetDim) {
+  constexpr int32_t expectedOffsetBases[][2] = {
+      {32, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0},
+      {4, 0},  {8, 0}, {16, 0}, {64, 0},
+  };
+  auto actualOffsetBases = shmemLl.getBases().lookup(offsetDim);
+  if (actualOffsetBases.size() != std::size(expectedOffsetBases))
+    return false;
+  for (auto [actual, expected] :
+       llvm::zip(actualOffsetBases, llvm::ArrayRef(expectedOffsetBases))) {
+    if (!llvm::equal(actual, llvm::ArrayRef(expected)))
+      return false;
+  }
+  return true;
+}
+
 TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
                                       TMemCopyFamily family) {
@@ -8535,35 +8562,19 @@ getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
   auto kBlock = StringAttr::get(ctx, "block");
   if (!shmemLl.hasInDim(kOffset))
     return setError("warpx2 tcgen05.copy shared layout has no offset dimension.");
-  for (auto dim : shmemLl.getInDimNames()) {
-    if (dim != kOffset && dim != kBlock) {
-      return setError("warpx2 tcgen05.copy shared layout may only use offset "
-                      "and block dimensions.");
-    }
-  }
+  if (!hasOnlyWarpx2SharedSourceDims(shmemLl, kOffset, kBlock))
+    return setError("warpx2 tcgen05.copy shared layout may only use offset "
+                    "and block dimensions.");
 
-  constexpr int32_t expectedOffsetBases[][2] = {
-      {32, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0},
-      {4, 0},  {8, 0}, {16, 0}, {64, 0},
-  };
   // This is stronger than a descriptor-representability precheck. Local
   // probes showed noncanonical dense/near-canonical shared layouts can either
   // select a descriptor and still copy the wrong logical source rows/columns,
   // or fail only after source-footprint scheduling. Keep this as the current
   // source-layout contract until warpx2 planning carries the full source
   // rematerialization schedule instead of only an MMAShared descriptor.
-  auto actualOffsetBases = shmemLl.getBases().lookup(kOffset);
-  if (actualOffsetBases.size() != std::size(expectedOffsetBases)) {
+  if (!hasCanonicalWarpx2SharedSourceOffsetBases(shmemLl, kOffset))
     return setError("warpx2 tcgen05.copy currently supports only the "
                     "canonical 128x4 shared-linear offset basis order.");
-  }
-  for (auto [actual, expected] :
-       llvm::zip(actualOffsetBases, llvm::ArrayRef(expectedOffsetBases))) {
-    if (!llvm::equal(actual, llvm::ArrayRef(expected))) {
-      return setError("warpx2 tcgen05.copy currently supports only the "
-                      "canonical 128x4 shared-linear offset basis order.");
-    }
-  }
 
   auto blockBases = shmemLl.getBases().lookup(kBlock);
   if (srcTy.getShape()[0] == 128) {
@@ -9684,10 +9695,8 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
   auto kBlock = StringAttr::get(ctx, "block");
   if (!shmemLl.hasInDim(kOffset))
     return std::nullopt;
-  for (auto dim : shmemLl.getInDimNames()) {
-    if (dim != kOffset && dim != kBlock)
-      return std::nullopt;
-  }
+  if (!hasOnlyWarpx2SharedSourceDims(shmemLl, kOffset, kBlock))
+    return std::nullopt;
   if (shmemLl.hasInDim(kBlock) &&
       !llvm::all_of(shmemLl.getBases().lookup(kBlock), [](ArrayRef<int32_t> b) {
         return llvm::all_of(b, [](int32_t v) { return v == 0; });
@@ -9695,18 +9704,8 @@ getDirectTMemCopySeedDescriptorImm(MemDescType srcTy, TMemCopyFamily family) {
     return std::nullopt;
   }
 
-  constexpr int32_t expectedOffsetBases[][2] = {
-      {32, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0},
-      {4, 0},  {8, 0}, {16, 0}, {64, 0},
-  };
-  auto actualOffsetBases = shmemLl.getBases().lookup(kOffset);
-  if (actualOffsetBases.size() != std::size(expectedOffsetBases))
+  if (!hasCanonicalWarpx2SharedSourceOffsetBases(shmemLl, kOffset))
     return std::nullopt;
-  for (auto [actual, expected] :
-       llvm::zip(actualOffsetBases, llvm::ArrayRef(expectedOffsetBases))) {
-    if (!llvm::equal(actual, llvm::ArrayRef(expected)))
-      return std::nullopt;
-  }
 
   uint64_t seedImm = 0;
   seedImm |= 1ULL << 46;

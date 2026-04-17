@@ -21216,3 +21216,39 @@ Open after this slice:
     mma_scaled_acc_blockn64_direct_layout"`
     (`52 passed, 1526 deselected in 35.04s`);
   - `git diff --check`.
+
+## 2026-04-17 06:30 UTC: unified warpx2 shared-source layout contract
+
+- Starting point: `codex/tmem` at `6478a7408`.
+- Change:
+  - added shared internal helpers for the canonical warpx2 shared source
+    dimensions and offset-basis order;
+  - made `getTMemCopySharedLayoutRuntimeSupport(...)` and
+    `getDirectTMemCopySeedDescriptorImm(...)` consume the same helpers instead
+    of duplicating the expected `128x4` offset-basis table;
+  - kept the existing clean negatives and direct-seed eligibility unchanged.
+- Support boundary:
+  - no support surface changed. The current warpx2 copy source-layout contract
+    remains intentionally stricter than descriptor representability because
+    previous probes showed noncanonical shared layouts can compile wrong or
+    fail only after source-footprint scheduling. Future `warpx2` support must
+    add explicit source rematerialization/message scheduling instead of a
+    second offset-basis interpretation.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-copy-warpx2-contract
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "cp_no_scales_warpx2_01_23_candidate_positive or
+    cp_no_scales_warpx2_02_13_candidate_positive or
+    cp_no_scales_warpx2_01_23_twocta_positive or
+    cp_no_scales_warpx2_02_13_twocta_candidate_reports_clean_unsupported or
+    cp_no_scales_warpx2_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_subword_dtypes_report_clean_error"`
+    (`30 passed, 1548 deselected in 12.16s`);
+  - `git diff --check`.
