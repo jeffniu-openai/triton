@@ -48,6 +48,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 20:48 UTC: integer `ld.red` requests with
+  `propagate_nan=ALL` are now supported through the existing software
+  reduction path. The frontend treats NaN propagation as `NONE` for
+  non-floating element types before choosing the software combiner; floating
+  non-f32 semantics are unchanged. This promotes direct and descriptor-chain
+  i32 NaN rows from clean unsupported to positives. Validation: `make -j8`,
+  exact promoted rows (`4 passed`), full `ld_red_non_f32` selector
+  (`44 passed`), runner `ld_red` bucket (`247 passed`), clean-negative
+  rebaseline (`111/1592`, combined `161/1592`), Python byte-compile, and
+  `git diff --check`.
 - 2026-04-17 20:41 UTC: the runtime-matrix runner is corrected and reaudited
   after the M64 physical-subview work. Shards now force checkout-local
   `PYTHONPATH`, the `splitn` bucket includes the two 16-bit M64 parity rows

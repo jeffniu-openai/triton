@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 20:41 UTC
+Last updated: 2026-04-17 20:48 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -68,6 +68,9 @@ PYTHONPATH=.:./python:./python/test/gluon \
 Result after the 19:25 two-CTA `warpx2::01_23` source-rematerialization
 slice: `115/1592` tests collected (1477 deselected) in 3.14s.
 
+Result after the 20:48 integer `ld.red` NaN no-op promotion:
+`111/1592` tests collected (1481 deselected) in 3.13s.
+
 Additional combined clean-negative/clean-error rebaseline:
 
 ```bash
@@ -79,14 +82,18 @@ PYTHONPATH=.:./python:./python/test/gluon \
 Result after the 19:25 two-CTA `warpx2::01_23` source-rematerialization
 slice: `165/1592` tests collected (1427 deselected) in 3.20s.
 
+Result after the 20:48 integer `ld.red` NaN no-op promotion:
+`161/1592` tests collected (1431 deselected) in 3.13s.
+
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
   too-narrow n-sharded scale atoms. The n-sharded rows now report a structured
   tensor-memory-scales packet-footprint requirement with required/exposed
   scale-element counts.
-- `ld.red` non-f32 NaN-propagating cases: software fallback exists for many
-  non-f32 reductions, but these rows remain true semantic boundaries unless a
-  correct fallback can preserve the requested NaN contract.
+- `ld.red` non-f32 reductions: integer `propagate_nan=ALL` is now positive
+  through the software reduction path because NaN propagation is a no-op for
+  integer element types. Remaining non-f32 rows are software positives or true
+  dtype/storage boundaries outside this bucket.
 - `tcgen05.copy` scales descriptor-view rows: ordinary noncanonical 64x16
   shared-linear sources and 64x16 shared subslices now rematerialize into the
   canonical warpx4 shared source before copy. The remaining descriptor-view row
@@ -171,6 +178,25 @@ Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - `python -m py_compile
     .codex/initiatives/tmem_linear_generalization/run_tmem_runtime_matrix_sweep.py
     python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
+## Latest Support Promotion
+
+2026-04-17 20:48 UTC:
+
+- Promoted direct and descriptor-chain i32 `ld.red` rows with
+  `propagate_nan=ALL` from clean unsupported to positive software reductions.
+- Semantics: NaN propagation is treated as `NONE` for non-floating element
+  types before selecting the software reduction combiner; floating non-f32
+  behavior is unchanged.
+- Validation:
+  - `make -j8`;
+  - exact promoted rows passed `4/4`;
+  - `-k 'ld_red_non_f32'` passed `44/44`;
+  - full runner `ld_red` bucket passed `247/247`;
+  - clean-negative inventory is now `111/1592`;
+  - combined clean-negative/error inventory is now `161/1592`;
+  - Python byte-compile for the changed Python files;
   - `git diff --check`.
 
 ## Immediate Execution Order

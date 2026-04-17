@@ -5738,7 +5738,7 @@ def _assert_ld_red_runtime_outputs(inp, out, red, red_op, use_abs, propagate_nan
 
 
 def _seed_ld_red_nan_rows(inp, propagate_nan):
-    if propagate_nan == tl.PropagateNan.ALL:
+    if propagate_nan == tl.PropagateNan.ALL and inp.is_floating_point():
         inp[10, 5] = float("nan")
         inp[50, 15] = float("nan")
 
@@ -5786,6 +5786,15 @@ LD_RED_NON_F32_SOFTWARE_CASES = [
         True,
         tl.PropagateNan.NONE,
         id="i32_abs",
+    ),
+    pytest.param(
+        "i32_nan",
+        torch.int32,
+        _make_tmem_linear_layout(128, 128),
+        "auto",
+        False,
+        tl.PropagateNan.ALL,
+        id="i32_nan",
     ),
     pytest.param(
         "bf16_plain",
@@ -5870,19 +5879,6 @@ LD_RED_NON_F32_SOFTWARE_CASES = [
     ),
 ]
 
-LD_RED_NON_F32_UNSUPPORTED_CASES = [
-    pytest.param(
-        "i32_nan",
-        torch.int32,
-        _make_tmem_linear_layout(128, 128),
-        "auto",
-        False,
-        tl.PropagateNan.ALL,
-        "'NaN' requires floating-point element type",
-        id="i32_nan",
-    ),
-]
-
 LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES = [
     pytest.param(
         "i32_plain_descriptor",
@@ -5891,6 +5887,14 @@ LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES = [
         False,
         tl.PropagateNan.NONE,
         id="i32_plain_descriptor",
+    ),
+    pytest.param(
+        "i32_nan_descriptor",
+        torch.int32,
+        "auto",
+        False,
+        tl.PropagateNan.ALL,
+        id="i32_nan_descriptor",
     ),
     pytest.param(
         "bf16_plain_descriptor",
@@ -5955,18 +5959,6 @@ LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES = [
         False,
         tl.PropagateNan.NONE,
         id="i8_plain_descriptor",
-    ),
-]
-
-LD_RED_NON_F32_DESCRIPTOR_CHAIN_UNSUPPORTED_CASES = [
-    pytest.param(
-        "i32_nan_descriptor",
-        torch.int32,
-        "auto",
-        False,
-        tl.PropagateNan.ALL,
-        "'NaN' requires floating-point element type",
-        id="i32_nan_descriptor",
     ),
 ]
 
@@ -8365,30 +8357,6 @@ def test_tmem_runtime_matrix_ld_red_non_f32_contract_uses_software_reduce(
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
 @pytest.mark.parametrize("red_op", ["min", "max"])
 @pytest.mark.parametrize(
-    "name,dtype,layout,load_variant,use_abs,propagate_nan,expected_diag", LD_RED_NON_F32_UNSUPPORTED_CASES
-)
-def test_tmem_runtime_matrix_ld_red_non_f32_contract_reports_clean_unsupported(
-    name, dtype, layout, load_variant, use_abs, propagate_nan, expected_diag, red_op, capfd
-):
-    inp = torch.zeros((128, 128), dtype=dtype, device="cuda")
-    out = torch.empty_like(inp)
-    red = torch.empty((128,), dtype=dtype, device="cuda")
-
-    with pytest.raises(Exception) as err:
-        tmem_ld_red_non_f32_contract_kernel[(1, )](
-            inp, out, red, layout, load_variant, red_op, use_abs, propagate_nan, num_warps=4
-        )
-
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert expected_diag in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
-
-
-@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize(
     "name,dtype,load_variant,use_abs,propagate_nan", LD_RED_NON_F32_DESCRIPTOR_CHAIN_SOFTWARE_CASES
 )
 def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduce(
@@ -8411,32 +8379,6 @@ def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_uses_software_reduc
     assert "ttg.memdesc_index" in ttgir
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttg.memdesc_reshape" in ttgir
-
-
-@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")
-@pytest.mark.parametrize("red_op", ["min", "max"])
-@pytest.mark.parametrize(
-    "name,dtype,load_variant,use_abs,propagate_nan,expected_diag",
-    LD_RED_NON_F32_DESCRIPTOR_CHAIN_UNSUPPORTED_CASES,
-)
-def test_tmem_runtime_matrix_ld_red_non_f32_descriptor_chain_reports_clean_unsupported(
-    name, dtype, load_variant, use_abs, propagate_nan, expected_diag, red_op, capfd
-):
-    layout = _make_tmem_linear_layout(128, 128)
-    inp = torch.zeros((128, 128), dtype=dtype, device="cuda")
-    out = torch.empty_like(inp)
-    red = torch.empty((128,), dtype=dtype, device="cuda")
-
-    with pytest.raises(Exception) as err:
-        tmem_ld_red_descriptor_chain_kernel[(1, )](
-            inp, out, red, layout, 128, load_variant, red_op, use_abs, propagate_nan, num_warps=4
-        )
-
-    captured = capfd.readouterr()
-    text = str(err.value) + captured.err + captured.out
-    assert expected_diag in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
 
 
 @pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra")

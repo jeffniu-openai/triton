@@ -693,14 +693,13 @@ class tensor_memory_descriptor(base_value):
         num_warps = builder.options.num_warps
 
         if self.dtype != ttgl.float32:
-            if propagate_nan == ir.PROPAGATE_NAN.ALL and not self.dtype.is_floating():
-                raise ValueError("'NaN' requires floating-point element type")
+            software_propagate_nan = propagate_nan if self.dtype.is_floating() else ir.PROPAGATE_NAN.NONE
             result = self.load(layout=layout, _semantic=_semantic, _generator=_generator)
             reduce_input = ttgl_math.abs(result, _semantic=_semantic) if abs_flag else result
             reduced = ttgl.reduce(
                 reduce_input,
                 axis=1,
-                combine_fn=_get_tmem_software_reduce_combine(red_op, propagate_nan, self.dtype),
+                combine_fn=_get_tmem_software_reduce_combine(red_op, software_propagate_nan, self.dtype),
                 _semantic=_semantic,
                 _generator=_generator,
             )

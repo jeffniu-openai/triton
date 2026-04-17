@@ -24524,3 +24524,29 @@ Open after this slice:
     `ld_red` `247/0`, `ldst` `295/98`);
   - Python byte-compile for the runner and runtime matrix;
   - `git diff --check`.
+
+## 2026-04-17 20:48 UTC: promote integer ld.red propagate-NaN rows
+
+- Starting point: `codex/tmem` at pushed `a729311de`.
+- Context:
+  - the residual clean-negative inventory still contained direct and
+    descriptor-chain i32 `ld.red` rows solely because they requested
+    `propagate_nan=ALL`;
+  - integer element types have no NaN payloads, and non-f32 reductions already
+    lower through software `load + reduce`, so this was stale frontend
+    semantics rather than an ISA limitation.
+- Change:
+  - for non-f32 reduction loads, non-floating dtypes now choose the software
+    combiner with `PROPAGATE_NAN.NONE`;
+  - promoted `i32_nan` and `i32_nan_descriptor` cases to positive software
+    reductions;
+  - NaN seeding in tests is restricted to floating tensors.
+- Validation:
+  - `make -j8`;
+  - exact promoted direct and descriptor-chain rows passed `4/4`;
+  - `-k 'ld_red_non_f32'` passed `44/44`;
+  - runner `ld_red` bucket passed `247/247`;
+  - collect-only rebaseline: `reports_clean_unsupported` is `111/1592`;
+    combined clean-negative/error is `161/1592`;
+  - Python byte-compile for changed Python files;
+  - `git diff --check`.

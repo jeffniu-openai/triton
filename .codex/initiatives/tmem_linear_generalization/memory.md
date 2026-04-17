@@ -13174,3 +13174,33 @@ rejection, not rescue
   - resume Phase C support-bearing work from `completion_execution_tracker.md`,
     with no-scales `tcgen05.copy` remaining the largest linear-layout
     completeness frontier.
+
+## Current: 2026-04-17 20:48 UTC integer ld.red NaN no-op promotion
+
+- Support change:
+  - direct and descriptor-chain i32 `ld.red` requests with
+    `propagate_nan=ALL` now lower through the existing non-f32 software
+    reduction path;
+  - non-floating element types force software combiner NaN behavior to
+    `PROPAGATE_NAN.NONE`, because there are no NaN payloads to preserve;
+  - floating non-f32 behavior, including bf16/f16 NaN propagation, is
+    unchanged.
+- Test change:
+  - promoted `i32_nan` and `i32_nan_descriptor` rows into the software-positive
+    case lists;
+  - removed the now-empty clean-unsupported test functions for those rows;
+  - `_seed_ld_red_nan_rows` only writes NaNs to floating tensors.
+- Validation:
+  - `make -j8`;
+  - exact promoted rows passed `4/4`;
+  - `CUDA_VISIBLE_DEVICES=0 ... pytest -s --tb=short -k 'ld_red_non_f32'
+    python/test/gluon/test_tmem_runtime_matrix.py` passed `44/44`;
+  - runner `ld_red` bucket passed `247/247`;
+  - clean-negative collect-only rebaseline is `111/1592`; combined
+    clean-negative/error is `161/1592`;
+  - Python byte-compile for changed Python files;
+  - `git diff --check`.
+- Next:
+  - checkpoint and push;
+  - continue Phase C copy work, focusing on true schedule gaps rather than the
+    now-removed integer NaN semantic guard.
