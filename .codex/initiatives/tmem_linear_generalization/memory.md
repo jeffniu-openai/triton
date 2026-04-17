@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 07:49 UTC scaled-MMAv5 operation-kind and format
+  metadata is backend-owned. The TritonNvidiaGPU dialect now exposes
+  `MMAv5ScaledMxfpKind`, `getMMAv5ScaledMxfpKind(...)`,
+  `isMMAv5ScaledMxfp4(...)`, `getMMAv5ScaledFormatBitSize(...)`, and
+  `getMMAv5ScaleFactorColsPerSet(...)`. `MMAv5.cpp` still owns PTX opcode
+  string emission and instruction descriptor packing, but no longer keeps its
+  own MXFP kind enum, format bit-size table, or scale-factor column grouping.
+  Support is unchanged. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile for `test_tmem_runtime_matrix.py` and
+  `test_core.py`, and
+  `test_tmem_runtime_matrix.py -k "mma_scaled_minimal or
+  mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+  mma_scaled_acc_tile_permuted_64_format_matrix or
+  mma_scaled_acc_tile_permuted_64_format_use_acc or
+  mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+  mma_scaled_tmem_lhs_full_shape_tile_permuted_fp4"` (`51 passed`).
+
 - Latest: 2026-04-17 07:44 UTC two more direct `ld/st` selection policies are
   backend-owned. `TensorMemoryUtils` now exposes
   `shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(...)` for the non-value

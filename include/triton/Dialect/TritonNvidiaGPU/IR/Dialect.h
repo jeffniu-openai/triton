@@ -246,6 +246,12 @@ struct MMAv5ScaledAccumulatorSupport {
       narrowNScaleFragmentRequirement;
 };
 
+enum class MMAv5ScaledMxfpKind {
+  Mxf8f6f4 = 0,
+  Mxf4 = 1,
+  Mxf4NvF4 = 2,
+};
+
 struct MMAv5ScaleFactorFragment {
   unsigned tmemColumnOffset;
   unsigned subColumnId;
@@ -264,6 +270,17 @@ getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
 MMAv5ScaledAccumulatorSupport
 getMMAv5ScaledAccumulatorSupport(gpu::MemDescType memDescType);
+
+MMAv5ScaledMxfpKind
+getMMAv5ScaledMxfpKind(ScaleDotElemType typeA, ScaleDotElemType typeB,
+                       Type scaleAType, Type scaleBType,
+                       bool hasTransposedOperand);
+
+bool isMMAv5ScaledMxfp4(MMAv5ScaledMxfpKind kind);
+
+unsigned getMMAv5ScaledFormatBitSize(ScaleDotElemType type);
+
+unsigned getMMAv5ScaleFactorColsPerSet(MMAv5ScaledMxfpKind kind);
 
 MMAv5ScaleFactorFragment getMMAv5ScaleFactorFragment(
     unsigned nonKRep, unsigned kRep, unsigned numRepNonK, unsigned numRepK,

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 07:49 UTC: moved scaled-MMAv5 operation-kind and element-format
+  metadata out of LLVM lowering and into the TritonNvidiaGPU dialect backend.
+  `MMAv5ScaledMxfpKind`, `getMMAv5ScaledMxfpKind(...)`,
+  `isMMAv5ScaledMxfp4(...)`, `getMMAv5ScaledFormatBitSize(...)`, and
+  `getMMAv5ScaleFactorColsPerSet(...)` now live beside the scaled accumulator
+  and scale-fragment planners. Support is unchanged; opcode string emission
+  remains in lowering. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile for affected Gluon test files, and focused
+  scaled-MMAv5 runtime selector (`51 passed`).
 - 2026-04-17 07:44 UTC: moved two more Gluon-local direct `ld/st`
   selection policies into `TensorMemoryUtils`: the non-value M64 direct-atom
   canonical-layout retry and the legacy `TensorMemoryLayout` auto path that

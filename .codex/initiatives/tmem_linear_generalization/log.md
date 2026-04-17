@@ -21552,3 +21552,35 @@ Open after this slice:
     python/test/gluon/test_core.py -k "tmem_linear_m64 or test_tmem_load or
     test_tmem_store"` (`21 passed, 17945 deselected in 6.02s`);
   - `git diff --check`.
+
+## 2026-04-17 07:49 UTC: moved scaled-MMAv5 kind metadata to backend
+
+- Starting point: `codex/tmem` at `9872d38a5`.
+- Change:
+  - added backend `MMAv5ScaledMxfpKind` plus helpers for scaled-MMAv5
+    operation-kind selection, MXFP4 classification, logical element format bit
+    size, and scale-factor columns-per-set;
+  - replaced lowering-local `mxfpKind`, `getMXFPKind(...)`,
+    `getFormatBitSize(...)`, and `getScaleFactorColsPerSet(...)` in
+    `MMAv5.cpp`;
+  - preserved support and opcode behavior. Lowering still owns the PTX opcode
+    suffix and instruction descriptor bit packing.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-kind-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_minimal or
+    mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+    mma_scaled_acc_tile_permuted_64_format_matrix or
+    mma_scaled_acc_tile_permuted_64_format_use_acc or
+    mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+    mma_scaled_tmem_lhs_full_shape_tile_permuted_fp4"` (`51 passed,
+    1527 deselected in 34.36s`).

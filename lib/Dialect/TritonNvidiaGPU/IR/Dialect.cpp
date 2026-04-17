@@ -1285,6 +1285,55 @@ static unsigned ceilDivPositive(unsigned numerator, unsigned denominator) {
   return (numerator + denominator - 1) / denominator;
 }
 
+MMAv5ScaledMxfpKind
+getMMAv5ScaledMxfpKind(ScaleDotElemType typeA, ScaleDotElemType typeB,
+                       Type scaleAType, Type scaleBType,
+                       bool hasTransposedOperand) {
+  if (typeA == ScaleDotElemType::E2M1 && typeB == ScaleDotElemType::E2M1) {
+    if (llvm::isa<Float8E4M3FNType>(scaleAType) &&
+        llvm::isa<Float8E4M3FNType>(scaleBType)) {
+      assert(!hasTransposedOperand &&
+             "MMAv5 with kind=mxf4nvf4 does not support transpose");
+      return MMAv5ScaledMxfpKind::Mxf4NvF4;
+    }
+    if (!hasTransposedOperand)
+      return MMAv5ScaledMxfpKind::Mxf4;
+  }
+  return MMAv5ScaledMxfpKind::Mxf8f6f4;
+}
+
+bool isMMAv5ScaledMxfp4(MMAv5ScaledMxfpKind kind) {
+  return kind != MMAv5ScaledMxfpKind::Mxf8f6f4;
+}
+
+unsigned getMMAv5ScaledFormatBitSize(ScaleDotElemType type) {
+  switch (type) {
+  case ScaleDotElemType::E4M3:
+  case ScaleDotElemType::E5M2:
+    return 8;
+  case ScaleDotElemType::E2M3:
+  case ScaleDotElemType::E3M2:
+    return 6;
+  case ScaleDotElemType::E2M1:
+    return 4;
+  default:
+    llvm_unreachable("Unsupported type.");
+  }
+}
+
+unsigned getMMAv5ScaleFactorColsPerSet(MMAv5ScaledMxfpKind kind) {
+  switch (kind) {
+  case MMAv5ScaledMxfpKind::Mxf8f6f4:
+    return 1;
+  case MMAv5ScaledMxfpKind::Mxf4:
+    return 2;
+  case MMAv5ScaledMxfpKind::Mxf4NvF4:
+    return 4;
+  default:
+    llvm_unreachable("Unsupported mxfp kind.");
+  }
+}
+
 MMAv5ScaleFactorFragment getMMAv5ScaleFactorFragment(
     unsigned nonKRep, unsigned kRep, unsigned numRepNonK, unsigned numRepK,
     unsigned numTMemScaleCols, unsigned scaleFactorColsPerSet,

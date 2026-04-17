@@ -152,8 +152,6 @@ namespace {
 // InstDescriptor
 //===----------------------------------------------------------------------===//
 
-enum class mxfpKind { mxf8f6f4 = 0, mxf4 = 1, mxf4nvf4 = 2 };
-
 static bool isTransposed(Value operand) {
   auto tensorTy = cast<MemDescType>(operand.getType());
   auto enc = tensorTy.getEncoding();
@@ -172,21 +170,6 @@ static bool isTransposed(Value operand) {
   }
   return false;
 }
-
-inline mxfpKind getMXFPKind(ScaleDotElemType typeA, ScaleDotElemType typeB,
-                            Type scaleAType, Type scaleBType, bool transpose) {
-  if (typeA == ScaleDotElemType::E2M1 && typeB == ScaleDotElemType::E2M1) {
-    if (llvm::isa<Float8E4M3FNType>(scaleAType) &&
-        llvm::isa<Float8E4M3FNType>(scaleBType)) {
-      assert(!transpose &&
-             "MMAv5 with kind=mxf4nvf4 does not support transpose");
-      return mxfpKind::mxf4nvf4;
-    }
-    if (!transpose)
-      return mxfpKind::mxf4;
-  }
-  return mxfpKind::mxf8f6f4;
-};
 
 static Value createInstDescriptor(ConversionPatternRewriter &rewriter,
                                   ttng::TCGen5MMAOp op, int M, int N,
@@ -256,7 +239,7 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
                                        bool transposeA, bool transposeB,
                                        int scaleFactorsubIdxA,
                                        int scaleFactorsubIdxB,
-                                       mxfpKind mxfpInstKind) {
+                                       ttng::MMAv5ScaledMxfpKind mxfpInstKind) {
   Location loc = op.getLoc();
   auto b = TritonLLVMOpBuilder(loc, rewriter);
   union TCGen5InstructionDescriptor {
@@ -305,23 +288,23 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
   desc.transposeB = transposeB;
   desc.M = M >> 4;
   desc.N = N >> 3;
-  desc.aType =
-      getTypeEncoding(op.getAType(), mxfpInstKind != mxfpKind::mxf8f6f4);
-  desc.bType =
-      getTypeEncoding(op.getBType(), mxfpInstKind != mxfpKind::mxf8f6f4);
+  desc.aType = getTypeEncoding(op.getAType(),
+                               ttng::isMMAv5ScaledMxfp4(mxfpInstKind));
+  desc.bType = getTypeEncoding(op.getBType(),
+                               ttng::isMMAv5ScaledMxfp4(mxfpInstKind));
   desc.AScaleFactor = scaleFactorsubIdxA;
   desc.BScaleFactor = scaleFactorsubIdxB;
   // Hardcoded UE8M0 scale type.
   desc.scaleType = 1;
 
-  if (mxfpInstKind != mxfpKind::mxf8f6f4) {
+  if (ttng::isMMAv5ScaledMxfp4(mxfpInstKind)) {
     assert(desc.aType == 1 && desc.bType == 1);
     assert(desc.AScaleFactor <= 1 && desc.BScaleFactor <= 1);
     assert(desc.transposeA == 0 &&
            "MMAv5 with kind=mxf4 does not support transpose");
     assert(desc.transposeB == 0 &&
            "MMAv5 with kind=mxf4 does not support transpose");
-    if (mxfpInstKind == mxfpKind::mxf4) {
+    if (mxfpInstKind == ttng::MMAv5ScaledMxfpKind::Mxf4) {
       desc.AScaleFactor *= 2;
       desc.BScaleFactor *= 2;
       assert(desc.AScaleFactor == 0 ||
@@ -330,7 +313,7 @@ static Value createScaleInstDescriptor(ConversionPatternRewriter &rewriter,
       assert(desc.BScaleFactor == 0 ||
              desc.BScaleFactor == 2 &&
                  "MMAv5 with kind=mxf4 only supports SFB_ID 0 or 2");
-    } else if (mxfpInstKind == mxfpKind::mxf4nvf4) {
+    } else if (mxfpInstKind == ttng::MMAv5ScaledMxfpKind::Mxf4NvF4) {
       desc.scaleType = 0; // UE4M3
       assert(desc.AScaleFactor == 0 &&
              "MMAv5 with kind=mxf4nvf4 currently only supports SFA_ID 0");
@@ -384,16 +367,17 @@ static void createScaledGen5MMA(ConversionPatternRewriter &rewriter,
                                 MemDescOperand a, Value b, MemDescOperand d,
                                 Value scaleA, Value scaleB, Value pred,
                                 Value instDescriptor, Value useInitAcc,
-                                bool aInTmem, mxfpKind mxfpInstKind,
+                                bool aInTmem,
+                                ttng::MMAv5ScaledMxfpKind mxfpInstKind,
                                 bool twoCTAs) {
   PTXBuilder ptxBuilder;
   std::string opcode =
       "tcgen05.mma.cta_group::" + std::to_string(twoCTAs ? 2 : 1) + ".kind::";
-  if (mxfpInstKind == mxfpKind::mxf8f6f4) {
+  if (mxfpInstKind == ttng::MMAv5ScaledMxfpKind::Mxf8f6f4) {
     opcode += "mxf8f6f4.block_scale.scale_vec::1X";
-  } else if (mxfpInstKind == mxfpKind::mxf4) {
+  } else if (mxfpInstKind == ttng::MMAv5ScaledMxfpKind::Mxf4) {
     opcode += "mxf4.block_scale.scale_vec::2X";
-  } else if (mxfpInstKind == mxfpKind::mxf4nvf4) {
+  } else if (mxfpInstKind == ttng::MMAv5ScaledMxfpKind::Mxf4NvF4) {
     opcode += "mxf4nvf4.block_scale.scale_vec::4X";
   } else {
     assert(0 && "Unsupported mxfp kind.");
@@ -745,36 +729,6 @@ LogicalResult convertDot(const LLVMTypeConverter &typeConverter,
       /*opKindIsMXFP4=*/false, dot);
 }
 
-int64_t getFormatBitSize(ScaleDotElemType type) {
-  switch (type) {
-  case ScaleDotElemType::E4M3:
-    return 8;
-  case ScaleDotElemType::E5M2:
-    return 8;
-  case ScaleDotElemType::E2M3:
-    return 6;
-  case ScaleDotElemType::E3M2:
-    return 6;
-  case ScaleDotElemType::E2M1:
-    return 4;
-  default:
-    llvm_unreachable("Unsupported type.");
-  }
-}
-
-int getScaleFactorColsPerSet(mxfpKind kind) {
-  switch (kind) {
-  case mxfpKind::mxf8f6f4:
-    return 1;
-  case mxfpKind::mxf4:
-    return 2;
-  case mxfpKind::mxf4nvf4:
-    return 4;
-  default:
-    llvm_unreachable("Unsupported mxfp kind.");
-  }
-};
-
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                                ConversionPatternRewriter &rewriter,
                                Location loc, ttng::TCGen5MMAScaledOp op,
@@ -783,11 +737,11 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   MemDescType bTensorTy = op.getB().getType();
   MemDescType dTensorTy = op.getD().getType();
 
-  mxfpKind mxfpInstKind = getMXFPKind(
+  auto mxfpInstKind = ttng::getMMAv5ScaledMxfpKind(
       op.getAType(), op.getBType(), op.getAScale().getType().getElementType(),
       op.getBScale().getType().getElementType(),
       isTransposed(op.getA()) || !isTransposed(op.getB()));
-  bool opKindIsMXFP4 = mxfpInstKind != mxfpKind::mxf8f6f4;
+  bool opKindIsMXFP4 = ttng::isMMAv5ScaledMxfp4(mxfpInstKind);
 
   DotConversion dot;
 
@@ -818,8 +772,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
     dot.shapeB[0] *= 2;
   }
 
-  dot.numBitsPerElementA = getFormatBitSize(op.getAType());
-  dot.numBitsPerElementB = getFormatBitSize(op.getBType());
+  dot.numBitsPerElementA = ttng::getMMAv5ScaledFormatBitSize(op.getAType());
+  dot.numBitsPerElementB = ttng::getMMAv5ScaledFormatBitSize(op.getBType());
 
   TritonLLVMOpBuilder tb(loc, rewriter);
   Value baseScaleA = tb.ptrtoint(i32_ty, adaptor.getAScale());
@@ -853,7 +807,8 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                           const DotConversion::InstDesc &desc, int m, int n,
                           int k) {
     auto [numRepM, numRepN, numRepK] = desc.repShape;
-    int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
+    unsigned scaleFactorColsPerSet =
+        ttng::getMMAv5ScaleFactorColsPerSet(mxfpInstKind);
     auto scaleAFragment = ttng::getMMAv5ScaleFactorFragment(
         m, k, numRepM, numRepK, ttng::getTmemAllocSizes(aScaleTy).numCols,
         scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1);

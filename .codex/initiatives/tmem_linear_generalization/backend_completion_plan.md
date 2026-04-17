@@ -1434,6 +1434,13 @@ Progress:
   misalign. The requirement now records the public matrix-B scale fragment's
   minimum addressable N span (`64`). Future support needs a real alternative
   B-scale storage/rematerialization contract, not another stride tweak.
+- 2026-04-17 07:49 UTC: scaled-MMAv5 operation-kind and format metadata moved
+  from LLVM lowering into the TritonNvidiaGPU dialect backend. Lowering now
+  asks backend helpers for the MXFP kind, MXFP4 classification, logical
+  element bit size, and scale-factor columns-per-set before consuming the
+  backend-owned scale-fragment planner. This is support-neutral but keeps the
+  remaining B-scale fragment representation work anchored in one backend API
+  instead of a lowering-local kind table.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy
