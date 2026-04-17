@@ -11548,7 +11548,37 @@ rejection, not rescue
     cp_no_scales_warpx2_dense_shared'` (`32 passed, 1543 deselected`);
   - `git diff --check`.
 
-## Latest: 2026-04-16 23:59 UTC scaled-MMAv5 repeated-N32 requirement checkpoint
+## Latest: 2026-04-17 02:55 UTC identity 32x32 direct ld/st boundary reprobe
+
+- Re-probed the single-CTA identity 32x32 multidim-slice `ld/st` boundary after
+  deleting the stale subview-offset special. All probes were removed before
+  continuing.
+- Facts established:
+  - the exact descriptor-view base offsets are already derivable by the generic
+    origin-delta path: the chain computes row `64 << 16` for the leading
+    slice and column `64` for the dim-2 slice;
+  - borrowing the 128x128 root support query lets lowering compute a support
+    query with origin `row=64,col=64`, but reshaping that full support image to
+    a 32x32 register layout fails the direct `ld/st` broadcast/value-count
+    checks and falls back to the unsafe type-only layout if not guarded;
+  - a row-local 32x32 register-layout probe can emit the mixed-positive opcode
+    shape (`tcgen05.ld/st.sync.aligned.32x32b.x1.b32` at offsets
+    `0,4,...,28`), but on the identity layout those warp bits select separate
+    32-row bands rather than one row-origin-translated 32-row window;
+  - keeping the full origin in the packet base double-applies the already
+    lowered view base and produces no visible update.
+- Current boundary:
+  - identity 32x32 remains a clean direct-`ld/st` negative unless the backend
+    gains a real packet-footprint model with read/modify/write, row masks, or
+    an equivalent per-warp row-window decomposition;
+  - do not retry support by only bypassing the row-anchor guard, forcing a root
+    support query, forcing row-local `32x32b.x1`, or using type-only fallback.
+- Validation/probe commands used:
+  - `make -j8` after temporary probe edits;
+  - custom single-kernel identity probes with `TRITON_TRACE_TMEM_*` files;
+  - post-probe tree restored clean with `git diff --check`.
+
+## Previous: 2026-04-16 23:59 UTC scaled-MMAv5 repeated-N32 requirement checkpoint
 
 - Phase 5 scaled-MMAv5 cleanup:
   - added `MMAv5ScaledRepeatedN32ScaleFragmentRequirement` as a typed carrier

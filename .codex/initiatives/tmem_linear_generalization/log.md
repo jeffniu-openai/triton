@@ -20606,3 +20606,32 @@ Open after this slice:
   - the identity 32x32 case still needs a real packet-base/per-message-offset
     support plan. This checkpoint only removes a stale shape-specific offset
     rescue that the generic linear-layout arithmetic can already replace.
+
+## 2026-04-17 02:55 UTC: identity 32x32 direct ld/st packet-footprint reprobe
+
+- Starting point: `codex/tmem` at `3f70759c9`.
+- Temporary probes added and removed:
+  - a root-support-query branch in `getTMemLdStSupportQueryPlan(...)`;
+  - a row-local `32x32b.x1` Gluon register-layout candidate;
+  - a support-base-offset preservation toggle;
+  - a subview-offset trace in `getTMemSubviewOffsetForLowering(...)`.
+- Findings:
+  - the generic subview-origin path computes the expected physical deltas for
+    the identity chain (`64 << 16` for the leading row slice and `64` for the
+    column slice);
+  - root support query plus origin produces a support-lowering candidate, but
+    the full 128x128 support image cannot be reshaped into a valid 32x32
+    `get_reg_layout()` result for the view;
+  - the row-local layout emits offsets `0,4,...,28`, but on identity it updates
+    warp-selected 32-row bands rather than the single row-origin-translated
+    32-row window;
+  - keeping the full support base offset double-applies the lowered view base.
+- Outcome:
+  - no source changes kept;
+  - identity 32x32 remains a clean direct `tcgen05.ld/st` packet-footprint
+    negative until a real row-window mask/read-modify-write/decomposition
+    model exists.
+- Validation:
+  - `make -j8` on probe builds;
+  - custom single-kernel identity probes;
+  - `git diff --check` after removing probes.

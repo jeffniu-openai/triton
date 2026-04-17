@@ -44,6 +44,20 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 02:55 UTC: re-probed the single-CTA identity 32x32
+  multidim-slice `ld/st` boundary after the stale offset-special deletion. No
+  source probe was kept. Findings: borrowing the 128x128 root support query
+  lets lowering compute an origin-bearing support plan, but `get_reg_layout()`
+  cannot return a valid reshaped 32x32 register layout for that full support
+  image. A row-local 32x32 register-layout probe emitted the desired
+  `32x32b.x1` offsets (`0,4,...,28`) but still updated warp-selected row
+  bands instead of the single identity-layout 32-row window. Keeping the full
+  support base offset double-applied the already lowered view base and produced
+  no visible update. Treat this as a true packet-footprint boundary for direct
+  public `tcgen05.ld/st` until a real read/modify/write, row mask, or
+  equivalent per-warp row-window decomposition exists; do not retry by only
+  forcing root support queries, row-anchor bypasses, or type-only fallback
+  layouts.
 - 2026-04-17 02:08 UTC: deleted the hard-coded canonical contiguous 32x32
   TMEM subview lowering offset. The generic subview lowering path now handles
   that mixed-layout positive through `inferStandaloneTMemLdStQueryLayout(...)`,
