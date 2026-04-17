@@ -173,12 +173,6 @@ def alloc_empty_ready_barriers(
 
 
 @gluon.jit
-def invalidate_barrier_ring(bars, num_bufs: gl.constexpr):
-    for i in gl.static_range(num_bufs):
-        mbarrier.invalidate(bars.index(i))
-
-
-@gluon.jit
 def pack_e4m3x2(values):
     return gl.inline_asm_elementwise(
         """
@@ -939,15 +933,6 @@ def ws_matmul_kernel(
         [STORE_HELPER_REGS, LOAD_ACTIVATION_REGS, LOAD_WEIGHT_REGS, MMA_REGS],
     )
 
-    invalidate_barrier_ring(x_empty_bars, x_num_bufs)
-    invalidate_barrier_ring(x_ready_bars, x_num_bufs)
-    invalidate_barrier_ring(w_empty_bars, w_num_bufs)
-    invalidate_barrier_ring(w_ready_bars, w_num_bufs)
-    invalidate_barrier_ring(acc_empty_bars, acc_num_bufs)
-    invalidate_barrier_ring(acc_ready_bars, acc_num_bufs)
-    invalidate_barrier_ring(store_empty_bars, EPILOGUE_BUFFER_DEPTH)
-    invalidate_barrier_ring(store_ready_bars, EPILOGUE_BUFFER_DEPTH)
-
 
 # ===-----------------------------------------------------------------------===#
 # Host Code
@@ -1462,10 +1447,9 @@ def make_prod_like_logits(
 
     # Token locality: each token belongs to a synthetic topic/cluster with preferred experts.
     cluster_size = min(num_experts, max(2 * experts_per_token, num_experts // 16))
-    cluster_experts = torch.stack([
-        torch.multinomial(expert_probs, cluster_size, replacement=False)
-        for _ in range(num_clusters)
-    ])
+    cluster_experts = torch.stack(
+        [torch.multinomial(expert_probs, cluster_size, replacement=False)
+        for _ in range(num_clusters)])
     token_cluster = torch.randint(num_clusters, (batch_size,), device=device)
     rows = torch.arange(batch_size, device=device)[:, None]
     logits[rows, cluster_experts[token_cluster]] += cluster_boost
@@ -1482,11 +1466,13 @@ def make_prod_like_logits(
     return logits.to(dtype)
 
 
-def init_routing_data(c: MLPConfig, batch_size: int, local_rank: int,
-                      device: str) -> tuple[RaggedTensorMetadata, torch.Tensor]:
+def init_routing_data(c: MLPConfig, batch_size: int, local_rank: int, device: str,
+                      uniform_routing: bool) -> tuple[RaggedTensorMetadata, torch.Tensor]:
     expt_dist = make_expt_dict_uniform(c.num_expert_shards, c.num_experts)
-    # logits = torch.randn((batch_size, c.num_experts), dtype=torch.float16, device=device)
-    logits = make_prod_like_logits(batch_size, c.num_experts, c.experts_per_token, device)
+    if uniform_routing:
+        logits = torch.randn((batch_size, c.num_experts), dtype=torch.float16, device=device)
+    else:
+        logits = make_prod_like_logits(batch_size, c.num_experts, c.experts_per_token, device)
     sparse_logits = topk(logits, c.experts_per_token, apply_softmax=True)
     expt_hist = sparse_logits.mask_metadata.col_sum
     local_expts = expt_dist[local_rank]
@@ -1498,14 +1484,14 @@ def init_routing_data(c: MLPConfig, batch_size: int, local_rank: int,
     return ragged_metadata, gather_indx
 
 
-def prepare_case(c: MLPConfig, batch_size: int, device: str, seed: int = 0,
-                 p: KernelConfig | None = None) -> PreparedCase:
+def prepare_case(c: MLPConfig, batch_size: int, device: str, seed: int = 0, p: KernelConfig | None = None,
+                 uniform_routing: bool = False) -> PreparedCase:
     torch.manual_seed(seed)
 
     local_rank = int(torch.randint(0, c.num_expert_shards, size=()).item())
     k, n = c.hidden_size, c.intermediate_size
     n_expts_local = c.num_experts // c.num_expert_shards
-    ragged_metadata, gather_indx = init_routing_data(c, batch_size, local_rank, device)
+    ragged_metadata, gather_indx = init_routing_data(c, batch_size, local_rank, device, uniform_routing)
     p = p or select_kernel_config(ragged_metadata.expected_slice_size)
     x = alloc_randn((batch_size, k), dtype=torch.float8_e4m3fn, device=device)
     w, w_scale = alloc_randn_fp4((n_expts_local, k, n), device=device, p=p)
@@ -1674,7 +1660,7 @@ def _format_perf(result: tuple[float, float]) -> str:
             f"{tbps:6.2f} TBPS ({tbps / PEAK_TBPS:6.1%})")
 
 
-def bench(c: MLPConfig = GPT_OSS_120B_CONFIG):
+def bench(c: MLPConfig = GPT_OSS_120B_CONFIG, uniform_routing: bool = False):
     batch_sizes = get_batch_sizes(c)
     batch_width = max(len("batch_size"), *(len(str(bs)) for bs in batch_sizes))
     perf_width = max(
@@ -1695,7 +1681,7 @@ def bench(c: MLPConfig = GPT_OSS_120B_CONFIG):
     device = f"cuda:{torch.cuda.current_device()}"
     for batch_size in batch_sizes:
         print(f"{batch_size:>{batch_width}}  ", end="", flush=True)
-        prepared = prepare_case(c, batch_size, device=device, seed=0)
+        prepared = prepare_case(c, batch_size, device=device, seed=0, uniform_routing=uniform_routing)
         flops, nbytes = estimate_benchmark_work(c, prepared)
 
         example = benchmark_kernel(prepared, matmul, flops, nbytes)
@@ -1706,4 +1692,4 @@ def bench(c: MLPConfig = GPT_OSS_120B_CONFIG):
 
 
 if __name__ == "__main__":
-    bench()
+    bench(uniform_routing=False)
