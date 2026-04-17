@@ -9003,9 +9003,12 @@ def test_tmem_runtime_matrix_ldst_4x256b_refresh_layout_reports_clean_unsupporte
     text = str(excinfo.value) + captured.err + captured.out
     assert "TMEM layout 'auto' unsupported for descriptor view" in text
     assert "tcgen05.copy.4x256b refresh-shaped tensor memory layout" in text
+    assert "4x8 refresh view" in text
     assert "row anchors to be materializable as warp bases" in text
     assert "logical row bits in TMEM columns" in text
     assert "low logical column bits in TMEM rows 32/64" in text
+    assert "high logical column bit at destination dword +4" in text
+    assert "Source columns [0, 4) and [4, 8)" in text
     assert "directly supported 128-row physical layout" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
@@ -9029,6 +9032,8 @@ def test_tmem_runtime_matrix_ldst_4x256b_refresh_raw_bitcast_reports_clean_unsup
     assert "raw physical bitcast of a tcgen05.copy.4x256b refresh image" in text
     assert "read whole row footprints" in text
     assert "do not provide a lane mask for this refresh image" in text
+    assert "underlying 4x8 refresh image" in text
+    assert "high logical column bit at destination dword +4" in text
     assert "directly supported 128-row physical layout" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

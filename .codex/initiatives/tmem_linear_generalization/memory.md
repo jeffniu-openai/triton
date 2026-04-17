@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:59 UTC Phase C/D `4x256b` boundary cleanup:
+  direct `ld/st` refresh-image diagnostics now format from
+  `TMemCopy4x256RefreshImageRequirement` instead of a static string, and the
+  raw physical-bitcast packet-footprint diagnostic carries the same logical
+  tile/source-split/row-anchor facts. Support is unchanged: refresh-shaped
+  `tcgen05.copy.4x256b` remains positive, while ordinary contiguous views and
+  direct refresh readback remain clean unsupported until a refresh remap or
+  row-anchor rematerialization model exists. Validation: `make -j8`, focused
+  runtime selector (`5 passed`), built `triton-opt` verify-diagnostics for
+  `test/TritonNvidiaGPU/invalid.mlir`, Python compile, and `git diff --check`.
+
 - Latest: 2026-04-17 17:55 UTC the initiative execution contract is now
   explicit in both `AGENTS.md` and `completion_execution_tracker.md`. The
   tracker contains the phase-by-phase remaining-work board for finishing TMEM

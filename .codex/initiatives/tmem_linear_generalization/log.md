@@ -1,3 +1,38 @@
+## 2026-04-17 17:59 UTC: structured direct `ld/st` 4x256b refresh boundary
+
+- Change:
+  - changed `getTMemCopy4x256RefreshLdStUnsupportedMessage(...)` to format
+    from `TMemCopy4x256RefreshImageRequirement` instead of returning a static
+    string;
+  - carried the same refresh-image requirement facts through the raw physical
+    bitcast packet-footprint diagnostic;
+  - tightened runtime-matrix assertions for direct refresh-layout and raw
+    bitcast clean negatives;
+  - refreshed stale `test/TritonNvidiaGPU/invalid.mlir` expectations exposed by
+    direct verify-diagnostics: the old repeated-N scaled-MMAv5 invalid row is
+    now accepted, and mixed-copy row/column-basis notes are family-specific.
+- Boundary:
+  - support is unchanged;
+  - `tcgen05.copy.4x256b` refresh layouts still lower to positive copy opcodes;
+  - ordinary contiguous `4x256b` destinations and direct load/store readback
+    of refresh images remain clean unsupported until a refresh remap/readback
+    or row-anchor rematerialization model exists.
+- Validation:
+  - `make -j8`;
+  - split-4 focused selector
+    `cp_no_scales_4x256b or ldst_4x256b_refresh`: groups with selected rows
+    passed as `2/2/1`, group 4 was empty;
+  - single-GPU focused selector passed (`5 passed, 1587 deselected`);
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - Python byte-compile for `python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - commit and push this checkpoint;
+  - resume support-bearing `tcgen05.copy` work on the scales descriptor-row
+    split/mask family from the scheduled-message planner.
+
 ## 2026-04-17 17:55 UTC: execution tracker contract and remaining-work board
 
 - Change:

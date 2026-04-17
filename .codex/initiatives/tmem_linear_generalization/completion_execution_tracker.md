@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:55 UTC
+Last updated: 2026-04-17 17:59 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -81,7 +81,9 @@ Current buckets:
   positive for refresh-shaped layouts only; ordinary view exposure needs a
   first-class refresh remap/readback contract or stays negative.
 - Direct `ld/st` of `4x256b` refresh images: row anchors are not materializable
-  as public load/store warp bases without a row-anchor rematerialization model.
+  as public load/store warp bases without a row-anchor rematerialization model;
+  this boundary is now reported from structured refresh-image facts shared with
+  the copy diagnostic.
 - No-scales two-CTA `warpx2::02_13`: current public `cta_group::2`
   direct-seed schedules either duplicate low source columns or read zeros; a
   valid schedule must preserve the high source-column bit.
@@ -204,14 +206,31 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Investigate `tcgen05.copy` no-scales row/column permutation and `warpx2`
-schedule boundaries from the shared planner side. The first implementation
-target is not to widen descriptor enumeration; it is to determine whether the
-existing scheduled-instruction carrier can express a legal non-overwriting
-row/source projection. If not, promote the proof into a clearer typed
-requirement and move to the next reachable support slice.
+Resume support-bearing `tcgen05.copy` work from the shared scheduled-message
+planner. The next highest-value bucket is the scales descriptor-row split/mask
+family because the debug probes already show the concrete gap: source column
+bit 2 selects descriptor row `+32` for four-column runs inside a wider
+instruction footprint. Determine whether this can be expressed as a legal
+source-message split or destination-column partition; if not, promote the
+existing proof into a typed requirement and move to the next reachable support
+slice.
 
 ## Progress
+
+- 2026-04-17 17:59 UTC: represented the direct `ld/st` `4x256b`
+  refresh-image boundary with structured refresh-image data instead of a
+  static string. `getTMemCopy4x256RefreshLdStUnsupportedMessage(...)` now
+  formats the logical tile, low-column row anchors, high-column dword offset,
+  and source-column split from `TMemCopy4x256RefreshImageRequirement`; the raw
+  physical-bitcast packet-footprint diagnostic also carries the same facts.
+  Behavior is unchanged: copy refresh layouts remain opcode-positive, ordinary
+  contiguous `4x256b` views and direct refresh-image readback remain clean
+  unsupported. Validation: `make -j8`; focused runtime selector
+  `cp_no_scales_4x256b or ldst_4x256b_refresh` passed as `5 passed,
+  1587 deselected`; split-4 selector groups with selected rows passed as
+  `2/2/1` while group 4 was empty; `triton-opt
+  test/TritonNvidiaGPU/invalid.mlir --split-input-file --verify-diagnostics`;
+  Python byte-compile for `test_tmem_runtime_matrix.py`; `git diff --check`.
 
 - 2026-04-17 17:55 UTC: strengthened the execution contract in this tracker
   and in `AGENTS.md`. The remaining work is now tracked as a phase-by-phase

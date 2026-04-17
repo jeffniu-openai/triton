@@ -746,7 +746,9 @@ bool isDirectTMemCopyLayoutSupported(const TMemPhysicalQuery &query,
 
 bool isTMemCopy4x256RefreshLayout(gpu::MemDescType memTy);
 
-StringRef getTMemCopy4x256RefreshLdStUnsupportedMessage();
+std::string getTMemCopy4x256RefreshLdStUnsupportedMessage(
+    const TMemCopy4x256RefreshImageRequirement &requirement =
+        TMemCopy4x256RefreshImageRequirement{});
 
 std::optional<std::string>
 getUnsupportedDirectTMemLdStReason(gpu::MemDescType memTy);

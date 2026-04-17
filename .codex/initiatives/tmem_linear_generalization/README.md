@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 17:59 UTC: direct `ld/st` diagnostics for `4x256b`
+  refresh-shaped layouts now share the structured
+  `TMemCopy4x256RefreshImageRequirement` facts already used by copy support.
+  The refresh-layout and raw-physical-bitcast clean negatives now report the
+  logical 4x8 image, low-column row anchors, high-column dword offset, and
+  source-column split from data. Validation: `make -j8`, focused
+  `cp_no_scales_4x256b or ldst_4x256b_refresh` runtime selector (`5 passed`),
+  built `triton-opt` verify-diagnostics for `test/TritonNvidiaGPU/invalid.mlir`,
+  Python byte-compile, and `git diff --check`.
 - 2026-04-17 17:55 UTC: strengthened the initiative execution contract. The
   active `completion_execution_tracker.md` now carries a phase-by-phase
   remaining-work board from rebaseline/classification through final validation,

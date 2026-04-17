@@ -4621,6 +4621,7 @@ struct TMemLdStPacketFootprintRequirement {
   TMemAccessAtom atom = TMemAccessAtom::I32x32b;
   int64_t viewDwordColumns = 0;
   int64_t instructionDwordColumns = 0;
+  std::optional<TMemCopy4x256RefreshImageRequirement> refreshImage;
 };
 
 static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
@@ -4650,13 +4651,23 @@ static std::string formatUnsupportedTMemLdStPacketFootprintRequirement(
           "backing tile or an invalid TMEM row. Access the full backing tile or "
           "reshape/copy so the TMEM rows stay materializable.";
     break;
-  case TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast:
+  case TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast: {
+    const auto refresh = requirement.refreshImage.value_or(
+        TMemCopy4x256RefreshImageRequirement{});
     os << "the raw physical bitcast of a tcgen05.copy.4x256b refresh image is a "
           "sparse row/column projection. tcgen05.ld/st packets read whole row "
           "footprints and do not provide a lane mask for this refresh image. "
+       << "The underlying " << refresh.logicalRows << "x"
+       << refresh.logicalColumns
+       << " refresh image stores logical row bits in TMEM columns, low logical "
+          "column bits in TMEM rows "
+       << refresh.lowColumnRowDelta0 << "/" << refresh.lowColumnRowDelta1
+       << ", and the high logical column bit at destination dword +"
+       << refresh.highColumnDwordDelta << ". "
           "Use tcgen05_copy from shared memory for this refresh image, or access "
           "a directly supported 128-row physical layout.";
     break;
+  }
   case TMemLdStPacketFootprintRequirementKind::M64ScalesBroadcastRowAnchor:
     os << "this M=64 two-CTA tensor-memory-scales view carries the second "
           "32-row warp anchor as broadcast/support state instead of a "
@@ -4899,12 +4910,16 @@ getUnsupportedDirectTMemLdStReason(MemDescType memTy) {
   }
 
   if (isTMemCopy4x256RefreshLayout(memTy))
-    return getTMemCopy4x256RefreshLdStUnsupportedMessage().str();
+    return getTMemCopy4x256RefreshLdStUnsupportedMessage();
   if (isTMemCopy4x256RefreshPhysicalBitcastLayout(memTy)) {
     return formatUnsupportedTMemLdStPacketFootprintRequirement(
         TMemLdStPacketFootprintRequirement{
             TMemLdStPacketFootprintRequirementKind::SparseRefreshPhysicalBitcast,
-            std::nullopt});
+            std::nullopt,
+            TMemAccessAtom::I32x32b,
+            /*viewDwordColumns=*/0,
+            /*instructionDwordColumns=*/0,
+            TMemCopy4x256RefreshImageRequirement{}});
   }
   return std::nullopt;
 }
@@ -9550,14 +9565,26 @@ bool isTMemCopy4x256RefreshLayout(gpu::MemDescType memTy) {
                                       memTy.getElementTypeBitWidth());
 }
 
-StringRef getTMemCopy4x256RefreshLdStUnsupportedMessage() {
-  return "direct TMEM load/store is unsupported for the "
-         "tcgen05.copy.4x256b refresh-shaped tensor memory layout. "
-         "tcgen05.ld/st packets require TMEM row anchors to be materializable "
-         "as warp bases, but this refresh view stores logical row bits in "
-         "TMEM columns and low logical column bits in TMEM rows 32/64. Use "
-         "tcgen05_copy from shared memory for this refresh image, or access a "
-         "directly supported 128-row physical layout.";
+std::string getTMemCopy4x256RefreshLdStUnsupportedMessage(
+    const TMemCopy4x256RefreshImageRequirement &requirement) {
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "direct TMEM load/store is unsupported for the "
+        "tcgen05.copy.4x256b refresh-shaped tensor memory layout. "
+        "tcgen05.ld/st packets require TMEM row anchors to be materializable "
+        "as warp bases, but this "
+     << requirement.logicalRows << "x" << requirement.logicalColumns
+     << " refresh view stores logical row bits in TMEM columns, low logical "
+        "column bits in TMEM rows "
+     << requirement.lowColumnRowDelta0 << "/" << requirement.lowColumnRowDelta1
+     << ", and the high logical column bit at destination dword +"
+     << requirement.highColumnDwordDelta
+     << ". Source columns [0, " << requirement.sourceColumnSplit << ") and ["
+     << requirement.sourceColumnSplit << ", " << requirement.logicalColumns
+     << ") are scheduled as separate physical refresh messages. Use "
+        "tcgen05_copy from shared memory for this refresh image, or access a "
+        "directly supported 128-row physical layout.";
+  return os.str();
 }
 
 static std::optional<LinearLayout>

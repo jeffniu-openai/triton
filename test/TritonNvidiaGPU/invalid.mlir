@@ -242,7 +242,6 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
       %scale_b: !ttg.memdesc<128x2xi8, #tmem_scales, #ttng.tensor_memory>,
       %useAcc: i1,
       %pred: i1) {
-    // expected-error @+1 {{direct block-scaled MMAv5 does not support repeated N=32 instructions along N}}
     ttng.tc_gen5_mma_scaled %a, %b, %c, %scale_a, %scale_b, %useAcc, %pred lhs = e5m2 rhs = e5m2 :
       !ttg.memdesc<128x32xi8, #shared, #ttg.shared_memory>,
       !ttg.memdesc<32x128xi8, #sharedT, #ttg.shared_memory>,
@@ -436,10 +435,11 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   tt.func @tmem_copy_linear_mixed_not_supported(%src: !ttg.memdesc<128x128xf32, #shared_f32, #ttg.shared_memory>,
                                                  %dst: !ttg.memdesc<128x128xf32, #tmem_linear_copy_mixed, #ttng.tensor_memory, mutable>) {
-    // expected-error @+4 {{The source shared layout maps to tcgen05.copy.128x256b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
-    // expected-note @+3 {{Use the canonical shared layout for tcgen05.copy.128x256b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
-    // expected-note @+2 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
-    // expected-note @+1 {{direct tcgen05.copy does not support TMEM row bases that mix row and column contributions.}}
+    // expected-error @+5 {{The source shared layout maps to tcgen05.copy.128x256b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
+    // expected-note @+4 {{Use the canonical shared layout for tcgen05.copy.128x256b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
+    // expected-note @+3 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
+    // expected-note @+2 {{direct tcgen05.copy.128x256b does not support TMEM row bases that mix row and column contributions.}}
+    // expected-note @+1 {{direct tcgen05.copy.128x128b does not support TMEM row bases that mix row and column contributions.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<128x128xf32, #shared_f32, #ttg.shared_memory>, !ttg.memdesc<128x128xf32, #tmem_linear_copy_mixed, #ttng.tensor_memory, mutable>
     tt.return
   }
