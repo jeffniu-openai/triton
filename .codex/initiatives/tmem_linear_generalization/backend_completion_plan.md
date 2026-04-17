@@ -1327,6 +1327,13 @@ Progress:
   scaled accumulator layout proof plus typed repeated-N32 and narrow-N
   requirements, tightening the abstraction boundary for future B-scale
   fragment planner work without changing current support.
+- 2026-04-17 05:37 UTC: removed the frontend `tcgen05_mma_scaled` blockM=64
+  assertion and added a focused clean negative showing the backend verifier
+  owns that ISA rule (`only supports instruction shape blockM=128`). Repeated
+  N32 was also re-probed: simply lifting the guard produces wrong output, and
+  a one-column B-scale fragment variant faults/fails fresh processes. The
+  remaining work is therefore an actual B-scale fragment storage/alignment
+  model, not another frontend guard or address tweak.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

@@ -20962,3 +20962,37 @@ Open after this slice:
     'cp_no_scales_4x256b'`
     (`3 passed, 1574 deselected in 3.16s`);
   - `git diff --check`.
+
+## 2026-04-17 05:37 UTC: moved scaled blockM=64 rejection to backend
+
+- Starting point: `codex/tmem` at `dfbc491aa`.
+- Change:
+  - removed the Python `tcgen05_mma_scaled` assertion that rejected
+    `TensorMemoryLayout` blockM=64 before IR construction;
+  - added a focused runtime-matrix negative proving `M=64,N=128,K=128` reaches
+    the backend verifier and reports `only supports instruction shape
+    blockM=128` cleanly;
+  - kept scaled blockM=64 unsupported. This is a layering cleanup, not a
+    support promotion.
+- Probe evidence recorded:
+  - temporarily lifting repeated-N32 scaled-MMAv5 guards with the current
+    B-scale math compiled but produced wrong output;
+  - forcing one-column B-scale fragments faulted/failed fresh processes, so
+    repeated-N32 remains a B-scale fragment alignment/storage boundary rather
+    than a missing verifier relaxation.
+- Validation:
+  - `make -j8`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-blockm64
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_blockm64_reports_backend_error`
+    (`1 passed in 2.94s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scaled-direct
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_minimal
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_blockn64_direct_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_mma_scaled_acc_blockm64_reports_backend_error`
+    (`4 passed in 5.58s`);
+  - `git diff --check`.

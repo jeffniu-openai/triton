@@ -794,8 +794,6 @@ def tcgen05_mma_scaled(a, b, acc, a_scale, b_scale, a_type, b_type, *, use_acc=T
     """
     use_acc = _semantic.to_tensor(use_acc)
     pred = _semantic.to_tensor(pred)
-    if isinstance(acc.type.layout, TensorMemoryLayout):
-        assert acc.type.layout.block[0] != 64, "tcgen05_mma_scaled does not support blockM=64"
 
     if mbarriers is None:
         assert mbarrier_preds is None

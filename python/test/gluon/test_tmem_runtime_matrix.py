@@ -11617,6 +11617,29 @@ def test_tmem_runtime_matrix_mma_scaled_acc_blockn32_direct_layout():
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+def test_tmem_runtime_matrix_mma_scaled_acc_blockm64_reports_backend_error(capfd):
+    m = 64
+    n = 128
+    k = 128
+    layout = TensorMemoryLayout((64, 64), col_stride=1)
+    out = torch.empty((m, n), dtype=torch.float32, device="cuda")
+    a = torch.randint(20, 40, (m, k), dtype=torch.uint8, device="cuda").view(torch.float8_e5m2)
+    b = torch.randint(20, 40, (k, n), dtype=torch.uint8, device="cuda").view(torch.float8_e5m2)
+    a_scale = torch.randint(64, 130, (m, k // 32), dtype=torch.uint8, device="cuda")
+    b_scale = torch.randint(64, 130, (n, k // 32), dtype=torch.uint8, device="cuda")
+
+    with pytest.raises(Exception) as excinfo:
+        tmem_mma_scaled_layout_kernel[(1, )](out, m, n, k, a, b, a_scale, b_scale, layout, num_warps=4)
+
+    captured = capfd.readouterr()
+    text = str(excinfo.value) + captured.err + captured.out
+    assert "only supports instruction shape blockM=128" in text
+    assert "tcgen05_mma_scaled does not support blockM=64" not in text
+    assert "PassManager::run failed" not in text
+    assert "Assertion" not in text
+
+
+@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format,n,k,acc_layout_kind", SCALED_MMA_ROOT_FORMAT_CASES)
 def test_tmem_runtime_matrix_mma_scaled_root_format_matrix(a_format, b_format, n, k, acc_layout_kind):
     m = 128

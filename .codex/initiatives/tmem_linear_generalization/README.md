@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 05:37 UTC: removed the frontend `tcgen05_mma_scaled`
+  `TensorMemoryLayout` blockM=64 assertion and pinned that this unsupported
+  ISA shape now reaches the backend verifier. The new runtime-matrix negative
+  case uses `M=64,N=128,K=128` so shared-memory B construction is legal, then
+  checks for `only supports instruction shape blockM=128` with no Python
+  assertion or PassManager crash. Adjacent scaled direct-layout positives still
+  pass. Also recorded the latest repeated-N32 probe evidence: guard lifting
+  with the current B-scale math compiles but gives wrong output, while forcing
+  one-column B scale fragments faults/fails fresh processes, so repeated-N32
+  remains a real B-scale fragment alignment/storage boundary. Validation:
+  `make -j8`, exact new negative (`1 passed`), adjacent scaled direct-layout
+  selector (`4 passed`), and `git diff --check`.
 - 2026-04-17 05:27 UTC: promoted the ordinary `tcgen05.copy.4x256b`
   refresh-image boundary into a typed backend requirement. The new
   `TMemCopy4x256RefreshImageRequirement` records the 4x8 refresh image

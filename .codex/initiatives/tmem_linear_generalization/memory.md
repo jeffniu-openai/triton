@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 05:37 UTC scaled-MMAv5 blockM=64 frontend guard
+  deletion: removed the Python `tcgen05_mma_scaled` assertion that rejected
+  legacy `TensorMemoryLayout` blockM=64 before IR construction. The backend
+  verifier already owns the ISA rule (`only supports instruction shape
+  blockM=128`), and a new focused runtime-matrix negative confirms `M=64`,
+  `N=128`, `K=128` reaches that diagnostic cleanly without the old Python
+  message, a PassManager crash, or an assertion. Adjacent scaled direct-layout
+  positives still pass. Repeated-N32 scale-fragment probes during this slice
+  ruled out two false support promotions: removing the guard with current
+  scale math compiles but produces mostly wrong output, and a one-column B
+  scale fragment attempt faults/fails fresh processes. Keep repeated-N32 as a
+  B-scale fragment alignment/storage boundary until the public scale layout
+  can provide a real aligned fragment view. Validation: `make -j8`, exact
+  new negative (`1 passed`), adjacent scaled direct-layout selector
+  (`4 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 05:27 UTC ordinary 4x256 refresh-image requirement:
   introduced `TMemCopy4x256RefreshImageRequirement` and routed both
   `getDirectTMemCopyLayoutSupport(...)` and shared descriptor-plan
