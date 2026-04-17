@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 09:07 UTC direct `ld/st` blocked fallback layout
+  selection is backend-owned. Added
+  `getTMemLdStBlockedFallbackLayouts(...)` in `TensorMemoryUtils` and replaced
+  both Gluon pybind-local copies with calls into the backend helper. Support is
+  unchanged; the purpose is to keep the remaining direct-register-layout
+  fallback policy in the same layer as row-plan/query selection before
+  continuing packet/schedule generalization. Validation: `make -j8`,
+  `git diff --check`, high-quadrant descriptor-view clean-negative
+  representative (`1 passed`), runtime-matrix direct-layout representative
+  (`1 passed`), and `test_core.py -k tmem_linear_m64` (`21 passed`).
+
 - Latest: 2026-04-17 09:01 UTC `TensorMemoryScalesLayout` int8
   `load_min/load_max` now uses the non-f32 software-reduction fallback.
   The fallback runs before the non-scales hardware-support branch, so scales

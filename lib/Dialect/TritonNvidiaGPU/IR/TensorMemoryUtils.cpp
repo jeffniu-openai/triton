@@ -264,6 +264,27 @@ getTMemLdStGenericCompatibleLayouts(Value memDesc, MemDescType queryTy,
   return layouts;
 }
 
+SmallVector<DistributedEncodingTrait>
+getTMemLdStBlockedFallbackLayouts(MemDescType queryTy,
+                                  ArrayRef<int64_t> tensorShape,
+                                  unsigned numWarps) {
+  SmallVector<DistributedEncodingTrait> layouts;
+  auto rank = tensorShape.size();
+  auto cga = getCGALayout(queryTy.getEncoding());
+  auto numCTAs = getNumCTAs(queryTy.getEncoding());
+  if (rank == 2 && tensorShape[1] >= 32) {
+    layouts.push_back(BlockedEncodingAttr::get(
+        queryTy.getContext(), /*sizePerThread=*/SmallVector<unsigned>{1, 1},
+        /*threadsPerWarp=*/SmallVector<unsigned>{1, 32},
+        /*warpsPerCTA=*/SmallVector<unsigned>{numWarps, 1},
+        /*order=*/SmallVector<unsigned>{1, 0}, cga));
+  }
+  layouts.push_back(getDefaultBlockedEncoding(
+      queryTy.getContext(), tensorShape, /*numWarps=*/numWarps,
+      /*threadsPerWarp=*/32, /*numCTAs=*/numCTAs));
+  return layouts;
+}
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
                                                       unsigned numWarps,
                                                       TMemAccessAtom atom) {

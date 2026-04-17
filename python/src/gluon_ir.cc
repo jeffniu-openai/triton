@@ -1297,21 +1297,8 @@ void init_gluon_ir(py::module &&m) {
         auto getBlockedFallbackLayouts =
             [&](ttg::MemDescType queryTy, ArrayRef<int64_t> tensorShape)
                 -> SmallVector<ttg::DistributedEncodingTrait> {
-          SmallVector<ttg::DistributedEncodingTrait> layouts;
-          auto rank = tensorShape.size();
-          auto cga = ttg::getCGALayout(queryTy.getEncoding());
-          auto numCTAs = ttg::getNumCTAs(queryTy.getEncoding());
-          if (rank == 2 && tensorShape[1] >= 32) {
-            layouts.push_back(ttg::BlockedEncodingAttr::get(
-                ctx, /*sizePerThread=*/SmallVector<unsigned>{1, 1},
-                /*threadsPerWarp=*/SmallVector<unsigned>{1, 32},
-                /*warpsPerCTA=*/SmallVector<unsigned>{numWarps, 1},
-                /*order=*/SmallVector<unsigned>{1, 0}, cga));
-          }
-          layouts.push_back(ttg::getDefaultBlockedEncoding(
-              ctx, tensorShape, /*numWarps=*/numWarps,
-              /*threadsPerWarp=*/32, /*numCTAs=*/numCTAs));
-          return layouts;
+          return ttng::getTMemLdStBlockedFallbackLayouts(queryTy, tensorShape,
+                                                         numWarps);
         };
         auto physicalSupportLayout =
             [&](ttg::MemDescType queryTy,
@@ -1588,21 +1575,8 @@ void init_gluon_ir(py::module &&m) {
         auto getBlockedFallbackLayouts =
             [&](ttg::MemDescType queryTy, ArrayRef<int64_t> tensorShape)
                 -> SmallVector<ttg::DistributedEncodingTrait> {
-          SmallVector<ttg::DistributedEncodingTrait> layouts;
-          auto rank = tensorShape.size();
-          auto cga = ttg::getCGALayout(queryTy.getEncoding());
-          auto numCTAs = ttg::getNumCTAs(queryTy.getEncoding());
-          if (rank == 2 && tensorShape[1] >= 32) {
-            layouts.push_back(ttg::BlockedEncodingAttr::get(
-                ctx, /*sizePerThread=*/SmallVector<unsigned>{1, 1},
-                /*threadsPerWarp=*/SmallVector<unsigned>{1, 32},
-                /*warpsPerCTA=*/SmallVector<unsigned>{numWarps, 1},
-                /*order=*/SmallVector<unsigned>{1, 0}, cga));
-          }
-          layouts.push_back(ttg::getDefaultBlockedEncoding(
-              ctx, tensorShape, /*numWarps=*/numWarps,
-              /*threadsPerWarp=*/32, /*numCTAs=*/numCTAs));
-          return layouts;
+          return ttng::getTMemLdStBlockedFallbackLayouts(queryTy, tensorShape,
+                                                         numWarps);
         };
         auto firstLegalLayoutForType =
             [&](ttg::MemDescType queryTy,

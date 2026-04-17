@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 09:07 UTC: moved the remaining direct `ld/st` blocked-layout
+  fallback policy out of the Gluon pybind bridge and into
+  `TensorMemoryUtils` as `getTMemLdStBlockedFallbackLayouts(...)`. Support is
+  unchanged; this keeps register-layout selection policy backend-owned as the
+  packet/schedule frontiers are generalized. Validation: `make -j8`,
+  `git diff --check`, high-quadrant descriptor-view clean-negative
+  representative (`1 passed`), runtime-matrix direct-layout representative
+  (`1 passed`), and `test_core.py -k tmem_linear_m64` (`21 passed`).
 - 2026-04-17 09:01 UTC: moved non-f32 `load_min/load_max` software fallback
   ahead of the non-scales guard, so `TensorMemoryScalesLayout` int8 reductions
   now use ordinary scales `tcgen05.ld` plus layout-aware `ttgl.reduce(axis=1)`

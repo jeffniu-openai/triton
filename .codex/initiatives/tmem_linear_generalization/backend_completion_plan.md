@@ -196,6 +196,11 @@ Progress:
   `TensorMemoryUtils` as `getTMemSubviewRelativeBaseOffset(...)`. Direct
   `ld/st` and `tcgen05.copy` lowering now use one backend helper to subtract
   already-lowered subview bases from query-derived offsets.
+- 2026-04-17 09:07 UTC: moved direct `ld/st` blocked fallback layout
+  enumeration into `TensorMemoryUtils` as
+  `getTMemLdStBlockedFallbackLayouts(...)`. The Gluon bridge now delegates the
+  final blocked fallback policy to the backend for both static-type and
+  handle-aware register-layout queries.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

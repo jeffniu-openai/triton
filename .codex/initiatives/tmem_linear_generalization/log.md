@@ -22279,3 +22279,33 @@ Open after this slice:
     ld_red_m64_rowcol_permuted_explicit_32x32b_uses_splitn or
     ld_red_mixed_linear_layout_uses_software_reduce'` (`113 passed, 1471
     deselected in 96.13s`).
+
+## 2026-04-17 09:07 UTC: direct ld/st blocked fallback layering
+
+- Starting point: `codex/tmem` at `e2a443ceb`.
+- Change:
+  - added backend helper `getTMemLdStBlockedFallbackLayouts(...)` in
+    `TensorMemoryUtils`;
+  - replaced both Gluon pybind-local blocked fallback layout lambdas with calls
+    into the backend helper;
+  - support and ordering are unchanged, but blocked fallback policy now lives
+    beside the row-plan/query selection helpers instead of in frontend glue.
+- Validation:
+  - `make -j8`;
+  - `git diff --check`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-fallback-layer
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_identity_reports_clean_error`
+    (`1 passed in 3.47s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-m64-fallback-layer
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_m64 or tmem_linear_m64 or ldst_descriptor_multidim_slice_positive'`
+    (`1 passed, 1583 deselected in 5.28s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-core-m64-fallback-layer
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 6.75s`).
