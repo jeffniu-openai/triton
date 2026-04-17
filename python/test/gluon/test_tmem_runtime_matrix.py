@@ -4304,8 +4304,6 @@ LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
     for layout_name, n, variant in LDST_TWOCTA_HIGHER_RANK_INDEX_SPECS
 ]
 
-LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES = []
-
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant)
     for dtype_name, torch_dtype, layout_name, n, variant in LDST_TWOCTA_HIGHER_RANK_SLICE_SPECS
@@ -6746,33 +6744,6 @@ def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index(
     assert "ttg.memdesc_subslice" in ttgir
     assert "ttg.memdesc_reshape" in ttgir
     assert "ttg.memdesc_trans" in ttgir
-
-
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_clean_error(
-    layout_name, n, variant, capfd
-):
-    m = 256
-    layout = _lift_tmem_layout(LDST_TWOCTA_LAYOUTS[layout_name](n), [2])
-    inp = torch.arange(m * n, dtype=torch.float32, device="cuda").reshape(m, n)
-    out = torch.empty_like(inp)
-
-    with pytest.raises((CompilationError, RuntimeError)) as excinfo:
-        tmem_ldst_descriptor_higher_rank_index_kernel[(1, )](
-            inp, out, layout, m, n, variant, num_warps=4, num_ctas=2
-        )
-
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "TMEM layout" in text
-    assert "unsupported" in text
-    assert "descriptor view" in text
-    assert "required row anchors 32,64 are not directly representable" in text
-    assert "packet base, row anchors, and per-message offsets" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
-
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("dtype_name,torch_dtype,layout_name,n,variant", LDST_TWOCTA_HIGHER_RANK_SLICE_CASES)

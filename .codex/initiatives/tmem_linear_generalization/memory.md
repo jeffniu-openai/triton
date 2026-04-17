@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:44 UTC removed the stale empty
+  `LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES` bucket and its dead
+  clean-negative test. Those two-CTA higher-rank index rows are now either
+  positive or TMEM-OOR, so carrying an empty parametrization only added a
+  misleading skipped test. Validation: Python compile; `git diff --check`;
+  collect for `ldst_twocta_descriptor_higher_rank_index` now selects 5 rows;
+  focused selector passed (`4 passed, 1 skipped`).
+
 - Latest: 2026-04-17 12:42 UTC guard-lifting scaled-MMAv5 narrow accumulator
   tiles to N8/N16 is not correct. A probe that temporarily let the scaled
   accumulator planner choose N8/N16 compiled the representative

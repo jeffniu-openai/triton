@@ -23124,3 +23124,30 @@ Open after this slice:
 - Cleanup:
   - reverted the temporary planner guard lift;
   - rebuilt with `make -j8` so local artifacts match the checked-in source.
+
+## 2026-04-17 12:44 UTC: remove stale two-CTA higher-rank index negative
+
+- Starting point: `codex/tmem` at `613d13475`.
+- Change:
+  - removed the empty `LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES`
+    bucket;
+  - removed the corresponding dead
+    `test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_clean_error`
+    parametrization.
+- Reason:
+  - the two-CTA higher-rank index surface is now represented by positive rows
+    plus the existing TMEM-OOR bucket. Leaving an empty unsupported
+    parametrization produced a misleading skipped test and stale project state.
+- Validation:
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - `PYTHONPATH=./python:./python/test/gluon pytest --collect-only -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_higher_rank_index'` (`5/1596` collected);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-ldst-twocta-index-cleanup
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_twocta_descriptor_higher_rank_index'`
+    (`4 passed, 1 skipped, 1591 deselected`).
