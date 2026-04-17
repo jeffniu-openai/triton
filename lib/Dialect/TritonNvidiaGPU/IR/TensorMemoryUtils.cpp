@@ -3938,6 +3938,16 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorRequirement(
       getLogicalRowAnchorBasis(*maybeMemLayout, rowPlan->warpRow1))
     return std::nullopt;
 
+  // Some two-CTA descriptor views materialize the row anchors through the
+  // block dimension rather than as pure row bases. Let concrete register-layout
+  // selection and TMEMLoad/Store verification prove those schedules instead of
+  // rejecting them with the generic row-anchor diagnostic here.
+  auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(memTy.getEncoding());
+  if (linear && linear.getTwoCTAs() && maybeMemLayout->hasInDim(kBlock) &&
+      maybeMemLayout->getInDimSize(kBlock) > 1) {
+    return std::nullopt;
+  }
+
   return TMemLdStPacketFootprintRequirement{
       TMemLdStPacketFootprintRequirementKind::DescriptorViewRowAnchors,
       rowPlan};

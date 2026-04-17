@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 00:12 UTC: promoted the two-CTA higher-rank index
+  direct `ld/st` bucket that had been blocked by the generic row-anchor
+  diagnostic. The row-anchor check now defers two-CTA linear views with a
+  nontrivial block dimension to concrete register-layout selection and
+  `TMEMLoad/Store` verification, because those schedules can materialize the
+  row anchors through the block dimension rather than as pure row bases. The
+  runtime matrix now treats `block_two_ctas` and `mmav5_twocta` index views at
+  `(N,variant)=(64,auto)` and `(128,16x128b)` as positive. Validation:
+  `make -j8`, py-compile for `test_tmem_runtime_matrix.py`, promoted
+  two-CTA index plus adjacent multidim selector (`6 passed, 2 skipped`),
+  half-row guard selector (`10 passed`), scrambled/MMAv5/x1 guard selector
+  (`8 passed`), and `git diff --check`.
 - 2026-04-17 00:05 UTC: extended the shared direct `ld/st`
   packet-footprint requirement to explicit n-sharded atom column footprints.
   Explicit `16x128b` x1 `f32/i32` load/store negatives now report that the

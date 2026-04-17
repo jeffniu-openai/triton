@@ -1,3 +1,41 @@
+## 2026-04-17 00:12 UTC: two-CTA higher-rank index ld/st promotion
+
+- Starting point: `codex/tmem` at `a41d65c74`.
+- Probe:
+  - temporarily bypassed only the descriptor-view row-anchor clean-negative
+    guard with `TRITON_PROBE_ALLOW_UNSUPPORTED_LDST_ROW_ANCHORS=1`;
+  - all four two-CTA higher-rank index rows compiled and matched the runtime
+    oracle:
+    `block_two_ctas`/`mmav5_twocta` with `(N,variant)=(64,auto)` and
+    `(128,16x128b)`;
+  - successful traces showed concrete layouts using warp bases through the
+    two-CTA `block` dimension, so the prior pure-row-basis anchor diagnostic
+    was overconservative for this class.
+- Change:
+  - removed the temporary probe hook;
+  - changed `getUnsupportedTMemLdStDescriptorViewRowAnchorRequirement(...)` to
+    defer block-backed two-CTA linear descriptor views to concrete
+    register-layout selection and `TMEMLoad/Store` verification;
+  - moved the four runtime-matrix rows from
+    `LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES` to positive
+    `LDST_TWOCTA_HIGHER_RANK_INDEX_CASES` with expected root and subview
+    opcode shapes.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - promoted two-CTA index plus adjacent multidim selector:
+    `6 passed, 2 skipped, 1567 deselected`;
+  - lifted half-row guard selector:
+    `10 passed, 1565 deselected`;
+  - scrambled/MMAv5/x1 guard selector:
+    `8 passed, 1567 deselected`;
+  - `git diff --check`.
+- Remaining note:
+  - this does not relax the known lifted half-row row-origin boundary; the
+    half-row guard selector stayed green. Future row-anchor work should keep
+    distinguishing block-backed materializable anchors from translated row
+    origins that still need packet-base/per-message decomposition.
+
 ## 2026-04-17 00:05 UTC: ld/st atom-footprint diagnostic checkpoint
 
 - Starting point: `codex/tmem` at `ffc32e5bf`.

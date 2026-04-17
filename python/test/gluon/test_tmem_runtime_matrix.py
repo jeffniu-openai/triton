@@ -4149,14 +4149,27 @@ LDST_TWOCTA_HIGHER_RANK_SLICE_SPECS = list(
     )
 )
 
-LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = []
-
-LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES = [
+LDST_TWOCTA_HIGHER_RANK_INDEX_SPECS = [
     ("block_two_ctas", 64, "auto"),
     ("block_two_ctas", 128, "16x128b"),
     ("mmav5_twocta", 64, "auto"),
     ("mmav5_twocta", 128, "16x128b"),
 ]
+
+LDST_TWOCTA_HIGHER_RANK_INDEX_CASES = [
+    (
+        "f32",
+        torch.float32,
+        layout_name,
+        n,
+        variant,
+        LDST_SHAPE_MAP[variant][n],
+        LDST_SUBVIEW_SHAPE_MAP[variant][n // 2],
+    )
+    for layout_name, n, variant in LDST_TWOCTA_HIGHER_RANK_INDEX_SPECS
+]
+
+LDST_TWOCTA_HIGHER_RANK_INDEX_UNSUPPORTED_CASES = []
 
 LDST_TWOCTA_HIGHER_RANK_SLICE_CASES = [
     (dtype_name, torch_dtype, layout_name, n, variant)

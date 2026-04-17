@@ -1160,6 +1160,13 @@ Progress:
   materializes only 1. This confirms these rows are true footprint/mask
   boundaries, not stale descriptor enumeration gaps, while preserving the
   positive `32x32b.x1` path.
+- 2026-04-17 00:12 UTC: promoted block-backed two-CTA higher-rank index
+  descriptor views. The old row-anchor diagnostic assumed anchors must appear
+  as pure row bases; the successful schedules prove the anchors can be carried
+  through a nontrivial two-CTA `block` dimension and then validated by concrete
+  register-layout selection plus `TMEMLoad/Store` verification. The runtime
+  matrix now makes the four representative two-CTA index rows positive while
+  preserving the lifted half-row and single-CTA multidim row-anchor negatives.
 
 Exit criteria:
 - `ld/st` and `ld.red` lower through shared physical-query facts, not separate

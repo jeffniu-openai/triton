@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 00:12 UTC two-CTA higher-rank index `ld/st` promotion:
+  the previous clean-negative row-anchor guard was too conservative for
+  two-CTA linear descriptor views whose nontrivial block dimension carries
+  row-anchor state. A temporary bypass proved all four rows
+  (`block_two_ctas`/`mmav5_twocta` crossed with `(N,variant)=(64,auto)` and
+  `(128,16x128b)`) compile and produce correct output. The committed fix makes
+  the row-anchor diagnostic defer those block-backed two-CTA views to concrete
+  register-layout selection and `TMEMLoad/Store` verification instead of
+  rejecting them up front. Adjacent single-CTA multidim and lifted half-row
+  negatives remain guarded. Validation: `make -j8`, py-compile, promoted
+  selector (`6 passed, 2 skipped`), half-row guard selector (`10 passed`),
+  extra guard selector (`8 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 00:05 UTC direct `ld/st` atom-footprint checkpoint:
   explicit n-sharded `tcgen05.ld/st` variants now share the packet-footprint
   diagnostic layer when the requested atom is wider than the 32-bit descriptor
