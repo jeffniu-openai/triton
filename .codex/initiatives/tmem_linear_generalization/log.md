@@ -24172,3 +24172,33 @@ Open after this slice:
     (`16 passed, 1576 deselected`);
   - `ldst and reports_clean_unsupported` now collects `7` rows, down from `8`;
   - `git diff --check`.
+
+## 2026-04-17 18:32 UTC: structured warpx2 shared-source rematerialization boundary
+
+- Starting point: `codex/tmem` at `cd59c8076`.
+- Change:
+  - extended the internal `TMemCopyWarpx2SharedSourceRequirement` with source
+    shape and first offset-basis mismatch facts;
+  - updated dense/noncanonical shared-source runtime tests to assert the
+    concrete offset-basis mismatch and the source-rematerialization boundary.
+- Boundary:
+  - support is unchanged. Descriptor representability alone is not a
+    correctness proof for `warpx2`; the public source-message schedule assigns
+    fixed meanings to shared offset bases, so noncanonical dense sources need a
+    real source rematerialization, a different source format, or a proved
+    equivalent schedule.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 focused selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>
+    PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short
+    --splits 4 --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py
+    -k 'cp_no_scales_warpx2_dense_shared_reports_clean_unsupported or
+    cp_no_scales_warpx2_twocta_dense_shared_reports_clean_unsupported'`
+    (groups: `2/2/2/2` passed);
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:27 UTC
+Last updated: 2026-04-17 18:32 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -92,9 +92,10 @@ Current buckets:
   through a typed source-column preservation requirement derived from the
   source-row split requirement.
 - `warpx2` dense/noncanonical shared-source layouts and subword copies:
-  descriptor representability is not sufficient; support needs source
-  rematerialization, packed-lane storage, and descriptor semantic-equivalence
-  proofs.
+  dense/noncanonical shared-source rows now report the first offset-basis
+  mismatch as structured source-rematerialization requirement data; remaining
+  support needs source rematerialization, packed-lane storage, and descriptor
+  semantic-equivalence proofs.
 - Copy row/column permutation and sub-instruction tile permutation rows:
   require row/column partitioning, smaller footprints, masks, or explicit
   proof that the full-footprint public atom cannot realize the projection.
@@ -216,13 +217,26 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Return to the `tcgen05.copy` scheduler frontier. The next highest-value rows
-are dense/noncanonical `warpx2` shared-source layouts and sub-instruction
-row/column permutations where descriptor representability is not enough and a
-source rematerialization, source-format, or destination-mask schedule must be
-proved before support can lift.
+Continue the `tcgen05.copy` scheduler frontier. The next highest-value rows
+are `warpx2` subword/packed-lane copies and sub-instruction row/column
+permutations where descriptor representability is not enough and a packed
+source model, semantic-equivalence proof, source-format change, or
+destination-mask schedule must be proved before support can lift.
 
 ## Progress
+
+- 2026-04-17 18:32 UTC: structured the `warpx2` dense/noncanonical
+  shared-source boundary. `TMemCopyWarpx2SharedSourceRequirement` now carries
+  source shape and optional offset-basis mismatch data, and the formatter
+  reports the first shared offset-basis mismatch plus the source
+  rematerialization boundary explicitly. Behavior is unchanged: the dense
+  shared-source rows still reject cleanly because the public `warpx2` source
+  message schedule assigns fixed meanings to shared offset bases, so descriptor
+  representability alone is not enough. Validation: `make -j8`; built
+  `triton-opt test/TritonNvidiaGPU/invalid.mlir --split-input-file
+  --verify-diagnostics`; split-4 focused dense shared-source selector passed
+  `2/2/2/2`; Python byte-compile for `test_tmem_runtime_matrix.py`;
+  `git diff --check`.
 
 - 2026-04-17 18:27 UTC: structured the scaled-MMAv5 narrow-N accumulator
   boundary. `MMAv5ScaledNarrowNScaleFragmentRequirement` now records logical

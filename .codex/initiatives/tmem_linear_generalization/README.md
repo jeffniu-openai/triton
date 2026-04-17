@@ -48,6 +48,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 18:32 UTC: dense/noncanonical `warpx2` shared-source layouts now
+  report the first shared offset-basis mismatch through
+  `TMemCopyWarpx2SharedSourceRequirement`. Support is unchanged: these rows
+  still require source rematerialization, a different source format, or a
+  proved message schedule because descriptor representability alone does not
+  prove the fixed `warpx2` shared source footprint. Validation: `make -j8`,
+  split-4 focused dense shared-source selector (`2/2/2/2` passed), built
+  `triton-opt` verify-diagnostics, Python byte-compile, and
+  `git diff --check`.
 - 2026-04-17 18:10 UTC: no-scales two-CTA `warpx2::02_13` source-column
   preservation now has a typed requirement formatter derived from the
   source-row split requirement. The bucket remains unsupported because public

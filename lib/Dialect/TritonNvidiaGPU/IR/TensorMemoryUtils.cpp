@@ -9369,21 +9369,53 @@ static bool hasOnlyWarpx2SharedSourceDims(const LinearLayout &shmemLl,
   });
 }
 
-static bool hasCanonicalWarpx2SharedSourceOffsetBases(
-    const LinearLayout &shmemLl, StringAttr offsetDim) {
+struct TMemCopyWarpx2SharedSourceOffsetBasisMismatch {
+  unsigned basisIndex = 0;
+  unsigned expectedBasisCount = 0;
+  unsigned actualBasisCount = 0;
+  SmallVector<int32_t, 2> actualBasis;
+  SmallVector<int32_t, 2> expectedBasis;
+};
+
+static std::optional<TMemCopyWarpx2SharedSourceOffsetBasisMismatch>
+getWarpx2SharedSourceOffsetBasisMismatch(const LinearLayout &shmemLl,
+                                         StringAttr offsetDim) {
   constexpr int32_t expectedOffsetBases[][2] = {
       {32, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0},
       {4, 0},  {8, 0}, {16, 0}, {64, 0},
   };
   auto actualOffsetBases = shmemLl.getBases().lookup(offsetDim);
+  auto makeMismatch =
+      [&](unsigned idx) -> TMemCopyWarpx2SharedSourceOffsetBasisMismatch {
+    TMemCopyWarpx2SharedSourceOffsetBasisMismatch mismatch;
+    mismatch.basisIndex = idx;
+    mismatch.expectedBasisCount = std::size(expectedOffsetBases);
+    mismatch.actualBasisCount = actualOffsetBases.size();
+    if (idx < actualOffsetBases.size()) {
+      mismatch.actualBasis.append(actualOffsetBases[idx].begin(),
+                                  actualOffsetBases[idx].end());
+    }
+    if (idx < std::size(expectedOffsetBases)) {
+      ArrayRef<int32_t> expected(expectedOffsetBases[idx]);
+      mismatch.expectedBasis.append(expected.begin(), expected.end());
+    }
+    return mismatch;
+  };
+
   if (actualOffsetBases.size() != std::size(expectedOffsetBases))
-    return false;
-  for (auto [actual, expected] :
-       llvm::zip(actualOffsetBases, llvm::ArrayRef(expectedOffsetBases))) {
-    if (!llvm::equal(actual, llvm::ArrayRef(expected)))
-      return false;
+    return makeMismatch(std::min<unsigned>(actualOffsetBases.size(),
+                                           std::size(expectedOffsetBases)));
+  for (auto [idx, actual] : llvm::enumerate(actualOffsetBases)) {
+    ArrayRef<int32_t> expected(expectedOffsetBases[idx]);
+    if (!llvm::equal(actual, expected))
+      return makeMismatch(idx);
   }
-  return true;
+  return std::nullopt;
+}
+
+static bool hasCanonicalWarpx2SharedSourceOffsetBases(
+    const LinearLayout &shmemLl, StringAttr offsetDim) {
+  return !getWarpx2SharedSourceOffsetBasisMismatch(shmemLl, offsetDim);
 }
 
 enum class TMemCopyWarpx2SharedSourceRequirementKind {
@@ -9401,6 +9433,9 @@ struct TMemCopyWarpx2SharedSourceRequirement {
   TMemCopyWarpx2SharedSourceRequirementKind kind =
       TMemCopyWarpx2SharedSourceRequirementKind::None;
   TMemCopyFamily family = TMemCopyFamily::Warpx2_01_23_64x128b;
+  SmallVector<int64_t, 2> sourceShape;
+  std::optional<TMemCopyWarpx2SharedSourceOffsetBasisMismatch>
+      offsetBasisMismatch;
 };
 
 static std::optional<TMemCopyWarpx2SharedSourceRequirement>
@@ -9411,8 +9446,12 @@ getTMemCopyWarpx2SharedSourceRequirement(MemDescType srcTy,
          "warpx2 shared-source requirement only applies to warpx2 copies");
 
   auto makeRequirement = [&](TMemCopyWarpx2SharedSourceRequirementKind kind) {
-    return TMemCopyWarpx2SharedSourceRequirement{/*kind=*/kind,
-                                                /*family=*/family};
+    return TMemCopyWarpx2SharedSourceRequirement{
+        /*kind=*/kind,
+        /*family=*/family,
+        /*sourceShape=*/SmallVector<int64_t, 2>(srcTy.getShape().begin(),
+                                                srcTy.getShape().end()),
+        /*offsetBasisMismatch=*/std::nullopt};
   };
 
   if (srcTy.getRank() != 2 || srcTy.getShape()[1] != 4 ||
@@ -9441,9 +9480,13 @@ getTMemCopyWarpx2SharedSourceRequirement(MemDescType srcTy,
   // or fail only after source-footprint scheduling. Keep this as the current
   // source-layout contract until warpx2 planning carries the full source
   // rematerialization schedule instead of only an MMAShared descriptor.
-  if (!hasCanonicalWarpx2SharedSourceOffsetBases(shmemLl, kOffset))
-    return makeRequirement(
+  if (auto mismatch =
+          getWarpx2SharedSourceOffsetBasisMismatch(shmemLl, kOffset)) {
+    auto requirement = makeRequirement(
         TMemCopyWarpx2SharedSourceRequirementKind::OffsetBasisOrder);
+    requirement.offsetBasisMismatch = std::move(mismatch);
+    return requirement;
+  }
 
   auto blockBases = shmemLl.getBases().lookup(kBlock);
   if (srcTy.getShape()[0] == 128) {
@@ -9466,6 +9509,15 @@ getTMemCopyWarpx2SharedSourceRequirement(MemDescType srcTy,
 
 static std::string getTMemCopyWarpx2SharedSourceRequirementError(
     const TMemCopyWarpx2SharedSourceRequirement &requirement) {
+  auto printBasis = [](llvm::raw_ostream &os, ArrayRef<int32_t> basis) {
+    os << "[";
+    for (auto [idx, value] : llvm::enumerate(basis)) {
+      if (idx)
+        os << ", ";
+      os << value;
+    }
+    os << "]";
+  };
   switch (requirement.kind) {
   case TMemCopyWarpx2SharedSourceRequirementKind::None:
     return "";
@@ -9480,9 +9532,42 @@ static std::string getTMemCopyWarpx2SharedSourceRequirementError(
   case TMemCopyWarpx2SharedSourceRequirementKind::ExtraDimensions:
     return "warpx2 tcgen05.copy shared layout may only use offset and block "
            "dimensions.";
-  case TMemCopyWarpx2SharedSourceRequirementKind::OffsetBasisOrder:
-    return "warpx2 tcgen05.copy currently supports only the canonical 128x4 "
-           "shared-linear offset basis order.";
+  case TMemCopyWarpx2SharedSourceRequirementKind::OffsetBasisOrder: {
+    std::string reason;
+    llvm::raw_string_ostream os(reason);
+    os << "warpx2 tcgen05.copy currently supports only the canonical 128x4 "
+          "shared-linear offset basis order for source shape ";
+    for (auto [idx, extent] : llvm::enumerate(requirement.sourceShape)) {
+      if (idx)
+        os << "x";
+      os << extent;
+    }
+    os << ".";
+    if (requirement.offsetBasisMismatch) {
+      const auto &mismatch = *requirement.offsetBasisMismatch;
+      os << " The first mismatch is offset basis " << mismatch.basisIndex;
+      if (mismatch.actualBasisCount != mismatch.expectedBasisCount) {
+        os << "; got " << mismatch.actualBasisCount
+           << " offset bases but expected " << mismatch.expectedBasisCount;
+      }
+      if (!mismatch.actualBasis.empty()) {
+        os << "; got ";
+        printBasis(os, mismatch.actualBasis);
+      }
+      if (!mismatch.expectedBasis.empty()) {
+        os << " but expected ";
+        printBasis(os, mismatch.expectedBasis);
+      }
+      os << ".";
+    }
+    os << " This is a source rematerialization boundary: descriptor "
+          "representability alone is not enough because the warpx2 source "
+          "message schedule assigns fixed meanings to the shared offset bases. "
+          "Support needs a rematerialized canonical shared source, a different "
+          "source format, or a proved schedule that preserves the requested "
+          "logical source footprint.";
+    return os.str();
+  }
   case TMemCopyWarpx2SharedSourceRequirementKind::SingleCtaBlockBasis:
     return "single-CTA warpx2 tcgen05.copy does not support a non-zero shared "
            "block basis.";

@@ -9804,6 +9804,10 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_dense_shared_reports_clean_unsu
     text = str(excinfo.value) + captured.err + captured.out
     assert f"maps to tcgen05.copy.{family}" in text
     assert "canonical 128x4 shared-linear offset basis order" in text
+    assert "first mismatch is offset basis 0" in text
+    assert "got [0, 1] but expected [32, 0]" in text
+    assert "source rematerialization boundary" in text
+    assert "descriptor representability alone is not enough" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
@@ -9862,6 +9866,10 @@ def test_tmem_runtime_matrix_cp_no_scales_warpx2_twocta_dense_shared_reports_cle
     text = str(excinfo.value) + captured.err + captured.out
     assert f"maps to tcgen05.copy.{family}" in text
     assert "canonical 128x4 shared-linear offset basis order" in text
+    assert "first mismatch is offset basis 0" in text
+    assert "got [0, 1] but expected [32, 0]" in text
+    assert "source rematerialization boundary" in text
+    assert "descriptor representability alone is not enough" in text
     assert "cleanly unsupported" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text

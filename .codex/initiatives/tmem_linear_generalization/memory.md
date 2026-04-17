@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 18:32 UTC Phase C `warpx2` shared-source
+  classification: the dense/noncanonical shared-source clean negatives now
+  record the first source offset-basis mismatch in
+  `TMemCopyWarpx2SharedSourceRequirement`. The representative layouts fail at
+  offset basis 0 (`[0, 1]` instead of canonical `[32, 0]`), which is a source
+  rematerialization boundary rather than a descriptor-construction failure.
+  Support is unchanged until the copy planner can rematerialize a canonical
+  source, select a different source format, or prove an equivalent fixed
+  `warpx2` source-message schedule. Validation: `make -j8`, built
+  `triton-opt` verify-diagnostics for `invalid.mlir`, split-4 focused dense
+  shared-source selector (`2/2/2/2`), Python compile, and
+  `git diff --check`.
+
 - Latest: 2026-04-17 18:10 UTC Phase C no-scales copy classification:
   two-CTA `warpx2::02_13` now reports its high source-column-bit gap through
   `TMemCopyWarpx2TwoCTASourceColumnRequirement`, derived from the source-row
