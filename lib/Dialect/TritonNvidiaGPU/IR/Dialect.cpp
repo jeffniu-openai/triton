@@ -1511,6 +1511,24 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
       /*ctaColumns=*/static_cast<unsigned>(ctaShape[1])};
 }
 
+std::optional<MMAv5ScaledMixedFp4ATMemRequirement>
+getMMAv5ScaledMixedFp4ATMemRequirement(MemDescType lhsType,
+                                       ScaleDotElemType typeA,
+                                       ScaleDotElemType typeB) {
+  if (!isa<TensorMemoryEncodingAttr, TensorMemoryLinearEncodingAttr>(
+          lhsType.getEncoding())) {
+    return std::nullopt;
+  }
+  if (typeA != ScaleDotElemType::E2M1 || typeB == ScaleDotElemType::E2M1)
+    return std::nullopt;
+  if (!getMMAv5LhsLayoutInfo(lhsType))
+    return std::nullopt;
+  return MMAv5ScaledMixedFp4ATMemRequirement{
+      /*lhsEncoding=*/lhsType.getEncoding(),
+      /*lhsType=*/typeA,
+      /*rhsType=*/typeB};
+}
+
 std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
   std::string message;
@@ -1544,6 +1562,23 @@ std::string getMMAv5ScaledNarrowNScaleFragmentError(
      << requirement.ctaColumns
      << "-column CTA tile must be reshaped to a larger directly supported "
         "MMAv5 tile before it can use block-scaled tcgen05.mma.";
+  return os.str();
+}
+
+std::string getMMAv5ScaledMixedFp4ATMemError(
+    const MMAv5ScaledMixedFp4ATMemRequirement &requirement) {
+  std::string message;
+  llvm::raw_string_ostream os(message);
+  os << "direct block-scaled MMAv5 does not support mixed-precision fp4 LHS "
+        "operands in tensor memory for "
+     << requirement.lhsEncoding << " (A="
+     << mlir::triton::stringifyScaleDotElemType(requirement.lhsType)
+     << ", B="
+     << mlir::triton::stringifyScaleDotElemType(requirement.rhsType)
+     << "). Mixed mxf8f6f4 fp4 LHS operands require the padded operand-A "
+        "storage model represented by fp4_padded shared memory; use shared "
+        "memory for operand A, or use a homogeneous fp4 scaled-MMA kind whose "
+        "TMEM LHS storage is directly modeled.";
   return os.str();
 }
 

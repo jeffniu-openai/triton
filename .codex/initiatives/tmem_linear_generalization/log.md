@@ -23058,3 +23058,42 @@ Open after this slice:
     'ldst_twocta_descriptor'`
     (groups: `9 passed, 13 skipped`; `7 passed, 15 skipped`; `20 passed, 2
     skipped`; `9 passed, 10 skipped`; all expected skips).
+
+## 2026-04-17 12:38 UTC: mixed fp4A TMEM-LHS requirement cleanup
+
+- Starting point: `codex/tmem` at `d05cc70cc`.
+- Change:
+  - added `MMAv5ScaledMixedFp4ATMemRequirement` to the scaled-MMAv5 backend
+    requirement layer;
+  - moved the mixed fp4A TMEM-LHS verifier rejection out of the local raw guard
+    and into the shared dialect helper/formatter;
+  - the diagnostic now includes the exact LHS TMEM encoding and A/B
+    scale-dot element formats while preserving the clean unsupported contract.
+- Finding:
+  - this remains a storage-model boundary rather than a layout-arithmetic
+    fix. Existing guard-lift probes compiled representative `A=e2m1`,
+    `B=mxfp8` TMEM-LHS cases but produced large numerical errors, matching the
+    missing padded operand-A storage model that the shared-memory
+    `fp4_padded` descriptor builder has and the TMEM-LHS path does not yet
+    model.
+- Validation:
+  - `make -j8`;
+  - split-4 mixed-fp4A negative selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-mixedfp4a-req
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short --splits 4
+    --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_lhs_tile_permuted_mixed_fp4a_reports_clean_unsupported or
+    mma_scaled_lhs_subslice_view_mixed_fp4a_reports_clean_unsupported'`
+    (groups: `6/6/6/6` passed);
+  - split-4 neighboring positive TMEM-LHS scaled-MMA selector:
+    `CUDA_VISIBLE_DEVICES=<0..3>
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu<gpu>-scaledlhs-req
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short --splits 4
+    --group <1..4> python/test/gluon/test_tmem_runtime_matrix.py -k
+    'mma_scaled_lhs_subslice_view_format_matrix or
+    mma_scaled_lhs_tile_permuted_format_matrix'`
+    (groups: `6/6/6/4` passed);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

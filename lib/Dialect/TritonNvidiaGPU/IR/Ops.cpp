@@ -917,14 +917,12 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   }
   if (aTmemInfo && aTmemInfo->colStride != 1)
     return emitOpError("The col stride of the LHS operand must be 1");
-  if (aTmemInfo && getAType() == ScaleDotElemType::E2M1 &&
-      getBType() != ScaleDotElemType::E2M1) {
-    return emitOpError()
-           << "does not support mixed-precision fp4 LHS operands in tensor "
-              "memory. Mixed mxf8f6f4 fp4 LHS operands require the padded "
-              "operand-A storage model currently represented by "
-              "fp4_padded shared memory; use shared memory for operand A or "
-              "a homogeneous fp4 scaled-MMA kind.";
+  if (aTmemInfo) {
+    if (auto requirement = getMMAv5ScaledMixedFp4ATMemRequirement(
+            getA().getType(), getAType(), getBType())) {
+      return emitOpError()
+             << getMMAv5ScaledMixedFp4ATMemError(*requirement);
+    }
   }
   auto accSupport = getMMAv5ScaledAccumulatorSupport(getD().getType());
   auto info = accSupport.layoutInfo;

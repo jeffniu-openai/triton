@@ -238,6 +238,12 @@ struct MMAv5ScaledNarrowNScaleFragmentRequirement {
   unsigned ctaColumns;
 };
 
+struct MMAv5ScaledMixedFp4ATMemRequirement {
+  Attribute lhsEncoding;
+  ScaleDotElemType lhsType;
+  ScaleDotElemType rhsType;
+};
+
 struct MMAv5ScaledAccumulatorSupport {
   std::optional<MMAv5AccumulatorLayoutInfo> layoutInfo;
   std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
@@ -324,11 +330,19 @@ getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
 std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
 getMMAv5ScaledNarrowNScaleFragmentRequirement(gpu::MemDescType memDescType);
 
+std::optional<MMAv5ScaledMixedFp4ATMemRequirement>
+getMMAv5ScaledMixedFp4ATMemRequirement(gpu::MemDescType lhsType,
+                                       ScaleDotElemType typeA,
+                                       ScaleDotElemType typeB);
+
 std::string getMMAv5ScaledRepeatedN32ScaleFragmentError(
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement);
 
 std::string getMMAv5ScaledNarrowNScaleFragmentError(
     const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement);
+
+std::string getMMAv5ScaledMixedFp4ATMemError(
+    const MMAv5ScaledMixedFp4ATMemRequirement &requirement);
 
 std::optional<std::string>
 getMMAv5ScaledRepeatedN32ScaleFragmentError(gpu::MemDescType memDescType);

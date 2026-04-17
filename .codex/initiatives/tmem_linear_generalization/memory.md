@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 12:38 UTC mixed fp4A TMEM-LHS scaled-MMAv5 is now
+  represented as an explicit backend requirement instead of a raw verifier
+  special case. This does not promote support: prior guard-lift probes showed
+  numerically wrong results for `A=e2m1`, `B!=e2m1` with A in TMEM, and the
+  remaining boundary is the missing padded operand-A storage model that the
+  shared-memory `fp4_padded` descriptor path already represents. The verifier
+  now routes the case through `MMAv5ScaledMixedFp4ATMemRequirement`, including
+  the concrete LHS encoding and A/B scale-dot formats in the diagnostic.
+  Validation: `make -j8`; split-4 mixed-fp4A negative selector (`6/6/6/6`
+  passed); split-4 neighboring positive TMEM-LHS scaled-MMA selector
+  (`6/6/6/4` passed); Python compile; `git diff --check`.
+
 - Latest: 2026-04-17 12:25 UTC the current MMAv5 higher-rank dim0-slice
   `ld/st` bucket is fully positive. The last row,
   `mmav5_twocta, N=64, 16x128b`, was not an ISA gap: after descriptor-view
