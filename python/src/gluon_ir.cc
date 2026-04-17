@@ -1878,6 +1878,15 @@ void init_gluon_ir(py::module &&m) {
                 return layoutToGluon(fallbackLayouts.front());
               }
             }
+            if (ttng::isTMemLdStReplayableFullView(queryMemDesc)) {
+              auto fallbackLayouts = getBlockedFallbackLayouts(
+                  queryMemDescTy, queryMemDescTy.getShape());
+              if (!fallbackLayouts.empty()) {
+                appendTrace(
+                    "findDirectLayoutForMemDesc replayableFullViewFallback");
+                return layoutToGluon(fallbackLayouts.front());
+              }
+            }
             if (traceToFile && !unsupportedDescriptorViewError.empty()) {
               appendTrace(Twine("findDirectLayoutForMemDesc unsupportedView=") +
                           unsupportedDescriptorViewError);

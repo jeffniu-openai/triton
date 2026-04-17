@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 11:50 UTC: promoted the M64 two-CTA
+  tensor-memory-scales descriptor-view `ld/st` row by replaying full-tile
+  `memdesc_reshape`/`memdesc_trans` views through the directly supported root
+  allocation. The shared direct-unsupported classifier now marks the M64
+  scales row-anchor boundary before support-query fallback, and the optimizer
+  lowers replayable full views to root `ttng.tmem_load`/`ttng.tmem_store`
+  plus tensor reshape/transforms. Validation: `make -j8`, the focused
+  `ldst_scales_descriptor_view_cga` selector (`9 passed`), neighboring scales
+  descriptor-view/variant selector (`20 passed`), Python compile, and
+  `git diff --check`.
 - 2026-04-17 11:23 UTC: aligned repeated-N32 scaled-MMAv5 LLVM lowering with
   the backend B-scale storage-through-view contract. Lowering now plans and
   validates B-scale storage via `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`,

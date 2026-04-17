@@ -22868,3 +22868,45 @@ Open after this slice:
   - exact compact plus padded B-scale descriptor-view tests (`2 passed`);
   - repeated-N32 tile-permuted selector (`12 passed, 1582 deselected`);
   - `git diff --check`.
+
+## 2026-04-17 11:50 UTC: M64 scales descriptor-view ld/st replay
+
+- Starting point: `codex/tmem` at `c77a9c26c`.
+- Change:
+  - added a replayability predicate for full-tile TMEM view chains made only of
+    element-preserving `memdesc_reshape` and `memdesc_trans` operations;
+  - moved the M64 two-CTA tensor-memory-scales direct `ld/st` row-anchor
+    boundary ahead of support-query fallback in the shared unsupported-direct
+    classifier, so direct lowering and optimizer replay agree on the boundary;
+  - taught `OptimizeTMemLayouts` to replay unsupported full-tile descriptor
+    views through the directly supported root allocation by emitting root
+    `ttng.tmem_load`/`ttng.tmem_store` plus tensor reshape/transforms;
+  - normalized narrow scales support layouts by compacting zero register bases,
+    matching the root scales layouts emitted by the frontend and avoiding the
+    register-broadcast verifier rejection;
+  - promoted the `M=N=64`, two-CTA, `32x32b` scales CGA descriptor-view runtime
+    row from clean unsupported to positive replay coverage.
+- Finding:
+  - the M64 scales view is not directly materializable as a descriptor-view
+    `tcgen05.ld/st` because the second 32-row warp anchor is support state, but
+    the full view is algebraically replayable through the root scales image;
+  - the previous support-layout helper selected the legacy anchored scales
+    register layout with a zero register basis. That was a valid encoding-info
+    proof but not a valid `ttng.tmem_load` layout for narrow scales. Removing
+    zero register bases recovers the same compact root layout already used by
+    working root scales kernels.
+- Validation:
+  - `make -j8`;
+  - focused debug probe for the promoted row (`compiled ok`, `runtime ok`);
+  - `CUDA_VISIBLE_DEVICES=0 TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-fullview-focused3
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_cga'` (`9 passed, 1585 deselected`);
+  - `CUDA_VISIBLE_DEVICES=1 TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-fullview-scales-neighbor
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    'ldst_scales_descriptor_view_roundtrip or ldst_scales_variant'`
+    (`20 passed, 1574 deselected`);
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.

@@ -1147,7 +1147,8 @@ static bool isOptimizerReplayableTMemLdSt(Operation *op, Value memdescValue) {
   } else if (!isa<TMEMStoreOp>(op)) {
     return false;
   }
-  return isTMemLdStReplayableHalfSliceView(memdescValue);
+  return isTMemLdStReplayableHalfSliceView(memdescValue) ||
+         isTMemLdStReplayableFullView(memdescValue);
 }
 
 static LogicalResult

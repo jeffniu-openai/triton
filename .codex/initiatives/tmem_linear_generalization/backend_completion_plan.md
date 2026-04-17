@@ -1104,6 +1104,15 @@ Progress:
   split is represented by register/message repetition, so footprint or shape
   promotion would be a false support claim. The frontend split-N fallback now
   preserves the backend requested-variant reason for this row.
+- 2026-04-17 11:50 UTC: promoted the M64 two-CTA scales descriptor-view
+  `32x32b` row by classifying the direct descriptor-view row-anchor boundary
+  before support-query fallback and replaying full-tile reshape/trans views
+  through the root scales allocation. This keeps direct `tcgen05.ld/st`
+  semantics tight: the M64 descriptor view is still not directly
+  materializable, but the full view is algebraically equivalent to a root load
+  plus tensor transforms. The optimizer now has a shared full-view replay path
+  and normalizes narrow scales root support layouts by compacting zero
+  register bases before creating root `ttng.tmem_load` operations.
 - 2026-04-16 07:56 UTC: promoted the row-permuted M64 explicit-`32x32b`
   `ld.red` row by making reduction layout selection reuse the existing
   handle-aware split-N planner when the provided direct `32x32b` layout would

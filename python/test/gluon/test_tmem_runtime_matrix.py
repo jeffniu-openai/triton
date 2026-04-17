@@ -5303,6 +5303,18 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_N_SHARDED_REPRESENTATIVE_KEYS = {
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
     [
+        (
+            64,
+            64,
+            4,
+            2,
+            ((1, 0),),
+            "32x32b",
+            _expected_scales_ldst_descriptor_view_ops(
+                "16x32bx2.x1.b32", "16x32bx2.x1.b32", tuple(range(0, 32, 2))
+            ),
+        )
+    ] + [
         case
         for case in SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_CASES
         if case[:6] in SCALES_LDST_DESCRIPTOR_VIEW_CGA_32X32B_REPRESENTATIVE_KEYS
@@ -5314,15 +5326,6 @@ SCALES_LDST_DESCRIPTOR_VIEW_CGA_CASES = (
 )
 
 SCALES_LDST_DESCRIPTOR_VIEW_CGA_CLEAN_UNSUPPORTED_CASES = [
-    (
-        64,
-        64,
-        4,
-        2,
-        ((1, 0),),
-        "32x32b",
-        "M=64 two-CTA tensor-memory-scales view carries the second 32-row warp anchor as broadcast/support state",
-    ),
     (
         128,
         64,
@@ -7759,9 +7762,12 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_roundtrip(
     assert ops == expected_ops
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_scales_encoding" in ttgir
-    assert "tensor_memory_linear" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
+    if "tensor_memory_linear" in ttgir:
+        assert "ttg.memdesc_reshape" in ttgir
+        assert "ttg.memdesc_trans" in ttgir
+    else:
+        assert "tt.reshape" in ttgir
+        assert "tt.trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -7784,9 +7790,12 @@ def test_tmem_runtime_matrix_ldst_scales_descriptor_view_cga_roundtrip(
     assert ops == expected_ops
     ttgir = compiled.asm["ttgir"]
     assert "tensor_memory_scales_encoding" in ttgir
-    assert "tensor_memory_linear" in ttgir
-    assert "ttg.memdesc_reshape" in ttgir
-    assert "ttg.memdesc_trans" in ttgir
+    if "tensor_memory_linear" in ttgir:
+        assert "ttg.memdesc_reshape" in ttgir
+        assert "ttg.memdesc_trans" in ttgir
+    else:
+        assert "tt.reshape" in ttgir
+        assert "tt.trans" in ttgir
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 11:50 UTC M64 two-CTA tensor-memory-scales
+  descriptor-view `ld/st` is now positive via full-view replay. The direct
+  `tcgen05.ld/st` classifier now reports the M64 scales row-anchor boundary
+  before support-query fallback can mask it, so verifier/frontend selection
+  and the optimizer agree that the direct descriptor view is not materializable.
+  `OptimizeTMemLayouts` recognizes replayable full-tile reshape/trans chains,
+  selects a directly supported root scales layout with zero register bases
+  compacted away, and rewrites the view load/store into root
+  `ttng.tmem_load`/`ttng.tmem_store` plus tensor reshape/transforms. The
+  promoted runtime row covers `M=N=64`, two CTAs, `32x32b`, and validates the
+  replayed `16x32bx2.x1.b32` packet sequence across offsets `0..30` step 2.
+  Validation: `make -j8`; focused `ldst_scales_descriptor_view_cga` selector
+  (`9 passed`); neighboring scales descriptor-view/variant selector (`20
+  passed`); Python compile; and `git diff --check`.
+
 - Latest: 2026-04-17 11:23 UTC repeated-N32 scaled-MMAv5 LLVM lowering now
   uses `getMMAv5ScaledBScaleStorageTypeThroughViews(...)`, matching verifier
   and allocation-pass scale-view semantics. This closes a layering mismatch

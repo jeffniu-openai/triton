@@ -479,6 +479,8 @@ getTMemLdStBlockedFallbackLayouts(gpu::MemDescType queryTy,
 
 bool isTMemLdStReplayableHalfSliceView(Value memDesc);
 
+bool isTMemLdStReplayableFullView(Value memDesc);
+
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
 
