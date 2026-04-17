@@ -1381,6 +1381,57 @@ getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
       .repeatedN32ScaleFragmentRequirement;
 }
 
+static std::optional<unsigned> getMMAv5ScaledRepeatedN32PaddingFactor(
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
+  if (requirement.instrSizeN == 0 ||
+      requirement.minimumAddressableBScaleFragmentN % requirement.instrSizeN !=
+          0)
+    return std::nullopt;
+  unsigned factor =
+      requirement.minimumAddressableBScaleFragmentN / requirement.instrSizeN;
+  if (factor <= 1)
+    return std::nullopt;
+  return factor;
+}
+
+bool isMMAv5ScaledRepeatedN32BScaleStorageSupported(
+    MemDescType bScaleType,
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
+  if (!isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return false;
+  auto paddingFactor = getMMAv5ScaledRepeatedN32PaddingFactor(requirement);
+  if (!paddingFactor)
+    return false;
+
+  auto shape = bScaleType.getShape();
+  if (shape.size() != 2)
+    return false;
+  int64_t rows = shape[0];
+  return rows >=
+         static_cast<int64_t>(requirement.ctaColumns) * *paddingFactor;
+}
+
+std::optional<SmallVector<int64_t>>
+getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
+    MemDescType bScaleType,
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
+  if (!isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return std::nullopt;
+  auto paddingFactor = getMMAv5ScaledRepeatedN32PaddingFactor(requirement);
+  if (!paddingFactor)
+    return std::nullopt;
+
+  SmallVector<int64_t> shape(bScaleType.getShape().begin(),
+                             bScaleType.getShape().end());
+  if (shape.size() != 2)
+    return std::nullopt;
+  int64_t &rows = shape[0];
+  if (rows != static_cast<int64_t>(requirement.ctaColumns))
+    return std::nullopt;
+  rows *= *paddingFactor;
+  return shape;
+}
+
 std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
 getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
   constexpr unsigned kMinimumScaledInstrSizeN = 32;

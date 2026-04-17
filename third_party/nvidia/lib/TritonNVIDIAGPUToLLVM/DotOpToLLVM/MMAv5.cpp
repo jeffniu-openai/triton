@@ -760,7 +760,10 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
         loc, ttng::getMMAv5ScaledNarrowNScaleFragmentError(
                  *accSupport.narrowNScaleFragmentRequirement));
   }
-  if (accSupport.repeatedN32ScaleFragmentRequirement) {
+  if (accSupport.repeatedN32ScaleFragmentRequirement &&
+      !ttng::isMMAv5ScaledRepeatedN32BScaleStorageSupported(
+          op.getBScale().getType(),
+          *accSupport.repeatedN32ScaleFragmentRequirement)) {
     return mlir::emitError(
         loc, ttng::getMMAv5ScaledRepeatedN32ScaleFragmentError(
                  *accSupport.repeatedN32ScaleFragmentRequirement));

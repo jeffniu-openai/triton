@@ -4782,7 +4782,7 @@ SCALED_MMA_ACC_TILE_PERMUTED_K_CASES = [
     for k in (128, 256)
 ]
 
-SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES = [
+SCALED_MMA_ACC_TILE_PERMUTED_N32_CASES = [
     (a_format, b_format, k)
     for a_format, b_format in CP_SCALES_WARPX4_FORMAT_PAIRS
     for k in (128, 256)
@@ -12280,9 +12280,7 @@ def test_tmem_runtime_matrix_mma_scaled_twocta_acc_subslice_view_format_use_acc(
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format", CP_SCALES_WARPX4_FORMAT_PAIRS)
 @pytest.mark.parametrize("k", (128, 256))
-def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix_reports_clean_unsupported(
-    a_format, b_format, k, capfd
-):
+def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix(a_format, b_format, k):
     m = 128
     n = 64
     vec_size = 16 if a_format == "nvfp4" else 32
@@ -12290,37 +12288,38 @@ def test_tmem_runtime_matrix_mma_scaled_acc_subslice_tile_permuted_format_matrix
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
 
     torch.manual_seed(0)
-    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
-    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
-    with pytest.raises(Exception) as excinfo:
-        tmem_mma_scaled_acc_subslice_format_kernel[(1, )](
-            out,
-            m,
-            n,
-            k,
-            a,
-            b,
-            a_scale,
-            b_scale,
-            _make_tmem_linear_layout_tile_permuted(m, 128, 32),
-            64,
-            vec_size,
-            a_elem_per_byte,
-            b_elem_per_byte,
-            a_tcgen_format,
-            b_tcgen_format,
-            0.0,
-            num_warps=4,
-        )
+    compiled = tmem_mma_scaled_acc_subslice_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        _make_tmem_linear_layout_tile_permuted(m, 128, 32),
+        64,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        0.0,
+        num_warps=4,
+    )
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "direct block-scaled MMAv5 does not support repeated N=32 instructions along N" in text
-    assert "matrix-B scale fragments at 64-column alignment" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    expected_count = 2 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    assert "ttg.memdesc_subslice" in compiled.asm["ttgir"]
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
@@ -12804,10 +12803,8 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_reports_clean_u
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
-@pytest.mark.parametrize("a_format,b_format,k", SCALED_MMA_ACC_TILE_PERMUTED_N32_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported(
-    a_format, b_format, k, capfd
-):
+@pytest.mark.parametrize("a_format,b_format,k", SCALED_MMA_ACC_TILE_PERMUTED_N32_CASES)
+def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_format_matrix(a_format, b_format, k):
     m = n = 128
     layout = _make_tmem_linear_layout_tile_permuted(m, n, 32)
     vec_size = 16 if a_format == "nvfp4" else 32
@@ -12815,33 +12812,34 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_32_repeated_n32_report
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
 
     torch.manual_seed(0)
-    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
-    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
-    with pytest.raises(Exception) as excinfo:
-        tmem_mma_scaled_layout_format_kernel[(1, )](
-            out,
-            m,
-            n,
-            k,
-            a,
-            b,
-            a_scale,
-            b_scale,
-            layout,
-            vec_size,
-            a_elem_per_byte,
-            b_elem_per_byte,
-            a_tcgen_format,
-            b_tcgen_format,
-            0.0,
-            num_warps=4,
-        )
+    compiled = tmem_mma_scaled_layout_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        0.0,
+        num_warps=4,
+    )
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "direct block-scaled MMAv5 does not support repeated N=32 instructions along N" in text
-    assert "matrix-B scale fragments at 64-column alignment" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]

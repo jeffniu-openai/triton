@@ -1,5 +1,28 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 10:46 UTC scaled-MMAv5 repeated-`N=32`
+  tile-permuted accumulator layouts are now supported by backend-owned
+  matrix-B scale rematerialization. The verifier now distinguishes already
+  padded B-scale storage from compact storage that can be rematerialized. The
+  tensor-memory allocation pass rewrites a simple compact B-scale
+  `tmem_alloc` + single `tmem_store` feeding `tcgen05_mma_scaled` into exact
+  register algebra: reshape compact rows into
+  `[nInstr, 1, instrN, scaleCols]`, broadcast the singleton padding dimension
+  to the 64-row public scale-fragment alignment, reshape back to padded
+  `[2N, scaleCols]`, select a TMEM-store-compatible layout when needed, and
+  store into a new padded B-scale allocation. Tensor-memory allocation now
+  runs before shared-memory allocation so any layout conversion scratch needed
+  by that rematerialization receives shared-memory offsets before LLVM
+  lowering. Repeated-N32 tile-permuted root and acc-subslice runtime-matrix
+  rows are now positive for `mxfp8`, `mxfp4`, mixed `mxfp8/mxfp4`, and
+  `nvfp4`; narrow-N tile-permuted rows remain clean unsupported. Validation:
+  `make -j8`; direct three-format runtime probe (`mxfp8`, `mxfp4`, `nvfp4`
+  pass); tile-permuted selector (`30 passed`); acc-subslice tile-permuted
+  selector (`10 passed`); neighboring scaled root/subslice selector (`55
+  passed`); narrow-N clean-negative selector (`20 passed`); core
+  `test_core.py -k tmem_linear_m64` (`21 passed`); Python compile; and
+  `git diff --check`.
+
 - Latest: 2026-04-17 10:07 UTC raw/support query row-plan selection is now
   backend-owned for direct `ld/st` layout checking. Added
   `getTMemLdStRowPlanForRawQuery(...)` and

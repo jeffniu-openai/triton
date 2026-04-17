@@ -305,6 +305,15 @@ std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
     gpu::MemDescType memDescType);
 
+bool isMMAv5ScaledRepeatedN32BScaleStorageSupported(
+    gpu::MemDescType bScaleType,
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement);
+
+std::optional<llvm::SmallVector<int64_t>>
+getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
+    gpu::MemDescType bScaleType,
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement);
+
 std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
 getMMAv5ScaledNarrowNScaleFragmentRequirement(gpu::MemDescType memDescType);
 

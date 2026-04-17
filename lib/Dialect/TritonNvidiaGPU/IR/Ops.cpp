@@ -947,7 +947,13 @@ LogicalResult TCGen5MMAScaledOp::verify() {
       getShapePerCTA(getCGALayout(getD().getType().getEncoding()).getCTASplitNum(),
                      getD().getType().getShape());
   auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
-  if (accSupport.repeatedN32ScaleFragmentRequirement) {
+  if (accSupport.repeatedN32ScaleFragmentRequirement &&
+      !isMMAv5ScaledRepeatedN32BScaleStorageSupported(
+          getBScale().getType(),
+          *accSupport.repeatedN32ScaleFragmentRequirement) &&
+      !getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
+          getBScale().getType(),
+          *accSupport.repeatedN32ScaleFragmentRequirement)) {
     return emitOpError() << getMMAv5ScaledRepeatedN32ScaleFragmentError(
                *accSupport.repeatedN32ScaleFragmentRequirement);
   }

@@ -44,6 +44,23 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 10:46 UTC: promoted repeated-`N=32` scaled-MMAv5
+  tile-permuted accumulator layouts to positive support by rematerializing
+  compact matrix-B scale storage into 64-row-aligned public scale-fragment
+  slots. `TCGen5MMAScaledOp` verification/lowering now accept already padded
+  B-scale storage or compact storage that the tensor-memory allocation pass can
+  rewrite. The allocation pass performs exact reshape/broadcast arithmetic and
+  creates a padded B-scale allocation before offsets are assigned. Tensor-memory
+  allocation now runs before shared-memory allocation so any layout-conversion
+  scratch introduced by rematerialization is allocated before LLVM lowering.
+  Runtime-matrix repeated-N32 root and acc-subslice tile-permuted rows are now
+  positive for all current scale format pairs, including `nvfp4`; narrow-N
+  tile-permuted rows remain clean unsupported. Validation: `make -j8`, direct
+  three-format repeated-N32 probe, tile-permuted selector (`30 passed`),
+  acc-subslice tile-permuted selector (`10 passed`), neighboring scaled
+  root/subslice selector (`55 passed`), narrow-N negative selector (`20
+  passed`), core `test_core.py -k tmem_linear_m64` (`21 passed`), Python
+  compile, and `git diff --check`.
 - 2026-04-17 10:07 UTC: moved raw/support query row-plan selection for direct
   `ld/st` register-layout checking into backend helpers. The Gluon pybind
   bridge and generic TMEM load/store verifier now use

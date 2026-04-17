@@ -1,3 +1,69 @@
+## 2026-04-17 10:46 UTC: repeated-N32 scaled-MMAv5 B-scale rematerialization
+
+- Starting point: `codex/tmem` at `27fff2e39`.
+- Change:
+  - added repeated-N32 B-scale storage helpers so verifier/lowering can
+    distinguish already padded `TensorMemoryScalesLayout` B-scale storage from
+    compact storage that the backend can rematerialize;
+  - added `RematerializeRepeatedN32BScale` in
+    `TritonTensorMemoryAllocationPass`, rewriting compact B-scale storage for
+    `tcgen05_mma_scaled` into padded storage aligned to the public 64-row
+    matrix-B scale-fragment contract;
+  - the rewrite preserves logical order with
+    `reshape [nInstr, 1, instrN, scaleCols] -> broadcast padding ->
+    reshape [2N, scaleCols]`, then inserts a `convert_layout` only when the
+    exact rematerialized value needs a TMEM-store-compatible register layout;
+  - moved tensor-memory allocation before NVIDIA shared-memory allocation in
+    the LLIR pipeline so any scratch introduced by that conversion receives an
+    `allocation.offset` before LLVM lowering;
+  - converted the repeated-N32 tile-permuted root and acc-subslice tests from
+    clean negatives into positive correctness/opcode-count coverage.
+- Important probes:
+  - manually padding B scales to `[2N, K/VEC]` with
+    `src_n = (row // 64) * 32 + (row % 32)` produced correct results and 16
+    `mxfp8` MMAs, proving the gap was storage rematerialization rather than an
+    MMA address formula tweak;
+  - bypassing only the old guard emitted MMAs but produced wrong results,
+    reinforcing that compact B-scale storage cannot be passed directly to
+    repeated N32 instructions.
+- Boundary:
+  - this supports the simple direct B-scale producer used by current Gluon
+    scaled-MMAv5 kernels: a compact `TMEMAllocOp` with one preceding
+    `TMEMStoreOp` and one MMA consumer;
+  - narrow-N tile-permuted scaled-MMAv5 remains a clean ISA/public-layout
+    unsupported case because the accumulator asks for a public scaled tile
+    narrower than the 32-column minimum.
+- Validation:
+  - `make -j8`;
+  - direct Python runtime probe over `mxfp8`, `mxfp4`, and `nvfp4`
+    repeated-N32 tile-permuted root (`PASS`, expected MMA counts);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_32 or
+    mma_scaled_acc_tile_permuted_64"` (`30 passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_subslice_tile_permuted"` (`10 passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_subslice_view_format_matrix or
+    mma_scaled_acc_subslice_view_format_use_acc or
+    mma_scaled_root_format_matrix"` (`55 passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=3
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu3 pytest -s --tb=short
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported"` (`20
+    passed`);
+  - `PYTHONPATH=./python CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2 pytest -s --tb=short
+    python/test/gluon/test_core.py -k tmem_linear_m64` (`21 passed`);
+  - `PYTHONPATH=./python python -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-17 10:07 UTC: backend-owned raw/support row-plan selection
 
 - Starting point: `codex/tmem` at `2d87afaa0`.

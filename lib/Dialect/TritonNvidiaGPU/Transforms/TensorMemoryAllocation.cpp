@@ -273,6 +273,126 @@ static SmallVector<Operation *> getAlloc(Value value) {
   return allocs;
 }
 
+class RematerializeRepeatedN32BScale
+    : public OpRewritePattern<TCGen5MMAScaledOp> {
+public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TCGen5MMAScaledOp mmaOp,
+                                PatternRewriter &rewriter) const override {
+    auto accSupport = getMMAv5ScaledAccumulatorSupport(mmaOp.getD().getType());
+    if (!accSupport.repeatedN32ScaleFragmentRequirement)
+      return failure();
+
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement =
+        *accSupport.repeatedN32ScaleFragmentRequirement;
+    Value bScale = mmaOp.getBScale();
+    auto bScaleType = cast<ttg::MemDescType>(bScale.getType());
+    if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(bScaleType,
+                                                       requirement))
+      return failure();
+
+    std::optional<SmallVector<int64_t>> rematerializedShape =
+        getMMAv5ScaledRepeatedN32BScaleRematerializedShape(bScaleType,
+                                                          requirement);
+    if (!rematerializedShape)
+      return failure();
+
+    auto allocOp = bScale.getDefiningOp<TMEMAllocOp>();
+    if (!allocOp || allocOp.getSrc())
+      return failure();
+
+    TMEMStoreOp storeOp;
+    for (Operation *user : llvm::make_early_inc_range(bScale.getUsers())) {
+      if (user == mmaOp.getOperation())
+        continue;
+      auto candidate = dyn_cast<TMEMStoreOp>(user);
+      if (!candidate || candidate.getDst() != bScale)
+        return failure();
+      if (storeOp)
+        return failure();
+      storeOp = candidate;
+    }
+    if (!storeOp)
+      return failure();
+    if (storeOp->getBlock() != mmaOp->getBlock() ||
+        !storeOp->isBeforeInBlock(mmaOp.getOperation()))
+      return failure();
+
+    auto storedType = dyn_cast<RankedTensorType>(storeOp.getSrc().getType());
+    if (!storedType || storedType.getShape() != bScaleType.getShape() ||
+        storedType.getRank() != 2)
+      return failure();
+
+    if (storedType.getShape()[0] !=
+            static_cast<int64_t>(requirement.ctaColumns) ||
+        requirement.instrSizeN == 0 ||
+        requirement.ctaColumns % requirement.instrSizeN != 0)
+      return failure();
+
+    int64_t paddingFactor =
+        (*rematerializedShape)[0] / storedType.getShape()[0];
+    if (paddingFactor <= 1 ||
+        (*rematerializedShape)[0] % storedType.getShape()[0] != 0)
+      return failure();
+
+    int64_t instructionCount =
+        requirement.ctaColumns / requirement.instrSizeN;
+    SmallVector<int64_t> groupedShape{
+        instructionCount, 1, static_cast<int64_t>(requirement.instrSizeN),
+        storedType.getShape()[1]};
+
+    rewriter.setInsertionPoint(storeOp);
+    Location loc = storeOp.getLoc();
+    Value grouped =
+        triton::ReshapeOp::create(rewriter, loc, groupedShape,
+                                  storeOp.getSrc(), /*allowReorder=*/false);
+    auto groupedType = cast<RankedTensorType>(grouped.getType());
+    SmallVector<int64_t> broadcastShape(groupedType.getShape().begin(),
+                                        groupedType.getShape().end());
+    broadcastShape[1] = paddingFactor;
+    Value broadcasted = triton::BroadcastOp::create(
+        rewriter, loc, groupedType.clone(broadcastShape), grouped);
+    Value rematerialized = triton::ReshapeOp::create(
+        rewriter, loc, *rematerializedShape, broadcasted,
+        /*allowReorder=*/false);
+
+    auto rematerializedType = ttg::MemDescType::get(
+        *rematerializedShape, bScaleType.getElementType(),
+        bScaleType.getEncoding(), bScaleType.getMemorySpace(),
+        bScaleType.getMutableMemory());
+    auto rematerializedTensorType =
+        cast<RankedTensorType>(rematerialized.getType());
+    if (!isDistributedLayoutTMemCompatible(storeOp.getOperation(),
+                                           rematerializedTensorType,
+                                           rematerializedType)) {
+      SmallVector<ttg::DistributedEncodingTrait> layouts =
+          getTmemCompatibleLayouts(storeOp.getOperation(),
+                                   rematerializedTensorType,
+                                   rematerializedType);
+      if (layouts.empty())
+        return failure();
+      auto convertedType = rematerializedTensorType.cloneWithEncoding(layouts[0]);
+      rematerialized = ttg::ConvertLayoutOp::create(rewriter, loc,
+                                                    convertedType,
+                                                    rematerialized);
+    }
+
+    auto rematerializedAlloc =
+        TMEMAllocOp::create(rewriter, loc, rematerializedType, Value());
+    TMEMStoreOp::create(rewriter, loc, rematerializedAlloc.getResult(),
+                        rematerialized, storeOp.getPred());
+
+    rewriter.modifyOpInPlace(mmaOp, [&] {
+      mmaOp.getBScaleMutable().assign(rematerializedAlloc.getResult());
+    });
+    rewriter.eraseOp(storeOp);
+    if (allocOp->use_empty())
+      rewriter.eraseOp(allocOp);
+    return success();
+  }
+};
+
 class RowIdConstraints {
   llvm::EquivalenceClasses<Operation *> dependentAllocs;
   llvm::SmallDenseMap<Operation *, int> rowIndex;
@@ -399,6 +519,11 @@ public:
     MLIRContext *ctx = &getContext();
 
     DenseMap<triton::nvidia_gpu::TMEMAllocOp, int> offsets;
+    RewritePatternSet patterns(ctx);
+    patterns.add<RematerializeRepeatedN32BScale>(ctx);
+    if (failed(applyPatternsGreedily(mod, std::move(patterns))))
+      return signalPassFailure();
+
     // TODO: handle cases with multiple function with TMEMAllocOp.
     int totalMemorySize = allocateTMem(mod, offsets);
 
