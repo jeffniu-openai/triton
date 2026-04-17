@@ -1,5 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 02:08 UTC canonical 32x32 subview-offset deletion:
+  removed the shape-specific `getCanonicalContiguous32x32SubviewOffset(...)`
+  helper and let `getTMemSubviewOffsetForLowering(...)` use the generic
+  linear-layout origin-delta path for that nested reshape/subslice case. A
+  probe with the special offset disabled passed the mixed multidim-slice
+  positive and the identity clean-negative, so the committed change keeps only
+  the deletion. A separate origin-translated support-query probe using the
+  descriptor type layout was rejected: it still selected/emitted
+  `16x32bx2.x32` for the identity 32x32 subview and produced the same `2048`
+  wrong-output mismatches starting at column 64. The identity case therefore
+  remains a real packet decomposition gap, but one hard-coded offset rescue is
+  gone. Validation: `make -j8`, py-compile, `git diff --check`, focused
+  identity/mixed/x1 selector (`6 passed`), M64/split-N selector (`49 passed`),
+  and two-CTA promoted selector (`9 passed, 2 skipped`).
+
 - Latest: 2026-04-17 01:32 UTC value-based `ld/st` support-plan seam:
   added `getTMemLdStPhysicalSupportPlan(Value, ...)`, which first asks the
   memdesc value for its exact support query and validates candidate register

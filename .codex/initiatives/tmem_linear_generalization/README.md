@@ -44,6 +44,17 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 02:08 UTC: deleted the hard-coded canonical contiguous 32x32
+  TMEM subview lowering offset. The generic subview lowering path now handles
+  that mixed-layout positive through `inferStandaloneTMemLdStQueryLayout(...)`,
+  `tryMakeLeadingUnitSubviewLayout(...)`, and
+  `getTMemLdStQueryOriginDeltaBaseOffset(...)`, while the identity 32x32 clean
+  negative remains guarded. A temporary origin-translated support-query probe
+  that preserved the descriptor type layout still emitted `16x32bx2.x32` for
+  the identity subview and produced the known `2048` mismatches, so no support
+  promotion was kept. Validation: `make -j8`, py-compile, `git diff --check`,
+  focused identity/mixed/x1 selector (`6 passed`), M64/split-N selector
+  (`49 passed`), and two-CTA promoted selector (`9 passed, 2 skipped`).
 - 2026-04-17 01:32 UTC: added a value-based `ld/st` physical-support plan
   helper and wired handle-aware Gluon `get_reg_layout()` fallback to consult it
   before falling back to standalone type-only support. This is a scaffold for

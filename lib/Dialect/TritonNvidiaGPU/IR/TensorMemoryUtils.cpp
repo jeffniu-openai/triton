@@ -3160,49 +3160,6 @@ static bool isTensorMemoryRowHalfDim0Slice(gpu::MemDescSubsliceOp op) {
          reshapeSrcTy.getShape()[1] == cols;
 }
 
-static std::optional<uint32_t>
-getCanonicalContiguous32x32SubviewOffset(gpu::MemDescSubsliceOp op) {
-  auto srcTy = cast<MemDescType>(op.getSrc().getType());
-  auto dstTy = cast<MemDescType>(op.getType());
-  if (!isTensorMemoryEncoding(srcTy.getEncoding()) ||
-      isa<TensorMemoryScalesEncodingAttr>(srcTy.getEncoding()) ||
-      srcTy.getRank() != 4 || dstTy.getRank() != 4) {
-    return std::nullopt;
-  }
-  auto reshape = op.getSrc().getDefiningOp<gpu::MemDescReshapeOp>();
-  if (!reshape)
-    return std::nullopt;
-  auto rootTy = dyn_cast<MemDescType>(reshape.getSrc().getType());
-  if (!rootTy || rootTy.getRank() != 2 || rootTy.getShape()[0] != 128 ||
-      rootTy.getShape()[1] != 128) {
-    return std::nullopt;
-  }
-  std::string error;
-  if (!getCanonicalTMemLinearEncoding(rootTy, &error))
-    return std::nullopt;
-
-  auto offsets = op.getOffsets();
-  if (offsets.size() != 4 || offsets[0] != 1 || offsets[1] != 0 ||
-      offsets[2] != 1 || offsets[3] != 0) {
-    return std::nullopt;
-  }
-  if (srcTy.getShape()[0] != 2 || srcTy.getShape()[1] != 64 ||
-      srcTy.getShape()[2] != 2 || srcTy.getShape()[3] != 64) {
-    return std::nullopt;
-  }
-  if (dstTy.getShape()[0] != 1 || dstTy.getShape()[1] != 32 ||
-      dstTy.getShape()[2] != 1 || dstTy.getShape()[3] != 32) {
-    return std::nullopt;
-  }
-
-  // Direct 32x32 ld/st uses the scalarized x1 packet family, which expects
-  // this static contiguous slice to be addressed in the same folded support
-  // frame as the working mixed-layout path instead of the raw canonical
-  // row<<16|col view offset.
-  return static_cast<uint32_t>(srcTy.getShape()[3] +
-                               srcTy.getShape()[1] / dstTy.getShape()[1]);
-}
-
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets) {
   auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!memTy)
@@ -3256,8 +3213,6 @@ static std::optional<uint32_t> getTMemLdStQueryOriginDeltaBaseOffset(
 
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op) {
   auto srcTy = cast<MemDescType>(op.getSrc().getType());
-  if (auto specialOffset = getCanonicalContiguous32x32SubviewOffset(op))
-    return *specialOffset;
   if (isTensorMemoryColumnHalfDim0Slice(op))
     return 0;
   if (isTensorMemoryRowHalfDim0Slice(op)) {
@@ -3937,7 +3892,6 @@ getUnsupportedTMemLdStDescriptorViewRowAnchorRequirement(
   if (getLogicalRowAnchorBasis(*maybeMemLayout, rowPlan->warpRow0) &&
       getLogicalRowAnchorBasis(*maybeMemLayout, rowPlan->warpRow1))
     return std::nullopt;
-
   // Some two-CTA descriptor views materialize the row anchors through the
   // block dimension rather than as pure row bases. Let concrete register-layout
   // selection and TMEMLoad/Store verification prove those schedules instead of

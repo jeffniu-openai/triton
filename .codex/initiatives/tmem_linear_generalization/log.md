@@ -20572,3 +20572,37 @@ Open after this slice:
     for base-frame lowering, exact query layout, row plan, and returned
     register layout. The clean negative remains correct until that full
     contract is implemented.
+
+## 2026-04-17 02:08 UTC: deleted canonical 32x32 subview-offset special
+
+- Starting point: `codex/tmem` at `c10b55dff`.
+- Probe:
+  - retried the origin-translated support-query idea with the descriptor type
+    layout preserved in the support query;
+  - it still emitted `tcgen05.ld/st.sync.aligned.16x32bx2.x32.b32` for the
+    identity 32x32 subview and produced `2048` mismatches beginning at logical
+    column 64;
+  - disabled the old canonical-contiguous 32x32 subview-offset special and
+    verified the mixed multidim-slice positive plus identity clean-negative
+    still pass through the generic origin-delta lowering path.
+- Change:
+  - removed `getCanonicalContiguous32x32SubviewOffset(...)`;
+  - `getTMemSubviewOffsetForLowering(...)` now relies on the generic
+    `inferStandaloneTMemLdStQueryLayout(...)` /
+    `tryMakeLeadingUnitSubviewLayout(...)` /
+    `getTMemLdStQueryOriginDeltaBaseOffset(...)` path for that case;
+  - no `TRITON_PROBE_*` hooks or origin-translated support-query bypasses were
+    kept.
+- Validation:
+  - `make -j8`;
+  - `python3 -m py_compile
+    python/triton/experimental/gluon/language/nvidia/blackwell/__init__.py
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`;
+  - focused identity/mixed/x1 selector (`6 passed, 1569 deselected`);
+  - M64/split-N selector (`49 passed, 1526 deselected`);
+  - two-CTA promoted selector (`9 passed, 2 skipped, 1564 deselected`).
+- Remaining note:
+  - the identity 32x32 case still needs a real packet-base/per-message-offset
+    support plan. This checkpoint only removes a stale shape-specific offset
+    rescue that the generic linear-layout arithmetic can already replace.
