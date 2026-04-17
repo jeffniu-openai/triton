@@ -44,6 +44,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 09:42 UTC: promoted lifted row-half `ld/st` descriptor views
+  from clean negatives to replayed RMW support. The replay recognizer now
+  treats the `slice(...).index(0)` unit-leading-dimension form as an exact
+  half-slice over a rank-2 TMEM base, keeping the temporary unit dimension for
+  `join` and reshaping back to the rank-2 view. Single-CTA and two-CTA N=64/128
+  row-half cases now pass through full backing TMEM load + tensor split/join +
+  full backing store; N=256 rows now reach the true TMEM capacity boundary and
+  report clean OOR (`Required: 1024`, hardware limit `512`). Validation:
+  `make -j8`, focused row-half selectors (`5 passed` single CTA, `5 passed`
+  two CTA), replay/direct-neighbor selector (`12 passed`), two-CTA descriptor
+  neighbor selector (`17 passed, 1 skipped`), `test_core.py -k
+  tmem_linear_m64` (`21 passed`), Python compile, and `git diff --check`.
 - 2026-04-17 09:29 UTC: reprobed two hard frontiers and reverted all probe
   edits. The two-CTA no-scales `warpx2::02_13` row-bit-5 bypass moves the
   failure to descriptor synthesis with no representable 64x4 or bounded 32x4

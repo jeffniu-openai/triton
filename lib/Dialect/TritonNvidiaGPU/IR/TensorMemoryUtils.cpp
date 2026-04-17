@@ -311,6 +311,39 @@ static bool isReplayableTMemHalfSlice(gpu::MemDescSubsliceOp subslice) {
   return changedDim.has_value();
 }
 
+static std::optional<Value>
+matchReplayableTMemLeadingHalfSliceIndex(gpu::MemDescIndexOp index) {
+  APInt indexValue;
+  if (!matchPattern(index.getIndex(), m_ConstantInt(&indexValue)) ||
+      indexValue.getSExtValue() != 0)
+    return std::nullopt;
+
+  auto subslice = index.getSrc().getDefiningOp<gpu::MemDescSubsliceOp>();
+  if (!subslice)
+    return std::nullopt;
+
+  auto srcTy = dyn_cast<MemDescType>(subslice.getSrc().getType());
+  auto sliceTy = dyn_cast<MemDescType>(subslice.getType());
+  auto resultTy = dyn_cast<MemDescType>(index.getType());
+  if (!srcTy || !sliceTy || !resultTy || srcTy.getRank() == 0 ||
+      sliceTy.getRank() != srcTy.getRank() ||
+      resultTy.getRank() + 1 != sliceTy.getRank())
+    return std::nullopt;
+
+  if (srcTy.getShape().front() != 2 || sliceTy.getShape().front() != 1 ||
+      !llvm::equal(sliceTy.getShape().drop_front(), resultTy.getShape()))
+    return std::nullopt;
+
+  ArrayRef<int32_t> offsets = subslice.getOffsets();
+  if (offsets.size() != static_cast<size_t>(srcTy.getRank()) ||
+      (offsets[0] != 0 && offsets[0] != 1) ||
+      llvm::any_of(offsets.drop_front(),
+                   [](int32_t value) { return value != 0; }))
+    return std::nullopt;
+
+  return subslice.getSrc();
+}
+
 bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
   auto queryTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
   if (!queryTy || queryTy.getRank() != 2 ||
@@ -340,6 +373,14 @@ bool isTMemLdStReplayableHalfSliceView(Value memDesc) {
       sawShapeTransform = true;
       cur = trans.getSrc();
       continue;
+    }
+    if (auto index = cur.getDefiningOp<gpu::MemDescIndexOp>()) {
+      if (auto src = matchReplayableTMemLeadingHalfSliceIndex(index)) {
+        ++halfSliceCount;
+        cur = *src;
+        continue;
+      }
+      break;
     }
     if (auto subslice = cur.getDefiningOp<gpu::MemDescSubsliceOp>()) {
       if (!isReplayableTMemHalfSlice(subslice))

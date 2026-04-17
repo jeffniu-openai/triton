@@ -275,12 +275,47 @@ matchReplayableHalfSlice(ttg::MemDescSubsliceOp subslice) {
 
 static std::optional<TMemReplayHalfSliceViewMatch>
 matchReplayableHalfSliceView(Value memDesc) {
-  if (matchLeadingSliceView(memDesc))
-    return std::nullopt;
   if (!isTMemLdStReplayableHalfSliceView(memDesc))
     return std::nullopt;
   if (!isUnsupportedDirectTMemLdStDescriptorView(memDesc, /*error=*/nullptr))
     return std::nullopt;
+
+  if (auto leading = matchLeadingSliceView(memDesc)) {
+    SmallVector<TMemReplayHalfSliceStep> steps;
+    steps.reserve(leading->transforms.size() + 2);
+    for (const TMemTensorViewTransform &transform : leading->transforms) {
+      steps.push_back(TMemReplayHalfSliceStep{
+          transform.kind == TMemTensorViewTransformKind::Reshape
+              ? TMemReplayHalfSliceStepKind::Reshape
+              : TMemReplayHalfSliceStepKind::Trans,
+          transform.srcShape,
+          transform.dstShape,
+          transform.order,
+          0,
+          false});
+    }
+    if (steps.empty())
+      return std::nullopt;
+    SmallVector<int64_t> sliceShape = steps.back().dstShape;
+    sliceShape.front() = 1;
+    auto resultShape =
+        llvm::to_vector(cast<ttg::MemDescType>(memDesc.getType()).getShape());
+    steps.push_back(TMemReplayHalfSliceStep{
+        TMemReplayHalfSliceStepKind::HalfSlice,
+        steps.back().dstShape,
+        sliceShape,
+        {},
+        0,
+        leading->selectRHS});
+    steps.push_back(TMemReplayHalfSliceStep{
+        TMemReplayHalfSliceStepKind::Reshape,
+        sliceShape,
+        resultShape,
+        {},
+        0,
+        false});
+    return TMemReplayHalfSliceViewMatch{leading->base, std::move(steps)};
+  }
 
   SmallVector<TMemReplayHalfSliceStep> reverseSteps;
   Value cur = memDesc;

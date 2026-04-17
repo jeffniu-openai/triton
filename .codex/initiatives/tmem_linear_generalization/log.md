@@ -22375,3 +22375,61 @@ Open after this slice:
     PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 5.74s`).
+
+## 2026-04-17 09:42 UTC: replayed lifted row-half ld/st descriptor views
+
+- Starting point: `codex/tmem` at `23e45be39`.
+- Change:
+  - extended `isTMemLdStReplayableHalfSliceView(...)` to recognize
+    `.slice(...).index(0)` unit-leading-dimension views as replayable
+    half-slices while still allowing an ordinary rank-2 `memdesc_index` to be
+    the replay base;
+  - removed the optimizer exclusion for leading-slice views when they are
+    direct-unsupported and represented the indexed slice as a half-slice to a
+    temporary unit shape followed by reshape back to the rank-2 query shape;
+  - promoted single-CTA and two-CTA lifted row-half N=64/128 runtime-matrix
+    rows from clean negatives to positive replay/RMW coverage;
+  - moved N=256 row-half rows to explicit TMEM OOR coverage because the old
+    descriptor-view blocker no longer masks the true hardware-capacity
+    boundary (`Required: 1024`, hardware limit `512`).
+- Boundary:
+  - this is still the explicit full-backing replay/RMW model, not direct
+    row-origin packet decomposition;
+  - reduction loads remain direct-only on this replay path.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-halfrows-single-v3
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_positive_lifted_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_higher_rank_half_rows_reports_tmem_oor`
+    (`5 passed in 6.96s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-halfrows-twocta-v3
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_positive_lifted_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_half_rows_reports_tmem_oor`
+    (`5 passed in 18.10s`);
+  - `CUDA_VISIBLE_DEVICES=2
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu2-replay-neighbor-v2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_replays
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slice_positive
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_descriptor_multidim_slices`
+    (`12 passed in 27.25s`);
+  - `CUDA_VISIBLE_DEVICES=3
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu3-twocta-neighbor-v2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_index_reports_clean_error
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_multidim_slices
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_twocta_descriptor_higher_rank_dim0_slice_positive_lifted_layout
+    python/test/gluon/test_tmem_runtime_matrix.py::test_tmem_runtime_matrix_ldst_direct_higher_rank_access_reports_clean_error`
+    (`17 passed, 1 skipped in 78.63s`);
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-core-m64-replay-v2
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 6.46s`);
+  - `git diff --check`.

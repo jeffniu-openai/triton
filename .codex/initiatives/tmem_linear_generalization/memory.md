@@ -1,5 +1,19 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 09:42 UTC lifted row-half `ld/st` descriptor views are
+  now replayed RMW support instead of descriptor-view clean negatives. The
+  backend replay recognizer now consumes the `.slice(...).index(0)` unit
+  leading-dimension form as a half-slice over the rank-2 base and the optimizer
+  represents it as half-slice-to-unit-shape plus reshape-to-rank-2, so store
+  replay can `join` with the untouched half correctly. Single-CTA and two-CTA
+  N=64/128 row-half cases now pass with no surviving `ttg.memdesc_subslice`;
+  N=256 rows are no longer classified as ISA/layout gaps and now report the
+  true TMEM OOR boundary (`Required: 1024`, limit `512`). Validation:
+  `make -j8`, Python compile, focused row-half selectors (`5 passed` single
+  CTA, `5 passed` two CTA), replay/direct-neighbor selector (`12 passed`),
+  two-CTA descriptor neighbor selector (`17 passed, 1 skipped`), core
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest probe: 2026-04-17 09:29 UTC rechecked two hard frontiers after the
   replayed high-quadrant `ld/st` checkpoint. For two-CTA no-scales
   `tcgen05.copy.warpx2::02_13`, temporarily allowing logical row bit 5 through
