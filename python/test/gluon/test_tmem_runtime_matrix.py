@@ -13109,8 +13109,12 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_reports_clean_u
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "direct block-scaled MMAv5 does not support accumulator layouts that require N=" in text
+    assert f"plain MMAv5-compatible plan would use 128x{tile_n}" in text
+    assert f"{n // tile_n} instruction fragments along N" in text
     assert "minimum public scaled-MMAv5 N tile is 32" in text
     assert "matrix-B scale fragments at 64-column alignment" in text
+    assert f"B-scale storage padding/rematerialization factor of {64 // tile_n}" in text
+    assert "accumulator permutation and B-scale fragment rematerialization" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 

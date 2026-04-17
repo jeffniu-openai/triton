@@ -264,10 +264,16 @@ struct MMAv5ScaledRepeatedN32ScaleFragmentRequirement {
 
 struct MMAv5ScaledNarrowNScaleFragmentRequirement {
   Attribute accumulatorEncoding;
+  llvm::SmallVector<int64_t, 4> logicalShape;
+  llvm::SmallVector<int64_t, 4> ctaShape;
+  unsigned plainInstrSizeM;
   unsigned instrSizeN;
   unsigned minimumScaledInstrSizeN;
   unsigned minimumAddressableBScaleFragmentN;
   unsigned ctaColumns;
+  unsigned nInstructionCount;
+  unsigned bScalePaddingFactor;
+  std::optional<MMAv5TMemInstructionTileOrderMismatch> tileOrderMismatch;
 };
 
 struct MMAv5ScaledMixedFp4ATMemRequirement {

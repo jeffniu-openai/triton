@@ -1751,12 +1751,23 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
   if (instrSizeN >= kMinimumScaledInstrSizeN)
     return std::nullopt;
 
+  unsigned minimumAddressableBScaleFragmentN = 64;
   return MMAv5ScaledNarrowNScaleFragmentRequirement{
       /*accumulatorEncoding=*/memDescType.getEncoding(),
+      /*logicalShape=*/
+      SmallVector<int64_t, 4>(memDescType.getShape().begin(),
+                              memDescType.getShape().end()),
+      /*ctaShape=*/SmallVector<int64_t, 4>(ctaShape.begin(), ctaShape.end()),
+      /*plainInstrSizeM=*/plainInfo->mmaSizeM,
       /*instrSizeN=*/instrSizeN,
       /*minimumScaledInstrSizeN=*/kMinimumScaledInstrSizeN,
-      /*minimumAddressableBScaleFragmentN=*/64,
-      /*ctaColumns=*/static_cast<unsigned>(ctaShape[1])};
+      /*minimumAddressableBScaleFragmentN=*/minimumAddressableBScaleFragmentN,
+      /*ctaColumns=*/static_cast<unsigned>(ctaShape[1]),
+      /*nInstructionCount=*/
+      static_cast<unsigned>((ctaShape[1] + instrSizeN - 1) / instrSizeN),
+      /*bScalePaddingFactor=*/minimumAddressableBScaleFragmentN / instrSizeN,
+      /*tileOrderMismatch=*/getMMAv5InstructionTileOrderMismatch(
+          memDescType, MMAv5TMemOperandKind::ScaledAccumulator)};
 }
 
 std::optional<MMAv5ScaledMixedFp4ATMemRequirement>
@@ -1822,15 +1833,39 @@ std::string getMMAv5ScaledNarrowNScaleFragmentError(
         "require N="
      << requirement.instrSizeN << " instructions along N for "
      << requirement.accumulatorEncoding
-     << ". The minimum public scaled-MMAv5 N tile is "
+     << ". The accumulator logical shape is ";
+  printMMAv5RequirementShape(os, requirement.logicalShape);
+  os << " with CTA shape ";
+  printMMAv5RequirementShape(os, requirement.ctaShape);
+  os << "; the plain MMAv5-compatible plan would use "
+     << requirement.plainInstrSizeM << "x" << requirement.instrSizeN
+     << " accumulator instructions and "
+     << requirement.nInstructionCount
+     << " instruction fragments along N. The minimum public scaled-MMAv5 N "
+        "tile is "
      << requirement.minimumScaledInstrSizeN
      << ", and the public tensor-memory scales layout exposes matrix-B scale "
         "fragments at "
      << requirement.minimumAddressableBScaleFragmentN
-     << "-column alignment. This "
-     << requirement.ctaColumns
+     << "-column alignment, so this schedule would require a B-scale storage "
+        "padding/rematerialization factor of "
+     << requirement.bScalePaddingFactor << ".";
+  if (requirement.tileOrderMismatch) {
+    const auto &mismatch = *requirement.tileOrderMismatch;
+    os << " The first scaled-MMAv5 in-tile order mismatch is "
+       << mismatch.dimension << " input bit " << mismatch.inputBit
+       << " for candidate tile " << mismatch.instrShapeM << "x"
+       << mismatch.instrShapeN << ", got physical delta ";
+    printMMAv5RequirementBasis(os, mismatch.actualBasis);
+    os << " but the canonical delta is ";
+    printMMAv5RequirementBasis(os, mismatch.canonicalBasis);
+    os << ".";
+  }
+  os << " This " << requirement.ctaColumns
      << "-column CTA tile must be reshaped to a larger directly supported "
-        "MMAv5 tile before it can use block-scaled tcgen05.mma.";
+        "MMAv5 tile, or the backend must synthesize both a correct "
+        "accumulator permutation and B-scale fragment rematerialization, "
+        "before it can use block-scaled tcgen05.mma.";
   return os.str();
 }
 

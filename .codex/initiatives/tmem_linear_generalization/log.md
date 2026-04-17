@@ -24028,6 +24028,34 @@ Open after this slice:
     while `gh auth status -h github.com` reports active account
     `jeffniu-openai`.
 
+## 2026-04-17 18:27 UTC: structured scaled-MMAv5 narrow-N scale-fragment requirement
+
+- Starting point: `codex/tmem` at `f710e033d`.
+- Change:
+  - extended `MMAv5ScaledNarrowNScaleFragmentRequirement` with logical shape,
+    CTA shape, the plain MMAv5-compatible instruction shape, instruction
+    fragment count along N, B-scale padding/rematerialization factor, and an
+    optional tile-order mismatch;
+  - updated the narrow-N scaled accumulator clean-negative runtime tests to
+    assert the concrete `N=8/16` instruction plan, public scaled `N>=32` floor,
+    64-column B-scale storage alignment, and required accumulator/B-scale
+    rematerialization.
+- Boundary:
+  - behavior is unchanged. These rows still require a real scaled-MMAv5
+    schedule that handles both accumulator permutation and B-scale fragment
+    rematerialization; reshaping to a directly supported scaled tile remains
+    the only current path.
+- Validation:
+  - `make -j8`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 focused selector
+    `mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported`
+    (groups: `5/5/5/5` passed);
+  - `python3 -m py_compile python/test/gluon/test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+
 ## 2026-04-17 18:23 UTC: structured scaled-MMAv5 mixed-fp4A TMEM-LHS storage requirement
 
 - Starting point: `codex/tmem` at `4c4bd50e4`.

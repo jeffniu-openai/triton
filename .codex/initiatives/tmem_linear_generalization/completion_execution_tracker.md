@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 18:23 UTC
+Last updated: 2026-04-17 18:27 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -106,8 +106,10 @@ Current buckets:
   operand-A storage requirement. A guard-lift probe emitted `mxf8f6f4` but
   produced wrong output, so support still needs real fp4_padded TMEM storage
   semantics rather than a verifier lift.
-- Scaled-MMAv5 narrow accumulator `N=8/16`: guard-lift probes compile but
-  produce wrong output; support needs a real scale-fragment and accumulator
+- Scaled-MMAv5 narrow accumulator `N=8/16`: now reported through a structured
+  narrow-N scale-fragment requirement that records the plain accumulator
+  instruction shape, fragment count, and B-scale padding/rematerialization
+  factor. Support still needs a real scale-fragment and accumulator
   permutation schedule.
 
 ## Immediate Execution Order
@@ -186,7 +188,7 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
   whole-tile permutation positives.
 - `done`: prove and structure the scaled-MMAv5 mixed fp4A TMEM-LHS storage
   representation boundary.
-- `pending`: implement or prove the scaled-MMAv5 narrow-N B-scale fragment
+- `done`: prove and structure the scaled-MMAv5 narrow-N B-scale fragment
   schedule and accumulator permutation boundary.
 - `pending`: expand opcode/runtime positives only when a new backend schedule
   is real, not when a frontend spelling happens to compile.
@@ -214,12 +216,26 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
 
 ## Next Concrete Slice
 
-Move to the remaining scaled-MMAv5 narrow-N B-scale fragment schedule. Decide
-whether a real rematerialized scale-fragment layout can promote N=8/16 or
-whether those rows stay typed boundaries tied to the public 32-column
-scaled-MMAv5 instruction tile and 64-column tensor-memory scale storage.
+Return to the `tcgen05.copy` scheduler frontier. The next highest-value rows
+are dense/noncanonical `warpx2` shared-source layouts and sub-instruction
+row/column permutations where descriptor representability is not enough and a
+source rematerialization, source-format, or destination-mask schedule must be
+proved before support can lift.
 
 ## Progress
+
+- 2026-04-17 18:27 UTC: structured the scaled-MMAv5 narrow-N accumulator
+  boundary. `MMAv5ScaledNarrowNScaleFragmentRequirement` now records logical
+  shape, CTA shape, the plain MMAv5-compatible instruction shape, fragment
+  count along N, the public scaled `N>=32` floor, and the B-scale
+  padding/rematerialization factor implied by 64-column tensor-memory scale
+  storage. Behavior is unchanged: `N=8/16` tile-permuted accumulator layouts
+  remain clean unsupported until the backend can synthesize both a correct
+  accumulator permutation and B-scale fragment rematerialization. Validation:
+  `make -j8`; built `triton-opt test/TritonNvidiaGPU/invalid.mlir
+  --split-input-file --verify-diagnostics`; split-4 focused narrow-N selector
+  passed `5/5/5/5`; Python byte-compile for `test_tmem_runtime_matrix.py`;
+  `git diff --check`.
 
 - 2026-04-17 18:23 UTC: promoted the mixed fp4A TMEM-LHS guard into a
   structured `MMAv5ScaledMixedFp4ATMemRequirement`. The requirement records

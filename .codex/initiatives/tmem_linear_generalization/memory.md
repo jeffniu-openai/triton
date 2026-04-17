@@ -12977,3 +12977,28 @@ rejection, not rescue
   - continue with scaled-MMAv5 narrow-N B-scale fragment rematerialization
     (`N=8/16`) and decide whether a real storage/layout plan can promote those
     rows.
+
+## Current: 2026-04-17 18:27 UTC scaled-MMAv5 narrow-N accumulator boundary
+
+- Phase E scaled-MMAv5 boundary cleanup:
+  - `MMAv5ScaledNarrowNScaleFragmentRequirement` now records logical shape,
+    CTA shape, plain MMAv5 instruction shape, instruction fragment count along
+    N, the public scaled-MMAv5 `N>=32` floor, and the B-scale
+    padding/rematerialization factor required by 64-column tensor-memory scale
+    storage;
+  - narrow-N tests now assert the exact boundary instead of only the generic
+    minimum tile and scale-alignment phrases.
+- Behavior/support boundary is unchanged:
+  - `N=8/16` tile-permuted scaled accumulators remain clean unsupported;
+  - support requires both an accumulator permutation schedule and a B-scale
+    fragment rematerialization/storage plan, not just a verifier lift.
+- Validation:
+  - `make -j8`;
+  - built `triton-opt test/TritonNvidiaGPU/invalid.mlir --split-input-file
+    --verify-diagnostics`;
+  - split-4 narrow-N selector passed `5/5/5/5`;
+  - Python byte-compile for `test_tmem_runtime_matrix.py`;
+  - `git diff --check`.
+- Next:
+  - return to `tcgen05.copy` dense/noncanonical `warpx2` and
+    sub-instruction permutation scheduler gaps.
