@@ -1,5 +1,13 @@
 # TMEM Linear Generalization
 
+- Latest probe: 2026-04-17 08:38 UTC normal shared-load plus TMEM-store is
+  not a valid fallback for the two-CTA no-scales
+  `tcgen05.copy.warpx2::02_13` gap. A scratch kernel using the same shared and
+  TMEM layouts compiled without `ttng.tmem_copy` and emitted normal
+  `tcgen05.ld/st`, but the result was an identity roundtrip rather than the
+  physical-copy oracle. Keep this bucket as a real copy instruction scheduling
+  problem; do not replace it with shared `load` + TMEM `store`.
+
 - Latest: 2026-04-17 08:35 UTC explicit non-M64 `ld.red` register layouts now
   have a software reduction path. The Gluon TMEM API asks the backend whether
   the selected f32 non-scales reduction register layout is directly

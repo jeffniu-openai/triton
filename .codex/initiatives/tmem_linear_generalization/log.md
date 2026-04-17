@@ -22044,3 +22044,27 @@ Open after this slice:
     tmem_reduction_linear_mixed_layout_uses_software_reduce"` (`43 passed,
     17923 deselected in 3.53s`);
   - `git diff --check`.
+
+## 2026-04-17 08:38 UTC: copy warpx2::02_13 software fallback probe rejected
+
+- Starting point: `codex/tmem` at `8322486ad`.
+- Probe:
+  - created a temporary scratch kernel for the two-CTA no-scales
+    `warpx2::02_13` layout that replaced `tcgen05_copy(smem, tmem)` with
+    `smem.load(tmem_reg_layout)` followed by `tmem.store(...)` and
+    `tmem.load(...)`;
+  - used the same shared layout and TMEM layout as the current clean-negative
+    candidate test.
+- Result:
+  - the scratch kernel compiled and emitted no `ttng.tmem_copy` or
+    `tcgen05.cp`;
+  - it emitted normal `tcgen05.ld/st`;
+  - runtime output was an identity roundtrip, not the `warpx2::02_13`
+    physical-copy oracle.
+- Boundary:
+  - shared load plus TMEM store is not a semantic fallback for this copy
+    family. The remaining support task is still a real `tcgen05.copy`
+    cta-group::2 source/message schedule or another ISA-correct copy
+    decomposition, not a high-level load/store replacement.
+- Cleanup:
+  - removed the temporary probe file; no source changes remain from the probe.
