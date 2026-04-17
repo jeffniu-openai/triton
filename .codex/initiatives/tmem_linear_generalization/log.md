@@ -21181,3 +21181,38 @@ Open after this slice:
   - py-compile for `blackwell/__init__.py` and
     `test_tmem_runtime_matrix.py`;
   - `git diff --check`.
+
+## 2026-04-17 06:27 UTC: moved scaled-MMAv5 scale fragments into backend API
+
+- Starting point: `codex/tmem` at `bfdc67ff3`.
+- Change:
+  - added `MMAv5ScaleFactorFragment` and
+    `getMMAv5ScaleFactorFragment(...)` to the TritonNvidiaGPU dialect API;
+  - moved the TMEM scale column offset / scale sub-column arithmetic out of
+    `third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv5.cpp`;
+  - kept lowering responsible for selecting the MXFP instruction kind and
+    scale-factor columns per set, but made the physical TMEM fragment plan a
+    backend object that can be shared with future verifier/planner work.
+- Support boundary:
+  - no support surface changed. Repeated-N32 and narrow-N scaled-MMAv5 rows
+    remain clean unsupported because the current tensor-memory scales storage
+    contract still exposes matrix-B scale fragments at 64-column alignment.
+    This checkpoint only moves the common fragment arithmetic to the backend
+    layer where a real B-scale fragment representation can be added later.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-scale-fragment-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "mma_scaled_acc_tile_permuted_64_format_matrix or
+    mma_scaled_acc_tile_permuted_64_format_use_acc or
+    mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+    mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+    mma_scaled_acc_blockn32_direct_layout or
+    mma_scaled_acc_blockn64_direct_layout"`
+    (`52 passed, 1526 deselected in 35.04s`);
+  - `git diff --check`.

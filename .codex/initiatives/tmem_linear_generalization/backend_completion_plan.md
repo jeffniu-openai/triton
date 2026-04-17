@@ -1376,6 +1376,12 @@ Progress:
   a one-column B-scale fragment variant faults/fails fresh processes. The
   remaining work is therefore an actual B-scale fragment storage/alignment
   model, not another frontend guard or address tweak.
+- 2026-04-17 06:27 UTC: moved scaled-MMAv5 scale-factor fragment planning from
+  LLVM lowering into the TritonNvidiaGPU dialect API. Lowering still selects
+  the MXFP operation kind, but the TMEM scale column offset, sub-column ID,
+  columns-per-scale-block, and K-word index are now one backend object. This
+  is support-neutral and prepares the real B-scale fragment representation
+  task without another lowering-only formula.
 - 2026-04-15 22:29 UTC: temporarily bypassed the mixed fp4A TMEM-LHS verifier
   guard and found that representative tile and subslice TMEM-LHS cases compile
   but are numerically wrong (`max ~= 1084`, `mean ~= 69.8`) for both legacy

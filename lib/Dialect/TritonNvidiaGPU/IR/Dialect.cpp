@@ -1279,6 +1279,36 @@ getMMAv5ScaledAccumulatorSupport(MemDescType memDescType) {
   return support;
 }
 
+static unsigned ceilDivPositive(unsigned numerator, unsigned denominator) {
+  assert(denominator > 0);
+  return (numerator + denominator - 1) / denominator;
+}
+
+MMAv5ScaleFactorFragment getMMAv5ScaleFactorFragment(
+    unsigned nonKRep, unsigned kRep, unsigned numRepNonK, unsigned numRepK,
+    unsigned numTMemScaleCols, unsigned scaleFactorColsPerSet,
+    unsigned minColsPerScaleBlock) {
+  assert(numRepNonK > 0 && numRepK > 0);
+  assert(scaleFactorColsPerSet > 0 && scaleFactorColsPerSet <= 4);
+  assert(4 % scaleFactorColsPerSet == 0);
+
+  unsigned colsPerWord = 4 / scaleFactorColsPerSet;
+  unsigned columnsPerScaleBlock =
+      ceilDivPositive(numTMemScaleCols,
+                      numRepNonK * ceilDivPositive(numRepK, colsPerWord));
+  columnsPerScaleBlock =
+      std::max(columnsPerScaleBlock, minColsPerScaleBlock);
+
+  unsigned subWordIdx = kRep % colsPerWord;
+  unsigned wordIdx = kRep / colsPerWord;
+  return MMAv5ScaleFactorFragment{
+      /*tmemColumnOffset=*/(nonKRep + wordIdx * numRepNonK) *
+          columnsPerScaleBlock,
+      /*subColumnId=*/subWordIdx,
+      /*columnsPerScaleBlock=*/columnsPerScaleBlock,
+      /*wordIndex=*/wordIdx};
+}
+
 std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(MemDescType memDescType) {
   return getMMAv5ScaledAccumulatorSupport(memDescType)

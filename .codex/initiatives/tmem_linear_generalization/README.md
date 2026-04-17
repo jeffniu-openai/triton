@@ -44,6 +44,16 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:27 UTC: moved scaled-MMAv5 scale-factor fragment arithmetic
+  out of LLVM lowering and into the TritonNvidiaGPU dialect backend as
+  `getMMAv5ScaleFactorFragment(...)`. Lowering still computes the scale
+  operation kind locally, but the TMEM column offset, scale sub-column ID,
+  columns-per-scale-block, and K-word index now come from a shared backend
+  planner object. Support is unchanged: repeated-N32 and narrow-N scaled
+  rows remain clean scale-fragment/storage negatives until the B-scale
+  fragment representation changes. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused scaled-MMAv5 selector (`52 passed`), and
+  `git diff --check`.
 - 2026-04-17 06:22 UTC: moved the M64 split-N raw-query fallback request
   filter into `TensorMemoryUtils` as
   `getCanonicalM64SplitNLayoutForRawQueryRequest(...)`. The pybind bridge

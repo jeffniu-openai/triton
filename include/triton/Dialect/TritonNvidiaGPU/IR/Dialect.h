@@ -245,6 +245,13 @@ struct MMAv5ScaledAccumulatorSupport {
       narrowNScaleFragmentRequirement;
 };
 
+struct MMAv5ScaleFactorFragment {
+  unsigned tmemColumnOffset;
+  unsigned subColumnId;
+  unsigned columnsPerScaleBlock;
+  unsigned wordIndex;
+};
+
 std::optional<MMAv5LhsLayoutInfo>
 getMMAv5LhsLayoutInfo(gpu::MemDescType memDescType);
 
@@ -256,6 +263,11 @@ getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
 MMAv5ScaledAccumulatorSupport
 getMMAv5ScaledAccumulatorSupport(gpu::MemDescType memDescType);
+
+MMAv5ScaleFactorFragment getMMAv5ScaleFactorFragment(
+    unsigned nonKRep, unsigned kRep, unsigned numRepNonK, unsigned numRepK,
+    unsigned numTMemScaleCols, unsigned scaleFactorColsPerSet,
+    unsigned minColsPerScaleBlock);
 
 std::optional<MMAv5ScaledRepeatedN32ScaleFragmentRequirement>
 getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(

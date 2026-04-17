@@ -1,5 +1,22 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:27 UTC scaled-MMAv5 scale-factor fragments now have a
+  backend-owned planner API. `MMAv5ScaleFactorFragment` and
+  `getMMAv5ScaleFactorFragment(...)` live in the TritonNvidiaGPU dialect, and
+  LLVM lowering calls that shared helper instead of carrying a local fragment
+  struct plus column/sub-column arithmetic. This is behavior-preserving, but it
+  moves the B-scale fragment offset/sub-column facts into the same backend
+  layer that owns repeated-N32 and narrow-N requirements. Repeated-N32 remains
+  a true B-scale fragment storage/alignment boundary; do not treat this as a
+  guard lift. Validation: `make -j8`, direct `invalid.mlir` verifier,
+  `test_tmem_runtime_matrix.py -k "mma_scaled_acc_tile_permuted_64_format_matrix
+  or mma_scaled_acc_tile_permuted_64_format_use_acc or
+  mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported or
+  mma_scaled_acc_tile_permuted_32_repeated_n32_reports_clean_unsupported or
+  mma_scaled_acc_blockn32_direct_layout or
+  mma_scaled_acc_blockn64_direct_layout"` (`52 passed`), and
+  `git diff --check`.
+
 - Latest: 2026-04-17 06:22 UTC the M64 split-N raw-query fallback request
   filter is backend-owned. `TensorMemoryUtils` now exposes
   `getCanonicalM64SplitNLayoutForRawQueryRequest(...)`, which owns the

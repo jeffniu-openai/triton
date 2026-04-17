@@ -775,30 +775,6 @@ int getScaleFactorColsPerSet(mxfpKind kind) {
   }
 };
 
-struct MMAv5ScaleFactorFragment {
-  int tmemColumnOffset;
-  int subColumnId;
-};
-
-static MMAv5ScaleFactorFragment
-getMMAv5ScaleFactorFragment(int nonKRep, int kRep, int numRepNonK,
-                            int numRepK, int numTMemScaleCols,
-                            int scaleFactorColsPerSet,
-                            int minColsPerScaleBlock) {
-  int colsPerWord = 4 / scaleFactorColsPerSet;
-  int numColPerScaleBlock =
-      ceil<int>(numTMemScaleCols,
-                numRepNonK * (ceil<int>(numRepK, colsPerWord)));
-  numColPerScaleBlock = std::max(numColPerScaleBlock, minColsPerScaleBlock);
-
-  int subWordIdx = kRep % colsPerWord;
-  int wordIdx = kRep / colsPerWord;
-  return MMAv5ScaleFactorFragment{
-      /*tmemColumnOffset=*/(nonKRep + wordIdx * numRepNonK) *
-          numColPerScaleBlock,
-      /*subColumnId=*/subWordIdx};
-}
-
 LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                                ConversionPatternRewriter &rewriter,
                                Location loc, ttng::TCGen5MMAScaledOp op,
@@ -878,10 +854,10 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
                           int k) {
     auto [numRepM, numRepN, numRepK] = desc.repShape;
     int scaleFactorColsPerSet = getScaleFactorColsPerSet(mxfpInstKind);
-    auto scaleAFragment = getMMAv5ScaleFactorFragment(
+    auto scaleAFragment = ttng::getMMAv5ScaleFactorFragment(
         m, k, numRepM, numRepK, ttng::getTmemAllocSizes(aScaleTy).numCols,
         scaleFactorColsPerSet, /*minColsPerScaleBlock=*/1);
-    auto scaleBFragment = getMMAv5ScaleFactorFragment(
+    auto scaleBFragment = ttng::getMMAv5ScaleFactorFragment(
         n, k, numRepN, numRepK, ttng::getTmemAllocSizes(bScaleTy).numCols,
         scaleFactorColsPerSet, /*minColsPerScaleBlock=*/2);
     Value scaleA =
