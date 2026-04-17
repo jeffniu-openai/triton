@@ -44,6 +44,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 06:51 UTC: moved the row-zero lifted reinterpret query-type
+  rescue guard from LLVM lowering into `TensorMemoryUtils` as
+  `disallowTMemLdStQueryTypeRescue(...)`. Lowering no longer inspects zero
+  row/column bases directly before falling back from raw-query lowering to
+  query-type lowering. Support is unchanged. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, focused M64/multidim/refresh selector
+  (`43 passed`), `test_core.py -k tmem_linear_m64` (`21 passed`), and
+  `git diff --check`.
 - 2026-04-17 06:43 UTC: aligned LLVM lowering with the backend-owned M64
   query-ordering predicate. `lowerTMemLdStFromTypes(...)` no longer keeps the
   raw-query-first ordering hard-coded for all descriptor values; it asks

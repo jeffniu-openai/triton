@@ -1,5 +1,18 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 06:51 UTC row-zero lifted reinterpret query-type rescue
+  is now backend-owned. `TensorMemoryUtils` exposes
+  `disallowTMemLdStQueryTypeRescue(...)`, and
+  `lowerTMemLdStFromTypes(...)` calls it instead of locally inspecting
+  `MemDescReinterpretOp`, zero row/column bases, active physical rows, and
+  packed physical columns. This is support-neutral, but it removes another
+  lowering-local copy of direct `ld/st` exact-query semantics. Validation:
+  `make -j8`, direct `invalid.mlir` verifier, `test_tmem_runtime_matrix.py -k
+  "m64_splitn or ld_red_m64 or ldst_descriptor_multidim_slice_positive or
+  ldst_descriptor_multidim_slice_identity_reports_clean_error or
+  ldst_4x256b_refresh"` (`43 passed`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 06:43 UTC LLVM lowering now consumes the backend-owned
   M64 query-ordering predicate. `lowerTMemLdStFromTypes(...)` derives the warp
   count from the selected register layout and asks

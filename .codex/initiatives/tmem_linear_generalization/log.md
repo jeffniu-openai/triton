@@ -21355,3 +21355,40 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.35s`);
   - `git diff --check`.
+
+## 2026-04-17 06:51 UTC: moved query-type rescue guard to backend
+
+- Starting point: `codex/tmem` at `4157530d4`.
+- Change:
+  - added backend `disallowTMemLdStQueryTypeRescue(...)`;
+  - moved the row-zero lifted reinterpret predicate out of
+    `lowerTMemLdStFromTypes(...)`;
+  - removed the lowering-local zero row/column basis scan used only by that
+    predicate.
+- Probe:
+  - temporarily bypassed the identity high-quadrant row-anchor clean negative
+    and tried adding another row-origin base offset to the selected query-type
+    path;
+  - the emitted `16x32bx2` packet still updated the top-right footprint
+    instead of the target lower-right quadrant, with `2048` mismatches;
+  - the temporary source edits were removed. Treat this as a real row-anchor
+    rematerialization / packet-footprint problem, not a stale base-offset
+    guard.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-query-rescue-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_4x256b_refresh"` (`43 passed, 1535 deselected in 16.18s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-query-rescue-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 5.76s`);
+  - `git diff --check`.

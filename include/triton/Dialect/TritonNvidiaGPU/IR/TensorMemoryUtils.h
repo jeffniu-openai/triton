@@ -448,6 +448,8 @@ bool isTMemLdStHalfRowsDescriptorView(Value memDesc);
 bool disallowTMemLdStTypeOnlyFallback(Value memDesc,
                                       std::string *reason = nullptr);
 
+bool disallowTMemLdStQueryTypeRescue(Value memDesc);
+
 uint32_t getTMemViewOffsetForLowering(Value memDesc, ArrayRef<int32_t> offsets);
 
 uint32_t getTMemSubviewOffsetForLowering(gpu::MemDescSubsliceOp op);

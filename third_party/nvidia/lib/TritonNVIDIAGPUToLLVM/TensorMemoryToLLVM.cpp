@@ -753,20 +753,6 @@ lowerTMemLdStFromTypes(
   auto queryTypes =
       memDescValue ? triton::nvidia_gpu::getTMemLdStQueryTypes(memDescValue)
                    : SmallVector<MemDescType>{memTy};
-  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
-    if (!layout.hasInDim(dim))
-      return false;
-    unsigned dimBits = layout.getInDimSizeLog2(dim);
-    for (unsigned idx = 0; idx < dimBits; ++idx) {
-      if (llvm::all_of(layout.getBasis(dim, idx),
-                       [](int32_t value) { return value == 0; })) {
-        return true;
-      }
-    }
-    return false;
-  };
-  auto kRow = StringAttr::get(rewriter.getContext(), "row");
-  auto kCol = StringAttr::get(rewriter.getContext(), "col");
   auto kWarp = StringAttr::get(rewriter.getContext(), "warp");
   auto preferBackingRowPlanForDirectRootLoad =
       [&](MemDescType queryTy,
@@ -799,30 +785,8 @@ lowerTMemLdStFromTypes(
     return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
         memDescValue, numWarps, /*desiredAtom=*/std::nullopt);
   }();
-  bool disallowQueryTypeRescueForRowZeroLiftedReinterpret = [&]() {
-    if (!memDescValue ||
-        !isa_and_nonnull<triton::gpu::MemDescReinterpretOp>(
-            memDescValue.getDefiningOp()) ||
-        memTy.getRank() != 2)
-      return false;
-    auto memLayout = toLinearLayout(memTy);
-    int bitwidth = memTy.getElementTypeBitWidth();
-    int64_t logicalRows = memTy.getShape()[0];
-    int64_t logicalCols = memTy.getShape()[1];
-    auto activeMemLayout = memLayout;
-    if (activeMemLayout.hasInDim(kRow))
-      activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
-    int64_t activePhysicalRows =
-        activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
-                                       : logicalRows;
-    int64_t physicalCols =
-        memLayout.hasInDim(kCol) ? memLayout.getInDimSize(kCol) / (32 / bitwidth)
-                                 : logicalCols;
-    return bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
-           !hasZeroBasisAlong(memLayout, kCol) &&
-           logicalRows == activePhysicalRows &&
-           logicalCols == physicalCols * 2;
-  }();
+  bool disallowQueryTypeRescueForRowZeroLiftedReinterpret =
+      memDescValue && disallowTMemLdStQueryTypeRescue(memDescValue);
   std::optional<TMemLdStQueryLayout> rawQueryLayout;
   std::optional<TMemLdStRowPlan> rawRowPlan;
   auto tryRawQueryLowering =

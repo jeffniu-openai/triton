@@ -143,6 +143,9 @@ Progress:
   backend M64 query-ordering predicate, so lowering no longer has a
   hard-coded raw-query-first decision that can diverge from handle-aware
   register-layout selection.
+- 2026-04-17 06:51 UTC: moved the row-zero lifted reinterpret query-type
+  rescue guard from LLVM lowering into `TensorMemoryUtils` as
+  `disallowTMemLdStQueryTypeRescue(...)`.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

@@ -3164,6 +3164,46 @@ bool disallowTMemLdStTypeOnlyFallback(Value memDesc, std::string *reason) {
   return true;
 }
 
+bool disallowTMemLdStQueryTypeRescue(Value memDesc) {
+  auto memTy = dyn_cast_if_present<MemDescType>(memDesc.getType());
+  if (!memTy || memTy.getRank() != 2 ||
+      !isa_and_nonnull<gpu::MemDescReinterpretOp>(memDesc.getDefiningOp())) {
+    return false;
+  }
+
+  auto hasZeroBasisAlong = [](const LinearLayout &layout, StringAttr dim) {
+    if (!layout.hasInDim(dim))
+      return false;
+    for (unsigned idx = 0; idx < layout.getInDimSizeLog2(dim); ++idx) {
+      if (llvm::all_of(layout.getBasis(dim, idx),
+                       [](int32_t value) { return value == 0; }))
+        return true;
+    }
+    return false;
+  };
+
+  auto *ctx = memTy.getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  auto kCol = StringAttr::get(ctx, "col");
+  auto memLayout = toLinearLayout(memTy);
+  int bitwidth = memTy.getElementTypeBitWidth();
+  int64_t logicalRows = memTy.getShape()[0];
+  int64_t logicalCols = memTy.getShape()[1];
+  auto activeMemLayout = memLayout;
+  if (activeMemLayout.hasInDim(kRow))
+    activeMemLayout = activeMemLayout.removeZeroBasesAlongDim(kRow);
+  int64_t activePhysicalRows =
+      activeMemLayout.hasInDim(kRow) ? activeMemLayout.getInDimSize(kRow)
+                                     : logicalRows;
+  int64_t physicalCols =
+      memLayout.hasInDim(kCol) ? memLayout.getInDimSize(kCol) / (32 / bitwidth)
+                               : logicalCols;
+  return bitwidth == 16 && hasZeroBasisAlong(memLayout, kRow) &&
+         !hasZeroBasisAlong(memLayout, kCol) &&
+         logicalRows == activePhysicalRows &&
+         logicalCols == physicalCols * 2;
+}
+
 static bool shouldPreferBackingRowPlanForPureOuterIndexView(
     Value memDesc, MemDescType queryTy,
     std::optional<TMemLdStRowPlan> queryPlan,
