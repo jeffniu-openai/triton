@@ -576,6 +576,11 @@ uint32_t getTMemPhysicalQueryOriginBaseOffset(const TMemPhysicalQuery &query);
 bool preserveTMemLdStSupportQueryBaseOffset(
     gpu::MemDescType memTy, const TMemLdStQueryLayout &supportQuery);
 
+std::optional<TMemLdStRowPlan> preferBackingTMemLdStRowPlanForDirectRoot(
+    Value memDesc, gpu::MemDescType rootMemTy, gpu::MemDescType queryTy,
+    std::optional<TMemLdStRowPlan> rowPlan,
+    const TMemLdStQueryLayout *queryLayout = nullptr);
+
 FailureOr<gpu::MemDescType>
 inferTMemBitcastType(Value memDesc, ArrayRef<int64_t> dstShape,
                      Type dstElementType, std::string *error = nullptr);

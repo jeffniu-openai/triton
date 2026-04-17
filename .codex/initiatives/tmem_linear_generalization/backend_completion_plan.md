@@ -176,6 +176,11 @@ Progress:
   `TensorMemoryUtils` as `getTMemLdStGenericCompatibleLayouts(...)`. The
   backend now owns canonical M64 split-N compatible-layout deferral for the
   generic fallback list; the Gluon bridge only appends the returned attributes.
+- 2026-04-17 08:11 UTC: moved direct-root backing row-plan preference from
+  LLVM lowering into `TensorMemoryUtils` as
+  `preferBackingTMemLdStRowPlanForDirectRoot(...)`. This keeps the root M64
+  row-anchor/range decision beside the other backend row-plan and
+  packet-footprint predicates instead of in the LLVM emission layer.
 
 Tasks:
 - Introduce a first-class physical view/query object carrying:

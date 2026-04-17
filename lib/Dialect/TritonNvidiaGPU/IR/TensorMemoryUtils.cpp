@@ -5830,6 +5830,42 @@ bool preserveTMemLdStSupportQueryBaseOffset(
                       [](int32_t value) { return value != 0; });
 }
 
+static bool canRepresentTMemLdStLogicalRowAnchor(const LinearLayout &layout,
+                                                 int32_t logicalRow) {
+  auto outDims = llvm::to_vector(layout.getOutDimNames());
+  if (outDims.empty())
+    return false;
+  auto *ctx = outDims.front().getContext();
+  auto kRow = StringAttr::get(ctx, "row");
+  return layout.hasInDim(kRow) && logicalRow >= 0 &&
+         logicalRow < layout.getInDimSize(kRow);
+}
+
+std::optional<TMemLdStRowPlan> preferBackingTMemLdStRowPlanForDirectRoot(
+    Value memDesc, MemDescType rootMemTy, MemDescType queryTy,
+    std::optional<TMemLdStRowPlan> rowPlan,
+    const TMemLdStQueryLayout *queryLayout) {
+  if (!memDesc || !isa_and_nonnull<TMEMAllocOp>(memDesc.getDefiningOp()) ||
+      !rowPlan) {
+    return rowPlan;
+  }
+  auto backingPlan = getBackingTMemLdStRowPlan(memDesc);
+  if (!backingPlan || backingPlan->rowSpan <= rowPlan->rowSpan ||
+      queryTy != rootMemTy || queryTy.getRank() != 2 ||
+      queryTy.getShape()[0] != 64) {
+    return rowPlan;
+  }
+  const LinearLayout anchorLayout =
+      queryLayout ? queryLayout->layout : toLinearLayout(queryTy);
+  if (!canRepresentTMemLdStLogicalRowAnchor(anchorLayout,
+                                            backingPlan->warpRow0) ||
+      !canRepresentTMemLdStLogicalRowAnchor(anchorLayout,
+                                            backingPlan->warpRow1)) {
+    return rowPlan;
+  }
+  return backingPlan;
+}
+
 FailureOr<MemDescType> inferTMemBitcastType(Value memDesc,
                                             ArrayRef<int64_t> dstShape,
                                             Type dstElementType,

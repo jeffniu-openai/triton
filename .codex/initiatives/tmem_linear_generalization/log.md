@@ -21778,3 +21778,47 @@ Open after this slice:
     python/test/gluon/test_core.py -k tmem_linear_m64`
     (`21 passed, 17945 deselected in 6.34s`);
   - `git diff --check`.
+
+## 2026-04-17 08:11 UTC: moved direct-root row-plan preference to backend
+
+- Starting point: `codex/tmem` at `1b942de08`.
+- Change:
+  - added `preferBackingTMemLdStRowPlanForDirectRoot(...)` to
+    `TensorMemoryUtils`;
+  - moved the direct-root M64 backing-row-plan preference out of
+    `TensorMemoryToLLVM.cpp`;
+  - raw-query, support-query, source-column-subview raw-query, and query-type
+    lowering now call the backend helper through the existing local lambda;
+  - removed the lowering-local row-anchor range helper that existed only for
+    that preference.
+- Boundary:
+  - support is unchanged. The helper intentionally preserves the previous
+    predicate: only direct root `ttng.tmem_alloc` values with a 64-row query
+    type can prefer a wider backing plan, and only when the query layout can
+    address the backing row anchors by range.
+- Validation:
+  - `make -j8`;
+  - `./build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    --split-input-file test/TritonNvidiaGPU/invalid.mlir
+    --verify-diagnostics`;
+  - `PYTHONPATH=./python:./python/test/gluon python3 -m py_compile
+    python/test/gluon/test_tmem_runtime_matrix.py
+    python/test/gluon/test_core.py`;
+  - `CUDA_VISIBLE_DEVICES=0
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu0-root-rowplan-backend
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_tmem_runtime_matrix.py -k
+    "m64_splitn or ld_red_m64 or
+    ldst_descriptor_multidim_slice_identity_reports_clean_error or
+    ldst_descriptor_multidim_slice_positive or
+    ldst_descriptor_higher_rank_half_rows or
+    ldst_twocta_descriptor_higher_rank_half_rows or
+    ldst_x1_subword_twocta_descriptor_chain_roundtrip or
+    ldst_scales_descriptor_view_cga"` (`64 passed, 1 skipped,
+    1513 deselected in 46.68s`);
+  - `CUDA_VISIBLE_DEVICES=1
+    TRITON_CACHE_DIR=/tmp/triton-cache-gpu1-root-rowplan-backend-core
+    PYTHONPATH=./python:./python/test/gluon pytest -s --tb=short -q
+    python/test/gluon/test_core.py -k tmem_linear_m64`
+    (`21 passed, 17945 deselected in 6.10s`);
+  - `git diff --check`.

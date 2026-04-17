@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 08:11 UTC direct-root row-plan preference is
+  backend-owned. `TensorMemoryUtils` now exposes
+  `preferBackingTMemLdStRowPlanForDirectRoot(...)`, and LLVM lowering calls it
+  for raw-query, support-query, and query-type direct `ld/st` paths instead of
+  carrying a lowering-local root M64 row-anchor/range predicate. Support is
+  unchanged, but another row-anchor policy is now in the backend layer that
+  owns packet-footprint reasoning. Validation: `make -j8`, direct
+  `invalid.mlir` verifier, Python compile, focused M64/direct-layout runtime
+  selector (`64 passed, 1 skipped`), `test_core.py -k tmem_linear_m64`
+  (`21 passed`), and `git diff --check`.
+
 - Latest: 2026-04-17 08:07 UTC direct `ld/st` generic compatible-layout
   fallback ordering is backend-owned. `TensorMemoryUtils` now exposes
   `getTMemLdStGenericCompatibleLayouts(...)`, which appends the generic

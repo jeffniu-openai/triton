@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 08:11 UTC: moved the direct-root backing row-plan preference
+  from LLVM lowering into `TensorMemoryUtils` as
+  `preferBackingTMemLdStRowPlanForDirectRoot(...)`. Raw-query,
+  support-query, and query-type lowering now call the backend helper instead
+  of carrying a lowering-local row-anchor/range predicate for root M64 TMEM
+  allocs. Support is unchanged. Validation: `make -j8`, direct `invalid.mlir`
+  verifier, Python compile for affected Gluon tests, focused
+  M64/direct-layout runtime selector (`64 passed, 1 skipped`),
+  `test_core.py -k tmem_linear_m64` (`21 passed`), and `git diff --check`.
 - 2026-04-17 08:07 UTC: moved direct `ld/st` generic compatible-layout
   fallback ordering into `TensorMemoryUtils` as
   `getTMemLdStGenericCompatibleLayouts(...)`. The backend now owns the

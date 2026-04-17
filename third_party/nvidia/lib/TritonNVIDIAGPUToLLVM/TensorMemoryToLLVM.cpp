@@ -42,43 +42,6 @@ Value advanceTensorMemoryBase(Location loc, ConversionPatternRewriter &rewriter,
   return b.inttoptr(ptr_ty(rewriter.getContext(), 3), newBase);
 }
 
-static int32_t lookupLinearLayoutCoord(
-    ArrayRef<std::pair<StringAttr, int32_t>> coords, StringAttr dim) {
-  for (auto [name, value] : coords) {
-    if (name == dim)
-      return value;
-  }
-  return 0;
-}
-
-static SmallVector<std::pair<StringAttr, int32_t>>
-makeFullLinearLayoutCoords(ArrayRef<StringAttr> dims,
-                           ArrayRef<std::pair<StringAttr, int32_t>> sparse) {
-  SmallVector<std::pair<StringAttr, int32_t>> result;
-  result.reserve(dims.size());
-  for (auto dim : dims)
-    result.push_back({dim, lookupLinearLayoutCoord(sparse, dim)});
-  return result;
-}
-
-static bool canRepresentLogicalRowAnchor(const LinearLayout &layout,
-                                         int32_t logicalRow) {
-  auto outDims = llvm::to_vector(layout.getOutDimNames());
-  if (outDims.empty())
-    return false;
-  auto *ctx = outDims.front().getContext();
-  auto kRow = StringAttr::get(ctx, "row");
-  if (!layout.hasInDim(kRow) || logicalRow < 0 ||
-      logicalRow >= layout.getInDimSize(kRow)) {
-    return false;
-  }
-  auto inDims = llvm::to_vector(layout.getInDimNames());
-  auto realizedCoords =
-      layout.apply(makeFullLinearLayoutCoords(inDims, {{kRow, logicalRow}}));
-  (void)realizedCoords;
-  return true;
-}
-
 static LinearLayout getTMemCopyAddressLayout(MemDescType memDescType,
                                              TMemCopyFamily family) {
   LinearLayout ll = [&]() {
@@ -759,22 +722,8 @@ lowerTMemLdStFromTypes(
           std::optional<TMemLdStRowPlan> rowPlan,
           const TMemLdStQueryLayout *queryLayout = nullptr)
           -> std::optional<TMemLdStRowPlan> {
-    if (!memDescValue ||
-        !isa_and_nonnull<TMEMAllocOp>(memDescValue.getDefiningOp()) || !rowPlan) {
-      return rowPlan;
-    }
-    auto backingPlan = getBackingTMemLdStRowPlan(memDescValue);
-    if (!backingPlan || backingPlan->rowSpan <= rowPlan->rowSpan ||
-        queryTy != memTy || queryTy.getRank() != 2 ||
-        queryTy.getShape()[0] != 64) {
-      return rowPlan;
-    }
-    auto anchorLayout = queryLayout ? queryLayout->layout : toLinearLayout(queryTy);
-    if (!canRepresentLogicalRowAnchor(anchorLayout, backingPlan->warpRow0) ||
-        !canRepresentLogicalRowAnchor(anchorLayout, backingPlan->warpRow1)) {
-      return rowPlan;
-    }
-    return backingPlan;
+    return preferBackingTMemLdStRowPlanForDirectRoot(
+        memDescValue, memTy, queryTy, rowPlan, queryLayout);
   };
   auto preferQueryTypeLoweringBeforeRawQuery = [&]() {
     if (!memDescValue)
