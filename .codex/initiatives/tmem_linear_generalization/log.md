@@ -24674,3 +24674,22 @@ Open after this slice:
   - split-4 focused runtime selector for multidim replay, direct/half-row
     replay, two-CTA replay, and direct higher-rank get-reg-layout rows passed
     as `6/6`, `6/6`, `6/6`, and `4/4`.
+
+## 2026-04-17 21:17 UTC: MMAv5 family address layout moved to backend API
+
+- Starting point: `codex/tmem` at pushed `974534efd`.
+- Change:
+  - added `getMMAv5TMemFamilyAddressLayout` to the TritonNvidiaGPU dialect
+    backend API;
+  - removed the local full-allocation MMAv5 family-layout lambda from
+    `DotOpMmaV5TmemLoader`;
+  - MMAv5 lowering now consumes the backend helper for accumulator,
+    scaled-accumulator, and TMEM-LHS family address layouts.
+- Intent:
+  - no support surface changes;
+  - keep MMAv5 address lowering tied to the same family-layout info used by
+    verification/planning.
+- Validation:
+  - `make -j8`;
+  - split-4 focused MMAv5 tile-permutation selector passed `26/26` on each
+    group.

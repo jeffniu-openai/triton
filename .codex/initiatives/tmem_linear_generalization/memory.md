@@ -13303,3 +13303,22 @@ rejection, not rescue
   - checkpoint and push this cleanup;
   - return to the Phase C/Phase E support-bearing frontier unless another
     obviously duplicated frontend/lowering policy is found.
+
+## Current: 2026-04-17 21:17 UTC MMAv5 family address-layout helper
+
+- Cleanup change:
+  - added backend API `getMMAv5TMemFamilyAddressLayout`;
+  - moved full-allocation MMAv5 accumulator/scaled-accumulator/TMEM-LHS family
+    layout selection out of LLVM `DotOpMmaV5TmemLoader`;
+  - lowering now consumes backend family-layout info instead of carrying a
+    local lambda that mirrors planner/verifier queries.
+- Support impact:
+  - no rows were promoted;
+  - no clean-negative inventory changed.
+- Validation:
+  - `make -j8`;
+  - split-4 focused MMAv5 tile-permutation selector passed `26/26` on each
+    group.
+- Next:
+  - checkpoint and push;
+  - continue support-frontier probes/cleanup from the tracker.

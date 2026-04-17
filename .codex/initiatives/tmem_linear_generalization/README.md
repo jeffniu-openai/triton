@@ -4415,6 +4415,11 @@ When resuming the initiative:
   gapped-column leading-slice views still replay to avoid direct physical
   support aliasing logical halves. Validation: `make -j8` and split-4 focused
   replay/direct-support selector `6/6`, `6/6`, `6/6`, `4/4`.
+- 2026-04-17 21:17 UTC: MMAv5 family address-layout selection now uses
+  backend API `getMMAv5TMemFamilyAddressLayout` instead of a local LLVM
+  lowering lambda. Behavior is unchanged for accumulator, scaled-accumulator,
+  and TMEM-LHS address paths. Validation: `make -j8` and split-4 focused
+  MMAv5 tile-permutation selector `26/26` on each group.
 - 2026-04-15 20:16 UTC: copy source-format legality is now an explicit
   planner check via `getTMemCopySourceFormatSupport(...)`. Current schedules
   still use `None`, so behavior is unchanged; the next source-format support

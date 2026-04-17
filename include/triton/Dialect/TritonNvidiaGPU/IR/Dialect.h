@@ -330,6 +330,9 @@ getMMAv5AccumulatorLayoutInfo(gpu::MemDescType memDescType);
 std::optional<MMAv5AccumulatorLayoutInfo>
 getMMAv5ScaledAccumulatorLayoutInfo(gpu::MemDescType memDescType);
 
+std::optional<LinearLayout>
+getMMAv5TMemFamilyAddressLayout(gpu::MemDescType memDescType);
+
 std::optional<MMAv5TMemInstructionTileRequirement>
 getMMAv5TMemInstructionTileRequirement(gpu::MemDescType memDescType,
                                        MMAv5TMemOperandKind operandKind);

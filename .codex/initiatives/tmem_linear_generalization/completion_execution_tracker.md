@@ -265,6 +265,20 @@ Checkpointed at 2026-04-17 20:41 UTC after the M64 physical-subview fix:
   - focused replay/direct-support runtime selector split across four GPUs
     passed `6/6`, `6/6`, `6/6`, and `4/4`.
 
+2026-04-17 21:17 UTC:
+
+- Moved MMAv5 family address-layout selection from the LLVM lowering loader
+  into backend API `getMMAv5TMemFamilyAddressLayout`.
+- The helper returns the normalized accumulator, scaled-accumulator, or TMEM
+  LHS family layout for full-allocation MMAv5 descriptors, keeping address
+  lowering aligned with verifier/planner layout info.
+- This is cleanup only; no support rows were promoted and no clean-negative
+  inventory was changed.
+- Validation:
+  - `make -j8`;
+  - focused MMAv5 tile-permutation selector split across four GPUs passed
+    `26/26` on each group.
+
 ## Immediate Execution Order
 
 1. Return to the support-bearing frontier: start with the highest-value
@@ -394,6 +408,13 @@ frontier unless another clearly duplicated frontend/lowering policy is found.
   gapped-column query check locally. Validation: `make -j8`; split-4 focused
   replay/direct-support runtime selector passed `6/6`, `6/6`, `6/6`, and
   `4/4`.
+
+- 2026-04-17 21:17 UTC: moved MMAv5 family address-layout selection into
+  backend API `getMMAv5TMemFamilyAddressLayout`. The LLVM MMAv5 loader now
+  consumes the helper instead of carrying its own full-allocation
+  accumulator/scaled/LHS family-layout lambda. Validation: `make -j8`;
+  split-4 focused MMAv5 tile-permutation selector passed `26/26` on each
+  group.
 
 - 2026-04-17 20:57 UTC: ran the corrected full runtime-matrix runner. All
   buckets passed with complete `1592/1592` coverage: `cp` `312 passed, 4

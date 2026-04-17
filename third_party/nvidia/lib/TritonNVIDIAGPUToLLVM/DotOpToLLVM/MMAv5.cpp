@@ -47,26 +47,6 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
       }
       return std::nullopt;
     };
-    auto getMMAv5FamilyLayout = [&]() -> std::optional<LinearLayout> {
-      auto rank = cast<LayoutEncodingTrait>(memTy.getEncoding()).getRank();
-      auto shape = memTy.getShape().take_back(rank);
-      auto allocShape = memTy.getAllocShape().take_back(rank);
-      if (shape != allocShape)
-        return std::nullopt;
-      if (auto info = ttng::getMMAv5AccumulatorLayoutInfo(memTy)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->familyLayout);
-      }
-      if (auto info = ttng::getMMAv5ScaledAccumulatorLayoutInfo(memTy)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->familyLayout);
-      }
-      if (auto info = ttng::getMMAv5LhsLayoutInfo(memTy)) {
-        return ttng::normalizeTensorMemoryLinearLayoutForAnalysis(
-            info->familyLayout);
-      }
-      return std::nullopt;
-    };
     if (memDescValue && isTMemPhysicalBitcast(memDescValue)) {
       // The lowered TMEM base already includes the source slice/subview
       // offset. For typed MMAv5 addressing, use the result descriptor layout:
@@ -79,7 +59,7 @@ DotOpMmaV5TmemLoader mlir::triton::NVIDIA::DotOpMmaV5TmemLoader::build(
     auto shape = memTy.getShape().take_back(rank);
     auto allocShape = memTy.getAllocShape().take_back(rank);
     if (shape == allocShape) {
-      if (auto maybeLayout = getMMAv5FamilyLayout())
+      if (auto maybeLayout = ttng::getMMAv5TMemFamilyAddressLayout(memTy))
         return *maybeLayout;
       if (auto maybeLayout = getExactTypeLayout())
         return *maybeLayout;
