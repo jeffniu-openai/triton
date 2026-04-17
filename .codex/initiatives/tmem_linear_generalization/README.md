@@ -48,6 +48,13 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 17:50 UTC: direct copy mixed row/column basis failures now use a
+  typed `TMemCopyMixedBasisRequirement`, and the `mixed` no-scales runtime row
+  reports the offending basis bit plus physical TMEM delta. Debug probes also
+  classified the adjacent sub-instruction column permutations and scales
+  descriptor-row split copies as full-footprint/mask gaps. Validation:
+  `make -j8`, split-4 copy exotic/rowcol/warpx2-row clean-negative selector
+  (`5/5/5/4` passed), and `git diff --check`.
 - 2026-04-17 17:45 UTC: the copy planner now represents row-permuted
   destination rejection with a shared typed
   `TMemCopyDestinationRowOrderRequirement`. Dense and multicast paths both

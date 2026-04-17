@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 17:50 UTC Phase B/F copy-planner cleanup: added a typed
+  `TMemCopyMixedBasisRequirement` for direct copy row/column bases that mix
+  physical row and column contributions. The `mixed` no-scales copy
+  clean-negative now reports the exact offending basis bit and physical TMEM
+  delta. Visible `TRITON_DEBUG_TMEM_QUERY=1` probes classify the remaining
+  sub-instruction column permutations and scales descriptor-row split copies as
+  full-footprint/mask gaps rather than stale positives. Validation: `make -j8`;
+  split-4 copy exotic/rowcol/warpx2-row clean-negative selector (`5/5/5/4`
+  passed); `git diff --check`.
+
 - Latest: 2026-04-17 17:45 UTC Phase B/F copy-planner cleanup: converted the
   dense and multicast destination row-order rejection paths into a shared
   typed `TMemCopyDestinationRowOrderRequirement`. The backend now records the

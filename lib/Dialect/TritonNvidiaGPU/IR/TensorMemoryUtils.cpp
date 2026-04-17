@@ -10104,6 +10104,47 @@ struct TMemCopyDestinationRowOrderRequirement {
   llvm::SmallVector<TMemCopyRowBasisStep, 8> steps;
 };
 
+enum class TMemCopyMixedBasisRequirementKind {
+  RowBasis,
+  ColumnBasis,
+};
+
+struct TMemCopyMixedBasisRequirement {
+  TMemCopyMixedBasisRequirementKind kind =
+      TMemCopyMixedBasisRequirementKind::RowBasis;
+  TMemCopyFamily family = TMemCopyFamily::Dense128x128b;
+  unsigned bit = 0;
+  int32_t physicalRow = 0;
+  int32_t physicalCol = 0;
+};
+
+static std::string getTMemCopyMixedBasisRequirementError(
+    const TMemCopyMixedBasisRequirement &requirement) {
+  StringRef basisKind;
+  switch (requirement.kind) {
+  case TMemCopyMixedBasisRequirementKind::RowBasis:
+    basisKind = "row";
+    break;
+  case TMemCopyMixedBasisRequirementKind::ColumnBasis:
+    basisKind = "column";
+    break;
+  }
+
+  std::string reason;
+  llvm::raw_string_ostream os(reason);
+  os << "direct tcgen05.copy." << stringifyTMemCopyFamily(requirement.family)
+     << " does not support TMEM " << basisKind
+     << " bases that mix row and column contributions. The offending "
+     << basisKind << " basis bit " << requirement.bit
+     << " maps to physical TMEM delta [" << requirement.physicalRow << ", "
+     << requirement.physicalCol
+     << "]. Public copy atoms expose one tensor-memory address per "
+        "instruction; mixed row/column bases need a rematerialized view or a "
+        "multi-instruction schedule whose source and destination footprints "
+        "are proved equivalent before this layout can be supported.";
+  return os.str();
+}
+
 static std::optional<unsigned> findFirstNonAscendingRowBasis(
     ArrayRef<TMemCopyRowBasisStep> steps) {
   if (steps.size() < 2)
@@ -10192,10 +10233,15 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx,
   SmallVector<TMemCopyRowBasisStep> rowBasisValues;
   for (auto [idx, basis] : llvm::enumerate(ll.getBases().lookup(kRow))) {
     if (basis[0] == 0 || basis[1] != 0) {
+      TMemCopyMixedBasisRequirement requirement;
+      requirement.kind = TMemCopyMixedBasisRequirementKind::RowBasis;
+      requirement.family = family;
+      requirement.bit = static_cast<unsigned>(idx);
+      requirement.physicalRow = basis[0];
+      requirement.physicalCol = basis[1];
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,
-          "direct tcgen05.copy does not support TMEM row bases that mix row "
-          "and column contributions.");
+          getTMemCopyMixedBasisRequirementError(requirement));
     }
     rowBasisValues.push_back(
         TMemCopyRowBasisStep{static_cast<unsigned>(idx), std::abs(basis[0])});
@@ -10216,10 +10262,15 @@ getDenseTMemCopyRowProjectionSupport(const LinearLayout &ll, MLIRContext *ctx,
     bool touchesRow = basis[0] != 0;
     bool touchesCol = basis[1] != 0;
     if (touchesRow && touchesCol) {
+      TMemCopyMixedBasisRequirement requirement;
+      requirement.kind = TMemCopyMixedBasisRequirementKind::ColumnBasis;
+      requirement.family = family;
+      requirement.bit = static_cast<unsigned>(idx);
+      requirement.physicalRow = basis[0];
+      requirement.physicalCol = basis[1];
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,
-          "direct tcgen05.copy does not support TMEM column bases that "
-          "mix row and column contributions.");
+          getTMemCopyMixedBasisRequirementError(requirement));
     }
     if (touchesRow && !touchesCol)
       rowRepetitionBasisValues.push_back(
@@ -10449,6 +10500,17 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
       continue;
     }
     if (basis.size() < 2 || basis[0] == 0 || basis[1] != 0) {
+      if (basis.size() >= 2 && basis[0] != 0 && basis[1] != 0) {
+        TMemCopyMixedBasisRequirement requirement;
+        requirement.kind = TMemCopyMixedBasisRequirementKind::RowBasis;
+        requirement.family = family;
+        requirement.bit = static_cast<unsigned>(idx);
+        requirement.physicalRow = basis[0];
+        requirement.physicalCol = basis[1];
+        return getUnsupportedTMemCopyResult(
+            TMemCopySupportFailureLayer::PhysicalQuery,
+            getTMemCopyMixedBasisRequirementError(requirement));
+      }
       return getUnsupportedTMemCopyResult(
           TMemCopySupportFailureLayer::PhysicalQuery,
           Twine("direct tcgen05.copy.") + stringifyTMemCopyFamily(family) +

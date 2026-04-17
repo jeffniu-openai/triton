@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-17 17:45 UTC
+Last updated: 2026-04-17 17:50 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -109,6 +109,19 @@ row/source projection. If not, promote the proof into a clearer typed
 requirement and move to the next reachable support slice.
 
 ## Progress
+
+- 2026-04-17 17:50 UTC: added a typed
+  `TMemCopyMixedBasisRequirement` for direct copy physical-query failures where
+  a TMEM row or column basis mixes physical row and column contributions. The
+  `mixed` no-scales copy negative now reports the exact offending basis bit and
+  physical TMEM delta, rather than stopping at a generic mixed-basis string.
+  Probe evidence from `TRITON_DEBUG_TMEM_QUERY=1` also classified the
+  sub-instruction column-permutation and scales descriptor-row split negatives
+  as full-footprint/mask gaps: the public atoms would overwrite complementary
+  rows/columns without a narrower atom, source format, or destination mask.
+  Validation: `make -j8`; split-4 selector for copy exotic, row/column
+  permuted, and `warpx2` row-permuted clean negatives passed `5/5/5/4`;
+  `git diff --check`.
 
 - 2026-04-17 17:45 UTC: promoted copy destination row-order rejection into a
   shared typed `TMemCopyDestinationRowOrderRequirement` in

@@ -1,3 +1,31 @@
+## 2026-04-17 17:50 UTC: typed copy mixed-basis requirement
+
+- Change:
+  - added `TMemCopyMixedBasisRequirement` for direct `tcgen05.copy` physical
+    query failures where a TMEM row or column basis mixes physical row and
+    column contributions;
+  - the `mixed` no-scales copy clean-negative now reports the offending basis
+    bit and physical TMEM delta.
+- Boundary:
+  - support is unchanged;
+  - visible `TRITON_DEBUG_TMEM_QUERY=1` probes show the remaining
+    sub-instruction column permutations and scales descriptor-row split copies
+    still need a narrower atom, source format, destination mask, or equivalent
+    schedule proof to avoid overwriting complementary columns.
+- Validation:
+  - `make -j8`;
+  - split-4 selector:
+    `cp_no_scales_linear_exotic_reports_clean_unsupported or
+    cp_no_scales_linear_rowcol_permuted_reports_clean_unsupported or
+    cp_no_scales_warpx2_row_permuted_destination_reports_clean_unsupported`
+    passed as `5/5/5/4`;
+  - `git diff --check`.
+- Next:
+  - commit and push this diagnostics/planner checkpoint;
+  - continue with the next support frontier outside proven full-footprint copy
+    mask gaps, most likely `4x256b` refresh/view semantics or scaled-MMAv5
+    storage fragments.
+
 ## 2026-04-17 17:45 UTC: typed copy destination row-order requirement
 
 - Change:

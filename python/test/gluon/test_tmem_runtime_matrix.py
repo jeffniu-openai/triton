@@ -10036,6 +10036,9 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupporte
         "does not match any recognized tcgen05.copy family for non-scales tensor memory copies" in text
         or "could not synthesize a compatible shared-memory descriptor plan for it" in text
     )
+    if name == "mixed":
+        assert "does not support TMEM row bases that mix row and column contributions" in text
+        assert "physical TMEM delta" in text
     assert "PassManager::run failed" not in text
     assert "Assertion" not in text
 
