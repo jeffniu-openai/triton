@@ -1,5 +1,16 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-17 13:56 UTC the TMEM split-load/store-join optimizer no
+  longer has a hard `M == 128` gate. Before creating any `ttng.tmem_subslice`
+  or replay load/store ops, it now infers each future subslice memdesc type and
+  asks `getTmemCompatibleLayouts` for a legal register layout. If either slice
+  has no compatible layout, the pattern declines without mutating IR. Existing
+  256-row lit coverage still stays unreplayed because the planner has no
+  compatible slice layout for that case, but this boundary is now expressed as
+  planner capability instead of a family-specific TODO guard. Validation:
+  `make -j8`; direct `triton-opt` run on
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`; `git diff --check`.
+
 - Latest: 2026-04-17 13:47 UTC TMEM compatible-layout enumeration now uses a
   shared append-and-validate helper for `LinearLayout` and already-materialized
   `DistributedEncodingTrait` candidates. This removes the split-long-M

@@ -44,6 +44,15 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-17 13:56 UTC: generalized the TMEM split-load/store-join replay
+  optimizer guard. The rewrite no longer hard-codes `M == 128`; it infers the
+  future `ttng.tmem_subslice` type, asks the TMEM compatible-layout planner
+  whether that slice has a legal register layout, and declines without
+  mutating IR when it does not. Existing 256-row lit coverage remains
+  unchanged because no compatible slice layout is available yet, but the pass
+  is now gated by planner capability rather than a shape-family constant.
+  Validation: `make -j8`, direct `triton-opt` run for
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `git diff --check`.
 - 2026-04-17 13:47 UTC: factored TMEM load/store compatible-layout
   validation in `TritonNvidiaGPU` dialect code. Atom candidates, unique
   special candidates, and the 8-warp split-long-M reduction layout now all

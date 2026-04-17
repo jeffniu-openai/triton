@@ -1677,6 +1677,13 @@ Progress:
   Validation: `make -j8`, collect for `ld_red_m64 or
   ldst_direct_higher_rank_load_red` (`40` cases), split-4 runtime selector
   (`10/10/10/10` passed), and `git diff --check`.
+- 2026-04-17 13:56 UTC: removed the hard `M == 128` shape gate from
+  split-load/store-join replay in `OptimizeTMemLayouts`. Replay now asks the
+  shared TMEM compatible-layout planner for each future subslice before
+  rewriting and declines cleanly when no legal register layout exists. This
+  preserves current 256-row behavior while deleting another family-specific
+  TODO guard. Validation: `make -j8`, direct `triton-opt` run for
+  `test/TritonNvidiaGPU/tmem_layouts.mlir`, and `git diff --check`.
 
 Exit criteria:
 - TMEM backend decisions flow through the shared physical-query/planner stack.

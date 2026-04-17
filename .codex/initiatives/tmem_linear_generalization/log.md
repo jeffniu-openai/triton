@@ -1,3 +1,34 @@
+## 2026-04-17 13:56 UTC: split replay guard uses compatible-layout planner
+
+- Starting point: `codex/tmem` at `8b39a3acd`.
+- Change:
+  - removed the hard `M == 128` gates from the `TMemSplitLoadPattern` and
+    `TMemStoreJoinPattern` replay rewrites in `OptimizeTMemLayouts`;
+  - added a small helper that computes the future `ttng.tmem_subslice`
+    memdesc type without mutating IR;
+  - replay now queries `getTmemCompatibleLayouts` for both future N-slices and
+    only creates replay load/store ops when both slices have legal register
+    layouts.
+- Boundary:
+  - this is intentionally support-preserving for current tests. The existing
+    256-row lit case still does not rewrite because the compatible-layout
+    planner has no legal slice layout for that shape yet;
+  - the important cleanup is that the boundary now lives in the shared TMEM
+    layout planner, not in a shape-family TODO constant or an asserting
+    default-layout helper.
+- Validation:
+  - `make -j8`;
+  - direct compiler pass run:
+    `/root/code/triton/build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt
+    test/TritonNvidiaGPU/tmem_layouts.mlir -split-input-file
+    --triton-nvidia-optimize-tmem-layouts --allow-unregistered-dialect`
+    (exit `0`, no stderr);
+  - `git diff --check`.
+- GitHub state:
+  - push remains blocked by the current repo instruction requiring `Mogball`
+    while `gh auth status -h github.com` reports active account
+    `jeffniu-openai`.
+
 ## 2026-04-17 13:47 UTC: compatible-layout candidate validation cleanup
 
 - Starting point: `codex/tmem` at `65dc1963c`.
