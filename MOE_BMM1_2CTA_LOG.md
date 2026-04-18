@@ -662,6 +662,15 @@ and `1024`, under both simulated production routing and uniform routing.
   - Bias-after-wait regressed every hard rank versus W6/regs48, e.g. rank 4
     dropped from `0.980x` to `0.960x` in that run and rank 5 from `0.965x` to
     `0.949x`. Keeping the existing bias prefetch before `acc_ready` is better.
+- A temporary source probe split W data and W-scale staging into independent
+  buffer/barrier rings, then was reverted after measurement. Artifacts:
+  - `/tmp/moe_bmm1_slice28_wscale_legality_rank4_rep200.csv`
+  - `/tmp/moe_bmm1_slice28_wscale_depth_rank4_rep800.csv`
+  - The path compiled and validated, but separate scale barriers were too
+    expensive. Rank 4 fell from `0.963x` for the original combined W6/regs48
+    ring to `0.935x` even with equal scale depth (`ws6`), and shallower scale
+    rings regressed further (`ws5` `0.900x`, `ws4` `0.840x`, `ws3` `0.731x`,
+    `ws2` `0.560x`). The current combined W+scale barrier is better.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
@@ -690,10 +699,10 @@ and `1024`, under both simulated production routing and uniform routing.
   - Find a legal way to reduce 2CTA shared-memory footprint while preserving
     W5 depth, possibly by changing scale staging or descriptor/layout
     ownership rather than X/W buffer counts.
-  - Decouple W data staging depth from W-scale staging depth. W6 helped, but
-    it raises shared memory substantially; the next source probe should try
-    independent scale buffers/barriers so W data can keep a six-deep ring
-    while scale staging uses fewer slots.
+  - Avoid separate W-scale barrier rings for this kernel. The split W-scale
+    probe was legal but slower even at equal depth, so future shared-memory
+    reductions need to preserve the single combined W+scale ready/empty
+    protocol or change the descriptor/storage layout more fundamentally.
   - Inspect SASS/source counters for the dominant long-scoreboard locations in
     the direct 2CTA epilogue and loaders; NCU shows lower instruction count but
     much lower eligibility.
