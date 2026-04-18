@@ -1,6 +1,6 @@
 # TMEM Linear-Layout Remaining Coverage Gaps
 
-Last updated: 2026-04-18 07:13 UTC
+Last updated: 2026-04-18 07:16 UTC
 
 This is the stable reference list for remaining TMEM support gaps whose
 coverage depends on linear-layout generalization. The list was reconsolidated
@@ -8,6 +8,11 @@ on 2026-04-18 to remove old `tcgen05.cp` placeholder gaps and to move
 non-linear ISA/API follow-ups, such as i8 MMAv5 signedness and saturation, out
 to `isa_api_followups.md`. New linear-layout discoveries should be appended as
 new gap numbers unless the user explicitly asks to reconsolidate again.
+
+Historical note: the former i8 MMAv5 Gap #1 is closed for this project. Signed
+i8 direct MMAv5 is supported for the current project scope; extra
+instruction-descriptor attributes such as independent A/B signedness and
+integer saturation controls are out of scope here.
 
 Each gap should be examined with the same decision standard:
 - Is this impossible under the public PTX/ISA and current hardware behavior?

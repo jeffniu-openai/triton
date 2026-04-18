@@ -1,5 +1,15 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 07:16 UTC historical i8 Gap #1 closure: signed i8
+  direct MMAv5 is closed for this project. The delivered baseline is GB200/sm100
+  runtime-tested signed i8 direct MMAv5 over the checked-in tiny shape set.
+  Extra instruction-descriptor attributes, specifically independent A/B
+  signedness and integer saturation controls, are explicitly out of scope for
+  the TMEM linear-layout generalization project unless a separate ISA/API
+  effort is opened. Do not confuse this historical closure with the current
+  active linear-layout Gap #1, which is the `tcgen05.cp` complete-support
+  umbrella after the 07:13 UTC renumbering.
+
 - Latest: 2026-04-18 07:13 UTC non-linear i8 ISA/API split: i8 MMAv5
   signedness/saturation exposure is no longer in the linear-layout gap
   register. Signed i8 MMAv5 runtime support on GB200 remains documented in

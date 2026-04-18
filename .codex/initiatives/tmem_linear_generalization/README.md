@@ -49,8 +49,9 @@ When resuming the initiative:
   unresolved linear-layout support/coverage questions. Refer to these as
   Gap #1, Gap #2, etc.; preserve the compact numbering unless the user
   explicitly asks for a reconsolidation.
-- use `isa_api_followups.md` for TMEM-related ISA/API work that does not
-  depend on linear-layout generalization.
+- use `isa_api_followups.md` for TMEM-related ISA/API context that does not
+  depend on linear-layout generalization, including items explicitly closed as
+  out of scope for this project.
 - use `gb200_i8_validation_artifacts.md` for the reusable signed i8 MMAv5
   GB200 artifact inventory and CaaS rerun command.
 - use `tcgen05_cp_gap2_audit_20260418.md` for the current Gap #1
@@ -60,6 +61,14 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 07:16 UTC: closed the historical i8 MMAv5 Gap #1 for this
+  project. Signed i8 direct MMAv5 support is in, GB200/sm100 runtime pytest
+  coverage exists, and the remaining instruction-descriptor attribute work
+  (independent A/B signedness and integer saturation controls) is explicitly
+  out of scope for the TMEM linear-layout generalization project. The current
+  active linear-layout Gap #1 remains the `tcgen05.cp` complete-support
+  umbrella after the 07:13 UTC renumbering; this checkpoint closes only the
+  former i8 item.
 - 2026-04-18 07:13 UTC: moved i8 MMAv5 signedness/saturation out of the
   linear-layout gap register. It is now tracked as a non-linear ISA/API
   follow-up in `isa_api_followups.md` because the remaining work is descriptor
@@ -88,23 +97,23 @@ When resuming the initiative:
   closing the supported-layout baseline is one tiny dense subword
   exact-width `128x128b` runtime row such as f16 `128x8` or i8 `128x16`.
 - 2026-04-18 01:51 UTC: added the first checked-in runtime pytest coverage for
-  Gap #1 signed i8 MMAv5. `test_core.py` now has an exact `GB200/sm100` gated
-  positive test over three small shapes (`64x128x32`, `128x128x32`,
-  `128x256x64`) with exact int32 reference comparison and `kind::i8`
-  PTX/LLIR checks. The old i8 clean-error tests are now restricted to
-  Blackwell Ultra/sm103 so they do not contradict GB200 support.
-- 2026-04-18 01:28 UTC: Gap #1 signed i8 MMAv5 is now runtime-validated on
-  GB200 through `caas-gpu10` with image `cudaberry-arm`. `nvidia-smi` first
-  confirmed four `NVIDIA GB200` devices with compute capability `10.0`; the
-  actual execution probe used one GB200, uploaded
+  the historical Gap #1 signed i8 MMAv5 item. `test_core.py` now has an exact
+  `GB200/sm100` gated positive test over three small shapes (`64x128x32`,
+  `128x128x32`, `128x256x64`) with exact int32 reference comparison and
+  `kind::i8` PTX/LLIR checks. The old i8 clean-error tests are now restricted
+  to Blackwell Ultra/sm103 so they do not contradict GB200 support.
+- 2026-04-18 01:28 UTC: the historical Gap #1 signed i8 MMAv5 item is
+  runtime-validated on GB200 through `caas-gpu10` with image `cudaberry-arm`.
+  `nvidia-smi` first confirmed four `NVIDIA GB200` devices with compute
+  capability `10.0`; the actual execution probe used one GB200, uploaded
   `experiments/mmav5_i8_remote/`, and `python3 run_i8_ptx_torch.py --launcher
   cpp` passed against a torch int32 matmul reference. The remote driver
   rejected PTX JIT for PTX `.version 9.1`, so the runner now ships and loads
   the locally generated sm100 cubin while retaining PTX for manual/codegen
   inspection.
-- 2026-04-18 00:01 UTC: prepared the Gap #1 GB200 validation artifact under
-  `experiments/mmav5_i8_remote/`. Local `sm_100` compilation generates
-  `tcgen05_i8_signed_sm100.ptx` with `.target sm_100a`,
+- 2026-04-18 00:01 UTC: prepared the historical Gap #1 GB200 validation
+  artifact under `experiments/mmav5_i8_remote/`. Local `sm_100` compilation
+  generates `tcgen05_i8_signed_sm100.ptx` with `.target sm_100a`,
   `tcgen05.mma.cta_group::1.kind::i8`, descriptor immediate `136316064`, and a
   ptxas-produced cubin. The remote runner uses torch tensors plus a tiny CUDA
   Driver launch shim, so the GB200 container does not need to rebuild Triton.

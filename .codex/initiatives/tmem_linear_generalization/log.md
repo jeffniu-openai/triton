@@ -25127,3 +25127,28 @@ Open after this slice:
   - use Gap #1/#2/#3 only for linear-layout support discussions;
   - discuss i8 signedness/saturation as an ISA/API follow-up, not as a
     linear-layout gap.
+
+## 2026-04-18 07:16 UTC: close historical i8 Gap #1 for this project
+
+- Starting point: `codex/tmem` at pushed `14286b891`.
+- Decision:
+  - historical Gap #1, the i8 MMAv5 support item, is closed for the TMEM
+    linear-layout generalization project;
+  - signed i8 direct MMAv5 is covered by the GB200/sm100 runtime pytest
+    baseline and no longer blocks this project;
+  - extra instruction-descriptor attributes, specifically independent A/B
+    signedness and integer saturation controls, are out of scope for this
+    project.
+- Disambiguation:
+  - after the 07:13 UTC renumbering, the active linear-layout Gap #1 is
+    `tcgen05.cp` complete-support coverage; this checkpoint does not close
+    that current Gap #1.
+- Change:
+  - updated README, memory, `remaining_coverage_gaps.md`,
+    `isa_api_followups.md`, and the GB200 i8 runbook to record the closure and
+    out-of-scope boundary.
+- Validation:
+  - documentation-only checkpoint; run `git diff --check` before commit.
+- Next:
+  - continue linear-layout gap discussion with current Gap #1 `tcgen05.cp`,
+    Gap #2 narrow scaled-MMAv5, and Gap #3 mixed fp4 TMEM LHS.
