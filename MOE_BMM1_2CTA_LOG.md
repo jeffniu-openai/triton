@@ -372,9 +372,21 @@ and `1024`, under both simulated production routing and uniform routing.
     `~3.75-3.77 TB/s`, executed instructions `~6.65M`, theoretical occupancy
     `25%`, achieved occupancy `~24.3-25.2%`, eligible warps/scheduler
     `0.37-0.38`.
+  - Launch/occupancy detail: dynamic shared memory is `~96.99 KB/block`, with
+    shared memory limiting the kernel to two blocks per SM. Register, barrier,
+    and warp limits are looser than shared memory for this shape.
   - Dominant long-scoreboard source waits remain activation empty-barrier
     wait around line 556, weight empty-barrier wait around line 594, and
     accumulator-ready wait around line 898.
+- Additional quick falsifications after the main probe:
+  - `BLOCK_K=64` direct candidates fail current scale descriptor layout
+    assertions (`block_shape[0]=2 must be divisible by 4`); the `BK256`
+    candidate also fails assertions. Artifact:
+    `/tmp/moe_bmm1_bk64_uniform896_rep1200.csv`.
+  - `M16/BN256` compile/autotest path was interrupted after several minutes
+    with only the 1CTA and current `M32` baseline emitted. Treat this path as
+    impractical until a narrower M16 candidate is justified. Partial artifact:
+    `/tmp/moe_bmm1_m16bn256_uniform896_rep1200.csv`.
 - Current interpretation: `slice=28` is not blocked by instruction count or a
   simple launch/warp/ring selector. The next source-level path should target a
   structural reduction in 2CTA latency exposure, likely by changing producer
