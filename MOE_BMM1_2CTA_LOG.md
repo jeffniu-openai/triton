@@ -716,6 +716,32 @@ and `1024`, under both simulated production routing and uniform routing.
     multicast on rank 4 and `1.008x` for no-scale multicast on rank 7), but
     the same family has previously measured below parity on nearby repeated
     hard-route runs, so these are not sufficient for promotion.
+- W6/regs48 planar-snake variants are a dead end. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_snake_rank3457_rep1200.csv`.
+  - The default W6/regs48 schedule beat every snake variant on all four hard
+    ranks. Best speedups remained rank 3 `0.952x`, rank 4 `1.002x`, rank 5
+    `0.973x`, and rank 7 `1.002x`; ranks 3 and 5 still block promotion.
+- Route-matched NCU for the current W6/regs48 near-miss confirms that the
+  remaining gap is still low eligibility under shared-memory-limited
+  residency, not instruction count. Artifacts:
+  - `/tmp/ncu_moe_896_uniform_rank3_1cta_target.ncu-rep`
+  - `/tmp/ncu_moe_896_uniform_rank3_2cta_warps4_x5w6.ncu-rep`
+  - `/tmp/ncu_moe_896_uniform_rank4_2cta_warps4_x5w6_regs48.ncu-rep`
+  - Rank 3 1CTA: duration `38.112 us`, DRAM bandwidth `3.949 TB/s`,
+    instructions `14.13M`, issue active `0.38`, active warps/scheduler
+    `7.72`, eligible warps/scheduler `0.741`, registers/thread `64`,
+    dynamic shared memory `114.432 KB`, shared-memory occupancy limit
+    `2` blocks.
+  - Rank 3 W6/regs48 2CTA: duration `39.072 us`, DRAM bandwidth
+    `3.946 TB/s`, instructions `8.35M`, issue active `0.29`, active
+    warps/scheduler `3.88`, eligible warps/scheduler `0.364`,
+    registers/thread `48`, dynamic shared memory `113.884 KB`,
+    shared-memory occupancy limit `2` blocks.
+  - Rank 4 W6/regs48 2CTA was similar on eligibility (`0.381`) and remained
+    shared-memory limited to `2` blocks. Lowering the register cap removes the
+    register occupancy limit, but not the actual shared-memory residency limit.
+    Further occupancy hints alone are unlikely to help unless the W/X/scale
+    footprint drops or the producer/consumer wait timing changes.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
