@@ -920,6 +920,14 @@ and `1024`, under both simulated production routing and uniform routing.
     `0.997x`, with B23 regs56 and B25/no-multicast regs48/56 also below
     parity. The rank-3 and rank-4 gaps are not fixed by pairing odd bands,
     multicast toggles, and register caps.
+- A temporary source probe issued the W-scale TMA before the W-data TMA in
+  `load_weights`, then was reverted after measurement. Artifacts:
+  - `/tmp/moe_bmm1_slice28_scale_tma_first_legality_rank3_rep250.csv`
+  - `/tmp/moe_bmm1_slice28_scale_tma_first_rank4_rep400.csv`
+  - The path was legal and correctness-gated, but it regressed the rank-3
+    B20/no-scale/regs52 row to `0.965x` and the rank-4 B23/B25 rows to about
+    `0.965x-0.966x`. Keeping W data before W scale in the shared ready
+    barrier is better for the current loader/MMA overlap.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
