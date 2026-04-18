@@ -931,7 +931,8 @@ static std::optional<MMAv5TMemLayoutPlan>
 planMMAv5ScaledAccumulatorFamily(ArrayRef<int64_t> shape, Attribute layout,
                                  std::optional<unsigned> preferredColStride =
                                      std::nullopt) {
-  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  static constexpr unsigned kAccumulatorBlockNs[] = {8u,  16u,  32u,
+                                                     64u, 128u, 256u};
   if (auto exact = planMMAv5ExactFamily(shape, layout, kAccumulatorBlockNs,
                                         preferredColStride)) {
     return exact;
@@ -946,7 +947,8 @@ planMMAv5ScaledAccumulatorFamily(ArrayRef<int64_t> shape,
                                  gpu::CGAEncodingAttr cga, bool twoCTAs,
                                  std::optional<unsigned> preferredColStride =
                                      std::nullopt) {
-  static constexpr unsigned kAccumulatorBlockNs[] = {32u, 64u, 128u, 256u};
+  static constexpr unsigned kAccumulatorBlockNs[] = {8u,  16u,  32u,
+                                                     64u, 128u, 256u};
   if (auto exact = planMMAv5ExactFamily(shape, canonicalLayout, cga, twoCTAs,
                                         kAccumulatorBlockNs,
                                         preferredColStride)) {
@@ -1265,8 +1267,6 @@ getMMAv5TMemFamilyAddressLayout(MemDescType memDescType) {
 
 static SmallVector<unsigned, 6>
 getMMAv5InstructionTileRequirementBlockNs(MMAv5TMemOperandKind operandKind) {
-  if (operandKind == MMAv5TMemOperandKind::ScaledAccumulator)
-    return {32u, 64u, 128u, 256u};
   return {8u, 16u, 32u, 64u, 128u, 256u};
 }
 
@@ -1534,6 +1534,10 @@ getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
       /*minimumAddressableBScaleFragmentN=*/64};
 }
 
+static std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
+getMMAv5ScaledNarrowNScaleFragmentRequirement(
+    MemDescType memDescType, const MMAv5AccumulatorLayoutInfo &info);
+
 MMAv5ScaledAccumulatorSupport
 getMMAv5ScaledAccumulatorSupport(MemDescType memDescType) {
   MMAv5ScaledAccumulatorSupport support;
@@ -1542,6 +1546,9 @@ getMMAv5ScaledAccumulatorSupport(MemDescType memDescType) {
     support.repeatedN32ScaleFragmentRequirement =
         getMMAv5ScaledRepeatedN32ScaleFragmentRequirement(
             memDescType, *support.layoutInfo);
+    support.narrowNScaleFragmentRequirement =
+        getMMAv5ScaledNarrowNScaleFragmentRequirement(memDescType,
+                                                      *support.layoutInfo);
   } else {
     support.narrowNScaleFragmentRequirement =
         getMMAv5ScaledNarrowNScaleFragmentRequirement(memDescType);
@@ -1714,53 +1721,93 @@ static std::optional<unsigned> getMMAv5ScaledRepeatedN32PaddingFactor(
   return factor;
 }
 
-bool isMMAv5ScaledRepeatedN32BScaleStorageSupported(
-    MemDescType bScaleType,
-    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
+static std::optional<unsigned> getMMAv5ScaledNarrowNPaddingFactor(
+    const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
+  if (requirement.instrSizeN == 0 ||
+      requirement.minimumAddressableBScaleFragmentN % requirement.instrSizeN !=
+          0)
+    return std::nullopt;
+  unsigned factor =
+      requirement.minimumAddressableBScaleFragmentN / requirement.instrSizeN;
+  if (factor <= 1)
+    return std::nullopt;
+  return factor;
+}
+
+static bool isMMAv5ScaledBScaleStoragePadded(MemDescType bScaleType,
+                                             unsigned ctaColumns,
+                                             unsigned paddingFactor) {
   if (!isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
     return false;
-  auto paddingFactor = getMMAv5ScaledRepeatedN32PaddingFactor(requirement);
-  if (!paddingFactor)
-    return false;
-
   auto shape = bScaleType.getShape();
   if (shape.size() != 2)
     return false;
-  int64_t rows = shape[0];
-  return rows >=
-         static_cast<int64_t>(requirement.ctaColumns) * *paddingFactor;
+  return shape[0] >= static_cast<int64_t>(ctaColumns) * paddingFactor;
+}
+
+static std::optional<SmallVector<int64_t>>
+getMMAv5ScaledBScaleRematerializedShape(MemDescType bScaleType,
+                                        unsigned ctaColumns,
+                                        unsigned paddingFactor) {
+  if (!isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
+    return std::nullopt;
+  SmallVector<int64_t> shape(bScaleType.getShape().begin(),
+                             bScaleType.getShape().end());
+  if (shape.size() != 2)
+    return std::nullopt;
+  int64_t &rows = shape[0];
+  if (rows != static_cast<int64_t>(ctaColumns))
+    return std::nullopt;
+  rows *= paddingFactor;
+  return shape;
+}
+
+bool isMMAv5ScaledRepeatedN32BScaleStorageSupported(
+    MemDescType bScaleType,
+    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
+  auto paddingFactor = getMMAv5ScaledRepeatedN32PaddingFactor(requirement);
+  if (!paddingFactor)
+    return false;
+  return isMMAv5ScaledBScaleStoragePadded(
+      bScaleType, requirement.ctaColumns, *paddingFactor);
 }
 
 std::optional<SmallVector<int64_t>>
 getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
     MemDescType bScaleType,
     const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement) {
-  if (!isa<TensorMemoryScalesEncodingAttr>(bScaleType.getEncoding()))
-    return std::nullopt;
   auto paddingFactor = getMMAv5ScaledRepeatedN32PaddingFactor(requirement);
   if (!paddingFactor)
     return std::nullopt;
-
-  SmallVector<int64_t> shape(bScaleType.getShape().begin(),
-                             bScaleType.getShape().end());
-  if (shape.size() != 2)
-    return std::nullopt;
-  int64_t &rows = shape[0];
-  if (rows != static_cast<int64_t>(requirement.ctaColumns))
-    return std::nullopt;
-  rows *= *paddingFactor;
-  return shape;
+  return getMMAv5ScaledBScaleRematerializedShape(
+      bScaleType, requirement.ctaColumns, *paddingFactor);
 }
 
-std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
-getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
-  constexpr unsigned kMinimumScaledInstrSizeN = 32;
-  if (getMMAv5ScaledAccumulatorLayoutInfo(memDescType))
-    return std::nullopt;
+bool isMMAv5ScaledNarrowNBScaleStorageSupported(
+    MemDescType bScaleType,
+    const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
+  auto paddingFactor = getMMAv5ScaledNarrowNPaddingFactor(requirement);
+  if (!paddingFactor)
+    return false;
+  return isMMAv5ScaledBScaleStoragePadded(
+      bScaleType, requirement.ctaColumns, *paddingFactor);
+}
 
-  auto plainInfo = getMMAv5AccumulatorLayoutInfo(memDescType);
-  if (!plainInfo)
+std::optional<SmallVector<int64_t>>
+getMMAv5ScaledNarrowNBScaleRematerializedShape(
+    MemDescType bScaleType,
+    const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
+  auto paddingFactor = getMMAv5ScaledNarrowNPaddingFactor(requirement);
+  if (!paddingFactor)
     return std::nullopt;
+  return getMMAv5ScaledBScaleRematerializedShape(
+      bScaleType, requirement.ctaColumns, *paddingFactor);
+}
+
+static std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
+getMMAv5ScaledNarrowNScaleFragmentRequirement(
+    MemDescType memDescType, const MMAv5AccumulatorLayoutInfo &info) {
+  constexpr unsigned kMinimumScaledInstrSizeN = 32;
 
   auto ctaShape =
       getShapePerCTA(getCGALayout(memDescType.getEncoding()).getCTASplitNum(),
@@ -1768,7 +1815,7 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
   if (ctaShape.size() < 2)
     return std::nullopt;
 
-  auto instrSizeN = std::min<unsigned>(plainInfo->mmaSizeN, ctaShape[1]);
+  auto instrSizeN = std::min<unsigned>(info.mmaSizeN, ctaShape[1]);
   if (instrSizeN >= kMinimumScaledInstrSizeN)
     return std::nullopt;
 
@@ -1779,7 +1826,7 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
       SmallVector<int64_t, 4>(memDescType.getShape().begin(),
                               memDescType.getShape().end()),
       /*ctaShape=*/SmallVector<int64_t, 4>(ctaShape.begin(), ctaShape.end()),
-      /*plainInstrSizeM=*/plainInfo->mmaSizeM,
+      /*plainInstrSizeM=*/info.mmaSizeM,
       /*instrSizeN=*/instrSizeN,
       /*minimumScaledInstrSizeN=*/kMinimumScaledInstrSizeN,
       /*minimumAddressableBScaleFragmentN=*/minimumAddressableBScaleFragmentN,
@@ -1789,6 +1836,18 @@ getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
       /*bScalePaddingFactor=*/minimumAddressableBScaleFragmentN / instrSizeN,
       /*tileOrderMismatch=*/getMMAv5InstructionTileOrderMismatch(
           memDescType, MMAv5TMemOperandKind::ScaledAccumulator)};
+}
+
+std::optional<MMAv5ScaledNarrowNScaleFragmentRequirement>
+getMMAv5ScaledNarrowNScaleFragmentRequirement(MemDescType memDescType) {
+  if (getMMAv5ScaledAccumulatorLayoutInfo(memDescType))
+    return std::nullopt;
+
+  auto plainInfo = getMMAv5AccumulatorLayoutInfo(memDescType);
+  if (!plainInfo)
+    return std::nullopt;
+  return getMMAv5ScaledNarrowNScaleFragmentRequirement(memDescType,
+                                                       *plainInfo);
 }
 
 std::optional<MMAv5ScaledMixedFp4ATMemRequirement>
@@ -1850,8 +1909,8 @@ std::string getMMAv5ScaledNarrowNScaleFragmentError(
     const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement) {
   std::string message;
   llvm::raw_string_ostream os(message);
-  os << "direct block-scaled MMAv5 does not support accumulator layouts that "
-        "require N="
+  os << "direct block-scaled MMAv5 cannot use unpadded B-scale storage for "
+        "accumulator layouts that require N="
      << requirement.instrSizeN << " instructions along N for "
      << requirement.accumulatorEncoding
      << ". The accumulator logical shape is ";
@@ -1861,12 +1920,9 @@ std::string getMMAv5ScaledNarrowNScaleFragmentError(
   os << "; the plain MMAv5-compatible plan would use "
      << requirement.plainInstrSizeM << "x" << requirement.instrSizeN
      << " accumulator instructions and "
-     << requirement.nInstructionCount
-     << " instruction fragments along N. The minimum public scaled-MMAv5 N "
-        "tile is "
-     << requirement.minimumScaledInstrSizeN
-     << ", and the public tensor-memory scales layout exposes matrix-B scale "
-        "fragments at "
+     << requirement.nInstructionCount << " instruction fragments along N. The "
+        "public tensor-memory scales layout exposes matrix-B scale fragments "
+        "at "
      << requirement.minimumAddressableBScaleFragmentN
      << "-column alignment, so this schedule would require a B-scale storage "
         "padding/rematerialization factor of "
@@ -1883,10 +1939,9 @@ std::string getMMAv5ScaledNarrowNScaleFragmentError(
     os << ".";
   }
   os << " This " << requirement.ctaColumns
-     << "-column CTA tile must be reshaped to a larger directly supported "
-        "MMAv5 tile, or the backend must synthesize both a correct "
-        "accumulator permutation and B-scale fragment rematerialization, "
-        "before it can use block-scaled tcgen05.mma.";
+     << "-column CTA tile must use padded B-scale storage or be reshaped to a "
+        "larger directly supported scale-fragment tile before it can use "
+        "block-scaled tcgen05.mma.";
   return os.str();
 }
 

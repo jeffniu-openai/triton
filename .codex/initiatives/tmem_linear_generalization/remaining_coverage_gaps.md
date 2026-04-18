@@ -1,6 +1,6 @@
 # TMEM Linear-Layout Remaining Coverage Gaps
 
-Last updated: 2026-04-18 19:50 UTC
+Last updated: 2026-04-18 23:03 UTC
 
 This is the stable reference list for remaining TMEM support gaps whose
 coverage depends on linear-layout generalization. The list was reconsolidated
@@ -72,36 +72,46 @@ Each gap should be examined with the same decision standard:
 
 ## Gap #2: Narrow Scaled-MMAv5 `N=8/16`
 
+- Status: closed at 2026-04-18 23:03 UTC.
 - Area: block-scaled MMAv5 accumulator layouts that require narrow N
   instruction fragments, especially `N=8` and `N=16`.
-- Current state: current lowering reports a structured narrow-N scale-fragment
-  requirement. The issue is not merely selecting an opcode; it requires a
-  correct accumulator permutation plus matrix-B scale-fragment
-  padding/rematerialization. Writes also need a safe physical accumulator
-  footprint.
-- Open question: can the backend physically pad/remap accumulator and scale
-  storage to a supported `N>=32` tile while exposing a logical `N=8/16` view,
-  or are packed adjacent accumulator layouts impossible without masks?
-- Next evidence: design the padded physical accumulator/scale-fragment
-  contract and prove whether writeback can avoid clobbering adjacent logical
-  data.
-- Initial classification: implementable with storage/schedule redesign for
-  padded views; impossible for arbitrary tightly packed adjacent layouts
-  without masks.
+- Current state: positive supported. Scaled accumulator planning now admits the
+  same narrow `N=8/16` linear-layout families as plain MMAv5 when the
+  accumulator tile itself is instruction-family compatible.
+- Implementation: the tensor-memory allocation pass rematerializes matrix-B
+  scale storage for narrow fragments by padding each logical N-fragment group
+  to the public 64-column scale-fragment addressing granularity. Lowering then
+  uses the normal scaled-MMAv5 path with `N=8` or `N=16` instruction
+  descriptors and the rematerialized scale storage.
+- Coverage: `test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_format_matrix`
+  is positive across `mxfp8`, `mxfp4`, mixed `mxfp8/mxfp4`, mixed
+  `mxfp4/mxfp8`, and `nvfp4` for `N=32/tile_n=8` and `N=64/tile_n=16`,
+  with `K=128/256`.
+- Validation: `make -j8`; full narrow-N runtime matrix `20 passed`; broader
+  non-twoCTA scaled-accumulator tile-permuted selector `52 passed`.
 
 ## Gap #3: Mixed fp4 TMEM LHS
 
+- Status: closed as a direct-TMEM unsupported boundary at 2026-04-18 23:03 UTC.
 - Area: block-scaled MMAv5 with mixed fp4 operand A in tensor memory, such as
   fp4 A with non-fp4 B under `mxf8f6f4`-style semantics.
 - Current state: current TMEM LHS lowering treats A storage as raw packed
   columns. Mixed fp4 A needs the padded operand-A storage model represented by
   `fp4_padded` shared memory, where only part of each group carries real
   packed fp4 values and the rest are padding aliases.
-- Open question: can TMEM LHS layouts gain a real `fp4_padded` storage
-  contract equivalent to the shared-memory operand-A contract, including
-  descriptor addressing, tile ordering, and view composition?
-- Next evidence: define the TMEM `fp4_padded` layout semantics, then add
-  compiler-only and runtime rows for tile-permuted and descriptor-view LHS
-  cases.
-- Initial classification: implementable backend/storage-model gap, not a
-  known ISA impossibility.
+- Closure evidence: a speculative direct-TMEM fp4-padded rematerialization
+  path was tried and rejected because it compiled but produced wrong runtime
+  numerics. The zero-basis padding-only representation missed the
+  shared-memory `fp4_padded` row-dependent 128-byte swizzle; attempting to
+  encode that row swizzle in the TMEM/register layout was not compatible with
+  the current direct TMEM store layout machinery.
+- Classification: direct raw TMEM LHS storage cannot model the
+  `fp4_padded` operand-A contract. Supporting mixed fp4A from tensor memory
+  would require a new explicit storage/API contract or staged shared-memory
+  materialization path, not another verifier guard lift in the general
+  linear-layout backend.
+- Coverage: mixed fp4A TMEM-LHS tile-permuted and subslice-view rows remain
+  clean structured negatives that tell users to keep operand A in shared
+  memory or use a homogeneous fp4 scaled-MMA kind.
+- Validation: `make -j8`; full mixed-fp4A TMEM-LHS clean-negative matrix
+  `24 passed`.

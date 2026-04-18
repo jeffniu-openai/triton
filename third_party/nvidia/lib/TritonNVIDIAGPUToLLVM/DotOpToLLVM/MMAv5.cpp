@@ -679,15 +679,18 @@ LogicalResult convertScaledDot(const LLVMTypeConverter &typeConverter,
   dot.shape.K = op.getBlockK(); // K is not split across CTAs
   dot.mmaSizeK = scaledInfo.mmaSizeK;
   auto accSupport = ttng::getMMAv5ScaledAccumulatorSupport(dTensorTy);
-  if (accSupport.narrowNScaleFragmentRequirement) {
-    return mlir::emitError(
-        loc, ttng::getMMAv5ScaledNarrowNScaleFragmentError(
-                 *accSupport.narrowNScaleFragmentRequirement));
-  }
   auto bScaleStorageTy =
       ttng::getMMAv5ScaledBScaleStorageTypeThroughViews(op.getBScale());
   MemDescType bScaleTyForPlanning =
       bScaleStorageTy.value_or(op.getBScale().getType());
+  if (accSupport.narrowNScaleFragmentRequirement &&
+      !ttng::isMMAv5ScaledNarrowNBScaleStorageSupported(
+          bScaleTyForPlanning,
+          *accSupport.narrowNScaleFragmentRequirement)) {
+    return mlir::emitError(
+        loc, ttng::getMMAv5ScaledNarrowNScaleFragmentError(
+                 *accSupport.narrowNScaleFragmentRequirement));
+  }
   if (accSupport.repeatedN32ScaleFragmentRequirement &&
       !ttng::isMMAv5ScaledRepeatedN32BScaleStorageSupported(
           bScaleTyForPlanning,

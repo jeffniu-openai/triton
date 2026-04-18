@@ -4586,6 +4586,19 @@ When resuming the initiative:
   permutation and B-scale fragment rematerialization. Validation: `make -j8`,
   invalid verifier, split-4 focused narrow-N selector `5/5/5/5`, Python
   compile, and `git diff --check`.
+- 2026-04-18 22:54 UTC: Gap #2 narrow scaled-MMAv5 `N=8/16` is now positive.
+  Scaled accumulator planning admits `N=8/16` linear-layout families and the
+  allocation pass rematerializes/pads matrix-B scale storage for narrow
+  fragments. The former clean-negative runtime matrix now checks numerical
+  correctness across all five scaled format pairs, both narrow tile sizes, and
+  `K=128/256`. Gap #3 mixed fp4A TMEM-LHS is closed as a direct-TMEM
+  storage/API boundary after a speculative fp4-padded TMEM path compiled but
+  produced wrong output. Validation: `make -j8`; narrow matrix `20 passed`;
+  mixed-fp4A TMEM-LHS negative matrix `24 passed`; non-twoCTA scaled-acc tile
+  selector `52 passed`; clean-negative/error collect-only `141/1594`.
+  Final pre-commit rerun after cleanup: incremental `make -j8` had no work,
+  narrow matrix `20 passed`, and mixed-fp4A TMEM-LHS negative matrix
+  `24 passed`.
 - 2026-04-17 21:12 UTC: direct `ld/st` leading-slice replay preservation now
   uses backend utility `shouldPreserveDirectTMemLdStLeadingSliceView` instead
   of a transform-local gapped-column query check. Behavior is unchanged:

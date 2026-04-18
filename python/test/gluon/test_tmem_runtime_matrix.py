@@ -13101,9 +13101,7 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_64_format_use_acc(a_fo
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
 @pytest.mark.parametrize("a_format,b_format,n,tile_n,k", SCALED_MMA_ACC_TILE_PERMUTED_NARROW_UNSUPPORTED_CASES)
-def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_reports_clean_unsupported(
-    a_format, b_format, n, tile_n, k, capfd
-):
+def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_format_matrix(a_format, b_format, n, tile_n, k):
     m = 128
     layout = _make_tmem_linear_layout_tile_permuted(m, n, tile_n)
     vec_size = 16 if a_format == "nvfp4" else 32
@@ -13111,41 +13109,37 @@ def test_tmem_runtime_matrix_mma_scaled_acc_tile_permuted_narrow_reports_clean_u
     b_elem_per_byte, b_tcgen_format = _scaled_mma_operand_params(b_format)
 
     torch.manual_seed(0)
-    a, a_scale, _ = random_quantized_tensor(m, k, a_format)
-    b, b_scale, _ = random_quantized_tensor(n, k, b_format)
+    a, a_scale, a_ref = random_quantized_tensor(m, k, a_format)
+    b, b_scale, b_ref = random_quantized_tensor(n, k, b_format)
     out = torch.empty((m, n), dtype=torch.float32, device="cuda")
 
-    with pytest.raises(Exception) as excinfo:
-        tmem_mma_scaled_layout_format_kernel[(1, )](
-            out,
-            m,
-            n,
-            k,
-            a,
-            b,
-            a_scale,
-            b_scale,
-            layout,
-            vec_size,
-            a_elem_per_byte,
-            b_elem_per_byte,
-            a_tcgen_format,
-            b_tcgen_format,
-            0.0,
-            num_warps=4,
-        )
+    compiled = tmem_mma_scaled_layout_format_kernel[(1, )](
+        out,
+        m,
+        n,
+        k,
+        a,
+        b,
+        a_scale,
+        b_scale,
+        layout,
+        vec_size,
+        a_elem_per_byte,
+        b_elem_per_byte,
+        a_tcgen_format,
+        b_tcgen_format,
+        0.0,
+        num_warps=4,
+    )
 
-    captured = capfd.readouterr()
-    text = str(excinfo.value) + captured.err + captured.out
-    assert "direct block-scaled MMAv5 does not support accumulator layouts that require N=" in text
-    assert f"plain MMAv5-compatible plan would use 128x{tile_n}" in text
-    assert f"{n // tile_n} instruction fragments along N" in text
-    assert "minimum public scaled-MMAv5 N tile is 32" in text
-    assert "matrix-B scale fragments at 64-column alignment" in text
-    assert f"B-scale storage padding/rematerialization factor of {64 // tile_n}" in text
-    assert "accumulator permutation and B-scale fragment rematerialization" in text
-    assert "PassManager::run failed" not in text
-    assert "Assertion" not in text
+    torch.testing.assert_close(out.to(torch.float32), a_ref @ b_ref.T, atol=1e-3, rtol=1e-3)
+
+    expected_count = 4 * (k // 128) * _expected_scaled_mma_acc_subslice_count(a_format, b_format)
+    mma_ops = _assert_exact_mma_ptx_llir_match(compiled)
+    assert len(mma_ops) == expected_count
+    assert all(op == _expected_scaled_mma_opcode(a_format, b_format, 1) for op in mma_ops)
+    assert "tensor_memory_linear" in compiled.asm["ttgir"]
+    assert "ttng.tc_gen5_mma_scaled" in compiled.asm["ttgir"]
 
 
 @pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")

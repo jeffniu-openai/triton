@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-18 19:50 UTC
+Last updated: 2026-04-18 23:03 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -40,7 +40,7 @@ The project is complete when:
 ## Active Phase Board
 
 - Phase A, rebaseline and classify: done for this branch. The current
-  clean-negative/error surface is stable at `161/1592` and every bucket below
+  clean-negative/error surface is stable at `141/1594` and every bucket below
   is classified as positive support, typed clean boundary, or frontend/API
   contract error.
 - Phase B, complete shared physical-query model: done for known TMEM policy
@@ -60,11 +60,15 @@ The project is complete when:
   rows are positive; residual rows are true atom-footprint or refresh-row-anchor
   boundaries with structured diagnostics.
 - Phase E, finish MMAv5 and scaled-MMAv5 descriptor/storage semantics:
-  boundary-complete for the current public ISA and storage contracts. Remaining
-  rows are external `.kind::i8` PTXAS/ISA rejections, instruction-tile order
-  boundaries, mixed fp4A padded-storage requirements, or narrow-N scale-fragment
-  boundaries. Gap #1 signed i8 direct MMAv5 is now validated on GB200 through
-  the generated `sm_100a` PTX/cubin artifact under
+  boundary-complete for the current public ISA and storage contracts. Gap #2
+  narrow scaled-MMAv5 `N=8/16` is now positive through B-scale storage
+  rematerialization/padding. Gap #3 mixed fp4A TMEM-LHS is closed as a typed
+  direct-TMEM storage/API boundary because raw TMEM LHS cannot model the
+  shared-memory `fp4_padded` operand-A contract. Other residual rows are
+  external `.kind::i8` PTXAS/ISA rejections, instruction-tile order
+  boundaries, or explicit frontend/API contracts. Gap #1 signed i8 direct
+  MMAv5 is now validated on GB200 through the generated `sm_100a` PTX/cubin
+  artifact under
   `experiments/mmav5_i8_remote/`, and has checked-in sm100-gated runtime pytest
   coverage for three signed-i8 shapes; remaining i8 work is IR/frontend
   exposure for unsigned/per-operand signedness and saturation, not the signed
@@ -80,11 +84,11 @@ The project is complete when:
 
 ## Current Clean-Negative Inventory
 
-For the stable discussion order of remaining support/coverage questions, use
-`remaining_coverage_gaps.md`. Gap #1 `tcgen05.cp` is now closed for this
-project; the active linear-layout entries are Gap #2 narrow scaled-MMAv5
-`N=8/16` and Gap #3 mixed fp4 TMEM LHS. Do not use old pre-reconsolidation
-copy gap numbers unless explicitly discussing history.
+For the stable discussion order of support/coverage questions, use
+`remaining_coverage_gaps.md`. Gap #1 `tcgen05.cp`, Gap #2 narrow
+scaled-MMAv5 `N=8/16`, and Gap #3 mixed fp4 TMEM LHS are now closed for this
+project. Do not use old pre-reconsolidation copy gap numbers unless explicitly
+discussing history.
 
 Collected at 2026-04-17 18:59 UTC after `make -j8`:
 
@@ -116,6 +120,11 @@ Result after the 20:48 integer `ld.red` NaN no-op promotion:
 
 Result after the 21:37 backend-policy cleanup checkpoints:
 `161/1592` tests collected (1431 deselected) in 2.97s.
+
+Result after the 2026-04-18 22:54 Gap #2/#3 checkpoint:
+`141/1594` tests collected (1453 deselected) in 3.07s. The total matrix grew
+by two rows from intervening coverage, and the former 20 narrow scaled-MMAv5
+clean-negative rows are now positive runtime coverage.
 
 Current buckets:
 - `ld/st` scales variant atom-footprint boundaries:
@@ -173,15 +182,14 @@ Current buckets:
   typed instruction-tile order requirement. Public atoms require canonical
   row/column basis order within each 64x8-or-larger instruction tile unless a
   tile-splitting or masked writeback schedule is designed.
-- Scaled-MMAv5 mixed fp4A TMEM-LHS: now reported through a typed padded
-  operand-A storage requirement. A guard-lift probe emitted `mxf8f6f4` but
-  produced wrong output, so support still needs real fp4_padded TMEM storage
-  semantics rather than a verifier lift.
-- Scaled-MMAv5 narrow accumulator `N=8/16`: now reported through a structured
-  narrow-N scale-fragment requirement that records the plain accumulator
-  instruction shape, fragment count, and B-scale padding/rematerialization
-  factor. Support still needs a real scale-fragment and accumulator
-  permutation schedule.
+- Scaled-MMAv5 mixed fp4A TMEM-LHS: closed as a typed direct-TMEM storage/API
+  boundary. A speculative fp4-padded direct-TMEM path compiled but produced
+  wrong output; the missing semantics are the shared-memory `fp4_padded`
+  operand-A row-dependent 128-byte swizzle and padding aliases.
+- Scaled-MMAv5 narrow accumulator `N=8/16`: closed as positive support.
+  Narrow accumulator families now lower with B-scale storage
+  rematerialization/padding, and the former clean-negative matrix is now
+  runtime-positive.
 
 ## Current Runtime Matrix Validation
 
@@ -476,8 +484,8 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
   whole-tile permutation positives.
 - `done`: prove and structure the scaled-MMAv5 mixed fp4A TMEM-LHS storage
   representation boundary.
-- `done`: prove and structure the scaled-MMAv5 narrow-N B-scale fragment
-  schedule and accumulator permutation boundary.
+- `done`: support scaled-MMAv5 narrow-N through accumulator family planning and
+  B-scale fragment storage rematerialization.
 - `boundary`: expand opcode/runtime positives only when a new backend schedule
   is real, not when a frontend spelling happens to compile.
 
@@ -504,6 +512,12 @@ Status legend: `done`, `active`, `pending`, `blocked`, `boundary`.
   updated handoff summarizing every residual true ISA boundary.
 
 ## Next Concrete Slice
+
+- 2026-04-18 22:54 UTC: closed Gap #2 narrow scaled-MMAv5 `N=8/16` as
+  positive support and Gap #3 mixed fp4A TMEM-LHS as a direct-TMEM storage/API
+  boundary. Validation: `make -j8`; narrow-N runtime matrix `20 passed`;
+  mixed-fp4A TMEM-LHS clean-negative matrix `24 passed`; non-twoCTA
+  scaled-accumulator tile-permuted selector `52 passed`.
 
 No unblocked local implementation slice remains in the current TMEM
 generalization plan. The next action is PR/CI integration and external

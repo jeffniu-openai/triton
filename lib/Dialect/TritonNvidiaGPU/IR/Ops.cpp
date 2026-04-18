@@ -948,14 +948,24 @@ LogicalResult TCGen5MMAScaledOp::verify() {
   auto instrSizeN = std::min<unsigned>(info->mmaSizeN, ctaShape[1]);
   auto bScaleStorageType =
       getMMAv5ScaledBScaleStorageTypeThroughViews(getBScale());
-  MemDescType bScaleTypeForRepeatedN32 =
+  MemDescType bScaleTypeForPlanning =
       bScaleStorageType.value_or(getBScale().getType());
+  if (accSupport.narrowNScaleFragmentRequirement &&
+      !isMMAv5ScaledNarrowNBScaleStorageSupported(
+          bScaleTypeForPlanning,
+          *accSupport.narrowNScaleFragmentRequirement) &&
+      !getMMAv5ScaledNarrowNBScaleRematerializedShape(
+          bScaleTypeForPlanning,
+          *accSupport.narrowNScaleFragmentRequirement)) {
+    return emitOpError() << getMMAv5ScaledNarrowNScaleFragmentError(
+               *accSupport.narrowNScaleFragmentRequirement);
+  }
   if (accSupport.repeatedN32ScaleFragmentRequirement &&
       !isMMAv5ScaledRepeatedN32BScaleStorageSupported(
-          bScaleTypeForRepeatedN32,
+          bScaleTypeForPlanning,
           *accSupport.repeatedN32ScaleFragmentRequirement) &&
       !getMMAv5ScaledRepeatedN32BScaleRematerializedShape(
-          bScaleTypeForRepeatedN32,
+          bScaleTypeForPlanning,
           *accSupport.repeatedN32ScaleFragmentRequirement)) {
     return emitOpError() << getMMAv5ScaledRepeatedN32ScaleFragmentError(
                *accSupport.repeatedN32ScaleFragmentRequirement);

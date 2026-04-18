@@ -25243,3 +25243,44 @@ Open after this slice:
 - Next:
   - run `git diff --check`, commit, push, then move to Gap #2 narrow
     scaled-MMAv5 `N=8/16` or Gap #3 mixed fp4 TMEM LHS unless redirected.
+
+## 2026-04-18 22:54 UTC: close Gap #2 and Gap #3
+
+- Starting point: `codex/tmem` at pushed `0a2b7df3c`.
+- Gap #2 change:
+  - extended scaled-MMAv5 accumulator family planning to include `N=8` and
+    `N=16` layouts when the normalized linear accumulator layout is otherwise
+    instruction-family compatible;
+  - generalized the allocation-pass B-scale rematerialization pattern so it
+    pads/rematerializes scale storage for narrow `N=8/16` fragments as well as
+    the existing repeated `N=32` case;
+  - changed the former narrow-N runtime matrix from a clean-negative test to
+    positive correctness coverage across `mxfp8`, `mxfp4`, mixed
+    `mxfp8/mxfp4`, mixed `mxfp4/mxfp8`, and `nvfp4`.
+- Gap #3 decision:
+  - removed the speculative fp4-padded direct-TMEM LHS experiment after a
+    runtime probe compiled but produced wrong output;
+  - kept mixed fp4A TMEM-LHS as a clean typed unsupported boundary because raw
+    TMEM LHS storage cannot model the shared-memory `fp4_padded` operand-A
+    contract's row-dependent 128-byte swizzle and padding aliases.
+- Validation:
+  - `make -j8`;
+  - focused first slice, one narrow positive plus two Gap #3 negatives:
+    `3 passed`;
+  - representative narrow-format slice: `4 passed`;
+  - full narrow-N runtime matrix: `20 passed`;
+  - full mixed-fp4A TMEM-LHS clean-negative matrix: `24 passed`;
+  - broader non-twoCTA scaled-accumulator tile-permuted selector:
+    `52 passed, 1542 deselected`;
+  - clean-negative/error collect-only rebaseline:
+    `141/1594` collected.
+  - final pre-commit rerun after cleanup:
+    incremental `make -j8` had no work, full narrow-N matrix `20 passed`, and
+    full mixed-fp4A TMEM-LHS clean-negative matrix `24 passed`.
+- Result:
+  - Gap #2 is closed as positive supported coverage;
+  - Gap #3 is closed for the current project as an explicit direct-TMEM
+    storage/API boundary, not a general linear-layout backend gap.
+- Next:
+  - run `git diff --check`, commit, push, and then rebaseline the remaining
+    clean-negative inventory for any non-gap residuals.

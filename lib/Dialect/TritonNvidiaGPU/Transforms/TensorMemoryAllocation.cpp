@@ -323,7 +323,7 @@ public:
   }
 };
 
-class RematerializeRepeatedN32BScale
+class RematerializeScaledMmaBScaleFragments
     : public OpRewritePattern<TCGen5MMAScaledOp> {
 public:
   using OpRewritePattern::OpRewritePattern;
@@ -331,11 +331,10 @@ public:
   LogicalResult matchAndRewrite(TCGen5MMAScaledOp mmaOp,
                                 PatternRewriter &rewriter) const override {
     auto accSupport = getMMAv5ScaledAccumulatorSupport(mmaOp.getD().getType());
-    if (!accSupport.repeatedN32ScaleFragmentRequirement)
+    if (!accSupport.repeatedN32ScaleFragmentRequirement &&
+        !accSupport.narrowNScaleFragmentRequirement)
       return failure();
 
-    const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement =
-        *accSupport.repeatedN32ScaleFragmentRequirement;
     Value bScale = mmaOp.getBScale();
     auto bScaleType = cast<ttg::MemDescType>(bScale.getType());
     std::optional<ttg::MemDescType> bScaleStorageType =
@@ -354,13 +353,33 @@ public:
         allocType.getMemorySpace() != bScaleType.getMemorySpace())
       return failure();
 
-    if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(*bScaleStorageType,
-                                                       requirement))
-      return failure();
-
     std::optional<SmallVector<int64_t>> rematerializedShape =
-        getMMAv5ScaledRepeatedN32BScaleRematerializedShape(*bScaleStorageType,
-                                                          requirement);
+        std::nullopt;
+    unsigned ctaColumns = 0;
+    unsigned instrSizeN = 0;
+    if (accSupport.narrowNScaleFragmentRequirement) {
+      const MMAv5ScaledNarrowNScaleFragmentRequirement &requirement =
+          *accSupport.narrowNScaleFragmentRequirement;
+      if (isMMAv5ScaledNarrowNBScaleStorageSupported(*bScaleStorageType,
+                                                     requirement))
+        return failure();
+      rematerializedShape =
+          getMMAv5ScaledNarrowNBScaleRematerializedShape(*bScaleStorageType,
+                                                         requirement);
+      ctaColumns = requirement.ctaColumns;
+      instrSizeN = requirement.instrSizeN;
+    } else {
+      const MMAv5ScaledRepeatedN32ScaleFragmentRequirement &requirement =
+          *accSupport.repeatedN32ScaleFragmentRequirement;
+      if (isMMAv5ScaledRepeatedN32BScaleStorageSupported(*bScaleStorageType,
+                                                         requirement))
+        return failure();
+      rematerializedShape =
+          getMMAv5ScaledRepeatedN32BScaleRematerializedShape(*bScaleStorageType,
+                                                            requirement);
+      ctaColumns = requirement.ctaColumns;
+      instrSizeN = requirement.instrSizeN;
+    }
     if (!rematerializedShape)
       return failure();
 
@@ -386,10 +405,8 @@ public:
         storedType.getRank() != 2)
       return failure();
 
-    if (storedType.getShape()[0] !=
-            static_cast<int64_t>(requirement.ctaColumns) ||
-        requirement.instrSizeN == 0 ||
-        requirement.ctaColumns % requirement.instrSizeN != 0)
+    if (storedType.getShape()[0] != static_cast<int64_t>(ctaColumns) ||
+        instrSizeN == 0 || ctaColumns % instrSizeN != 0)
       return failure();
 
     int64_t paddingFactor =
@@ -398,10 +415,9 @@ public:
         (*rematerializedShape)[0] % storedType.getShape()[0] != 0)
       return failure();
 
-    int64_t instructionCount =
-        requirement.ctaColumns / requirement.instrSizeN;
+    int64_t instructionCount = ctaColumns / instrSizeN;
     SmallVector<int64_t> groupedShape{
-        instructionCount, 1, static_cast<int64_t>(requirement.instrSizeN),
+        instructionCount, 1, static_cast<int64_t>(instrSizeN),
         storedType.getShape()[1]};
 
     rewriter.setInsertionPoint(storeOp);
@@ -591,7 +607,7 @@ public:
     DenseMap<triton::nvidia_gpu::TMEMAllocOp, int> offsets;
     RewritePatternSet patterns(ctx);
     patterns.add<MaterializeSharedMMAScalesToTMem,
-                 RematerializeRepeatedN32BScale>(ctx);
+                 RematerializeScaledMmaBScaleFragments>(ctx);
     if (failed(applyPatternsGreedily(mod, std::move(patterns))))
       return signalPassFailure();
 

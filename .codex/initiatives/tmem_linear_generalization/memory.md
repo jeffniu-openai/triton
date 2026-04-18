@@ -13653,3 +13653,40 @@ rejection, not rescue
   - unless the user opens a separate copy ISA/API/storage project, continue
     the TMEM linear-layout project with Gap #2 narrow scaled-MMAv5 `N=8/16` or
     Gap #3 mixed fp4 TMEM LHS.
+
+## Current: 2026-04-18 23:03 UTC Gap #2 and Gap #3 closed
+
+- Gap #2 narrow scaled-MMAv5 `N=8/16`:
+  - closed as supported;
+  - scaled accumulator planning now includes `N=8/16` instruction families;
+  - `RematerializeScaledMmaBScaleFragments` pads/rematerializes matrix-B scale
+    storage for narrow fragments to the public 64-column scale-fragment
+    addressing granularity;
+  - the former narrow clean-negative runtime test is now positive coverage for
+    all five scaled format pairs, both `N=32/tile_n=8` and `N=64/tile_n=16`,
+    and `K=128/256`.
+- Gap #3 mixed fp4A TMEM-LHS:
+  - closed as a typed direct-TMEM unsupported boundary for this project;
+  - a speculative fp4-padded TMEM rematerialization path was intentionally
+    removed because it compiled but produced wrong numerics;
+  - the missing contract is not a generic linear-layout planner gap: mixed
+    fp4A needs the shared-memory `fp4_padded` operand-A semantics, including
+    row-dependent 128-byte swizzle and padding aliases, while raw direct TMEM
+    LHS exposes packed columns directly.
+- Validation:
+  - `make -j8`;
+  - focused first slice: `3 passed`;
+  - representative narrow-format slice: `4 passed`;
+  - full narrow-N runtime matrix: `20 passed`;
+  - full mixed-fp4A TMEM-LHS clean-negative matrix: `24 passed`;
+  - broader non-twoCTA scaled-accumulator tile-permuted selector:
+    `52 passed, 1542 deselected`;
+  - clean-negative/error collect-only rebaseline:
+    `141/1594` collected.
+  - final pre-commit rerun after doc/code cleanup:
+    incremental `make -j8` had no work, full narrow-N matrix `20 passed`, and
+    full mixed-fp4A TMEM-LHS clean-negative matrix `24 passed`.
+- Next:
+  - commit and push this checkpoint to `origin/codex/tmem`;
+  - rebaseline remaining clean negatives; no active numbered linear-layout
+    coverage gap remains after Gap #1, Gap #2, and Gap #3 closure.
