@@ -1,5 +1,17 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 06:45 UTC Gap #2 `tcgen05.cp` supported-layout audit:
+  `tcgen05_cp_gap2_audit_20260418.md` records the family-by-family audit.
+  The copy verifier/planner is already normalized around `LinearLayout`;
+  legacy tensor-memory encodings are compatibility syntax only, not a separate
+  backend support category. No broad new copy implementation gap was found.
+  Current unsupported rows classify under the existing dedicated gaps: Gap #3
+  partial footprints/masks, Gap #4 refresh views/readback, Gap #5
+  packed/subword `warpx2`, Gap #6 two-CTA `warpx2::02_13`, and Gap #9
+  descriptor/copy-source contracts. Optional closure polish is one tiny dense
+  subword exact-width `128x128b` evidence row, or an explicit waiver because
+  dense subword `128x256b` already exercises the same packed dense path.
+
 - Latest: 2026-04-17 23:34 UTC remaining coverage gap register:
   `remaining_coverage_gaps.md` is now the stable-numbered source of truth for
   the next support-boundary discussions. The registered gaps are: Gap #1 GB200

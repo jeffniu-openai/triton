@@ -25007,3 +25007,46 @@ Open after this slice:
 - Next:
   - run `git diff --check`;
   - commit and push this test checkpoint.
+
+## 2026-04-18 06:45 UTC: audit Gap #2 tcgen05.cp supported-layout completeness
+
+- Starting point: `codex/tmem` at pushed `origin/codex/tmem`.
+- Scope:
+  - audited whether Gap #2 is an actual backend implementation gap or a
+    coverage/classification question over normalized `LinearLayout` families;
+  - kept separate the already-numbered follow-up gaps for partial footprints,
+    `4x256b` refresh views, packed/subword `warpx2`, two-CTA
+    `warpx2::02_13`, and frontend descriptor/copy-source contracts.
+- Findings:
+  - `TMemCopyOp` verification obtains the shared source layout with
+    `toLinearLayout(srcTy)`;
+  - destination legality and source conversion flow through
+    `TMemPhysicalQuery`, `selectTMemCopyPhysicalQuery`,
+    `getTMemCopySourceConversion`, `getTMemCopyAtom`, and
+    `getTMemCopyPlans`;
+  - legacy `TensorMemoryLayout` encodings canonicalize through
+    `tryGetCanonicalTensorMemoryLinearLayout`, so legacy-vs-linear is not a
+    backend support split.
+- Family classification:
+  - dense `128x128b`: supported for canonical dense one-CTA/two-CTA and
+    representative descriptor views; optional subword exact-width evidence can
+    be added;
+  - dense `128x256b`: supported for canonical dense, explicit linear,
+    subword, indexed/subslice, one-CTA/two-CTA, and swizzle families in scope;
+  - refresh `4x256b`: supported for explicit refresh-shaped layouts; ordinary
+    view/readback remains Gap #4;
+  - no-scales `warpx2::01_23`: supported for 32-bit one-CTA/two-CTA and
+    descriptor/source-rematerialized views; subword remains Gap #5;
+  - no-scales `warpx2::02_13`: supported for 32-bit single-CTA; two-CTA
+    remains Gap #6 and subword remains Gap #5;
+  - scales `warpx4`: supported for direct scales copy, source
+    rematerialization, and scaled-MMA copy use; descriptor/mask contracts
+    remain Gap #3/#9.
+- Durable docs updated:
+  - added `tcgen05_cp_gap2_audit_20260418.md`;
+  - updated README, memory, and the stable gap register with the audit result.
+- Validation:
+  - documentation-only checkpoint; run `git diff --check` before commit.
+- Next:
+  - add or waive the optional dense subword exact-width `128x128b` evidence
+    row, then mark Gap #2 supported modulo Gaps #3-#6/#9.

@@ -1,6 +1,6 @@
 # TMEM Remaining Coverage Gaps
 
-Last updated: 2026-04-18 01:51 UTC
+Last updated: 2026-04-18 06:45 UTC
 
 This is the stable reference list for the remaining TMEM coverage gaps that
 need deeper discussion. Keep the numbering stable. If a gap is resolved,
@@ -47,21 +47,25 @@ Each gap should be examined with the same decision standard:
 
 - Area: complete coverage of `tcgen05.cp` layouts modulo public instruction
   families and hardware restrictions.
-- Current state: the planner recognizes the public copy families currently in
-  use: dense `128x128b`, dense `128x256b`, refresh `4x256b`,
-  `warpx2::01_23.64x128b`, `warpx2::02_13.64x128b`, and
-  `warpx4.32x128b`. The runtime matrix covers many positive descriptor-view,
-  indexed-view, subslice-view, one-CTA, two-CTA, dense-source, and
-  rematerialized-source cases.
-- Open question: do we have a complete enough compiler/test enumeration of all
-  layout families that are realizable by public `tcgen05.cp`, or are there
-  supported layouts not represented by the current matrix?
-- Next evidence: build a coverage audit over recognized copy families,
-  shape/CTA/source-layout categories, and current clean negatives; add
-  compiler-only or runtime rows only where an actually realizable family is
-  missing.
-- Initial classification: likely mostly covered, but needs a formal coverage
-  audit before closing.
+- Current state: the formal audit is recorded in
+  `tcgen05_cp_gap2_audit_20260418.md`. The planner/verifier path normalizes
+  through `LinearLayout`: legacy `TensorMemoryLayout` encodings are frontend
+  compatibility syntax, not a separate backend capability. Coverage should be
+  judged by normalized layout equivalence classes.
+- Audit result: no broad new `tcgen05.cp` implementation gap was found. The
+  supported public families are dense `128x128b`, dense `128x256b`, explicit
+  refresh-shaped `4x256b`, 32-bit no-scales `warpx2::01_23`, 32-bit
+  no-scales single-CTA `warpx2::02_13`, and scales `warpx4.32x128b`.
+  Remaining unsupported rows map to Gap #3 partial footprints/masks, Gap #4
+  refresh views/readback, Gap #5 packed/subword `warpx2`, Gap #6 two-CTA
+  `warpx2::02_13`, or Gap #9 descriptor/copy-source contracts.
+- Remaining evidence question: optional dense subword exact-width `128x128b`
+  rows, such as f16 `128x8` or i8 `128x16`, are not explicitly represented.
+  Existing dense subword `128x256b` rows exercise the same packed dense path at
+  wider N, so this is evidence polish rather than a known implementation gap.
+- Current classification: audit-complete; close as supported modulo Gaps
+  #3-#6/#9 after adding or explicitly waiving the optional dense subword
+  `128x128b` evidence row.
 
 ## Gap #3: Partial `tcgen05.cp` Footprints
 

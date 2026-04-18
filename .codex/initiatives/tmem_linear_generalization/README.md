@@ -50,9 +50,20 @@ When resuming the initiative:
   etc.; do not renumber gaps after discussion starts.
 - use `gb200_i8_validation_artifacts.md` for the reusable Gap #1 signed i8
   MMAv5 GB200 artifact inventory and CaaS rerun command.
+- use `tcgen05_cp_gap2_audit_20260418.md` for the Gap #2 `tcgen05.cp`
+  supported-layout completeness audit and family-by-family classification.
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 06:45 UTC: completed the Gap #2 `tcgen05.cp` supported-layout
+  completeness audit. The planner/verifier path is normalized around
+  `LinearLayout`; legacy tensor-memory encodings are frontend compatibility
+  syntax, not a separate backend capability. No broad new copy implementation
+  gap was found. Remaining unsupported rows map to Gap #3 partial footprints,
+  Gap #4 `4x256b` refresh views/readback, Gap #5 packed/subword `warpx2`,
+  Gap #6 two-CTA `warpx2::02_13`, or Gap #9 descriptor/copy-source contracts.
+  Optional evidence before closing Gap #2 is one tiny dense subword
+  exact-width `128x128b` runtime row such as f16 `128x8` or i8 `128x16`.
 - 2026-04-18 01:51 UTC: added the first checked-in runtime pytest coverage for
   Gap #1 signed i8 MMAv5. `test_core.py` now has an exact `GB200/sm100` gated
   positive test over three small shapes (`64x128x32`, `128x128x32`,
