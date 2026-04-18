@@ -200,6 +200,64 @@ getTMemLdStAtomSearchOrder(std::optional<TMemAccessAtom> desiredAtom) {
   return atomOrder;
 }
 
+std::optional<LinearLayout>
+reshapeTMemLdStRegisterLayoutToShape(const LinearLayout &layout,
+                                     ArrayRef<int64_t> queryShape) {
+  SmallVector<int64_t> layoutShape(layout.getOutDimSizes().begin(),
+                                   layout.getOutDimSizes().end());
+  if (llvm::equal(layoutShape, queryShape))
+    return layout;
+
+  if (layoutShape.size() == queryShape.size() &&
+      llvm::all_of(queryShape, llvm::isPowerOf2_64)) {
+    auto resized = layout;
+    auto outDims = llvm::to_vector(resized.getOutDimNames());
+    bool canResize = true;
+    for (auto [idx, outDim] : llvm::enumerate(outDims)) {
+      if (queryShape[idx] > resized.getOutDimSize(outDim)) {
+        canResize = false;
+        break;
+      }
+    }
+    if (canResize) {
+      for (auto [idx, outDim] : llvm::enumerate(outDims)) {
+        if (queryShape[idx] < resized.getOutDimSize(outDim))
+          resized = resized.resizeOutDim(outDim, queryShape[idx]);
+      }
+      return resized;
+    }
+  }
+
+  if (product<int64_t>(layoutShape) != product<int64_t>(queryShape))
+    return std::nullopt;
+  auto *ctx = layout.getOutDimNames().begin()->getContext();
+  return reshapeLayout(ctx, layout, queryShape);
+}
+
+std::optional<RankedTensorType> getTMemLdStFirstLegalRegisterType(
+    ArrayRef<int64_t> resultShape, Type elementType, MemDescType queryTy,
+    ArrayRef<DistributedEncodingTrait> layouts,
+    std::optional<TMemAccessAtom> desiredAtom, int maxnreg,
+    const TMemLdStQueryLayout *queryLayout,
+    std::optional<TMemLdStRowPlan> rowPlanOverride) {
+  for (DistributedEncodingTrait candidateLayout : layouts) {
+    auto regTy = RankedTensorType::get(resultShape, elementType, candidateLayout);
+    FailureOr<TMemLdStEncodingInfo> maybeInfo =
+        queryLayout ? computeTMemLdStEncodingInfo(
+                          regTy, queryTy, *queryLayout, maxnreg,
+                          /*emitError=*/{}, rowPlanOverride)
+                    : computeTMemLdStEncodingInfo(
+                          regTy, queryTy, maxnreg, /*emitError=*/{},
+                          rowPlanOverride);
+    if (succeeded(maybeInfo) &&
+        isTMemAccessAtomCompatibleWithRequest(queryTy, desiredAtom,
+                                              maybeInfo->atom)) {
+      return regTy;
+    }
+  }
+  return std::nullopt;
+}
+
 SmallVector<TMemLdStCandidateLayout>
 getTMemLdStCandidateLayoutsForQuery(Value memDesc, MemDescType queryTy,
                                     unsigned numWarps, StringRef atomName) {
@@ -603,10 +661,11 @@ bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(MemDescType memTy,
   return isM64SplitNDescriptorType(memTy, numWarps);
 }
 
-bool shouldPreferLegacyTMemLdStI32x32bForAuto(MemDescType memTy,
-                                              StringRef atomName) {
+bool shouldPreferCanonicalTMemLdStI32x32bForAuto(MemDescType memTy,
+                                                 StringRef atomName) {
   if (atomName != "auto" || !memTy ||
-      !isa<TensorMemoryEncodingAttr>(memTy.getEncoding())) {
+      !isTensorMemoryEncoding(memTy.getEncoding()) ||
+      isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding())) {
     return false;
   }
   return !(memTy.getRank() == 2 && memTy.getShape()[0] == 64);
@@ -2407,10 +2466,12 @@ static bool hasFullShapeTMemTile(MemDescType memTy) {
              memTy.getAllocShape().take_back(rank);
 }
 
-static bool isLegacyM64TensorMemoryDescriptor(MemDescType memTy) {
+static bool isFullShapeM64TensorMemoryDescriptor(MemDescType memTy) {
   return memTy && memTy.getRank() == 2 && memTy.getShape()[0] == 64 &&
          memTy.getElementTypeBitWidth() == 32 &&
-         isa<TensorMemoryEncodingAttr>(memTy.getEncoding());
+         isTensorMemoryEncoding(memTy.getEncoding()) &&
+         !isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()) &&
+         hasFullShapeTMemTile(memTy);
 }
 
 static std::optional<SmallVector<std::vector<int32_t>>>
@@ -2551,7 +2612,7 @@ getFullShapeMMAv5FamilyQueryLayout(MemDescType memTy) {
     auto maybeTwoCTAs = getTensorMemoryTwoCTAs(encoding);
     if (!maybeTwoCTAs)
       return std::nullopt;
-    if (isLegacyM64TensorMemoryDescriptor(memTy))
+    if (isFullShapeM64TensorMemoryDescriptor(memTy))
       return makeQuery(toLinearLayout(memTy), *maybeTwoCTAs);
     auto layoutRank = static_cast<size_t>(
         cast<LayoutEncodingTrait>(encoding).getRank());
@@ -3166,12 +3227,12 @@ std::optional<TMemLdStRowPlan> getTMemLdStRowPlanForType(MemDescType memTy) {
       logicalRows > activeLayout.getInDimSize(kRow)) {
     return planFromRowBits(activeRowBits, isZeroActiveRowBasis);
   }
-  // Legacy and sparse/non-surjective logical M64 TMEM encodings can carry
-  // an explicit zero row basis in the raw linear form. Classifying those
-  // layouts from the raw row-basis count alone widens them to the 128-row
-  // family and breaks direct ld/st layout selection for plain 64xN MMA
-  // accumulators as well as split-N variants. For logical M64 tiles, derive
-  // the row plan from the active row bases instead.
+  // Sparse/non-surjective logical M64 TMEM encodings can carry an explicit zero
+  // row basis in the raw linear form. Classifying those layouts from the raw
+  // row-basis count alone widens them to the 128-row family and breaks direct
+  // ld/st layout selection for plain 64xN MMA accumulators as well as split-N
+  // variants. For logical M64 tiles, derive the row plan from the active row
+  // bases instead.
   bool shapeMatchesAllocTail =
       memTy.getAllocShape().size() >= static_cast<size_t>(memTy.getRank()) &&
       llvm::equal(memTy.getShape().take_back(2),
@@ -3371,15 +3432,13 @@ bool shouldPreferTMemLdStQueryTypeLoweringBeforeRawQuery(
     Value memDesc, MemDescType memTy, RankedTensorType regTy) {
   if (!memDesc)
     return false;
-  if (memTy.getRank() == 2 && memTy.getShape()[0] == 64 &&
-      memTy.getElementTypeBitWidth() == 32 &&
-      isa<TensorMemoryEncodingAttr>(memTy.getEncoding())) {
-    return false;
-  }
   auto regLayout = toLinearEncoding(regTy).getLinearLayout();
   auto kWarp = StringAttr::get(memTy.getContext(), "warp");
   unsigned numWarps =
       regLayout.hasInDim(kWarp) ? regLayout.getInDimSize(kWarp) : 4;
+  if (isM64SplitNDescriptorType(memTy, numWarps) &&
+      llvm::equal(memTy.getShape(), memTy.getAllocShape()))
+    return false;
   return shouldPreferTMemLdStQueryTypeLayoutsBeforeRawQuery(
       memDesc, numWarps, /*desiredAtom=*/std::nullopt);
 }
@@ -4000,20 +4059,11 @@ getCanonicalTMemLdStSurrogateType(gpu::MemDescType queryTy,
     return std::nullopt;
 
   auto *ctx = queryTy.getContext();
-  gpu::CGAEncodingAttr cga =
-      gpu::CGAEncodingAttr::get1CTALayout(ctx, queryTy.getRank());
-  bool twoCTAs = false;
-  if (auto linear =
-          dyn_cast<TensorMemoryLinearEncodingAttr>(queryTy.getEncoding())) {
-    cga = linear.getCGALayout();
-    twoCTAs = linear.getTwoCTAs();
-  } else if (auto legacy =
-                 dyn_cast<TensorMemoryEncodingAttr>(queryTy.getEncoding())) {
-    cga = legacy.getCGALayout();
-    twoCTAs = legacy.getTwoCTAs();
-  } else {
+  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+  if (!maybeTwoCTAs)
     return std::nullopt;
-  }
+  gpu::CGAEncodingAttr cga = gpu::getCGALayout(queryTy.getEncoding());
+  bool twoCTAs = *maybeTwoCTAs;
 
   SmallVector<int64_t> surrogateAllocShape(queryTy.getAllocShape().begin(),
                                            queryTy.getAllocShape().end());
@@ -4433,7 +4483,7 @@ inferStandaloneTMemViewTypeImpl(Value memDesc, bool preserveNonCanonicalView,
                       gpu::MemDescIndexOp, gpu::MemDescReshapeOp,
                       gpu::MemDescTransOp, gpu::MemDescReinterpretOp>(defOp);
   if (preserveNonCanonicalView && !hasDescriptorViewProducer &&
-      isLegacyM64TensorMemoryDescriptor(memDescTy)) {
+      isFullShapeM64TensorMemoryDescriptor(memDescTy)) {
     return memDescTy;
   }
   auto layoutRank = static_cast<size_t>(cast<LayoutEncodingTrait>(encoding).getRank());
@@ -4707,20 +4757,11 @@ getGenericTMemLdStReshapedSupportQueryLayout(Value memDesc,
   if (logicalRows * logicalCols != supportRows * supportCols)
     return std::nullopt;
 
-  gpu::CGAEncodingAttr cga =
-      gpu::CGAEncodingAttr::get1CTALayout(ctx, queryTy.getRank());
-  bool twoCTAs = false;
-  if (auto linear =
-          dyn_cast<TensorMemoryLinearEncodingAttr>(queryTy.getEncoding())) {
-    cga = linear.getCGALayout();
-    twoCTAs = linear.getTwoCTAs();
-  } else if (auto legacy =
-                 dyn_cast<TensorMemoryEncodingAttr>(queryTy.getEncoding())) {
-    cga = legacy.getCGALayout();
-    twoCTAs = legacy.getTwoCTAs();
-  } else {
+  auto maybeTwoCTAs = getTensorMemoryTwoCTAs(queryTy.getEncoding());
+  if (!maybeTwoCTAs)
     return std::nullopt;
-  }
+  gpu::CGAEncodingAttr cga = gpu::getCGALayout(queryTy.getEncoding());
+  bool twoCTAs = *maybeTwoCTAs;
 
   auto reshaped = reshapeLayout(ctx, normalizedSrcLayout, queryTy.getShape());
   return TMemLdStQueryLayout{
@@ -6214,7 +6255,6 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
     return failure();
   }
 
-  bool isScales = getTMemScalesRootEncoding(memDesc).has_value();
   bool twoCTAs = false;
   if (auto scales = dyn_cast<TensorMemoryScalesEncodingAttr>(encoding)) {
     twoCTAs = product<unsigned>(scales.getCGALayout().getCTAsPerCGA()) > 1;
@@ -6236,7 +6276,7 @@ inferStandaloneTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
       static_cast<unsigned>(maybeTy->getElementTypeBitWidth()),
       layout,
       twoCTAs,
-      SmallVector<int32_t>(layout.getNumInDims(), 0), isScales};
+      SmallVector<int32_t>(layout.getNumInDims(), 0)};
 }
 
 FailureOr<TMemPhysicalQuery>
@@ -6273,8 +6313,7 @@ inferExactTMemPhysicalQuery(Value memDesc, bool preserveNonCanonicalView,
       static_cast<unsigned>(memDescTy.getElementTypeBitWidth()),
       maybeQuery->layout,
       maybeQuery->twoCTAs,
-      maybeQuery->origin,
-      getTMemScalesRootEncoding(memDesc).has_value()};
+      maybeQuery->origin};
 }
 
 FailureOr<TMemPhysicalQuery>
@@ -6298,8 +6337,6 @@ getFirstTMemPhysicalQueryDifference(const TMemPhysicalQuery &lhs,
     return TMemPhysicalQueryDifference::TwoCTAs;
   if (lhs.origin != rhs.origin)
     return TMemPhysicalQueryDifference::Origin;
-  if (lhs.isScales != rhs.isScales)
-    return TMemPhysicalQueryDifference::Scales;
   return std::nullopt;
 }
 
@@ -6311,8 +6348,7 @@ bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
 bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
                                         const TMemPhysicalQuery &rhs) {
   return lhs.shape == rhs.shape && lhs.elementBitWidth == rhs.elementBitWidth &&
-         lhs.layout == rhs.layout && lhs.twoCTAs == rhs.twoCTAs &&
-         lhs.isScales == rhs.isScales;
+         lhs.layout == rhs.layout && lhs.twoCTAs == rhs.twoCTAs;
 }
 
 bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
@@ -6322,8 +6358,7 @@ bool shouldUseExactTMemCopyPhysicalQuery(const TMemPhysicalQuery &standalone,
 
   return standalone.shape == exact.shape &&
          standalone.elementBitWidth == exact.elementBitWidth &&
-         standalone.twoCTAs == exact.twoCTAs &&
-         standalone.isScales == exact.isScales;
+         standalone.twoCTAs == exact.twoCTAs;
 }
 
 bool canInvertAndComposeLayouts(const LinearLayout &inner,
@@ -6438,8 +6473,6 @@ struct TMemCopyExactViewScheduleRequirement {
 static std::optional<TMemCopyExactViewScheduleRequirement>
 getTMemCopyExactViewScheduleRequirement(const TMemPhysicalQuery &standalone,
                                         const TMemPhysicalQuery &exact) {
-  if (!standalone.isScales || !exact.isScales)
-    return std::nullopt;
   auto firstDifference = getFirstTMemPhysicalQueryDifference(standalone, exact);
   if (!firstDifference || *firstDifference != TMemPhysicalQueryDifference::Layout)
     return std::nullopt;
@@ -6458,8 +6491,8 @@ getTMemCopyExactViewScheduleNote(const TMemPhysicalQuery &standalone,
     return std::nullopt;
   std::string note;
   llvm::raw_string_ostream os(note);
-  os << "The exact tensor-memory-scales descriptor view changes the physical "
-        "TMEM layout relative to the root scales layout. The first differing "
+  os << "The exact tensor-memory descriptor view changes the physical TMEM "
+        "layout relative to the standalone root layout. The first differing "
         "physical-query field is "
      << stringifyTMemPhysicalQueryDifference(requirement->firstDifference);
   if (!requirement->activeShape.empty()) {
@@ -6491,8 +6524,6 @@ StringRef stringifyTMemPhysicalQueryDifference(
     return "CTA ownership";
   case TMemPhysicalQueryDifference::Origin:
     return "physical origin";
-  case TMemPhysicalQueryDifference::Scales:
-    return "scales classification";
   }
   llvm_unreachable("unknown TMEM physical query difference");
 }
@@ -8658,7 +8689,7 @@ computeTMemLdStEncodingInfoImpl(
     return info;
   }
 
-  auto tryLegacyAnchoredExactFamily = [&]()
+  auto tryCanonicalAnchoredExactFamily = [&]()
       -> std::optional<TMemLdStEncodingInfo> {
     bool hasCompatibleRowPlan =
         !rowPlanOverride ||
@@ -8671,16 +8702,16 @@ computeTMemLdStEncodingInfoImpl(
       return std::nullopt;
     }
 
-    auto legacyLayout =
+    auto queryLayout =
         squeezeTrivialBlock(toLinearLayout(memTy.getShape(), memTy.getEncoding()));
-    auto legacyFamilyLayout = legacyLayout;
-    if (bitwidth < 32 && legacyFamilyLayout.hasInDim(kCol))
-      legacyFamilyLayout = legacyFamilyLayout.removeZeroBasesAlongDim(kCol);
-    if (!legacyLayout.hasInDim(kRow) || !legacyLayout.hasInDim(kCol))
+    auto queryFamilyLayout = queryLayout;
+    if (bitwidth < 32 && queryFamilyLayout.hasInDim(kCol))
+      queryFamilyLayout = queryFamilyLayout.removeZeroBasesAlongDim(kCol);
+    if (!queryLayout.hasInDim(kRow) || !queryLayout.hasInDim(kCol))
       return std::nullopt;
-    if (legacyLayout.hasInDim(kBlock) && legacyLayout.getInDimSize(kBlock) > 1)
+    if (queryLayout.hasInDim(kBlock) && queryLayout.getInDimSize(kBlock) > 1)
       return std::nullopt;
-    if (legacyLayout.getInDimSizeLog2(kRow) != 7)
+    if (queryLayout.getInDimSizeLog2(kRow) != 7)
       return std::nullopt;
 
     auto twoCTAs = getTensorMemoryTwoCTAs(memTy);
@@ -8701,7 +8732,7 @@ computeTMemLdStEncodingInfoImpl(
             continue;
           auto canonicalLayout =
               squeezeTrivialBlock(maybeCanonical->getLinearLayout());
-          if (canonicalLayout == legacyLayout) {
+          if (canonicalLayout == queryLayout) {
             matchedCanonicalLayout = canonicalLayout;
             matchedColStride = colStride;
             matchedExactCanonicalLayout = true;
@@ -8710,7 +8741,7 @@ computeTMemLdStEncodingInfoImpl(
           auto compareLayout = canonicalLayout;
           if (bitwidth < 32 && compareLayout.hasInDim(kCol))
             compareLayout = compareLayout.removeZeroBasesAlongDim(kCol);
-          if (!matchedCanonicalLayout && compareLayout == legacyFamilyLayout) {
+          if (!matchedCanonicalLayout && compareLayout == queryFamilyLayout) {
             matchedCanonicalLayout = canonicalLayout;
             matchedColStride = colStride;
           }
@@ -8731,24 +8762,25 @@ computeTMemLdStEncodingInfoImpl(
     }
     if (!canInvertAndComposeSafely(regLayout, *matchedCanonicalLayout))
       return std::nullopt;
-    auto legacyCvt = regLayout.invertAndCompose(*matchedCanonicalLayout);
-    legacyCvt = squeezeTrivialBlock(std::move(legacyCvt));
-    bool legacyHasBlockIn = legacyCvt.hasInDim(kBlock);
-    bool legacyHasBlockOut = legacyCvt.hasOutDim(kBlock);
-    if (legacyHasBlockIn != legacyHasBlockOut)
+    auto canonicalCvt = regLayout.invertAndCompose(*matchedCanonicalLayout);
+    canonicalCvt = squeezeTrivialBlock(std::move(canonicalCvt));
+    bool canonicalHasBlockIn = canonicalCvt.hasInDim(kBlock);
+    bool canonicalHasBlockOut = canonicalCvt.hasOutDim(kBlock);
+    if (canonicalHasBlockIn != canonicalHasBlockOut)
       return std::nullopt;
-    if (legacyHasBlockIn) {
-      auto maybeSublayout = legacyCvt.quotient({kBlock});
+    if (canonicalHasBlockIn) {
+      auto maybeSublayout = canonicalCvt.quotient({kBlock});
       if (!maybeSublayout)
         return std::nullopt;
-      legacyCvt = *maybeSublayout;
+      canonicalCvt = *maybeSublayout;
     }
-    auto legacyCvtBases = legacyCvt.getBases();
-    legacyCvtBases[kWarp][0] = {32, 0};
-    legacyCvtBases[kWarp][1] = {64, 0};
-    legacyCvt = LinearLayout(std::move(legacyCvtBases), legacyCvt.getOutDims(),
-                             /*isSurjective=*/legacyCvt.isSurjective());
-    auto info = lowerTMemLdSt(legacyCvt, maxnreg, bitwidth,
+    auto canonicalCvtBases = canonicalCvt.getBases();
+    canonicalCvtBases[kWarp][0] = {32, 0};
+    canonicalCvtBases[kWarp][1] = {64, 0};
+    canonicalCvt =
+        LinearLayout(std::move(canonicalCvtBases), canonicalCvt.getOutDims(),
+                     /*isSurjective=*/canonicalCvt.isSurjective());
+    auto info = lowerTMemLdSt(canonicalCvt, maxnreg, bitwidth,
                               /*emitError=*/{}, /*unpacked=*/false,
                               /*warpRow0=*/32, /*warpRow1=*/64,
                               /*rowSpan=*/128,
@@ -8770,7 +8802,7 @@ computeTMemLdStEncodingInfoImpl(
     }
     return *info;
   };
-  if (auto info = tryLegacyAnchoredExactFamily())
+  if (auto info = tryCanonicalAnchoredExactFamily())
     return *info;
 
   auto rowPlan = getTMemLdStRowPlanForType(memTy);
@@ -8937,9 +8969,7 @@ computeTMemLdStEncodingInfoImpl(
       info->numRegsPerMessage = 1;
     }
   }
-  auto getLegacyLikeColStride = [&]() -> std::optional<unsigned> {
-    if (auto legacyEncoding = dyn_cast<TensorMemoryEncodingAttr>(memTy.getEncoding()))
-      return legacyEncoding.getColStride();
+  auto inferCanonicalFamilyColStride = [&]() -> std::optional<unsigned> {
     if (bitwidth != 16 || memTy.getShape() != memTy.getAllocShape())
       return std::nullopt;
 
@@ -8947,11 +8977,11 @@ computeTMemLdStEncodingInfoImpl(
     if (!twoCTAs)
       return std::nullopt;
 
-    auto legacyLayout =
+    auto queryLayout =
         squeezeTrivialBlock(toLinearLayout(memTy.getShape(), memTy.getEncoding()));
-    auto legacyFamilyLayout = legacyLayout;
-    if (legacyFamilyLayout.hasInDim(kCol))
-      legacyFamilyLayout = legacyFamilyLayout.removeZeroBasesAlongDim(kCol);
+    auto queryFamilyLayout = queryLayout;
+    if (queryFamilyLayout.hasInDim(kCol))
+      queryFamilyLayout = queryFamilyLayout.removeZeroBasesAlongDim(kCol);
 
     std::optional<unsigned> fallbackColStride;
     for (unsigned blockM : {64u, 128u}) {
@@ -8966,23 +8996,23 @@ computeTMemLdStEncodingInfoImpl(
             continue;
           auto canonicalLayout =
               squeezeTrivialBlock(maybeCanonical->getLinearLayout());
-          if (canonicalLayout == legacyLayout)
+          if (canonicalLayout == queryLayout)
             return colStride;
           auto compareLayout = canonicalLayout;
           if (compareLayout.hasInDim(kCol))
             compareLayout = compareLayout.removeZeroBasesAlongDim(kCol);
-          if (!fallbackColStride && compareLayout == legacyFamilyLayout)
+          if (!fallbackColStride && compareLayout == queryFamilyLayout)
             fallbackColStride = colStride;
         }
       }
     }
     return fallbackColStride;
   };
-  auto legacyLikeColStride = getLegacyLikeColStride();
-  bool isLegacyUnpackedFullShape =
-      legacyLikeColStride && *legacyLikeColStride > 1 && bitwidth == 16 &&
+  auto canonicalFamilyColStride = inferCanonicalFamilyColStride();
+  bool isCanonicalFamilyUnpackedFullShape =
+      canonicalFamilyColStride && *canonicalFamilyColStride > 1 && bitwidth == 16 &&
       memTy.getShape() == memTy.getAllocShape();
-  if (isLegacyUnpackedFullShape)
+  if (isCanonicalFamilyUnpackedFullShape)
     info->unpacked = true;
   if (debug) {
     llvm::errs() << "[halfrows-info] atom=" << static_cast<int>(info->atom)
@@ -9212,7 +9242,7 @@ computeTMemLdStEncodingInfo(RankedTensorType regTy, MemDescType memTy,
   LinearLayout memLayout = [&]() -> LinearLayout {
     if (isa<TensorMemoryScalesEncodingAttr>(memTy.getEncoding()))
       return squeezeTrivialBlock(toLinearLayout(memTy));
-    if (isLegacyM64TensorMemoryDescriptor(memTy))
+    if (isFullShapeM64TensorMemoryDescriptor(memTy))
       return squeezeTrivialBlock(toLinearLayout(memTy));
     // Full-shape TMEM descriptors already carry the exact physical contract in
     // their encoding. Direct ld/st planning must use that exact image instead
@@ -9954,6 +9984,30 @@ static std::string getTMemCopyWarpx2SharedSourceRequirementError(
 TMemCopySupportResult
 getTMemCopySharedLayoutRuntimeSupport(MemDescType srcTy,
                                       TMemCopyFamily family) {
+  if (auto nvmmaEnc =
+          dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(srcTy.getEncoding())) {
+    if (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded()) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::SharedLayout,
+          "tcgen05.copy source should not be transposed or padded.");
+    }
+    bool sourceSwizzled = nvmmaEnc.getSwizzlingByteWidth() != 0;
+    bool familyUsesUnswizzledSource =
+        family == TMemCopyFamily::Warpx4_32x128b;
+    if (familyUsesUnswizzledSource && sourceSwizzled) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::SharedLayout,
+          Twine("tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+              " requires an unswizzled shared-memory source layout.");
+    }
+    if (!familyUsesUnswizzledSource && !sourceSwizzled) {
+      return getUnsupportedTMemCopyResult(
+          TMemCopySupportFailureLayer::SharedLayout,
+          Twine("tcgen05.copy.") + stringifyTMemCopyFamily(family) +
+              " requires a swizzled shared-memory source layout.");
+    }
+  }
+
   if (family != TMemCopyFamily::Warpx2_01_23_64x128b &&
       family != TMemCopyFamily::Warpx2_02_13_64x128b)
     return getSupportedTMemCopyResult();
@@ -11108,6 +11162,16 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
   }
   auto colBases = ll.getBases().lookup(kCol);
   unsigned instructionColumnBits = llvm::Log2_32(instructionColumns);
+  auto getBroadcastRowMaskForColumnBasis = [&](ArrayRef<int32_t> basis)
+      -> std::optional<unsigned> {
+    if (basis.size() < 2 || basis[1] != 0)
+      return std::nullopt;
+    if ((*broadcastMask & 1u) && basis[0] == 32)
+      return 1u;
+    if ((*broadcastMask & 2u) && basis[0] == 64)
+      return 2u;
+    return std::nullopt;
+  };
   if (colBases.size() < instructionColumnBits) {
     unsigned lanesPerDword =
         (bitwidth > 0 && 32 % bitwidth == 0) ? 32 / bitwidth : 1;
@@ -11124,11 +11188,20 @@ static TMemCopySupportResult getMulticastTMemCopyDestinationLayoutSupport(
     requirement.requiredColumnBasisBits = instructionColumnBits;
     return getTMemCopyColumnFootprintFailure(requirement);
   }
+  unsigned consumedBroadcastColumnRows = 0;
+  unsigned rowLiftedColumnBits = 0;
   for (unsigned bit = 0; bit < instructionColumnBits; ++bit) {
     ArrayRef<int32_t> basis = colBases[bit];
-    int32_t expectedCol = 1 << bit;
+    int32_t expectedCol = 1 << (bit - rowLiftedColumnBits);
     if (basis.size() >= 2 && basis[0] == 0 && basis[1] == expectedCol)
       continue;
+    if (auto rowMask = getBroadcastRowMaskForColumnBasis(basis)) {
+      if ((consumedBroadcastColumnRows & *rowMask) == 0) {
+        consumedBroadcastColumnRows |= *rowMask;
+        ++rowLiftedColumnBits;
+        continue;
+      }
+    }
     auto runAndPeriod = getTMemCopyColumnSelectionRunAndPeriod(bit);
     TMemCopyInstructionColumnPermutationRequirement requirement;
     requirement.instructionRows =
@@ -11323,18 +11396,15 @@ static std::pair<std::optional<TMemCopyExecutablePlan>, TMemCopySupportResult>
 getTMemCopyPlanRealization(MemDescType srcTy,
                            const TMemPhysicalQuery &dstQuery,
                            const LinearLayout &shmemLl, const LinearLayout &cvt,
-                           const TMemCopyPlan &plan, int bitwidth,
-                           TMemCopyPlanSupportKind supportKind) {
-  if (supportKind == TMemCopyPlanSupportKind::TensorMemory) {
-    auto layoutSupport = getDirectTMemCopyLayoutSupport(dstQuery, plan.family);
-    if (!layoutSupport)
-      return {std::nullopt, layoutSupport};
+                           const TMemCopyPlan &plan, int bitwidth) {
+  auto layoutSupport = getDirectTMemCopyLayoutSupport(dstQuery, plan.family);
+  if (!layoutSupport)
+    return {std::nullopt, layoutSupport};
 
-    auto sharedLayoutSupport =
-        getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
-    if (!sharedLayoutSupport)
-      return {std::nullopt, sharedLayoutSupport};
-  }
+  auto sharedLayoutSupport =
+      getTMemCopySharedLayoutRuntimeSupport(srcTy, plan.family);
+  if (!sharedLayoutSupport)
+    return {std::nullopt, sharedLayoutSupport};
 
   auto [executablePlan, descriptorSupport] =
       getTMemCopySharedDescriptorPlanRealization(srcTy, shmemLl, cvt, plan,
@@ -11404,10 +11474,9 @@ getTMemCopyPlanRealization(MemDescType srcTy,
 TMemCopySupportResult
 getTMemCopyPlanSupport(MemDescType srcTy, const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
-                       const TMemCopyPlan &plan, int bitwidth,
-                       TMemCopyPlanSupportKind supportKind) {
+                       const TMemCopyPlan &plan, int bitwidth) {
   return getTMemCopyPlanRealization(srcTy, dstQuery, shmemLl, cvt, plan,
-                                    bitwidth, supportKind)
+                                    bitwidth)
       .second;
 }
 
@@ -11416,13 +11485,12 @@ TMemCopyPlanSelection selectTMemCopyPlan(MemDescType srcTy,
                                          const LinearLayout &shmemLl,
                                          const LinearLayout &cvt,
                                          ArrayRef<TMemCopyPlan> plans,
-                                         int bitwidth,
-                                         TMemCopyPlanSupportKind supportKind) {
+                                         int bitwidth) {
   TMemCopyPlanSelection selection;
   for (const TMemCopyPlan &plan : plans) {
     auto [executablePlan, support] =
         getTMemCopyPlanRealization(srcTy, dstQuery, shmemLl, cvt, plan,
-                                   bitwidth, supportKind);
+                                   bitwidth);
     if (support) {
       assert(executablePlan.has_value() &&
              "supported tcgen05.copy plan must carry a realized schedule");

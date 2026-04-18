@@ -1,6 +1,6 @@
 # TMEM Completion Execution Tracker
 
-Last updated: 2026-04-18 01:51 UTC
+Last updated: 2026-04-18 19:32 UTC
 
 This is the active execution tracker for finishing the TMEM linear-layout
 generalization project. It turns `backend_completion_plan.md` into a concrete
@@ -47,9 +47,11 @@ The project is complete when:
   surfaces in this branch. Remaining frontend/lowering code is orchestration
   around backend helpers, not an unowned support predicate with known red
   coverage.
-- Phase C, finish `tcgen05.copy` atomized planner: boundary-complete for the
-  current public ISA surface. All reachable copy families in the matrix are
-  positive; residual rows require packed-lane storage, destination masks,
+- Phase C, finish `tcgen05.copy` atomized planner: active cleanup/support
+  checkpoint in progress. The copy planner now uses one generic family/footprint
+  path for scales and non-scales, with no `isScales` physical-query dimension
+  or support-kind mode. Focused copy/runtime shards are green after the
+  refactor. Residual rows still require packed-lane storage, destination masks,
   source-message schedules, refresh remap/readback contracts, or CTA/source
   ownership semantics not available in the current public copy model.
 - Phase D, finish `ld/st` and `ld.red` packet/replay planning:
@@ -66,11 +68,11 @@ The project is complete when:
   coverage for three signed-i8 shapes; remaining i8 work is IR/frontend
   exposure for unsigned/per-operand signedness and saturation, not the signed
   compiler path.
-- Phase F, cleanup/redesign deletion: done for currently identified duplicate
-  backend policy. Recent checkpoints moved MMAv5 address selection, direct
-  `ld/st` support/replay predicates, physical-bitcast/view predicates, and
-  query-type lowering precedence into backend helpers, and deleted stale copy
-  address dead code.
+- Phase F, cleanup/redesign deletion: active cleanup/support checkpoint in
+  progress. Recent checkpoints moved MMAv5 address selection, direct `ld/st`
+  support/replay predicates, physical-bitcast/view predicates, query-type
+  lowering precedence, and now shared Gluon/backend `ld/st` register-layout
+  arithmetic into backend helpers, and deleted stale copy address dead code.
 - Phase G, saturation/performance/final validation: done for local branch
   validation. The corrected full runtime-matrix runner passed at 2026-04-17
   21:45 UTC with `1490 passed, 102 skipped` across all `1592` cases.
@@ -78,8 +80,9 @@ The project is complete when:
 ## Current Clean-Negative Inventory
 
 For the stable discussion order of remaining support/coverage questions, use
-`remaining_coverage_gaps.md`. Those entries are intentionally numbered Gap #1
-through Gap #9 and should not be renumbered as individual gaps are resolved.
+`remaining_coverage_gaps.md`. The active linear-layout entries are currently
+Gap #1 through Gap #3 after the 2026-04-18 reconsolidation; do not use old
+pre-reconsolidation copy gap numbers unless explicitly discussing history.
 
 Collected at 2026-04-17 18:59 UTC after `make -j8`:
 

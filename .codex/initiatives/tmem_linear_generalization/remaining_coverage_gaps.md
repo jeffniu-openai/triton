@@ -1,6 +1,6 @@
 # TMEM Linear-Layout Remaining Coverage Gaps
 
-Last updated: 2026-04-18 07:16 UTC
+Last updated: 2026-04-18 19:32 UTC
 
 This is the stable reference list for remaining TMEM support gaps whose
 coverage depends on linear-layout generalization. The list was reconsolidated
@@ -30,8 +30,11 @@ Each gap should be examined with the same decision standard:
 - Current state: the formal audit is recorded in
   `tcgen05_cp_gap2_audit_20260418.md`. The planner/verifier path normalizes
   through `LinearLayout`: legacy `TensorMemoryLayout` encodings are frontend
-  compatibility syntax, not a separate backend capability. Coverage should be
-  judged by normalized layout equivalence classes.
+  compatibility syntax, not a separate backend capability. The 2026-04-18
+  19:32 UTC implementation checkpoint additionally removed the copy planner's
+  scales-versus-non-scales support mode, so copy coverage should be judged by
+  normalized layout equivalence classes and public instruction-family
+  footprints rather than by source/destination encoding spelling.
 - Supported baseline: no broad new `tcgen05.cp` implementation gap was found.
   Supported public families are dense `128x128b`, dense `128x256b`, explicit
   refresh-shaped `4x256b`, 32-bit no-scales `warpx2::01_23`, 32-bit

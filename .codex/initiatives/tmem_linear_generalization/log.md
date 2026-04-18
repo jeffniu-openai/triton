@@ -25152,3 +25152,47 @@ Open after this slice:
 - Next:
   - continue linear-layout gap discussion with current Gap #1 `tcgen05.cp`,
     Gap #2 narrow scaled-MMAv5, and Gap #3 mixed fp4 TMEM LHS.
+
+## 2026-04-18 19:32 UTC: unify tcgen05.cp planner and canonicalize legacy sugar
+
+- Starting point: `codex/tmem` at `3c15c59e5`.
+- Change:
+  - moved duplicated Gluon/backend `ld/st` first-legal register-type search
+    and register-layout reshape arithmetic into `TensorMemoryUtils`;
+  - made the Gluon bridge call those helpers instead of carrying local copies;
+  - changed TMEM allocation sizing to canonicalize non-scale tensor-memory
+    encodings through `tryGetCanonicalTensorMemoryLinearLayout` before
+    analysis, so legacy `tensor_memory_encoding` syntax is not a load-bearing
+    allocator category;
+  - renamed legacy-like canonicalization helpers and diagnostics in the touched
+    path to describe `tensor_memory_encoding` sugar rather than a backend mode;
+  - removed `TMemCopyPlanSupportKind`, `TMemPhysicalQuery::isScales`, and the
+    verifier/lowering support-mode split between scales and non-scales
+    `tcgen05.cp`;
+  - moved source shared-layout compatibility into family-based runtime support
+    and applied source realization, destination support, destination-tile
+    scheduling, instruction scheduling, and footprint checks uniformly to all
+    copy plans;
+  - generalized multicast destination layout support so broadcast-owned row
+    anchors can carry row-lifted column bits, fixing the former scales-specific
+    row/column schedule failure without reintroducing a scales branch.
+- Validation:
+  - `make -j8`;
+  - `git diff --check`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt --split-input-file test/TritonNvidiaGPU/invalid.mlir --verify-diagnostics`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/TritonNvidiaGPU/tmem_layouts.mlir -split-input-file --triton-nvidia-optimize-tmem-layouts --allow-unregistered-dialect`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/Conversion/lower_tensor_memory_to_llvm.mlir --convert-warp-specialize-to-llvm --convert-nv-gpu-to-llvm -allow-unregistered-dialect`;
+  - `build/cmake.linux-aarch64-cpython-3.12/bin/triton-opt test/TritonNvidiaGPU/test_tensor_memory_allocation.mlir -split-input-file -allow-unregistered-dialect -triton-tensor-memory-allocation`;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short -q python/test/unit/tools/test_triton_to_gluon.py python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_descriptor_type_reports_backend_ldst_reason python/test/gluon/test_frontend.py::test_tensor_memory_4x256b_refresh_raw_bitcast_type_reports_backend_ldst_reason python/test/gluon/test_frontend.py::test_tensor_memory_bitcast_subword_refresh_preserves_physical_coords` (`19 passed`);
+  - focused four-GPU runtime shards passed `8`, `12`, `7`, and `20` tests
+    respectively, covering scales `warpx4`, no-scales linear/dense, no-scales
+    `warpx2`, and core copy smoke rows.
+- Environment note:
+  - `lit`, `python3 -m lit`, and `FileCheck` are unavailable in this shell, so
+    lit files were exercised through direct `triton-opt` pass pipelines rather
+    than full lit/FileCheck execution.
+- Next:
+  - commit and push this checkpoint;
+  - continue Gap #1 sub-bucket work from the unified copy planner baseline,
+    focusing next on whether `1A` can be closed as evidence-only or whether
+    `1B`/`1D` require a real packed-lane/mask/storage design.

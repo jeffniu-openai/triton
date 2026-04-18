@@ -308,9 +308,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.shar
   tt.func @tmem_copy_scales_descriptor_family_clean_unsupported(
       %src: !ttg.memdesc<64x16xi8, #shared_scales_warpx2_candidate, #ttg.shared_memory, mutable>,
       %dst: !ttg.memdesc<64x16xi8, #tmem_scales, #ttng.tensor_memory, mutable>) {
-    // expected-error @+4 {{'ttng.tmem_copy' op The source shared layout maps to tcgen05.copy.warpx4.32x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for tensor memory scales.}}
+    // expected-error @+4 {{'ttng.tmem_copy' op The source shared layout maps to tcgen05.copy.warpx4.32x128b, but Triton could not synthesize a compatible shared-memory descriptor plan for it.}}
     // expected-note @+3 {{tcgen05.copy.warpx4.32x128b descriptor message 0 has an unsupported instruction-column projection. Within one 16-column tcgen05.copy instruction, source column bit 1 maps to shared offset 8 (2 descriptor-row strides), which would require this column bit to select descriptor row +2 for 2-column destination runs every 4 columns within the same 16-column instruction instead of contiguous shared offset 4. Public tcgen05.copy takes one tensor-memory address and one shared descriptor per instruction and has no per-column destination mask, so this projection needs a different copy atom, source format, or a proven multi-message schedule that avoids overwriting unrelated destination columns before it can be supported. The derived descriptor-row split would need to update only 2 of every 4 destination columns, but this copy atom writes the full 16-column destination footprint for each descriptor row. A multi-message schedule for this split would therefore overwrite columns owned by the complementary split unless the ISA provides a narrower atom, source format, or destination column mask.}}
-    // expected-note @+2 {{Use a shared layout that lowers to tcgen05.copy.warpx4.32x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
+    // expected-note @+2 {{Use the canonical shared layout for tcgen05.copy.warpx4.32x128b, or reshape / permute the shared tile until it lowers to the same descriptor family.}}
     // expected-note @+1 {{This is reported as cleanly unsupported instead of falling through to late LLVM lowering.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<64x16xi8, #shared_scales_warpx2_candidate, #ttg.shared_memory, mutable>, !ttg.memdesc<64x16xi8, #tmem_scales, #ttng.tensor_memory, mutable>
     tt.return
@@ -420,7 +420,7 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.targ
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, ttg.target = "cuda:100", "ttg.threads-per-warp" = 32 : i32} {
   tt.func @tmem_copy_linear_blockm64_not_supported(%src: !ttg.memdesc<64x128xf32, #shared_f32, #ttg.shared_memory>,
                                                    %dst: !ttg.memdesc<64x128xf32, #tmem_linear_m64, #ttng.tensor_memory, mutable>) {
-    // expected-error @+3 {{The source shared layout does not match any recognized tcgen05.copy family for non-scales tensor memory copies.}}
+    // expected-error @+3 {{The source shared layout does not match any recognized tcgen05.copy family.}}
     // expected-note @+2 {{Recognized tcgen05.copy families are 4x256b, 128x128b, 128x256b, warpx2::01_23.64x128b, warpx2::02_13.64x128b, and warpx4.32x128b.}}
     // expected-note @+1 {{Use the canonical shared layout for your intended family, or reshape / permute the shared tile until it lowers to one of those families.}}
     ttng.tmem_copy %src, %dst : !ttg.memdesc<64x128xf32, #shared_f32, #ttg.shared_memory>, !ttg.memdesc<64x128xf32, #tmem_linear_m64, #ttng.tensor_memory, mutable>

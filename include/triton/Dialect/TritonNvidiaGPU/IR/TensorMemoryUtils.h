@@ -40,7 +40,6 @@ struct TMemPhysicalQuery {
   LinearLayout layout;
   bool twoCTAs;
   llvm::SmallVector<int32_t> origin;
-  bool isScales;
 };
 
 struct TMemCopyPhysicalQuerySelection {
@@ -59,7 +58,6 @@ enum class TMemPhysicalQueryDifference {
   Layout,
   TwoCTAs,
   Origin,
-  Scales,
 };
 
 struct TMemLdStSupportQueryPlan {
@@ -130,11 +128,6 @@ struct TMemCopySupportResult {
   std::string message;
 
   explicit operator bool() const { return supported; }
-};
-
-enum class TMemCopyPlanSupportKind {
-  TensorMemory,
-  TensorMemoryScales,
 };
 
 enum class TMemCopySourceFormat {
@@ -467,6 +460,17 @@ bool isTMemAccessAtomCompatibleWithRequest(
 llvm::SmallVector<TMemAccessAtom>
 getTMemLdStAtomSearchOrder(std::optional<TMemAccessAtom> desiredAtom);
 
+std::optional<LinearLayout>
+reshapeTMemLdStRegisterLayoutToShape(const LinearLayout &layout,
+                                     ArrayRef<int64_t> queryShape);
+
+std::optional<RankedTensorType> getTMemLdStFirstLegalRegisterType(
+    ArrayRef<int64_t> resultShape, Type elementType, gpu::MemDescType queryTy,
+    ArrayRef<gpu::DistributedEncodingTrait> layouts,
+    std::optional<TMemAccessAtom> desiredAtom, int maxnreg = 256,
+    const TMemLdStQueryLayout *queryLayout = nullptr,
+    std::optional<TMemLdStRowPlan> rowPlanOverride = std::nullopt);
+
 llvm::SmallVector<TMemLdStCandidateLayout>
 getTMemLdStCandidateLayoutsForQuery(Value memDesc, gpu::MemDescType queryTy,
                                     unsigned numWarps, StringRef atomName);
@@ -495,8 +499,8 @@ bool isTMemLdStReplayableFullView(Value memDesc);
 bool shouldTryCanonicalTMemLdStLayoutForM64DirectAtom(
     gpu::MemDescType memTy, unsigned numWarps, TMemAccessAtom atom);
 
-bool shouldPreferLegacyTMemLdStI32x32bForAuto(gpu::MemDescType memTy,
-                                              StringRef atomName);
+bool shouldPreferCanonicalTMemLdStI32x32bForAuto(gpu::MemDescType memTy,
+                                                 StringRef atomName);
 
 llvm::SmallVector<gpu::MemDescType> getTMemLdStQueryTypes(Value memDesc);
 
@@ -595,9 +599,10 @@ getFirstTMemPhysicalQueryDifference(const TMemPhysicalQuery &lhs,
 
 bool haveSameTMemPhysicalQueryProjection(const TMemPhysicalQuery &lhs,
                                          const TMemPhysicalQuery &rhs);
-// Copy planning consumes the active physical layout and CTA/scales facts. View
-// origins and backing allocation shapes are represented by the lowered TMEM
-// descriptor base, so they are intentionally not part of this comparator.
+// Copy planning consumes the active physical layout, element width, and CTA
+// ownership. View origins and backing allocation shapes are represented by the
+// lowered TMEM descriptor base, so they are intentionally not part of this
+// comparator.
 bool haveSameTMemCopyPhysicalProjection(const TMemPhysicalQuery &lhs,
                                         const TMemPhysicalQuery &rhs);
 
@@ -783,8 +788,7 @@ TMemCopySupportResult
 getTMemCopyPlanSupport(gpu::MemDescType srcTy,
                        const TMemPhysicalQuery &dstQuery,
                        const LinearLayout &shmemLl, const LinearLayout &cvt,
-                       const TMemCopyPlan &plan, int bitwidth,
-                       TMemCopyPlanSupportKind supportKind);
+                       const TMemCopyPlan &plan, int bitwidth);
 
 std::optional<TMemCopySourceRowProjection>
 getTMemCopySourceRowProjectionPlan(const LinearLayout &cvt,
@@ -810,8 +814,7 @@ TMemCopyPlanSelection selectTMemCopyPlan(gpu::MemDescType srcTy,
                                          const LinearLayout &shmemLl,
                                          const LinearLayout &cvt,
                                          llvm::ArrayRef<TMemCopyPlan> plans,
-                                         int bitwidth,
-                                         TMemCopyPlanSupportKind supportKind);
+                                         int bitwidth);
 
 void attachTMemCopyPlanFailureNotes(InFlightDiagnostic &diag,
                                     const TMemCopyPlanSelection &selection);

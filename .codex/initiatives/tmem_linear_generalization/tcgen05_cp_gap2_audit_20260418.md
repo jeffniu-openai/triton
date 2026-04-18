@@ -1,6 +1,6 @@
 # Gap #1 Audit: `tcgen05.cp` Complete Support Umbrella
 
-Last updated: 2026-04-18 07:13 UTC
+Last updated: 2026-04-18 19:32 UTC
 
 ## Scope
 
@@ -11,34 +11,41 @@ instruction families, but now also owns the formerly separate copy-specific
 gaps: partial footprints, `4x256b` refresh views, packed/subword `warpx2`,
 two-CTA `warpx2::02_13`, and `tcgen05_copy` source/frontend contracts.
 
-This audit still treats legacy tensor-memory encodings as frontend syntax only:
+This audit treats legacy tensor-memory encodings as frontend syntax only:
 compiler support must be judged after conversion to normalized `LinearLayout`.
 The gap register was later reconsolidated to remove the old copy-specific
 placeholder gap numbers entirely; active `tcgen05.cp` work should use Gap #1
-sub-buckets.
+sub-buckets. The 2026-04-18 19:32 UTC implementation checkpoint also removed
+the copy planner's scales-versus-non-scales support mode, so the supported
+layout baseline is now explicitly family/footprint based rather than encoding
+class based.
 
 ## Normalization Audit
 
 The `tcgen05.cp` verifier and planner are already structured around linear
 layout arithmetic:
 
-- `TMemCopyOp::verify` obtains the shared source layout with
-  `toLinearLayout(srcTy)`.
+- `TMemCopyOp::verify` obtains the shared source layout as a `LinearLayout`.
 - Destination legality flows through `selectTMemCopyPhysicalQuery`, which
   compares standalone and exact descriptor-view queries represented as
-  `TMemPhysicalQuery { layout, origin, twoCTAs, elementBitWidth, isScales }`.
+  `TMemPhysicalQuery { layout, origin, twoCTAs, elementBitWidth }`.
 - The destination-to-source relation is computed with
   `getTMemCopySourceConversion(query, shmemLl)`, and copy-family selection is
   derived from that conversion in `getTMemCopyAtom` / `getTMemCopyPlans`.
+- Source shared-layout runtime support, destination layout support,
+  destination-tile scheduling, instruction scheduling, and footprint
+  requirements now run for every candidate plan; there is no separate
+  scales-only or non-scales-only planner mode.
 - Legacy `#ttng.tensor_memory_encoding` canonicalizes to a
   `TensorMemoryLinearEncodingAttr` / `LinearLayout` through
   `tryGetCanonicalTensorMemoryLinearLayout`; explicit
   `#ttng.tensor_memory_linear` supplies the layout directly.
 
 Conclusion: there is no intended `legacy` versus `linear` support distinction
-inside the copy planner. Tests may keep a few legacy rows for frontend
+inside the copy planner, and there is no separate scales-versus-no-scales
+planner capability. Tests may keep a few legacy rows for frontend
 compatibility, but Gap #1 coverage should be grouped by normalized
-`LinearLayout` equivalence class.
+`LinearLayout` equivalence class plus public copy-instruction footprint.
 
 ## Recognized Public Families
 
@@ -204,6 +211,11 @@ These categories explain the current negatives without falling back to a vague
    `warpx2`, but broader reshape/transpose destination-view semantics should
    be discussed under Gap #1F if users need explicit frontend contracts for
    them.
+5. The former scales-specific `warpx4` branch has been removed. The generic
+   multicast destination-layout rule now accepts row-lifted column bits when
+   the copy family's broadcast mask owns the corresponding row anchor, which
+   covers the previous scales failure mode without making scale-factor layout a
+   special backend support category.
 
 ## Active Sub-Buckets
 

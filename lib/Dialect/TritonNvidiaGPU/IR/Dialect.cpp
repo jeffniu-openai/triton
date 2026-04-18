@@ -129,10 +129,11 @@ static int64_t getShapeProduct(ArrayRef<int64_t> shape) {
 }
 
 static std::optional<LinearLayout>
-applyCGALayoutToLegacyLikeTMemTile(LinearLayout tile, ArrayRef<int64_t> shape,
-                                   ArrayRef<int64_t> shapePerCTA,
-                                   gpu::CGAEncodingAttr cgaLayout,
-                                   std::string *error = nullptr) {
+applyCGALayoutToTensorMemoryEncodingTile(LinearLayout tile,
+                                         ArrayRef<int64_t> shape,
+                                         ArrayRef<int64_t> shapePerCTA,
+                                         gpu::CGAEncodingAttr cgaLayout,
+                                         std::string *error = nullptr) {
   auto setError = [&](const Twine &msg) {
     if (error)
       *error = msg.str();
@@ -159,12 +160,11 @@ applyCGALayoutToLegacyLikeTMemTile(LinearLayout tile, ArrayRef<int64_t> shape,
 }
 
 static std::optional<LinearLayout>
-buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
-                                         unsigned blockM, unsigned blockN,
-                                         unsigned colStride,
-                                         gpu::CGAEncodingAttr cgaLayout,
-                                         bool twoCTAs,
-                                         std::string *error = nullptr) {
+buildTensorMemoryEncodingLinearLayout(ArrayRef<int64_t> shape, unsigned blockM,
+                                      unsigned blockN, unsigned colStride,
+                                      gpu::CGAEncodingAttr cgaLayout,
+                                      bool twoCTAs,
+                                      std::string *error = nullptr) {
   auto setError = [&](const Twine &msg) {
     if (error)
       *error = msg.str();
@@ -175,12 +175,13 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
                     Twine(shape.size()) + " dimensions");
   }
   if (blockM != 64 && blockM != 128)
-    return setError("unsupported legacy-like TMEM blockM=" + Twine(blockM) +
-                    "; expected 64 or 128");
+    return setError("unsupported tensor_memory_encoding blockM=" +
+                    Twine(blockM) + "; expected 64 or 128");
   if (!llvm::isPowerOf2_32(blockN) || blockN > 512)
-    return setError("unsupported legacy-like TMEM blockN=" + Twine(blockN));
+    return setError("unsupported tensor_memory_encoding blockN=" +
+                    Twine(blockN));
   if (!(colStride == 1 || colStride == 2 || colStride == 4))
-    return setError("unsupported legacy-like TMEM colStride=" +
+    return setError("unsupported tensor_memory_encoding colStride=" +
                     Twine(colStride));
 
   auto *ctx = cgaLayout.getContext();
@@ -224,7 +225,7 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
       auto bases = tile.getBases();
       auto colIt = bases.find(kCol);
       if (colIt == bases.end() || colIt->second.empty()) {
-        return setError("legacy-like twoCTA blockM=64 TMEM layout requires "
+        return setError("tensor_memory_encoding twoCTA blockM=64 requires "
                         "at least one column basis");
       }
       bases[kRow].push_back(colIt->second.back());
@@ -265,9 +266,8 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
   // Broadcast the remaining dimensions in order [0, 1].
   tile = tile * LinearLayout::identity1D(repsM, kCol, dims[0]) *
          LinearLayout::identity1D(repsN, kCol, dims[1]);
-  auto maybeFullTile =
-      applyCGALayoutToLegacyLikeTMemTile(tile, shape, shapePerCTA, cgaLayout,
-                                         error);
+  auto maybeFullTile = applyCGALayoutToTensorMemoryEncodingTile(
+      tile, shape, shapePerCTA, cgaLayout, error);
   if (!maybeFullTile)
     return std::nullopt;
   tile = *maybeFullTile;
@@ -283,9 +283,10 @@ buildCanonicalLegacyLikeTMemLinearLayout(ArrayRef<int64_t> shape,
 }
 
 static std::optional<LinearLayout>
-canonicalizeLegacyTensorMemoryLayout(ArrayRef<int64_t> shape, Attribute encoding,
-                                     std::string *error = nullptr) {
-  auto legacy = cast<TensorMemoryEncodingAttr>(encoding);
+canonicalizeTensorMemoryEncodingLayout(ArrayRef<int64_t> shape,
+                                       Attribute encoding,
+                                       std::string *error = nullptr) {
+  auto tmem = cast<TensorMemoryEncodingAttr>(encoding);
   if (shape.size() < 2) {
     if (error != nullptr) {
       *error = "tensor memory layout sugar " +
@@ -297,17 +298,16 @@ canonicalizeLegacyTensorMemoryLayout(ArrayRef<int64_t> shape, Attribute encoding
   }
   auto trailingShape = shape.take_back(2);
   std::string baseError;
-  auto base = buildCanonicalLegacyLikeTMemLinearLayout(
-      trailingShape, legacy.getBlockM(), legacy.getBlockN(),
-      legacy.getColStride(), legacy.getCGALayout(), legacy.getTwoCTAs(),
-      &baseError);
+  auto base = buildTensorMemoryEncodingLinearLayout(
+      trailingShape, tmem.getBlockM(), tmem.getBlockN(), tmem.getColStride(),
+      tmem.getCGALayout(), tmem.getTwoCTAs(), &baseError);
   if (!base) {
     if (error != nullptr) {
       *error = "tensor memory layout sugar " + stringifyAttribute(encoding) +
                " cannot be canonicalized for shape " +
                stringifyShape(trailingShape) + ": " + baseError +
                ". Use #ttng.tensor_memory_linear for arbitrary TMEM views, or "
-               "choose a legacy tensor_memory_encoding whose tile matches the "
+               "choose a tensor_memory_encoding whose tile matches the "
                "allocation shape.";
     }
     return std::nullopt;
@@ -327,7 +327,7 @@ canonicalizeLegacyTensorMemoryLayout(ArrayRef<int64_t> shape, Attribute encoding
     return std::nullopt;
   }
   return base->reshapeOuts(standardOutDimPairs(
-      legacy.getContext(), trailingShape,
+      tmem.getContext(), trailingShape,
       static_cast<unsigned>(shape.size() - 2)));
 }
 
@@ -352,8 +352,8 @@ bool isTensorMemoryEncoding(Attribute layout) {
 std::optional<bool> getTensorMemoryTwoCTAs(Attribute layout) {
   if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout))
     return linear.getTwoCTAs();
-  if (auto legacy = dyn_cast<TensorMemoryEncodingAttr>(layout))
-    return legacy.getTwoCTAs();
+  if (auto tmem = dyn_cast<TensorMemoryEncodingAttr>(layout))
+    return tmem.getTwoCTAs();
   return std::nullopt;
 }
 
@@ -369,14 +369,14 @@ tryGetCanonicalTensorMemoryEncoding(ArrayRef<int64_t> shape, Attribute layout,
                                     std::string *error) {
   if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout))
     return linear;
-  if (auto legacy = dyn_cast<TensorMemoryEncodingAttr>(layout)) {
+  if (auto tmem = dyn_cast<TensorMemoryEncodingAttr>(layout)) {
     auto canonicalLayout =
-        canonicalizeLegacyTensorMemoryLayout(shape, legacy, error);
+        canonicalizeTensorMemoryEncodingLayout(shape, tmem, error);
     if (!canonicalLayout)
       return std::nullopt;
     return tryMakeTensorMemoryLinearEncoding(layout.getContext(),
                                              std::move(*canonicalLayout),
-                                             legacy.getTwoCTAs(), error);
+                                             tmem.getTwoCTAs(), error);
   }
   return layout;
 }
@@ -416,7 +416,7 @@ tryGetCanonicalTensorMemoryLinearLayout(ArrayRef<int64_t> shape,
   if (auto linear = dyn_cast<TensorMemoryLinearEncodingAttr>(layout))
     return linear.getLinearLayout();
   if (isa<TensorMemoryEncodingAttr>(layout))
-    return canonicalizeLegacyTensorMemoryLayout(shape, layout, error);
+    return canonicalizeTensorMemoryEncodingLayout(shape, layout, error);
   return triton::gpu::toLinearLayout(shape, layout);
 }
 
@@ -484,7 +484,7 @@ getCanonicalTMemLinearEncoding(ArrayRef<int64_t> shape, unsigned blockM,
                                unsigned blockN, unsigned colStride,
                                gpu::CGAEncodingAttr cgaLayout, bool twoCTAs,
                                std::string *error) {
-  auto maybeLayout = buildCanonicalLegacyLikeTMemLinearLayout(
+  auto maybeLayout = buildTensorMemoryEncodingLinearLayout(
       shape, blockM, blockN, colStride, cgaLayout, twoCTAs, error);
   if (!maybeLayout)
     return std::nullopt;
@@ -741,7 +741,7 @@ planMMAv5Family(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayout,
   for (unsigned blockM : {64u, 128u}) {
     for (unsigned blockN : blockNs) {
       for (unsigned colStride : {1u, 2u, 4u}) {
-        auto maybeCandidate = buildCanonicalLegacyLikeTMemLinearLayout(
+        auto maybeCandidate = buildTensorMemoryEncodingLinearLayout(
             shape, blockM, blockN, colStride, cga, twoCTAs,
             /*error=*/nullptr);
         if (!maybeCandidate)
@@ -820,7 +820,7 @@ planMMAv5ExactFamily(ArrayRef<int64_t> shape, const LinearLayout &canonicalLayou
   for (unsigned blockM : {64u, 128u}) {
     for (unsigned blockN : blockNs) {
       for (unsigned colStride : {1u, 2u, 4u}) {
-        auto maybeCandidate = buildCanonicalLegacyLikeTMemLinearLayout(
+        auto maybeCandidate = buildTensorMemoryEncodingLinearLayout(
             shape, blockM, blockN, colStride, cga, twoCTAs,
             /*error=*/nullptr);
         if (!maybeCandidate)
@@ -965,7 +965,7 @@ using MMAv5LinearFamilyPlanner = std::optional<MMAv5TMemLayoutPlan> (*)(
 static std::optional<LinearLayout>
 buildMMAv5FamilyLayout(ArrayRef<int64_t> shape, gpu::CGAEncodingAttr cga,
                        const MMAv5TMemLayoutPlan &plan) {
-  return buildCanonicalLegacyLikeTMemLinearLayout(
+  return buildTensorMemoryEncodingLinearLayout(
       shape, plan.instrShapeM, plan.instrShapeN, plan.colStride, cga,
       plan.twoCTAs, /*error=*/nullptr);
 }
@@ -1359,7 +1359,7 @@ getMMAv5InstructionTileOrderMismatch(MemDescType memDescType,
     for (unsigned blockM : {64u, 128u}) {
       for (unsigned blockN : blockNs) {
         for (unsigned colStride : colStrides) {
-          auto maybeCandidate = buildCanonicalLegacyLikeTMemLinearLayout(
+          auto maybeCandidate = buildTensorMemoryEncodingLinearLayout(
               familyShape, blockM, blockN, colStride, gpu::getCGALayout(layout),
               *twoCTAs, /*error=*/nullptr);
           if (!maybeCandidate)
@@ -2099,14 +2099,14 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   auto kCol = S("col");
   auto leafShape = memDescType.getShape().take_back(2);
   auto encoding = memDescType.getEncoding();
-  bool isLegacyLike = isa<TensorMemoryEncodingAttr, TensorMemoryScalesEncodingAttr>(encoding);
+  bool usesScaleFactorEncoding = isa<TensorMemoryScalesEncodingAttr>(encoding);
   auto ll = [&]() {
-    if (isLegacyLike)
-      return triton::gpu::toLinearLayout(leafShape, encoding);
-    if (auto canonical =
-            getCanonicalTMemLinearEncoding(leafShape, encoding,
-                                           /*error=*/nullptr))
-      return canonical->getLinearLayout();
+    if (!usesScaleFactorEncoding) {
+      std::string error;
+      if (auto canonical =
+              tryGetCanonicalTensorMemoryLinearLayout(memDescType, &error))
+        return *canonical;
+    }
     return triton::gpu::toLinearLayout(leafShape, encoding);
   }();
   auto extraRank = memDescType.getRank() - 2;
@@ -2114,7 +2114,7 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   unsigned preferredColStride = 32 / bitwidth;
   int nRow = ll.getInDimSize(kRow);
   int nCol = ll.getInDimSize(kCol) / preferredColStride;
-  if (!isLegacyLike) {
+  if (!usesScaleFactorEncoding) {
     if (auto compactAlloc =
             getExpandedSeparableLinearTMemAllocSizes(ll, preferredColStride)) {
       nRow = compactAlloc->numRows;
@@ -2124,7 +2124,7 @@ TMemAllocation getTmemAllocSizes(MemDescType memDescType) {
   // Some exact linear layouts are logically taller than the 128-row TMEM
   // allocation image but are still an MMAv5 family tile with the high row
   // selector carried in columns. Allocate the proven physical family image.
-  if (!isLegacyLike && nRow > 128) {
+  if (!usesScaleFactorEncoding && nRow > 128) {
     if (auto lhsInfo = getMMAv5LhsLayoutInfo(memDescType)) {
       int familyRows = lhsInfo->familyLayout.getInDimSize(kRow);
       if (familyRows <= 128) {
@@ -2547,7 +2547,7 @@ getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n
   case TMemAccessAtom::I16x256b:
     if (n < 8)
       return std::nullopt;
-    // Keep the legacy M64 family for x256 so the direct ld/st matcher reaches
+    // Keep the canonical M64 family on x256 so the direct ld/st matcher reaches
     // the native 16x256b path instead of degrading to x128.
     laneBases = {{0, 2}, {0, 4}, {1, 0}, {2, 0}, {4, 0}};
     regBases = {{0, 1}, {8, 0}};
@@ -2555,8 +2555,8 @@ getCanonicalContiguousM64Layout(MLIRContext *ctx, TMemAccessAtom atom, int64_t n
       regBases.push_back({0, static_cast<int32_t>(col)});
     warpBases = {{16, 0}, {32, 0}};
     if (numWarps == 8) {
-      // The legacy 8-warp x256 family only shards N across the extra warp bit
-      // once there is at least one full 8-column packet to place there. For
+      // The canonical 8-warp x256 family only shards N across the extra warp
+      // bit once there is at least one full 8-column packet to place there. For
       // narrow N, keep the third warp basis zero instead of synthesizing an
       // invalid partial split.
       warpBases.push_back({0, static_cast<int32_t>(n >= 16 ? n / 2 : 0)});
@@ -2767,7 +2767,7 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
         // Keep the unpacked 16-bit reinterpret rescue on the generic 32-bit
         // I32x32b builder, but do not let it preempt ordinary direct loads.
         // Direct MMAv5 accumulator loads rely on the standard bitwidth-packing
-        // path below to preserve the legacy-equivalent packed row/warp layout.
+        // path below to preserve the canonical packed row/warp layout.
         auto ret = getDistributedLayoutForTmemLdSt(
             *maybeQuot, TMemAccessAtom::I32x32b, numWarps, 32, rowPlan,
             /*allowSplitNFastPath=*/false);
@@ -2955,10 +2955,9 @@ getDistributedLayoutForTmemLdSt(const LinearLayout &ll, TMemAccessAtom atom,
 }
 
 static std::optional<LinearLayout>
-getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
-                                              TMemAccessAtom atom,
-                                              unsigned numWarps,
-                                              int bitwidth) {
+getDistributedLayoutForTmemLdStAnchored(const LinearLayout &ll,
+                                        TMemAccessAtom atom,
+                                        unsigned numWarps, int bitwidth) {
   auto dims = to_vector(ll.getOutDimNames());
   if (dims.size() != 2)
     return std::nullopt;
@@ -2981,7 +2980,7 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
                                               ctaOrder)
             .getLinearLayout();
     if (auto maybePerCTA = divideRight(ll, blockOnly)) {
-      if (auto perCTA = getDistributedLayoutForTmemLdStLegacyAnchored(
+      if (auto perCTA = getDistributedLayoutForTmemLdStAnchored(
               *maybePerCTA, atom, numWarps, bitwidth)) {
         return *perCTA * blockOnly;
       }
@@ -3004,7 +3003,7 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
             ll, LinearLayout::zeros1D(32 / bitwidth, rowColDims[1], dims[1]) *
                     LinearLayout::identity1D(2, rowColDims[1], dims[1]));
         bitwidth == 16 && maybeQuot) {
-      auto ret = getDistributedLayoutForTmemLdStLegacyAnchored(
+      auto ret = getDistributedLayoutForTmemLdStAnchored(
           *maybeQuot, atom, numWarps, 32);
       if (!ret)
         return ret;
@@ -3014,7 +3013,7 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
       return castbbitwidth * ret.value();
     }
     if (bestContig > 1) {
-      auto ret = getDistributedLayoutForTmemLdStLegacyAnchored(
+      auto ret = getDistributedLayoutForTmemLdStAnchored(
           quot, atom, numWarps, bitwidth * bestContig);
       if (!ret)
         return ret;
@@ -3024,10 +3023,10 @@ getDistributedLayoutForTmemLdStLegacyAnchored(const LinearLayout &ll,
     if (auto maybeQuot =
                    divideLeft(ll, LinearLayout::zeros1D(
                                       32 / bitwidth, rowColDims[1], dims[1]))) {
-      return getDistributedLayoutForTmemLdStLegacyAnchored(*maybeQuot, atom,
+      return getDistributedLayoutForTmemLdStAnchored(*maybeQuot, atom,
                                                            numWarps, 32);
     } else if (ll.getInDimSize(rowColDims[1]) == 1) {
-      return getDistributedLayoutForTmemLdStLegacyAnchored(ll, atom, numWarps,
+      return getDistributedLayoutForTmemLdStAnchored(ll, atom, numWarps,
                                                            32);
     } else {
       return std::nullopt;
@@ -3365,7 +3364,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
   auto stripped = stripZeroBasesForTmemLdStSelection(ll);
   if (isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding()) &&
       !rowPlanOverride) {
-    if (auto layout = getDistributedLayoutForTmemLdStLegacyAnchored(
+    if (auto layout = getDistributedLayoutForTmemLdStAnchored(
             ll, atom, numWarps, bitwidth);
         layout && isTMemLdStSelectionLayoutValid(memType, *layout)) {
       return layout;
@@ -3373,7 +3372,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
 
     auto stripped = stripZeroBasesForTmemLdStSelection(ll);
     if (stripped != ll) {
-      auto layout = getDistributedLayoutForTmemLdStLegacyAnchored(
+      auto layout = getDistributedLayoutForTmemLdStAnchored(
           stripped, atom, numWarps, bitwidth);
       if (layout && isValidLayout(*layout))
         return layout;
@@ -3384,10 +3383,10 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
     if (planMMAv5ExactFamily(memType.getShape(), memType.getEncoding(),
                              {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u, 256u,
                               512u})) {
-      if (auto legacyLike = getDistributedLayoutForTmemLdStLegacyAnchored(
+      if (auto canonicalLike = getDistributedLayoutForTmemLdStAnchored(
               ll, atom, numWarps, bitwidth)) {
-        if (isValidLayout(*legacyLike))
-          return legacyLike;
+        if (isValidLayout(*canonicalLike))
+          return canonicalLike;
       }
     }
   }
@@ -3463,7 +3462,7 @@ getDistributedLayoutForTmemLdSt(gpu::MemDescType memType, TMemAccessAtom atom,
           isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding())
               ? getTMemLdStRowPlanForType(memType)
               : getTMemLdStRowPlan(stripped);
-      // Legacy M64 leaves encode the unused half-tile as a zero row basis.
+      // Sparse M64 leaves encode the unused half-tile as a zero row basis.
       // Validate the stripped canonical M64 layout against the stripped row
       // anchors before falling back to the raw generic planner; otherwise the
       // raw 128-row form wins and 64x32 MMAv5 accumulators degrade to the
@@ -3871,7 +3870,7 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
                                           TMemAccessAtom::I16x64b,
                                           TMemAccessAtom::I16x32bx2};
     for (auto atom : atoms) {
-      if (auto preferred = getDistributedLayoutForTmemLdStLegacyAnchored(
+      if (auto preferred = getDistributedLayoutForTmemLdStAnchored(
               raw, atom, numWarps, memType.getElementTypeBitWidth());
           preferred && isTMemLdStSelectionLayoutValid(memType, *preferred)) {
         return LinearEncodingAttr::get(ctx, std::move(*preferred));
@@ -3879,10 +3878,10 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
     }
   }
   if (prefer16x256) {
-    auto tryLegacyPreferred =
+    auto tryCanonicalPreferred =
         [&](const LinearLayout &layout)
         -> std::optional<DistributedEncodingTrait> {
-      if (auto preferred = getDistributedLayoutForTmemLdStLegacyAnchored(
+      if (auto preferred = getDistributedLayoutForTmemLdStAnchored(
               layout, TMemAccessAtom::I16x256b, numWarps,
               memType.getElementTypeBitWidth());
           preferred && isTMemLdStSelectionLayoutValid(memType, *preferred)) {
@@ -3902,10 +3901,10 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
           canonical && isTMemLdStSelectionLayoutValid(memType, *canonical)) {
         return LinearEncodingAttr::get(ctx, std::move(*canonical));
       }
-      TMemLdStRowPlan legacyM64Plan{/*warpRow0=*/32, /*warpRow1=*/64,
-                                    /*rowSpan=*/128};
+      TMemLdStRowPlan canonicalM64Plan{/*warpRow0=*/32, /*warpRow1=*/64,
+                                        /*rowSpan=*/128};
       if (auto preferred = getDistributedLayoutForTmemLdSt(
-              memType, TMemAccessAtom::I16x256b, numWarps, legacyM64Plan)) {
+              memType, TMemAccessAtom::I16x256b, numWarps, canonicalM64Plan)) {
         return LinearEncodingAttr::get(ctx, std::move(*preferred));
       }
       return std::nullopt;
@@ -3913,7 +3912,7 @@ DistributedEncodingTrait getDefaultLayoutForTmemLdSt(gpu::MemDescType memType,
     if (!isa<TensorMemoryScalesEncodingAttr>(memType.getEncoding())) {
       auto raw = toLinearLayout(memType.getShape(), memType.getEncoding());
       if (memType.getShape() == memType.getAllocShape()) {
-        if (auto preferred = tryLegacyPreferred(raw))
+        if (auto preferred = tryCanonicalPreferred(raw))
           return *preferred;
       }
       std::string error;
@@ -4445,7 +4444,7 @@ getTmemCompatibleLayouts(MemDescType memType, unsigned numWarps,
   for (auto atom : atoms) {
     std::optional<LinearLayout> ll;
     if (isScales) {
-      ll = getDistributedLayoutForTmemLdStLegacyAnchored(memLL, atom, numWarps,
+      ll = getDistributedLayoutForTmemLdStAnchored(memLL, atom, numWarps,
                                                          bitwidth);
     } else {
       ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);
@@ -4547,7 +4546,7 @@ getTmemCompatibleLayouts(Operation *op, RankedTensorType tensorType,
   for (auto atom : atoms) {
     std::optional<LinearLayout> ll;
     if (isScales) {
-      ll = getDistributedLayoutForTmemLdStLegacyAnchored(memLL, atom, numWarps,
+      ll = getDistributedLayoutForTmemLdStAnchored(memLL, atom, numWarps,
                                                          bitwidth);
     } else {
       ll = getDistributedLayoutForTmemLdSt(memType, atom, numWarps);

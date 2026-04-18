@@ -712,9 +712,8 @@ LogicalResult TCGen5MMAOp::verify() {
     // The issue with this layout is that it breaks the invariant that the
     // CGALayout splits the CGA tile into contiguous CTA tiles,
     // i.e. total_layout = cta_layout * cga_layout.
-    // This is used all over the place, to the point that for all legacy layouts
-    // we represent the CGALayout as the `cga_layout` we have to multiply on the
-    // right.
+    // This factorization is used widely: structured encodings represent the
+    // CGALayout as the `cga_layout` we have to multiply on the right.
     // We could allow with a bit of effort SharedLinearLayouts that did not
     // divide on the right by a CGALayout, but for now we throw a lovely error.
     auto dCGA = getCGALayout(retType.getEncoding()).getLinearLayout();
@@ -1680,103 +1679,54 @@ LogicalResult TMEMCopyOp::verify() {
                        "layout. Got source: ")
            << shmemLl.toString() << " and destination: " << tmemLl.toString();
 
-  // Fp4 we could lift if we needed
-  auto nvmmaEnc =
-      dyn_cast<triton::gpu::NVMMASharedEncodingAttr>(srcTy.getEncoding());
   int bitwidth = srcTy.getElementType().getIntOrFloatBitWidth();
   auto copyPlans = getTMemCopyPlans(cvt, bitwidth);
-  if (nvmmaEnc && (nvmmaEnc.getTransposed() || nvmmaEnc.getFp4Padded())) {
-    return emitOpError("The source should not be transposed or padded");
+  if (copyPlans.empty()) {
+    auto diag = emitOpError(
+        "The source shared layout does not match any recognized "
+        "tcgen05.copy family.");
+    if (cvt.hasInDim(kRow) && cvt.getInDimSize(kRow) > 128) {
+      diag.attachNote()
+          << "This projection has " << cvt.getInDimSize(kRow)
+          << " logical source rows. Dense tcgen05.copy planning currently "
+             "atomizes one 128-row row group per message; supporting this "
+             "shape needs a first-class multi-message row-group schedule "
+             "that preserves the extra row selector as descriptor "
+             "projection plus source and destination row offsets.";
+    }
+    diag.attachNote()
+        << "Recognized tcgen05.copy families are 4x256b, 128x128b, "
+           "128x256b, warpx2::01_23.64x128b, "
+           "warpx2::02_13.64x128b, and warpx4.32x128b.";
+    diag.attachNote()
+        << "Use the canonical shared layout for your intended family, or "
+           "reshape / permute the shared tile until it lowers to one of "
+           "those families.";
+    return failure();
   }
-  if (supportDstQuery.isScales) {
-    if (copyPlans.empty()) {
-      auto diag = emitOpError(
-          "The source shared layout does not match any supported "
-          "tcgen05.copy family for tensor memory scales.");
-      diag.attachNote()
-          << "Recognized scales copy families are warpx2::01_23.64x128b, "
-             "warpx2::02_13.64x128b, and warpx4.32x128b.";
-      return failure();
+  auto planSelection =
+      selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
+                         bitwidth);
+  if (!planSelection) {
+    StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
+    auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
+                << family
+                << ", but Triton could not synthesize a compatible "
+                   "shared-memory descriptor plan for it.";
+    attachTMemCopyPlanFailureNotes(diag, planSelection);
+    if (querySelection.standalone && querySelection.exact) {
+      if (auto note = getTMemCopyExactViewScheduleNote(
+              *querySelection.standalone, *querySelection.exact))
+        diag.attachNote() << *note;
     }
-    if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() != 0) {
-      return emitOpError("The source should not be swizzled for now");
-    }
-    auto planSelection = selectTMemCopyPlan(
-        srcTy, supportDstQuery, shmemLl, cvt, copyPlans, bitwidth,
-        TMemCopyPlanSupportKind::TensorMemoryScales);
-    if (!planSelection) {
-      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
-      auto diag = emitOpError("The source shared layout maps to tcgen05.copy.")
-                  << family
-                  << ", but Triton could not synthesize a compatible "
-                     "shared-memory descriptor plan for tensor memory scales.";
-      attachTMemCopyPlanFailureNotes(diag, planSelection);
-      if (querySelection.standalone && querySelection.exact) {
-        if (auto note = getTMemCopyExactViewScheduleNote(
-                *querySelection.standalone, *querySelection.exact))
-          diag.attachNote() << *note;
-      }
-      diag.attachNote()
-          << "Use a shared layout that lowers to tcgen05.copy." << family
-          << ", or reshape / permute the shared tile until it lowers to the "
-             "same descriptor family.";
-      diag.attachNote()
-          << "This is reported as cleanly unsupported instead of falling "
-             "through to late LLVM lowering.";
-      return failure();
-    }
-  } else {
-    if (getSrc().getType().getShape() != getDst().getType().getShape()) {
-      return emitOpError(
-          "The source and destination must have the same shape.");
-    }
-    if (nvmmaEnc && nvmmaEnc.getSwizzlingByteWidth() == 0) {
-      return emitOpError("Source layout should be swizzled.");
-    }
-    if (copyPlans.empty()) {
-      auto diag = emitOpError(
-          "The source shared layout does not match any recognized "
-          "tcgen05.copy family for non-scales tensor memory copies.");
-      if (cvt.hasInDim(kRow) && cvt.getInDimSize(kRow) > 128) {
-        diag.attachNote()
-            << "This projection has " << cvt.getInDimSize(kRow)
-            << " logical source rows. Dense tcgen05.copy planning currently "
-               "atomizes one 128-row row group per message; supporting this "
-               "shape needs a first-class multi-message row-group schedule "
-               "that preserves the extra row selector as descriptor "
-               "projection plus source and destination row offsets.";
-      }
-      diag.attachNote()
-          << "Recognized tcgen05.copy families are 4x256b, 128x128b, "
-             "128x256b, warpx2::01_23.64x128b, "
-             "warpx2::02_13.64x128b, and "
-             "warpx4.32x128b.";
-      diag.attachNote()
-          << "Use the canonical shared layout for your intended family, or "
-             "reshape / permute the shared tile until it lowers to one of "
-             "those families.";
-      return failure();
-    }
-    auto planSelection =
-        selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
-                           bitwidth, TMemCopyPlanSupportKind::TensorMemory);
-    if (!planSelection) {
-      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
-      auto diag =
-          emitOpError("The source shared layout maps to tcgen05.copy.")
-          << family
-          << ", but Triton could not synthesize a compatible shared-memory "
-             "descriptor plan for it.";
-      attachTMemCopyPlanFailureNotes(diag, planSelection);
-      diag.attachNote()
-          << "Use the canonical shared layout for tcgen05.copy." << family
-          << ", or reshape / permute the shared tile until it lowers to the "
-             "same descriptor family.";
-      diag.attachNote()
-          << "This is reported as cleanly unsupported instead of falling "
-             "through to late LLVM lowering.";
-      return failure();
-    }
+    diag.attachNote()
+        << "Use the canonical shared layout for tcgen05.copy." << family
+        << ", or reshape / permute the shared tile until it lowers to the "
+           "same descriptor family.";
+    diag.attachNote()
+        << "This is reported as cleanly unsupported instead of falling "
+           "through to late LLVM lowering.";
+    return failure();
   }
   // Given that we want to support flexible input SMEM shapes, kinds of shape
   // checking we can do here are limited. For simplicity, shape checking is
@@ -1816,13 +1766,6 @@ LogicalResult TMEMSubSliceOp::verify() {
   if (dstLayout == srcLayout)
     return success();
 
-  if (isa<TensorMemoryEncodingAttr>(srcLayout) &&
-      isa<TensorMemoryEncodingAttr>(dstLayout)) {
-    return emitOpError("Legacy TMEM subviews must preserve the source TMEM "
-                       "encoding sugar. Expected ")
-           << srcLayout << " but got " << dstLayout;
-  }
-
   SmallVector<int32_t> offsets = {0, static_cast<int32_t>(offset)};
   std::string expectedError;
   auto expectedCanonical = inferTMemSubsliceEncoding(
@@ -1833,24 +1776,19 @@ LogicalResult TMEMSubSliceOp::verify() {
     return emitOpError() << expectedError;
   }
 
-  if (auto dstLinear = dyn_cast<TensorMemoryLinearEncodingAttr>(dstLayout)) {
-    std::string dstError;
-    auto dstCanonical = getCanonicalTMemLinearEncoding(dstTy, &dstError);
-    if (!dstCanonical)
-      return emitOpError() << dstError;
-    auto *inferLayoutInterface =
-        cast<triton::DialectInferLayoutInterface>(&dstLinear.getDialect());
-    if (succeeded(inferLayoutInterface->verifyLayoutsAreEqual(
-            dstTy.getShape(), *expectedCanonical, *dstCanonical, getLoc())))
-      return success();
-    return emitOpError("The destination must preserve the canonical TMEM "
-                       "physical encoding ")
-           << *expectedCanonical << " but got " << dstTy.getEncoding();
-  }
+  std::string dstError;
+  auto dstCanonical = getCanonicalTMemLinearEncoding(dstTy, &dstError);
+  if (!dstCanonical)
+    return emitOpError() << dstError;
+  auto *inferLayoutInterface =
+      cast<triton::DialectInferLayoutInterface>(&dstCanonical->getDialect());
+  if (succeeded(inferLayoutInterface->verifyLayoutsAreEqual(
+          dstTy.getShape(), *expectedCanonical, *dstCanonical, getLoc())))
+    return success();
 
   return emitOpError("The destination must preserve the canonical TMEM "
                      "physical encoding ")
-         << *expectedCanonical << " but got " << dstLayout;
+         << *expectedCanonical << " but got " << dstTy.getEncoding();
 }
 
 void TMEMSubSliceOp::build(OpBuilder &builder, OperationState &state,

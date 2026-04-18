@@ -1282,17 +1282,10 @@ void init_gluon_ir(py::module &&m) {
             [&](ttg::MemDescType queryTy,
                 ArrayRef<ttg::DistributedEncodingTrait> layouts,
                 std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
-          for (auto candidateLayout : layouts) {
-            auto regTy =
-                RankedTensorType::get(shape, elementType, candidateLayout);
-            auto maybeInfo = ttng::computeTMemLdStEncodingInfo(
-                regTy, queryTy, /*maxnreg=*/256);
-            if (succeeded(maybeInfo) &&
-                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
-              return layoutToGluon(candidateLayout);
-            }
-          }
-          return py::none();
+          auto regTy = ttng::getTMemLdStFirstLegalRegisterType(
+              shape, elementType, queryTy, layouts, desiredAtom,
+              /*maxnreg=*/256);
+          return regTy ? layoutToGluon(regTy->getEncoding()) : py::none();
         };
         auto getBlockedFallbackLayouts =
             [&](ttg::MemDescType queryTy, ArrayRef<int64_t> tensorShape)
@@ -1584,20 +1577,15 @@ void init_gluon_ir(py::module &&m) {
                 std::optional<ttng::TMemAccessAtom> desiredAtom) -> py::object {
           auto shape = llvm::to_vector(queryTy.getShape());
           auto elementType = queryTy.getElementType();
-          for (auto candidateLayout : layouts) {
-            auto regTy =
-                RankedTensorType::get(shape, elementType, candidateLayout);
-            auto maybeInfo = ttng::computeTMemLdStEncodingInfo(
-                regTy, queryTy, /*maxnreg=*/256);
-            if (succeeded(maybeInfo) &&
-                matchesDesiredAtom(queryTy, desiredAtom, maybeInfo->atom)) {
-              appendTrace(Twine("firstLegalLayoutForType atomName=") + atomName +
-                          " matchedAtom=" +
-                          Twine(static_cast<int>(maybeInfo->atom)));
-              return layoutToGluon(candidateLayout);
-            }
-          }
-          return py::none();
+          auto regTy = ttng::getTMemLdStFirstLegalRegisterType(
+              shape, elementType, queryTy, layouts, desiredAtom,
+              /*maxnreg=*/256);
+          if (!regTy)
+            return py::none();
+          if (traceToFile)
+            appendTrace(Twine("firstLegalLayoutForType atomName=") + atomName +
+                        " matched");
+          return layoutToGluon(regTy->getEncoding());
         };
         auto firstLegalLayout = [&](Value queryMemDesc, ttg::MemDescType queryTy,
                                     ArrayRef<ttg::DistributedEncodingTrait> layouts,
@@ -1717,36 +1705,7 @@ void init_gluon_ir(py::module &&m) {
             [&](const tt::LinearLayout &layout,
                 ArrayRef<int64_t> queryShape)
                 -> std::optional<tt::LinearLayout> {
-          SmallVector<int64_t> layoutShape(layout.getOutDimSizes().begin(),
-                                           layout.getOutDimSizes().end());
-          if (llvm::equal(layoutShape, queryShape))
-            return layout;
-          if (layoutShape.size() == queryShape.size() &&
-              llvm::all_of(queryShape, llvm::isPowerOf2_64)) {
-            auto resized = layout;
-            auto outDims = llvm::to_vector(resized.getOutDimNames());
-            bool canResize = true;
-            for (auto [idx, outDim] : llvm::enumerate(outDims)) {
-              if (queryShape[idx] > resized.getOutDimSize(outDim)) {
-                canResize = false;
-                break;
-              }
-            }
-            if (canResize) {
-              for (auto [idx, outDim] : llvm::enumerate(outDims)) {
-                if (queryShape[idx] < resized.getOutDimSize(outDim))
-                  resized = resized.resizeOutDim(outDim, queryShape[idx]);
-              }
-              return resized;
-            }
-          }
-          auto countElems = [](ArrayRef<int64_t> shape) {
-            return std::accumulate(shape.begin(), shape.end(), int64_t{1},
-                                   std::multiplies<int64_t>());
-          };
-          if (countElems(layoutShape) != countElems(queryShape))
-            return std::nullopt;
-          return mlir::triton::reshapeLayout(ctx, layout, queryShape);
+          return ttng::reshapeTMemLdStRegisterLayoutToShape(layout, queryShape);
         };
         auto inferRawQueryLayout =
             [&](Value queryMemDesc) -> std::optional<ttng::TMemLdStQueryLayout> {
@@ -2199,14 +2158,14 @@ void init_gluon_ir(py::module &&m) {
           }
         }
 
-        if (ttng::shouldPreferLegacyTMemLdStI32x32bForAuto(memDescTy,
-                                                           atomName)) {
-          py::object legacyLayout =
+        if (ttng::shouldPreferCanonicalTMemLdStI32x32bForAuto(memDescTy,
+                                                              atomName)) {
+          py::object canonicalLayout =
               findDirectLayoutForMemDesc(memDesc, ttng::TMemAccessAtom::I32x32b);
-          if (!legacyLayout.is_none()) {
+          if (!canonicalLayout.is_none()) {
             if (debug)
               llvm::errs() << debugLog.str();
-            return legacyLayout;
+            return canonicalLayout;
           }
         }
 

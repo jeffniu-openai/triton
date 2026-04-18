@@ -1,5 +1,21 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 19:32 UTC Gap #1 `tcgen05.cp` generic-backend
+  checkpoint: refactored duplicated Gluon/backend linear-layout arithmetic
+  into `TensorMemoryUtils`, removed the remaining load-bearing
+  legacy-layout distinction in TMEM allocation sizing, and unified the
+  `tcgen05.cp` planner so scales and non-scales copy paths use the same
+  physical-query comparison, source realization, destination scheduling, and
+  footprint checks. Legacy `tensor_memory_encoding` is now treated as frontend
+  sugar that canonicalizes to `LinearLayout` before backend analysis in the
+  touched paths. Validation: `make -j8`; `git diff --check`; direct
+  `triton-opt` checks for `invalid.mlir`, `tmem_layouts.mlir`,
+  `lower_tensor_memory_to_llvm.mlir`, and
+  `test_tensor_memory_allocation.mlir`; parser/front-end pytest
+  `19 passed`; focused four-GPU copy/runtime shard rerun `8/12/7/20 passed`.
+  `lit`, `python3 -m lit`, and `FileCheck` remain unavailable in this shell,
+  so lit files were exercised through direct `triton-opt` pass pipelines.
+
 - Latest: 2026-04-18 07:16 UTC historical i8 Gap #1 closure: signed i8
   direct MMAv5 is closed for this project. The delivered baseline is GB200/sm100
   runtime-tested signed i8 direct MMAv5 over the checked-in tiny shape set.

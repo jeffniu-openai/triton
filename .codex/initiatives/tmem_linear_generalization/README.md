@@ -61,6 +61,19 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 19:32 UTC: first implementation checkpoint for the Gap #1
+  `tcgen05.cp` backend generalization slice. The Gluon bridge now reuses
+  backend `TensorMemoryUtils` helpers for common first-legal `ld/st` register
+  layout search and register-layout reshape arithmetic. TMEM allocation and
+  verifier/lowering paths canonicalize legacy `tensor_memory_encoding` sugar
+  to `LinearLayout` before analysis; the remaining legacy terminology in the
+  touched paths was removed or confined to parser/frontend compatibility
+  APIs. The copy planner no longer carries a scales-versus-non-scales support
+  mode or an `isScales` physical-query dimension; source layout realization,
+  destination support, tile scheduling, instruction scheduling, and footprint
+  checks are applied uniformly to all `tcgen05.cp` families. A generic
+  row-lifted multicast column rule covers the former scales-only schedule
+  failure without reintroducing a scales branch.
 - 2026-04-18 07:16 UTC: closed the historical i8 MMAv5 Gap #1 for this
   project. Signed i8 direct MMAv5 support is in, GB200/sm100 runtime pytest
   coverage exists, and the remaining instruction-descriptor attribute work

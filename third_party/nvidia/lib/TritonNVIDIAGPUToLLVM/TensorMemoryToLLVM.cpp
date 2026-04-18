@@ -376,7 +376,7 @@ std::pair<SmallVector<Value>, SmallVector<Value>> lowerTMemLdSt(
 
   Value warpId = WarpIdOp::create(rewriter, loc);
   // The first warp-group anchors are part of the lowering plan and may map to
-  // lifted TMEM row/col offsets instead of the legacy row-only 32/64 pair.
+  // lifted TMEM row/col offsets instead of the canonical row-only 32/64 pair.
   auto warpIdInGroup = b.and_(warpId, b.i32_val(3));
   Value warpBaseOffset = b.i32_val(0);
   if (warpBaseOffset0 != 0) {
@@ -1183,8 +1183,6 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
   assert(maybeQuerySelection->query &&
          "successful tcgen05.copy query selection must carry a query");
   const TMemPhysicalQuery &supportDstQuery = *maybeQuerySelection->query;
-  bool isScales = supportDstQuery.isScales;
-
   std::string conversionError;
   auto maybeCvt =
       getTMemCopySourceConversion(supportDstQuery, shmemLl, &conversionError);
@@ -1214,11 +1212,9 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     std::optional<DotOpMmaSmemLoader> loader;
   };
   SmallVector<PlannedCopyMessage, 2> plannedMessages;
-  auto supportKind = isScales ? TMemCopyPlanSupportKind::TensorMemoryScales
-                              : TMemCopyPlanSupportKind::TensorMemory;
   auto planSelection =
       selectTMemCopyPlan(srcTy, supportDstQuery, shmemLl, cvt, copyPlans,
-                         bitwidth, supportKind);
+                         bitwidth);
   if (planSelection) {
     plannedMessages.reserve(planSelection.plan->messages.size());
     for (const auto &message : planSelection.plan->messages) {
@@ -1243,33 +1239,25 @@ static LogicalResult copySharedToTmem(ConversionPatternRewriter &rewriter,
     }
   }
   if (!planSelection) {
-    if (isScales) {
-      StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
-      auto diag =
-          op->emitOpError("The source shared layout maps to tcgen05.copy.")
-          << family
-          << ", but Triton could not synthesize a compatible shared-memory "
-             "descriptor plan for tensor memory scales.";
-      attachTMemCopyPlanFailureNotes(diag, planSelection);
-      if (maybeQuerySelection->standalone && maybeQuerySelection->exact) {
-        if (auto note = getTMemCopyExactViewScheduleNote(
-                *maybeQuerySelection->standalone, *maybeQuerySelection->exact))
-          diag.attachNote() << *note;
-      }
-      diag.attachNote()
-          << "Use a shared layout that lowers to tcgen05.copy." << family
-          << ", or reshape / permute the shared tile until it lowers to the "
-             "same descriptor family.";
-      diag.attachNote()
-          << "This is reported during lowering because the final "
-             "shared-memory descriptor layout is only known after shared "
-             "memory allocation.";
-      return failure();
-    }
-    auto diag = op->emitOpError("failed to find valid tcgen05.copy layout "
-                                "from shared memory descriptor ")
-                << srcTy << " to tensor memory descriptor " << dstTy;
+    StringRef family = stringifyTMemCopyFamily(copyPlans.front().family);
+    auto diag =
+        op->emitOpError("The source shared layout maps to tcgen05.copy.")
+        << family
+        << ", but Triton could not synthesize a compatible shared-memory "
+           "descriptor plan for it.";
     attachTMemCopyPlanFailureNotes(diag, planSelection);
+    if (maybeQuerySelection->standalone && maybeQuerySelection->exact) {
+      if (auto note = getTMemCopyExactViewScheduleNote(
+              *maybeQuerySelection->standalone, *maybeQuerySelection->exact))
+        diag.attachNote() << *note;
+    }
+    diag.attachNote()
+        << "Use the canonical shared layout for tcgen05.copy." << family
+        << ", or reshape / permute the shared tile until it lowers to the "
+           "same descriptor family.";
+    diag.attachNote()
+        << "This is reported during lowering because the final shared-memory "
+           "descriptor layout is only known after shared memory allocation.";
     return failure();
   }
 

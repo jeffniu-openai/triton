@@ -8663,8 +8663,8 @@ def test_tmem_runtime_matrix_cp_scales_layout_probe(name, smem_layout, expected_
 
     if expected_status == "CLEAN_UNSUPPORTED":
         assert "maps to tcgen05.copy.warpx4.32x128b" in text
-        assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
-        assert "Use a shared layout that lowers to tcgen05.copy." in text
+        assert "could not synthesize a compatible shared-memory descriptor plan for it" in text
+        assert "Use the canonical shared layout for tcgen05.copy." in text
         assert "same descriptor family" in text
         assert "Assertion" not in text
         return
@@ -8716,13 +8716,10 @@ def test_tmem_runtime_matrix_cp_scales_tmem_descriptor_view_reports_clean_unsupp
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert "maps to tcgen05.copy.warpx4.32x128b" in text
-    assert "could not synthesize a compatible shared-memory descriptor plan for tensor memory scales" in text
-    assert "descriptor message 0 has an unsupported instruction-column projection" in text
-    assert "source column bit 2 maps to shared offset 256" in text
-    assert "no per-column destination mask" in text
-    assert "4-column destination runs every 8 columns" in text
-    assert "32-row source footprint" in text
-    assert "entire tcgen05.copy instruction row footprint" in text
+    assert "could not synthesize a compatible shared-memory descriptor plan for it" in text
+    assert "requires non-broadcast TMEM row bases to stay in ascending physical row order" in text
+    assert "destination-row order requirement" in text
+    assert "copy atom writes the full 32-row destination footprint" in text
     assert "first differing physical-query field is physical layout for active view shape 128x32" in text
     assert "needs a destination-row / source-message schedule" in text
     assert "Source element type should be 32-bit" not in text
@@ -10017,7 +10014,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_exotic_reports_clean_unsupporte
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert (
-        "does not match any recognized tcgen05.copy family for non-scales tensor memory copies" in text
+        "does not match any recognized tcgen05.copy family" in text
         or "could not synthesize a compatible shared-memory descriptor plan for it" in text
     )
     if name == "mixed":
@@ -10097,7 +10094,7 @@ def test_tmem_runtime_matrix_cp_no_scales_linear_rowcol_permuted_reports_clean_u
     captured = capfd.readouterr()
     text = str(excinfo.value) + captured.err + captured.out
     assert (
-        "does not match any recognized tcgen05.copy family for non-scales tensor memory copies" in text
+        "does not match any recognized tcgen05.copy family" in text
         or "could not synthesize a compatible shared-memory descriptor plan for it" in text
     )
     assert (
