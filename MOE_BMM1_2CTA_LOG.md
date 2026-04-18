@@ -874,6 +874,16 @@ and `1024`, under both simulated production routing and uniform routing.
     (`1.006x`), and B24 crossed parity on rank 7 (`1.015x`). The axis is a
     useful routing-rank specialization clue, but no single band beats 1CTA on
     all hard fixed ranks.
+- Odd-band multicast/ACC follow-up confirms the same route-specific split, not
+  a selector-safe policy. Artifacts:
+  - `/tmp/moe_bmm1_slice28_w6_oddcombo_rank34_rep700.csv`
+  - `/tmp/moe_bmm1_slice28_w6_oddcombo_rank57_rep700.csv`
+  - `/tmp/moe_bmm1_slice28_w6_oddcombo_confirm_rank3457_rep1200.csv`
+  - The quiet single-GPU confirm found rank 3 best with B20 and W-scale
+    multicast disabled (`0.983x`), rank 4 best with B23 (`0.997x`), rank 5
+    best with B19 (`1.009x`), and rank 7 best with B24 (`1.015x`). Disabling
+    W-scale multicast can help a local rank, but the winning combination still
+    varies by route and does not fix ranks 3 or 4.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
