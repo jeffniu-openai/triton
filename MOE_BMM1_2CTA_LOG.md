@@ -626,6 +626,42 @@ and `1024`, under both simulated production routing and uniform routing.
 - `BN384` direct candidates are illegal in this descriptor path. Artifacts:
   `/tmp/moe_bmm1_slice28_bn384_rank{3,4,5,7}_rep1000.csv`. The descriptor
   rejects the scale shape because a shape element must be a power of two.
+- The cached scratch harness was corrected after discovering that the key
+  aliased candidates with different warp ownership or `ACC_NUM_BUFS`. The
+  scratch-only key now includes `NUM_WARPS`, activation/weight/MMA/store warp
+  counts, and accumulator buffer depth before comparing variants.
+- Additional W6/regs48 scratch probes after the key fix remained below parity.
+  Artifacts:
+  - `/tmp/moe_bmm1_slice28_w6_new_rank{37,45}_rep1200.csv`
+  - `/tmp/moe_bmm1_slice28_w6_warpownership_keyfix_rank{37,45}_rep1200.csv`
+  - `act1w2m1` regressed every hard rank (`~0.93x-0.97x`), `sub2` direct
+    regressed (`~0.94x-0.98x`), `ACC_NUM_BUFS=2` was at best a small local
+    lift on ranks 5/7 but still lost to 1CTA, and `x4/w6` regressed. Gather
+    reuse and full-tile schedule variants did not close the gap.
+  - Narrower band checks (`BAND_N=18`) and wider edge checks (`28/30`) did not
+    beat the best earlier band choices. Rank 5 had a near-miss with
+    no-multicast W6/regs48 (`0.997x`), and rank 7 reached `~0.992x` with
+    no-multicast/no-scale-multicast variants, but ranks 3 and 4 remained well
+    below parity.
+- Smaller-M alternatives are not a viable slice-28 escape hatch. Artifact:
+  `/tmp/moe_bmm1_slice28_small_m_uniform_rank3457_rep1200.csv`.
+  - `BLOCK_M=28` and `BLOCK_M=24` direct candidates are illegal because the
+    descriptor shape element must be a power of two.
+  - Legal `BLOCK_M=16` direct variants were much slower (`~0.75x-0.77x`) on
+    the hard ranks.
+- A W6/regs48 front-spill schedule-order probe confirmed schedule sensitivity
+  but no source-ready schedule win. Artifact:
+  `/tmp/moe_bmm1_sched_w6_regs48_rank4_front4_rep2000.csv`.
+  - `spill_experts_last` was best on the synthetic front-clustered rank-4
+    shape at `0.976x`, followed by `slice_major_reverse` at `0.970x`; default
+    slice-major was `0.947x`. Even the best reordered schedule stayed below
+    1CTA.
+- A temporary default-off source probe moved direct-epilogue bias loading after
+  the accumulator wait, then was reverted after measurement. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_biaswait_rank3457_rep1200.csv`.
+  - Bias-after-wait regressed every hard rank versus W6/regs48, e.g. rank 4
+    dropped from `0.980x` to `0.960x` in that run and rank 5 from `0.965x` to
+    `0.949x`. Keeping the existing bias prefetch before `acc_ready` is better.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
@@ -654,6 +690,10 @@ and `1024`, under both simulated production routing and uniform routing.
   - Find a legal way to reduce 2CTA shared-memory footprint while preserving
     W5 depth, possibly by changing scale staging or descriptor/layout
     ownership rather than X/W buffer counts.
+  - Decouple W data staging depth from W-scale staging depth. W6 helped, but
+    it raises shared memory substantially; the next source probe should try
+    independent scale buffers/barriers so W data can keep a six-deep ring
+    while scale staging uses fewer slots.
   - Inspect SASS/source counters for the dominant long-scoreboard locations in
     the direct 2CTA epilogue and loaders; NCU shows lower instruction count but
     much lower eligibility.
