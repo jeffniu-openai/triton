@@ -819,6 +819,15 @@ and `1024`, under both simulated production routing and uniform routing.
     while rank 5 remained below parity and the B24/ACC2 comparator regressed
     to `0.988x`. Keeping the scale copy between the W-ready wait and X-ready
     wait is better because it overlaps scale movement with X readiness.
+- Temporary one-sided inline input-release source probes timed out and were
+  reverted. Artifacts:
+  - `/tmp/moe_bmm1_slice28_w6_inline_xonly_timeout.log`
+  - `/tmp/moe_bmm1_slice28_w6_inline_wonly_timeout.log`
+  - Both probes printed the paired 1CTA baseline row and then timed out on the
+    first inline-release W6 candidate (`timeout_status=124`). Releasing only
+    one MMA input barrier is hang-prone in this warp-specialized protocol.
+    The already-tested all-input inline release is legal but slower, so this
+    release axis is closed for the current direct W6 family.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
