@@ -47,7 +47,8 @@ When resuming the initiative:
   slice.
 - use `remaining_coverage_gaps.md` as the stable numbered register for the
   unresolved support/coverage questions. Refer to these as Gap #1, Gap #2,
-  etc.; do not renumber gaps after discussion starts.
+  etc.; preserve the compact numbering unless the user explicitly asks for a
+  reconsolidation.
 - use `gb200_i8_validation_artifacts.md` for the reusable Gap #1 signed i8
   MMAv5 GB200 artifact inventory and CaaS rerun command.
 - use `tcgen05_cp_gap2_audit_20260418.md` for the Gap #2 `tcgen05.cp`
@@ -56,12 +57,18 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 06:57 UTC: reconsolidated the remaining coverage gap register and
+  removed the old `tcgen05.cp` placeholder gaps entirely. The current compact
+  list is Gap #1 i8 MMAv5 signedness/saturation API exposure, Gap #2
+  `tcgen05.cp` complete-support umbrella with sub-buckets `2A`-`2F`, Gap #3
+  narrow scaled-MMAv5 `N=8/16`, and Gap #4 mixed fp4 TMEM LHS.
 - 2026-04-18 06:54 UTC: merged all `tcgen05.cp`-related remaining coverage
   questions into Gap #2. The old Gap #3 partial-footprint, Gap #4
   `4x256b` refresh-view, Gap #5 packed/subword copy, Gap #6 two-CTA
   `warpx2::02_13`, and Gap #9 copy-source/frontend-contract entries are now
-  merged placeholders pointing to Gap #2 sub-buckets `2B` through `2F`.
-  Unrelated gaps keep their original numbers.
+  merged into Gap #2 sub-buckets `2B` through `2F`; this was superseded by the
+  06:57 UTC reconsolidation that removed those placeholders and renumbered the
+  remaining non-copy gaps.
 - 2026-04-18 06:45 UTC: completed the Gap #2 `tcgen05.cp` supported-layout
   completeness audit. The planner/verifier path is normalized around
   `LinearLayout`; legacy tensor-memory encodings are frontend compatibility
@@ -98,8 +105,8 @@ When resuming the initiative:
   questions. The original list had separate `tcgen05.cp` entries for layout
   completeness, partial copy footprints, `4x256b` refresh views, packed
   copy/subword `warpx2`, two-CTA `warpx2::02_13`, and frontend
-  descriptor/copy-source contracts; these are now merged under Gap #2 while
-  preserving the old numbers as placeholders.
+  descriptor/copy-source contracts; these are now merged under Gap #2 and the
+  old placeholder entries have been removed from the active list.
 - 2026-04-17 21:50 UTC: final local boundary checkpoint for the active
   completion tracker. The current plan has no unblocked local
   support-bearing implementation slice remaining: the full runtime matrix is

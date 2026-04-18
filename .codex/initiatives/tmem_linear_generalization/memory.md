@@ -1,14 +1,20 @@
 # TMEM Linear Generalization
 
+- Latest: 2026-04-18 06:57 UTC remaining gap register reconsolidation:
+  `remaining_coverage_gaps.md` no longer keeps old `tcgen05.cp` placeholder
+  gaps. The current active list is Gap #1 i8 MMAv5 signedness/saturation API
+  exposure; Gap #2 `tcgen05.cp` complete-support umbrella with sub-buckets
+  `2A`-`2F`; Gap #3 narrow scaled-MMAv5 `N=8/16`; and Gap #4 mixed fp4 TMEM
+  LHS. Use these current numbers going forward.
+
 - Latest: 2026-04-18 06:54 UTC `tcgen05.cp` gap merge: all copy-related
   remaining coverage questions are now merged into Gap #2. The active
   sub-buckets are `2A` dense subword exact-width `128x128b` evidence,
   `2B` partial footprints/masks, `2C` `4x256b` refresh views/readback,
   `2D` packed/subword `warpx2`, `2E` two-CTA `warpx2::02_13`, and
-  `2F` frontend descriptor/copy-source contracts. Former Gaps #3-#6 and the
-  `tcgen05.cp` portion of Gap #9 remain only as merged placeholders so old
-  references do not become ambiguous. Gap #7 and Gap #8 keep their numbers and
-  are still separate MMAv5/TMEM-LHS questions.
+  `2F` frontend descriptor/copy-source contracts. This checkpoint was
+  superseded by the 06:57 UTC reconsolidation that removed the old placeholder
+  gaps and renumbered the remaining non-copy gaps.
 
 - Latest: 2026-04-18 06:45 UTC Gap #2 `tcgen05.cp` supported-layout audit:
   `tcgen05_cp_gap2_audit_20260418.md` records the family-by-family audit.
@@ -28,8 +34,9 @@
   Gap #4 `tcgen05.cp.4x256b` refresh views; Gap #5 packed `tcgen05.cp` and
   subword `warpx2`; Gap #6 two-CTA `warpx2::02_13`; Gap #7 narrow
   scaled-MMAv5 `N=8/16`; Gap #8 mixed fp4 TMEM LHS; Gap #9 frontend
-  descriptor and copy-source contracts. Keep these numbers stable; merged gaps
-  stay in place as placeholders.
+  descriptor and copy-source contracts. This original register was
+  reconsolidated on 2026-04-18 06:57 UTC; use the current compact list at the
+  top of `remaining_coverage_gaps.md`.
 
 - Latest: 2026-04-17 21:48 UTC direct `ld/st` query-precedence cleanup:
   `TensorMemoryToLLVM` no longer owns the query-type-before-raw-query

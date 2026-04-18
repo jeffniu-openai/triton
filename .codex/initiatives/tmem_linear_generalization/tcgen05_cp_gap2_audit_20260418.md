@@ -1,6 +1,6 @@
 # Gap #2 Audit: `tcgen05.cp` Complete Support Umbrella
 
-Last updated: 2026-04-18 06:54 UTC
+Last updated: 2026-04-18 06:57 UTC
 
 ## Scope
 
@@ -12,9 +12,9 @@ two-CTA `warpx2::02_13`, and `tcgen05_copy` source/frontend contracts.
 
 This audit still treats legacy tensor-memory encodings as frontend syntax only:
 compiler support must be judged after conversion to normalized `LinearLayout`.
-The old gap numbers remain as merged placeholders in
-`remaining_coverage_gaps.md`; active `tcgen05.cp` work should use Gap #2
-sub-buckets instead.
+The gap register was later reconsolidated to remove the old copy-specific
+placeholder gap numbers entirely; active `tcgen05.cp` work should use Gap #2
+sub-buckets.
 
 ## Normalization Audit
 

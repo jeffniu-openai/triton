@@ -1,12 +1,12 @@
 # TMEM Remaining Coverage Gaps
 
-Last updated: 2026-04-18 06:54 UTC
+Last updated: 2026-04-18 06:57 UTC
 
 This is the stable reference list for the remaining TMEM coverage gaps that
-need deeper discussion. Keep the numbering stable. If a gap is resolved or
-merged, classify it in place as `supported`, `impossible`, `deferred`, or
-`merged`; do not renumber later gaps. New discoveries should be appended as
-new gap numbers.
+need deeper discussion. The list was reconsolidated on 2026-04-18 to remove
+old `tcgen05.cp` placeholder gaps and keep only active discussion items. New
+discoveries should be appended as new gap numbers unless the user explicitly
+asks to reconsolidate again.
 
 Each gap should be examined with the same decision standard:
 - Is this impossible under the public PTX/ISA and current hardware behavior?
@@ -15,9 +15,10 @@ Each gap should be examined with the same decision standard:
 - What compile-only, FileCheck, PTX, PTXAS, or runtime evidence is needed to
   close the question?
 
-## Gap #1: GB200 i8 MMAv5 Compile-Only Coverage
+## Gap #1: i8 MMAv5 Signedness/Saturation API Exposure
 
-- Area: plain MMAv5 direct `tcgen05.mma.kind::i8`.
+- Area: plain MMAv5 direct `tcgen05.mma.kind::i8`, including signedness and
+  saturation semantics that are not yet exposed through IR/frontend controls.
 - Current state: signed i8 direct MMAv5 is validated on GB200 for the current
   compiler path. Local `sm_100` compilation emits `.target sm_100a`,
   `tcgen05.mma.cta_group::1.kind::i8`, descriptor immediate `136316064`, and a
@@ -47,10 +48,9 @@ Each gap should be examined with the same decision standard:
 ## Gap #2: `tcgen05.cp` Complete Support Umbrella
 
 - Area: all remaining `tcgen05.cp` support and coverage questions after
-  normalization to `LinearLayout`, including the formerly separate Gap #3
-  partial-footprint work, Gap #4 `4x256b` refresh-view work, Gap #5
-  packed/subword copy work, Gap #6 two-CTA `warpx2::02_13` work, and Gap #9
-  copy-source/frontend contract work.
+  normalization to `LinearLayout`, including partial-footprint work,
+  `4x256b` refresh-view work, packed/subword copy work, two-CTA
+  `warpx2::02_13` work, and copy-source/frontend contract work.
 - Current state: the formal audit is recorded in
   `tcgen05_cp_gap2_audit_20260418.md`. The planner/verifier path normalizes
   through `LinearLayout`: legacy `TensorMemoryLayout` encodings are frontend
@@ -92,27 +92,7 @@ Each gap should be examined with the same decision standard:
   sub-buckets above are individually classified as supported, impossible, or
   deferred.
 
-## Gap #3: Merged Into Gap #2
-
-- Former area: partial `tcgen05.cp` footprints.
-- Current classification: merged. Use Gap #2 sub-bucket `2B`.
-
-## Gap #4: Merged Into Gap #2
-
-- Former area: `tcgen05.cp.4x256b` refresh views.
-- Current classification: merged. Use Gap #2 sub-bucket `2C`.
-
-## Gap #5: Merged Into Gap #2
-
-- Former area: packed `tcgen05.cp` and subword `warpx2`.
-- Current classification: merged. Use Gap #2 sub-bucket `2D`.
-
-## Gap #6: Merged Into Gap #2
-
-- Former area: two-CTA no-scales `tcgen05.cp.warpx2::02_13`.
-- Current classification: merged. Use Gap #2 sub-bucket `2E`.
-
-## Gap #7: Narrow Scaled-MMAv5 `N=8/16`
+## Gap #3: Narrow Scaled-MMAv5 `N=8/16`
 
 - Area: block-scaled MMAv5 accumulator layouts that require narrow N
   instruction fragments, especially `N=8` and `N=16`.
@@ -131,7 +111,7 @@ Each gap should be examined with the same decision standard:
   padded views; impossible for arbitrary tightly packed adjacent layouts
   without masks.
 
-## Gap #8: Mixed fp4 TMEM LHS
+## Gap #4: Mixed fp4 TMEM LHS
 
 - Area: block-scaled MMAv5 with mixed fp4 operand A in tensor memory, such as
   fp4 A with non-fp4 B under `mxf8f6f4`-style semantics.
@@ -147,14 +127,3 @@ Each gap should be examined with the same decision standard:
   cases.
 - Initial classification: implementable backend/storage-model gap, not a
   known ISA impossibility.
-
-## Gap #9: Merged Into Gap #2 For `tcgen05.cp`
-
-- Former area: frontend descriptor and copy-source contracts, including
-  `tcgen05_copy` source contracts for transposed/padded or otherwise
-  noncanonical shared sources.
-- Current classification: merged for all `tcgen05.cp`-related work. Use Gap #2
-  sub-bucket `2F`.
-- Boundary note: if a future non-copy frontend descriptor/API gap is identified,
-  append a new gap with explicit non-`tcgen05.cp` scope instead of reusing
-  Gap #9 ambiguously.

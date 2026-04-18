@@ -25077,3 +25077,23 @@ Open after this slice:
 - Next:
   - discuss/resolve the Gap #2 sub-buckets one at a time using the `2A`-`2F`
     labels.
+
+## 2026-04-18 06:57 UTC: reconsolidate remaining gap list
+
+- Starting point: `codex/tmem` at pushed `9d852bd65`.
+- Change:
+  - removed the old `tcgen05.cp` placeholder gaps from
+    `remaining_coverage_gaps.md`;
+  - kept Gap #2 as the single `tcgen05.cp` umbrella with sub-buckets `2A`
+    through `2F`;
+  - renumbered the remaining active non-copy gaps so narrow scaled-MMAv5
+    `N=8/16` is now Gap #3 and mixed fp4 TMEM LHS is now Gap #4.
+- Current active gap list:
+  - Gap #1: i8 MMAv5 signedness/saturation API exposure;
+  - Gap #2: `tcgen05.cp` complete-support umbrella;
+  - Gap #3: narrow scaled-MMAv5 `N=8/16`;
+  - Gap #4: mixed fp4 TMEM LHS.
+- Validation:
+  - documentation-only checkpoint; run `git diff --check` before commit.
+- Next:
+  - use the compact four-gap list for further discussions.
