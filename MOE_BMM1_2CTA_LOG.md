@@ -884,6 +884,17 @@ and `1024`, under both simulated production routing and uniform routing.
     best with B19 (`1.009x`), and rank 7 best with B24 (`1.015x`). Disabling
     W-scale multicast can help a local rank, but the winning combination still
     varies by route and does not fix ranks 3 or 4.
+- A temporary source probe reduced 2CTA activation shared-memory allocation
+  from `BLOCK_M` rows to `BLOCK_M_PER_CTA` rows, then was reverted after
+  compile failure. Artifacts:
+  - `/tmp/moe_bmm1_slice28_xlocal_legality_rank3_rep200.csv`
+  - `/tmp/moe_bmm1_slice28_xlocal_legality_rank3_retry_rep200.csv`
+  - The first attempt used the wrong local constexpr name. The corrected
+    allocation failed because `ttng.async_tma_gather` still requires 32 index
+    rows while the memory descriptor had 16 rows, and `tc_gen5_mma_scaled`
+    then saw an incompatible operand/output shape. Simple CTA-local X storage
+    is not legal without also changing the gather/MMA/accumulator layout
+    contract.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
