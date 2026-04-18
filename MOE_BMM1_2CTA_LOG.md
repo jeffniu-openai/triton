@@ -258,6 +258,39 @@ and `1024`, under both simulated production routing and uniform routing.
     selected slice-24 config is a small win (`1.006x`) and showed slice-20 is
     noisy between x5 and x6; selector currently uses x6 based on the broader
     set of recent rechecks.
+
+## 2026-04-18 Slice-16 Multicast Selector Probe
+
+- Rebuilt with `make` before running benchmarks; ninja reported no work.
+- Focused same-prepared repeated checks for `batch=512`, `slice=16` showed
+  that `x5/w5` direct 2CTA remains the best uniform family, but allocator and
+  prepared-weight address effects are large enough to change apparent winners
+  between identical configs:
+  - Uniform `512`: selected x5 direct stayed near `1.018x`; the x5 no-multicast
+    variant was effectively tied, while x6 staging was lower at about
+    `1.003x..1.009x`.
+  - Prod-like `512`: x5 no-multicast was consistently better than the current
+    selected all-multicast variant, reaching about `1.073x..1.078x` in the
+    same-prepared repeated run.
+- A source selector edit that changed slice `16` to no-multicast was tested and
+  then reverted: when the same config was exercised through the `selected`
+  candidate after rematerializing prepared tensors, prod-like `512` regressed
+  to `0.989x` in `/tmp/moe_bmm1_slice16_selected_after_nomc_prod_rep4000.csv`.
+  The side-by-side run
+  `/tmp/moe_bmm1_slice16_prod_nomc_after_side_by_side_rep5000.csv` showed the
+  identical selected/no-multicast configs ranging from `0.986x` to `1.035x`
+  depending on allocation order, so this is not safe selector evidence.
+- CSV evidence:
+  - `/tmp/moe_bmm1_slice16_uniform_nomc_focus_rep4000.csv`
+  - `/tmp/moe_bmm1_slice16_prod_nomc_focus_rep4000.csv`
+  - `/tmp/moe_bmm1_slice16_selected_after_nomc_uniform_rep4000.csv`
+  - `/tmp/moe_bmm1_slice16_selected_after_nomc_prod_rep4000.csv`
+  - `/tmp/moe_bmm1_slice16_prod_nomc_after_side_by_side_rep5000.csv`
+  - `/tmp/moe_bmm1_selector_recheck_uniform_512_1024_rep1800.csv`
+  - `/tmp/moe_bmm1_selector_recheck_prod_512_1024_rep1200.csv`
+- Decision: keep the existing slice-16 selector for now. Future selector
+  changes need a harness that controls prepared allocation order or reuses the
+  same prepared tensors when comparing identical configs.
 - Current uniform `896` status:
   - Best high-repetition candidates remain below parity. Recent `rep=3000`
     checks:
