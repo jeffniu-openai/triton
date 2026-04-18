@@ -1,4 +1,6 @@
 {
+  "cubin_file": "tcgen05_i8_signed_sm100.cubin",
+  "cubin_sha256": "5523626a5be4d52afe4f816a91ebfdb5d15359dcb9b44c0aae84fb0a23d61770",
   "description": "Signed i8 tcgen05.mma frontend/runtime smoke test generated from Gluon mma_kernel.",
   "dtypes": {
     "a": "torch.int8",
@@ -44,5 +46,5 @@
     "N": 128
   },
   "target": "sm_100a",
-  "triton_head": "feb5381c04f938528998ca269115e7ec8fb56b70"
+  "triton_head": "dc64e03119e46ba20828aefd51fc1eed279aa019"
 }

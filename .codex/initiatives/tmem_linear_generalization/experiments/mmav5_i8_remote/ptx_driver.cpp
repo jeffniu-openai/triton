@@ -1,22 +1,77 @@
-#include <cuda.h>
 #include <pybind11/pybind11.h>
 #include <torch/extension.h>
 
 #include <cstdint>
+#include <dlfcn.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 
 namespace {
 
-void checkCuda(CUresult result, const char *what) {
+using CUresult = int;
+using CUmodule = void *;
+using CUfunction = void *;
+using CUcontext = void *;
+using CUstream = void *;
+
+constexpr CUresult CUDA_SUCCESS = 0;
+
+class CudaDriver {
+public:
+  CudaDriver() {
+    handle = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+    if (!handle)
+      throw std::runtime_error(std::string("dlopen(libcuda.so.1) failed: ") + dlerror());
+    load(cuInit, "cuInit");
+    load(cuCtxGetCurrent, "cuCtxGetCurrent");
+    load(cuModuleLoadData, "cuModuleLoadData");
+    load(cuModuleGetFunction, "cuModuleGetFunction");
+    load(cuLaunchKernel, "cuLaunchKernel");
+    load(cuCtxSynchronize, "cuCtxSynchronize");
+    load(cuModuleUnload, "cuModuleUnload");
+    load(cuGetErrorName, "cuGetErrorName");
+    load(cuGetErrorString, "cuGetErrorString");
+  }
+
+  ~CudaDriver() {
+    if (handle)
+      dlclose(handle);
+  }
+
+  CudaDriver(const CudaDriver &) = delete;
+  CudaDriver &operator=(const CudaDriver &) = delete;
+
+  CUresult (*cuInit)(unsigned int) = nullptr;
+  CUresult (*cuCtxGetCurrent)(CUcontext *) = nullptr;
+  CUresult (*cuModuleLoadData)(CUmodule *, const void *) = nullptr;
+  CUresult (*cuModuleGetFunction)(CUfunction *, CUmodule, const char *) = nullptr;
+  CUresult (*cuLaunchKernel)(CUfunction, unsigned int, unsigned int, unsigned int,
+                             unsigned int, unsigned int, unsigned int, unsigned int,
+                             CUstream, void **, void **) = nullptr;
+  CUresult (*cuCtxSynchronize)() = nullptr;
+  CUresult (*cuModuleUnload)(CUmodule) = nullptr;
+  CUresult (*cuGetErrorName)(CUresult, const char **) = nullptr;
+  CUresult (*cuGetErrorString)(CUresult, const char **) = nullptr;
+
+private:
+  template <typename T> void load(T &fn, const char *name) {
+    fn = reinterpret_cast<T>(dlsym(handle, name));
+    if (!fn)
+      throw std::runtime_error(std::string("dlsym(") + name + ") failed");
+  }
+
+  void *handle = nullptr;
+};
+
+void checkCuda(CudaDriver &driver, CUresult result, const char *what) {
   if (result == CUDA_SUCCESS)
     return;
 
   const char *name = nullptr;
   const char *message = nullptr;
-  cuGetErrorName(result, &name);
-  cuGetErrorString(result, &message);
+  driver.cuGetErrorName(result, &name);
+  driver.cuGetErrorString(result, &message);
 
   std::ostringstream os;
   os << what << " failed";
@@ -29,7 +84,7 @@ void checkCuda(CUresult result, const char *what) {
 
 } // namespace
 
-void launch_ptx(const std::string &ptx, const std::string &kernelName,
+void launch_ptx(const std::string &moduleImage, const std::string &kernelName,
                 torch::Tensor a, torch::Tensor b, torch::Tensor out,
                 int64_t dynamicSharedBytes) {
   TORCH_CHECK(a.is_cuda(), "a must be a CUDA tensor");
@@ -42,17 +97,18 @@ void launch_ptx(const std::string &ptx, const std::string &kernelName,
   TORCH_CHECK(b.is_contiguous(), "b must be contiguous");
   TORCH_CHECK(out.is_contiguous(), "out must be contiguous");
 
-  checkCuda(cuInit(0), "cuInit");
+  CudaDriver driver;
+  checkCuda(driver, driver.cuInit(0), "cuInit");
   CUcontext context = nullptr;
-  checkCuda(cuCtxGetCurrent(&context), "cuCtxGetCurrent");
+  checkCuda(driver, driver.cuCtxGetCurrent(&context), "cuCtxGetCurrent");
   TORCH_CHECK(context != nullptr, "no current CUDA context; allocate a CUDA torch tensor before launching");
 
   CUmodule module = nullptr;
-  checkCuda(cuModuleLoadData(&module, ptx.c_str()), "cuModuleLoadData");
+  checkCuda(driver, driver.cuModuleLoadData(&module, moduleImage.data()), "cuModuleLoadData");
 
   try {
     CUfunction function = nullptr;
-    checkCuda(cuModuleGetFunction(&function, module, kernelName.c_str()), "cuModuleGetFunction");
+    checkCuda(driver, driver.cuModuleGetFunction(&function, module, kernelName.c_str()), "cuModuleGetFunction");
 
     void *aPtr = reinterpret_cast<void *>(a.data_ptr<int8_t>());
     void *bPtr = reinterpret_cast<void *>(b.data_ptr<int8_t>());
@@ -61,21 +117,21 @@ void launch_ptx(const std::string &ptx, const std::string &kernelName,
     uint64_t zero1 = 0;
     void *params[] = {&aPtr, &bPtr, &outPtr, &zero0, &zero1};
 
-    checkCuda(cuLaunchKernel(function,
-                             1, 1, 1,
-                             128, 1, 1,
-                             static_cast<unsigned int>(dynamicSharedBytes),
-                             nullptr,
-                             params,
-                             nullptr),
+    checkCuda(driver, driver.cuLaunchKernel(function,
+                                            1, 1, 1,
+                                            128, 1, 1,
+                                            static_cast<unsigned int>(dynamicSharedBytes),
+                                            nullptr,
+                                            params,
+                                            nullptr),
               "cuLaunchKernel");
-    checkCuda(cuCtxSynchronize(), "cuCtxSynchronize");
+    checkCuda(driver, driver.cuCtxSynchronize(), "cuCtxSynchronize");
   } catch (...) {
-    cuModuleUnload(module);
+    driver.cuModuleUnload(module);
     throw;
   }
 
-  checkCuda(cuModuleUnload(module), "cuModuleUnload");
+  checkCuda(driver, driver.cuModuleUnload(module), "cuModuleUnload");
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

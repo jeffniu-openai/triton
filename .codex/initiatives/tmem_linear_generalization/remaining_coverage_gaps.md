@@ -1,6 +1,6 @@
 # TMEM Remaining Coverage Gaps
 
-Last updated: 2026-04-18 00:01 UTC
+Last updated: 2026-04-18 01:28 UTC
 
 This is the stable reference list for the remaining TMEM coverage gaps that
 need deeper discussion. Keep the numbering stable. If a gap is resolved,
@@ -17,22 +17,28 @@ Each gap should be examined with the same decision standard:
 ## Gap #1: GB200 i8 MMAv5 Compile-Only Coverage
 
 - Area: plain MMAv5 direct `tcgen05.mma.kind::i8`.
-- Current state: local `sm_100` compilation now succeeds for the signed i8
-  frontend/Gluon `mma_kernel` path. The generated artifact lives under
-  `experiments/mmav5_i8_remote/` and emits `.target sm_100a`,
+- Current state: signed i8 direct MMAv5 is validated on GB200 for the current
+  compiler path. Local `sm_100` compilation emits `.target sm_100a`,
   `tcgen05.mma.cta_group::1.kind::i8`, descriptor immediate `136316064`, and a
-  local ptxas cubin (`97072` bytes). This is still runtime-pending because the
-  current local GPU is GB300/`sm_103`.
-- Open question: does the generated signed i8 PTX execute correctly on GB200
-  with torch-owned buffers and produce the exact int32 matmul result?
-- Next evidence: copy `experiments/mmav5_i8_remote/` to a GB200 container and
-  run `python3 run_i8_ptx_torch.py --launcher cpp` (or `--launcher ctypes` if
-  CUDA headers are unavailable). If it passes, classify signed i8 MMAv5 as
-  supported for GB200 compiler/runtime validation; unsigned i8 still needs a
-  frontend/IR-exposure decision because the high-level Gluon builtin currently
-  does not expose per-operand signedness.
-- Current classification: compile path looks supported for signed i8 on
-  GB200; runtime evidence pending. Not a linear-layout blocker.
+  ptxas cubin (`97072` bytes). A `caas-gpu10`/`cudaberry-arm` container
+  confirmed `NVIDIA GB200` compute capability `10.0`, loaded the generated
+  cubin through the tiny torch/CUDA Driver shim, and produced an exact int32
+  matmul match.
+- Evidence:
+  - four-GPU `nvidia-smi` probe showed four `NVIDIA GB200` devices with
+    compute capability `10.0`;
+  - one-GPU execution probe showed torch `device_count=1`, device
+    `NVIDIA GB200`, capability `(10, 0)`;
+  - `python3 run_i8_ptx_torch.py --launcher cpp` reported
+    `PASS signed i8 tcgen05.mma sm100 PTX matches torch int32 matmul`.
+- Boundary note: remote driver PTX JIT rejected the `.version 9.1` PTX with
+  `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`, so the runner loads the local ptxas
+  cubin by default. The PTX remains the human/codegen inspection artifact.
+  This is a deployment/toolkit compatibility boundary, not evidence that the
+  compiler emits invalid i8 MMAv5 PTX.
+- Current classification: signed i8 MMAv5 is supported on GB200 for the
+  current frontend/lowering path. Unsigned/per-operand signedness and
+  saturation still need an explicit IR/frontend exposure decision.
 
 ## Gap #2: `tcgen05.cp` Supported-Layout Completeness
 

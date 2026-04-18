@@ -120,8 +120,13 @@ def main() -> None:
 
     kernel_name = compiled.metadata.name
     ptx_file = out_dir / "tcgen05_i8_signed_sm100.ptx"
+    cubin_file = out_dir / "tcgen05_i8_signed_sm100.cubin"
     metadata_file = out_dir / "tcgen05_i8_signed_sm100.metadata.json"
     ptx_file.write_text(ptx)
+    cubin = compiled.asm.get("cubin", b"")
+    if not cubin:
+        raise RuntimeError("expected ptxas cubin artifact for sm100 compile")
+    cubin_file.write_bytes(cubin)
 
     mma_ops = re.findall(r"tcgen05\.mma\.cta_group::\d+\.kind::[^\s;]+", ptx)
     if mma_ops != ["tcgen05.mma.cta_group::1.kind::i8"]:
@@ -138,6 +143,8 @@ def main() -> None:
         "kernel_name": kernel_name,
         "ptx_file": ptx_file.name,
         "ptx_sha256": hashlib.sha256(ptx.encode()).hexdigest(),
+        "cubin_file": cubin_file.name,
+        "cubin_sha256": hashlib.sha256(cubin).hexdigest(),
         "shape": {"M": 128, "N": 128, "K": 32},
         "dtypes": {"a": "torch.int8", "b": "torch.int8", "out": "torch.int32"},
         "launch": {
@@ -154,10 +161,11 @@ def main() -> None:
             "descriptor_immediate": 136316064,
             "commit_opcode_substring": "tcgen05.commit.cta_group::1",
         },
-        "local_ptxas_cubin_bytes": len(compiled.asm.get("cubin", b"")),
+        "local_ptxas_cubin_bytes": len(cubin),
     }
     metadata_file.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
     print(f"wrote {ptx_file}")
+    print(f"wrote {cubin_file}")
     print(f"wrote {metadata_file}")
 
 

@@ -13462,3 +13462,37 @@ rejection, not rescue
     --launcher ctypes`;
   - expected output is `PASS signed i8 tcgen05.mma sm100 PTX matches torch
     int32 matmul`.
+
+## Current: 2026-04-18 01:28 UTC Gap #1 GB200 runtime validated
+
+- Remote access:
+  - installed `caas` from `~/code/openai` with `oaipkg install caas`;
+  - used the CaaS Python client directly because no `caas-cli` executable was
+    placed on PATH;
+  - endpoint resolved to `https://caas-gpu10.ace-research.openai.org`;
+  - image used: `cudaberry-arm`.
+- Hardware validation:
+  - a four-GPU allocation on `caas-gpu10` returned four devices from
+    `nvidia-smi --query-gpu=name,compute_cap,pci.bus_id --format=csv,noheader`:
+    all `NVIDIA GB200`, compute capability `10.0`;
+  - torch in the container reported four `NVIDIA GB200 (10, 0)` devices in
+    that probe;
+  - a later one-GPU allocation used for execution reported one
+    `NVIDIA GB200 (10, 0)` device.
+- Runner fix before execution:
+  - remote PTX JIT rejected the generated PTX with
+    `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`;
+  - added `tcgen05_i8_signed_sm100.cubin` to the artifact and made the runner
+    load the cubin by default while retaining PTX for inspection;
+  - rewrote the C++ shim to use `dlopen("libcuda.so.1")` so it does not need
+    CUDA headers in the remote container.
+- Runtime result:
+  - uploaded the artifact directory to `/tmp/mmav5_i8_remote`;
+  - `python3 run_i8_ptx_torch.py --dry-run` validated PTX and cubin hashes;
+  - `python3 run_i8_ptx_torch.py --launcher cpp` passed with:
+    `PASS signed i8 tcgen05.mma sm100 PTX matches torch int32 matmul`.
+- Classification:
+  - Gap #1 signed i8 MMAv5 is supported on GB200 for the current
+    frontend/lowering path;
+  - unsigned/per-operand signedness and integer saturation remain IR/frontend
+    exposure questions.

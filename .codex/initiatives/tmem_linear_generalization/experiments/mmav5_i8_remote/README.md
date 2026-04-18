@@ -1,8 +1,8 @@
 # GB200 signed i8 MMAv5 PTX smoke test
 
-This directory packages a no-Triton-runtime smoke test for Gap #1.  Generate
-PTX locally, copy this directory to a GB200 host, and run the PTX against
-torch-owned tensors in the remote container.
+This directory packages a no-Triton-runtime smoke test for Gap #1. Generate
+PTX/cubin locally, copy this directory to a GB200 host, and run the generated
+module against torch-owned tensors in the remote container.
 
 Local generation from the Triton checkout:
 
@@ -16,14 +16,19 @@ Remote run on GB200:
 python3 run_i8_ptx_torch.py --launcher cpp
 ```
 
+The runner loads the ptxas-produced cubin by default because some remote
+driver/toolkit combinations reject local PTX JIT with
+`CUDA_ERROR_UNSUPPORTED_PTX_VERSION`. Use `--module ptx` only when validating
+driver PTX JIT specifically.
+
 Artifact-only validation, which does not launch the kernel:
 
 ```bash
 python3 run_i8_ptx_torch.py --dry-run
 ```
 
-If the remote container lacks CUDA headers for the tiny C++ extension, the
-same launch can be done without compiling the shim:
+If the remote container cannot build the tiny C++ extension, the same launch
+can be done without compiling the shim:
 
 ```bash
 python3 run_i8_ptx_torch.py --launcher ctypes

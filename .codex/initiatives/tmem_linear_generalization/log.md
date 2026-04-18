@@ -24913,3 +24913,47 @@ Open after this slice:
     `python3 run_i8_ptx_torch.py --launcher cpp`;
   - use `--launcher ctypes` if the container lacks CUDA headers;
   - checkpoint and push this artifact.
+
+## 2026-04-18 01:28 UTC: validate Gap #1 signed i8 MMAv5 on GB200
+
+- Starting point: `codex/tmem` at pushed `dc64e0311`.
+- Remote setup:
+  - installed `caas` from `~/code/openai` with `oaipkg install caas`;
+  - used `caas-gpu10` and image `cudaberry-arm` through the CaaS Python
+    client;
+  - no `caas-cli` executable was installed on PATH, so the API was used
+    directly.
+- Hardware validation:
+  - four-GPU probe: `nvidia-smi --query-gpu=name,compute_cap,pci.bus_id
+    --format=csv,noheader` returned four `NVIDIA GB200` devices, all compute
+    capability `10.0`;
+  - torch probe reported `device_count 4` and each device as
+    `NVIDIA GB200 (10, 0)`;
+  - the execution probe used one GB200 and reconfirmed
+    `NVIDIA GB200, 10.0`.
+- Artifact update:
+  - added the local ptxas cubin (`tcgen05_i8_signed_sm100.cubin`) because the
+    remote driver rejected PTX JIT for PTX `.version 9.1` with
+    `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`;
+  - changed the runner to load cubin by default and keep PTX available for
+    inspection or explicit `--module ptx` checks;
+  - changed the C++ shim to use `dlopen`/`dlsym` for the CUDA Driver API, so
+    the remote container does not need `cuda.h`.
+- Remote validation:
+  - uploaded `experiments/mmav5_i8_remote/` to `/tmp/mmav5_i8_remote`;
+  - `python3 run_i8_ptx_torch.py --dry-run` validated PTX hash
+    `012c73541aaaf373d8c346cf6a4763c337ed8c714dc1742b6f68b5c96e5aed7f`
+    and cubin hash
+    `5523626a5be4d52afe4f816a91ebfdb5d15359dcb9b44c0aae84fb0a23d61770`;
+  - `python3 run_i8_ptx_torch.py --launcher cpp` passed:
+    `PASS signed i8 tcgen05.mma sm100 PTX matches torch int32 matmul`.
+- Local validation after artifact change:
+  - regenerated PTX/cubin locally;
+  - `python3 .../run_i8_ptx_torch.py --dry-run`;
+  - `PYTHONPYCACHEPREFIX=/tmp/triton-pyc python3 -m py_compile ...`;
+  - `git diff --check`.
+- Next:
+  - checkpoint and push the updated artifact plus docs;
+  - treat Gap #1 signed i8 as closed/supported for GB200, with only
+    unsigned/per-operand signedness and saturation left as frontend/API
+    questions.

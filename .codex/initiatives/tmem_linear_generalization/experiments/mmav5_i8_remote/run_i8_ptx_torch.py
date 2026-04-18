@@ -28,14 +28,14 @@ def check_cuda(result: int, lib, what: str) -> None:
     raise RuntimeError(f"{what} failed ({decoded_name}): {decoded_message}")
 
 
-def launch_with_ctypes(ptx: str, kernel_name: str, a: torch.Tensor, b: torch.Tensor, out: torch.Tensor,
+def launch_with_ctypes(module_image: bytes, kernel_name: str, a: torch.Tensor, b: torch.Tensor, out: torch.Tensor,
                        shared_bytes: int) -> None:
     lib_name = ctypes.util.find_library("cuda") or "libcuda.so.1"
     lib = ctypes.CDLL(lib_name)
 
     lib.cuInit.argtypes = [ctypes.c_uint]
     lib.cuCtxGetCurrent.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-    lib.cuModuleLoadData.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
+    lib.cuModuleLoadData.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
     lib.cuModuleGetFunction.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p, ctypes.c_char_p]
     lib.cuLaunchKernel.argtypes = [
         ctypes.c_void_p,
@@ -62,7 +62,12 @@ def launch_with_ctypes(ptx: str, kernel_name: str, a: torch.Tensor, b: torch.Ten
         raise RuntimeError("no current CUDA context; torch CUDA allocation should have initialized one")
 
     module = ctypes.c_void_p()
-    check_cuda(lib.cuModuleLoadData(ctypes.byref(module), ptx.encode()), lib, "cuModuleLoadData")
+    image_buffer = ctypes.create_string_buffer(module_image)
+    check_cuda(
+        lib.cuModuleLoadData(ctypes.byref(module), ctypes.cast(image_buffer, ctypes.c_void_p)),
+        lib,
+        "cuModuleLoadData",
+    )
     try:
         function = ctypes.c_void_p()
         check_cuda(
@@ -93,7 +98,7 @@ def launch_with_ctypes(ptx: str, kernel_name: str, a: torch.Tensor, b: torch.Ten
         check_cuda(lib.cuModuleUnload(module), lib, "cuModuleUnload")
 
 
-def launch_with_cpp(ptx: str, kernel_name: str, a: torch.Tensor, b: torch.Tensor, out: torch.Tensor,
+def launch_with_cpp(module_image: bytes, kernel_name: str, a: torch.Tensor, b: torch.Tensor, out: torch.Tensor,
                     shared_bytes: int, verbose: bool) -> None:
     from torch.utils.cpp_extension import load
 
@@ -101,17 +106,18 @@ def launch_with_cpp(ptx: str, kernel_name: str, a: torch.Tensor, b: torch.Tensor
         name="triton_i8_ptx_driver",
         sources=[str(HERE / "ptx_driver.cpp")],
         extra_cflags=["-O2"],
-        extra_ldflags=["-lcuda"],
+        extra_ldflags=["-ldl"],
         with_cuda=False,
         verbose=verbose,
     )
-    module.launch_ptx(ptx, kernel_name, a, b, out, shared_bytes)
+    module.launch_ptx(module_image, kernel_name, a, b, out, shared_bytes)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--metadata", type=Path, default=HERE / "tcgen05_i8_signed_sm100.metadata.json")
     parser.add_argument("--ptx", type=Path, default=None)
+    parser.add_argument("--module", choices=["auto", "cubin", "ptx"], default="auto")
     parser.add_argument("--launcher", choices=["cpp", "ctypes"], default="cpp")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--dry-run", action="store_true")
@@ -124,9 +130,20 @@ def main() -> None:
     actual_hash = hashlib.sha256(ptx.encode()).hexdigest()
     if actual_hash != metadata["ptx_sha256"]:
         raise RuntimeError(f"PTX hash mismatch for {ptx_path}: {actual_hash} != {metadata['ptx_sha256']}")
+    cubin_path = args.metadata.with_name(metadata["cubin_file"]) if metadata.get("cubin_file") else None
+    cubin = None
+    if cubin_path is not None and cubin_path.exists():
+        cubin = cubin_path.read_bytes()
+        cubin_hash = hashlib.sha256(cubin).hexdigest()
+        if cubin_hash != metadata["cubin_sha256"]:
+            raise RuntimeError(
+                f"cubin hash mismatch for {cubin_path}: {cubin_hash} != {metadata['cubin_sha256']}"
+            )
 
     if args.dry_run:
         print(f"PTX hash ok: {actual_hash}")
+        if cubin is not None:
+            print(f"cubin hash ok: {hashlib.sha256(cubin).hexdigest()}")
         print(f"kernel: {metadata['kernel_name']}")
         print(f"target: {metadata['target']}")
         print(f"launch: {metadata['launch']}")
@@ -145,11 +162,21 @@ def main() -> None:
     b = torch.randint(-8, 8, (shape["K"], shape["N"]), device="cuda", dtype=torch.int8)
     out = torch.empty((shape["M"], shape["N"]), device="cuda", dtype=torch.int32)
 
+    module_kind = args.module
+    if module_kind == "auto":
+        module_kind = "cubin" if cubin is not None else "ptx"
+    if module_kind == "cubin":
+        if cubin is None:
+            raise RuntimeError("requested cubin module, but no cubin artifact is present")
+        module_image = cubin
+    else:
+        module_image = ptx.encode()
+
     shared_bytes = metadata["launch"]["dynamic_shared_memory_bytes"]
     if args.launcher == "cpp":
-        launch_with_cpp(ptx, metadata["kernel_name"], a, b, out, shared_bytes, args.verbose_build)
+        launch_with_cpp(module_image, metadata["kernel_name"], a, b, out, shared_bytes, args.verbose_build)
     else:
-        launch_with_ctypes(ptx, metadata["kernel_name"], a, b, out, shared_bytes)
+        launch_with_ctypes(module_image, metadata["kernel_name"], a, b, out, shared_bytes)
 
     ref = a.cpu().to(torch.int32) @ b.cpu().to(torch.int32)
     torch.testing.assert_close(out.cpu(), ref, rtol=0, atol=0)
