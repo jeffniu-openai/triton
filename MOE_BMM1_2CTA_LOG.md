@@ -28,9 +28,11 @@ and keeps improving, with special focus on batch sizes `<= 2048`.
 ## 2026-04-18 State
 
 - Branch: `codex/2cta-bmm1`.
-- Current selector enables 2CTA for `slice=16`, `36..72`, and `>=80`.
-- Current unresolved low-batch gap: `slice=20..32`, corresponding to batch
-  sizes `640`, `768`, `896`, and `1024` for GPT-OSS-120B.
+- Current selector enables 2CTA for `slice=16`, `20`, `24`, `32`,
+  `36..72`, and `>=80`.
+- Current unresolved low-batch selector gap: `slice=28`, corresponding to
+  batch size `896` for GPT-OSS-120B. This slice remains on 1CTA because
+  uniform routing still shows a stable 2CTA regression.
 - Existing useful artifacts:
   - `/tmp/moe_compare_after_merge_prod.csv`
   - `/tmp/moe_compare_after_merge_uniform.csv`
@@ -329,6 +331,56 @@ and `1024`, under both simulated production routing and uniform routing.
   - `X_NUM_BUFS=2/3` with `W_NUM_BUFS=5` was much slower; reducing X staging
     does not cross a useful occupancy threshold.
   - `OCCUPANCY=3` remains much slower for the direct low-batch family.
+
+## 2026-04-18 Continuous Slice-28 Probe
+
+- Rebuilt with `make` first; ninja reported no work.
+- Strengthened the never-stop optimization invariant in `AGENTS.md` and this
+  log, committed as `25cb47e4d`, and pushed to
+  `jeffniu-openai/codex/2cta-bmm1`.
+- Focused uniform `batch=896` / `slice=28` measurements continued on quiet
+  GB300 GPUs:
+  - `BLOCK_M=28` direct 2CTA variants are illegal because descriptor/layout
+    shape elements must be powers of two.
+  - Four-, eight-, and sixteen-warp direct families were rechecked. Sixteen
+    warps are severe regressions (`~0.63x`); the best legal result was still
+    four-warp `M32/BN256/sub1/direct/x5w5` at about `0.936x`.
+  - Inline MMA input release regressed the best four-warp family (`~0.929x`)
+    and did not improve the eight-warp inline candidates.
+  - Extra accumulator buffering (`ACC_NUM_BUFS=2/3`) regressed both four- and
+    eight-warp direct paths.
+  - Ring-depth threshold checks showed `x4` and `w4` are not usable for this
+    slice: `x4/w5` was only `~0.915x`, and any `w4` variant was about
+    `0.86x`. `x7/w5` also regressed.
+  - `OCCUPANCY=1` and `OCCUPANCY=3` are large regressions for both four- and
+    eight-warp direct variants; keep `OCCUPANCY=2`.
+  - Gather-index reuse produced one noisy `~0.937x` result for eight-warp
+    `x6/w5`, but a focused sweep across loader/MMA warp ownership, multicast,
+    band, ring, and register settings did not reproduce a stable improvement.
+- New CSV artifacts:
+  - `/tmp/moe_bmm1_m28_uniform896_rep1200.csv`
+  - `/tmp/moe_bmm1_warp_family_uniform896_rep1800.csv`
+  - `/tmp/moe_bmm1_inline_release_uniform896_rep1800.csv`
+  - `/tmp/moe_bmm1_accbuf_uniform896_rep1800.csv`
+  - `/tmp/moe_bmm1_ring_depth_uniform896_rep1500.csv`
+  - `/tmp/moe_bmm1_occupancy_uniform896_rep1200.csv`
+  - `/tmp/moe_bmm1_reuse_uniform896_rep1500.csv`
+  - `/tmp/moe_bmm1_reuse_x6_sweep_uniform896_rep1400.csv`
+- New NCU report:
+  - `/tmp/ncu_moe_896_uniform_2cta_warps4_x5_current_ws.ncu-rep`
+  - Four-warp `x5/w5` direct: duration `~40.5-40.7 us`, memory throughput
+    `~3.75-3.77 TB/s`, executed instructions `~6.65M`, theoretical occupancy
+    `25%`, achieved occupancy `~24.3-25.2%`, eligible warps/scheduler
+    `0.37-0.38`.
+  - Dominant long-scoreboard source waits remain activation empty-barrier
+    wait around line 556, weight empty-barrier wait around line 594, and
+    accumulator-ready wait around line 898.
+- Current interpretation: `slice=28` is not blocked by instruction count or a
+  simple launch/warp/ring selector. The next source-level path should target a
+  structural reduction in 2CTA latency exposure, likely by changing producer
+  and consumer overlap around activation/weight ring waits or by reducing
+  direct epilogue accumulator wait time without increasing tensor-memory or
+  shared-memory residency.
 
 ## Next Frontier
 
