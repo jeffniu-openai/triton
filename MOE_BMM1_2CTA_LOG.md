@@ -812,6 +812,13 @@ and `1024`, under both simulated production routing and uniform routing.
   - `NUM_WARPS=6` is illegal (`num_warps must be a power of 2`), and
     16-warps direct variants were severe regressions (`~0.62x-0.65x`) on
     ranks 3 and 5. Extra warp ownership is not the missing slice-28 lever.
+- A temporary source probe delayed the MMA partition's W-scale
+  `tcgen05_copy` until after the X-ready wait, then was reverted. Artifact:
+  `/tmp/moe_bmm1_slice28_w6_scale_after_x_rank35_rep900.csv`.
+  - The rank-3 B20 near-miss stayed around the existing result (`0.979x`),
+    while rank 5 remained below parity and the B24/ACC2 comparator regressed
+    to `0.988x`. Keeping the scale copy between the W-ready wait and X-ready
+    wait is better because it overlaps scale movement with X readiness.
 - Decision: do not promote a slice-28 selector change yet. W6/regs48 is the
   new best near-miss family and should be the baseline for future slice-28
   work, but it still loses to 1CTA on hard uniform fixed-rank routes.
