@@ -51,6 +51,10 @@ def is_blackwell():
     return is_cuda() and torch.cuda.get_device_capability()[0] in [10, 11]
 
 
+def is_blackwell_sm100():
+    return is_cuda() and torch.cuda.get_device_capability()[0:2] == (10, 0)
+
+
 def is_blackwell_ultra():
     return is_cuda() and torch.cuda.get_device_capability()[0:2] == (10, 3)
 

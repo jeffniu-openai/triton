@@ -10635,7 +10635,7 @@ def test_tmem_runtime_matrix_mma_m64_acc_subslice_view_plain_kinds(kind, n, k, s
     assert "tensor_memory_encoding" not in ttgir
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra/sm103")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
 @pytest.mark.parametrize("n", (32, 64, 128, 256))
 @pytest.mark.parametrize("k", (32, 64))
@@ -10679,7 +10679,7 @@ def test_tmem_runtime_matrix_mma_i8_reports_clean_error(acc_layout_kind, n, k, c
     assert "Assertion" not in msg
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra/sm103")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
 @pytest.mark.parametrize("n", (64, 128, 256))
 @pytest.mark.parametrize("k", (32, 64))
@@ -10794,7 +10794,7 @@ def test_tmem_runtime_matrix_mma_plain_kinds_m64(kind, acc_layout_kind, n, k, us
         assert "tensor_memory_linear" in compiled.asm["ttgir"]
 
 
-@pytest.mark.skipif(not is_blackwell(), reason="Requires Blackwell")
+@pytest.mark.skipif(not is_blackwell_ultra(), reason="Requires Blackwell Ultra/sm103")
 @pytest.mark.parametrize("acc_layout_kind", ("legacy", "linear"))
 @pytest.mark.parametrize("block_n", (32, 64, 128, 256))
 @pytest.mark.parametrize("block_k", (32, 64))

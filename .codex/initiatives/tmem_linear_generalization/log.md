@@ -24982,3 +24982,28 @@ Open after this slice:
   - `git diff --check`.
 - Next:
   - commit and push this artifact-runbook checkpoint.
+
+## 2026-04-18 01:51 UTC: add sm100-gated signed i8 MMAv5 runtime pytests
+
+- Starting point: `codex/tmem` at pushed `4c561d699`.
+- Change:
+  - added `is_blackwell_sm100()` test helper for exact GB200/sm100 capability
+    gating;
+  - added `test_tcgen05_mma_plain_kind_i8_runtime_sm100` with three signed-i8
+    shapes: `64x128x32`, `128x128x32`, and `128x256x64`;
+  - each positive case checks exact int32 matmul output and verifies matching
+    PTX/LLIR `tcgen05.mma.cta_group::1.kind::i8` opcodes;
+  - narrowed the existing i8 clean-error tests to Blackwell Ultra/sm103 so
+    they remain valid on GB300 without failing GB200.
+- Validation:
+  - `make -j8`;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -s --tb=short python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_runtime_sm100 python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_reports_clean_error`
+    passed locally as `1 passed, 3 skipped`;
+  - `PYTHONPATH=.:./python:./python/test/gluon pytest -q --collect-only python/test/gluon/test_tmem_runtime_matrix.py -k 'i8_reports_clean_error'`
+    collected `44/1592`;
+  - representative runtime-matrix i8 clean-error exacts passed `3/3`;
+  - local `GPUTarget("cuda", 100, 32)` compile-only probe emitted expected
+    `kind::i8` op counts and cubins for all three new shapes.
+- Next:
+  - run `git diff --check`;
+  - commit and push this test checkpoint.

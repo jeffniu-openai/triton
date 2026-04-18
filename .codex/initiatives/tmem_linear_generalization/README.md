@@ -53,6 +53,12 @@ When resuming the initiative:
 
 ## Current Backend Checkpoint
 
+- 2026-04-18 01:51 UTC: added the first checked-in runtime pytest coverage for
+  Gap #1 signed i8 MMAv5. `test_core.py` now has an exact `GB200/sm100` gated
+  positive test over three small shapes (`64x128x32`, `128x128x32`,
+  `128x256x64`) with exact int32 reference comparison and `kind::i8`
+  PTX/LLIR checks. The old i8 clean-error tests are now restricted to
+  Blackwell Ultra/sm103 so they do not contradict GB200 support.
 - 2026-04-18 01:28 UTC: Gap #1 signed i8 MMAv5 is now runtime-validated on
   GB200 through `caas-gpu10` with image `cudaberry-arm`. `nvidia-smi` first
   confirmed four `NVIDIA GB200` devices with compute capability `10.0`; the

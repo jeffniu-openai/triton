@@ -1,6 +1,6 @@
 # TMEM Remaining Coverage Gaps
 
-Last updated: 2026-04-18 01:28 UTC
+Last updated: 2026-04-18 01:51 UTC
 
 This is the stable reference list for the remaining TMEM coverage gaps that
 need deeper discussion. Keep the numbering stable. If a gap is resolved,
@@ -37,8 +37,11 @@ Each gap should be examined with the same decision standard:
   This is a deployment/toolkit compatibility boundary, not evidence that the
   compiler emits invalid i8 MMAv5 PTX.
 - Current classification: signed i8 MMAv5 is supported on GB200 for the
-  current frontend/lowering path. Unsigned/per-operand signedness and
-  saturation still need an explicit IR/frontend exposure decision.
+  current frontend/lowering path. Runtime pytest coverage now includes a tiny
+  sm100-gated signed-i8 shape set: `64x128x32`, `128x128x32`, and
+  `128x256x64`, with exact int32 matmul checks and PTX/LLIR opcode checks.
+  Unsigned/per-operand signedness and saturation still need an explicit
+  IR/frontend exposure decision.
 
 ## Gap #2: `tcgen05.cp` Supported-Layout Completeness
 

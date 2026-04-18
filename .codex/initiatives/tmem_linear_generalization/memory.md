@@ -13517,3 +13517,30 @@ rejection, not rescue
 - Secret handling:
   - the user-provided CaaS token was intentionally not written into any
     tracked file.
+
+## Current: 2026-04-18 01:51 UTC Gap #1 sm100 runtime pytests added
+
+- Code changes:
+  - added `is_blackwell_sm100()` to `python/triton/_internal_testing.py`;
+  - added `test_tcgen05_mma_plain_kind_i8_runtime_sm100` in
+    `python/test/gluon/test_core.py`;
+  - the new positive runtime test is gated exactly on GB200/sm100 capability
+    `(10, 0)` and covers shapes:
+    - `M=64, N=128, K=32`;
+    - `M=128, N=128, K=32`;
+    - `M=128, N=256, K=64`;
+  - each positive case checks exact `torch.int32` matmul equality and verifies
+    PTX/LLIR `tcgen05.mma.cta_group::1.kind::i8` opcode count;
+  - existing i8 clean-error tests in `test_core.py` and
+    `test_tmem_runtime_matrix.py` are now Blackwell Ultra/sm103-only.
+- Validation:
+  - `make -j8`;
+  - local GB300/sm103 exact run:
+    `python/test/gluon/test_core.py::test_tcgen05_mma_plain_kind_i8_runtime_sm100`
+    and `...::test_tcgen05_mma_plain_kind_i8_reports_clean_error` produced
+    `1 passed, 3 skipped`;
+  - runtime-matrix collect-only for `-k 'i8_reports_clean_error'` collected
+    `44/1592`;
+  - representative runtime-matrix clean-error exacts passed `3/3`;
+  - local sm100 compile-only probe for the three new shapes emitted expected
+    `kind::i8` op counts and cubins.
