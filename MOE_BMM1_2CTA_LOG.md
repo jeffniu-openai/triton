@@ -168,3 +168,140 @@ and `1024`, under both simulated production routing and uniform routing.
 - If selector work proceeds before uniform is solved, use routing-aware
   evidence carefully: prod-like routing strongly favors direct 2CTA, while
   uniform `640/768/896` still does not.
+
+## 2026-04-18 Current Pass
+
+- Current uncommitted source state:
+  - Direct epilogue path prefetches bias before `acc_ready_bar` wait.
+  - Direct epilogue path hoists `shape_m`, `off_m`, and `out_off_n` before
+    `apply_bias_and_scale`, overlapping the `shape_m` load with accumulator
+    readiness.
+  - Direct accumulator handoff ordering is `wait -> advance -> acc load ->
+    arrive`. The alternate `wait -> acc load -> arrive -> advance` was
+    rechecked and not kept because the earlier ordering is better on the
+    sensitive low-batch runs.
+- Validation:
+  - `make` completed with no rebuild work.
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/root/code/triton/python:/root/code/triton/python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`
+    passed: `48 passed in 48.90s`.
+- Current focused benchmarks:
+  - `/tmp/moe_bmm1_direct_advance_before_load_uniform640_896_rep1000.csv`
+    confirms uniform `640` can be positive with direct 2CTA, best
+    `m32_bn256_sub1_direct_x6w5_act2w1m1_regs52_epin1_b32` at `1.010x`,
+    `423.3 TFLOP/s`, `5.65 TB/s`.
+  - Same run confirms uniform `896` remains negative, best
+    `m32_bn256_sub1_direct_x6w5_nomcscale_act2w1m1_epin1_b32` at `0.935x`,
+    `525.6 TFLOP/s`, `5.22 TB/s`.
+  - `/tmp/moe_bmm1_direct_advance_before_load_prod_rep500.csv` shows
+    prod-like routing remains positive for `640/768/896/1024`, with best
+    speedups `1.053x`, `1.047x`, `1.044x`, and `1.018x` respectively.
+- Current NCU on uniform `896`:
+  - Reports:
+    `/tmp/ncu_moe_896_uniform_1cta_advbefore.ncu-rep` and
+    `/tmp/ncu_moe_896_uniform_2cta_advbefore_x6nomcscale.ncu-rep`.
+  - 1CTA: duration `37.76 us`, memory throughput `3.97 TB/s`, executed
+    instructions `9.57M`, theoretical occupancy `50%`, achieved occupancy
+    `47.83%`, eligible warps/scheduler `0.78`.
+  - 2CTA: duration `40.67 us`, memory throughput `3.77 TB/s`, executed
+    instructions `7.46M`, theoretical occupancy `37.5%`, achieved occupancy
+    `36.14%`, eligible warps/scheduler `0.51`.
+  - Interpretation is unchanged: the best 2CTA path does less work but loses
+    on latency hiding because cluster/shared-memory occupancy is too low.
+- Additional dead ends in this pass:
+  - Program-striped full-tile schedule was reimplemented as a host-only knob
+    and tested with direct+reuse; it regressed uniform `896` to about
+    `0.88x`, so the source knob was removed.
+  - Planar snake variants in the temporary harness regressed uniform `896`.
+  - `BLOCK_N=512` direct 2CTA compiled but was much slower; `BLOCK_N=384`
+    fails descriptor layout creation because a shape element must be a power
+    of two.
+  - `BLOCK_M=28` would match uniform `896` slice size, but layout construction
+    rejects it because the M shape element must be a power of two.
+  - `BLOCK_K=64` is invalid for this MX scale layout:
+    `block_shape[0]=2 must be divisible by 4`.
+  - Activation warp counts `1`, `3`, and `4` were worse or failed to compile;
+    the current `LOAD_ACTIVATION_WARPS=2` direct family remains best.
+  - Direct epilogue N-splitting (`FORCE_EPILOGUE_WARPS_N1=False`) regressed
+    `640/768/896/1024`; keep `FORCE_EPILOGUE_WARPS_N1=True`.
+  - Rechecked `ACC_NUM_BUFS=2` under the current source; it still does not fix
+    uniform `896`.
+  - Missing no-multicast `BAND_N` variants were filled in the temporary
+    harness. They help select per-batch candidates for `640/768/1024`, but
+    not `896`.
+
+## 2026-04-18 Selector and Current Frontier
+
+- Source changes added in this pass:
+  - Weight loader now computes MX scale K offsets as `ki * scale_k_stride`
+    instead of `ki * BLOCK_K // (...)`, avoiding a hot-loop constexpr division
+    pattern in TTGIR.
+  - Store paths now pass packed output-column offsets into `store_packed_out`,
+    avoiding repeated output-N divisions in the direct and helper epilogues.
+  - Selector now uses direct 2CTA `32x256` four-warp configs for slice sizes
+    `16`, `20`, `24`, and `32`; slice `28` intentionally remains 1CTA because
+    uniform batch `896` still regresses under every validated 2CTA candidate.
+  - Low-slice direct selector configs keep `BAND_N=32`; an intermediate
+    selector run showed that overwriting this to `22` regressed the tuned
+    direct path.
+- Validation:
+  - `make` completed with no rebuild work.
+  - `CUDA_VISIBLE_DEVICES=0 PYTHONPATH=/root/code/triton/python:/root/code/triton/python/triton_kernels pytest -s --tb=short python/examples/gluon/05-moe-bmm1-fused-gather.py::test_op`
+    passed after the final selector adjustment: `48 passed in 4.75s`.
+- Stable low-batch selector evidence:
+  - `/tmp/moe_bmm1_slice16_direct_uniform512_rep1500.csv`: direct four-warp
+    `x5w5` 2CTA reached `1.022x`, `328.7 TFLOP/s`, `5.66 TB/s`; the old
+    non-direct selected 2CTA path regressed to `0.965x`.
+  - `/tmp/moe_bmm1_selector_low_uniform_rep3000.csv`: best uniform `640`,
+    `768`, and `1024` direct candidates reached about `1.011x`, `1.011x`,
+    and `1.029x` respectively.
+  - `/tmp/moe_bmm1_selected_vs_named_640_768_rep3000.csv` confirmed the
+    selected slice-24 config is a small win (`1.006x`) and showed slice-20 is
+    noisy between x5 and x6; selector currently uses x6 based on the broader
+    set of recent rechecks.
+- Current uniform `896` status:
+  - Best high-repetition candidates remain below parity. Recent `rep=3000`
+    checks:
+    `/tmp/moe_bmm1_warps4_x6_regs60_uniform896_rep3000.csv` and
+    `/tmp/moe_bmm1_warps4_x6_nomc_uniform896_rep3000.csv` both topped out
+    around `0.936x`.
+  - `BAND_N=24` did not survive focused recheck; because `GRID_N=23`, it
+    shares the same fast scheduling path as `BAND_N=32` and the apparent win
+    was noise.
+- Current NCU on uniform `896`:
+  - Reports:
+    `/tmp/ncu_moe_896_uniform_1cta_current_ws.ncu-rep` and
+    `/tmp/ncu_moe_896_uniform_2cta_warps4_x6_current_ws.ncu-rep`.
+  - 1CTA: duration `37.95 us`, memory throughput `3.95 TB/s`, executed
+    instructions `9.24M`, theoretical occupancy `50%`, achieved occupancy
+    `48.23%`, eligible warps/scheduler `0.73`.
+  - 2CTA four-warp direct: duration `41.22 us`, memory throughput
+    `3.70 TB/s`, executed instructions `6.66M`, theoretical occupancy `25%`,
+    achieved occupancy `24.14%`, eligible warps/scheduler `0.37`.
+  - Interpretation: four-warp 2CTA reduces instructions and shared memory
+    versus the earlier direct path, but the resident/eligible warp count is
+    even worse. The remaining `896` gap is still latency hiding, not
+    instruction count.
+- Additional dead ends in this pass:
+  - Direct-store N-CGA layout failed `warp_specialize` lowering.
+  - `M16/BN512` direct 2CTA was `0.47x-0.60x` on uniform `896/1024`.
+  - `M64/BN256` direct/helper/wide variants were severe regressions on
+    uniform `896/1024`.
+  - `X_NUM_BUFS=2/3` with `W_NUM_BUFS=5` was much slower; reducing X staging
+    does not cross a useful occupancy threshold.
+  - `OCCUPANCY=3` remains much slower for the direct low-batch family.
+
+## Next Frontier
+
+- Uniform slice `28` / batch `896` needs a structural change that increases
+  resident or eligible warps without giving up W5 staging. Parameter sweeps
+  that only reduce staging, change banding, or change 32-vs-64 row shape have
+  not worked.
+- Promising next directions:
+  - Find a legal way to reduce 2CTA shared-memory footprint while preserving
+    W5 depth, possibly by changing scale staging or descriptor/layout
+    ownership rather than X/W buffer counts.
+  - Inspect SASS/source counters for the dominant long-scoreboard locations in
+    the direct 2CTA epilogue and loaders; NCU shows lower instruction count but
+    much lower eligibility.
+  - Investigate whether 2CTA can use a different epilogue ownership model that
+    raises active warps without reintroducing the helper-store overhead.

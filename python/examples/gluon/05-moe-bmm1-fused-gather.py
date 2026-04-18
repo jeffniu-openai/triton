@@ -68,6 +68,9 @@ def unpack_full_tile_schedule(schedule: gl.tensor) -> tuple[gl.tensor, gl.tensor
 
 @gluon.jit
 def banded_row_major(lin_idx, m_tiles, n_tiles, BAND_N: gl.constexpr):
+    if BAND_N >= n_tiles:
+        return lin_idx // n_tiles, lin_idx % n_tiles
+
     full_band_tiles = m_tiles * BAND_N
     n_full_bands = n_tiles // BAND_N
     full_band_work = n_full_bands * full_band_tiles
@@ -80,6 +83,24 @@ def banded_row_major(lin_idx, m_tiles, n_tiles, BAND_N: gl.constexpr):
     tail_n = n_tiles - n_full_bands * BAND_N
     tail_idx = lin_idx - full_band_work
     return tail_idx // tail_n, n_full_bands * BAND_N + (tail_idx % tail_n)
+
+
+@gluon.jit
+def banded_row_major_m(lin_idx, m_tiles, n_tiles, BAND_N: gl.constexpr):
+    if BAND_N >= n_tiles:
+        return lin_idx // n_tiles
+
+    full_band_tiles = m_tiles * BAND_N
+    n_full_bands = n_tiles // BAND_N
+    full_band_work = n_full_bands * full_band_tiles
+
+    if lin_idx < full_band_work:
+        within_band = lin_idx % full_band_tiles
+        return within_band // BAND_N
+
+    tail_n = n_tiles - n_full_bands * BAND_N
+    tail_idx = lin_idx - full_band_work
+    return tail_idx // tail_n
 
 
 @gluon.jit
@@ -127,7 +148,9 @@ def apply_block_schedule(
     GRID_TILE_WIDTH: gl.constexpr,
     BAND_N: gl.constexpr,
 ) -> tuple[gl.tensor, gl.tensor, gl.tensor, gl.tensor]:
-    pid_mn = block_id % (grid_m * GRID_N)
+    # The persistent loop bounds block_id by grid_m * GRID_N, so no wraparound
+    # modulo is needed on the hot scheduling path.
+    pid_mn = block_id
     if USE_PLANAR_SNAKE:
         schedule_pid_m, pid_n = planar_snake(
             pid_mn,
@@ -155,6 +178,73 @@ def apply_full_tile_schedule(
     pid_m, pid_n, slice_idx = unpack_full_tile_schedule(gl.load(tile_schedule + block_id))
     slice_offset = gl.load(slice_offsets + slice_idx)
     return pid_m, pid_n, slice_idx, slice_offset
+
+
+@gluon.jit
+def apply_weight_schedule(
+    block_id: gl.tensor,
+    grid_m: gl.tensor,
+    GRID_N: gl.constexpr,
+    block_schedule: gl.tensor,
+    tile_schedule: gl.tensor,
+    USE_FULL_TILE_SCHEDULE: gl.constexpr,
+    USE_PLANAR_SNAKE: gl.constexpr,
+    GRID_MINOR_DIM: gl.constexpr,
+    GRID_TILE_WIDTH: gl.constexpr,
+    BAND_N: gl.constexpr,
+) -> tuple[gl.tensor, gl.tensor]:
+    if USE_FULL_TILE_SCHEDULE:
+        _, pid_n, slice_idx = unpack_full_tile_schedule(gl.load(tile_schedule + block_id))
+        return pid_n, slice_idx
+
+    if USE_PLANAR_SNAKE:
+        schedule_pid_m, pid_n = planar_snake(
+            block_id,
+            grid_m,
+            GRID_N,
+            MINOR_DIM=GRID_MINOR_DIM,
+            TILE_WIDTH=GRID_TILE_WIDTH,
+        )
+    else:
+        schedule_pid_m, pid_n = banded_row_major(block_id, grid_m, GRID_N, BAND_N=BAND_N)
+
+    slice_idx, _ = unpack_block_schedule(gl.load(block_schedule + schedule_pid_m))
+    return pid_n.to(gl.int32), slice_idx
+
+
+@gluon.jit
+def apply_activation_schedule(
+    block_id: gl.tensor,
+    grid_m: gl.tensor,
+    GRID_N: gl.constexpr,
+    slice_offsets: gl.tensor,
+    block_schedule: gl.tensor,
+    tile_schedule: gl.tensor,
+    USE_FULL_TILE_SCHEDULE: gl.constexpr,
+    USE_PLANAR_SNAKE: gl.constexpr,
+    GRID_MINOR_DIM: gl.constexpr,
+    GRID_TILE_WIDTH: gl.constexpr,
+    BAND_N: gl.constexpr,
+) -> tuple[gl.tensor, gl.tensor, gl.tensor]:
+    if USE_FULL_TILE_SCHEDULE:
+        pid_m, _, slice_idx = unpack_full_tile_schedule(gl.load(tile_schedule + block_id))
+        slice_offset = gl.load(slice_offsets + slice_idx)
+        return pid_m, slice_idx, slice_offset
+
+    if USE_PLANAR_SNAKE:
+        schedule_pid_m, _ = planar_snake(
+            block_id,
+            grid_m,
+            GRID_N,
+            MINOR_DIM=GRID_MINOR_DIM,
+            TILE_WIDTH=GRID_TILE_WIDTH,
+        )
+    else:
+        schedule_pid_m = banded_row_major_m(block_id, grid_m, GRID_N, BAND_N=BAND_N)
+
+    slice_idx, pid_m = unpack_block_schedule(gl.load(block_schedule + schedule_pid_m))
+    slice_offset = gl.load(slice_offsets + slice_idx)
+    return pid_m, slice_idx, slice_offset
 
 
 @gluon.jit
@@ -354,6 +444,37 @@ class PartitionArgs:
             BAND_N=self.BAND_N,
         )
 
+    @gluon.jit
+    def apply_weight_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor]:
+        return apply_weight_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            block_schedule=self.x_block_schedule,
+            tile_schedule=self.x_tile_schedule,
+            USE_FULL_TILE_SCHEDULE=self.USE_FULL_TILE_SCHEDULE,
+            USE_PLANAR_SNAKE=self.USE_PLANAR_SNAKE,
+            GRID_MINOR_DIM=self.GRID_MINOR_DIM,
+            GRID_TILE_WIDTH=self.GRID_TILE_WIDTH,
+            BAND_N=self.BAND_N,
+        )
+
+    @gluon.jit
+    def apply_activation_schedule(self, block_id: gl.tensor) -> tuple[gl.tensor, gl.tensor, gl.tensor]:
+        return apply_activation_schedule(
+            block_id=block_id,
+            grid_m=self.grid_m,
+            GRID_N=self.GRID_N,
+            slice_offsets=self.x_slice_offs,
+            block_schedule=self.x_block_schedule,
+            tile_schedule=self.x_tile_schedule,
+            USE_FULL_TILE_SCHEDULE=self.USE_FULL_TILE_SCHEDULE,
+            USE_PLANAR_SNAKE=self.USE_PLANAR_SNAKE,
+            GRID_MINOR_DIM=self.GRID_MINOR_DIM,
+            GRID_TILE_WIDTH=self.GRID_TILE_WIDTH,
+            BAND_N=self.BAND_N,
+        )
+
 
 @gluon.jit
 def load_activations(p: PartitionArgs):
@@ -375,7 +496,7 @@ def load_activations(p: PartitionArgs):
         cached_offs_x_m = gl.full((p.BLOCK_M, ), p.x_desc.shape[0], dtype=gl.int32, layout=offs_layout)
 
         for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
-            pid_m, _, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+            pid_m, slice_idx, slice_offset = p.apply_activation_schedule(block_id)
             off_m = pid_m * p.BLOCK_M
             reuse_gather = (pid_m == cached_pid_m) & (slice_idx == cached_slice_idx)
             load_gather = ~reuse_gather
@@ -414,7 +535,7 @@ def load_activations(p: PartitionArgs):
                 issued += 1
     else:
         for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
-            pid_m, _, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+            pid_m, slice_idx, slice_offset = p.apply_activation_schedule(block_id)
             off_m = pid_m * p.BLOCK_M
             shape_m = gl.load(p.x_slice_sizes + slice_idx)
             offs_m = off_m + gl.arange(0, p.BLOCK_M, layout=offs_layout)
@@ -458,11 +579,12 @@ def load_weights(p: PartitionArgs):
     issued = 0
 
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
-        _, pid_n, slice_idx, _ = p.apply_block_schedule(block_id)
+        pid_n, slice_idx = p.apply_weight_schedule(block_id)
 
         scale_idx = slice_idx * p.SCALE_FLAT_N + pid_n * p.SCALE_BLOCK_N_DIV
+        scale_k_stride: gl.constexpr = p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
         for ki in range(p.K_TILES):
-            off_k_scale = ki * p.BLOCK_K // (p.MXFP_BLOCK_SIZE * p.SCALE_SIZE_INNER)
+            off_k_scale = ki * scale_k_stride
 
             w_empty_bar = p.w_empty_bars.index(idx)
             w_ready_bar = p.w_ready_bars.index(idx)
@@ -556,14 +678,14 @@ def store_packed_out(
     p: PartitionArgs,
     packed_out,
     off_m,
-    out_off_n,
+    out_off_n_packed,
     shape_m,
     slice_offset,
 ):
     values = pack_fp8x4(packed_out)
     layout: gl.constexpr = values.type.layout
     offs_m = off_m + gl.arange(0, values.shape[0], layout=gl.SliceLayout(1, layout))
-    offs_n = out_off_n // 4 + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
+    offs_n = out_off_n_packed + gl.arange(0, values.shape[1], layout=gl.SliceLayout(0, layout))
     mask_m = gl.expand_dims(offs_m < shape_m, 1)
     mask_n = gl.expand_dims(offs_n < (p.out_desc.shape[1] + 3) // 4, 0)
     mask = mask_m & mask_n
@@ -635,7 +757,7 @@ def epilogue_direct_store(
     acc_packed,
     out_recip,
     off_m,
-    out_off_n,
+    out_off_n_packed,
     shape_m,
     slice_offset,
     store_layout: gl.constexpr,
@@ -650,7 +772,7 @@ def epilogue_direct_store(
             p,
             packed_fp8,
             off_m + frag_idx * frag_rows,
-            out_off_n,
+            out_off_n_packed,
             shape_m,
             slice_offset,
         )
@@ -766,16 +888,27 @@ def apply_bias_and_scale(
     acc_empty_bar = p.acc_empty_bars.index(idx)
     acc_ready_bar = p.acc_ready_bars.index(idx)
     acc_buf = p.acc_bufs.index(idx)
-    mbarrier.wait(acc_ready_bar, phase)
-    idx, phase = advance(idx, phase, p.acc_num_bufs)
 
     offs_bias_n = off_n + gl.arange(0, p.BLOCK_N, layout=bias_layout)
-    bias = gl.convert_layout(
-        gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
-        split_layout,
-    )
-    acc_regs = acc_buf.load().permute((1, 0))
-    mbarrier.arrive(acc_empty_bar)
+    if p.USE_DIRECT_EPILOGUE_STORE:
+        bias = gl.convert_layout(
+            gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
+            split_layout,
+        )
+        mbarrier.wait(acc_ready_bar, phase)
+        idx, phase = advance(idx, phase, p.acc_num_bufs)
+        acc_regs_raw = acc_buf.load()
+        mbarrier.arrive(acc_empty_bar)
+        acc_regs = acc_regs_raw.permute((1, 0))
+    else:
+        mbarrier.wait(acc_ready_bar, phase)
+        idx, phase = advance(idx, phase, p.acc_num_bufs)
+        bias = gl.convert_layout(
+            gl.expand_dims(gl.load(p.bias_ptr + slice_idx * p.bias_stride + offs_bias_n), axis=0),
+            split_layout,
+        )
+        acc_regs = acc_buf.load().permute((1, 0))
+        mbarrier.arrive(acc_empty_bar)
     acc = gl.convert_layout(acc_regs, split_layout)
     acc_packed = float2.pack(acc, axis=1)
     bias_packed = float2.pack(bias, axis=1)
@@ -797,7 +930,7 @@ def epilogue_store_partition(p: PartitionArgs):
         pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
         off_m = pid_m * p.BLOCK_M
         shape_m = gl.load(p.x_slice_sizes + slice_idx)
-        out_off_n = (pid_n * p.BLOCK_N) // p.REDUCTION_N
+        out_off_n_packed = pid_n * (p.BLOCK_N // p.REDUCTION_N // 4)
         if p.USE_WIDE_STORE_HANDOFF:
             ready_bar = p.store_ready_bars.index(store_idx)
             empty_bar = p.store_empty_bars.index(store_idx)
@@ -808,7 +941,7 @@ def epilogue_store_partition(p: PartitionArgs):
                 p,
                 packed_fp8,
                 off_m,
-                out_off_n,
+                out_off_n_packed,
                 shape_m,
                 slice_offset,
             )
@@ -825,7 +958,7 @@ def epilogue_store_partition(p: PartitionArgs):
                     p,
                     packed_fp8,
                     frag_off_m,
-                    out_off_n,
+                    out_off_n_packed,
                     shape_m,
                     slice_offset,
                 )
@@ -857,8 +990,13 @@ def epilogue_partition(p: PartitionArgs):
     )
     bias_layout: gl.constexpr = gl.SliceLayout(0, split_layout)
     store_layout: gl.constexpr = get_store_layout(p)
+
     for block_id in range(gl.program_id(0), p.num_blocks, p.NUM_SMS):
         pid_m, pid_n, slice_idx, slice_offset = p.apply_block_schedule(block_id)
+        if p.USE_DIRECT_EPILOGUE_STORE:
+            off_m = pid_m * p.BLOCK_M
+            shape_m = gl.load(p.x_slice_sizes + slice_idx)
+            out_off_n_packed = pid_n * (p.BLOCK_N // p.REDUCTION_N // 4)
         idx, phase, acc_packed = apply_bias_and_scale(
             p,
             idx,
@@ -871,15 +1009,12 @@ def epilogue_partition(p: PartitionArgs):
         )
 
         if p.USE_DIRECT_EPILOGUE_STORE:
-            off_m = pid_m * p.BLOCK_M
-            shape_m = gl.load(p.x_slice_sizes + slice_idx)
-            out_off_n = (pid_n * p.BLOCK_N) // p.REDUCTION_N
             epilogue_direct_store(
                 p,
                 acc_packed,
                 out_recip,
                 off_m,
-                out_off_n,
+                out_off_n_packed,
                 shape_m,
                 slice_offset,
                 store_layout,
@@ -1376,11 +1511,33 @@ def _select_band_n(slice_size: int) -> int:
 
 
 def maybe_enable_2cta(p: KernelConfig, slice_size: int) -> KernelConfig:
-    if p.BLOCK_M == 32 and p.BLOCK_N == 128 and slice_size == 16:
-        # The first 32-row occ2 tile still benefits from a wider 2CTA N tile,
-        # but only at the smallest non-trivial slice where the ragged gathers
-        # are light enough for deeper weight staging to pay back.
-        return replace(p, BLOCK_N=256, NUM_CTAS=2, X_NUM_BUFS=5, W_NUM_BUFS=5)
+    if p.BLOCK_M == 32 and p.BLOCK_N == 128 and slice_size in (16, 20, 24, 32):
+        # Low-batch 2CTA only wins when the wider N tile is paired with direct
+        # epilogue stores and a four-warp layout. Slice 28 remains on 1CTA
+        # because uniform routing still shows a stable regression there.
+        next_p = replace(
+            p,
+            BLOCK_N=256,
+            NUM_CTAS=2,
+            NUM_WARPS=4,
+            W_NUM_BUFS=5,
+            SWIGLU_SUBTILE_FACTOR=1,
+            LOAD_ACTIVATION_WARPS=2,
+            LOAD_WEIGHT_WARPS=1,
+            MMA_WARPS=1,
+            LOAD_ACTIVATION_REGS=40,
+            LOAD_WEIGHT_REGS=32,
+            MMA_REGS=32,
+            MAXNREG=52,
+            BAND_N=32,
+            FORCE_EPILOGUE_WARPS_N1=True,
+            USE_DIRECT_EPILOGUE_STORE=True,
+        )
+        if slice_size == 16:
+            return replace(next_p, X_NUM_BUFS=5)
+        if slice_size in (20, 24):
+            return replace(next_p, X_NUM_BUFS=6)
+        return replace(next_p, X_NUM_BUFS=6, X_GATHER_MULTICAST=False, W_SCALE_MULTICAST=False)
     if 36 <= slice_size <= 72:
         # The tuned 64-row multicta kernel wins through the 72-token slice
         # crossover once it keeps the deeper x/w pipeline, shallower SwiGLU
@@ -1415,7 +1572,15 @@ def select_kernel_config(slice_size: int) -> KernelConfig:
     else:
         p = _select_occ1_config(slice_size)
     p = maybe_enable_2cta(p, slice_size)
-    if p.BLOCK_M == 64 and p.BLOCK_N == 256 and p.NUM_CTAS == 2 and 36 <= slice_size <= 72:
+    if (
+        p.BLOCK_M == 32
+        and p.BLOCK_N == 256
+        and p.NUM_CTAS == 2
+        and p.USE_DIRECT_EPILOGUE_STORE
+        and slice_size <= 32
+    ):
+        p = replace(p, BAND_N=32)
+    elif p.BLOCK_M == 64 and p.BLOCK_N == 256 and p.NUM_CTAS == 2 and 36 <= slice_size <= 72:
         p = replace(p, BAND_N=26)
     else:
         p = replace(p, BAND_N=_select_band_n(slice_size))
